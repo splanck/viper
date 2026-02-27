@@ -2707,6 +2707,59 @@ rt_string rt_viper_tls_recv_str(void *obj, int64_t max_bytes)
     return result;
 }
 
+/// @brief Read a line (up to \n) from the TLS connection.
+rt_string rt_viper_tls_recv_line(void *obj)
+{
+    if (!obj)
+        return rt_string_from_bytes("", 0);
+
+    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    if (!tls->session)
+        return rt_string_from_bytes("", 0);
+
+    size_t cap = 256;
+    size_t len = 0;
+    char *line = (char *)malloc(cap);
+    if (!line)
+        return rt_string_from_bytes("", 0);
+
+    while (1)
+    {
+        char c;
+        long received = rt_tls_recv(tls->session, &c, 1);
+        if (received <= 0)
+        {
+            // Connection closed or error before newline
+            break;
+        }
+
+        if (c == '\n')
+        {
+            // Strip trailing CR if present
+            if (len > 0 && line[len - 1] == '\r')
+                len--;
+            break;
+        }
+
+        if (len >= cap)
+        {
+            cap *= 2;
+            char *new_line = (char *)realloc(line, cap);
+            if (!new_line)
+            {
+                free(line);
+                return rt_string_from_bytes("", 0);
+            }
+            line = new_line;
+        }
+        line[len++] = c;
+    }
+
+    rt_string result = rt_string_from_bytes(line, len);
+    free(line);
+    return result;
+}
+
 /// @brief Close the TLS connection.
 void rt_viper_tls_close(void *obj)
 {

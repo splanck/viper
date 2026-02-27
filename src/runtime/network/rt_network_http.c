@@ -1381,6 +1381,78 @@ void *rt_http_head(rt_string url)
     return res;
 }
 
+rt_string rt_http_patch(rt_string url, rt_string body)
+{
+    const char *url_str = rt_string_cstr(url);
+    const char *body_str = rt_string_cstr(body);
+
+    if (!url_str || *url_str == '\0')
+        rt_trap("HTTP: invalid URL");
+
+    rt_http_req_t req = {0};
+    req.method = strdup("PATCH");
+    req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
+
+    if (parse_url(url_str, &req.url) < 0)
+        rt_trap("HTTP: invalid URL format");
+
+    if (body_str)
+    {
+        req.body_len = strlen(body_str);
+        req.body = (uint8_t *)malloc(req.body_len);
+        if (!req.body)
+            rt_trap("HTTP: memory allocation failed");
+        memcpy(req.body, body_str, req.body_len);
+    }
+
+    if (req.body_len > 0)
+        add_header(&req, "Content-Type", "text/plain; charset=utf-8");
+
+    rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
+    free(req.method);
+    free(req.body);
+    free_parsed_url(&req.url);
+    free_headers(req.headers);
+
+    if (!res)
+        rt_trap("HTTP: request failed");
+
+    rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
+
+    if (rt_obj_release_check0(res))
+        rt_obj_free(res);
+
+    return result;
+}
+
+rt_string rt_http_options(rt_string url)
+{
+    const char *url_str = rt_string_cstr(url);
+    if (!url_str || *url_str == '\0')
+        rt_trap("HTTP: invalid URL");
+
+    rt_http_req_t req = {0};
+    req.method = strdup("OPTIONS");
+    req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
+
+    if (parse_url(url_str, &req.url) < 0)
+        rt_trap("HTTP: invalid URL format");
+
+    rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
+    free(req.method);
+    free_parsed_url(&req.url);
+
+    if (!res)
+        rt_trap("HTTP: request failed");
+
+    rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
+
+    if (rt_obj_release_check0(res))
+        rt_obj_free(res);
+
+    return result;
+}
+
 //=============================================================================
 // HttpReq Instance Class Implementation
 //=============================================================================

@@ -434,6 +434,17 @@ extern "C"
     /// @note Traps on connection error, invalid URL, or HTTP error.
     void *rt_http_head(rt_string url);
 
+    /// @brief HTTP PATCH request with string body.
+    /// @param url Full URL (http://host/path).
+    /// @param body Request body as string.
+    /// @return Response body as string.
+    rt_string rt_http_patch(rt_string url, rt_string body);
+
+    /// @brief HTTP OPTIONS request.
+    /// @param url Full URL (http://host/path).
+    /// @return Response body as string (typically empty or CORS info).
+    rt_string rt_http_options(rt_string url);
+
     //=========================================================================
     // HttpReq - Request Builder (Instance Class)
     //=========================================================================

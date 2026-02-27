@@ -909,3 +909,41 @@ void rt_list_sort_desc(void *list)
 {
     list_sort_impl(list, list_compare_desc);
 }
+
+void rt_list_shuffle(void *list)
+{
+    if (!list)
+        return;
+
+    rt_list_impl *L = as_list(list);
+    size_t len = L->arr ? rt_arr_obj_len(L->arr) : 0;
+    if (len < 2)
+        return;
+
+    // Fisher-Yates shuffle
+    for (size_t i = len - 1; i > 0; --i)
+    {
+        size_t j = (size_t)(rand() % (int)(i + 1));
+        void *a = L->arr[i];
+        void *b = L->arr[j];
+        L->arr[i] = b;
+        L->arr[j] = a;
+    }
+}
+
+void *rt_list_clone(void *list)
+{
+    void *result = rt_ns_list_new();
+    if (!result || !list)
+        return result;
+
+    rt_list_impl *L = as_list(list);
+    size_t len = L->arr ? rt_arr_obj_len(L->arr) : 0;
+
+    for (size_t i = 0; i < len; ++i)
+    {
+        rt_list_push(result, rt_arr_obj_get(L->arr, i));
+    }
+
+    return result;
+}

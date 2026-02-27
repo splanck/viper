@@ -379,6 +379,8 @@ RT_FUNC(ListIsEmpty,  rt_list_is_empty,  "Viper.Collections.List.get_IsEmpty","i
 RT_FUNC(ListPop,      rt_list_pop,       "Viper.Collections.List.Pop",        "obj(obj)")
 RT_FUNC(ListSort,     rt_list_sort,      "Viper.Collections.List.Sort",       "void(obj)")
 RT_FUNC(ListSortDesc, rt_list_sort_desc, "Viper.Collections.List.SortDesc",   "void(obj)")
+RT_FUNC(ListShuffle, rt_list_shuffle,   "Viper.Collections.List.Shuffle",    "void(obj)")
+RT_FUNC(ListClone,   rt_list_clone,     "Viper.Collections.List.Clone",      "obj(obj)")
 
 // List aliases (backward compatibility)
 RT_ALIAS("Viper.Collections.List.get_Count", ListGetLen)
@@ -513,6 +515,7 @@ RT_FUNC(QueueNew,     rt_queue_new,      "Viper.Collections.Queue.New",         
 RT_FUNC(QueuePeek,    rt_queue_peek,     "Viper.Collections.Queue.Peek",        "obj(obj)")
 RT_FUNC(QueuePop,     rt_queue_pop,      "Viper.Collections.Queue.Pop",         "obj(obj)")
 RT_FUNC(QueueHas,     rt_queue_has,      "Viper.Collections.Queue.Has",         "i1(obj,obj)")
+RT_FUNC(QueueToList,  rt_queue_to_list,  "Viper.Collections.Queue.ToList",      "obj(obj)")
 
 //=============================================================================
 // COLLECTIONS - HEAP (Priority Queue)
@@ -611,6 +614,7 @@ RT_FUNC(StackPeek,    rt_stack_peek,     "Viper.Collections.Stack.Peek",        
 RT_FUNC(StackPop,     rt_stack_pop,      "Viper.Collections.Stack.Pop",         "obj(obj)")
 RT_FUNC(StackPush,    rt_stack_push,     "Viper.Collections.Stack.Push",        "void(obj,obj)")
 RT_FUNC(StackHas,     rt_stack_has,      "Viper.Collections.Stack.Has",         "i1(obj,obj)")
+RT_FUNC(StackToList,  rt_stack_to_list,  "Viper.Collections.Stack.ToList",      "obj(obj)")
 
 //=============================================================================
 // COLLECTIONS - ITERATOR
@@ -759,6 +763,7 @@ RT_FUNC(TlsSendStr,    rt_viper_tls_send_str,    "Viper.Crypto.Tls.SendStr",    
 RT_FUNC(TlsRecv,       rt_viper_tls_recv,        "Viper.Crypto.Tls.Recv",       "obj(obj,i64)")
 RT_FUNC(TlsRecvStr,    rt_viper_tls_recv_str,    "Viper.Crypto.Tls.RecvStr",    "str(obj,i64)")
 RT_FUNC(TlsClose,      rt_viper_tls_close,       "Viper.Crypto.Tls.Close",      "void(obj)")
+RT_FUNC(TlsRecvLine,   rt_viper_tls_recv_line,   "Viper.Crypto.Tls.RecvLine",   "str(obj)")
 RT_FUNC(TlsError,      rt_viper_tls_error,       "Viper.Crypto.Tls.Error",      "str(obj)")
 
 //=============================================================================
@@ -919,6 +924,7 @@ RT_FUNC(DefaultMapRemove,     rt_defaultmap_remove,      "Viper.Collections.Defa
 RT_FUNC(DefaultMapKeys,       rt_defaultmap_keys,        "Viper.Collections.DefaultMap.Keys",       "obj(obj)")
 RT_FUNC(DefaultMapGetDefault, rt_defaultmap_get_default, "Viper.Collections.DefaultMap.GetDefault", "obj(obj)")
 RT_FUNC(DefaultMapClear,      rt_defaultmap_clear,       "Viper.Collections.DefaultMap.Clear",      "void(obj)")
+RT_FUNC(DefaultMapIsEmpty,   rt_defaultmap_is_empty,    "Viper.Collections.DefaultMap.get_IsEmpty","i1(obj)")
 
 //=============================================================================
 // CORE - MESSAGEBUS
@@ -1082,6 +1088,9 @@ RT_FUNC(CanvasRestore,      rt_canvas_restore,       "Viper.Graphics.Canvas.Rest
 RT_FUNC(CanvasIsFocused,    rt_canvas_is_focused,    "Viper.Graphics.Canvas.IsFocused",    "i1(obj)")
 RT_FUNC(CanvasFocus,        rt_canvas_focus,         "Viper.Graphics.Canvas.Focus",        "void(obj)")
 RT_FUNC(CanvasPreventClose, rt_canvas_prevent_close, "Viper.Graphics.Canvas.PreventClose", "void(obj,i64)")
+RT_FUNC(CanvasGetTitle,     rt_canvas_get_title,     "Viper.Graphics.Canvas.GetTitle",     "str(obj)")
+RT_FUNC(CanvasResize,       rt_canvas_resize,        "Viper.Graphics.Canvas.Resize",       "void(obj,i64,i64)")
+RT_FUNC(CanvasClose,        rt_canvas_close,         "Viper.Graphics.Canvas.Close",        "void(obj)")
 
 //=============================================================================
 // GRAPHICS - COLOR
@@ -4335,6 +4344,8 @@ RT_FUNC(HttpPost, rt_http_post, "Viper.Network.Http.Post", "str(str,str)")
 RT_FUNC(HttpPostBytes, rt_http_post_bytes, "Viper.Network.Http.PostBytes", "obj(str,obj)")
 RT_FUNC(HttpDownload, rt_http_download, "Viper.Network.Http.Download", "i1(str,str)")
 RT_FUNC(HttpHead, rt_http_head, "Viper.Network.Http.Head", "obj(str)")
+RT_FUNC(HttpPatch, rt_http_patch, "Viper.Network.Http.Patch", "str(str,str)")
+RT_FUNC(HttpOptions, rt_http_options, "Viper.Network.Http.Options", "str(str)")
 RT_FUNC(HttpReqNew, rt_http_req_new, "Viper.Network.HttpReq.New", "obj(str,str)")
 RT_FUNC(HttpReqSetHeader, rt_http_req_set_header, "Viper.Network.HttpReq.SetHeader", "obj(obj,str,str)")
 RT_FUNC(HttpReqSetBody, rt_http_req_set_body, "Viper.Network.HttpReq.SetBody", "obj(obj,obj)")
@@ -4527,6 +4538,7 @@ RT_CLASS_END()
 // Viper.Collections.DefaultMap - map with default value for missing keys
 RT_CLASS_BEGIN("Viper.Collections.DefaultMap", DefaultMap, "obj(obj)", DefaultMapNew)
     RT_PROP("Len", "i64", DefaultMapLen, none)
+    RT_PROP("IsEmpty", "i1", DefaultMapIsEmpty, none)
     RT_METHOD("Clear", "void()", DefaultMapClear)
     RT_METHOD("Get", "obj(str)", DefaultMapGet)
     RT_METHOD("GetDefault", "obj()", DefaultMapGetDefault)
@@ -4709,6 +4721,8 @@ RT_CLASS_BEGIN("Viper.Collections.List", List, "obj", ListNew)
     RT_METHOD("Last", "obj()", ListLast)
     RT_METHOD("Sort", "void()", ListSort)
     RT_METHOD("SortDesc", "void()", ListSortDesc)
+    RT_METHOD("Shuffle", "void()", ListShuffle)
+    RT_METHOD("Clone", "obj()", ListClone)
 RT_CLASS_END()
 
 // Viper.Collections.LruCache - bounded key-value cache with LRU eviction
@@ -4788,6 +4802,7 @@ RT_CLASS_BEGIN("Viper.Collections.Queue", Queue, "obj", QueueNew)
     RT_METHOD("Peek", "obj()", QueuePeek)
     RT_METHOD("Push", "void(obj)", QueuePush)
     RT_METHOD("Pop", "obj()", QueuePop)
+    RT_METHOD("ToList", "obj()", QueueToList)
 RT_CLASS_END()
 
 // Viper.Collections.Heap - priority queue (binary heap)
@@ -4866,6 +4881,7 @@ RT_CLASS_BEGIN("Viper.Collections.Stack", Stack, "obj", StackNew)
     RT_METHOD("Peek", "obj()", StackPeek)
     RT_METHOD("Pop", "obj()", StackPop)
     RT_METHOD("Push", "void(obj)", StackPush)
+    RT_METHOD("ToList", "obj()", StackToList)
 RT_CLASS_END()
 
 // Viper.Collections.Iterator - unified collection iterator
@@ -4988,6 +5004,7 @@ RT_CLASS_BEGIN("Viper.Crypto.Tls", Tls, "obj", none)
     // Receive methods
     RT_METHOD("Recv", "obj(i64)", TlsRecv)
     RT_METHOD("RecvStr", "str(i64)", TlsRecvStr)
+    RT_METHOD("RecvLine", "str()", TlsRecvLine)
     // Error and close
     RT_METHOD("Error", "str()", TlsError)
     RT_METHOD("Close", "void()", TlsClose)
@@ -5213,6 +5230,9 @@ RT_CLASS_BEGIN("Viper.Graphics.Canvas", Canvas, "obj", CanvasNew)
     RT_METHOD("SetClipRect",    "void(i64,i64,i64,i64)", CanvasSetClipRect)
     RT_METHOD("ClearClipRect",  "void()",              CanvasClearClipRect)
     RT_METHOD("SetTitle",       "void(str)",           CanvasSetTitle)
+    RT_METHOD("GetTitle",       "str()",               CanvasGetTitle)
+    RT_METHOD("Resize",         "void(i64,i64)",       CanvasResize)
+    RT_METHOD("Close",          "void()",              CanvasClose)
     RT_METHOD("Fullscreen",     "void()",              CanvasFullscreen)
     RT_METHOD("Windowed",       "void()",              CanvasWindowed)
     RT_METHOD("TextWidth",      "i64(str)",            CanvasTextWidth)
@@ -7627,6 +7647,8 @@ RT_CLASS_BEGIN("Viper.Network.Http", Http, "none", none)
     RT_METHOD("PostBytes", "obj(str,obj)", HttpPostBytes)
     RT_METHOD("Download", "i1(str,str)", HttpDownload)
     RT_METHOD("Head", "obj(str)", HttpHead)
+    RT_METHOD("Patch", "str(str,str)", HttpPatch)
+    RT_METHOD("Options", "str(str)", HttpOptions)
 RT_CLASS_END()
 
 // Viper.Network.HttpReq - HTTP request builder (instance class)

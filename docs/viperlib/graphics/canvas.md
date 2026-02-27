@@ -47,9 +47,9 @@
 | `GetScale()`                          | `Double()`                            | Returns the HiDPI display scale factor (1.0 normal, 2.0 on Retina) |
 | `GradientH(x, y, w, h, c1, c2)`      | `Void(Integer...)`                    | Draws a horizontal gradient (left c1 to right c2)          |
 | `GradientV(x, y, w, h, c1, c2)`      | `Void(Integer...)`                    | Draws a vertical gradient (top c1 to bottom c2)            |
-| `IsFocused()`                         | `Integer()`                           | Returns 1 if the window has keyboard focus                 |
-| `IsMaximized()`                       | `Integer()`                           | Returns 1 if the window is maximized                       |
-| `IsMinimized()`                       | `Integer()`                           | Returns 1 if the window is minimized (iconified)           |
+| `IsFocused()`                         | `Boolean()`                           | Returns true if the window has keyboard focus              |
+| `IsMaximized()`                       | `Boolean()`                           | Returns true if the window is maximized                    |
+| `IsMinimized()`                       | `Boolean()`                           | Returns true if the window is minimized (iconified)        |
 | `KeyHeld(keycode)`                    | `Integer(Integer)`                    | Returns non-zero if the specified key is held down         |
 | `Line(x1, y1, x2, y2, color)`         | `Void(Integer...)`                    | Draws a line between two points                            |
 | `Maximize()`                          | `Void()`                              | Maximizes the window                                       |

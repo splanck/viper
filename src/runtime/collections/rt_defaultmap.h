@@ -76,6 +76,11 @@ extern "C"
     /// @param map DefaultMap object.
     void rt_defaultmap_clear(void *map);
 
+    /// @brief Check if the map is empty.
+    /// @param map DefaultMap object.
+    /// @return 1 if empty, 0 otherwise.
+    int8_t rt_defaultmap_is_empty(void *map);
+
 #ifdef __cplusplus
 }
 #endif

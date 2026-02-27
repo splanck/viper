@@ -168,6 +168,15 @@ extern "C"
     /// @param list Opaque List object pointer.
     void rt_list_sort_desc(void *list);
 
+    /// @brief Randomly shuffle the list in place (Fisher-Yates).
+    /// @param list Opaque List object pointer.
+    void rt_list_shuffle(void *list);
+
+    /// @brief Create a shallow copy of the list.
+    /// @param list Opaque List object pointer.
+    /// @return New List containing the same element references.
+    void *rt_list_clone(void *list);
+
 #ifdef __cplusplus
 }
 #endif

@@ -144,6 +144,7 @@ circular buffer for O(1) add and take operations.
 | `Push(value)` | `Void(Object)` | Add element to back of queue                           |
 | `Pop()`       | `Object()`     | Remove and return front element (traps if empty)       |
 | `Peek()`      | `Object()`     | Return front element without removing (traps if empty) |
+| `Has(value)`  | `Boolean(Object)` | Check if an element is in the queue (by reference)  |
 | `Clear()`     | `Void()`       | Remove all elements                                    |
 
 ### Zia Example
@@ -226,6 +227,7 @@ A LIFO (last-in-first-out) collection. Elements are added and removed from the t
 | `Push(value)` | `Void(Object)` | Add element to top of stack                          |
 | `Pop()`       | `Object()`     | Remove and return top element (traps if empty)       |
 | `Peek()`      | `Object()`     | Return top element without removing (traps if empty) |
+| `Has(value)`  | `Boolean(Object)` | Check if an element is on the stack (by reference) |
 | `Clear()`     | `Void()`       | Remove all elements                                  |
 
 ### Zia Example

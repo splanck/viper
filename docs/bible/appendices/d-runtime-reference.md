@@ -1581,8 +1581,8 @@ set.Clear()             // Remove all items
 set.Len                 // -> Integer
 
 // Set operations
-set.Merge(other)        // -> Set (items in either set)
-set.Common(other)       // -> Set (items in both sets)
+set.Union(other)        // -> Set (items in either set)
+set.Intersect(other)    // -> Set (items in both sets)
 set.Diff(other)         // -> Set (items in this set but not other)
 ```
 
@@ -1602,7 +1602,7 @@ var admins = new Set[String]();
 admins.Add("alice");
 admins.Add("charlie");
 
-var adminVisitors = visitors.Common(admins);  // {"alice"}
+var adminVisitors = visitors.Intersect(admins);  // {"alice"}
 var nonAdminVisitors = visitors.Diff(admins); // {"bob"}
 ```
 

@@ -29,15 +29,15 @@ intersection, difference), and enumeration.
 | `Has(str)`      | `Boolean(String)` | Check if string is in the bag                                |
 | `Clear()`       | `Void()`          | Remove all strings from the bag                              |
 | `Items()`       | `Seq()`           | Get all strings as a Seq (order undefined)                   |
-| `Merge(other)`  | `Bag(Bag)`        | Return new bag with union of both bags                       |
-| `Common(other)` | `Bag(Bag)`        | Return new bag with intersection of both bags                |
+| `Union(other)`     | `Bag(Bag)`        | Return new bag with union of both bags                       |
+| `Intersect(other)` | `Bag(Bag)`        | Return new bag with intersection of both bags                |
 | `Diff(other)`   | `Bag(Bag)`        | Return new bag with elements in this but not other           |
 
 ### Notes
 
 - Strings are stored by value (copied into the bag)
 - Order of strings returned by `Items()` is not guaranteed (hash table)
-- Set operations (`Merge`, `Common`, `Diff`) return new bags; originals are unchanged
+- Set operations (`Union`, `Intersect`, `Diff`) return new bags; originals are unchanged
 - Uses FNV-1a hash function for O(1) average-case operations
 - Automatically resizes when load factor exceeds 75%
 
@@ -105,11 +105,11 @@ bagB.Put("c")
 bagB.Put("d")
 
 ' Union: elements in either bag
-DIM merged AS OBJECT = bagA.Merge(bagB)
+DIM merged AS OBJECT = bagA.Union(bagB)
 PRINT merged.Len           ' Output: 4 (a, b, c, d)
 
 ' Intersection: elements in both bags
-DIM common AS OBJECT = bagA.Common(bagB)
+DIM common AS OBJECT = bagA.Intersect(bagB)
 PRINT common.Len           ' Output: 2 (b, c)
 
 ' Difference: elements in A but not B

@@ -589,6 +589,21 @@ extern "C"
     /// @param title New window title.
     void rt_canvas_set_title(void *canvas, rt_string title);
 
+    /// @brief Get the current window title.
+    /// @param canvas Canvas handle.
+    /// @return Window title string.
+    rt_string rt_canvas_get_title(void *canvas);
+
+    /// @brief Resize the canvas window.
+    /// @param canvas Canvas handle.
+    /// @param width New width in pixels.
+    /// @param height New height in pixels.
+    void rt_canvas_resize(void *canvas, int64_t width, int64_t height);
+
+    /// @brief Close and destroy the canvas window.
+    /// @param canvas Canvas handle.
+    void rt_canvas_close(void *canvas);
+
     /// @brief Capture the canvas contents to a Pixels buffer.
     /// @param canvas Canvas handle.
     /// @return New Pixels object containing the canvas contents.

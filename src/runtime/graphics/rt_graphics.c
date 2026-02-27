@@ -61,6 +61,7 @@ typedef struct
     vgfx_window_t gfx_win;   ///< ViperGFX window handle
     int64_t should_close;    ///< Close request flag
     vgfx_event_t last_event; ///< Last polled event for retrieval
+    char *title;             ///< Cached window title (heap-allocated, freed in finalizer)
 } rt_canvas;
 
 static void rt_canvas_finalize(void *obj)
@@ -69,6 +70,11 @@ static void rt_canvas_finalize(void *obj)
         return;
 
     rt_canvas *canvas = (rt_canvas *)obj;
+    if (canvas->title)
+    {
+        free(canvas->title);
+        canvas->title = NULL;
+    }
     if (canvas->gfx_win)
     {
         vgfx_destroy_window(canvas->gfx_win);
@@ -85,6 +91,7 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height)
     canvas->vptr = NULL;
     canvas->gfx_win = NULL;
     canvas->should_close = 0;
+    canvas->title = NULL;
     canvas->last_event.type = VGFX_EVENT_NONE;
     rt_obj_set_finalizer(canvas, rt_canvas_finalize);
 
@@ -100,6 +107,13 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height)
         if (rt_obj_release_check0(canvas))
             rt_obj_free(canvas);
         return NULL;
+    }
+
+    // Cache the title for GetTitle
+    if (title)
+    {
+        const char *cstr = rt_string_cstr(title);
+        canvas->title = cstr ? strdup(cstr) : NULL;
     }
 
     // Initialize keyboard input for this canvas
@@ -2316,7 +2330,39 @@ void rt_canvas_set_title(void *canvas_ptr, rt_string title)
 {
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (canvas && canvas->gfx_win && title)
-        vgfx_set_title(canvas->gfx_win, rt_string_cstr(title));
+    {
+        const char *cstr = rt_string_cstr(title);
+        vgfx_set_title(canvas->gfx_win, cstr);
+        // Update cached title
+        free(canvas->title);
+        canvas->title = cstr ? strdup(cstr) : NULL;
+    }
+}
+
+rt_string rt_canvas_get_title(void *canvas_ptr)
+{
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (canvas && canvas->title)
+        return rt_string_from_bytes(canvas->title, strlen(canvas->title));
+    return rt_string_from_bytes("", 0);
+}
+
+void rt_canvas_resize(void *canvas_ptr, int64_t width, int64_t height)
+{
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (canvas && canvas->gfx_win)
+        vgfx_set_window_size(canvas->gfx_win, (int32_t)width, (int32_t)height);
+}
+
+void rt_canvas_close(void *canvas_ptr)
+{
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (canvas && canvas->gfx_win)
+    {
+        vgfx_destroy_window(canvas->gfx_win);
+        canvas->gfx_win = NULL;
+        canvas->should_close = 1;
+    }
 }
 
 void *rt_canvas_screenshot(void *canvas_ptr)
@@ -3206,6 +3252,24 @@ void rt_canvas_set_title(void *canvas, rt_string title)
 {
     (void)canvas;
     (void)title;
+}
+
+rt_string rt_canvas_get_title(void *canvas)
+{
+    (void)canvas;
+    return rt_string_from_bytes("", 0);
+}
+
+void rt_canvas_resize(void *canvas, int64_t width, int64_t height)
+{
+    (void)canvas;
+    (void)width;
+    (void)height;
+}
+
+void rt_canvas_close(void *canvas)
+{
+    (void)canvas;
 }
 
 void *rt_canvas_screenshot(void *canvas)

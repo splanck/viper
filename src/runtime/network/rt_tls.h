@@ -122,6 +122,9 @@ extern "C"
     /// @brief Receive up to max_bytes as String.
     rt_string rt_viper_tls_recv_str(void *obj, int64_t max_bytes);
 
+    /// @brief Read a line (up to \n) from the TLS connection.
+    rt_string rt_viper_tls_recv_line(void *obj);
+
     /// @brief Close the TLS connection.
     void rt_viper_tls_close(void *obj);
 

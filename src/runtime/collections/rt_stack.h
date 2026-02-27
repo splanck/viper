@@ -65,6 +65,11 @@ extern "C"
     /// @return 1 if found, 0 otherwise.
     int8_t rt_stack_has(void *obj, void *elem);
 
+    /// @brief Convert the stack to a List (bottom-to-top order).
+    /// @param obj Opaque Stack object pointer.
+    /// @return New List containing all elements.
+    void *rt_stack_to_list(void *obj);
+
 #ifdef __cplusplus
 }
 #endif

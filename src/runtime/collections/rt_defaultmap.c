@@ -363,3 +363,10 @@ void rt_defaultmap_clear(void *map)
     }
     m->count = 0;
 }
+
+int8_t rt_defaultmap_is_empty(void *map)
+{
+    if (!map)
+        return 1;
+    return ((rt_defaultmap_impl *)map)->count == 0 ? 1 : 0;
+}

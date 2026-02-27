@@ -65,6 +65,11 @@ extern "C"
     /// @return 1 if found, 0 otherwise.
     int8_t rt_queue_has(void *obj, void *elem);
 
+    /// @brief Convert the queue to a List (front-to-back order).
+    /// @param obj Opaque Queue object pointer.
+    /// @return New List containing all elements.
+    void *rt_queue_to_list(void *obj);
+
 #ifdef __cplusplus
 }
 #endif

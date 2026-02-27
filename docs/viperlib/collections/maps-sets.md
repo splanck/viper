@@ -161,8 +161,8 @@ intersection, difference), and subset/superset queries. Unlike `Bag` which store
 | `Has(obj)`          | `Boolean(Object)` | Check if object is in the set                                  |
 | `Clear()`           | `Void()`          | Remove all objects from the set                                |
 | `Items()`           | `Seq()`           | Get all objects as a Seq (order undefined)                     |
-| `Merge(other)`      | `Set(Set)`        | Return new set with union of both sets                         |
-| `Common(other)`     | `Set(Set)`        | Return new set with intersection of both sets                  |
+| `Union(other)`      | `Set(Set)`        | Return new set with union of both sets                         |
+| `Intersect(other)`  | `Set(Set)`        | Return new set with intersection of both sets                  |
 | `Diff(other)`       | `Set(Set)`        | Return new set with elements in this but not other             |
 | `IsSubset(other)`   | `Boolean(Set)`    | True if this set is a subset of other                          |
 | `IsSuperset(other)` | `Boolean(Set)`    | True if this set is a superset of other                        |
@@ -172,7 +172,7 @@ intersection, difference), and subset/superset queries. Unlike `Bag` which store
 
 - Objects are compared by reference identity, not value equality
 - Order of objects returned by `Items()` is not guaranteed (hash table)
-- Set operations (`Merge`, `Common`, `Diff`) return new sets; originals are unchanged
+- Set operations (`Union`, `Intersect`, `Diff`) return new sets; originals are unchanged
 - Uses object identity hash for O(1) average-case operations
 - Automatically resizes when load factor exceeds threshold
 
@@ -224,11 +224,11 @@ setB.Add(z)
 setB.Add(w)
 
 ' Union: elements in either set
-DIM merged AS OBJECT = setA.Merge(setB)
+DIM merged AS OBJECT = setA.Union(setB)
 PRINT merged.Len          ' Output: 4 (x, y, z, w)
 
 ' Intersection: elements in both sets
-DIM common AS OBJECT = setA.Common(setB)
+DIM common AS OBJECT = setA.Intersect(setB)
 PRINT common.Len          ' Output: 2 (y, z)
 
 ' Difference: elements in A but not B
@@ -449,8 +449,8 @@ keeps elements sorted, enabling efficient range queries, ordered iteration, and 
 | `Range(from, to)`   | `Seq(String, String)`      | Get elements in range [from, to)                                   |
 | `Take(n)`           | `Seq(Integer)`             | Get first n elements                                               |
 | `Skip(n)`           | `Seq(Integer)`             | Get all elements except first n                                    |
-| `Merge(other)`      | `SortedSet(SortedSet)`     | Return new set with union of both sets                             |
-| `Common(other)`     | `SortedSet(SortedSet)`     | Return new set with intersection of both sets                      |
+| `Union(other)`      | `SortedSet(SortedSet)`     | Return new set with union of both sets                             |
+| `Intersect(other)`  | `SortedSet(SortedSet)`     | Return new set with intersection of both sets                      |
 | `Diff(other)`       | `SortedSet(SortedSet)`     | Return new set with elements in this but not other                 |
 | `IsSubset(other)`   | `Boolean(SortedSet)`       | True if this set is a subset of other                              |
 
@@ -509,11 +509,11 @@ set2.Put("c")
 set2.Put("d")
 
 ' Union
-DIM merged AS OBJECT = set1.Merge(set2)
+DIM merged AS OBJECT = set1.Union(set2)
 PRINT merged.Len         ' Output: 4 (a, b, c, d)
 
 ' Intersection
-DIM common AS OBJECT = set1.Common(set2)
+DIM common AS OBJECT = set1.Intersect(set2)
 PRINT common.Len         ' Output: 2 (b, c)
 
 ' Difference
@@ -865,7 +865,7 @@ Supports range queries via Floor/Ceil operations.
 | `Set(key, value)` | `Void(String, Object)` | Set or update a key-value pair                                  |
 | `Get(key)`        | `Object(String)`       | Get the value for a key (returns null if not found)             |
 | `Has(key)`        | `Boolean(String)`      | Check if a key exists                                           |
-| `Drop(key)`       | `Boolean(String)`      | Remove a key-value pair; returns true if removed                |
+| `Remove(key)`     | `Boolean(String)`      | Remove a key-value pair; returns true if removed                |
 | `Clear()`         | `Void()`               | Remove all entries                                              |
 | `Keys()`          | `Seq()`                | Get all keys as a Seq in sorted order                           |
 | `Values()`        | `Seq()`                | Get all values as a Seq in key-sorted order                     |
