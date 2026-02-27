@@ -202,7 +202,7 @@ entity CsvHandler {
 
                     if csvIdx >= 0 && csvIdx < fields.count() {
                         var fieldVal = fields.get(csvIdx);
-                        val = parseCSVValue(fieldVal, table, ci);
+                        val = parseCSVValue(fieldVal, table!, ci);
                     }
                     values.add(val);
                     ci = ci + 1;

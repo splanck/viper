@@ -65,12 +65,12 @@ DIM vals AS OBJECT
 vals = tm.Values()
 PRINT vals.Len            ' 4
 
-' --- Drop ---
-PRINT "--- Drop ---"
-PRINT tm.Drop("banana")  ' 1
-PRINT tm.Has("banana")   ' 0
-PRINT tm.Len              ' 3
-PRINT tm.Drop("banana")  ' 0
+' --- Remove ---
+PRINT "--- Remove ---"
+PRINT tm.Remove("banana")  ' 1
+PRINT tm.Has("banana")     ' 0
+PRINT tm.Len                ' 3
+PRINT tm.Remove("banana")  ' 0
 
 ' --- Clear ---
 PRINT "--- Clear ---"

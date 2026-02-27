@@ -3538,6 +3538,20 @@ TEST(E2ETest, Fibonacci) {
 
 ## 15. Common Pitfalls and Debugging
 
+### Pipeline Dump Flags
+
+When debugging your frontend, use the `--dump-*` CLI flags to inspect output at each compilation stage:
+
+```sh
+viper run --dump-tokens program.zia   # See what the lexer produces
+viper run --dump-ast program.zia      # See the parsed AST
+viper run --dump-il program.zia       # See IL after lowering
+viper run --dump-il-opt program.zia   # See IL after optimization
+viper run --dump-il-passes program.zia # See IL before/after each pass
+```
+
+All output goes to stderr. See `docs/debugging.md` §8 for full details.
+
 ### 1. Forgetting to Terminate Blocks
 
 **Error:** IL verifier fails with "block not terminated"

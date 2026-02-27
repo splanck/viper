@@ -159,13 +159,13 @@ extern "C"
     /// @param obj First SortedSet pointer.
     /// @param other Second SortedSet pointer.
     /// @return New SortedSet containing elements from both.
-    void *rt_sortedset_merge(void *obj, void *other);
+    void *rt_sortedset_union(void *obj, void *other);
 
     /// @brief Create intersection of two sorted sets.
     /// @param obj First SortedSet pointer.
     /// @param other Second SortedSet pointer.
     /// @return New SortedSet containing elements in both.
-    void *rt_sortedset_common(void *obj, void *other);
+    void *rt_sortedset_intersect(void *obj, void *other);
 
     /// @brief Create difference of two sorted sets.
     /// @param obj First SortedSet pointer.

@@ -102,6 +102,7 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
+#include "support/source_location.hpp"
 #include <map>
 #include <memory>
 #include <optional>
@@ -394,6 +395,12 @@ class Lowerer
     /// 4. Declare external functions
     Module lower(ModuleDecl &module);
 
+    /// @brief Get the current source location for IL emission.
+    [[nodiscard]] il::support::SourceLoc sourceLocation() const noexcept { return curLoc_; }
+
+    /// @brief Set the current source location for IL emission.
+    void setSourceLocation(il::support::SourceLoc loc) noexcept { curLoc_ = loc; }
+
   private:
     //=========================================================================
     /// @name State
@@ -424,6 +431,11 @@ class Lowerer
 
     /// @brief Basic block manager for the current function.
     ::il::frontends::common::BlockManager blockMgr_;
+
+    /// @brief Current source location for emitted IL instructions.
+    /// @details Set by ZiaLocationScope RAII helper at statement/expression
+    ///          boundaries. Stamped onto each emitted Instr in Lowerer_Emit.cpp.
+    il::support::SourceLoc curLoc_{};
 
     /// @brief String constant table.
     ::il::frontends::common::StringTable stringTable_;
@@ -819,6 +831,10 @@ class Lowerer
     /// @brief Lower a try expression (propagate operator).
     /// @return LowerResult with unwrapped value or propagated null/error.
     LowerResult lowerTry(TryExpr *expr);
+
+    /// @brief Lower a force-unwrap expression (expr!).
+    /// @return LowerResult with unwrapped value; traps if null at runtime.
+    LowerResult lowerForceUnwrap(ForceUnwrapExpr *expr);
 
     /// @brief Lower a lambda expression.
     /// @return LowerResult with closure pointer.

@@ -358,6 +358,22 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
 // Optional and Type Operators
 //=============================================================================
 
+TypeRef Sema::analyzeForceUnwrap(ForceUnwrapExpr *expr)
+{
+    TypeRef operandType = analyzeExpr(expr->operand.get());
+
+    if (!operandType || operandType->kind != TypeKindSem::Optional)
+    {
+        error(expr->loc,
+              "Force-unwrap '!' requires an optional type, got " +
+                  (operandType ? operandType->toString() : "unknown"));
+        return operandType ? operandType : types::unknown();
+    }
+
+    TypeRef inner = operandType->innerType();
+    return inner ? inner : types::unknown();
+}
+
 TypeRef Sema::analyzeOptionalChain(OptionalChainExpr *expr)
 {
     TypeRef baseType = analyzeExpr(expr->base.get());

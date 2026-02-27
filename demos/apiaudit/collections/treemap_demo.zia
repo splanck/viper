@@ -74,12 +74,12 @@ func start() {
     Say(Box.ToStr(Seq.Get(vals, 0)));   // red (apple's value)
     Say(Box.ToStr(Seq.Get(vals, 1)));   // yellow (banana's value)
 
-    // --- Drop ---
-    Say("--- Drop ---");
-    SayBool(tm.Drop("banana"));    // 1
-    SayBool(tm.Has("banana"));     // 0
-    SayInt(tm.Len);                // 3
-    SayBool(tm.Drop("banana"));    // 0 (already removed)
+    // --- Remove ---
+    Say("--- Remove ---");
+    SayBool(tm.Remove("banana"));    // 1
+    SayBool(tm.Has("banana"));       // 0
+    SayInt(tm.Len);                  // 3
+    SayBool(tm.Remove("banana"));    // 0 (already removed)
 
     // --- Clear ---
     Say("--- Clear ---");

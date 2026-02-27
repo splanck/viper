@@ -425,7 +425,7 @@ void *rt_sortedset_skip(void *obj, int64_t n)
 // Set Operations
 //=============================================================================
 
-void *rt_sortedset_merge(void *obj, void *other)
+void *rt_sortedset_union(void *obj, void *other)
 {
     void *result = rt_sortedset_new();
     rt_sortedset a = (rt_sortedset)obj;
@@ -450,7 +450,7 @@ void *rt_sortedset_merge(void *obj, void *other)
     return result;
 }
 
-void *rt_sortedset_common(void *obj, void *other)
+void *rt_sortedset_intersect(void *obj, void *other)
 {
     void *result = rt_sortedset_new();
     rt_sortedset a = (rt_sortedset)obj;

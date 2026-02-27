@@ -1,6 +1,6 @@
 ' list_demo.bas - Comprehensive API audit for Viper.Collections.List
 ' Tests: New, Push, Pop, Get, Set, Len, IsEmpty, Find, Has, Insert,
-'        Remove, RemoveAt, Clear, Flip, First, Last, Slice
+'        Remove, RemoveAt, Clear, Reverse, First, Last, Slice
 
 PRINT "=== List API Audit ==="
 
@@ -77,9 +77,9 @@ PRINT sl.Len                              ' 2
 PRINT Viper.Core.Box.ToStr(sl.Get(0))    ' cherry
 PRINT Viper.Core.Box.ToStr(sl.Get(1))    ' fig
 
-' --- Flip ---
-PRINT "--- Flip ---"
-list.Flip()
+' --- Reverse ---
+PRINT "--- Reverse ---"
+list.Reverse()
 PRINT Viper.Core.Box.ToStr(list.Get(0))  ' grape
 PRINT Viper.Core.Box.ToStr(list.Get(3))  ' apple
 

@@ -691,9 +691,9 @@ void *rt_bag_items(void *obj)
 /// @note The input Bags are not modified.
 /// @note Thread safety: Not thread-safe.
 ///
-/// @see rt_bag_common For set intersection
+/// @see rt_bag_intersect For set intersection
 /// @see rt_bag_diff For set difference
-void *rt_bag_merge(void *obj, void *other)
+void *rt_bag_union(void *obj, void *other)
 {
     void *result = rt_bag_new();
     if (!result)
@@ -778,9 +778,9 @@ void *rt_bag_merge(void *obj, void *other)
 /// @note The input Bags are not modified.
 /// @note Thread safety: Not thread-safe.
 ///
-/// @see rt_bag_merge For set union
+/// @see rt_bag_union For set union
 /// @see rt_bag_diff For set difference
-void *rt_bag_common(void *obj, void *other)
+void *rt_bag_intersect(void *obj, void *other)
 {
     void *result = rt_bag_new();
     if (!result || !obj || !other)
@@ -852,8 +852,8 @@ void *rt_bag_common(void *obj, void *other)
 /// @note The input Bags are not modified.
 /// @note Thread safety: Not thread-safe.
 ///
-/// @see rt_bag_merge For set union
-/// @see rt_bag_common For set intersection
+/// @see rt_bag_union For set union
+/// @see rt_bag_intersect For set intersection
 void *rt_bag_diff(void *obj, void *other)
 {
     void *result = rt_bag_new();

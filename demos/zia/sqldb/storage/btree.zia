@@ -111,7 +111,7 @@ entity BTree {
         if maybePage == null {
             return null;
         }
-        var page = maybePage;
+        var page = maybePage!;
         var node = nodeSer.deserializeNode(page);
         pool.unpinPage(nodePageId, false);
 
@@ -154,7 +154,7 @@ entity BTree {
         if maybePage == null {
             return;
         }
-        var page = maybePage;
+        var page = maybePage!;
         var node = nodeSer.deserializeNode(page);
         pool.unpinPage(nodePageId, false);
 
@@ -217,7 +217,7 @@ entity BTree {
         if maybePage == null {
             return false;
         }
-        var page = maybePage;
+        var page = maybePage!;
         var root = nodeSer.deserializeNode(page);
 
         if root.isFull() {
@@ -264,7 +264,7 @@ entity BTree {
         if maybePage == null {
             return false;
         }
-        var page = maybePage;
+        var page = maybePage!;
         var node = nodeSer.deserializeNode(page);
 
         if node.isLeaf {
@@ -285,7 +285,7 @@ entity BTree {
             pool.unpinPage(nodePageId, false);
             return false;
         }
-        var childPage = maybeChildPage;
+        var childPage = maybeChildPage!;
         var child = nodeSer.deserializeNode(childPage);
 
         if child.isFull() {
@@ -401,7 +401,7 @@ entity BTree {
         if maybePage == null {
             return false;
         }
-        var page = maybePage;
+        var page = maybePage!;
         var node = nodeSer.deserializeNode(page);
 
         var keyIdx = node.findKey(searchKey);
@@ -457,7 +457,7 @@ entity BTree {
         if maybePage == null {
             return null;
         }
-        var page = maybePage;
+        var page = maybePage!;
         var child = nodeSer.deserializeNode(page);
         pool.unpinPage(childPageId, false);
 
@@ -468,7 +468,7 @@ entity BTree {
             if maybePage == null {
                 return null;
             }
-            page = maybePage;
+            page = maybePage!;
             child = nodeSer.deserializeNode(page);
             pool.unpinPage(rightmostChildId, false);
         }
@@ -498,7 +498,7 @@ entity BTree {
             if maybePage == null {
                 break;
             }
-            var page = maybePage;
+            var page = maybePage!;
             var node = nodeSer.deserializeNode(page);
             pool.unpinPage(currentPageId, false);
 
@@ -528,7 +528,7 @@ entity BTree {
         if maybePage == null {
             return 0;
         }
-        var page = maybePage;
+        var page = maybePage!;
         var node = nodeSer.deserializeNode(page);
         pool.unpinPage(nodePageId, false);
 

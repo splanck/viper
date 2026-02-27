@@ -426,3 +426,21 @@ void rt_queue_clear(void *obj)
     q->head = 0;
     q->tail = 0;
 }
+
+/// @brief Check if the queue contains a given element (pointer equality).
+/// @param obj Opaque Queue object pointer.
+/// @param elem Element to search for.
+/// @return 1 if found, 0 otherwise.
+int8_t rt_queue_has(void *obj, void *elem)
+{
+    if (!obj)
+        return 0;
+
+    rt_queue_impl *q = (rt_queue_impl *)obj;
+    for (int64_t i = 0; i < q->len; i++)
+    {
+        if (q->items[(q->head + i) % q->cap] == elem)
+            return 1;
+    }
+    return 0;
+}

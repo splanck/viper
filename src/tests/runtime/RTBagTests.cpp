@@ -162,9 +162,9 @@ static void test_bag_items()
 // Set Operations Tests
 //=============================================================================
 
-static void test_bag_merge()
+static void test_bag_union()
 {
-    printf("Testing Bag.Merge (union):\n");
+    printf("Testing Bag.Union:\n");
 
     void *bag1 = rt_bag_new();
     rt_bag_put(bag1, rt_const_cstr("a"));
@@ -176,12 +176,12 @@ static void test_bag_merge()
     rt_bag_put(bag2, rt_const_cstr("c"));
     rt_bag_put(bag2, rt_const_cstr("d"));
 
-    void *merged = rt_bag_merge(bag1, bag2);
-    test_result("Merged bag has 4 elements", rt_bag_len(merged) == 4);
-    test_result("Merged has 'a'", rt_bag_has(merged, rt_const_cstr("a")) == 1);
-    test_result("Merged has 'b'", rt_bag_has(merged, rt_const_cstr("b")) == 1);
-    test_result("Merged has 'c'", rt_bag_has(merged, rt_const_cstr("c")) == 1);
-    test_result("Merged has 'd'", rt_bag_has(merged, rt_const_cstr("d")) == 1);
+    void *merged = rt_bag_union(bag1, bag2);
+    test_result("Union bag has 4 elements", rt_bag_len(merged) == 4);
+    test_result("Union has 'a'", rt_bag_has(merged, rt_const_cstr("a")) == 1);
+    test_result("Union has 'b'", rt_bag_has(merged, rt_const_cstr("b")) == 1);
+    test_result("Union has 'c'", rt_bag_has(merged, rt_const_cstr("c")) == 1);
+    test_result("Union has 'd'", rt_bag_has(merged, rt_const_cstr("d")) == 1);
 
     // Original bags unchanged
     test_result("Original bag1 still has 3", rt_bag_len(bag1) == 3);
@@ -190,9 +190,9 @@ static void test_bag_merge()
     printf("\n");
 }
 
-static void test_bag_common()
+static void test_bag_intersect()
 {
-    printf("Testing Bag.Common (intersection):\n");
+    printf("Testing Bag.Intersect:\n");
 
     void *bag1 = rt_bag_new();
     rt_bag_put(bag1, rt_const_cstr("a"));
@@ -204,12 +204,12 @@ static void test_bag_common()
     rt_bag_put(bag2, rt_const_cstr("c"));
     rt_bag_put(bag2, rt_const_cstr("d"));
 
-    void *common = rt_bag_common(bag1, bag2);
-    test_result("Common bag has 2 elements", rt_bag_len(common) == 2);
-    test_result("Common has 'b'", rt_bag_has(common, rt_const_cstr("b")) == 1);
-    test_result("Common has 'c'", rt_bag_has(common, rt_const_cstr("c")) == 1);
-    test_result("Common does not have 'a'", rt_bag_has(common, rt_const_cstr("a")) == 0);
-    test_result("Common does not have 'd'", rt_bag_has(common, rt_const_cstr("d")) == 0);
+    void *inter = rt_bag_intersect(bag1, bag2);
+    test_result("Intersect bag has 2 elements", rt_bag_len(inter) == 2);
+    test_result("Intersect has 'b'", rt_bag_has(inter, rt_const_cstr("b")) == 1);
+    test_result("Intersect has 'c'", rt_bag_has(inter, rt_const_cstr("c")) == 1);
+    test_result("Intersect does not have 'a'", rt_bag_has(inter, rt_const_cstr("a")) == 0);
+    test_result("Intersect does not have 'd'", rt_bag_has(inter, rt_const_cstr("d")) == 0);
 
     printf("\n");
 }
@@ -253,22 +253,22 @@ static void test_bag_empty_operations()
     void *bag = rt_bag_new();
     rt_bag_put(bag, rt_const_cstr("x"));
 
-    // Merge with empty
-    void *m1 = rt_bag_merge(empty1, bag);
-    test_result("Merge empty+bag has 1 element", rt_bag_len(m1) == 1);
+    // Union with empty
+    void *m1 = rt_bag_union(empty1, bag);
+    test_result("Union empty+bag has 1 element", rt_bag_len(m1) == 1);
 
-    void *m2 = rt_bag_merge(bag, empty1);
-    test_result("Merge bag+empty has 1 element", rt_bag_len(m2) == 1);
+    void *m2 = rt_bag_union(bag, empty1);
+    test_result("Union bag+empty has 1 element", rt_bag_len(m2) == 1);
 
-    void *m3 = rt_bag_merge(empty1, empty2);
-    test_result("Merge empty+empty has 0 elements", rt_bag_len(m3) == 0);
+    void *m3 = rt_bag_union(empty1, empty2);
+    test_result("Union empty+empty has 0 elements", rt_bag_len(m3) == 0);
 
-    // Common with empty
-    void *c1 = rt_bag_common(empty1, bag);
-    test_result("Common empty&bag has 0 elements", rt_bag_len(c1) == 0);
+    // Intersect with empty
+    void *c1 = rt_bag_intersect(empty1, bag);
+    test_result("Intersect empty&bag has 0 elements", rt_bag_len(c1) == 0);
 
-    void *c2 = rt_bag_common(bag, empty1);
-    test_result("Common bag&empty has 0 elements", rt_bag_len(c2) == 0);
+    void *c2 = rt_bag_intersect(bag, empty1);
+    test_result("Intersect bag&empty has 0 elements", rt_bag_len(c2) == 0);
 
     // Diff with empty
     void *d1 = rt_bag_diff(bag, empty1);
@@ -329,8 +329,8 @@ int main()
     test_bag_drop();
     test_bag_clear();
     test_bag_items();
-    test_bag_merge();
-    test_bag_common();
+    test_bag_union();
+    test_bag_intersect();
     test_bag_diff();
     test_bag_empty_operations();
     test_bag_resize();

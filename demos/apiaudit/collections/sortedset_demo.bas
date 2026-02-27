@@ -105,13 +105,13 @@ ss2.Put("apple")
 ss2.Put("fig")
 ss2.Put("grape")
 DIM merged AS OBJECT
-merged = ss.Merge(ss2)
+merged = ss.Union(ss2)
 PRINT merged.Len  ' 6
 
-' --- Common (intersection) ---
-PRINT "--- Common ---"
+' --- Intersect ---
+PRINT "--- Intersect ---"
 DIM common AS OBJECT
-common = ss.Common(ss2)
+common = ss.Intersect(ss2)
 PRINT common.Len  ' 1
 
 ' --- Diff ---

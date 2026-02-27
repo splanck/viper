@@ -95,6 +95,26 @@ Last updated: 2026-02-17
 | `Lowerer_Expr_Method.cpp`     | Method call and type construction lowering                       |
 | `Lowerer_Stmt.cpp`            | Statement lowering                                               |
 
+## Debugging and Inspection
+
+| File                | Purpose                          |
+|---------------------|----------------------------------|
+| `ZiaAstPrinter.hpp` | AST printer declaration          |
+| `ZiaAstPrinter.cpp` | AST printer (indented tree dump) |
+
+CLI flags for inspecting each pipeline stage (see `docs/debugging.md` §8):
+
+| Flag | Stage |
+|------|-------|
+| `--dump-tokens` | Token stream from Lexer |
+| `--dump-ast` | AST after Parser |
+| `--dump-sema-ast` | AST after Sema |
+| `--dump-il` | IL after Lowerer |
+| `--dump-il-passes` | IL before/after each optimizer pass |
+| `--dump-il-opt` | IL after full optimization |
+
+Programmatic equivalents are in `CompilerOptions` (`Options.hpp`).
+
 ## Key Features
 
 - Full type inference with Unknown type propagation

@@ -124,6 +124,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
             gepInstr.op = Opcode::GEP;
             gepInstr.type = Type(Type::Kind::Ptr);
             gepInstr.operands = {base.value, Value::constInt(static_cast<int64_t>(field->offset))};
+            gepInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(gepInstr);
             Value fieldAddr = Value::temp(gepId);
 
@@ -139,6 +140,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
             loadInstr.op = Opcode::Load;
             loadInstr.type = fieldType;
             loadInstr.operands = {fieldAddr};
+            loadInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(loadInstr);
 
             return {Value::temp(loadId), fieldType};
@@ -161,6 +163,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
             gepInstr.op = Opcode::GEP;
             gepInstr.type = Type(Type::Kind::Ptr);
             gepInstr.operands = {base.value, Value::constInt(static_cast<int64_t>(field->offset))};
+            gepInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(gepInstr);
             Value fieldAddr = Value::temp(gepId);
 
@@ -176,6 +179,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
             loadInstr.op = Opcode::Load;
             loadInstr.type = fieldType;
             loadInstr.operands = {fieldAddr};
+            loadInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(loadInstr);
 
             return {Value::temp(loadId), fieldType};
@@ -343,6 +347,7 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
         allocaInstr.op = Opcode::Alloca;
         allocaInstr.type = Type(Type::Kind::Ptr);
         allocaInstr.operands = {Value::constInt(static_cast<int64_t>(info.totalSize))};
+        allocaInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
         Value ptr = Value::temp(allocaId);
 
@@ -374,6 +379,7 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
                 gepInstr.op = Opcode::GEP;
                 gepInstr.type = Type(Type::Kind::Ptr);
                 gepInstr.operands = {ptr, Value::constInt(static_cast<int64_t>(field.offset))};
+                gepInstr.loc = curLoc_;
                 blockMgr_.currentBlock()->instructions.push_back(gepInstr);
                 Value fieldAddr = Value::temp(gepId);
 
@@ -382,6 +388,7 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
                 storeInstr.op = Opcode::Store;
                 storeInstr.type = mapType(field.type);
                 storeInstr.operands = {fieldAddr, argValues[i]};
+                storeInstr.loc = curLoc_;
                 blockMgr_.currentBlock()->instructions.push_back(storeInstr);
             }
         }
@@ -507,6 +514,7 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
     allocaInstr.op = Opcode::Alloca;
     allocaInstr.type = Type(Type::Kind::Ptr);
     allocaInstr.operands = {Value::constInt(8)}; // 8 bytes for ptr/i64
+    allocaInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value resultSlot = Value::temp(allocaId);
 
@@ -526,6 +534,7 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
     ptrSlotInstr.op = Opcode::Alloca;
     ptrSlotInstr.type = Type(Type::Kind::Ptr);
     ptrSlotInstr.operands = {Value::constInt(8)};
+    ptrSlotInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
     Value ptrSlot = Value::temp(ptrSlotId);
 
@@ -533,6 +542,7 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
     storePtrInstr.op = Opcode::Store;
     storePtrInstr.type = left.type;
     storePtrInstr.operands = {ptrSlot, left.value};
+    storePtrInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
 
     unsigned ptrAsI64Id = nextTempId();
@@ -541,6 +551,7 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
     loadAsI64Instr.op = Opcode::Load;
     loadAsI64Instr.type = Type(Type::Kind::I64);
     loadAsI64Instr.operands = {ptrSlot};
+    loadAsI64Instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(loadAsI64Instr);
     Value ptrAsI64 = Value::temp(ptrAsI64Id);
 
@@ -561,6 +572,7 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
         storeInstr.op = Opcode::Store;
         storeInstr.type = ilResultType;
         storeInstr.operands = {resultSlot, unwrapped};
+        storeInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(storeInstr);
     }
     emitBr(mergeIdx);
@@ -573,6 +585,7 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
         storeInstr.op = Opcode::Store;
         storeInstr.type = ilResultType;
         storeInstr.operands = {resultSlot, right.value};
+        storeInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(storeInstr);
     }
     emitBr(mergeIdx);
@@ -585,6 +598,7 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
     loadInstr.op = Opcode::Load;
     loadInstr.type = ilResultType;
     loadInstr.operands = {resultSlot};
+    loadInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(loadInstr);
 
     return {Value::temp(loadId), ilResultType};
@@ -613,6 +627,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr)
     resultAlloca.op = Opcode::Alloca;
     resultAlloca.type = Type(Type::Kind::Ptr);
     resultAlloca.operands = {Value::constInt(8)};
+    resultAlloca.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(resultAlloca);
     Value resultSlot = Value::temp(resultSlotId);
 
@@ -623,6 +638,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr)
     ptrSlotInstr.op = Opcode::Alloca;
     ptrSlotInstr.type = Type(Type::Kind::Ptr);
     ptrSlotInstr.operands = {Value::constInt(8)};
+    ptrSlotInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
     Value ptrSlot = Value::temp(ptrSlotId);
 
@@ -630,6 +646,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr)
     storePtrInstr.op = Opcode::Store;
     storePtrInstr.type = Type(Type::Kind::Ptr);
     storePtrInstr.operands = {ptrSlot, base.value};
+    storePtrInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
 
     unsigned ptrAsI64Id = nextTempId();
@@ -638,6 +655,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr)
     loadAsI64Instr.op = Opcode::Load;
     loadAsI64Instr.type = Type(Type::Kind::I64);
     loadAsI64Instr.operands = {ptrSlot};
+    loadAsI64Instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(loadAsI64Instr);
     Value ptrAsI64 = Value::temp(ptrAsI64Id);
 
@@ -654,6 +672,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr)
     storeNull.op = Opcode::Store;
     storeNull.type = Type(Type::Kind::Ptr);
     storeNull.operands = {resultSlot, Value::null()};
+    storeNull.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(storeNull);
     emitBr(mergeIdx);
 
@@ -733,6 +752,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr)
     storeVal.op = Opcode::Store;
     storeVal.type = Type(Type::Kind::Ptr);
     storeVal.operands = {resultSlot, optionalValue};
+    storeVal.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(storeVal);
     emitBr(mergeIdx);
 
@@ -743,6 +763,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr)
     loadInstr.op = Opcode::Load;
     loadInstr.type = Type(Type::Kind::Ptr);
     loadInstr.operands = {resultSlot};
+    loadInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(loadInstr);
 
     return {Value::temp(loadId), Type(Type::Kind::Ptr)};
@@ -771,6 +792,7 @@ LowerResult Lowerer::lowerTry(TryExpr *expr)
     ptrSlotInstr.op = Opcode::Alloca;
     ptrSlotInstr.type = Type(Type::Kind::Ptr);
     ptrSlotInstr.operands = {Value::constInt(8)};
+    ptrSlotInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
     Value ptrSlot = Value::temp(ptrSlotId);
 
@@ -778,6 +800,7 @@ LowerResult Lowerer::lowerTry(TryExpr *expr)
     storePtrInstr.op = Opcode::Store;
     storePtrInstr.type = Type(Type::Kind::Ptr);
     storePtrInstr.operands = {ptrSlot, operand.value};
+    storePtrInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
 
     unsigned ptrAsI64Id = nextTempId();
@@ -786,6 +809,7 @@ LowerResult Lowerer::lowerTry(TryExpr *expr)
     loadAsI64Instr.op = Opcode::Load;
     loadAsI64Instr.type = Type(Type::Kind::I64);
     loadAsI64Instr.operands = {ptrSlot};
+    loadAsI64Instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(loadAsI64Instr);
     Value ptrAsI64 = Value::temp(ptrAsI64Id);
 
@@ -819,6 +843,73 @@ LowerResult Lowerer::lowerTry(TryExpr *expr)
             return emitOptionalUnwrap(operand.value, innerType);
     }
     return operand;
+}
+
+//=============================================================================
+// Force-Unwrap Expression Lowering
+//=============================================================================
+
+LowerResult Lowerer::lowerForceUnwrap(ForceUnwrapExpr *expr)
+{
+    auto operand = lowerExpr(expr->operand.get());
+
+    TypeRef operandType = sema_.typeOf(expr->operand.get());
+    if (!operandType || operandType->kind != TypeKindSem::Optional)
+    {
+        // Sema should have caught this; fall through as identity
+        return operand;
+    }
+
+    TypeRef innerType = operandType->innerType();
+    if (!innerType)
+        return operand;
+
+    // Null check: store pointer, load as i64, compare != 0
+    unsigned ptrSlotId = nextTempId();
+    il::core::Instr ptrSlotInstr;
+    ptrSlotInstr.result = ptrSlotId;
+    ptrSlotInstr.op = Opcode::Alloca;
+    ptrSlotInstr.type = Type(Type::Kind::Ptr);
+    ptrSlotInstr.operands = {Value::constInt(8)};
+    ptrSlotInstr.loc = curLoc_;
+    blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
+    Value ptrSlot = Value::temp(ptrSlotId);
+
+    il::core::Instr storePtrInstr;
+    storePtrInstr.op = Opcode::Store;
+    storePtrInstr.type = Type(Type::Kind::Ptr);
+    storePtrInstr.operands = {ptrSlot, operand.value};
+    storePtrInstr.loc = curLoc_;
+    blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
+
+    unsigned ptrAsI64Id = nextTempId();
+    il::core::Instr loadAsI64Instr;
+    loadAsI64Instr.result = ptrAsI64Id;
+    loadAsI64Instr.op = Opcode::Load;
+    loadAsI64Instr.type = Type(Type::Kind::I64);
+    loadAsI64Instr.operands = {ptrSlot};
+    loadAsI64Instr.loc = curLoc_;
+    blockMgr_.currentBlock()->instructions.push_back(loadAsI64Instr);
+    Value ptrAsI64 = Value::temp(ptrAsI64Id);
+
+    size_t unwrapOkIdx = createBlock("unwrap.ok");
+    size_t unwrapFailIdx = createBlock("unwrap.fail");
+
+    Value isNotNull =
+        emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), ptrAsI64, Value::constInt(0));
+    emitCBr(isNotNull, unwrapOkIdx, unwrapFailIdx);
+
+    // Trap block — abort if null
+    setBlock(unwrapFailIdx);
+    il::core::Instr trapInstr;
+    trapInstr.op = Opcode::Trap;
+    trapInstr.type = Type(Type::Kind::Void);
+    trapInstr.loc = curLoc_;
+    blockMgr_.currentBlock()->instructions.push_back(trapInstr);
+
+    // Continue with unwrapped value
+    setBlock(unwrapOkIdx);
+    return emitOptionalUnwrap(operand.value, innerType);
 }
 
 //=============================================================================

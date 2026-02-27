@@ -70,6 +70,7 @@ LowerResult Lowerer::lowerTuple(TupleExpr *expr)
     allocInstr.op = Opcode::Alloca;
     allocInstr.type = Type(Type::Kind::Ptr);
     allocInstr.operands = {Value::constInt(static_cast<int64_t>(tupleSize))};
+    allocInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocInstr);
     Value tuplePtr = Value::temp(slotId);
 
@@ -89,6 +90,7 @@ LowerResult Lowerer::lowerTuple(TupleExpr *expr)
             gepInstr.op = Opcode::GEP;
             gepInstr.type = Type(Type::Kind::Ptr);
             gepInstr.operands = {tuplePtr, Value::constInt(static_cast<int64_t>(offset))};
+            gepInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(gepInstr);
             elemPtr = Value::temp(gepId);
         }
@@ -98,6 +100,7 @@ LowerResult Lowerer::lowerTuple(TupleExpr *expr)
         storeInstr.op = Opcode::Store;
         storeInstr.type = result.type;
         storeInstr.operands = {elemPtr, result.value};
+        storeInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(storeInstr);
 
         offset += 8;
@@ -129,6 +132,7 @@ LowerResult Lowerer::lowerTupleIndex(TupleIndexExpr *expr)
         gepInstr.op = Opcode::GEP;
         gepInstr.type = Type(Type::Kind::Ptr);
         gepInstr.operands = {tupleResult.value, Value::constInt(static_cast<int64_t>(offset))};
+        gepInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(gepInstr);
         elemPtr = Value::temp(gepId);
     }
@@ -140,6 +144,7 @@ LowerResult Lowerer::lowerTupleIndex(TupleIndexExpr *expr)
     loadInstr.op = Opcode::Load;
     loadInstr.type = ilType;
     loadInstr.operands = {elemPtr};
+    loadInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(loadInstr);
 
     return {Value::temp(loadId), ilType};
@@ -167,6 +172,7 @@ LowerResult Lowerer::lowerIndex(IndexExpr *expr)
         mulInstr.op = Opcode::Mul;
         mulInstr.type = Type(Type::Kind::I64);
         mulInstr.operands = {index.value, Value::constInt(static_cast<int64_t>(elemSize))};
+        mulInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(mulInstr);
         Value byteOffset = Value::temp(mulId);
 
@@ -177,6 +183,7 @@ LowerResult Lowerer::lowerIndex(IndexExpr *expr)
         gepInstr.op = Opcode::GEP;
         gepInstr.type = Type(Type::Kind::Ptr);
         gepInstr.operands = {base.value, byteOffset};
+        gepInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(gepInstr);
         Value elemAddr = Value::temp(gepId);
 

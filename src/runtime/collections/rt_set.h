@@ -71,13 +71,13 @@ extern "C"
     /// @param obj First set pointer.
     /// @param other Second set pointer.
     /// @return New set containing elements from both.
-    void *rt_set_merge(void *obj, void *other);
+    void *rt_set_union(void *obj, void *other);
 
     /// @brief Create intersection of two sets.
     /// @param obj First set pointer.
     /// @param other Second set pointer.
     /// @return New set containing elements in both.
-    void *rt_set_common(void *obj, void *other);
+    void *rt_set_intersect(void *obj, void *other);
 
     /// @brief Create difference of two sets.
     /// @param obj First set pointer.

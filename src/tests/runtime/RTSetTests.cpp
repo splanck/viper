@@ -192,9 +192,9 @@ static void test_set_clear()
 // Set Operations Tests
 //=============================================================================
 
-static void test_set_merge()
+static void test_set_union()
 {
-    printf("Testing Set.Merge (union) with boxed strings:\n");
+    printf("Testing Set.Union with boxed strings:\n");
 
     void *s1 = rt_set_new();
     rt_set_put(s1, rt_box_str(rt_const_cstr("a")));
@@ -204,18 +204,18 @@ static void test_set_merge()
     rt_set_put(s2, rt_box_str(rt_const_cstr("b")));
     rt_set_put(s2, rt_box_str(rt_const_cstr("c")));
 
-    void *merged = rt_set_merge(s1, s2);
-    test_result("Merged has 3 elements (not 4)", rt_set_len(merged) == 3);
-    test_result("Merged has 'a'", rt_set_has(merged, rt_box_str(rt_const_cstr("a"))) == 1);
-    test_result("Merged has 'b'", rt_set_has(merged, rt_box_str(rt_const_cstr("b"))) == 1);
-    test_result("Merged has 'c'", rt_set_has(merged, rt_box_str(rt_const_cstr("c"))) == 1);
+    void *merged = rt_set_union(s1, s2);
+    test_result("Union has 3 elements (not 4)", rt_set_len(merged) == 3);
+    test_result("Union has 'a'", rt_set_has(merged, rt_box_str(rt_const_cstr("a"))) == 1);
+    test_result("Union has 'b'", rt_set_has(merged, rt_box_str(rt_const_cstr("b"))) == 1);
+    test_result("Union has 'c'", rt_set_has(merged, rt_box_str(rt_const_cstr("c"))) == 1);
 
     printf("\n");
 }
 
-static void test_set_common()
+static void test_set_intersect()
 {
-    printf("Testing Set.Common (intersection) with boxed strings:\n");
+    printf("Testing Set.Intersect with boxed strings:\n");
 
     void *s1 = rt_set_new();
     rt_set_put(s1, rt_box_str(rt_const_cstr("a")));
@@ -227,14 +227,14 @@ static void test_set_common()
     rt_set_put(s2, rt_box_str(rt_const_cstr("c")));
     rt_set_put(s2, rt_box_str(rt_const_cstr("d")));
 
-    void *common = rt_set_common(s1, s2);
-    test_result("Common has 2 elements", rt_set_len(common) == 2);
-    test_result("Common has 'b'", rt_set_has(common, rt_box_str(rt_const_cstr("b"))) == 1);
-    test_result("Common has 'c'", rt_set_has(common, rt_box_str(rt_const_cstr("c"))) == 1);
-    test_result("Common does not have 'a'",
-                rt_set_has(common, rt_box_str(rt_const_cstr("a"))) == 0);
-    test_result("Common does not have 'd'",
-                rt_set_has(common, rt_box_str(rt_const_cstr("d"))) == 0);
+    void *inter = rt_set_intersect(s1, s2);
+    test_result("Intersect has 2 elements", rt_set_len(inter) == 2);
+    test_result("Intersect has 'b'", rt_set_has(inter, rt_box_str(rt_const_cstr("b"))) == 1);
+    test_result("Intersect has 'c'", rt_set_has(inter, rt_box_str(rt_const_cstr("c"))) == 1);
+    test_result("Intersect does not have 'a'",
+                rt_set_has(inter, rt_box_str(rt_const_cstr("a"))) == 0);
+    test_result("Intersect does not have 'd'",
+                rt_set_has(inter, rt_box_str(rt_const_cstr("d"))) == 0);
 
     printf("\n");
 }
@@ -406,8 +406,8 @@ int main()
     test_set_put_has_boxed_booleans();
     test_set_drop_boxed();
     test_set_clear();
-    test_set_merge();
-    test_set_common();
+    test_set_union();
+    test_set_intersect();
     test_set_diff();
     test_set_subset_superset();
     test_set_disjoint();

@@ -225,12 +225,19 @@ int verifyAndExecute(il::core::Module &module,
 
 /// @brief Compile a Zia project and return the module.
 il::support::Expected<il::core::Module> compileZiaProject(const ProjectConfig &project,
+                                                          const ilc::SharedCliOptions &shared,
                                                           il::support::SourceManager &sm)
 {
     il::frontends::zia::CompilerOptions opts;
     opts.boundsChecks = project.boundsChecks;
     opts.overflowChecks = project.overflowChecks;
     opts.nullChecks = project.nullChecks;
+    opts.dumpTokens = shared.dumpTokens;
+    opts.dumpAst = shared.dumpAst;
+    opts.dumpSemaAst = shared.dumpSemaAst;
+    opts.dumpIL = shared.dumpIL;
+    opts.dumpILOpt = shared.dumpILOpt;
+    opts.dumpILPasses = shared.dumpILPasses;
 
     if (project.optimizeLevel == "O0")
         opts.optLevel = il::frontends::zia::OptLevel::O0;
@@ -253,6 +260,7 @@ il::support::Expected<il::core::Module> compileZiaProject(const ProjectConfig &p
 /// @brief Compile a BASIC project and return the module.
 il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig &project,
                                                             bool noRuntimeNamespaces,
+                                                            const ilc::SharedCliOptions &shared,
                                                             il::support::SourceManager &sm)
 {
     auto source = loadSourceBuffer(project.entryFile, sm);
@@ -268,6 +276,11 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
 
     il::frontends::basic::BasicCompilerOptions opts;
     opts.boundsChecks = project.boundsChecks;
+    opts.dumpTokens = shared.dumpTokens;
+    opts.dumpAst = shared.dumpAst;
+    opts.dumpIL = shared.dumpIL;
+    opts.dumpILOpt = shared.dumpILOpt;
+    opts.dumpILPasses = shared.dumpILPasses;
 
     il::frontends::basic::BasicCompilerInput input{source.value().buffer, project.entryFile};
     input.fileId = source.value().fileId;
@@ -285,12 +298,29 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
     {
         il::transform::PassManager pm;
         pm.setVerifyBetweenPasses(false);
+
+        // Enable per-pass IL dumps when requested.
+        if (shared.dumpILPasses)
+        {
+            pm.setPrintBeforeEach(true);
+            pm.setPrintAfterEach(true);
+            pm.setInstrumentationStream(std::cerr);
+        }
+
         if (project.optimizeLevel == "O2")
             pm.runPipeline(result.module, "O2");
         else if (project.optimizeLevel == "O1")
             pm.runPipeline(result.module, "O1");
         else
             pm.runPipeline(result.module, "O0");
+
+        // Dump IL after the full optimization pipeline.
+        if (shared.dumpILOpt)
+        {
+            std::cerr << "=== IL after optimization (" << project.optimizeLevel << ") ===\n";
+            io::Serializer::write(result.module, std::cerr);
+            std::cerr << "=== End IL ===\n";
+        }
     }
 
     return std::move(result.module);
@@ -331,8 +361,9 @@ int runOrBuild(RunMode mode, int argc, char **argv)
     // Compile
     SourceManager sm;
     il::support::Expected<il::core::Module> moduleResult =
-        (proj.lang == ProjectLang::Zia) ? compileZiaProject(proj, sm)
-                                        : compileBasicProject(proj, config.noRuntimeNamespaces, sm);
+        (proj.lang == ProjectLang::Zia)
+            ? compileZiaProject(proj, config.shared, sm)
+            : compileBasicProject(proj, config.noRuntimeNamespaces, config.shared, sm);
 
     if (!moduleResult)
         return 1; // diagnostics already printed

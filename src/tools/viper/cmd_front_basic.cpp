@@ -187,6 +187,11 @@ int runFrontBasic(const FrontBasicConfig &config,
 {
     BasicCompilerOptions compilerOpts{};
     compilerOpts.boundsChecks = config.shared.boundsChecks;
+    compilerOpts.dumpTokens = config.shared.dumpTokens;
+    compilerOpts.dumpAst = config.shared.dumpAst;
+    compilerOpts.dumpIL = config.shared.dumpIL;
+    compilerOpts.dumpILOpt = config.shared.dumpILOpt;
+    compilerOpts.dumpILPasses = config.shared.dumpILPasses;
 
     BasicCompilerInput compilerInput{source, config.sourcePath};
     compilerInput.fileId = config.sourceFileId;
@@ -238,7 +243,24 @@ int runFrontBasic(const FrontBasicConfig &config,
         {
             il::transform::PassManager pm;
             pm.setVerifyBetweenPasses(false);
+
+            // Enable per-pass IL dumps when requested.
+            if (config.shared.dumpILPasses)
+            {
+                pm.setPrintBeforeEach(true);
+                pm.setPrintAfterEach(true);
+                pm.setInstrumentationStream(std::cerr);
+            }
+
             pm.runPipeline(module, config.optLevel);
+
+            // Dump IL after the full optimization pipeline.
+            if (config.shared.dumpILOpt)
+            {
+                std::cerr << "=== IL after optimization (" << config.optLevel << ") ===\n";
+                io::Serializer::write(module, std::cerr);
+                std::cerr << "=== End IL ===\n";
+            }
         }
         else
         {

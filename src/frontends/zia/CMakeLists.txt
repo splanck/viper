@@ -32,7 +32,9 @@ set(ZIA_SOURCES
         Lowerer_Expr_Match.cpp
         Lowerer_Dispatch.cpp
         Lowerer_Emit.cpp
+        ZiaLocationScope.cpp
         Compiler.cpp
+        ZiaAstPrinter.cpp
         ZiaCompletion.cpp
         rt_zia_completion.cpp
 )

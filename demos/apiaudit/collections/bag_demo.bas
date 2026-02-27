@@ -50,14 +50,14 @@ b2.Put("b")
 b2.Put("c")
 b2.Put("d")
 
-DIM merged AS OBJECT = b1.Merge(b2)
+DIM merged AS OBJECT = b1.Union(b2)
 PRINT merged.Len           ' 4
 PRINT merged.Has("a")      ' 1
 PRINT merged.Has("d")      ' 1
 
-' --- Common (intersection) ---
-PRINT "--- Common ---"
-DIM common AS OBJECT = b1.Common(b2)
+' --- Intersect ---
+PRINT "--- Intersect ---"
+DIM common AS OBJECT = b1.Intersect(b2)
 PRINT common.Len           ' 2
 PRINT common.Has("b")      ' 1
 PRINT common.Has("c")      ' 1

@@ -65,6 +65,7 @@ Value Lowerer::extendOperandForComparison(Value val, Type type)
         slotInstr.op = Opcode::Alloca;
         slotInstr.type = Type(Type::Kind::Ptr);
         slotInstr.operands = {Value::constInt(8)};
+        slotInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(slotInstr);
         Value slot = Value::temp(slotId);
         emitStore(slot, val, type);
@@ -219,6 +220,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 mulInstr.op = Opcode::Mul;
                 mulInstr.type = Type(Type::Kind::I64);
                 mulInstr.operands = {index.value, Value::constInt(static_cast<int64_t>(elemSize))};
+                mulInstr.loc = curLoc_;
                 blockMgr_.currentBlock()->instructions.push_back(mulInstr);
                 Value byteOffset = Value::temp(mulId);
 
@@ -229,6 +231,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 gepInstr.op = Opcode::GEP;
                 gepInstr.type = Type(Type::Kind::Ptr);
                 gepInstr.operands = {base.value, byteOffset};
+                gepInstr.loc = curLoc_;
                 blockMgr_.currentBlock()->instructions.push_back(gepInstr);
                 Value elemAddr = Value::temp(gepId);
 
@@ -237,6 +240,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 storeInstr.op = Opcode::Store;
                 storeInstr.type = ilElemType;
                 storeInstr.operands = {elemAddr, right.value};
+                storeInstr.loc = curLoc_;
                 blockMgr_.currentBlock()->instructions.push_back(storeInstr);
                 return right;
             }
@@ -341,6 +345,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
         convInstr.op = Opcode::Sitofp;
         convInstr.type = Type(Type::Kind::F64);
         convInstr.operands = {left.value};
+        convInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(convInstr);
         left.value = Value::temp(convId);
         left.type = Type(Type::Kind::F64);
@@ -353,6 +358,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
         convInstr.op = Opcode::Sitofp;
         convInstr.type = Type(Type::Kind::F64);
         convInstr.operands = {right.value};
+        convInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(convInstr);
         right.value = Value::temp(convId);
         right.type = Type(Type::Kind::F64);
@@ -645,6 +651,7 @@ LowerResult Lowerer::lowerShortCircuit(BinaryExpr *expr)
     allocInstr.op = Opcode::Alloca;
     allocInstr.type = Type(Type::Kind::Ptr);
     allocInstr.operands = {Value::constInt(8)};
+    allocInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocInstr);
     Value resultSlot = Value::temp(slotId);
 

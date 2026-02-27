@@ -213,7 +213,7 @@ entity DdlHandler {
         child.initWithName(stmt.tableName);
         var ci = 0;
         while ci < pt.columnCount() {
-            child.addColumn(pt.getColumn(ci));
+            child.addColumn(pt.getColumn(ci)!);
             ci = ci + 1;
         }
 
@@ -477,7 +477,7 @@ entity DdlHandler {
                     }
                     var dummyRow = new Row();
                     dummyRow.init();
-                    var defVal = exec.evalExpr(defExpr, dummyRow, table);
+                    var defVal = exec.evalExpr(defExpr, dummyRow, table!);
                     col.hasDefault = true;
                     col.defaultValue = defVal;
                     result.message = "Column '" + colName + "' default set";
@@ -649,7 +649,7 @@ entity DdlHandler {
         }
 
         var t = table;
-        idx.rebuild(t);
+        idx.rebuild(t!);
         exec.indexMgr.addIndex(idx);
 
         // Phase 10: Create B-tree and persist index metadata for persistent databases
@@ -868,7 +868,7 @@ entity DdlHandler {
             return result;
         }
         var t = table;
-        var removed = vacuumTable(t);
+        var removed = vacuumTable(t!);
 
         // Update optimizer statistics
         exec.optimizer.stats.setRowCount(tableName, t.rowCount());
@@ -984,7 +984,7 @@ entity DdlHandler {
             return result;
         }
         var t = table;
-        analyzeTable(t);
+        analyzeTable(t!);
 
         result.message = "ANALYZE complete: '" + tableName + "' — " + Fmt.Int(t.rowCount()) + " rows, " + Fmt.Int(t.columnCount()) + " columns";
         return result;
@@ -1800,7 +1800,7 @@ entity DdlHandler {
         if stmt.whereClause != null && exec.canUseIndex(stmt.whereClause, stmt.tableName) {
             var wc = stmt.whereClause;
             // Try composite index first
-            var eqCols = exec.extractEqualityColumns(wc);
+            var eqCols = exec.extractEqualityColumns(wc!);
             var foundIdx: SqlIndex? = null;
             var idxColName = "";
             if eqCols.count() >= 2 {

@@ -73,13 +73,13 @@ extern "C"
     /// @param obj First bag pointer.
     /// @param other Second bag pointer.
     /// @return New bag containing elements from both.
-    void *rt_bag_merge(void *obj, void *other);
+    void *rt_bag_union(void *obj, void *other);
 
     /// @brief Create intersection of two bags.
     /// @param obj First bag pointer.
     /// @param other Second bag pointer.
     /// @return New bag containing elements in both.
-    void *rt_bag_common(void *obj, void *other);
+    void *rt_bag_intersect(void *obj, void *other);
 
     /// @brief Create difference of two bags.
     /// @param obj First bag pointer.

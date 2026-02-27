@@ -645,13 +645,13 @@ extern "C"
     void rt_canvas_set_fps(void *canvas, int64_t fps);
 
     /// @brief Return 1 if the window is maximized, 0 otherwise.
-    int64_t rt_canvas_is_maximized(void *canvas);
+    int8_t rt_canvas_is_maximized(void *canvas);
 
     /// @brief Maximize the window.
     void rt_canvas_maximize(void *canvas);
 
     /// @brief Return 1 if the window is minimized, 0 otherwise.
-    int64_t rt_canvas_is_minimized(void *canvas);
+    int8_t rt_canvas_is_minimized(void *canvas);
 
     /// @brief Minimize (iconify) the window.
     void rt_canvas_minimize(void *canvas);
@@ -660,7 +660,7 @@ extern "C"
     void rt_canvas_restore(void *canvas);
 
     /// @brief Return 1 if the window has keyboard focus, 0 otherwise.
-    int64_t rt_canvas_is_focused(void *canvas);
+    int8_t rt_canvas_is_focused(void *canvas);
 
     /// @brief Bring the window to the front and give it focus.
     void rt_canvas_focus(void *canvas);

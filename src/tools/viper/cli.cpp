@@ -96,6 +96,36 @@ SharedOptionParseResult parseSharedOption(int &index, int argc, char **argv, Sha
         opts.dumpTrap = true;
         return SharedOptionParseResult::Parsed;
     }
+    if (arg == "--dump-tokens")
+    {
+        opts.dumpTokens = true;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--dump-ast")
+    {
+        opts.dumpAst = true;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--dump-sema-ast")
+    {
+        opts.dumpSemaAst = true;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--dump-il")
+    {
+        opts.dumpIL = true;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--dump-il-opt")
+    {
+        opts.dumpILOpt = true;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--dump-il-passes")
+    {
+        opts.dumpILPasses = true;
+        return SharedOptionParseResult::Parsed;
+    }
     return SharedOptionParseResult::NotMatched;
 }
 

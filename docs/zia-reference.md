@@ -171,7 +171,7 @@ var name: String? = null;   // Optional string
 var count: Integer? = 42;   // Optional with value
 ```
 
-Optional values support safe access with `?.` and defaults with `??`.
+Optional values support safe access with `?.`, defaults with `??`, and force-unwrap with `!`.
 
 ### Generic Types
 
@@ -335,12 +335,22 @@ object.field            // Access field
 object.method()         // Call method
 ```
 
-### Optional Chaining
+### Optional Chaining and Unwrapping
 
 ```viper
 object?.field           // Null if object is null, otherwise optional field value
 object?.field?.subfield // Chained optional access
 value ?? defaultValue   // Returns defaultValue if value is null
+value!                  // Force-unwrap: converts T? to T, traps if null
+```
+
+The force-unwrap operator `!` asserts that an optional value is non-null and extracts
+the inner value. If the value is null at runtime, the program terminates. Use after
+a null guard or when you are certain the value is non-null:
+
+```viper
+if maybePage == null { return null; }
+var page = maybePage!;              // Safe: null was handled above
 ```
 
 ### Indexing
@@ -1077,7 +1087,7 @@ comparison  ::= additive (("<" | "<=" | ">" | ">=") additive)*
 additive    ::= multiplicative (("+" | "-") multiplicative)*
 multiplicative ::= unary (("*" | "/" | "%") unary)*
 unary       ::= ("-" | "!" | "~" | "&") unary | postfix
-postfix     ::= primary (call | index | field | optionalChain)*
+postfix     ::= primary (call | index | field | optionalChain | "!" | "?")*
 primary     ::= literal | IDENT | "(" expr ")" | "new" type "(" args ")"
               | "[" exprList "]" | "{" mapEntries "}"
 ```

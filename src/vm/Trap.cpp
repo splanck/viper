@@ -215,19 +215,20 @@ void vm_raise_from_error(const VmError &input)
     FrameInfo frame{};
     std::string message;
 
-    if (auto *vm = VM::activeInstance())
+    VM *activeVm = VM::activeInstance();
+    if (activeVm)
     {
-        const auto ctx = vm->currentTrapContext();
+        const auto ctx = activeVm->currentTrapContext();
         if (error.ip == 0 && ctx.hasInstruction)
             error.ip = static_cast<uint64_t>(ctx.instructionIndex);
         if (error.line < 0 && ctx.loc.hasLine())
             error.line = static_cast<int32_t>(ctx.loc.line);
 
-        if (vm->prepareTrap(error))
+        if (activeVm->prepareTrap(error))
             return;
 
-        frame = vm->buildFrameInfo(error);
-        message = vm->recordTrap(error, frame);
+        frame = activeVm->buildFrameInfo(error);
+        message = activeVm->recordTrap(error, frame);
     }
     else
     {
@@ -239,7 +240,15 @@ void vm_raise_from_error(const VmError &input)
     }
 
     if (!frame.handlerInstalled)
+    {
+        if (activeVm)
+        {
+            auto bt = activeVm->buildBacktrace();
+            if (bt.size() > 1)
+                activeVm->printBacktrace(bt);
+        }
         rt_abort(message.c_str());
+    }
 }
 
 /// @brief Convenience wrapper that raises a trap from a kind/code pair.
@@ -294,7 +303,15 @@ void vm_raise(TrapKind kind, int32_t code)
     }
 
     if (!frame.handlerInstalled)
+    {
+        if (vm)
+        {
+            auto bt = vm->buildBacktrace();
+            if (bt.size() > 1)
+                vm->printBacktrace(bt);
+        }
         rt_abort(message.c_str());
+    }
 }
 
 } // namespace il::vm

@@ -181,6 +181,18 @@ class Runner
     /// @brief Execute exactly one instruction of the program (initialising on first call).
     StepResult step();
 
+    /// @brief Step over: run until the next source line at the same or shallower call depth.
+    /// @details If the current instruction is a call, the callee executes fully
+    ///          before returning control. Returns when a new source line is reached
+    ///          at a call depth <= the initial depth, or on halt/trap/breakpoint.
+    RunStatus stepOver();
+
+    /// @brief Step out: run until the current function returns.
+    /// @details Executes instructions until the call stack depth drops below
+    ///          the depth at the time of the call. Returns on halt/trap/breakpoint
+    ///          if reached first.
+    RunStatus stepOut();
+
     /// @brief Continue running until a terminal state (halt, trap, or breakpoint).
     RunStatus continueRun();
 
@@ -237,6 +249,22 @@ class Runner
 
     /// @brief Drain pending memory watch hit payloads.
     std::vector<MemWatchHit> drainMemWatchHits();
+
+    /// @brief A single frame in the call stack backtrace.
+    struct BacktraceFrame
+    {
+        std::string function; ///< Function name.
+        std::string block;    ///< Block label.
+        uint64_t ip = 0;      ///< Instruction index within block.
+        int32_t line = -1;    ///< Source line (-1 = unknown).
+    };
+
+    /// @brief Walk the VM call stack and return a backtrace.
+    /// @details Returns frames from most-recent (top) to oldest (bottom).
+    ///          When the VM is paused (e.g., after a breakpoint or trap), the
+    ///          backtrace reflects the full call chain at the point of suspension.
+    /// @return Vector of backtrace frames, empty if no active execution.
+    [[nodiscard]] std::vector<BacktraceFrame> backtrace() const;
 
   private:
     class Impl;

@@ -27,15 +27,41 @@
 
 #include "frontends/basic/BasicCompiler.hpp"
 
+#include "frontends/basic/AstPrinter.hpp"
 #include "frontends/basic/ConstFolder.hpp"
+#include "frontends/basic/Lexer.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Options.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/passes/CollectProcs.hpp"
+#include "viper/il/IO.hpp"
+#include <iostream>
 
 namespace il::frontends::basic
 {
+
+namespace
+{
+/// @brief Print every token from the BASIC source to stderr.
+void dumpTokenStream(std::string_view source, uint32_t fileId)
+{
+    Lexer lexer(source, fileId);
+    std::cerr << "=== BASIC Token Stream ===\n";
+    for (;;)
+    {
+        Token tok = lexer.next();
+        std::cerr << tok.loc.line << ':' << tok.loc.column << '\t'
+                  << tokenKindToString(tok.kind);
+        if (!tok.lexeme.empty())
+            std::cerr << "\t\"" << tok.lexeme << '"';
+        std::cerr << '\n';
+        if (tok.kind == TokenKind::EndOfFile)
+            break;
+    }
+    std::cerr << "=== End Token Stream ===\n";
+}
+} // namespace
 
 /// @brief Report whether the compilation pipeline produced a valid module.
 ///
@@ -103,6 +129,12 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
 
     result.emitter->addSource(fileId, std::string{input.source});
 
+    // Dump token stream before parsing if requested.
+    if (options.dumpTokens)
+    {
+        dumpTokenStream(input.source, fileId);
+    }
+
     // Runtime namespaces feature is controlled globally via FrontendOptions (default ON).
     // Allow disabling via environment variable for CLI/debugging.
     const char *ns_disable = std::getenv("VIPER_NO_RUNTIME_NAMESPACES");
@@ -119,6 +151,15 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     if (!program)
     {
         return result;
+    }
+
+    // Dump AST after parsing.
+    if (options.dumpAst)
+    {
+        AstPrinter printer;
+        std::cerr << "=== AST after parsing ===\n"
+                  << printer.dump(*program)
+                  << "=== End AST ===\n";
     }
 
     // Post-parse: assign qualified names to procedures inside namespaces.
@@ -140,6 +181,15 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     lower.setDiagnosticEmitter(result.emitter.get());
     lower.setSemanticAnalyzer(&sema);
     result.module = lower.lower(*program);
+
+    // Dump IL after lowering, before optimization.
+    if (options.dumpIL)
+    {
+        std::cerr << "=== IL after lowering ===\n";
+        io::Serializer::write(result.module, std::cerr);
+        std::cerr << "=== End IL ===\n";
+    }
+
     return result;
 }
 

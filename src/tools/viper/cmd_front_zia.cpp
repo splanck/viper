@@ -140,6 +140,12 @@ int runFrontZia(const FrontZiaConfig &config,
     CompilerInput compilerInput{source, config.sourcePath};
     CompilerOptions compilerOpts{};
     compilerOpts.boundsChecks = config.shared.boundsChecks;
+    compilerOpts.dumpTokens = config.shared.dumpTokens;
+    compilerOpts.dumpAst = config.shared.dumpAst;
+    compilerOpts.dumpSemaAst = config.shared.dumpSemaAst;
+    compilerOpts.dumpIL = config.shared.dumpIL;
+    compilerOpts.dumpILOpt = config.shared.dumpILOpt;
+    compilerOpts.dumpILPasses = config.shared.dumpILPasses;
 
     auto result = compile(compilerInput, compilerOpts, sm);
 

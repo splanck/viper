@@ -99,6 +99,21 @@ struct BasicCompilerOptions
 {
     /// @brief Enable debug bounds checks when lowering arrays.
     bool boundsChecks{false};
+
+    /// @brief Dump the raw token stream from the lexer.
+    bool dumpTokens{false};
+
+    /// @brief Dump AST after parsing.
+    bool dumpAst{false};
+
+    /// @brief Dump IL after lowering, before optimization.
+    bool dumpIL{false};
+
+    /// @brief Dump IL after the full optimization pipeline.
+    bool dumpILOpt{false};
+
+    /// @brief Dump IL before and after each optimization pass.
+    bool dumpILPasses{false};
 };
 
 /// @brief Input parameters describing the source to compile.

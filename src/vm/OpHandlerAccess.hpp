@@ -143,6 +143,12 @@ struct VMAccess
         return vm.lastTrap;
     }
 
+    /// @brief Read-only access to the execution stack for backtrace construction.
+    static inline const std::vector<ExecState *> &execStack(const VM &vm)
+    {
+        return vm.execStack;
+    }
+
     /// @brief Refresh debug fast-path flags after configuration changes.
     static inline void refreshDebugFlags(VM &vm)
     {

@@ -349,7 +349,7 @@ entity SqlIndex {
     expose func matchesWhere(row: Row, tbl: Table) -> Boolean {
         if whereExpr == null { return true; }
         var e = whereExpr;
-        return evalPartialExpr(e, row, tbl) != 0;
+        return evalPartialExpr(e!, row, tbl) != 0;
     }
 
     // Simple expression evaluator for partial index predicates.

@@ -111,7 +111,7 @@
 ' COVER: Viper.Collections.TreeMap.Len
 ' COVER: Viper.Collections.TreeMap.Ceil
 ' COVER: Viper.Collections.TreeMap.Clear
-' COVER: Viper.Collections.TreeMap.Drop
+' COVER: Viper.Collections.TreeMap.Remove
 ' COVER: Viper.Collections.TreeMap.First
 ' COVER: Viper.Collections.TreeMap.Floor
 ' COVER: Viper.Collections.TreeMap.Get
@@ -137,11 +137,11 @@ bag2 = NEW Viper.Collections.Bag()
 bag2.Put("b")
 bag2.Put("c")
 DIM merged AS Viper.Collections.Bag
-merged = bag.Merge(bag2)
-Viper.Core.Diagnostics.AssertEq(merged.Len, 2, "bag.merge")
+merged = bag.Union(bag2)
+Viper.Core.Diagnostics.AssertEq(merged.Len, 2, "bag.union")
 DIM common AS Viper.Collections.Bag
-common = bag.Common(bag2)
-Viper.Core.Diagnostics.AssertEq(common.Len, 1, "bag.common")
+common = bag.Intersect(bag2)
+Viper.Core.Diagnostics.AssertEq(common.Len, 1, "bag.intersect")
 DIM diff AS Viper.Collections.Bag
 diff = bag2.Diff(bag)
 Viper.Core.Diagnostics.AssertEq(diff.Len, 1, "bag.diff")
@@ -351,8 +351,8 @@ Viper.Core.Diagnostics.AssertEq(tm.Len, 3, "treemap.len")
     Viper.Core.Diagnostics.AssertEqStr(tm.Floor("d"), "c", "treemap.floor")
     Viper.Core.Diagnostics.AssertEqStr(tm.Get("c"), "3", "treemap.get")
 Viper.Core.Diagnostics.Assert(tm.Has("a"), "treemap.has")
-tm.Drop("c")
-Viper.Core.Diagnostics.Assert(tm.Has("c") = 0, "treemap.drop")
+tm.Remove("c")
+Viper.Core.Diagnostics.Assert(tm.Has("c") = 0, "treemap.remove")
 DIM tmKeys AS Viper.Collections.Seq
 tmKeys = tm.Keys()
 DIM tmVals AS Viper.Collections.Seq

@@ -699,12 +699,12 @@ entity QueryHandler {
 
         // Partition-aware SELECT: if parent table, query all children
         if t.isPartitioned && t.partitionChildren.count() > 0 {
-            return executePartitionedSelect(stmt, t);
+            return executePartitionedSelect(stmt, t!);
         }
 
         // Inheritance-aware SELECT: if parent with children and ONLY not specified
         if t.hasChildren && t.inheritChildren.count() > 0 && stmt.onlyFlag == false {
-            return executeInheritanceSelect(stmt, t);
+            return executeInheritanceSelect(stmt, t!);
         }
 
         exec.currentTableAlias = stmt.tableAlias;
@@ -775,7 +775,7 @@ entity QueryHandler {
 
             // Use index if it has lower cost
             if seekPath.estimatedCost < scanPath.estimatedCost {
-                matchingRows = exec.indexLookup(wc, stmt.tableName, t);
+                matchingRows = exec.indexLookup(wc!, stmt.tableName, t!);
                 usedIndex = true;
                 accessPathUsed = "INDEX_SEEK";
                 exec.recordIdxScan(stmt.tableName, matchingRows.count());
@@ -821,7 +821,7 @@ entity QueryHandler {
 
             // Use range index scan if cost-effective
             if rangePath.estimatedCost < scanPath.estimatedCost {
-                matchingRows = exec.indexRangeLookup(wc, stmt.tableName, t);
+                matchingRows = exec.indexRangeLookup(wc!, stmt.tableName, t!);
                 usedIndex = true;
                 accessPathUsed = "INDEX_RANGE_SCAN";
                 exec.recordIdxScan(stmt.tableName, matchingRows.count());
@@ -840,7 +840,7 @@ entity QueryHandler {
                 if row != null {
                     var rowData = row;
                     if rowData.isVisible(exec.mvccSnapshotId, exec.mvccTxnId) {
-                        if exec.evalCondition(stmt.whereClause, rowData, t) {
+                        if exec.evalCondition(stmt.whereClause, rowData, t!) {
                             matchingRows.add(r);
                         }
                     }
@@ -911,7 +911,7 @@ entity QueryHandler {
             while c < stmt.columns.count() {
                 var colExpr = stmt.columns.get(c);
                 if exec.isAggregateExpr(colExpr) {
-                    var val = evalAggregate(colExpr, matchingRows, t);
+                    var val = evalAggregate(colExpr, matchingRows, t!);
                     resultRow.addValue(val);
                 } else if colExpr.kind == EXPR_COLUMN {
                     // For non-aggregate columns, use first matching row value
@@ -919,7 +919,7 @@ entity QueryHandler {
                         var firstRow = t.getRow(matchingRows.get(0));
                         if firstRow != null {
                             var fr = firstRow;
-                            var val = exec.evalExpr(colExpr, fr, t);
+                            var val = exec.evalExpr(colExpr, fr, t!);
                             resultRow.addValue(val);
                         } else {
                             resultRow.addValue(sqlNull());
@@ -936,7 +936,7 @@ entity QueryHandler {
 
         } else if stmt.groupByExprs.count() > 0 {
             // GROUP BY query
-            executeGroupBy(stmt, matchingRows, t, result);
+            executeGroupBy(stmt, matchingRows, t!, result);
 
         } else {
             // Regular (non-aggregate) query
@@ -969,7 +969,7 @@ entity QueryHandler {
                         oe = oe + 1;
                     }
                 }
-                sortMatchingRows(matchingRows, resolvedOrderExprs, stmt.orderByDir, stmt.orderByNulls, t);
+                sortMatchingRows(matchingRows, resolvedOrderExprs, stmt.orderByDir, stmt.orderByNulls, t!);
             }
 
             var i = 0;
@@ -991,7 +991,7 @@ entity QueryHandler {
                         var c = 0;
                         while c < stmt.columns.count() {
                             var colExpr = stmt.columns.get(c);
-                            var val = exec.evalExpr(colExpr, rowData, t);
+                            var val = exec.evalExpr(colExpr, rowData, t!);
                             resultRow.addValue(exec.cloneValue(val));
                             c = c + 1;
                         }
@@ -1004,7 +1004,7 @@ entity QueryHandler {
         }
 
         // Apply window functions (before DISTINCT/ORDER BY)
-        applyWindowFunctions(stmt, result, t);
+        applyWindowFunctions(stmt, result, t!);
 
         // Apply DISTINCT
         if stmt.isDistinct {
@@ -1013,7 +1013,7 @@ entity QueryHandler {
 
         // Apply ORDER BY for aggregate/GROUP BY paths (regular path sorted above)
         if stmt.orderByExprs.count() > 0 && (exec.hasAggregates(stmt) || stmt.groupByExprs.count() > 0) {
-            sortResults(result, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, t, stmt.columns, stmt.columnAliases);
+            sortResults(result, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, t!, stmt.columns, stmt.columnAliases);
         }
 
         // Apply DISTINCT ON (after ORDER BY, before LIMIT/OFFSET)
@@ -1159,7 +1159,7 @@ entity QueryHandler {
             // Check HAVING condition before adding row
             if stmt.havingClause != null {
                 var hc = stmt.havingClause;
-                if evalHavingExpr(hc, groupRows, table) == false {
+                if evalHavingExpr(hc!, groupRows, table) == false {
                     g = g + 1;
                     continue;
                 }
@@ -1316,7 +1316,7 @@ entity QueryHandler {
                 // Check HAVING condition
                 if stmt.havingClause != null {
                     var hc = stmt.havingClause;
-                    if evalHavingExpr(hc, groupRows, table) == false {
+                    if evalHavingExpr(hc!, groupRows, table) == false {
                         g = g + 1;
                         continue;
                     }
@@ -1585,8 +1585,8 @@ entity QueryHandler {
             var isDesc = orderDir.get(e);
             var nullsMode = 0;
             if e < orderNulls.count() { nullsMode = orderNulls.get(e); }
-            var val1 = exec.evalExpr(orderExprs.get(e), r1, table);
-            var val2 = exec.evalExpr(orderExprs.get(e), r2, table);
+            var val1 = exec.evalExpr(orderExprs.get(e), r1!, table);
+            var val2 = exec.evalExpr(orderExprs.get(e), r2!, table);
             var cmp = val1.compare(val2);
             if cmp == 2 {
                 if val1.kind == SQL_NULL && val2.kind != SQL_NULL {
@@ -1808,13 +1808,13 @@ entity QueryHandler {
                 var rl = rowLo;
                 var rm = rowMid;
                 var rh = rowHi;
-                if compareResultRows(rl, rm, orderExprs, orderDir, orderNulls, colMappings, table) > 0 {
+                if compareResultRows(rl!, rm!, orderExprs, orderDir, orderNulls, colMappings, table) > 0 {
                     result.swapRows(lo, mid);
                 }
-                if compareResultRows(rl, rh, orderExprs, orderDir, orderNulls, colMappings, table) > 0 {
+                if compareResultRows(rl!, rh!, orderExprs, orderDir, orderNulls, colMappings, table) > 0 {
                     result.swapRows(lo, hi);
                 }
-                if compareResultRows(rm, rh, orderExprs, orderDir, orderNulls, colMappings, table) > 0 {
+                if compareResultRows(rm!, rh!, orderExprs, orderDir, orderNulls, colMappings, table) > 0 {
                     result.swapRows(mid, hi);
                 }
             }
@@ -1834,7 +1834,7 @@ entity QueryHandler {
                     var ri = result.getRow(i);
                     if ri == null { break; }
                     var rir = ri;
-                    if compareResultRows(rir, pivot, orderExprs, orderDir, orderNulls, colMappings, table) >= 0 { break; }
+                    if compareResultRows(rir!, pivot!, orderExprs, orderDir, orderNulls, colMappings, table) >= 0 { break; }
                     i = i + 1;
                 }
                 // Move j left while row[j] > pivot
@@ -1842,7 +1842,7 @@ entity QueryHandler {
                     var rj = result.getRow(j);
                     if rj == null { break; }
                     var rjr = rj;
-                    if compareResultRows(rjr, pivot, orderExprs, orderDir, orderNulls, colMappings, table) <= 0 { break; }
+                    if compareResultRows(rjr!, pivot!, orderExprs, orderDir, orderNulls, colMappings, table) <= 0 { break; }
                     j = j - 1;
                 }
                 if i >= j {

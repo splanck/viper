@@ -60,7 +60,7 @@ extern "C"
     /// @param map DefaultMap object.
     /// @param key Key string.
     /// @return 1 if removed, 0 if not found.
-    int64_t rt_defaultmap_remove(void *map, rt_string key);
+    int8_t rt_defaultmap_remove(void *map, rt_string key);
 
     /// @brief Get all keys.
     /// @param map DefaultMap object.

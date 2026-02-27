@@ -35,7 +35,7 @@ Dynamic array that grows automatically. Stores object references.
 | `Remove(item)`           | `Boolean(Object)`       | Removes the first matching object (reference equality); returns true if removed       |
 | `RemoveAt(index)`        | `Void(Integer)`         | Removes the item at the specified index                                               |
 | `Slice(start, end)`      | `List(Integer, Integer)`| Returns a new list with elements from start (inclusive) to end (exclusive)            |
-| `Flip()`                 | `Void()`                | Reverses the elements of the list in place                                            |
+| `Reverse()`              | `Void()`                | Reverses the elements of the list in place                                            |
 | `First()`                | `Object()`              | Returns the first element in the list                                                 |
 | `Last()`                 | `Object()`              | Returns the last element in the list                                                  |
 | `Sort()`                 | `Void()`                | Sorts the list in ascending order (strings lexicographic, otherwise by pointer value) |
@@ -110,9 +110,9 @@ PRINT list.Find(a)         ' Output: -1
 PRINT list.Get(0)          ' First element
 list.Set(0, b)             ' Replace first element
 
-' Slice, Flip, First, Last
+' Slice, Reverse, First, Last
 DIM sub AS OBJECT = list.Slice(0, 1)
-list.Flip()                ' Reverse in place
+list.Reverse()             ' Reverse in place
 PRINT list.First()         ' First element
 PRINT list.Last()          ' Last element
 

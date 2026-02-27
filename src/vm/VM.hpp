@@ -708,6 +708,14 @@ class VM
     ///          Used by trap-raising and diagnostic paths.
     TrapContext currentTrapContext() const;
 
+    /// @brief Build a full backtrace by walking the execution stack.
+    /// @return Vector of FrameInfo, most-recent first.
+    std::vector<FrameInfo> buildBacktrace() const;
+
+    /// @brief Format and print a backtrace to stderr.
+    /// @param frames Backtrace frames to print.
+    static void printBacktrace(const std::vector<FrameInfo> &frames);
+
     // dispatchOpcodeSwitch is declared via generated include file
 
     /// @brief Exception type for non-local trap dispatch control flow.

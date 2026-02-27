@@ -179,9 +179,9 @@ func testTreeMap() {
     assertEqInt(Viper.Collections.TreeMap.get_Len(tm), 3, "treemap set len");
     assertTrue(Viper.Collections.TreeMap.Has(tm, "a"), "treemap has");
 
-    // Drop (fixed from Remove)
-    assertTrue(Viper.Collections.TreeMap.Drop(tm, "b"), "treemap drop");
-    assertEqInt(Viper.Collections.TreeMap.get_Len(tm), 2, "treemap drop len");
+    // Remove
+    assertTrue(Viper.Collections.TreeMap.Remove(tm, "b"), "treemap remove");
+    assertEqInt(Viper.Collections.TreeMap.get_Len(tm), 2, "treemap remove len");
 
     // Clear
     Viper.Collections.TreeMap.Clear(tm);

@@ -64,7 +64,7 @@ extern "C"
     /// @param map Ordered map object.
     /// @param key Key string.
     /// @return 1 if removed, 0 if key not found.
-    int64_t rt_orderedmap_remove(void *map, rt_string key);
+    int8_t rt_orderedmap_remove(void *map, rt_string key);
 
     /// @brief Get all keys in insertion order as a Seq.
     /// @param map Ordered map object.

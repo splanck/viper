@@ -393,3 +393,21 @@ void rt_stack_clear(void *obj)
         return;
     ((rt_stack_impl *)obj)->len = 0;
 }
+
+/// @brief Check if the stack contains a given element (pointer equality).
+/// @param obj Opaque Stack object pointer.
+/// @param elem Element to search for.
+/// @return 1 if found, 0 otherwise.
+int8_t rt_stack_has(void *obj, void *elem)
+{
+    if (!obj)
+        return 0;
+
+    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    for (int64_t i = 0; i < stack->len; i++)
+    {
+        if (stack->items[i] == elem)
+            return 1;
+    }
+    return 0;
+}

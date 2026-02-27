@@ -349,8 +349,11 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::ConstF64:
         {
             // Lower const.f64 by materializing a floating-point constant.
-            // For arbitrary values, we load the 64-bit IEEE-754 representation
-            // into a GPR and then use fmov to transfer to FPR.
+            // We load the 64-bit IEEE-754 representation into a GPR and then
+            // use fmov to transfer to FPR.  Operands may arrive as ConstFloat
+            // (when parsed from a float literal like 1.0) or ConstInt (when
+            // parsed from the integer bit-pattern encoding used by the IL
+            // serializer for programmatically-constructed modules).
             if (!ins.result || ins.operands.empty())
                 return true;
 
@@ -358,24 +361,29 @@ bool lowerInstruction(const il::core::Instr &ins,
             ctx.tempVReg[*ins.result] = dst;
             ctx.tempRegClass[*ins.result] = RegClass::FPR;
 
-            // Get the f64 value from the operand
+            uint64_t bits = 0;
             if (ins.operands[0].kind == il::core::Value::Kind::ConstFloat)
             {
-                // Materialize the 64-bit representation into a GPR, then fmov to FPR
                 const double fval = ins.operands[0].f64;
-                uint64_t bits;
                 std::memcpy(&bits, &fval, sizeof(bits));
-
-                const uint16_t tmpGpr = ctx.nextVRegId++;
-                // Use MovRI - the emitter will handle movz/movk sequence automatically
-                bbOut().instrs.push_back(MInstr{MOpcode::MovRI,
-                                                {MOperand::vregOp(RegClass::GPR, tmpGpr),
-                                                 MOperand::immOp(static_cast<long long>(bits))}});
-                // Use fmov to transfer GPR to FPR
-                bbOut().instrs.push_back(MInstr{MOpcode::FMovGR,
-                                                {MOperand::vregOp(RegClass::FPR, dst),
-                                                 MOperand::vregOp(RegClass::GPR, tmpGpr)}});
             }
+            else if (ins.operands[0].kind == il::core::Value::Kind::ConstInt)
+            {
+                // Integer operand holds IEEE-754 bit pattern directly.
+                bits = static_cast<uint64_t>(ins.operands[0].i64);
+            }
+            else
+            {
+                return false;
+            }
+
+            const uint16_t tmpGpr = ctx.nextVRegId++;
+            bbOut().instrs.push_back(MInstr{MOpcode::MovRI,
+                                            {MOperand::vregOp(RegClass::GPR, tmpGpr),
+                                             MOperand::immOp(static_cast<long long>(bits))}});
+            bbOut().instrs.push_back(MInstr{MOpcode::FMovGR,
+                                            {MOperand::vregOp(RegClass::FPR, dst),
+                                             MOperand::vregOp(RegClass::GPR, tmpGpr)}});
             return true;
         }
         case Opcode::ConstNull:

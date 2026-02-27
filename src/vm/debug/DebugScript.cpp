@@ -74,6 +74,14 @@ DebugScript::DebugScript(const std::string &path)
             else
                 std::cerr << "[DEBUG] ignored: " << line << "\n";
         }
+        else if (line == "step-over")
+        {
+            actions.push({DebugActionKind::StepOver, 0});
+        }
+        else if (line == "step-out")
+        {
+            actions.push({DebugActionKind::StepOut, 0});
+        }
         else
         {
             std::cerr << "[DEBUG] ignored: " << line << "\n";

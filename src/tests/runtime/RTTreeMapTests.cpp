@@ -144,16 +144,16 @@ static void test_drop()
 
     assert(rt_treemap_len(tm) == 3);
 
-    // Drop existing key
-    assert(rt_treemap_drop(tm, make_str("b")) == 1);
+    // Remove existing key
+    assert(rt_treemap_remove(tm, make_str("b")) == 1);
     assert(rt_treemap_len(tm) == 2);
     assert(rt_treemap_has(tm, make_str("b")) == 0);
 
-    // Drop non-existing key
-    assert(rt_treemap_drop(tm, make_str("x")) == 0);
+    // Remove non-existing key
+    assert(rt_treemap_remove(tm, make_str("x")) == 0);
     assert(rt_treemap_len(tm) == 2);
 
-    printf("test_drop: PASSED\n");
+    printf("test_remove: PASSED\n");
 }
 
 static void test_clear()

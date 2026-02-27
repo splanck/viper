@@ -420,7 +420,7 @@ int8_t rt_treemap_has(void *obj, rt_string key)
 /// @return 1 (true) if the key was found and removed, 0 (false) if not found.
 ///
 /// @note O(log n) for lookup + O(n) for removal (array shifting).
-int8_t rt_treemap_drop(void *obj, rt_string key)
+int8_t rt_treemap_remove(void *obj, rt_string key)
 {
     treemap_impl *tm = (treemap_impl *)obj;
 

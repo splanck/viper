@@ -160,6 +160,91 @@ class Runner::Impl
         return {StepStatus::Halted};
     }
 
+    /// @brief Get the current call stack depth.
+    size_t currentDepth() const
+    {
+        return detail::VMAccess::execStack(vm).size();
+    }
+
+    /// @brief Get the current source line (-1 if unknown).
+    int32_t currentSourceLine() const
+    {
+        const auto &stack = detail::VMAccess::execStack(vm);
+        if (stack.empty())
+            return -1;
+        const auto *es = stack.back();
+        if (!es || !es->bb || es->ip >= es->bb->instructions.size())
+            return -1;
+        const auto &instr = es->bb->instructions[es->ip];
+        return instr.loc.hasLine() ? static_cast<int32_t>(instr.loc.line) : -1;
+    }
+
+    /// @brief Step over: execute until a new source line at same/shallower depth.
+    RunStatus stepOver()
+    {
+        ensurePrepared();
+        const size_t startDepth = currentDepth();
+        const int32_t startLine = currentSourceLine();
+
+        while (true)
+        {
+            auto res = step();
+            switch (res.status)
+            {
+                case StepStatus::BreakpointHit:
+                    return RunStatus::BreakpointHit;
+                case StepStatus::Halted:
+                    return RunStatus::Halted;
+                case StepStatus::Trapped:
+                    return RunStatus::Trapped;
+                case StepStatus::Paused:
+                    return RunStatus::Paused;
+                case StepStatus::Advanced:
+                {
+                    const size_t depth = currentDepth();
+                    // Still inside a callee — keep running
+                    if (depth > startDepth)
+                        continue;
+                    // At same or shallower depth, check if source line changed
+                    const int32_t line = currentSourceLine();
+                    if (line >= 0 && line != startLine)
+                        return RunStatus::Paused;
+                    // Same line or unknown line — keep stepping
+                    continue;
+                }
+            }
+        }
+    }
+
+    /// @brief Step out: execute until the current function returns.
+    RunStatus stepOut()
+    {
+        ensurePrepared();
+        const size_t startDepth = currentDepth();
+
+        while (true)
+        {
+            auto res = step();
+            switch (res.status)
+            {
+                case StepStatus::BreakpointHit:
+                    return RunStatus::BreakpointHit;
+                case StepStatus::Halted:
+                    return RunStatus::Halted;
+                case StepStatus::Trapped:
+                    return RunStatus::Trapped;
+                case StepStatus::Paused:
+                    return RunStatus::Paused;
+                case StepStatus::Advanced:
+                {
+                    if (currentDepth() < startDepth)
+                        return RunStatus::Paused;
+                    continue;
+                }
+            }
+        }
+    }
+
     /// @brief Resume execution until a breakpoint, pause, trap, or halt occurs.
     /// @details Repeatedly calls step() in a tight loop, returning only when a
     ///          non-advancing status is encountered.  This is the primary entry
@@ -245,6 +330,65 @@ class Runner::Impl
     std::vector<MemWatchHit> drainMemWatchHits()
     {
         return detail::VMAccess::debug(vm).drainMemWatchEvents();
+    }
+
+    std::vector<BacktraceFrame> backtrace() const
+    {
+        std::vector<BacktraceFrame> frames;
+        const auto &stack = detail::VMAccess::execStack(vm);
+
+        // Walk from top (most recent) to bottom (oldest)
+        for (auto it = stack.rbegin(); it != stack.rend(); ++it)
+        {
+            const auto *es = *it;
+            if (!es)
+                continue;
+
+            BacktraceFrame frame;
+
+            // Function name
+            if (es->fr.func)
+                frame.function = es->fr.func->name;
+
+            // Block label and IP
+            if (es->bb)
+            {
+                frame.block = es->bb->label;
+                frame.ip = es->ip;
+
+                // Source line from current instruction
+                if (es->ip < es->bb->instructions.size())
+                {
+                    const auto &instr = es->bb->instructions[es->ip];
+                    if (instr.loc.hasLine())
+                        frame.line = static_cast<int32_t>(instr.loc.line);
+                }
+            }
+
+            frames.push_back(std::move(frame));
+        }
+
+        // Also include the state from the step-mode execution if not already on stack
+        if (state && frames.empty())
+        {
+            BacktraceFrame frame;
+            if (state->fr.func)
+                frame.function = state->fr.func->name;
+            if (state->bb)
+            {
+                frame.block = state->bb->label;
+                frame.ip = state->ip;
+                if (state->ip < state->bb->instructions.size())
+                {
+                    const auto &instr = state->bb->instructions[state->ip];
+                    if (instr.loc.hasLine())
+                        frame.line = static_cast<int32_t>(instr.loc.line);
+                }
+            }
+            frames.push_back(std::move(frame));
+        }
+
+        return frames;
     }
 
     const TrapInfo *lastTrap() const
@@ -386,6 +530,16 @@ Runner::StepResult Runner::step()
 /// @details Forwards to the private implementation, which loops over single
 ///          steps until a breakpoint, pause, trap, or halt interrupts execution.
 /// @return A RunStatus describing why execution stopped.
+Runner::RunStatus Runner::stepOver()
+{
+    return impl->stepOver();
+}
+
+Runner::RunStatus Runner::stepOut()
+{
+    return impl->stepOut();
+}
+
 Runner::RunStatus Runner::continueRun()
 {
     return impl->continueRun();
@@ -424,6 +578,11 @@ bool Runner::removeMemWatch(const void *addr, std::size_t size, std::string_view
 std::vector<MemWatchHit> Runner::drainMemWatchHits()
 {
     return impl->drainMemWatchHits();
+}
+
+std::vector<Runner::BacktraceFrame> Runner::backtrace() const
+{
+    return impl->backtrace();
 }
 
 /// @brief Convenience helper that constructs a runner, executes it, and returns the result.

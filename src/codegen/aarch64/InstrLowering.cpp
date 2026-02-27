@@ -1362,6 +1362,7 @@ bool lowerFpCompare(const il::core::Instr &ins,
     // Emit cset with appropriate condition
     const uint16_t dst = ctx.nextVRegId++;
     ctx.tempVReg[*ins.result] = dst;
+    ctx.tempRegClass[*ins.result] = RegClass::GPR;
     out.instrs.push_back(
         MInstr{MOpcode::Cset,
                {MOperand::vregOp(RegClass::GPR, dst), MOperand::condOp(fpCondCode(ins.op))}});
@@ -1433,6 +1434,7 @@ bool lowerFptosi(const il::core::Instr &ins,
 
     const uint16_t dst = ctx.nextVRegId++;
     ctx.tempVReg[*ins.result] = dst;
+    ctx.tempRegClass[*ins.result] = RegClass::GPR;
 
     out.instrs.push_back(
         MInstr{MOpcode::FCvtZS,
@@ -1468,6 +1470,7 @@ bool lowerZext1Trunc1(const il::core::Instr &ins,
 
     const uint16_t dst = ctx.nextVRegId++;
     ctx.tempVReg[*ins.result] = dst;
+    ctx.tempRegClass[*ins.result] = RegClass::GPR;
 
     // dst = sv & 1
     const uint16_t one = ctx.nextVRegId++;

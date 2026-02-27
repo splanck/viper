@@ -59,6 +59,12 @@ extern "C"
     /// @param obj Opaque Stack object pointer.
     void rt_stack_clear(void *obj);
 
+    /// @brief Check if the stack contains a given element (pointer equality).
+    /// @param obj Opaque Stack object pointer.
+    /// @param elem Element to search for.
+    /// @return 1 if found, 0 otherwise.
+    int8_t rt_stack_has(void *obj, void *elem);
+
 #ifdef __cplusplus
 }
 #endif

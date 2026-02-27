@@ -480,7 +480,7 @@ func main() {
             var reloadDoc = docMgr.GetActive();
             if reloadDoc != null and reloadDoc.isNew == false {
                 reloadDoc.content = IO.File.ReadAllText(reloadDoc.filePath);
-                engine.LoadDocument(reloadDoc);
+                engine.LoadDocument(reloadDoc!);
                 engine.ClearModified();
                 tabs.SetModified(docMgr.activeIndex, false);
                 pendingReload = false;

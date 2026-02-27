@@ -275,6 +275,8 @@ void usage()
         << "  Options: [--trace=il|src] [--stdin-from <file>] [--max-steps N]\n"
         << "           [--bounds-checks] [--dump-trap] [--debug-vm] [-O0|-O1|-O2]\n"
         << "           [--no-runtime-namespaces]\n"
+        << "  Diagnostics: [--dump-tokens] [--dump-ast] [--dump-sema-ast] [--dump-il]\n"
+        << "               [--dump-il-opt] [--dump-il-passes]\n"
         << "\n"
         << "Advanced:\n"
         << "       viper -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N]"

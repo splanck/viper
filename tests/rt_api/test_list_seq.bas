@@ -14,7 +14,7 @@ l.RemoveAt(0)
 PRINT "len after removeat: "; l.Len
 l.Remove("a")
 PRINT "len after remove: "; l.Len
-l.Flip()
+l.Reverse()
 l.Clear()
 PRINT "len after clear: "; l.Len
 

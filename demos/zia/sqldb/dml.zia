@@ -106,7 +106,7 @@ entity DmlHandler {
             return result;
         }
 
-        var t = table;
+        var t = table!;
 
         // Partition routing: if inserting into a partitioned parent, route to child
         if t.isPartitioned {
@@ -926,14 +926,14 @@ entity DmlHandler {
             result.setError("Table '" + stmt.tableName + "' not found");
             return result;
         }
-        var t1 = table;
+        var t1 = table!;
 
         var fromTable = exec.findTable(stmt.fromTableName);
         if fromTable == null {
             result.setError("FROM table '" + stmt.fromTableName + "' not found");
             return result;
         }
-        var t2 = fromTable;
+        var t2 = fromTable!;
         var t2Alias = stmt.fromTableAlias;
 
         // Build merged table schema for expression evaluation
@@ -1042,14 +1042,14 @@ entity DmlHandler {
             result.setError("Table '" + stmt.tableName + "' not found");
             return result;
         }
-        var t1 = table;
+        var t1 = table!;
 
         var usingTable = exec.findTable(stmt.usingTableName);
         if usingTable == null {
             result.setError("USING table '" + stmt.usingTableName + "' not found");
             return result;
         }
-        var t2 = usingTable;
+        var t2 = usingTable!;
         var t2Alias = stmt.usingTableAlias;
 
         // Build merged table schema
@@ -1190,7 +1190,7 @@ entity DmlHandler {
 
     hide func evalConditionMultiTable(expr: Expr?, mergedRow: Row, mergedTable: Table, t1Name: String, t1: Table, t2Name: String, t2: Table) -> Boolean {
         if expr == null { return true; }
-        var e = expr;
+        var e = expr!;
         var result = evalExprMultiTable(e, mergedRow, mergedTable, t1Name, t1, t2Name, t2);
         return result.intValue != 0;
     }
@@ -1298,7 +1298,7 @@ entity DmlHandler {
             return result;
         }
 
-        var t = table;
+        var t = table!;
         var rowsUpdated = 0;
         var updatedIndices: List[Integer] = [];
 
@@ -1440,7 +1440,7 @@ entity DmlHandler {
                 var locPageId = loc.get(0);
                 var locSlotIdx = loc.get(1);
                 if locPageId != INVALID_PAGE_ID {
-                    var updRow = t.getRow(rowIdx);
+                    var updRow = t.getRow(rowIdx)!;
                     var ok = se.updateRowByLocation(stmt.tableName, locPageId, locSlotIdx, updRow);
                     if ok == false {
                         needsRewrite = true;
@@ -1523,7 +1523,7 @@ entity DmlHandler {
             return result;
         }
 
-        var t = table;
+        var t = table!;
         var rowsDeleted = 0;
         var deletedIndices: List[Integer] = [];
 
@@ -1981,14 +1981,14 @@ entity DmlHandler {
             result.setError("Table '" + stmt.targetTable + "' not found");
             return result;
         }
-        var target = targetTbl;
+        var target = targetTbl!;
 
         var sourceTbl = exec.findTable(stmt.sourceTable);
         if sourceTbl == null {
             result.setError("Table '" + stmt.sourceTable + "' not found");
             return result;
         }
-        var source = sourceTbl;
+        var source = sourceTbl!;
 
         // Build merged table schema (target cols + source cols)
         var mergedTable = new Table();
@@ -2029,7 +2029,7 @@ entity DmlHandler {
         while si < source.rowCount() {
             var srcRow = source.getRow(si);
             if srcRow == null { si = si + 1; continue; }
-            var srcData = srcRow;
+            var srcData = srcRow!;
             if srcData.deleted { si = si + 1; continue; }
             if srcData.isVisible(exec.mvccSnapshotId, exec.mvccTxnId) == false {
                 si = si + 1;
@@ -2041,7 +2041,7 @@ entity DmlHandler {
             while ti < target.rowCount() {
                 var tgtRow = target.getRow(ti);
                 if tgtRow == null { ti = ti + 1; continue; }
-                var tgtData = tgtRow;
+                var tgtData = tgtRow!;
                 if tgtData.deleted { ti = ti + 1; continue; }
                 if tgtData.isVisible(exec.mvccSnapshotId, exec.mvccTxnId) == false {
                     ti = ti + 1;

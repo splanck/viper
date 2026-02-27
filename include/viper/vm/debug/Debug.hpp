@@ -306,6 +306,8 @@ enum class DebugActionKind
 {
     Continue,
     Step,
+    StepOver,
+    StepOut,
 };
 
 struct DebugAction

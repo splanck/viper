@@ -12,6 +12,7 @@
 
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
+#include "frontends/zia/ZiaLocationScope.hpp"
 
 namespace il::frontends::zia
 {
@@ -402,6 +403,8 @@ void Lowerer::registerValueLayout(ValueDecl &decl)
 
 void Lowerer::lowerNamespaceDecl(NamespaceDecl &decl)
 {
+    ZiaLocationScope locScope(*this, decl.loc);
+
     // Save current namespace prefix
     std::string savedPrefix = namespacePrefix_;
 
@@ -454,6 +457,8 @@ Lowerer::Value Lowerer::getGlobalVarAddr(const std::string &name, TypeRef type)
 
 void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
 {
+    ZiaLocationScope locScope(*this, decl.loc);
+
     // Use qualified name for globals inside namespaces
     std::string qualifiedName = qualifyName(decl.name);
 
@@ -547,6 +552,8 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
 
 void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
 {
+    ZiaLocationScope locScope(*this, decl.loc);
+
     // Skip generic functions - they will be instantiated when called
     if (!decl.genericParams.empty())
         return;
@@ -990,6 +997,8 @@ const EntityTypeInfo *Lowerer::getOrCreateEntityTypeInfo(const std::string &type
 
 void Lowerer::lowerValueDecl(ValueDecl &decl)
 {
+    ZiaLocationScope locScope(*this, decl.loc);
+
     // Skip uninstantiated generic types - they're lowered during instantiation
     if (!decl.genericParams.empty())
         return;
@@ -1013,6 +1022,8 @@ void Lowerer::lowerValueDecl(ValueDecl &decl)
 
 void Lowerer::lowerEntityDecl(EntityDecl &decl)
 {
+    ZiaLocationScope locScope(*this, decl.loc);
+
     // Skip uninstantiated generic types - they're lowered during instantiation
     if (!decl.genericParams.empty())
         return;
@@ -1052,6 +1063,8 @@ void Lowerer::emitVtable(const EntityTypeInfo & /*info*/)
 
 void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl)
 {
+    ZiaLocationScope locScope(*this, decl.loc);
+
     // Use qualified name for interfaces inside namespaces
     std::string qualifiedName = qualifyName(decl.name);
 
@@ -1077,6 +1090,8 @@ void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl)
 
 void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, bool isEntity)
 {
+    ZiaLocationScope locScope(*this, decl.loc);
+
     // Find the type info
     if (isEntity)
     {

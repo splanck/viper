@@ -821,6 +821,10 @@ class Sema
     /// @return An optional type wrapping the field type.
     TypeRef analyzeOptionalChain(OptionalChainExpr *expr);
 
+    /// @brief Analyze a force-unwrap expression: expr!
+    /// @return The inner (non-optional) type of the operand.
+    TypeRef analyzeForceUnwrap(ForceUnwrapExpr *expr);
+
     /// @brief Analyze a null coalesce expression.
     /// @return The non-optional type of the result.
     TypeRef analyzeCoalesce(CoalesceExpr *expr);

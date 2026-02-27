@@ -22,6 +22,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 /// @brief Tracks mapping from file ids to paths and source locations.
 /// @invariant File id 0 is invalid.
@@ -52,7 +53,17 @@ class SourceManager
     /// @return File path string view.
     std::string_view getPath(uint32_t file_id) const;
 
+    /// @brief Retrieve a single source line from the given file.
+    /// @param file_id 1-based file identifier returned by addFile().
+    /// @param line 1-based line number.
+    /// @return The source line text (without newline), or empty if unavailable.
+    /// @details Lazily loads and caches file contents on first access.
+    std::string_view getLine(uint32_t file_id, uint32_t line) const;
+
   private:
+    /// Cached file contents split by line, keyed by file_id.
+    /// Mutable because getLine() is logically const but lazily populates the cache.
+    mutable std::unordered_map<uint32_t, std::vector<std::string>> lineCache_;
     /// Stored file paths. Index corresponds to file identifier; index 0 is reserved.
     /// Implemented with std::deque to keep string references stable as new files are added.
     std::deque<std::string> files_;

@@ -613,7 +613,7 @@ entity StorageEngine {
         if meta == null {
             return false;
         }
-        var m = meta;
+        var m = meta!;
 
         // WAL: begin implicit transaction
         var txnId = nextTxnId;
@@ -721,7 +721,7 @@ entity StorageEngine {
         if meta == null {
             return false;
         }
-        var m = meta;
+        var m = meta!;
 
         // WAL: begin implicit transaction for the rewrite
         var txnId = nextTxnId;

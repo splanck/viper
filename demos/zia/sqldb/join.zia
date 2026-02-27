@@ -1060,7 +1060,7 @@ entity JoinEngine {
 
             if stmt.whereClause != null {
                 var wc = stmt.whereClause;
-                var whereResult = evalJoinExpr(wc, tables, aliases, row, colOffsets);
+                var whereResult = evalJoinExpr(wc!, tables, aliases, row, colOffsets);
                 if whereResult.intValue == 0 {
                     includeRow = false;
                 }
@@ -1203,7 +1203,7 @@ entity JoinEngine {
             // Check HAVING condition
             if stmt.havingClause != null {
                 var hc = stmt.havingClause;
-                if evalJoinHaving(hc, groupRows, tables, aliases, colOffsets) == false {
+                if evalJoinHaving(hc!, groupRows, tables, aliases, colOffsets) == false {
                     g = g + 1;
                     continue;
                 }
@@ -1471,13 +1471,13 @@ entity JoinEngine {
                 var rl = rowLo;
                 var rm = rowMid;
                 var rh = rowHi;
-                if compareJoinRows(rl, rm, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, colMappings) > 0 {
+                if compareJoinRows(rl!, rm!, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, colMappings) > 0 {
                     result.swapRows(lo, mid);
                 }
-                if compareJoinRows(rl, rh, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, colMappings) > 0 {
+                if compareJoinRows(rl!, rh!, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, colMappings) > 0 {
                     result.swapRows(lo, hi);
                 }
-                if compareJoinRows(rm, rh, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, colMappings) > 0 {
+                if compareJoinRows(rm!, rh!, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, colMappings) > 0 {
                     result.swapRows(mid, hi);
                 }
             }
@@ -1495,14 +1495,14 @@ entity JoinEngine {
                     var ri = result.getRow(i);
                     if ri == null { break; }
                     var rir = ri;
-                    if compareJoinRows(rir, pivot, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, colMappings) >= 0 { break; }
+                    if compareJoinRows(rir!, pivot!, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, colMappings) >= 0 { break; }
                     i = i + 1;
                 }
                 while j >= i {
                     var rj = result.getRow(j);
                     if rj == null { break; }
                     var rjr = rj;
-                    if compareJoinRows(rjr, pivot, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, colMappings) <= 0 { break; }
+                    if compareJoinRows(rjr!, pivot!, stmt.orderByExprs, stmt.orderByDir, stmt.orderByNulls, colMappings) <= 0 { break; }
                     j = j - 1;
                 }
                 if i >= j {

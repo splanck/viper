@@ -66,6 +66,7 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                     ptrSlotInstr.op = Opcode::Alloca;
                     ptrSlotInstr.type = Type(Type::Kind::Ptr);
                     ptrSlotInstr.operands = {Value::constInt(8)};
+                    ptrSlotInstr.loc = curLoc_;
                     blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
                     Value ptrSlot = Value::temp(ptrSlotId);
 
@@ -73,6 +74,7 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                     storePtrInstr.op = Opcode::Store;
                     storePtrInstr.type = Type(Type::Kind::Ptr);
                     storePtrInstr.operands = {ptrSlot, scrutinee.value};
+                    storePtrInstr.loc = curLoc_;
                     blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
 
                     unsigned ptrAsI64Id = nextTempId();
@@ -81,6 +83,7 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                     loadAsI64Instr.op = Opcode::Load;
                     loadAsI64Instr.type = Type(Type::Kind::I64);
                     loadAsI64Instr.operands = {ptrSlot};
+                    loadAsI64Instr.loc = curLoc_;
                     blockMgr_.currentBlock()->instructions.push_back(loadAsI64Instr);
                     Value ptrAsI64 = Value::temp(ptrAsI64Id);
 
@@ -188,6 +191,7 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                     ptrSlotInstr.op = Opcode::Alloca;
                     ptrSlotInstr.type = Type(Type::Kind::Ptr);
                     ptrSlotInstr.operands = {Value::constInt(8)};
+                    ptrSlotInstr.loc = curLoc_;
                     blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
                     Value ptrSlot = Value::temp(ptrSlotId);
 
@@ -195,6 +199,7 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                     storePtrInstr.op = Opcode::Store;
                     storePtrInstr.type = Type(Type::Kind::Ptr);
                     storePtrInstr.operands = {ptrSlot, scrutinee.value};
+                    storePtrInstr.loc = curLoc_;
                     blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
 
                     unsigned ptrAsI64Id = nextTempId();
@@ -203,6 +208,7 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                     loadAsI64Instr.op = Opcode::Load;
                     loadAsI64Instr.type = Type(Type::Kind::I64);
                     loadAsI64Instr.operands = {ptrSlot};
+                    loadAsI64Instr.loc = curLoc_;
                     blockMgr_.currentBlock()->instructions.push_back(loadAsI64Instr);
                     Value ptrAsI64 = Value::temp(ptrAsI64Id);
 

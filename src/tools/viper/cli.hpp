@@ -44,6 +44,24 @@ struct SharedCliOptions
 
     /// @brief Request formatted trap diagnostics on unhandled errors.
     bool dumpTrap = false;
+
+    /// @brief Dump the raw token stream from the lexer.
+    bool dumpTokens = false;
+
+    /// @brief Dump the AST after parsing.
+    bool dumpAst = false;
+
+    /// @brief Dump the AST after semantic analysis.
+    bool dumpSemaAst = false;
+
+    /// @brief Dump IL after lowering (before optimization).
+    bool dumpIL = false;
+
+    /// @brief Dump IL after the full optimization pipeline.
+    bool dumpILOpt = false;
+
+    /// @brief Dump IL before and after each optimization pass.
+    bool dumpILPasses = false;
 };
 
 /// @brief Result of attempting to parse a shared CLI option.

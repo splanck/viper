@@ -862,6 +862,13 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
             SourceLoc loc = qTok.loc;
             expr = std::make_unique<TryExpr>(loc, std::move(expr));
         }
+        else if (check(TokenKind::Bang))
+        {
+            // Force-unwrap: expr! - asserts non-null, traps if null
+            Token bangTok = advance();
+            SourceLoc loc = bangTok.loc;
+            expr = std::make_unique<ForceUnwrapExpr>(loc, std::move(expr));
+        }
         else
         {
             break;

@@ -66,7 +66,7 @@ extern "C"
     /// @param obj TreeMap pointer.
     /// @param key String key.
     /// @return True if key was found and removed.
-    int8_t rt_treemap_drop(void *obj, rt_string key);
+    int8_t rt_treemap_remove(void *obj, rt_string key);
 
     /// @brief Remove all entries from the map.
     /// @param obj TreeMap pointer.

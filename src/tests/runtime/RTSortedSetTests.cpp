@@ -207,9 +207,9 @@ static void test_sortedset_items()
 // Set Operations Tests
 //=============================================================================
 
-static void test_sortedset_merge()
+static void test_sortedset_union()
 {
-    printf("Testing SortedSet Merge:\n");
+    printf("Testing SortedSet Union:\n");
 
     void *set1 = rt_sortedset_new();
     rt_sortedset_put(set1, rt_const_cstr("a"));
@@ -219,18 +219,18 @@ static void test_sortedset_merge()
     rt_sortedset_put(set2, rt_const_cstr("b"));
     rt_sortedset_put(set2, rt_const_cstr("c"));
 
-    void *merged = rt_sortedset_merge(set1, set2);
-    test_result("Merged set has 3 elements", rt_sortedset_len(merged) == 3);
-    test_result("Merged has a", rt_sortedset_has(merged, rt_const_cstr("a")) == 1);
-    test_result("Merged has b", rt_sortedset_has(merged, rt_const_cstr("b")) == 1);
-    test_result("Merged has c", rt_sortedset_has(merged, rt_const_cstr("c")) == 1);
+    void *merged = rt_sortedset_union(set1, set2);
+    test_result("Union set has 3 elements", rt_sortedset_len(merged) == 3);
+    test_result("Union has a", rt_sortedset_has(merged, rt_const_cstr("a")) == 1);
+    test_result("Union has b", rt_sortedset_has(merged, rt_const_cstr("b")) == 1);
+    test_result("Union has c", rt_sortedset_has(merged, rt_const_cstr("c")) == 1);
 
     printf("\n");
 }
 
-static void test_sortedset_common()
+static void test_sortedset_intersect()
 {
-    printf("Testing SortedSet Common:\n");
+    printf("Testing SortedSet Intersect:\n");
 
     void *set1 = rt_sortedset_new();
     rt_sortedset_put(set1, rt_const_cstr("a"));
@@ -242,11 +242,11 @@ static void test_sortedset_common()
     rt_sortedset_put(set2, rt_const_cstr("c"));
     rt_sortedset_put(set2, rt_const_cstr("d"));
 
-    void *common = rt_sortedset_common(set1, set2);
-    test_result("Common set has 2 elements", rt_sortedset_len(common) == 2);
-    test_result("Common has b", rt_sortedset_has(common, rt_const_cstr("b")) == 1);
-    test_result("Common has c", rt_sortedset_has(common, rt_const_cstr("c")) == 1);
-    test_result("Common does not have a", rt_sortedset_has(common, rt_const_cstr("a")) == 0);
+    void *inter = rt_sortedset_intersect(set1, set2);
+    test_result("Intersect set has 2 elements", rt_sortedset_len(inter) == 2);
+    test_result("Intersect has b", rt_sortedset_has(inter, rt_const_cstr("b")) == 1);
+    test_result("Intersect has c", rt_sortedset_has(inter, rt_const_cstr("c")) == 1);
+    test_result("Intersect does not have a", rt_sortedset_has(inter, rt_const_cstr("a")) == 0);
 
     printf("\n");
 }
@@ -328,8 +328,8 @@ int main()
     test_sortedset_floor_ceil();
     test_sortedset_lower_higher();
     test_sortedset_items();
-    test_sortedset_merge();
-    test_sortedset_common();
+    test_sortedset_union();
+    test_sortedset_intersect();
     test_sortedset_diff();
     test_sortedset_is_subset();
     test_sortedset_null_handling();

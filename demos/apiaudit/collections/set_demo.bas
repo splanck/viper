@@ -59,12 +59,12 @@ s2.Add(y)
 s2.Add(z)
 s2.Add(w)
 
-DIM merged AS OBJECT = s1.Merge(s2)
+DIM merged AS OBJECT = s1.Union(s2)
 PRINT merged.Len   ' 4
 
-' --- Common (intersection) ---
-PRINT "--- Common ---"
-DIM common AS OBJECT = s1.Common(s2)
+' --- Intersect ---
+PRINT "--- Intersect ---"
+DIM common AS OBJECT = s1.Intersect(s2)
 PRINT common.Len   ' 2
 
 ' --- Diff ---

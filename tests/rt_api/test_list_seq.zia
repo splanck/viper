@@ -22,7 +22,7 @@ func start() {
     SayInt(l.Len);
     l.Remove("a");
     SayInt(l.Len);
-    l.Flip();
+    l.Reverse();
     Say(l.Get(0));
 
     var s = new Viper.Collections.Seq();

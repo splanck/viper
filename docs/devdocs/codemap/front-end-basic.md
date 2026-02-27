@@ -379,6 +379,22 @@ Last updated: 2026-02-17
 | `print/Print_Stmt_IO.cpp`     | I/O statement printing         |
 | `print/Print_Stmt_Jump.cpp`   | Jump statement printing        |
 
+## Debugging and Inspection
+
+CLI flags for inspecting each pipeline stage (see `docs/debugging.md` §8):
+
+| Flag | Stage |
+|------|-------|
+| `--dump-tokens` | Token stream from Lexer |
+| `--dump-ast` | AST after Parser (uses `AstPrinter`) |
+| `--dump-il` | IL after Lowerer |
+| `--dump-il-passes` | IL before/after each optimizer pass |
+| `--dump-il-opt` | IL after full optimization |
+
+Note: `--dump-sema-ast` is Zia-only. BASIC does not have a post-sema AST dump.
+
+Programmatic equivalents are in `BasicCompilerOptions` (`BasicCompiler.hpp`).
+
 ## Utilities
 
 | File                     | Purpose                      |

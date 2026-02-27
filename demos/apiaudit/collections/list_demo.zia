@@ -1,6 +1,6 @@
 // list_demo.zia - Comprehensive API audit for Viper.Collections.List
 // Tests: New, Push, Pop, Get, Set, Len, IsEmpty, Find, Has, Insert,
-//        Remove, RemoveAt, Clear, Flip, First, Last, Slice
+//        Remove, RemoveAt, Clear, Reverse, First, Last, Slice
 
 module ListDemo;
 
@@ -83,9 +83,9 @@ func start() {
     Say(Box.ToStr(sl.Get(0)));     // cherry
     Say(Box.ToStr(sl.Get(1)));     // fig
 
-    // --- Flip ---
-    Say("--- Flip ---");
-    List.Flip(list);
+    // --- Reverse ---
+    Say("--- Reverse ---");
+    List.Reverse(list);
     Say(Box.ToStr(list.Get(0)));   // grape
     Say(Box.ToStr(list.Get(3)));   // apple
 

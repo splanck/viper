@@ -85,6 +85,9 @@ TypeRef Sema::analyzeExpr(Expr *expr)
         case ExprKind::OptionalChain:
             result = analyzeOptionalChain(static_cast<OptionalChainExpr *>(expr));
             break;
+        case ExprKind::ForceUnwrap:
+            result = analyzeForceUnwrap(static_cast<ForceUnwrapExpr *>(expr));
+            break;
         case ExprKind::Coalesce:
             result = analyzeCoalesce(static_cast<CoalesceExpr *>(expr));
             break;

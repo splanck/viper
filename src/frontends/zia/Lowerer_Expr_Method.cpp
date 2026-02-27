@@ -578,6 +578,7 @@ std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string
     allocaInstr.op = Opcode::Alloca;
     allocaInstr.type = Type(Type::Kind::Ptr);
     allocaInstr.operands = {Value::constInt(static_cast<int64_t>(info.totalSize))};
+    allocaInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value ptr = Value::temp(allocaId);
 
@@ -609,6 +610,7 @@ std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string
             gepInstr.op = Opcode::GEP;
             gepInstr.type = Type(Type::Kind::Ptr);
             gepInstr.operands = {ptr, Value::constInt(static_cast<int64_t>(field.offset))};
+            gepInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(gepInstr);
             Value fieldAddr = Value::temp(gepId);
 
@@ -617,6 +619,7 @@ std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string
             storeInstr.op = Opcode::Store;
             storeInstr.type = mapType(field.type);
             storeInstr.operands = {fieldAddr, argValues[i]};
+            storeInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(storeInstr);
         }
     }
@@ -763,6 +766,7 @@ LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr)
     allocaInstr.op = Opcode::Alloca;
     allocaInstr.type = Type(Type::Kind::Ptr);
     allocaInstr.operands = {Value::constInt(static_cast<int64_t>(info.totalSize))};
+    allocaInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value ptr = Value::temp(allocaId);
 
@@ -789,6 +793,7 @@ LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr)
             gepInstr.op = Opcode::GEP;
             gepInstr.type = Type(Type::Kind::Ptr);
             gepInstr.operands = {ptr, Value::constInt(static_cast<int64_t>(field.offset))};
+            gepInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(gepInstr);
             Value fieldAddr = Value::temp(gepId);
 
@@ -796,6 +801,7 @@ LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr)
             storeInstr.op = Opcode::Store;
             storeInstr.type = mapType(field.type);
             storeInstr.operands = {fieldAddr, argValues[i]};
+            storeInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(storeInstr);
         }
     }

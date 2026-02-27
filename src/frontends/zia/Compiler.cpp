@@ -50,7 +50,9 @@
 #include "frontends/zia/Parser.hpp"
 #include "frontends/zia/Sema.hpp"
 #include "frontends/zia/ZiaAnalysis.hpp"
+#include "frontends/zia/ZiaAstPrinter.hpp"
 #include "il/transform/PassManager.hpp"
+#include "viper/il/IO.hpp"
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -58,6 +60,36 @@
 
 namespace il::frontends::zia
 {
+
+namespace
+{
+/// @brief Print every token from the source to stderr.
+/// @details Creates a fresh lexer and iterates until EOF, printing each token
+///          with its location, kind, text, and literal values.
+void dumpTokenStream(const std::string &source,
+                     uint32_t fileId,
+                     il::support::DiagnosticEngine &diag)
+{
+    Lexer lexer(source, fileId, diag);
+    std::cerr << "=== Zia Token Stream ===\n";
+    for (;;)
+    {
+        Token tok = lexer.next();
+        std::cerr << tok.loc.line << ':' << tok.loc.column << '\t'
+                  << tokenKindToString(tok.kind);
+        if (!tok.text.empty())
+            std::cerr << "\t\"" << tok.text << '"';
+        if (tok.kind == TokenKind::IntegerLiteral)
+            std::cerr << "\tvalue=" << tok.intValue;
+        else if (tok.kind == TokenKind::NumberLiteral)
+            std::cerr << "\tvalue=" << tok.floatValue;
+        std::cerr << '\n';
+        if (tok.kind == TokenKind::Eof)
+            break;
+    }
+    std::cerr << "=== End Token Stream ===\n";
+}
+} // namespace
 
 bool CompilerResult::succeeded() const
 {
@@ -87,6 +119,13 @@ CompilerResult compile(const CompilerInput &input,
             std::cerr << "[zia] " << phase << std::endl;
     };
 
+    // Phase 0 (optional): Token stream dump — uses a separate lexer so parsing
+    // still works from the original one.
+    if (options.dumpTokens)
+    {
+        dumpTokenStream(std::string(input.source), result.fileId, result.diagnostics);
+    }
+
     debugTime("Phase 1: Lexing");
     // Phase 1: Lexing
     Lexer lexer(std::string(input.source), result.fileId, result.diagnostics);
@@ -100,6 +139,15 @@ CompilerResult compile(const CompilerInput &input,
     {
         // Parse failed, return with diagnostics
         return result;
+    }
+
+    // Dump AST after parsing (before sema).
+    if (options.dumpAst)
+    {
+        ZiaAstPrinter printer;
+        std::cerr << "=== AST after parsing ===\n"
+                  << printer.dump(*module)
+                  << "=== End AST ===\n";
     }
 
     debugTime("Phase 2.5: Import resolution");
@@ -119,6 +167,15 @@ CompilerResult compile(const CompilerInput &input,
     Sema sema(result.diagnostics);
     bool semanticOk = sema.analyze(*module);
 
+    // Dump AST after semantic analysis.
+    if (options.dumpSemaAst)
+    {
+        ZiaAstPrinter printer;
+        std::cerr << "=== AST after semantic analysis ===\n"
+                  << printer.dump(*module)
+                  << "=== End AST ===\n";
+    }
+
     if (!semanticOk)
     {
         // Semantic analysis failed, return with diagnostics
@@ -131,6 +188,14 @@ CompilerResult compile(const CompilerInput &input,
     result.module = lowerer.lower(*module);
     debugTime("Phase 4: Done");
 
+    // Dump IL after lowering, before optimization.
+    if (options.dumpIL)
+    {
+        std::cerr << "=== IL after lowering ===\n";
+        io::Serializer::write(result.module, std::cerr);
+        std::cerr << "=== End IL ===\n";
+    }
+
     // Phase 5: IL Optimization — use the canonical registered pipelines.
     // O1 and O2 pipelines are defined in PassManager's constructor and include
     // the full sequence of passes (SCCP, LICM, loop transforms, inlining, etc.).
@@ -138,8 +203,28 @@ CompilerResult compile(const CompilerInput &input,
     {
         il::transform::PassManager pm;
         pm.setVerifyBetweenPasses(false);
+
+        // Enable per-pass IL dumps when requested.
+        if (options.dumpILPasses)
+        {
+            pm.setPrintBeforeEach(true);
+            pm.setPrintAfterEach(true);
+            pm.setInstrumentationStream(std::cerr);
+        }
+
         const std::string pipelineId = (options.optLevel == OptLevel::O2) ? "O2" : "O1";
         pm.runPipeline(result.module, pipelineId);
+    }
+
+    // Dump IL after the full optimization pipeline.
+    if (options.dumpILOpt)
+    {
+        const char *level = (options.optLevel == OptLevel::O2) ? "O2"
+                          : (options.optLevel == OptLevel::O1) ? "O1"
+                                                               : "O0";
+        std::cerr << "=== IL after optimization (" << level << ") ===\n";
+        io::Serializer::write(result.module, std::cerr);
+        std::cerr << "=== End IL ===\n";
     }
 
     return result;

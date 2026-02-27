@@ -181,7 +181,21 @@ pipeline stages are:
 - **Caller-saved GPRs**: X0–X15
 - **Caller-saved FPRs**: V0–V7, V16–V31
 
-## MIR Debug Dump Flags
+## Debug Dump Flags
+
+### IL-Level Dumps
+
+Before code reaches the AArch64 backend, it passes through the IL pipeline. The following shared flags inspect those earlier stages (see `docs/debugging.md` §8 for details):
+
+| Flag | Stage |
+|------|-------|
+| `--dump-tokens` | Lexer token stream |
+| `--dump-ast` | AST after parsing |
+| `--dump-il` | IL after lowering (pre-optimization) |
+| `--dump-il-passes` | IL before/after each optimization pass |
+| `--dump-il-opt` | IL after full optimization pipeline |
+
+### MIR Dump Flags
 
 The AArch64 CLI supports flags to dump Machine IR for debugging:
 
@@ -190,6 +204,12 @@ The AArch64 CLI supports flags to dump Machine IR for debugging:
 | `--dump-mir-before-ra` | Print MIR to stderr before register allocation |
 | `--dump-mir-after-ra` | Print MIR to stderr after register allocation |
 | `--dump-mir-full` | Print MIR both before and after register allocation |
+
+The complete inspection pipeline from source to native is:
+
+```
+--dump-tokens → --dump-ast → --dump-il → --dump-il-passes → --dump-il-opt → --dump-mir-* → assembly
+```
 
 **Example:**
 

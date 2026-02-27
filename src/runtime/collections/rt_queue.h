@@ -59,6 +59,12 @@ extern "C"
     /// @param obj Opaque Queue object pointer.
     void rt_queue_clear(void *obj);
 
+    /// @brief Check if the queue contains a given element (pointer equality).
+    /// @param obj Opaque Queue object pointer.
+    /// @param elem Element to search for.
+    /// @return 1 if found, 0 otherwise.
+    int8_t rt_queue_has(void *obj, void *elem);
+
 #ifdef __cplusplus
 }
 #endif

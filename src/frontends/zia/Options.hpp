@@ -51,11 +51,23 @@ struct CompilerOptions
     /// @brief Enable null checks for optional access.
     bool nullChecks{true};
 
+    /// @brief Dump the raw token stream from the lexer.
+    bool dumpTokens{false};
+
     /// @brief Dump AST after parsing (for debugging).
     bool dumpAst{false};
 
-    /// @brief Dump IL after lowering (for debugging).
+    /// @brief Dump AST after semantic analysis (for debugging).
+    bool dumpSemaAst{false};
+
+    /// @brief Dump IL after lowering, before optimization (for debugging).
     bool dumpIL{false};
+
+    /// @brief Dump IL after the full optimization pipeline.
+    bool dumpILOpt{false};
+
+    /// @brief Dump IL before and after each optimization pass.
+    bool dumpILPasses{false};
 
     /// @brief Optimization level for IL transformations.
     /// @details O1 is the default, providing a good balance of compilation

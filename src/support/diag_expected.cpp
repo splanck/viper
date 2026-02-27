@@ -186,5 +186,34 @@ void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm)
         os << '[' << diag.code << ']';
     }
     os << ": " << diag.message << '\n';
+
+    // Source snippet with caret marker
+    if (sm && diag.loc.file_id != 0 && diag.loc.line != 0)
+    {
+        auto srcLine = sm->getLine(diag.loc.file_id, diag.loc.line);
+        if (!srcLine.empty())
+        {
+            // Line number gutter
+            std::string lineNumStr = std::to_string(diag.loc.line);
+            std::string gutter(lineNumStr.size(), ' ');
+
+            os << ' ' << lineNumStr << " | " << srcLine << '\n';
+
+            // Caret line
+            if (diag.loc.column != 0 && diag.loc.column <= srcLine.size() + 1)
+            {
+                os << ' ' << gutter << " | ";
+                // Preserve leading whitespace (tabs/spaces) for alignment
+                for (uint32_t i = 1; i < diag.loc.column; ++i)
+                {
+                    if (i <= srcLine.size() && srcLine[i - 1] == '\t')
+                        os << '\t';
+                    else
+                        os << ' ';
+                }
+                os << "^\n";
+            }
+        }
+    }
 }
 } // namespace il::support

@@ -105,12 +105,12 @@ func start() {
     ss2.Put("apple");
     ss2.Put("fig");
     ss2.Put("grape");
-    var merged = ss.Merge(ss2);
+    var merged = ss.Union(ss2);
     SayInt(merged.Len);  // 6 (apple, cherry, date, elderberry, fig, grape)
 
-    // --- Common (intersection) ---
-    Say("--- Common ---");
-    var common = ss.Common(ss2);
+    // --- Intersect ---
+    Say("--- Intersect ---");
+    var common = ss.Intersect(ss2);
     SayInt(common.Len);  // 1 (apple)
 
     // --- Diff ---

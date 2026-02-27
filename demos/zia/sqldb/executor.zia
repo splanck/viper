@@ -638,7 +638,7 @@ entity Executor {
             tempTable.initWithName(name);
             var ci = 0;
             while ci < table.columnCount() {
-                tempTable.addColumn(table.getColumn(ci));
+                tempTable.addColumn(table.getColumn(ci)!);
                 ci = ci + 1;
             }
             tempTable.addRow(r.clone());
@@ -792,7 +792,7 @@ entity Executor {
         // No condition matched - return ELSE value or NULL
         if expr.caseElse != null {
             var elseExpr = expr.caseElse;
-            return evalExpr(elseExpr, row, table);
+            return evalExpr(elseExpr!, row, table);
         }
         return sqlNull();
     }
@@ -1697,7 +1697,7 @@ entity Executor {
             return true;
         }
         var e = expr;
-        var result = evalExpr(e, row, table);
+        var result = evalExpr(e!, row, table);
         return result.intValue != 0;
     }
 
@@ -1715,7 +1715,7 @@ entity Executor {
 
         // Check for AND chain of equality predicates (composite index)
         if e.kind == EXPR_BINARY && e.op == OP_AND {
-            var eqCols = extractEqualityColumns(e);
+            var eqCols = extractEqualityColumns(e!);
             if eqCols.count() >= 2 {
                 var maybeIdx = indexMgr.findIndexForColumns(tableName, eqCols);
                 if maybeIdx != null {
@@ -1818,7 +1818,7 @@ entity Executor {
         if isRange == false {
             // Check for BETWEEN (AND of two range conditions on same column)
             if e.op == OP_AND {
-                return canUseBetweenIndex(e, tableName);
+                return canUseBetweenIndex(e!, tableName);
             }
             return false;
         }

@@ -188,6 +188,139 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+//=============================================================================
+// Force-Unwrap Operator Tests
+//=============================================================================
+
+/// @brief Test that force-unwrap converts Optional[Entity] to Entity.
+TEST(ZiaForceUnwrap, ForceUnwrapEntity)
+{
+    const std::string src = R"(
+module Test;
+
+entity Person {
+    expose String name;
+}
+
+func start() {
+    Person? maybePerson = new Person("Alice");
+    Person person = maybePerson!;
+    Viper.Terminal.Say(person.name);
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = src, .path = "test.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for ForceUnwrapEntity:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Test that force-unwrap works in function call arguments.
+TEST(ZiaForceUnwrap, ForceUnwrapInCallArg)
+{
+    const std::string src = R"(
+module Test;
+
+entity Item {
+    expose String label;
+}
+
+func useItem(item: Item) {
+    Viper.Terminal.Say(item.label);
+}
+
+func start() {
+    Item? maybeItem = new Item("sword");
+    useItem(maybeItem!);
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = src, .path = "test.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for ForceUnwrapInCallArg:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Test that force-unwrap on non-optional produces an error.
+TEST(ZiaForceUnwrap, ForceUnwrapNonOptionalError)
+{
+    const std::string src = R"(
+module Test;
+
+func start() {
+    Integer x = 42;
+    var y = x!;
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = src, .path = "test.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    // Should fail — force-unwrapping a non-optional is an error
+    EXPECT_FALSE(result.succeeded());
+}
+
+/// @brief Test force-unwrap chains with field access.
+TEST(ZiaForceUnwrap, ForceUnwrapThenFieldAccess)
+{
+    const std::string src = R"(
+module Test;
+
+entity Node {
+    expose String value;
+}
+
+func start() {
+    Node? maybeNode = new Node("hello");
+    String val = maybeNode!.value;
+    Viper.Terminal.Say(val);
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = src, .path = "test.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for ForceUnwrapThenFieldAccess:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 int main(int argc, char **argv)

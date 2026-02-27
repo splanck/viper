@@ -56,14 +56,14 @@ func start() {
     b2.Put("c");
     b2.Put("d");
 
-    var merged = b1.Merge(b2);
+    var merged = b1.Union(b2);
     SayInt(merged.Len);          // 4 (a, b, c, d)
     SayBool(merged.Has("a"));    // 1
     SayBool(merged.Has("d"));    // 1
 
-    // --- Common (intersection) ---
-    Say("--- Common ---");
-    var common = b1.Common(b2);
+    // --- Intersect ---
+    Say("--- Intersect ---");
+    var common = b1.Intersect(b2);
     SayInt(common.Len);          // 2 (b, c)
     SayBool(common.Has("b"));    // 1
     SayBool(common.Has("c"));    // 1

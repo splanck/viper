@@ -25,6 +25,7 @@
 
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
+#include "frontends/zia/ZiaLocationScope.hpp"
 
 namespace il::frontends::zia
 {
@@ -49,6 +50,8 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
     struct DepthGuard { unsigned &d; ~DepthGuard() { --d; } } exprGuard_{exprLowerDepth_};
+
+    ZiaLocationScope locScope(*this, expr->loc);
 
     switch (expr->kind)
     {
@@ -111,6 +114,8 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
             return lowerIndex(static_cast<IndexExpr *>(expr));
         case ExprKind::Try:
             return lowerTry(static_cast<TryExpr *>(expr));
+        case ExprKind::ForceUnwrap:
+            return lowerForceUnwrap(static_cast<ForceUnwrapExpr *>(expr));
         case ExprKind::Lambda:
             return lowerLambda(static_cast<LambdaExpr *>(expr));
         case ExprKind::Tuple:
@@ -281,6 +286,7 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr)
     allocaInstr.op = Opcode::Alloca;
     allocaInstr.type = Type(Type::Kind::Ptr);
     allocaInstr.operands = {Value::constInt(8)};
+    allocaInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value resultSlot = Value::temp(allocaId);
 
@@ -309,6 +315,7 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr)
             storeInstr.op = Opcode::Store;
             storeInstr.type = ilResultType;
             storeInstr.operands = {resultSlot, thenValue};
+            storeInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(storeInstr);
         }
     }
@@ -333,6 +340,7 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr)
             storeInstr.op = Opcode::Store;
             storeInstr.type = ilResultType;
             storeInstr.operands = {resultSlot, elseValue};
+            storeInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(storeInstr);
         }
     }
@@ -348,6 +356,7 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr)
     loadInstr.op = Opcode::Load;
     loadInstr.type = ilResultType;
     loadInstr.operands = {resultSlot};
+    loadInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(loadInstr);
 
     return {Value::temp(loadId), ilResultType};
@@ -372,6 +381,7 @@ LowerResult Lowerer::lowerIfExpr(IfExpr *expr)
     allocaInstr.op = Opcode::Alloca;
     allocaInstr.type = Type(Type::Kind::Ptr);
     allocaInstr.operands = {Value::constInt(8)};
+    allocaInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value resultSlot = Value::temp(allocaId);
 
@@ -400,6 +410,7 @@ LowerResult Lowerer::lowerIfExpr(IfExpr *expr)
             storeInstr.op = Opcode::Store;
             storeInstr.type = ilResultType;
             storeInstr.operands = {resultSlot, thenValue};
+            storeInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(storeInstr);
         }
     }
@@ -424,6 +435,7 @@ LowerResult Lowerer::lowerIfExpr(IfExpr *expr)
             storeInstr.op = Opcode::Store;
             storeInstr.type = ilResultType;
             storeInstr.operands = {resultSlot, elseValue};
+            storeInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(storeInstr);
         }
     }
@@ -439,6 +451,7 @@ LowerResult Lowerer::lowerIfExpr(IfExpr *expr)
     loadInstr.op = Opcode::Load;
     loadInstr.type = ilResultType;
     loadInstr.operands = {resultSlot};
+    loadInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(loadInstr);
 
     return {Value::temp(loadId), ilResultType};

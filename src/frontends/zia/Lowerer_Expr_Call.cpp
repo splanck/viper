@@ -311,6 +311,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                             convInstr.op = Opcode::Sitofp;
                             convInstr.type = Type(Type::Kind::F64);
                             convInstr.operands = {argValue};
+                            convInstr.loc = curLoc_;
                             blockMgr_.currentBlock()->instructions.push_back(convInstr);
                             argValue = Value::temp(convId);
                         }
@@ -462,6 +463,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                     convInstr.op = Opcode::Sitofp;
                     convInstr.type = Type(Type::Kind::F64);
                     convInstr.operands = {argValue};
+                    convInstr.loc = curLoc_;
                     blockMgr_.currentBlock()->instructions.push_back(convInstr);
                     argValue = Value::temp(convId);
                 }
@@ -540,6 +542,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 loadInstr.op = Opcode::Load;
                 loadInstr.type = Type(Type::Kind::Ptr);
                 loadInstr.operands = {slotIt->second};
+                loadInstr.loc = curLoc_;
                 blockMgr_.currentBlock()->instructions.push_back(loadInstr);
                 funcPtr = Value::temp(loadId);
                 isIndirectCall = true;
@@ -655,6 +658,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 convInstr.op = Opcode::Sitofp;
                 convInstr.type = Type(Type::Kind::F64);
                 convInstr.operands = {argValue};
+                convInstr.loc = curLoc_;
                 blockMgr_.currentBlock()->instructions.push_back(convInstr);
                 argValue = Value::temp(convId);
             }

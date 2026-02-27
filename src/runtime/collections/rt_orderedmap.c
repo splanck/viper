@@ -273,7 +273,7 @@ int64_t rt_orderedmap_has(void *map, rt_string key)
 // Remove
 // ---------------------------------------------------------------------------
 
-int64_t rt_orderedmap_remove(void *map, rt_string key)
+int8_t rt_orderedmap_remove(void *map, rt_string key)
 {
     if (!map || !key)
         return 0;

@@ -12,6 +12,7 @@
 
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
+#include "frontends/zia/ZiaLocationScope.hpp"
 
 namespace il::frontends::zia
 {
@@ -37,6 +38,8 @@ void Lowerer::lowerStmt(Stmt *stmt)
         return;
     }
     struct DepthGuard { unsigned &d; ~DepthGuard() { --d; } } stmtGuard_{stmtLowerDepth_};
+
+    ZiaLocationScope locScope(*this, stmt->loc);
 
     switch (stmt->kind)
     {
@@ -804,6 +807,7 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
                 convInstr.op = Opcode::CastFpToSiRteChk;
                 convInstr.type = Type(Type::Kind::I64);
                 convInstr.operands = {returnValue};
+                convInstr.loc = curLoc_;
                 blockMgr_.currentBlock()->instructions.push_back(convInstr);
                 returnValue = Value::temp(convId);
             }
@@ -831,6 +835,7 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
                 convInstr.op = Opcode::Sitofp;
                 convInstr.type = Type(Type::Kind::F64);
                 convInstr.operands = {returnValue};
+                convInstr.loc = curLoc_;
                 blockMgr_.currentBlock()->instructions.push_back(convInstr);
                 returnValue = Value::temp(convId);
             }

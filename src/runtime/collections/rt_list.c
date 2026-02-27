@@ -647,7 +647,7 @@ void *rt_list_slice(void *list, int64_t start, int64_t end)
 /// list.Add("a")
 /// list.Add("b")
 /// list.Add("c")
-/// list.Flip()
+/// list.Reverse()
 /// ' list now contains ["c", "b", "a"]
 /// ```
 ///
@@ -655,7 +655,7 @@ void *rt_list_slice(void *list, int64_t start, int64_t end)
 ///
 /// @note O(n) time complexity.
 /// @note Thread safety: Not thread-safe.
-void rt_list_flip(void *list)
+void rt_list_reverse(void *list)
 {
     if (!list)
         return;

@@ -33,6 +33,7 @@
 #include "support/diag_expected.hpp"
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <limits>
 
@@ -117,5 +118,47 @@ std::string_view SourceManager::getPath(uint32_t file_id) const
     if (file_id == 0 || file_id > files_.size())
         return {};
     return files_[file_id - 1];
+}
+std::string_view SourceManager::getLine(uint32_t file_id, uint32_t line) const
+{
+    if (file_id == 0 || line == 0)
+        return {};
+
+    // Check cache first
+    auto it = lineCache_.find(file_id);
+    if (it == lineCache_.end())
+    {
+        // Load file from disk
+        auto path = getPath(file_id);
+        if (path.empty())
+            return {};
+
+        std::vector<std::string> lines;
+        std::filesystem::path fsPath;
+#if defined(__cpp_char8_t)
+        const auto *raw = reinterpret_cast<const char8_t *>(path.data());
+        const std::u8string u8Path(raw, raw + path.size());
+        fsPath = std::filesystem::path(u8Path);
+#else
+        fsPath = std::filesystem::path(std::string(path));
+#endif
+        std::ifstream f(fsPath);
+        if (!f)
+        {
+            // Cache empty vector to avoid repeated I/O attempts
+            lineCache_.emplace(file_id, std::vector<std::string>{});
+            return {};
+        }
+        std::string buf;
+        while (std::getline(f, buf))
+            lines.push_back(buf);
+
+        it = lineCache_.emplace(file_id, std::move(lines)).first;
+    }
+
+    const auto &lines = it->second;
+    if (line > lines.size())
+        return {};
+    return lines[line - 1];
 }
 } // namespace il::support

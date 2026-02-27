@@ -134,7 +134,7 @@ extern "C"
     /// @details Swaps elements from both ends toward the center. Supports common
     ///          list transformation without creating a new list.
     /// @param list Opaque List object pointer.
-    void rt_list_flip(void *list);
+    void rt_list_reverse(void *list);
 
     /// @brief Get the first element in the list.
     /// @details Convenience method for the common head/first access pattern.

@@ -27,6 +27,7 @@
 #include "il/core/OpcodeInfo.hpp"
 #include "vm/VM.hpp"
 #include <algorithm>
+#include <iostream>
 #include <string>
 
 namespace il::vm
@@ -157,6 +158,61 @@ std::string VM::recordTrap(const VmError &error, const FrameInfo &frame)
         runtimeContext.message.clear();
     }
     return lastTrap.message;
+}
+
+std::vector<FrameInfo> VM::buildBacktrace() const
+{
+    std::vector<FrameInfo> frames;
+    frames.reserve(execStack.size());
+
+    // Walk from top (most recent) to bottom (oldest)
+    for (auto it = execStack.rbegin(); it != execStack.rend(); ++it)
+    {
+        const auto *es = *it;
+        if (!es)
+            continue;
+
+        FrameInfo frame{};
+
+        if (es->fr.func)
+            frame.function = es->fr.func->name;
+
+        if (es->bb)
+        {
+            frame.block = es->bb->label;
+            frame.ip = es->ip;
+
+            if (es->ip < es->bb->instructions.size())
+            {
+                const auto &instr = es->bb->instructions[es->ip];
+                if (instr.loc.hasLine())
+                    frame.line = static_cast<int32_t>(instr.loc.line);
+            }
+        }
+
+        frame.handlerInstalled = !es->fr.ehStack.empty();
+        frames.push_back(std::move(frame));
+    }
+
+    return frames;
+}
+
+void VM::printBacktrace(const std::vector<FrameInfo> &frames)
+{
+    if (frames.empty())
+        return;
+
+    std::cerr << "Viper backtrace (most recent call first):\n";
+    for (size_t i = 0; i < frames.size(); ++i)
+    {
+        const auto &f = frames[i];
+        std::cerr << "  #" << i << "  @" << (f.function.empty() ? "<unknown>" : f.function);
+        if (!f.block.empty())
+            std::cerr << "  " << f.block << "#" << f.ip;
+        if (f.line >= 0)
+            std::cerr << "  line " << f.line;
+        std::cerr << '\n';
+    }
 }
 
 } // namespace il::vm

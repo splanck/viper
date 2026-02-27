@@ -65,12 +65,12 @@ func start() {
     s2.Add(z);
     s2.Add(w);
 
-    var merged = s1.Merge(s2);
+    var merged = s1.Union(s2);
     SayInt(merged.Len);   // 4 (x, y, z, w)
 
-    // --- Common (intersection) ---
-    Say("--- Common ---");
-    var common = s1.Common(s2);
+    // --- Intersect ---
+    Say("--- Intersect ---");
+    var common = s1.Intersect(s2);
     SayInt(common.Len);   // 2 (y, z)
 
     // --- Diff ---

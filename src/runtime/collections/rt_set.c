@@ -271,7 +271,7 @@ void *rt_set_items(void *obj)
     return seq;
 }
 
-void *rt_set_merge(void *obj, void *other)
+void *rt_set_union(void *obj, void *other)
 {
     void *result = rt_set_new();
     if (!result)
@@ -306,7 +306,7 @@ void *rt_set_merge(void *obj, void *other)
     return result;
 }
 
-void *rt_set_common(void *obj, void *other)
+void *rt_set_intersect(void *obj, void *other)
 {
     void *result = rt_set_new();
     if (!result)

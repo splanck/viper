@@ -228,6 +228,10 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
 
 endif () # ARM64 processor tests
 
+# ── Conformance test suite (arithmetic semantics, cross-layer equivalence) ──
+# Must appear after _aarch64_add_test_common macro definition above.
+add_subdirectory(conformance)
+
 # ── Tests that exercise both AArch64 and x86-64 codegen but do not execute
 # generated machine code — run on all platforms. ─────────────────────────────
 
@@ -473,6 +477,8 @@ foreach (TEST_NAME IN LISTS ALL_TESTS)
         set_tests_properties(${TEST_NAME} PROPERTIES LABELS perf)
     elseif (TEST_NAME MATCHES "^test_cli_" OR TEST_NAME MATCHES "^NoAssertFalseGuard$" OR TEST_NAME MATCHES "^test_tools_")
         set_tests_properties(${TEST_NAME} PROPERTIES LABELS tools)
+    elseif (TEST_NAME MATCHES "^test_shift_conformance$" OR TEST_NAME MATCHES "^test_subwidth_arith$" OR TEST_NAME MATCHES "^test_crosslayer_arith$" OR TEST_NAME MATCHES "^test_zia_arith_conformance$" OR TEST_NAME MATCHES "^basic_arith_")
+        set_tests_properties(${TEST_NAME} PROPERTIES LABELS conformance)
     elseif (TEST_NAME MATCHES "^test_analysis_" OR TEST_NAME MATCHES "^test_irbuilder_")
         set_tests_properties(${TEST_NAME} PROPERTIES LABELS il)
     elseif (TEST_NAME MATCHES "^test_support$" OR TEST_NAME MATCHES "^test_run_" OR TEST_NAME MATCHES "^test_expected_" OR TEST_NAME MATCHES "^test_ident_" OR TEST_NAME MATCHES "^test_path_" OR TEST_NAME MATCHES "^test_integer_" OR TEST_NAME MATCHES "^test_catalog_" OR TEST_NAME MATCHES "^test_window$" OR TEST_NAME MATCHES "^test_pixels$" OR TEST_NAME MATCHES "^test_drawing$" OR TEST_NAME MATCHES "^test_input$")

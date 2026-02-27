@@ -123,10 +123,10 @@ These errors happen at the character level—the lexer can't even figure out wha
 You can see the tokens for any Viper program:
 
 ```bash
-zia --dump-tokens myprogram.zia
+viper run --dump-tokens myprogram.zia
 ```
 
-This is useful when debugging mysterious syntax errors. Sometimes what looks correct to your eye isn't what the lexer sees.
+This prints every token with its location, kind, and text to stderr—useful when debugging mysterious syntax errors. Sometimes what looks correct to your eye isn't what the lexer sees.
 
 ---
 
@@ -203,10 +203,10 @@ These errors involve tokens that don't fit together properly. Each token might b
 ### Viewing the AST
 
 ```bash
-zia --dump-ast myprogram.zia
+viper run --dump-ast myprogram.zia
 ```
 
-The AST shows exactly how the parser interpreted your code's structure.
+The AST shows exactly how the parser interpreted your code's structure. You can also use `--dump-sema-ast` to see the AST after semantic analysis, which shows what the type checker annotated or transformed.
 
 ---
 
@@ -1157,7 +1157,7 @@ func version2(n: Integer) -> Integer {
     return (n * (n - 1)) / 2;
 }
 ```
-Both compute the sum 0 + 1 + 2 + ... + (n-1). Use `--dump-il` to see how different they are. Which would be faster for large `n`? Why?
+Both compute the sum 0 + 1 + 2 + ... + (n-1). Use `--dump-il` to see how different they are. Then try `--dump-il-opt` with `-O1` to see how the optimizer transforms each version. Which would be faster for large `n`? Why?
 
 **Exercise 25.8 (Challenge) - Recursive IL Tracing**
 Trace the complete IL execution of:

@@ -173,6 +173,13 @@ enum class ExprKind
     /// @see TryExpr
     Try,
 
+    /// @brief Force-unwrap expression: `expr!` - asserts non-null, traps if null.
+    /// @details Converts an Optional[T] to T. If the value is null at runtime,
+    /// the program traps (aborts). Use when you have already guarded against null
+    /// or are certain the value is non-null.
+    /// @see ForceUnwrapExpr
+    ForceUnwrap,
+
     /// @}
     // =========================================================================
     /// @name Construction Expressions
@@ -776,6 +783,29 @@ struct TryExpr : Expr
     /// @param l Source location.
     /// @param e The operand expression.
     TryExpr(SourceLoc l, ExprPtr e) : Expr(ExprKind::Try, l), operand(std::move(e)) {}
+};
+
+/// @brief Force-unwrap expression: `expr!`.
+/// @details Converts an Optional[T] to T. If the value is null at runtime,
+/// the program traps (aborts). Use when you have already guarded against null
+/// or are certain the value is non-null.
+///
+/// ## Example
+/// ```
+/// var page = pool.fetchPage(id)!;  // Traps if null
+/// ```
+struct ForceUnwrapExpr : Expr
+{
+    /// @brief The expression to force-unwrap (must be Optional type).
+    ExprPtr operand;
+
+    /// @brief Construct a force-unwrap expression.
+    /// @param l Source location.
+    /// @param e The operand expression.
+    ForceUnwrapExpr(SourceLoc l, ExprPtr e)
+        : Expr(ExprKind::ForceUnwrap, l), operand(std::move(e))
+    {
+    }
 };
 
 /// @brief Object instantiation expression: `new Foo(args)`.

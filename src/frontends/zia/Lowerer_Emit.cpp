@@ -56,6 +56,7 @@ Lowerer::Value Lowerer::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
     instr.op = op;
     instr.type = ty;
     instr.operands = {lhs, rhs};
+    instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(instr);
     return Value::temp(id);
 }
@@ -68,6 +69,7 @@ Lowerer::Value Lowerer::emitUnary(Opcode op, Type ty, Value operand)
     instr.op = op;
     instr.type = ty;
     instr.operands = {operand};
+    instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(instr);
     return Value::temp(id);
 }
@@ -82,6 +84,7 @@ Lowerer::Value Lowerer::widenByteToInteger(Value value)
     allocaInstr.op = Opcode::Alloca;
     allocaInstr.type = Type(Type::Kind::Ptr);
     allocaInstr.operands = {Value::constInt(8)}; // 8 bytes for i64
+    allocaInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value slot = Value::temp(slotId);
 
@@ -106,6 +109,7 @@ Lowerer::Value Lowerer::emitCallRet(Type retTy,
     instr.type = retTy;
     instr.callee = callee;
     instr.operands = args;
+    instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(instr);
     return Value::temp(id);
 }
@@ -118,6 +122,7 @@ void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args
     instr.type = Type(Type::Kind::Void);
     instr.callee = callee;
     instr.operands = args;
+    instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(instr);
 }
 
@@ -132,6 +137,7 @@ void Lowerer::emitCallIndirect(Value funcPtr, const std::vector<Value> &args)
     {
         instr.operands.push_back(arg);
     }
+    instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(instr);
 }
 
@@ -150,6 +156,7 @@ Lowerer::Value Lowerer::emitCallIndirectRet(Type retTy,
     {
         instr.operands.push_back(arg);
     }
+    instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(instr);
     return Value::temp(id);
 }
@@ -194,6 +201,7 @@ void Lowerer::emitBr(size_t targetIdx)
     instr.type = Type(Type::Kind::Void);
     instr.labels.push_back(currentFunc_->blocks[targetIdx].label);
     instr.brArgs.push_back({});
+    instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(std::move(instr));
     blockMgr_.currentBlock()->terminated = true;
 }
@@ -209,6 +217,7 @@ void Lowerer::emitCBr(Value cond, size_t trueIdx, size_t falseIdx)
     instr.labels.push_back(currentFunc_->blocks[falseIdx].label);
     instr.brArgs.push_back({});
     instr.brArgs.push_back({});
+    instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(std::move(instr));
     blockMgr_.currentBlock()->terminated = true;
 }
@@ -220,6 +229,7 @@ void Lowerer::emitRet(Value val)
     instr.op = Opcode::Ret;
     instr.type = Type(Type::Kind::Void);
     instr.operands.push_back(val);
+    instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(std::move(instr));
     blockMgr_.currentBlock()->terminated = true;
 }
@@ -230,13 +240,14 @@ void Lowerer::emitRetVoid()
     il::core::Instr instr;
     instr.op = Opcode::Ret;
     instr.type = Type(Type::Kind::Void);
+    instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(std::move(instr));
     blockMgr_.currentBlock()->terminated = true;
 }
 
 Lowerer::Value Lowerer::emitConstStr(const std::string &globalName)
 {
-    return builder_->emitConstStr(globalName, il::support::SourceLoc{});
+    return builder_->emitConstStr(globalName, curLoc_);
 }
 
 unsigned Lowerer::nextTempId()
@@ -398,6 +409,7 @@ Lowerer::Value Lowerer::emitGEP(Value ptr, int64_t offset)
     gepInstr.op = Opcode::GEP;
     gepInstr.type = Type(Type::Kind::Ptr);
     gepInstr.operands = {ptr, Value::constInt(offset)};
+    gepInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(std::move(gepInstr));
     return Value::temp(gepId);
 }
@@ -410,6 +422,7 @@ Lowerer::Value Lowerer::emitLoad(Value ptr, Type type)
     loadInstr.op = Opcode::Load;
     loadInstr.type = type;
     loadInstr.operands = {ptr};
+    loadInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(std::move(loadInstr));
     return Value::temp(loadId);
 }
@@ -420,6 +433,7 @@ void Lowerer::emitStore(Value ptr, Value val, Type type)
     storeInstr.op = Opcode::Store;
     storeInstr.type = type;
     storeInstr.operands = {ptr, val};
+    storeInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(std::move(storeInstr));
 }
 
@@ -449,6 +463,7 @@ Lowerer::Value Lowerer::emitValueTypeCopy(const ValueTypeInfo &info, Value sourc
     allocaInstr.op = Opcode::Alloca;
     allocaInstr.type = Type(Type::Kind::Ptr);
     allocaInstr.operands = {Value::constInt(static_cast<int64_t>(info.totalSize))};
+    allocaInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value destPtr = Value::temp(allocaId);
 
@@ -471,6 +486,7 @@ Lowerer::Value Lowerer::emitValueTypeAlloc(const ValueTypeInfo &info)
     allocaInstr.op = Opcode::Alloca;
     allocaInstr.type = Type(Type::Kind::Ptr);
     allocaInstr.operands = {Value::constInt(static_cast<int64_t>(info.totalSize))};
+    allocaInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value destPtr = Value::temp(allocaId);
 
@@ -632,6 +648,7 @@ Lowerer::Value Lowerer::createSlot(const std::string &name, Type type)
     allocaInstr.op = Opcode::Alloca;
     allocaInstr.type = Type(Type::Kind::Ptr);
     allocaInstr.operands = {Value::constInt(8)}; // 8 bytes for i64/f64/ptr
+    allocaInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
 
     Value slot = Value::temp(allocaId);
@@ -649,6 +666,7 @@ void Lowerer::storeToSlot(const std::string &name, Value value, Type type)
     storeInstr.op = Opcode::Store;
     storeInstr.type = type;
     storeInstr.operands = {it->second, value};
+    storeInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(storeInstr);
 }
 
@@ -664,6 +682,7 @@ Lowerer::Value Lowerer::loadFromSlot(const std::string &name, Type type)
     loadInstr.op = Opcode::Load;
     loadInstr.type = type;
     loadInstr.operands = {it->second};
+    loadInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(loadInstr);
 
     return Value::temp(loadId);

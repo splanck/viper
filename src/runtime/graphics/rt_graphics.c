@@ -2523,14 +2523,14 @@ void rt_canvas_set_fps(void *canvas_ptr, int64_t fps)
         vgfx_set_fps(canvas->gfx_win, (int32_t)fps);
 }
 
-int64_t rt_canvas_is_maximized(void *canvas_ptr)
+int8_t rt_canvas_is_maximized(void *canvas_ptr)
 {
     if (!canvas_ptr)
         return 0;
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return 0;
-    return (int64_t)vgfx_is_maximized(canvas->gfx_win);
+    return (int8_t)vgfx_is_maximized(canvas->gfx_win);
 }
 
 void rt_canvas_maximize(void *canvas_ptr)
@@ -2542,14 +2542,14 @@ void rt_canvas_maximize(void *canvas_ptr)
         vgfx_maximize(canvas->gfx_win);
 }
 
-int64_t rt_canvas_is_minimized(void *canvas_ptr)
+int8_t rt_canvas_is_minimized(void *canvas_ptr)
 {
     if (!canvas_ptr)
         return 0;
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return 0;
-    return (int64_t)vgfx_is_minimized(canvas->gfx_win);
+    return (int8_t)vgfx_is_minimized(canvas->gfx_win);
 }
 
 void rt_canvas_minimize(void *canvas_ptr)
@@ -2570,14 +2570,14 @@ void rt_canvas_restore(void *canvas_ptr)
         vgfx_restore(canvas->gfx_win);
 }
 
-int64_t rt_canvas_is_focused(void *canvas_ptr)
+int8_t rt_canvas_is_focused(void *canvas_ptr)
 {
     if (!canvas_ptr)
         return 0;
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return 0;
-    return (int64_t)vgfx_is_focused(canvas->gfx_win);
+    return (int8_t)vgfx_is_focused(canvas->gfx_win);
 }
 
 void rt_canvas_focus(void *canvas_ptr)
@@ -3282,7 +3282,7 @@ void rt_canvas_set_fps(void *canvas, int64_t fps)
     (void)fps;
 }
 
-int64_t rt_canvas_is_maximized(void *canvas)
+int8_t rt_canvas_is_maximized(void *canvas)
 {
     (void)canvas;
     return 0;
@@ -3293,7 +3293,7 @@ void rt_canvas_maximize(void *canvas)
     (void)canvas;
 }
 
-int64_t rt_canvas_is_minimized(void *canvas)
+int8_t rt_canvas_is_minimized(void *canvas)
 {
     (void)canvas;
     return 0;
@@ -3309,7 +3309,7 @@ void rt_canvas_restore(void *canvas)
     (void)canvas;
 }
 
-int64_t rt_canvas_is_focused(void *canvas)
+int8_t rt_canvas_is_focused(void *canvas)
 {
     (void)canvas;
     return 0;
