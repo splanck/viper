@@ -1,0 +1,244 @@
+// test_adversarial_fixes.zia — Regression Tests for BUG-ADV-002 through 010
+// Part of ViperSQL
+//
+// Tests the fixes for bugs found during adversarial testing (2026-02-28):
+//   BUG-ADV-002: Unmatched closing parens not detected
+//   BUG-ADV-003: Unclosed string literal not detected
+//   BUG-ADV-004: Nonexistent columns silently succeed
+//   BUG-ADV-005: FK referencing nonexistent table succeeds
+//   BUG-ADV-006: ORDER BY nonexistent column succeeds
+//   BUG-ADV-007: INSERT value count mismatch silently succeeds
+//   BUG-ADV-008: Ambiguous column in JOINs resolves to first match
+//   BUG-ADV-009: Scalar subquery returning >1 row returns first
+//   BUG-ADV-010: Stale hasEvalError from prior statement
+//
+// See: demos/zia/sqldb/PLATFORM_BUGS_20260228.md
+
+module test_adversarial_fixes;
+
+bind Terminal = Viper.Terminal;
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
+
+bind "./test_common";
+bind "../executor";
+bind "../types";
+
+func main() -> Integer {
+    Terminal.Say("=== Adversarial Bug Fix Regression Tests ===");
+
+    var exec = new Executor();
+    exec.init();
+
+    //=========================================================================
+    // BUG-ADV-002: Unmatched closing parens not detected
+    //=========================================================================
+    section("BUG-ADV-002: Trailing Token Detection");
+
+    // Trailing paren after SELECT
+    var r = exec.executeSql("SELECT 1)");
+    assertFailure(r, "ADV-002a: SELECT with trailing ')'");
+
+    // Trailing paren after INSERT
+    assertSuccess(exec.executeSql("CREATE TABLE adv002 (id INTEGER, name TEXT)"), "ADV-002 setup");
+    r = exec.executeSql("INSERT INTO adv002 VALUES (1, 'Alice'))");
+    assertFailure(r, "ADV-002b: INSERT with trailing ')'");
+
+    // Trailing word after DELETE
+    r = exec.executeSql("DELETE FROM adv002 WHERE id = 1 EXTRA");
+    assertFailure(r, "ADV-002c: DELETE with trailing token");
+
+    // Trailing paren after UPDATE
+    r = exec.executeSql("UPDATE adv002 SET name = 'Bob' WHERE id = 1)");
+    assertFailure(r, "ADV-002d: UPDATE with trailing ')'");
+
+    // Valid SQL should still work
+    r = exec.executeSql("INSERT INTO adv002 VALUES (2, 'Charlie')");
+    assertSuccess(r, "ADV-002e: valid INSERT still works");
+
+    r = exec.executeSql("SELECT * FROM adv002");
+    assertSuccess(r, "ADV-002f: valid SELECT still works");
+
+    //=========================================================================
+    // BUG-ADV-003: Unclosed string literal not detected
+    //=========================================================================
+    section("BUG-ADV-003: Unclosed String Literal Detection");
+
+    // Unclosed single-quoted string in SELECT
+    r = exec.executeSql("SELECT 'unclosed string");
+    assertFailure(r, "ADV-003a: SELECT with unclosed string");
+
+    // Unclosed string in INSERT value
+    r = exec.executeSql("INSERT INTO adv002 VALUES (3, 'no closing quote)");
+    assertFailure(r, "ADV-003b: INSERT with unclosed string");
+
+    // Unclosed string in WHERE clause
+    r = exec.executeSql("SELECT * FROM adv002 WHERE name = 'test");
+    assertFailure(r, "ADV-003c: WHERE with unclosed string");
+
+    // Properly closed string should still work
+    r = exec.executeSql("SELECT 'hello world'");
+    assertSuccess(r, "ADV-003d: valid string literal still works");
+
+    //=========================================================================
+    // BUG-ADV-004: Nonexistent columns silently succeed
+    //=========================================================================
+    section("BUG-ADV-004: Nonexistent Column Error Reporting");
+
+    // Setup table
+    assertSuccess(exec.executeSql("CREATE TABLE adv004 (id INTEGER, name TEXT, age INTEGER)"), "ADV-004 setup");
+    assertSuccess(exec.executeSql("INSERT INTO adv004 VALUES (1, 'Alice', 30)"), "ADV-004 insert 1");
+    assertSuccess(exec.executeSql("INSERT INTO adv004 VALUES (2, 'Bob', 25)"), "ADV-004 insert 2");
+
+    // SELECT nonexistent column
+    r = exec.executeSql("SELECT nonexistent FROM adv004");
+    assertFailure(r, "ADV-004a: SELECT nonexistent column");
+
+    // SELECT with mix of valid and invalid columns
+    r = exec.executeSql("SELECT id, ghost FROM adv004");
+    assertFailure(r, "ADV-004b: SELECT mix valid+invalid columns");
+
+    // WHERE with nonexistent column
+    r = exec.executeSql("SELECT * FROM adv004 WHERE phantom = 1");
+    assertFailure(r, "ADV-004c: WHERE with nonexistent column");
+
+    // UPDATE SET nonexistent column
+    r = exec.executeSql("UPDATE adv004 SET missing_col = 'x' WHERE id = 1");
+    assertFailure(r, "ADV-004d: UPDATE SET nonexistent column");
+
+    // Valid column access should still work
+    r = exec.executeSql("SELECT id, name FROM adv004 WHERE age > 20");
+    assertSuccess(r, "ADV-004e: valid column access still works");
+    assertRowCount(r, 2, "ADV-004f: valid query returns correct rows");
+
+    //=========================================================================
+    // BUG-ADV-005: FK referencing nonexistent table succeeds
+    //=========================================================================
+    section("BUG-ADV-005: FK Validation at CREATE TABLE");
+
+    // FK referencing nonexistent table
+    r = exec.executeSql("CREATE TABLE child005a (id INTEGER, ref_id INTEGER REFERENCES ghost_table(id))");
+    assertFailure(r, "ADV-005a: FK to nonexistent table");
+
+    // FK referencing nonexistent column in existing table
+    assertSuccess(exec.executeSql("CREATE TABLE parent005 (id INTEGER PRIMARY KEY, name TEXT)"), "ADV-005 parent setup");
+    r = exec.executeSql("CREATE TABLE child005b (id INTEGER, ref_id INTEGER REFERENCES parent005(nonexistent))");
+    assertFailure(r, "ADV-005b: FK to nonexistent column");
+
+    // Valid FK should still work
+    r = exec.executeSql("CREATE TABLE child005c (id INTEGER, ref_id INTEGER REFERENCES parent005(id))");
+    assertSuccess(r, "ADV-005c: valid FK still works");
+
+    // FK table and column both valid
+    r = exec.executeSql("INSERT INTO parent005 VALUES (1, 'Alice')");
+    assertSuccess(r, "ADV-005d: insert into parent");
+    r = exec.executeSql("INSERT INTO child005c VALUES (1, 1)");
+    assertSuccess(r, "ADV-005e: insert valid FK reference");
+
+    //=========================================================================
+    // BUG-ADV-006: ORDER BY nonexistent column succeeds
+    //=========================================================================
+    section("BUG-ADV-006: ORDER BY Nonexistent Column");
+
+    assertSuccess(exec.executeSql("CREATE TABLE adv006 (id INTEGER, name TEXT)"), "ADV-006 setup");
+    assertSuccess(exec.executeSql("INSERT INTO adv006 VALUES (1, 'Alice')"), "ADV-006 insert");
+
+    r = exec.executeSql("SELECT * FROM adv006 ORDER BY phantom");
+    assertFailure(r, "ADV-006a: ORDER BY nonexistent column");
+
+    // Valid ORDER BY should still work
+    r = exec.executeSql("SELECT * FROM adv006 ORDER BY name");
+    assertSuccess(r, "ADV-006b: valid ORDER BY still works");
+
+    //=========================================================================
+    // BUG-ADV-007: INSERT value count mismatch silently succeeds
+    //=========================================================================
+    section("BUG-ADV-007: INSERT Value Count Validation");
+
+    assertSuccess(exec.executeSql("CREATE TABLE adv007 (id INTEGER, name TEXT, age INTEGER)"), "ADV-007 setup");
+
+    // Too few values
+    r = exec.executeSql("INSERT INTO adv007 VALUES (1, 'Alice')");
+    assertFailure(r, "ADV-007a: too few values");
+
+    // Correct value count
+    r = exec.executeSql("INSERT INTO adv007 VALUES (1, 'Alice', 30)");
+    assertSuccess(r, "ADV-007b: correct value count works");
+
+    // Multi-row with mismatched counts
+    r = exec.executeSql("INSERT INTO adv007 VALUES (2, 'Bob', 25), (3, 'Charlie')");
+    assertFailure(r, "ADV-007c: multi-row mismatch");
+
+    //=========================================================================
+    // BUG-ADV-008: Ambiguous column in JOINs silently resolves to first
+    //=========================================================================
+    section("BUG-ADV-008: Ambiguous Column Detection in JOINs");
+
+    assertSuccess(exec.executeSql("CREATE TABLE adv008a (id INTEGER, val TEXT)"), "ADV-008 setup a");
+    assertSuccess(exec.executeSql("CREATE TABLE adv008b (id INTEGER, val TEXT)"), "ADV-008 setup b");
+    assertSuccess(exec.executeSql("INSERT INTO adv008a VALUES (1, 'a')"), "ADV-008 insert a");
+    assertSuccess(exec.executeSql("INSERT INTO adv008b VALUES (1, 'b')"), "ADV-008 insert b");
+
+    // Ambiguous 'id' in projection
+    r = exec.executeSql("SELECT id FROM adv008a JOIN adv008b ON adv008a.id = adv008b.id");
+    assertFailure(r, "ADV-008a: ambiguous column in SELECT");
+
+    // Ambiguous 'val' in WHERE
+    r = exec.executeSql("SELECT * FROM adv008a JOIN adv008b ON adv008a.id = adv008b.id WHERE val = 'a'");
+    assertFailure(r, "ADV-008b: ambiguous column in WHERE");
+
+    // Qualified names should work
+    r = exec.executeSql("SELECT adv008a.id, adv008b.val FROM adv008a JOIN adv008b ON adv008a.id = adv008b.id");
+    assertSuccess(r, "ADV-008c: qualified names work");
+
+    // Ambiguous in ORDER BY
+    r = exec.executeSql("SELECT * FROM adv008a JOIN adv008b ON adv008a.id = adv008b.id ORDER BY id");
+    assertFailure(r, "ADV-008d: ambiguous column in ORDER BY");
+
+    //=========================================================================
+    // BUG-ADV-009: Scalar subquery returning >1 row silently returns first
+    //=========================================================================
+    section("BUG-ADV-009: Scalar Subquery Row Count Validation");
+
+    assertSuccess(exec.executeSql("CREATE TABLE adv009 (n INTEGER)"), "ADV-009 setup");
+    assertSuccess(exec.executeSql("INSERT INTO adv009 VALUES (1), (2), (3)"), "ADV-009 insert");
+
+    // Scalar subquery returning multiple rows should fail
+    r = exec.executeSql("SELECT (SELECT n FROM adv009) AS bad_scalar");
+    assertFailure(r, "ADV-009a: scalar subquery with >1 row");
+
+    // Scalar subquery returning 1 row should succeed
+    r = exec.executeSql("SELECT (SELECT n FROM adv009 WHERE n = 2) AS good_scalar");
+    assertSuccess(r, "ADV-009b: scalar subquery with 1 row works");
+
+    // Scalar subquery returning 0 rows should return NULL
+    r = exec.executeSql("SELECT (SELECT n FROM adv009 WHERE n > 100) AS empty_scalar");
+    assertSuccess(r, "ADV-009c: scalar subquery with 0 rows returns NULL");
+
+    //=========================================================================
+    // BUG-ADV-010: Stale hasEvalError from prior statement
+    //=========================================================================
+    section("BUG-ADV-010: Eval Error State Cleared Between Statements");
+
+    assertSuccess(exec.executeSql("CREATE TABLE adv010 (id INTEGER, name TEXT)"), "ADV-010 setup");
+    assertSuccess(exec.executeSql("INSERT INTO adv010 VALUES (1, 'Alice')"), "ADV-010 insert");
+
+    // Trigger an eval error (nonexistent column)
+    r = exec.executeSql("SELECT phantom FROM adv010");
+    assertFailure(r, "ADV-010a: first query fails as expected");
+
+    // Subsequent query should NOT be poisoned by prior error
+    r = exec.executeSql("SELECT * FROM adv010");
+    assertSuccess(r, "ADV-010b: next query not poisoned by prior error");
+    assertRowCount(r, 1, "ADV-010c: correct row count after recovery");
+
+    //=========================================================================
+    // Results
+    //=========================================================================
+    printResults();
+
+    if failed > 0 {
+        return 1;
+    }
+    return 0;
+}

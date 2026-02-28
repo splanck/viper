@@ -196,4 +196,9 @@ function(viper_add_zia_tests)
     viper_add_test(test_zia_iface_dispatch ${_VIPER_ZIA_DIR}/test_zia_iface_dispatch.cpp)
     target_link_libraries(test_zia_iface_dispatch PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_iface_dispatch test_zia_iface_dispatch)
+
+    # BUG-ADV-001: Entity string field loads must emit rt_str_retain_maybe
+    viper_add_test(test_zia_entity_string_field ${_VIPER_ZIA_DIR}/test_zia_entity_string_field.cpp)
+    target_link_libraries(test_zia_entity_string_field PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_entity_string_field test_zia_entity_string_field)
 endfunction()

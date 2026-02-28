@@ -255,13 +255,38 @@ entity JoinEngine {
     hide func findJoinColumnValue(tableName: String, columnName: String,
                                    tables: List[Table], aliases: List[String],
                                    combinedRow: Row, colOffsets: List[Integer]) -> SqlValue {
+        // Unqualified column: check for ambiguity across all joined tables
+        if tableName == "" {
+            var foundCount = 0;
+            var foundOffset = 0;
+            var foundColIdx = 0;
+            var ti = 0;
+            while ti < tables.count() {
+                var tbl = tables.get(ti);
+                var colIdx = tbl.findColumnIndex(columnName);
+                if colIdx >= 0 {
+                    foundCount = foundCount + 1;
+                    foundOffset = colOffsets.get(ti);
+                    foundColIdx = colIdx;
+                }
+                ti = ti + 1;
+            }
+            if foundCount > 1 {
+                exec.hasEvalError = 1;
+                exec.evalError = "Column '" + columnName + "' is ambiguous";
+                return sqlNull();
+            }
+            if foundCount == 1 {
+                return combinedRow.getValue(foundOffset + foundColIdx);
+            }
+            return sqlNull();
+        }
+        // Qualified column: search by table name or alias
         var ti = 0;
         while ti < tables.count() {
             var tbl = tables.get(ti);
             var alias = aliases.get(ti);
-
-            // Check if this table matches the requested table name or alias
-            if tableName == alias || tableName == tbl.name || tableName == "" {
+            if tableName == alias || tableName == tbl.name {
                 var colIdx = tbl.findColumnIndex(columnName);
                 if colIdx >= 0 {
                     var offset = colOffsets.get(ti);
@@ -969,6 +994,13 @@ entity JoinEngine {
                             var includeRow = true;
                             if hasJoinCond && (joinType == 1 || joinType == 2 || joinType == 3 || joinType == 4) {
                                 var joinResult = evalJoinExpr(joinCond, tables, aliases, newRow, colOffsets);
+                                // Check for ambiguous column errors in JOIN ON
+                                if exec.hasEvalError == 1 {
+                                    result.setError(exec.evalError);
+                                    exec.hasEvalError = 0;
+                                    exec.evalError = "";
+                                    return result;
+                                }
                                 if joinResult.intValue == 0 {
                                     includeRow = false;
                                 }
@@ -1061,6 +1093,13 @@ entity JoinEngine {
             if stmt.whereClause != null {
                 var wc = stmt.whereClause;
                 var whereResult = evalJoinExpr(wc!, tables, aliases, row, colOffsets);
+                // Check for ambiguous column errors in WHERE
+                if exec.hasEvalError == 1 {
+                    result.setError(exec.evalError);
+                    exec.hasEvalError = 0;
+                    exec.evalError = "";
+                    return result;
+                }
                 if whereResult.intValue == 0 {
                     includeRow = false;
                 }
@@ -1070,6 +1109,30 @@ entity JoinEngine {
                 filteredRows.add(row);
             }
             ri = ri + 1;
+        }
+
+        // Pre-validate column expressions for ambiguity (even if 0 rows)
+        if stmt.selectAll == false {
+            var vc = 0;
+            while vc < stmt.columns.count() {
+                var vcExpr = stmt.columns.get(vc);
+                if vcExpr.kind == EXPR_COLUMN && vcExpr.tableName == "" {
+                    // Count how many tables have this column
+                    var vcCount = 0;
+                    var vci = 0;
+                    while vci < tables.count() {
+                        if tables.get(vci).findColumnIndex(vcExpr.columnName) >= 0 {
+                            vcCount = vcCount + 1;
+                        }
+                        vci = vci + 1;
+                    }
+                    if vcCount > 1 {
+                        result.setError("Column '" + vcExpr.columnName + "' is ambiguous");
+                        return result;
+                    }
+                }
+                vc = vc + 1;
+            }
         }
 
         // Check for GROUP BY / aggregates on JOIN results
@@ -1097,6 +1160,14 @@ entity JoinEngine {
                     while c < stmt.columns.count() {
                         var colExpr = stmt.columns.get(c);
                         var val = evalJoinExpr(colExpr, tables, aliases, combinedRow, colOffsets);
+                        // Check for ambiguous column errors in projection
+                        if exec.hasEvalError == 1 {
+                            result.init();
+                            result.setError(exec.evalError);
+                            exec.hasEvalError = 0;
+                            exec.evalError = "";
+                            return result;
+                        }
                         resultRow.addValue(exec.cloneValue(val));
                         c = c + 1;
                     }
@@ -1115,6 +1186,14 @@ entity JoinEngine {
         // Apply ORDER BY on JOIN results
         if stmt.orderByExprs.count() > 0 {
             sortJoinResults(result, stmt);
+            // Check for ambiguous column errors in ORDER BY
+            if exec.hasEvalError == 1 {
+                result.init();
+                result.setError(exec.evalError);
+                exec.hasEvalError = 0;
+                exec.evalError = "";
+                return result;
+            }
         }
 
         // Apply DISTINCT ON (after ORDER BY, before LIMIT/OFFSET)
@@ -1527,32 +1606,50 @@ entity JoinEngine {
             var searchName = expr.columnName;
             var searchTable = expr.tableName;
 
+            // Qualified search: find exact match
+            if searchTable != "" {
+                var i = 0;
+                while i < result.columnNames.count() {
+                    var colName = result.columnNames.get(i);
+                    if colName == searchTable + "." + searchName {
+                        return i;
+                    }
+                    i = i + 1;
+                }
+            }
+
+            // Unqualified search: count matches to detect ambiguity
+            var matchCount = 0;
+            var matchIdx = -1;
             var i = 0;
             while i < result.columnNames.count() {
                 var colName = result.columnNames.get(i);
 
-                // Try qualified match (e.g., "o.amount")
-                if searchTable != "" {
-                    if colName == searchTable + "." + searchName {
-                        return i;
-                    }
-                }
-
-                // Try exact name match
+                // Exact name match
                 if colName == searchName {
-                    return i;
+                    matchCount = matchCount + 1;
+                    matchIdx = i;
                 }
 
-                // Try suffix match (e.g., column named "orders.amount" matches "amount")
+                // Suffix match (e.g., column named "orders.amount" matches "amount")
                 var suffix = "." + searchName;
                 var suffixLen = String.Length(suffix);
                 var colLen = String.Length(colName);
                 if colLen > suffixLen {
                     if String.Substring(colName, colLen - suffixLen, suffixLen) == suffix {
-                        return i;
+                        matchCount = matchCount + 1;
+                        matchIdx = i;
                     }
                 }
                 i = i + 1;
+            }
+            if matchCount > 1 {
+                exec.hasEvalError = 1;
+                exec.evalError = "Column '" + searchName + "' is ambiguous";
+                return -1;
+            }
+            if matchCount == 1 {
+                return matchIdx;
             }
         }
         if expr.kind == EXPR_FUNCTION {

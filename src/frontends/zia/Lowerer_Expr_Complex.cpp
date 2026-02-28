@@ -143,6 +143,10 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
             loadInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(loadInstr);
 
+            // BUG-ADV-001: Retain loaded string fields from value types.
+            if (fieldType.kind == Type::Kind::Str)
+                emitCall(runtime::kStrRetainMaybe, {Value::temp(loadId)});
+
             return {Value::temp(loadId), fieldType};
         }
     }
@@ -181,6 +185,13 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
             loadInstr.operands = {fieldAddr};
             loadInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+
+            // BUG-ADV-001: Retain loaded string fields from entity types.
+            // Load gives a borrowed reference; retain converts it to owned,
+            // preventing use-after-free when the string is consumed by
+            // concatenation or passed cross-module.
+            if (fieldType.kind == Type::Kind::Str)
+                emitCall(runtime::kStrRetainMaybe, {Value::temp(loadId)});
 
             return {Value::temp(loadId), fieldType};
         }

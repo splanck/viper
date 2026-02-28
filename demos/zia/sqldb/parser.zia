@@ -37,6 +37,11 @@ entity Parser {
 
     expose func advance() {
         currentToken = lexer.nextToken();
+        // BUG-ADV-003: Propagate lexer errors (e.g. unterminated strings)
+        if currentToken.kind == TK_ERROR {
+            hasError = true;
+            error = currentToken.text;
+        }
     }
 
     expose func matchToken(kind: Integer) -> Boolean {

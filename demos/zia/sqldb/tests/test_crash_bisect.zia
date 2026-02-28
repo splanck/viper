@@ -1,0 +1,76 @@
+module test_crash_bisect;
+
+bind Terminal = Viper.Terminal;
+bind Fmt = Viper.Fmt;
+bind String = Viper.String;
+
+bind "../executor";
+bind "./test_common";
+
+func freshExec() -> Executor {
+    var exec = new Executor();
+    exec.init();
+    return exec;
+}
+
+func main() -> Integer {
+    Terminal.Say("=== Crash Bisect ===");
+    
+    var exec = freshExec();
+    exec.executeSql("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, password TEXT)");
+    exec.executeSql("INSERT INTO users VALUES (1, 'admin', 'secret123')");
+    
+    Terminal.Say("A: Before injection INSERT...");
+    var r = exec.executeSql("INSERT INTO users VALUES (2, 'bobby', 'x''; DROP TABLE users; --')");
+    Terminal.Say("B: After injection INSERT, success=" + Fmt.Bool(r.success));
+    
+    Terminal.Say("C: Before SELECT...");
+    r = exec.executeSql("SELECT * FROM users");
+    Terminal.Say("D: After SELECT, success=" + Fmt.Bool(r.success));
+    
+    Terminal.Say("E: Before assertSuccess...");
+    assertSuccess(r, "users table exists");
+    Terminal.Say("F: After assertSuccess");
+    
+    Terminal.Say("G: Before SQL keywords INSERT...");
+    r = exec.executeSql("INSERT INTO users VALUES (3, 'SELECT FROM WHERE', 'DROP TABLE')");
+    Terminal.Say("H: After SQL keywords INSERT, success=" + Fmt.Bool(r.success));
+    
+    Terminal.Say("I: Before doubled quotes INSERT...");
+    r = exec.executeSql("INSERT INTO users VALUES (4, 'it''s fine', 'pass''word')");
+    Terminal.Say("J: After doubled quotes INSERT, success=" + Fmt.Bool(r.success));
+    
+    Terminal.Say("K: Before retrieve...");
+    r = exec.executeSql("SELECT username FROM users WHERE id = 4");
+    Terminal.Say("L: After retrieve, success=" + Fmt.Bool(r.success));
+    
+    if r.success && r.rowCount() > 0 {
+        Terminal.Say("M: Getting row...");
+        var v = val(r, 0, 0);
+        Terminal.Say("N: Got value: " + v);
+        assertEq(v, "it's fine", "4.3c Value with apostrophe preserved");
+        Terminal.Say("O: After assertEq");
+    }
+    
+    Terminal.Say("P: Before backslash INSERT...");
+    r = exec.executeSql("INSERT INTO users VALUES (5, 'back\\slash', 'path\\to\\file')");
+    Terminal.Say("Q: After backslash INSERT, success=" + Fmt.Bool(r.success));
+    
+    Terminal.Say("R: Before semicolon INSERT...");
+    r = exec.executeSql("INSERT INTO users VALUES (6, 'semi;colon', 'a;b;c')");
+    Terminal.Say("S: After semicolon INSERT, success=" + Fmt.Bool(r.success));
+    
+    Terminal.Say("T: Before long payload...");
+    var payload = "";
+    var i = 0;
+    while i < 100 {
+        payload = payload + "' OR 1=1 --";
+        i = i + 1;
+    }
+    Terminal.Say("U: Payload built, length=" + Fmt.Int(String.Length(payload)));
+    r = exec.executeSql("SELECT * FROM users WHERE username = '" + payload + "'");
+    Terminal.Say("V: After long payload, success=" + Fmt.Bool(r.success));
+    
+    Terminal.Say("All done!");
+    return 0;
+}

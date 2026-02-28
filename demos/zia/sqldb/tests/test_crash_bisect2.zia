@@ -1,0 +1,38 @@
+module test_crash_bisect2;
+
+bind Terminal = Viper.Terminal;
+bind Fmt = Viper.Fmt;
+
+bind "../executor";
+
+func main() -> Integer {
+    Terminal.Say("=== Crash Bisect 2 ===");
+    
+    var exec = new Executor();
+    exec.init();
+    exec.executeSql("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, password TEXT)");
+    exec.executeSql("INSERT INTO users VALUES (1, 'admin', 'secret123')");
+    
+    // The injection attempt
+    var r = exec.executeSql("INSERT INTO users VALUES (2, 'bobby', 'x''; DROP TABLE users; --')");
+    Terminal.Say("Injection result success=" + Fmt.Bool(r.success));
+    
+    // Check what happened
+    r = exec.executeSql("SELECT * FROM users");
+    Terminal.Say("Select success=" + Fmt.Bool(r.success));
+    
+    // Check if message is null  
+    if r.message == null {
+        Terminal.Say("MESSAGE IS NULL - this is the crash cause!");
+    } else {
+        Terminal.Say("Message: " + r.message);
+    }
+    
+    // Now try the concat that crashes
+    Terminal.Say("About to concat with message...");
+    var msg = r.message ?? "null_message";
+    Terminal.Say("Safe message: " + msg);
+    
+    Terminal.Say("Done!");
+    return 0;
+}

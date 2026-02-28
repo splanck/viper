@@ -149,7 +149,13 @@ entity Lexer {
             }
         }
 
-        if (!isAtEnd()) { advance(); }
+        // BUG-ADV-003: Detect unclosed string literals
+        if (isAtEnd()) {
+            var tok = new Token(TK_ERROR, "Unterminated string literal", startLine, startCol);
+            return tok;
+        }
+
+        advance();
 
         var tok = new Token(TK_STRING, text, startLine, startCol);
         return tok;

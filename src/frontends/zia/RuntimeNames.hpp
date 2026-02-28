@@ -313,6 +313,11 @@ inline constexpr const char *kHeapRelease = kMemoryRelease;
 /// @details Uses the C function name directly because it's already registered
 ///          in RuntimeSignatures.cpp (not via runtime.def's mangled name).
 inline constexpr const char *kStrReleaseMaybe = "rt_str_release_maybe";
+/// @brief Retain a string if it's heap-allocated (no-op for static/interned).
+/// @details Converts a borrowed string reference (e.g. from an entity field Load)
+///          into an owned reference, preventing use-after-free when the loaded
+///          string is consumed by concatenation or passed to functions.
+inline constexpr const char *kStrRetainMaybe = "rt_str_retain_maybe";
 
 /// @}
 

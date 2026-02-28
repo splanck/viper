@@ -86,6 +86,25 @@ entity DdlHandler {
             i = i + 1;
         }
 
+        // BUG-ADV-005: Validate FOREIGN KEY references at CREATE TABLE time
+        var fki = 0;
+        while fki < stmt.columnCount() {
+            var fkCol = stmt.getColumn(fki);
+            if fkCol.isForeignKey {
+                var refTable = exec.findTable(fkCol.refTableName);
+                if refTable == null {
+                    result.setError("Foreign key references nonexistent table '" + fkCol.refTableName + "'");
+                    return result;
+                }
+                var rt = refTable;
+                if rt.findColumnIndex(fkCol.refColumnName) < 0 {
+                    result.setError("Foreign key references nonexistent column '" + fkCol.refColumnName + "' in table '" + fkCol.refTableName + "'");
+                    return result;
+                }
+            }
+            fki = fki + 1;
+        }
+
         // Phase 68: apply composite PRIMARY KEY constraint
         if stmt.compositePkColumns.count() > 0 {
             var pi = 0;

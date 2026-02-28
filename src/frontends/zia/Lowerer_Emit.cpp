@@ -462,7 +462,13 @@ Lowerer::Value Lowerer::emitFieldLoad(const FieldLayout *field, Value selfPtr)
     if (field->type && field->type->kind == TypeKindSem::FixedArray)
         return fieldAddr;
     Type fieldType = mapType(field->type);
-    return emitLoad(fieldAddr, fieldType);
+    Value loaded = emitLoad(fieldAddr, fieldType);
+    // BUG-ADV-001: Retain loaded string fields to prevent use-after-free.
+    // Load gives a borrowed reference; callers may consume the string in
+    // concatenation or pass it cross-module, making the borrow dangling.
+    if (fieldType.kind == Type::Kind::Str)
+        emitCall(runtime::kStrRetainMaybe, {loaded});
+    return loaded;
 }
 
 void Lowerer::emitFieldStore(const FieldLayout *field, Value selfPtr, Value val)

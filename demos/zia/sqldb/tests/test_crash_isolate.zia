@@ -1,0 +1,51 @@
+module test_crash_isolate;
+
+bind Terminal = Viper.Terminal;
+bind Fmt = Viper.Fmt;
+
+bind "../executor";
+
+func main() -> Integer {
+    var exec = new Executor();
+    exec.init();
+    exec.executeSql("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, password TEXT)");
+    exec.executeSql("INSERT INTO users VALUES (1, 'admin', 'secret123')");
+    
+    Terminal.Say("Step 1: Classic injection...");
+    var r = exec.executeSql("INSERT INTO users VALUES (2, 'bobby', 'x''; DROP TABLE users; --')");
+    Terminal.Say("  Done. success=" + Fmt.Bool(r.success));
+    
+    Terminal.Say("Step 2: Check users table...");
+    r = exec.executeSql("SELECT * FROM users");
+    Terminal.Say("  Done. success=" + Fmt.Bool(r.success) + " rows=" + Fmt.Int(r.rowCount()));
+    
+    Terminal.Say("Step 3: SQL keywords as values...");
+    r = exec.executeSql("INSERT INTO users VALUES (3, 'SELECT FROM WHERE', 'DROP TABLE')");
+    Terminal.Say("  Done. success=" + Fmt.Bool(r.success));
+    
+    Terminal.Say("Step 4: Doubled quotes...");
+    r = exec.executeSql("INSERT INTO users VALUES (4, 'it''s fine', 'pass''word')");
+    Terminal.Say("  Done. success=" + Fmt.Bool(r.success));
+    
+    Terminal.Say("Step 5: Retrieve doubled quote value...");
+    r = exec.executeSql("SELECT username FROM users WHERE id = 4");
+    Terminal.Say("  Done. success=" + Fmt.Bool(r.success));
+    if r.success && r.rowCount() > 0 {
+        var row = r.getRow(0);
+        if row != null {
+            var rr = row;
+            Terminal.Say("  Value: " + rr.getValue(0).toString());
+        }
+    }
+    
+    Terminal.Say("Step 6: Backslash values...");
+    r = exec.executeSql("INSERT INTO users VALUES (5, 'back\\slash', 'path\\to\\file')");
+    Terminal.Say("  Done. success=" + Fmt.Bool(r.success));
+    
+    Terminal.Say("Step 7: Semicolons in values...");
+    r = exec.executeSql("INSERT INTO users VALUES (6, 'semi;colon', 'a;b;c')");
+    Terminal.Say("  Done. success=" + Fmt.Bool(r.success));
+    
+    Terminal.Say("All injection tests passed without crash!");
+    return 0;
+}

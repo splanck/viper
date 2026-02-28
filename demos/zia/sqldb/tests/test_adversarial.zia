@@ -1,0 +1,1315 @@
+// test_adversarial.zia — Adversarial Testing Suite
+// Part of ViperSQL
+//
+// Comprehensive adversarial testing of the SQL RDBMS demo. Exercises every
+// category of malicious, malformed, and edge-case input that a real user
+// would throw at a database. Documents crashes, wrong results, and unhelpful
+// error messages.
+//
+// Categories:
+//   1. Malformed SQL
+//   2. Extremely Long Queries
+//   3. Nonexistent Tables/Columns
+//   4. SQL Injection-style Strings
+//   5. INSERT Column Count Mismatches
+//   6. Ambiguous Column Names in JOINs
+//   7. Deeply Nested Subqueries
+//   8. Abandoned Transactions
+//   9. Concurrent Operations / Locking
+//  10. Memory Pressure & Scale
+//  11. Arithmetic & Type Edge Cases
+//  12. DDL Edge Cases
+//  13. Query Edge Cases
+
+module test_adversarial;
+
+bind Terminal = Viper.Terminal;
+bind Fmt = Viper.Fmt;
+bind String = Viper.String;
+
+bind "../executor";
+bind "./test_common";
+
+//=============================================================================
+// MAIN
+//=============================================================================
+
+func main() -> Integer {
+    Terminal.Say("=== ViperSQL Adversarial Test Suite ===");
+    Terminal.Say("");
+
+    testMalformedSql();
+    testLongQueries();
+    testNonexistentObjects();
+    testSqlInjection();
+    testColumnCountMismatch();
+    testAmbiguousColumns();
+    testNestedSubqueries();
+    testAbandonedTransactions();
+    testConcurrentOps();
+    testMemoryPressure();
+    testArithmeticEdgeCases();
+    testDdlEdgeCases();
+    testQueryEdgeCases();
+
+    printResults();
+
+    if failed > 0 {
+        return 1;
+    }
+    return 0;
+}
+
+//=============================================================================
+// HELPER: Create a fresh executor for each section
+//=============================================================================
+
+func freshExec() -> Executor {
+    var exec = new Executor();
+    exec.init();
+    return exec;
+}
+
+// Helper: build a string of n repeated characters
+func repeatStr(ch: String, n: Integer) -> String {
+    var result = "";
+    var i = 0;
+    while i < n {
+        result = result + ch;
+        i = i + 1;
+    }
+    return result;
+}
+
+//=============================================================================
+// 1. MALFORMED SQL
+//=============================================================================
+
+func testMalformedSql() {
+    section("1. Malformed SQL");
+
+    var exec = freshExec();
+
+    // 1.1 Empty and whitespace
+    var r = exec.executeSql("");
+    assertFailure(r, "1.1a Empty string should fail or be no-op");
+
+    r = exec.executeSql("   ");
+    assertFailure(r, "1.1b Whitespace-only should fail or be no-op");
+
+    r = exec.executeSql(";");
+    assertFailure(r, "1.1c Lone semicolon should fail or be no-op");
+
+    r = exec.executeSql(";;;");
+    assertFailure(r, "1.1d Multiple semicolons should fail or be no-op");
+
+    // 1.2 Incomplete statements
+    r = exec.executeSql("SELECT");
+    assertFailure(r, "1.2a Bare SELECT should fail");
+
+    r = exec.executeSql("CREATE");
+    assertFailure(r, "1.2b Bare CREATE should fail");
+
+    r = exec.executeSql("INSERT INTO");
+    assertFailure(r, "1.2c Bare INSERT INTO should fail");
+
+    r = exec.executeSql("UPDATE");
+    assertFailure(r, "1.2d Bare UPDATE should fail");
+
+    r = exec.executeSql("DELETE FROM");
+    assertFailure(r, "1.2e Bare DELETE FROM should fail");
+
+    r = exec.executeSql("DROP");
+    assertFailure(r, "1.2f Bare DROP should fail");
+
+    r = exec.executeSql("ALTER");
+    assertFailure(r, "1.2g Bare ALTER should fail");
+
+    // 1.3 Random garbage
+    r = exec.executeSql("asdf qwerty");
+    assertFailure(r, "1.3a Random words should fail");
+
+    r = exec.executeSql("!@#$%^&*()");
+    assertFailure(r, "1.3b Special characters should fail");
+
+    r = exec.executeSql("12345");
+    assertFailure(r, "1.3c Bare number should fail");
+
+    r = exec.executeSql("true false null");
+    assertFailure(r, "1.3d Bare literals should fail");
+
+    // 1.4 Missing keywords
+    r = exec.executeSql("TABLE users (id INTEGER)");
+    assertFailure(r, "1.4a Missing CREATE keyword should fail");
+
+    r = exec.executeSql("INTO users VALUES (1)");
+    assertFailure(r, "1.4b Missing INSERT keyword should fail");
+
+    // 1.5 Unmatched parentheses
+    r = exec.executeSql("SELECT (((1)");
+    assertFailure(r, "1.5a Unmatched open parens should fail");
+
+    r = exec.executeSql("SELECT 1)))");
+    assertFailure(r, "1.5b Unmatched close parens should fail");
+
+    r = exec.executeSql("CREATE TABLE t (id INTEGER");
+    assertFailure(r, "1.5c Unclosed CREATE TABLE parens should fail");
+
+    // 1.6 Unclosed string literals
+    r = exec.executeSql("SELECT 'hello");
+    assertFailure(r, "1.6a Unclosed single-quote string should fail");
+
+    r = exec.executeSql("INSERT INTO t VALUES ('unterminated)");
+    assertFailure(r, "1.6b Unclosed string in INSERT should fail");
+
+    // 1.7 SQL with only comments
+    r = exec.executeSql("-- just a comment");
+    assertFailure(r, "1.7a Line comment only should fail or no-op");
+
+    r = exec.executeSql("/* block comment */");
+    assertFailure(r, "1.7b Block comment only should fail or no-op");
+
+    // 1.8 Statement fragments
+    r = exec.executeSql("WHERE x = 1");
+    assertFailure(r, "1.8a Bare WHERE clause should fail");
+
+    r = exec.executeSql("ORDER BY name");
+    assertFailure(r, "1.8b Bare ORDER BY should fail");
+
+    r = exec.executeSql("GROUP BY id");
+    assertFailure(r, "1.8c Bare GROUP BY should fail");
+
+    r = exec.executeSql("HAVING count(*) > 1");
+    assertFailure(r, "1.8d Bare HAVING should fail");
+
+    r = exec.executeSql("LIMIT 10");
+    assertFailure(r, "1.8e Bare LIMIT should fail");
+
+    // 1.9 Duplicate/conflicting clauses
+    r = exec.executeSql("CREATE TABLE dup_test (id INTEGER)");
+    assertSuccess(r, "1.9 setup");
+    exec.executeSql("INSERT INTO dup_test VALUES (1), (2), (3)");
+    r = exec.executeSql("SELECT * FROM dup_test ORDER BY id ORDER BY id");
+    // Should either fail or use last ORDER BY — just don't crash
+    assert(true, "1.9a Double ORDER BY did not crash");
+
+    r = exec.executeSql("SELECT * FROM dup_test LIMIT 1 LIMIT 2");
+    assert(true, "1.9b Double LIMIT did not crash");
+}
+
+//=============================================================================
+// 2. EXTREMELY LONG QUERIES
+//=============================================================================
+
+func testLongQueries() {
+    section("2. Extremely Long Queries");
+
+    var exec = freshExec();
+
+    // 2.1 Very long table name
+    var longName = repeatStr("a", 500);
+    var r = exec.executeSql("CREATE TABLE " + longName + " (id INTEGER)");
+    // Should either succeed or fail gracefully — just don't crash
+    assert(true, "2.1 Long table name (500 chars) did not crash");
+
+    // 2.2 Very long string literal in INSERT
+    exec.executeSql("CREATE TABLE long_str (id INTEGER, data TEXT)");
+    var longStr = repeatStr("x", 5000);
+    r = exec.executeSql("INSERT INTO long_str VALUES (1, '" + longStr + "')");
+    assertSuccess(r, "2.2a INSERT with 5000-char string");
+    r = exec.executeSql("SELECT data FROM long_str WHERE id = 1");
+    assertSuccess(r, "2.2b SELECT long string back");
+
+    // 2.3 WHERE with many AND conditions
+    exec.executeSql("CREATE TABLE many_conds (a INTEGER, b INTEGER, c INTEGER)");
+    exec.executeSql("INSERT INTO many_conds VALUES (1, 2, 3)");
+    var bigWhere = "SELECT * FROM many_conds WHERE a = 1";
+    var wi = 0;
+    while wi < 30 {
+        bigWhere = bigWhere + " AND b = 2";
+        wi = wi + 1;
+    }
+    r = exec.executeSql(bigWhere);
+    assertSuccess(r, "2.3 WHERE with 30+ AND conditions");
+    assertRowCount(r, 1, "2.3 result count");
+
+    // 2.4 Deeply nested parentheses in expression
+    var nested = "SELECT ";
+    var ni = 0;
+    while ni < 30 {
+        nested = nested + "(";
+        ni = ni + 1;
+    }
+    nested = nested + "1";
+    ni = 0;
+    while ni < 30 {
+        nested = nested + ")";
+        ni = ni + 1;
+    }
+    r = exec.executeSql(nested);
+    assertSuccess(r, "2.4 30 nested parens around literal");
+
+    // 2.5 INSERT with many rows
+    exec.executeSql("CREATE TABLE many_rows (id INTEGER, val TEXT)");
+    var multiInsert = "INSERT INTO many_rows VALUES ";
+    var mi = 0;
+    while mi < 200 {
+        if mi > 0 {
+            multiInsert = multiInsert + ", ";
+        }
+        multiInsert = multiInsert + "(" + Fmt.Int(mi) + ", 'row" + Fmt.Int(mi) + "')";
+        mi = mi + 1;
+    }
+    r = exec.executeSql(multiInsert);
+    assertSuccess(r, "2.5a INSERT 200 rows at once");
+    r = exec.executeSql("SELECT COUNT(*) FROM many_rows");
+    assertSuccess(r, "2.5b COUNT after bulk insert");
+
+    // 2.6 UNION of many SELECTs
+    var bigUnion = "SELECT 1 AS n";
+    var ui = 2;
+    while ui <= 15 {
+        bigUnion = bigUnion + " UNION ALL SELECT " + Fmt.Int(ui);
+        ui = ui + 1;
+    }
+    r = exec.executeSql(bigUnion);
+    assertSuccess(r, "2.6 UNION of 15 SELECTs");
+    assertRowCount(r, 15, "2.6 UNION row count");
+
+    // 2.7 Very long column alias
+    var longAlias = repeatStr("b", 300);
+    r = exec.executeSql("SELECT 1 AS " + longAlias);
+    assert(true, "2.7 Long column alias (300 chars) did not crash");
+
+    // 2.8 ORDER BY many expressions
+    exec.executeSql("CREATE TABLE order_test (a INTEGER, b INTEGER, c INTEGER, d INTEGER, e INTEGER)");
+    exec.executeSql("INSERT INTO order_test VALUES (1, 2, 3, 4, 5)");
+    r = exec.executeSql("SELECT * FROM order_test ORDER BY a, b, c, d, e, a+b, b+c, c+d, d+e");
+    assert(true, "2.8 ORDER BY 9 expressions did not crash");
+}
+
+//=============================================================================
+// 3. NONEXISTENT TABLES/COLUMNS
+//=============================================================================
+
+func testNonexistentObjects() {
+    section("3. Nonexistent Tables/Columns");
+
+    var exec = freshExec();
+
+    // Setup a real table for column tests
+    exec.executeSql("CREATE TABLE real_table (id INTEGER, name TEXT, age INTEGER)");
+    exec.executeSql("INSERT INTO real_table VALUES (1, 'Alice', 30)");
+
+    // 3.1 Nonexistent tables in various statements
+    var r = exec.executeSql("SELECT * FROM ghost_table");
+    assertFailure(r, "3.1a SELECT from nonexistent table");
+
+    r = exec.executeSql("INSERT INTO ghost_table VALUES (1)");
+    assertFailure(r, "3.1b INSERT into nonexistent table");
+
+    r = exec.executeSql("UPDATE ghost_table SET x = 1");
+    assertFailure(r, "3.1c UPDATE nonexistent table");
+
+    r = exec.executeSql("DELETE FROM ghost_table");
+    assertFailure(r, "3.1d DELETE from nonexistent table");
+
+    r = exec.executeSql("DROP TABLE ghost_table");
+    assertFailure(r, "3.1e DROP nonexistent table without IF EXISTS");
+
+    r = exec.executeSql("DROP TABLE IF EXISTS ghost_table");
+    assertSuccess(r, "3.1f DROP IF EXISTS on nonexistent table should succeed");
+
+    r = exec.executeSql("ALTER TABLE ghost_table ADD COLUMN x INTEGER");
+    assertFailure(r, "3.1g ALTER nonexistent table");
+
+    r = exec.executeSql("CREATE INDEX idx ON ghost_table (x)");
+    assertFailure(r, "3.1h CREATE INDEX on nonexistent table");
+
+    r = exec.executeSql("DESCRIBE ghost_table");
+    assertFailure(r, "3.1i DESCRIBE nonexistent table");
+
+    r = exec.executeSql("TRUNCATE TABLE ghost_table");
+    assertFailure(r, "3.1j TRUNCATE nonexistent table");
+
+    // 3.2 Nonexistent columns
+    r = exec.executeSql("SELECT phantom_col FROM real_table");
+    assertFailure(r, "3.2a SELECT nonexistent column");
+
+    r = exec.executeSql("SELECT * FROM real_table WHERE phantom_col = 1");
+    assertFailure(r, "3.2b WHERE on nonexistent column");
+
+    r = exec.executeSql("SELECT * FROM real_table ORDER BY phantom_col");
+    assertFailure(r, "3.2c ORDER BY nonexistent column");
+
+    r = exec.executeSql("SELECT phantom_col, COUNT(*) FROM real_table GROUP BY phantom_col");
+    assertFailure(r, "3.2d GROUP BY nonexistent column");
+
+    r = exec.executeSql("UPDATE real_table SET phantom_col = 1");
+    assertFailure(r, "3.2e UPDATE nonexistent column");
+
+    // 3.3 Join with nonexistent table
+    r = exec.executeSql("SELECT * FROM real_table JOIN ghost_table ON real_table.id = ghost_table.id");
+    assertFailure(r, "3.3a JOIN with nonexistent table");
+
+    // 3.4 Foreign key referencing nonexistent table
+    r = exec.executeSql("CREATE TABLE bad_fk (id INTEGER, ref_id INTEGER REFERENCES ghost_table(id))");
+    assertFailure(r, "3.4 FK referencing nonexistent table");
+}
+
+//=============================================================================
+// 4. SQL INJECTION-STYLE STRINGS
+//=============================================================================
+
+func testSqlInjection() {
+    section("4. SQL Injection-style Strings");
+
+    var exec = freshExec();
+    exec.executeSql("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, pass_hash TEXT)");
+    exec.executeSql("INSERT INTO users VALUES (1, 'admin', 'secret123')");
+
+    // 4.1 Classic injection attempt — should be stored as literal text, not executed
+    var r = exec.executeSql("INSERT INTO users VALUES (2, 'bobby', 'x''; DROP TABLE users; --')");
+    // This tests that the doubled-quote is handled correctly as literal '
+    assert(true, "4.1a Classic injection did not crash");
+    r = exec.executeSql("SELECT * FROM users");
+    assertSuccess(r, "4.1b users table still exists after injection attempt");
+
+    // 4.2 Value containing SQL keywords
+    r = exec.executeSql("INSERT INTO users VALUES (3, 'SELECT FROM WHERE', 'DROP TABLE')");
+    assertSuccess(r, "4.2 SQL keywords as string values");
+
+    // 4.3 Doubled quotes (SQL-standard escaping)
+    r = exec.executeSql("INSERT INTO users VALUES (4, 'it''s fine', 'pass''word')");
+    assertSuccess(r, "4.3a Doubled quotes in values");
+    r = exec.executeSql("SELECT username FROM users WHERE id = 4");
+    assertSuccess(r, "4.3b Retrieve doubled-quote value");
+    if r.success && r.rowCount() > 0 {
+        assertEq(val(r, 0, 0), "it's fine", "4.3c Value with apostrophe preserved");
+    }
+
+    // 4.4 Backslash escaping
+    r = exec.executeSql("INSERT INTO users VALUES (5, 'back\\slash', 'path\\to\\file')");
+    assertSuccess(r, "4.4 Backslash in string values");
+
+    // 4.5 Semicolons inside strings
+    r = exec.executeSql("INSERT INTO users VALUES (6, 'semi;colon', 'a;b;c')");
+    assertSuccess(r, "4.5 Semicolons inside string values");
+
+    // 4.6 Very long repeated injection payload
+    var payload = repeatStr("' OR 1=1 --", 100);
+    r = exec.executeSql("SELECT * FROM users WHERE username = '" + payload + "'");
+    // Parser should handle this as a literal string, not inject
+    assert(true, "4.6 Long injection payload did not crash");
+
+    // 4.7 Nested quotes
+    r = exec.executeSql("INSERT INTO users VALUES (7, 'a''b''c''d''e', 'test')");
+    assertSuccess(r, "4.7 Multiple doubled quotes");
+
+    // 4.8 Empty string values
+    r = exec.executeSql("INSERT INTO users VALUES (8, '', '')");
+    assertSuccess(r, "4.8a Empty string values");
+    r = exec.executeSql("SELECT username FROM users WHERE id = 8");
+    assertSuccess(r, "4.8b Retrieve empty string");
+    if r.success && r.rowCount() > 0 {
+        assertEq(val(r, 0, 0), "", "4.8c Empty string preserved");
+    }
+
+    // 4.9 UNION injection attempt (inside a string value)
+    r = exec.executeSql("INSERT INTO users VALUES (9, 'UNION SELECT * FROM passwords', 'safe')");
+    assertSuccess(r, "4.9 UNION injection as literal string");
+
+    // 4.10 Null-like strings
+    r = exec.executeSql("INSERT INTO users VALUES (10, 'NULL', 'null')");
+    assertSuccess(r, "4.10a String 'NULL' as value");
+    r = exec.executeSql("SELECT username FROM users WHERE id = 10");
+    if r.success && r.rowCount() > 0 {
+        assertEq(val(r, 0, 0), "NULL", "4.10b String 'NULL' not confused with actual NULL");
+    }
+
+    // 4.11 Strings with newlines and tabs
+    r = exec.executeSql("INSERT INTO users VALUES (11, 'line1\nline2', 'tab\there')");
+    assert(true, "4.11 Strings with escape chars did not crash");
+}
+
+//=============================================================================
+// 5. INSERT COLUMN COUNT MISMATCHES
+//=============================================================================
+
+func testColumnCountMismatch() {
+    section("5. INSERT Column Count Mismatches");
+
+    var exec = freshExec();
+    exec.executeSql("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL, price REAL, active BOOLEAN DEFAULT TRUE)");
+
+    // 5.1 Too few values (no column list)
+    var r = exec.executeSql("INSERT INTO items VALUES (1, 'Widget')");
+    // Should fail: 2 values for 4-column table
+    assertFailure(r, "5.1 Too few values without column list");
+
+    // 5.2 Too many values
+    r = exec.executeSql("INSERT INTO items VALUES (1, 'Widget', 9.99, TRUE, 'extra', 'more')");
+    assertFailure(r, "5.2 Too many values");
+
+    // 5.3 Column list with wrong value count
+    r = exec.executeSql("INSERT INTO items (id, name) VALUES (1, 'Widget', 9.99)");
+    assertFailure(r, "5.3 Column list has 2 cols but 3 values");
+
+    // 5.4 Correct insert for reference
+    r = exec.executeSql("INSERT INTO items VALUES (1, 'Widget', 9.99, TRUE)");
+    assertSuccess(r, "5.4 Correct INSERT for reference");
+
+    // 5.5 INSERT with column list (partial)
+    r = exec.executeSql("INSERT INTO items (id, name, price) VALUES (2, 'Gadget', 24.95)");
+    assertSuccess(r, "5.5 Partial column list INSERT");
+
+    // 5.6 NULL into NOT NULL column
+    r = exec.executeSql("INSERT INTO items VALUES (3, NULL, 5.00, TRUE)");
+    assertFailure(r, "5.6 NULL into NOT NULL column");
+
+    // 5.7 Duplicate primary key
+    r = exec.executeSql("INSERT INTO items VALUES (1, 'Duplicate', 1.00, TRUE)");
+    assertFailure(r, "5.7 Duplicate primary key");
+
+    // 5.8 Multi-row INSERT with inconsistent row sizes
+    r = exec.executeSql("INSERT INTO items VALUES (10, 'A', 1.0, TRUE), (11, 'B')");
+    assertFailure(r, "5.8 Multi-row INSERT with different value counts");
+
+    // 5.9 INSERT ... SELECT with column mismatch
+    exec.executeSql("CREATE TABLE items2 (x INTEGER, y INTEGER)");
+    exec.executeSql("INSERT INTO items2 VALUES (1, 2)");
+    r = exec.executeSql("INSERT INTO items SELECT * FROM items2");
+    assertFailure(r, "5.9 INSERT...SELECT column count mismatch");
+
+    // 5.10 Wrong type coercion
+    r = exec.executeSql("INSERT INTO items VALUES (20, 'Test', 'not_a_number', TRUE)");
+    // price is REAL, 'not_a_number' may or may not coerce — document behavior
+    assert(true, "5.10 Text-to-REAL coercion did not crash");
+
+    // 5.11 INSERT with zero values
+    r = exec.executeSql("INSERT INTO items VALUES ()");
+    assertFailure(r, "5.11 INSERT with empty VALUES()");
+
+    // 5.12 Foreign key constraint violation
+    exec.executeSql("CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT)");
+    exec.executeSql("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, cat_id INTEGER REFERENCES categories(id))");
+    r = exec.executeSql("INSERT INTO products VALUES (1, 'Thing', 999)");
+    assertFailure(r, "5.12 FK violation (referenced row doesn't exist)");
+
+    // 5.13 Check constraint violation
+    exec.executeSql("CREATE TABLE scored (id INTEGER, score INTEGER CHECK (score >= 0 AND score <= 100))");
+    r = exec.executeSql("INSERT INTO scored VALUES (1, 150)");
+    assertFailure(r, "5.13 CHECK constraint violation");
+
+    r = exec.executeSql("INSERT INTO scored VALUES (2, -5)");
+    assertFailure(r, "5.14 CHECK constraint violation (negative)");
+
+    // 5.15 Unique constraint violation
+    exec.executeSql("CREATE TABLE emails (id INTEGER, email TEXT UNIQUE)");
+    exec.executeSql("INSERT INTO emails VALUES (1, 'test@example.com')");
+    r = exec.executeSql("INSERT INTO emails VALUES (2, 'test@example.com')");
+    assertFailure(r, "5.15 UNIQUE constraint violation");
+}
+
+//=============================================================================
+// 6. AMBIGUOUS COLUMN NAMES
+//=============================================================================
+
+func testAmbiguousColumns() {
+    section("6. Ambiguous Column Names in JOINs");
+
+    var exec = freshExec();
+
+    // Setup two tables with same column names
+    exec.executeSql("CREATE TABLE orders (id INTEGER, customer_id INTEGER, total REAL, status TEXT)");
+    exec.executeSql("CREATE TABLE customers (id INTEGER, name TEXT, status TEXT)");
+    exec.executeSql("INSERT INTO orders VALUES (1, 100, 50.00, 'shipped')");
+    exec.executeSql("INSERT INTO orders VALUES (2, 101, 75.00, 'pending')");
+    exec.executeSql("INSERT INTO customers VALUES (100, 'Alice', 'active')");
+    exec.executeSql("INSERT INTO customers VALUES (101, 'Bob', 'inactive')");
+
+    // 6.1 Ambiguous 'id' in JOIN
+    var r = exec.executeSql("SELECT id FROM orders JOIN customers ON orders.customer_id = customers.id");
+    assertFailure(r, "6.1 Ambiguous 'id' in JOIN should fail");
+
+    // 6.2 Ambiguous 'status' in JOIN
+    r = exec.executeSql("SELECT status FROM orders JOIN customers ON orders.customer_id = customers.id");
+    assertFailure(r, "6.2 Ambiguous 'status' in JOIN should fail");
+
+    // 6.3 Qualified column names should work
+    r = exec.executeSql("SELECT orders.id, customers.name FROM orders JOIN customers ON orders.customer_id = customers.id");
+    assertSuccess(r, "6.3 Qualified column names in JOIN");
+
+    // 6.4 Ambiguous in WHERE
+    r = exec.executeSql("SELECT * FROM orders JOIN customers ON orders.customer_id = customers.id WHERE status = 'active'");
+    assertFailure(r, "6.4 Ambiguous 'status' in WHERE clause");
+
+    // 6.5 Ambiguous in ORDER BY
+    r = exec.executeSql("SELECT * FROM orders JOIN customers ON orders.customer_id = customers.id ORDER BY id");
+    assertFailure(r, "6.5 Ambiguous 'id' in ORDER BY");
+
+    // 6.6 Self-join ambiguity
+    r = exec.executeSql("SELECT id FROM orders AS o1 JOIN orders AS o2 ON o1.id = o2.id");
+    assertFailure(r, "6.6 Ambiguous 'id' in self-join");
+
+    // 6.7 Three-way join with shared column
+    exec.executeSql("CREATE TABLE inventory (id INTEGER, product_id INTEGER, qty INTEGER)");
+    exec.executeSql("INSERT INTO inventory VALUES (1, 1, 50)");
+    r = exec.executeSql("SELECT id FROM orders JOIN customers ON orders.customer_id = customers.id JOIN inventory ON orders.id = inventory.id");
+    assertFailure(r, "6.7 Ambiguous 'id' in three-way join");
+
+    // 6.8 Aliased tables, unqualified column
+    r = exec.executeSql("SELECT id FROM orders o JOIN customers c ON o.customer_id = c.id");
+    assertFailure(r, "6.8 Ambiguous column with aliased tables");
+
+    // 6.9 Qualified names with aliases should work
+    r = exec.executeSql("SELECT o.id, c.name, o.status FROM orders o JOIN customers c ON o.customer_id = c.id");
+    assertSuccess(r, "6.9 Qualified names with table aliases");
+
+    // 6.10 Subquery column collision with outer query
+    r = exec.executeSql("SELECT id FROM orders WHERE id IN (SELECT id FROM customers)");
+    // 'id' in subquery is scoped — should work
+    assertSuccess(r, "6.10 Subquery column same name as outer");
+
+    // 6.11 NATURAL JOIN (both tables have 'id' and 'status')
+    r = exec.executeSql("SELECT * FROM orders NATURAL JOIN customers");
+    // NATURAL JOIN joins on shared columns — should work or report which columns joined
+    assert(true, "6.11 NATURAL JOIN did not crash");
+
+    // 6.12 JOIN USING with ambiguous remaining columns
+    r = exec.executeSql("SELECT status FROM orders JOIN customers USING (id)");
+    // After USING(id), 'status' still exists in both — ambiguous
+    assertFailure(r, "6.12 Ambiguous after USING join");
+}
+
+//=============================================================================
+// 7. DEEPLY NESTED SUBQUERIES
+//=============================================================================
+
+func testNestedSubqueries() {
+    section("7. Deeply Nested Subqueries");
+
+    var exec = freshExec();
+    exec.executeSql("CREATE TABLE nums (n INTEGER)");
+    exec.executeSql("INSERT INTO nums VALUES (1), (2), (3), (4), (5)");
+
+    // 7.1 Three levels deep
+    var r = exec.executeSql("SELECT * FROM (SELECT * FROM (SELECT n FROM nums) AS sub2) AS sub1");
+    assertSuccess(r, "7.1 Three-level nested subquery");
+    assertRowCount(r, 5, "7.1 row count");
+
+    // 7.2 Five levels deep
+    r = exec.executeSql("SELECT * FROM (SELECT * FROM (SELECT * FROM (SELECT * FROM (SELECT n FROM nums) s4) s3) s2) s1");
+    assertSuccess(r, "7.2 Five-level nested subquery");
+    assertRowCount(r, 5, "7.2 row count");
+
+    // 7.3 Subquery in WHERE with IN
+    r = exec.executeSql("SELECT n FROM nums WHERE n IN (SELECT n FROM nums WHERE n > 2)");
+    assertSuccess(r, "7.3 Subquery in WHERE IN");
+    assertRowCount(r, 3, "7.3 row count (3,4,5)");
+
+    // 7.4 Nested IN subqueries
+    r = exec.executeSql("SELECT n FROM nums WHERE n IN (SELECT n FROM nums WHERE n IN (SELECT n FROM nums WHERE n > 3))");
+    assertSuccess(r, "7.4 Nested IN subqueries");
+    assertRowCount(r, 2, "7.4 row count (4,5)");
+
+    // 7.5 EXISTS subquery
+    r = exec.executeSql("SELECT n FROM nums WHERE EXISTS (SELECT 1 FROM nums WHERE nums.n > 3)");
+    assertSuccess(r, "7.5 EXISTS subquery");
+
+    // 7.6 Nested EXISTS
+    r = exec.executeSql("SELECT n FROM nums WHERE EXISTS (SELECT 1 WHERE EXISTS (SELECT 1 FROM nums WHERE n = 1))");
+    assertSuccess(r, "7.6 Nested EXISTS");
+
+    // 7.7 Scalar subquery returning multiple rows (should error)
+    r = exec.executeSql("SELECT (SELECT n FROM nums) AS bad_scalar");
+    assertFailure(r, "7.7 Scalar subquery returning multiple rows");
+
+    // 7.8 Scalar subquery returning zero rows (should be NULL)
+    r = exec.executeSql("SELECT (SELECT n FROM nums WHERE n > 100) AS empty_scalar");
+    assertSuccess(r, "7.8 Scalar subquery returning zero rows");
+    if r.success && r.rowCount() > 0 {
+        var v = getVal(r, 0, 0);
+        assert(v.isNull(), "7.8 Empty scalar subquery returns NULL");
+    }
+
+    // 7.9 Correlated subquery
+    r = exec.executeSql("SELECT n, (SELECT COUNT(*) FROM nums n2 WHERE n2.n <= nums.n) AS rank FROM nums ORDER BY n");
+    assertSuccess(r, "7.9 Correlated subquery");
+
+    // 7.10 Subquery in SELECT, WHERE, and HAVING simultaneously
+    exec.executeSql("CREATE TABLE sales (product TEXT, amount INTEGER)");
+    exec.executeSql("INSERT INTO sales VALUES ('A', 10), ('A', 20), ('B', 30), ('B', 40), ('C', 5)");
+    r = exec.executeSql("SELECT product, SUM(amount) AS total FROM sales GROUP BY product HAVING SUM(amount) > (SELECT AVG(amount) FROM sales)");
+    assertSuccess(r, "7.10 Subquery in HAVING");
+
+    // 7.11 Subquery with UNION inside
+    r = exec.executeSql("SELECT * FROM (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3) sub");
+    assertSuccess(r, "7.11 Subquery with UNION");
+    assertRowCount(r, 3, "7.11 row count");
+
+    // 7.12 CTE referencing another CTE
+    r = exec.executeSql("WITH cte1 AS (SELECT n FROM nums WHERE n <= 3), cte2 AS (SELECT n * 10 AS n FROM cte1) SELECT * FROM cte2");
+    assertSuccess(r, "7.12 CTE referencing another CTE");
+    assertRowCount(r, 3, "7.12 row count");
+
+    // 7.13 Subquery in UPDATE SET
+    r = exec.executeSql("UPDATE nums SET n = (SELECT MAX(n) FROM nums) WHERE n = 1");
+    assertSuccess(r, "7.13 Subquery in UPDATE SET");
+
+    // 7.14 Subquery in INSERT ... SELECT
+    exec.executeSql("CREATE TABLE nums_copy (n INTEGER)");
+    r = exec.executeSql("INSERT INTO nums_copy SELECT * FROM (SELECT n FROM nums WHERE n > 2) sub");
+    assertSuccess(r, "7.14 INSERT...SELECT with subquery");
+}
+
+//=============================================================================
+// 8. ABANDONED TRANSACTIONS
+//=============================================================================
+
+func testAbandonedTransactions() {
+    section("8. Abandoned Transactions");
+
+    var exec = freshExec();
+    exec.executeSql("CREATE TABLE txn_test (id INTEGER, val TEXT)");
+
+    // 8.1 BEGIN without COMMIT, then query
+    var r = exec.executeSql("BEGIN");
+    assertSuccess(r, "8.1a BEGIN");
+    r = exec.executeSql("INSERT INTO txn_test VALUES (1, 'uncommitted')");
+    assertSuccess(r, "8.1b INSERT in open txn");
+    r = exec.executeSql("SELECT * FROM txn_test");
+    assertSuccess(r, "8.1c SELECT with open txn");
+    // Data should be visible within the transaction
+    assertRowCount(r, 1, "8.1d Row visible in open txn");
+    r = exec.executeSql("ROLLBACK");
+    assertSuccess(r, "8.1e ROLLBACK");
+    r = exec.executeSql("SELECT * FROM txn_test");
+    assertRowCount(r, 0, "8.1f Row gone after ROLLBACK");
+
+    // 8.2 COMMIT without BEGIN
+    r = exec.executeSql("COMMIT");
+    assertFailure(r, "8.2 COMMIT without BEGIN");
+
+    // 8.3 ROLLBACK without BEGIN
+    r = exec.executeSql("ROLLBACK");
+    assertFailure(r, "8.3 ROLLBACK without BEGIN");
+
+    // 8.4 Nested BEGIN (BEGIN inside BEGIN)
+    r = exec.executeSql("BEGIN");
+    assertSuccess(r, "8.4a First BEGIN");
+    r = exec.executeSql("BEGIN");
+    // Should either fail or be treated as nested — don't crash
+    assert(true, "8.4b Nested BEGIN did not crash");
+    r = exec.executeSql("ROLLBACK");
+    assert(true, "8.4c ROLLBACK after nested BEGIN did not crash");
+    // Clean up any remaining transaction
+    exec.executeSql("ROLLBACK");
+
+    // 8.5 SAVEPOINT without BEGIN
+    r = exec.executeSql("SAVEPOINT sp1");
+    assertFailure(r, "8.5 SAVEPOINT without BEGIN");
+
+    // 8.6 ROLLBACK TO nonexistent savepoint
+    exec.executeSql("BEGIN");
+    r = exec.executeSql("ROLLBACK TO nonexistent_sp");
+    assertFailure(r, "8.6 ROLLBACK TO nonexistent savepoint");
+    exec.executeSql("ROLLBACK");
+
+    // 8.7 RELEASE nonexistent savepoint
+    exec.executeSql("BEGIN");
+    r = exec.executeSql("RELEASE nonexistent_sp");
+    assertFailure(r, "8.7 RELEASE nonexistent savepoint");
+    exec.executeSql("ROLLBACK");
+
+    // 8.8 Savepoint workflow
+    exec.executeSql("BEGIN");
+    exec.executeSql("INSERT INTO txn_test VALUES (10, 'before_sp')");
+    exec.executeSql("SAVEPOINT sp1");
+    exec.executeSql("INSERT INTO txn_test VALUES (11, 'after_sp')");
+    r = exec.executeSql("ROLLBACK TO sp1");
+    assertSuccess(r, "8.8a ROLLBACK TO savepoint");
+    r = exec.executeSql("SELECT * FROM txn_test");
+    assertRowCount(r, 1, "8.8b Only pre-savepoint row remains");
+    exec.executeSql("COMMIT");
+
+    // 8.9 Multiple savepoints with same name
+    exec.executeSql("BEGIN");
+    exec.executeSql("SAVEPOINT dup");
+    exec.executeSql("INSERT INTO txn_test VALUES (20, 'first')");
+    exec.executeSql("SAVEPOINT dup");
+    exec.executeSql("INSERT INTO txn_test VALUES (21, 'second')");
+    r = exec.executeSql("ROLLBACK TO dup");
+    assertSuccess(r, "8.9 ROLLBACK TO duplicate savepoint name");
+    exec.executeSql("COMMIT");
+
+    // 8.10 Transaction with DDL
+    exec.executeSql("BEGIN");
+    r = exec.executeSql("CREATE TABLE txn_ddl (id INTEGER)");
+    assertSuccess(r, "8.10a CREATE TABLE inside transaction");
+    exec.executeSql("INSERT INTO txn_ddl VALUES (1)");
+    r = exec.executeSql("ROLLBACK");
+    // Does ROLLBACK undo the CREATE TABLE? Document behavior.
+    r = exec.executeSql("SELECT * FROM txn_ddl");
+    assert(true, "8.10b DDL rollback behavior documented (did not crash)");
+
+    // 8.11 Very long transaction
+    exec.executeSql("BEGIN");
+    var ti = 0;
+    while ti < 100 {
+        exec.executeSql("INSERT INTO txn_test VALUES (" + Fmt.Int(100 + ti) + ", 'long_txn')");
+        ti = ti + 1;
+    }
+    r = exec.executeSql("COMMIT");
+    assertSuccess(r, "8.11 Long transaction (100 ops) committed");
+
+    // 8.12 BEGIN, DROP TABLE, ROLLBACK
+    exec.executeSql("CREATE TABLE drop_test (id INTEGER)");
+    exec.executeSql("INSERT INTO drop_test VALUES (1)");
+    exec.executeSql("BEGIN");
+    exec.executeSql("DROP TABLE drop_test");
+    r = exec.executeSql("ROLLBACK");
+    // Can we get the table back?
+    r = exec.executeSql("SELECT * FROM drop_test");
+    assert(true, "8.12 DROP TABLE + ROLLBACK behavior documented (did not crash)");
+}
+
+//=============================================================================
+// 9. CONCURRENT OPERATIONS / LOCKING
+//=============================================================================
+
+func testConcurrentOps() {
+    section("9. Concurrent Operations / Locking");
+
+    var exec = freshExec();
+    exec.executeSql("CREATE TABLE locked_rows (id INTEGER PRIMARY KEY, val TEXT)");
+    exec.executeSql("INSERT INTO locked_rows VALUES (1, 'one'), (2, 'two'), (3, 'three')");
+
+    // 9.1 FOR UPDATE syntax
+    var r = exec.executeSql("SELECT * FROM locked_rows WHERE id = 1 FOR UPDATE");
+    assertSuccess(r, "9.1 SELECT FOR UPDATE syntax");
+
+    // 9.2 FOR SHARE syntax
+    r = exec.executeSql("SELECT * FROM locked_rows WHERE id = 2 FOR SHARE");
+    assertSuccess(r, "9.2 SELECT FOR SHARE syntax");
+
+    // 9.3 SKIP LOCKED
+    r = exec.executeSql("SELECT * FROM locked_rows FOR UPDATE SKIP LOCKED");
+    assertSuccess(r, "9.3 FOR UPDATE SKIP LOCKED");
+
+    // 9.4 NOWAIT
+    r = exec.executeSql("SELECT * FROM locked_rows WHERE id = 1 FOR UPDATE NOWAIT");
+    assert(true, "9.4 FOR UPDATE NOWAIT did not crash");
+
+    // 9.5 Session variable isolation
+    r = exec.executeSql("SET my_var = 'hello'");
+    assert(true, "9.5a SET session variable");
+    r = exec.executeSql("SHOW my_var");
+    assert(true, "9.5b SHOW session variable");
+}
+
+//=============================================================================
+// 10. MEMORY PRESSURE & SCALE
+//=============================================================================
+
+func testMemoryPressure() {
+    section("10. Memory Pressure & Scale");
+
+    var exec = freshExec();
+
+    // 10.1 Create many tables
+    var ti = 0;
+    while ti < 50 {
+        exec.executeSql("CREATE TABLE scale_t" + Fmt.Int(ti) + " (id INTEGER, data TEXT)");
+        ti = ti + 1;
+    }
+    var r = exec.executeSql("SHOW TABLES");
+    assertSuccess(r, "10.1 Created 50 tables");
+
+    // 10.2 Insert many rows
+    exec.executeSql("CREATE TABLE big_table (id INTEGER, val INTEGER, name TEXT)");
+    var bi = 0;
+    while bi < 100 {
+        // Insert 100 rows at a time
+        var batch = "INSERT INTO big_table VALUES ";
+        var bj = 0;
+        while bj < 100 {
+            var rowId = bi * 100 + bj;
+            if bj > 0 {
+                batch = batch + ", ";
+            }
+            batch = batch + "(" + Fmt.Int(rowId) + ", " + Fmt.Int(rowId * 7) + ", 'row" + Fmt.Int(rowId) + "')";
+            bj = bj + 1;
+        }
+        exec.executeSql(batch);
+        bi = bi + 1;
+    }
+    r = exec.executeSql("SELECT COUNT(*) FROM big_table");
+    assertSuccess(r, "10.2a COUNT after 10000 row insert");
+    if r.success && r.rowCount() > 0 {
+        assertEq(val(r, 0, 0), "10000", "10.2b 10000 rows counted");
+    }
+
+    // 10.3 SELECT with no WHERE on large table
+    r = exec.executeSql("SELECT COUNT(*) FROM big_table WHERE val > 50000");
+    assertSuccess(r, "10.3 Filtered COUNT on large table");
+
+    // 10.4 Aggregate on large table
+    r = exec.executeSql("SELECT AVG(val), MIN(val), MAX(val), SUM(val) FROM big_table");
+    assertSuccess(r, "10.4 Aggregates on 10000 rows");
+
+    // 10.5 ORDER BY on large table
+    r = exec.executeSql("SELECT id FROM big_table ORDER BY val DESC LIMIT 10");
+    assertSuccess(r, "10.5 ORDER BY DESC with LIMIT on large table");
+    assertRowCount(r, 10, "10.5 LIMIT 10 returns 10 rows");
+
+    // 10.6 GROUP BY on large table
+    r = exec.executeSql("SELECT val % 100 AS bucket, COUNT(*) FROM big_table GROUP BY val % 100 ORDER BY bucket LIMIT 10");
+    assertSuccess(r, "10.6 GROUP BY modular bucketing on large table");
+
+    // 10.7 Cross join (careful — 100x100 = 10000 rows)
+    exec.executeSql("CREATE TABLE small_a (x INTEGER)");
+    exec.executeSql("CREATE TABLE small_b (y INTEGER)");
+    var si = 0;
+    while si < 50 {
+        exec.executeSql("INSERT INTO small_a VALUES (" + Fmt.Int(si) + ")");
+        exec.executeSql("INSERT INTO small_b VALUES (" + Fmt.Int(si) + ")");
+        si = si + 1;
+    }
+    r = exec.executeSql("SELECT COUNT(*) FROM small_a CROSS JOIN small_b");
+    assertSuccess(r, "10.7 Cross join 50x50");
+    if r.success && r.rowCount() > 0 {
+        assertEq(val(r, 0, 0), "2500", "10.7 Cross join produces 2500 rows");
+    }
+
+    // 10.8 Wide table (many columns)
+    var wideCols = "id INTEGER";
+    var wci = 0;
+    while wci < 30 {
+        wideCols = wideCols + ", col" + Fmt.Int(wci) + " INTEGER";
+        wci = wci + 1;
+    }
+    r = exec.executeSql("CREATE TABLE wide_table (" + wideCols + ")");
+    assertSuccess(r, "10.8 Create table with 31 columns");
+
+    // 10.9 Create and drop tables in a loop
+    var loopI = 0;
+    while loopI < 100 {
+        exec.executeSql("CREATE TABLE temp_loop (id INTEGER)");
+        exec.executeSql("DROP TABLE temp_loop");
+        loopI = loopI + 1;
+    }
+    assert(true, "10.9 Create/drop 100 times did not crash");
+
+    // 10.10 Large IN list
+    var inList = "SELECT * FROM big_table WHERE id IN (";
+    var ini = 0;
+    while ini < 200 {
+        if ini > 0 {
+            inList = inList + ", ";
+        }
+        inList = inList + Fmt.Int(ini * 50);
+        ini = ini + 1;
+    }
+    inList = inList + ")";
+    r = exec.executeSql(inList);
+    assertSuccess(r, "10.10 Large IN list (200 values)");
+
+    // 10.11 Recursive CTE generating many rows
+    r = exec.executeSql("WITH RECURSIVE cnt(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM cnt WHERE n < 500) SELECT COUNT(*) FROM cnt");
+    assertSuccess(r, "10.11 Recursive CTE generating 500 rows");
+    if r.success && r.rowCount() > 0 {
+        assertEq(val(r, 0, 0), "500", "10.11 Recursive CTE count");
+    }
+
+    // 10.12 Window function on large-ish dataset
+    r = exec.executeSql("SELECT id, ROW_NUMBER() OVER (ORDER BY val) AS rn FROM big_table LIMIT 20");
+    assertSuccess(r, "10.12 Window function on large table");
+}
+
+//=============================================================================
+// 11. ARITHMETIC & TYPE EDGE CASES
+//=============================================================================
+
+func testArithmeticEdgeCases() {
+    section("11. Arithmetic & Type Edge Cases");
+
+    var exec = freshExec();
+
+    // 11.1 Division by zero
+    var r = exec.executeSql("SELECT 1 / 0");
+    assertFailure(r, "11.1a Integer division by zero");
+
+    r = exec.executeSql("SELECT 1.0 / 0.0");
+    assertFailure(r, "11.1b Float division by zero");
+
+    r = exec.executeSql("SELECT 10 % 0");
+    assertFailure(r, "11.1c Modulo by zero");
+
+    // 11.2 NULL arithmetic
+    r = exec.executeSql("SELECT NULL + 1");
+    assertSuccess(r, "11.2a NULL + 1 should succeed");
+    if r.success && r.rowCount() > 0 {
+        assert(getVal(r, 0, 0).isNull(), "11.2b NULL + 1 = NULL");
+    }
+
+    r = exec.executeSql("SELECT NULL * 100");
+    assertSuccess(r, "11.2c NULL * 100");
+
+    r = exec.executeSql("SELECT NULL = NULL");
+    assertSuccess(r, "11.2d NULL = NULL");
+    // SQL standard: NULL = NULL is NULL (not TRUE)
+    if r.success && r.rowCount() > 0 {
+        assert(getVal(r, 0, 0).isNull(), "11.2e NULL = NULL is NULL (not TRUE)");
+    }
+
+    r = exec.executeSql("SELECT NULL IS NULL");
+    assertSuccess(r, "11.2f NULL IS NULL");
+    if r.success && r.rowCount() > 0 {
+        assertEq(val(r, 0, 0), "TRUE", "11.2g NULL IS NULL is TRUE");
+    }
+
+    // 11.3 Type coercion edge cases
+    r = exec.executeSql("SELECT CAST('not_a_number' AS INTEGER)");
+    assert(true, "11.3a CAST non-numeric text to INTEGER did not crash");
+
+    r = exec.executeSql("SELECT CAST('' AS INTEGER)");
+    assert(true, "11.3b CAST empty string to INTEGER did not crash");
+
+    r = exec.executeSql("SELECT CAST('3.14' AS INTEGER)");
+    assertSuccess(r, "11.3c CAST float string to INTEGER");
+
+    // 11.4 String concatenation
+    r = exec.executeSql("SELECT 'hello' || ' ' || 'world'");
+    assertSuccess(r, "11.4a String concatenation");
+    if r.success && r.rowCount() > 0 {
+        assertEq(val(r, 0, 0), "hello world", "11.4b Concatenation result");
+    }
+
+    r = exec.executeSql("SELECT NULL || 'text'");
+    assertSuccess(r, "11.4c NULL concatenation");
+    // PostgreSQL: NULL || 'text' = NULL
+    if r.success && r.rowCount() > 0 {
+        assert(getVal(r, 0, 0).isNull(), "11.4d NULL || text = NULL");
+    }
+
+    // 11.5 Boolean comparisons
+    r = exec.executeSql("SELECT TRUE AND FALSE");
+    assertSuccess(r, "11.5a TRUE AND FALSE");
+
+    r = exec.executeSql("SELECT TRUE OR FALSE");
+    assertSuccess(r, "11.5b TRUE OR FALSE");
+
+    r = exec.executeSql("SELECT NOT TRUE");
+    assertSuccess(r, "11.5c NOT TRUE");
+
+    // 11.6 CASE expression
+    r = exec.executeSql("SELECT CASE WHEN 1 = 1 THEN 'yes' ELSE 'no' END");
+    assertSuccess(r, "11.6a Simple CASE");
+    if r.success && r.rowCount() > 0 {
+        assertEq(val(r, 0, 0), "yes", "11.6b CASE result");
+    }
+
+    r = exec.executeSql("SELECT CASE WHEN 1 = 2 THEN 'yes' END");
+    assertSuccess(r, "11.6c CASE with no ELSE (should be NULL)");
+    if r.success && r.rowCount() > 0 {
+        assert(getVal(r, 0, 0).isNull(), "11.6d CASE no match = NULL");
+    }
+
+    // 11.7 BETWEEN
+    r = exec.executeSql("SELECT 5 BETWEEN 1 AND 10");
+    assertSuccess(r, "11.7a BETWEEN true case");
+
+    r = exec.executeSql("SELECT 15 BETWEEN 1 AND 10");
+    assertSuccess(r, "11.7b BETWEEN false case");
+
+    // 11.8 LIKE pattern matching
+    exec.executeSql("CREATE TABLE patterns (s TEXT)");
+    exec.executeSql("INSERT INTO patterns VALUES ('hello'), ('world'), ('help'), ('helm')");
+
+    r = exec.executeSql("SELECT s FROM patterns WHERE s LIKE 'hel%'");
+    assertSuccess(r, "11.8a LIKE prefix pattern");
+    assertRowCount(r, 3, "11.8b LIKE 'hel%' matches 3");
+
+    r = exec.executeSql("SELECT s FROM patterns WHERE s LIKE '%l%'");
+    assertSuccess(r, "11.8c LIKE contains pattern");
+
+    r = exec.executeSql("SELECT s FROM patterns WHERE s LIKE 'h_l%'");
+    assertSuccess(r, "11.8d LIKE single-char wildcard");
+
+    // 11.9 COALESCE
+    r = exec.executeSql("SELECT COALESCE(NULL, NULL, 'found')");
+    assertSuccess(r, "11.9a COALESCE with NULLs");
+    if r.success && r.rowCount() > 0 {
+        assertEq(val(r, 0, 0), "found", "11.9b COALESCE returns first non-null");
+    }
+
+    r = exec.executeSql("SELECT COALESCE(NULL, NULL, NULL)");
+    assertSuccess(r, "11.9c COALESCE all NULLs");
+    if r.success && r.rowCount() > 0 {
+        assert(getVal(r, 0, 0).isNull(), "11.9d COALESCE all NULLs = NULL");
+    }
+}
+
+//=============================================================================
+// 12. DDL EDGE CASES
+//=============================================================================
+
+func testDdlEdgeCases() {
+    section("12. DDL Edge Cases");
+
+    var exec = freshExec();
+
+    // 12.1 CREATE TABLE with duplicate column names
+    var r = exec.executeSql("CREATE TABLE dup_cols (id INTEGER, id INTEGER)");
+    assertFailure(r, "12.1 Duplicate column names in CREATE TABLE");
+
+    // 12.2 CREATE TABLE that already exists
+    exec.executeSql("CREATE TABLE exists_test (id INTEGER)");
+    r = exec.executeSql("CREATE TABLE exists_test (id INTEGER)");
+    assertFailure(r, "12.2a CREATE TABLE that already exists");
+
+    r = exec.executeSql("CREATE TABLE IF NOT EXISTS exists_test (id INTEGER)");
+    assertSuccess(r, "12.2b CREATE TABLE IF NOT EXISTS");
+
+    // 12.3 ALTER TABLE add column to table with data
+    exec.executeSql("CREATE TABLE alter_test (id INTEGER, name TEXT)");
+    exec.executeSql("INSERT INTO alter_test VALUES (1, 'Alice')");
+    r = exec.executeSql("ALTER TABLE alter_test ADD COLUMN age INTEGER");
+    assertSuccess(r, "12.3a ALTER TABLE ADD COLUMN with data");
+    r = exec.executeSql("SELECT * FROM alter_test");
+    assertSuccess(r, "12.3b SELECT after ALTER TABLE");
+
+    // 12.4 DROP TABLE with foreign key references
+    exec.executeSql("CREATE TABLE parent_t (id INTEGER PRIMARY KEY)");
+    exec.executeSql("CREATE TABLE child_t (id INTEGER, parent_id INTEGER REFERENCES parent_t(id))");
+    r = exec.executeSql("DROP TABLE parent_t");
+    // Should either fail (FK dependency) or cascade — don't crash
+    assert(true, "12.4 DROP TABLE with FK references did not crash");
+
+    // 12.5 Column name that is a SQL keyword
+    r = exec.executeSql("CREATE TABLE kw_test (select INTEGER, from TEXT, where INTEGER)");
+    // Keywords as column names — some DBs allow with quoting
+    assert(true, "12.5 Keywords as column names did not crash");
+
+    // 12.6 Very long CREATE TABLE
+    var bigCreate = "CREATE TABLE big_create (id INTEGER";
+    var ci = 0;
+    while ci < 50 {
+        bigCreate = bigCreate + ", field" + Fmt.Int(ci) + " TEXT";
+        ci = ci + 1;
+    }
+    bigCreate = bigCreate + ")";
+    r = exec.executeSql(bigCreate);
+    assertSuccess(r, "12.6 CREATE TABLE with 51 columns");
+
+    // 12.7 DROP TABLE IF EXISTS on nonexistent
+    r = exec.executeSql("DROP TABLE IF EXISTS completely_imaginary_table");
+    assertSuccess(r, "12.7 DROP TABLE IF EXISTS on nonexistent");
+
+    // 12.8 RENAME TABLE/COLUMN
+    exec.executeSql("CREATE TABLE rename_me (old_name TEXT)");
+    r = exec.executeSql("ALTER TABLE rename_me RENAME COLUMN old_name TO new_name");
+    assert(true, "12.8 ALTER TABLE RENAME COLUMN did not crash");
+
+    // 12.9 CREATE INDEX on existing table
+    exec.executeSql("CREATE TABLE idx_test (id INTEGER, name TEXT, age INTEGER)");
+    exec.executeSql("INSERT INTO idx_test VALUES (1, 'Alice', 30), (2, 'Bob', 25)");
+    r = exec.executeSql("CREATE INDEX idx_name ON idx_test (name)");
+    assertSuccess(r, "12.9a CREATE INDEX");
+    r = exec.executeSql("SELECT * FROM idx_test WHERE name = 'Alice'");
+    assertSuccess(r, "12.9b Query using index");
+
+    // 12.10 CREATE INDEX on nonexistent column
+    r = exec.executeSql("CREATE INDEX bad_idx ON idx_test (phantom)");
+    assertFailure(r, "12.10 CREATE INDEX on nonexistent column");
+
+    // 12.11 CREATE VIEW
+    r = exec.executeSql("CREATE VIEW idx_view AS SELECT name, age FROM idx_test WHERE age > 20");
+    assertSuccess(r, "12.11a CREATE VIEW");
+    r = exec.executeSql("SELECT * FROM idx_view");
+    assertSuccess(r, "12.11b SELECT from VIEW");
+
+    // 12.12 DROP VIEW
+    r = exec.executeSql("DROP VIEW idx_view");
+    assertSuccess(r, "12.12 DROP VIEW");
+
+    // 12.13 TRUNCATE TABLE
+    exec.executeSql("CREATE TABLE trunc_test (id INTEGER)");
+    exec.executeSql("INSERT INTO trunc_test VALUES (1), (2), (3)");
+    r = exec.executeSql("TRUNCATE TABLE trunc_test");
+    assertSuccess(r, "12.13a TRUNCATE");
+    r = exec.executeSql("SELECT COUNT(*) FROM trunc_test");
+    if r.success && r.rowCount() > 0 {
+        assertEq(val(r, 0, 0), "0", "12.13b TRUNCATE empties table");
+    }
+}
+
+//=============================================================================
+// 13. QUERY EDGE CASES
+//=============================================================================
+
+func testQueryEdgeCases() {
+    section("13. Query Edge Cases");
+
+    var exec = freshExec();
+
+    // Setup test data
+    exec.executeSql("CREATE TABLE emp (id INTEGER, name TEXT, dept TEXT, salary INTEGER)");
+    exec.executeSql("INSERT INTO emp VALUES (1, 'Alice', 'Eng', 100)");
+    exec.executeSql("INSERT INTO emp VALUES (2, 'Bob', 'Eng', 120)");
+    exec.executeSql("INSERT INTO emp VALUES (3, 'Charlie', 'Sales', 90)");
+    exec.executeSql("INSERT INTO emp VALUES (4, 'Diana', 'Sales', 110)");
+    exec.executeSql("INSERT INTO emp VALUES (5, 'Eve', 'HR', 95)");
+
+    // 13.1 SELECT with HAVING but no GROUP BY
+    var r = exec.executeSql("SELECT COUNT(*) FROM emp HAVING COUNT(*) > 3");
+    assertSuccess(r, "13.1 HAVING without GROUP BY");
+
+    // 13.2 ORDER BY column not in SELECT list
+    r = exec.executeSql("SELECT name FROM emp ORDER BY salary");
+    assertSuccess(r, "13.2 ORDER BY column not in SELECT list");
+    if r.success && r.rowCount() > 0 {
+        assertEq(val(r, 0, 0), "Charlie", "13.2 Lowest salary first");
+    }
+
+    // 13.3 DISTINCT
+    r = exec.executeSql("SELECT DISTINCT dept FROM emp ORDER BY dept");
+    assertSuccess(r, "13.3 DISTINCT");
+    assertRowCount(r, 3, "13.3 Three distinct departments");
+
+    // 13.4 LIMIT 0
+    r = exec.executeSql("SELECT * FROM emp LIMIT 0");
+    assertSuccess(r, "13.4 LIMIT 0");
+    assertRowCount(r, 0, "13.4 LIMIT 0 returns 0 rows");
+
+    // 13.5 LIMIT with negative number
+    r = exec.executeSql("SELECT * FROM emp LIMIT -1");
+    // Should fail or be treated as no limit — don't crash
+    assert(true, "13.5 LIMIT -1 did not crash");
+
+    // 13.6 OFFSET larger than result set
+    r = exec.executeSql("SELECT * FROM emp LIMIT 10 OFFSET 1000");
+    assertSuccess(r, "13.6 OFFSET larger than result set");
+    assertRowCount(r, 0, "13.6 No rows when OFFSET exceeds count");
+
+    // 13.7 Empty IN list
+    r = exec.executeSql("SELECT * FROM emp WHERE id IN ()");
+    // Should fail or return empty — don't crash
+    assert(true, "13.7 Empty IN list did not crash");
+
+    // 13.8 SELECT from empty table
+    exec.executeSql("CREATE TABLE empty_t (id INTEGER, val TEXT)");
+    r = exec.executeSql("SELECT * FROM empty_t");
+    assertSuccess(r, "13.8a SELECT from empty table");
+    assertRowCount(r, 0, "13.8b Empty table returns 0 rows");
+
+    r = exec.executeSql("SELECT COUNT(*) FROM empty_t");
+    assertSuccess(r, "13.8c COUNT on empty table");
+    if r.success && r.rowCount() > 0 {
+        assertEq(val(r, 0, 0), "0", "13.8d COUNT of empty table = 0");
+    }
+
+    r = exec.executeSql("SELECT AVG(id) FROM empty_t");
+    assertSuccess(r, "13.8e AVG on empty table");
+    if r.success && r.rowCount() > 0 {
+        assert(getVal(r, 0, 0).isNull(), "13.8f AVG of empty = NULL");
+    }
+
+    r = exec.executeSql("SELECT MIN(id) FROM empty_t");
+    assertSuccess(r, "13.8g MIN on empty table");
+
+    r = exec.executeSql("SELECT MAX(id) FROM empty_t");
+    assertSuccess(r, "13.8h MAX on empty table");
+
+    // 13.9 SELECT with multiple aggregates
+    r = exec.executeSql("SELECT dept, COUNT(*), AVG(salary), MIN(salary), MAX(salary), SUM(salary) FROM emp GROUP BY dept ORDER BY dept");
+    assertSuccess(r, "13.9 Multiple aggregates with GROUP BY");
+    assertRowCount(r, 3, "13.9 Three groups");
+
+    // 13.10 Aliased columns in WHERE (shouldn't work per SQL standard)
+    r = exec.executeSql("SELECT salary * 2 AS double_salary FROM emp WHERE double_salary > 200");
+    // SQL standard: can't use alias in WHERE (computed after FROM/WHERE)
+    assert(true, "13.10 Alias in WHERE did not crash");
+
+    // 13.11 UPDATE with no WHERE (updates all rows)
+    r = exec.executeSql("UPDATE emp SET dept = 'All' WHERE dept = 'HR'");
+    assertSuccess(r, "13.11 UPDATE with WHERE");
+
+    // 13.12 DELETE with no WHERE (deletes all rows)
+    exec.executeSql("CREATE TABLE del_all (id INTEGER)");
+    exec.executeSql("INSERT INTO del_all VALUES (1), (2), (3)");
+    r = exec.executeSql("DELETE FROM del_all");
+    assertSuccess(r, "13.12 DELETE with no WHERE");
+    r = exec.executeSql("SELECT COUNT(*) FROM del_all");
+    if r.success && r.rowCount() > 0 {
+        assertEq(val(r, 0, 0), "0", "13.12 All rows deleted");
+    }
+
+    // 13.13 SELECT with complex expression
+    r = exec.executeSql("SELECT name, salary * 12 + 1000 AS annual FROM emp WHERE salary * 12 > 1000 ORDER BY annual DESC");
+    assertSuccess(r, "13.13 Complex expression in SELECT + WHERE + ORDER BY");
+
+    // 13.14 INSERT ... RETURNING
+    exec.executeSql("CREATE TABLE ret_test (id INTEGER PRIMARY KEY, val TEXT)");
+    r = exec.executeSql("INSERT INTO ret_test VALUES (1, 'hello') RETURNING *");
+    assertSuccess(r, "13.14 INSERT RETURNING");
+
+    // 13.15 UPDATE ... RETURNING
+    r = exec.executeSql("UPDATE ret_test SET val = 'world' WHERE id = 1 RETURNING id, val");
+    assertSuccess(r, "13.15 UPDATE RETURNING");
+
+    // 13.16 DELETE ... RETURNING
+    r = exec.executeSql("DELETE FROM ret_test WHERE id = 1 RETURNING *");
+    assertSuccess(r, "13.16 DELETE RETURNING");
+
+    // 13.17 EXPLAIN ANALYZE
+    r = exec.executeSql("EXPLAIN ANALYZE SELECT * FROM emp WHERE dept = 'Eng'");
+    assertSuccess(r, "13.17 EXPLAIN ANALYZE");
+
+    // 13.18 LIKE with wildcards only
+    r = exec.executeSql("SELECT * FROM emp WHERE name LIKE '%'");
+    assertSuccess(r, "13.18a LIKE '%' matches all");
+    assertRowCount(r, 4, "13.18b All non-deleted rows matched");
+
+    r = exec.executeSql("SELECT * FROM emp WHERE name LIKE '_'");
+    assertSuccess(r, "13.18c LIKE '_' matches single char");
+
+    // 13.19 Multiple table references without JOIN
+    r = exec.executeSql("SELECT emp.name FROM emp, empty_t");
+    assertSuccess(r, "13.19 Implicit cross join with empty table");
+    assertRowCount(r, 0, "13.19 Cross join with empty = 0 rows");
+
+    // 13.20 UNION with different column counts
+    r = exec.executeSql("SELECT id, name FROM emp UNION SELECT id FROM emp");
+    assertFailure(r, "13.20 UNION column count mismatch");
+
+    // 13.21 EXCEPT
+    r = exec.executeSql("SELECT dept FROM emp EXCEPT SELECT 'HR'");
+    assertSuccess(r, "13.21 EXCEPT operation");
+
+    // 13.22 INTERSECT
+    r = exec.executeSql("SELECT dept FROM emp INTERSECT SELECT dept FROM emp WHERE salary > 100");
+    assertSuccess(r, "13.22 INTERSECT operation");
+
+    // 13.23 IS NOT NULL
+    exec.executeSql("CREATE TABLE nullable (id INTEGER, val TEXT)");
+    exec.executeSql("INSERT INTO nullable VALUES (1, 'a')");
+    exec.executeSql("INSERT INTO nullable VALUES (2, NULL)");
+    r = exec.executeSql("SELECT * FROM nullable WHERE val IS NOT NULL");
+    assertSuccess(r, "13.23a IS NOT NULL");
+    assertRowCount(r, 1, "13.23b One non-null row");
+
+    r = exec.executeSql("SELECT * FROM nullable WHERE val IS NULL");
+    assertSuccess(r, "13.23c IS NULL");
+    assertRowCount(r, 1, "13.23d One null row");
+
+    // 13.24 NOT IN with NULL (tricky SQL semantics)
+    r = exec.executeSql("SELECT * FROM emp WHERE id NOT IN (1, 2, NULL)");
+    // SQL standard: NOT IN with NULL always returns empty (because NULL comparison is unknown)
+    assert(true, "13.24 NOT IN with NULL did not crash");
+
+    // 13.25 Aggregate with FILTER
+    r = exec.executeSql("SELECT COUNT(*) FILTER (WHERE dept = 'Eng') AS eng_count FROM emp");
+    assertSuccess(r, "13.25 Aggregate with FILTER clause");
+}

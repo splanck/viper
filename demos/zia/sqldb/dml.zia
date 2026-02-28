@@ -128,6 +128,32 @@ entity DmlHandler {
         // Statement-level atomicity: save journal position for rollback on error
         var stmtSavepoint = exec.journal.count();
 
+        // Validate value count matches expected column count
+        var expectedCount = 0;
+        if hasColumnList {
+            expectedCount = stmt.columnNames.count();
+        } else {
+            // Count non-generated columns
+            var ec = 0;
+            while ec < t.columnCount() {
+                var ecCol = t.getColumn(ec);
+                if ecCol != null {
+                    var ecc = ecCol;
+                    if ecc.isGenerated == false { expectedCount = expectedCount + 1; }
+                }
+                ec = ec + 1;
+            }
+        }
+        var vr = 0;
+        while vr < stmt.rowCount() {
+            var vrExprs = stmt.valueRows.get(vr);
+            if vrExprs.count() != expectedCount {
+                result.setError("INSERT has " + Fmt.Int(vrExprs.count()) + " values but expected " + Fmt.Int(expectedCount));
+                return result;
+            }
+            vr = vr + 1;
+        }
+
         var rowsInserted = 0;
         var r = 0;
         while r < stmt.rowCount() {
@@ -1327,6 +1353,12 @@ entity DmlHandler {
                             var colName = stmt.setColumns.get(i);
                             var valExpr = stmt.setValues.get(i);
                             var colIdx = t.findColumnIndex(colName);
+                            // BUG-ADV-004: Error on nonexistent column in UPDATE SET
+                            if colIdx < 0 {
+                                exec.undoToSavepoint(stmtSavepoint);
+                                result.setError("Column '" + colName + "' not found in table '" + t.name + "'");
+                                return result;
+                            }
                             if colIdx >= 0 {
                                 // Block direct writes to generated columns
                                 var maybeGenCol = t.getColumn(colIdx);

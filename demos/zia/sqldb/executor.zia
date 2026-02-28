@@ -185,6 +185,13 @@ entity Executor {
     // Random seed for RANDOM() function
     expose Integer randomSeed;
 
+    // BUG-ADV-004: Error from expression evaluation (e.g. unknown column)
+    // Set by evalColumn when a column name is not found; checked by callers.
+    // Note: hasEvalError is an Integer flag (0/1) because Boolean/String field
+    // reads through chained entity references have lifetime issues.
+    expose Integer hasEvalError;
+    expose String evalError;
+
     // Subquery result cache to avoid re-executing the same subquery per row
     // This prevents native codegen string corruption from repeated recursive calls
     // Stores cloned scalar values (for scalar subqueries) and value lists (for IN subqueries)
@@ -274,6 +281,8 @@ entity Executor {
         currentTableAlias = "";
         subqueryDepth = 0;
         randomSeed = 42;
+        hasEvalError = 0;
+        evalError = "";
         mvccTxnCounter = 1;
         mvccTxnId = 0;
         mvccSnapshotId = 0;
@@ -362,6 +371,8 @@ entity Executor {
         currentTableAlias = "";
         subqueryDepth = 0;
         randomSeed = 42;
+        hasEvalError = 0;
+        evalError = "";
         mvccTxnCounter = 1;
         mvccTxnId = 0;
         mvccSnapshotId = 0;
@@ -1026,6 +1037,13 @@ entity Executor {
         outerTableAlias = savedOuterAlias;
         currentTableAlias = savedCurrentAlias;
 
+        // SQL requires scalar subqueries to return at most one row
+        if result.success && result.rowCount() > 1 {
+            hasEvalError = 1;
+            evalError = "Scalar subquery returned more than one row";
+            return sqlNull();
+        }
+
         // Return scalar value from first row, first column
         // Clone the value to prevent string lifetime issues with nested subqueries
         if result.success && result.rowCount() > 0 {
@@ -1136,6 +1154,11 @@ entity Executor {
                 if outerColIdx >= 0 {
                     return orow.getValue(outerColIdx);
                 }
+            }
+            // BUG-ADV-004: Report unknown column instead of silently returning NULL
+            if hasEvalError == 0 {
+                hasEvalError = 1;
+                evalError = "Column '" + expr.columnName + "' not found";
             }
             return sqlNull();
         }
@@ -2191,6 +2214,10 @@ entity Executor {
         subqueryCacheScalars = [];
         subqueryCacheLists = [];
 
+        // Clear eval error state from any previous statement
+        hasEvalError = 0;
+        evalError = "";
+
         var parser = new Parser(sql);
 
         var kind = parser.currentKind();
@@ -2754,6 +2781,13 @@ entity Executor {
                 result.setError(parser.error);
                 return result;
             }
+            // BUG-ADV-002: Check for trailing tokens after statement
+            if parser.currentKind() != TK_EOF && parser.currentKind() != TK_SEMICOLON {
+                var result = new QueryResult();
+                result.init();
+                result.setError("Unexpected token after statement: '" + parser.currentText() + "'");
+                return result;
+            }
             return dmlHandler.executeInsert(stmt);
         }
 
@@ -2764,6 +2798,15 @@ entity Executor {
                 var result = new QueryResult();
                 result.init();
                 result.setError(parser.error);
+                return result;
+            }
+            // BUG-ADV-002: Check for trailing tokens after SELECT statement
+            if parser.currentKind() != TK_EOF && parser.currentKind() != TK_SEMICOLON
+                && parser.currentKind() != TK_UNION && parser.currentKind() != TK_EXCEPT
+                && parser.currentKind() != TK_INTERSECT {
+                var result = new QueryResult();
+                result.init();
+                result.setError("Unexpected token after statement: '" + parser.currentText() + "'");
                 return result;
             }
             var firstResult = queryHandler.executeSelect(stmt);
@@ -2832,6 +2875,13 @@ entity Executor {
                 result.setError(parser.error);
                 return result;
             }
+            // BUG-ADV-002: Check for trailing tokens after statement
+            if parser.currentKind() != TK_EOF && parser.currentKind() != TK_SEMICOLON {
+                var result = new QueryResult();
+                result.init();
+                result.setError("Unexpected token after statement: '" + parser.currentText() + "'");
+                return result;
+            }
             return dmlHandler.executeUpdate(stmt);
         }
 
@@ -2842,6 +2892,13 @@ entity Executor {
                 var result = new QueryResult();
                 result.init();
                 result.setError(parser.error);
+                return result;
+            }
+            // BUG-ADV-002: Check for trailing tokens after statement
+            if parser.currentKind() != TK_EOF && parser.currentKind() != TK_SEMICOLON {
+                var result = new QueryResult();
+                result.init();
+                result.setError("Unexpected token after statement: '" + parser.currentText() + "'");
                 return result;
             }
             return dmlHandler.executeDelete(stmt);

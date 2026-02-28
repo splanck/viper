@@ -1,0 +1,51 @@
+module test_crash_bisect3;
+
+bind Terminal = Viper.Terminal;
+bind Fmt = Viper.Fmt;
+
+bind "../executor";
+bind "./test_common";
+
+func main() -> Integer {
+    Terminal.Say("=== Crash Bisect 3 ===");
+    
+    // Test 1: Normal failure with good error message
+    var exec = new Executor();
+    exec.init();
+    
+    Terminal.Say("Step 1: Normal failure...");
+    var r = exec.executeSql("SELECT * FROM nonexistent_table");
+    Terminal.Say("  success=" + Fmt.Bool(r.success));
+    Terminal.Say("  calling assertFailure...");
+    assertFailure(r, "nonexistent table should fail");
+    Terminal.Say("  assertFailure OK");
+    
+    Terminal.Say("  calling assertSuccess (should FAIL)...");
+    assertSuccess(r, "this should print FAIL");
+    Terminal.Say("  assertSuccess OK");
+    
+    // Test 2: The injection scenario
+    Terminal.Say("Step 2: Injection scenario...");
+    exec.executeSql("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, password TEXT)");
+    exec.executeSql("INSERT INTO users VALUES (1, 'admin', 'secret123')");
+    
+    r = exec.executeSql("INSERT INTO users VALUES (2, 'bobby', 'x''; DROP TABLE users; --')");
+    Terminal.Say("  injection success=" + Fmt.Bool(r.success));
+    Terminal.Say("  calling assertFailure on injection...");
+    assertFailure(r, "injection insert");
+    Terminal.Say("  assertFailure OK");
+    
+    Terminal.Say("Step 3: SELECT after injection...");
+    r = exec.executeSql("SELECT * FROM users");
+    Terminal.Say("  select success=" + Fmt.Bool(r.success));
+    if r.success == false {
+        Terminal.Say("  message is: [" + (r.message ?? "(null)") + "]");
+    }
+    Terminal.Say("  calling assertSuccess on failed SELECT...");
+    assertSuccess(r, "users table check");
+    Terminal.Say("  assertSuccess done");
+    
+    Terminal.Say("All done!");
+    printResults();
+    return 0;
+}

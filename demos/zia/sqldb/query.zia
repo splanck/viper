@@ -601,6 +601,14 @@ entity QueryHandler {
         c = 0;
         while c < stmt.columns.count() {
             var val = exec.evalExpr(stmt.columns.get(c), dummyRow, dummyTable);
+            // Check for scalar subquery errors (e.g., returned >1 row)
+            if exec.hasEvalError == 1 {
+                result.init();
+                result.setError(exec.evalError);
+                exec.hasEvalError = 0;
+                exec.evalError = "";
+                return result;
+            }
             row.setValue(c, val);
             c = c + 1;
         }
@@ -847,6 +855,15 @@ entity QueryHandler {
                 }
                 r = r + 1;
             }
+            // BUG-ADV-004: Check for column resolution errors during WHERE evaluation
+            if exec.hasEvalError == 1 {
+                var errResult = new QueryResult();
+                errResult.init();
+                errResult.setError(exec.evalError);
+                exec.hasEvalError = 0;
+                exec.evalError = "";
+                return errResult;
+            }
         }
 
         // Phase 70: TABLESAMPLE — randomly sample a percentage of rows
@@ -969,7 +986,31 @@ entity QueryHandler {
                         oe = oe + 1;
                     }
                 }
+                // Validate ORDER BY columns exist before sorting
+                var ovi = 0;
+                while ovi < resolvedOrderExprs.count() {
+                    var ovExpr = resolvedOrderExprs.get(ovi);
+                    if ovExpr.kind == EXPR_COLUMN && ovExpr.tableName == "" {
+                        var ovIdx = t.findColumnIndex(ovExpr.columnName);
+                        if ovIdx < 0 {
+                            var errResult = new QueryResult();
+                            errResult.init();
+                            errResult.setError("Column '" + ovExpr.columnName + "' not found");
+                            return errResult;
+                        }
+                    }
+                    ovi = ovi + 1;
+                }
                 sortMatchingRows(matchingRows, resolvedOrderExprs, stmt.orderByDir, stmt.orderByNulls, t!);
+                // BUG-ADV-004: Check for column resolution errors during ORDER BY
+                if exec.hasEvalError == 1 {
+                    var errResult = new QueryResult();
+                    errResult.init();
+                    errResult.setError(exec.evalError);
+                    exec.hasEvalError = 0;
+                    exec.evalError = "";
+                    return errResult;
+                }
             }
 
             var i = 0;
@@ -998,6 +1039,14 @@ entity QueryHandler {
                     }
 
                     result.addRow(resultRow);
+                    // BUG-ADV-004: Check for column resolution errors during projection
+                    if exec.hasEvalError == 1 {
+                        result.init();
+                        result.setError(exec.evalError);
+                        exec.hasEvalError = 0;
+                        exec.evalError = "";
+                        return result;
+                    }
                 }
                 i = i + 1;
             }
@@ -1090,6 +1139,13 @@ entity QueryHandler {
                 while g < stmt.groupByExprs.count() {
                     var groupExpr = stmt.groupByExprs.get(g);
                     var val = exec.evalExpr(groupExpr, rowData, table);
+                    // BUG-ADV-004: Check for column errors in GROUP BY
+                    if exec.hasEvalError == 1 {
+                        result.setError(exec.evalError);
+                        exec.hasEvalError = 0;
+                        exec.evalError = "";
+                        return;
+                    }
                     if g > 0 {
                         key = key + "|";
                     }
