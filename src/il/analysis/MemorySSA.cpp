@@ -53,6 +53,7 @@
 #include "il/core/Opcode.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>

@@ -97,7 +97,7 @@ namespace
 #define RUNTIME_PROP(_name, _type, _getter, _setter)                                               \
     ::il::runtime::RuntimeProperty                                                                 \
     {                                                                                              \
-        (_name), (_type), (_getter), (_setter), ((_setter) == nullptr)                             \
+        (_name), (_type), (_getter), (_setter), !(_setter)                                         \
     }
 
 /// @brief Constructs a vector of RuntimeProperty descriptors.

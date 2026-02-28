@@ -42,6 +42,10 @@ foreach (_viper_codegen_case IN LISTS _viper_codegen_x86_64_tests)
             ${VIPER_TESTS_DIR}/codegen/x86_64/test_${_viper_codegen_case}.cpp)
 
     add_executable(${_viper_codegen_target} ${_viper_codegen_source})
+    if (WIN32)
+        target_sources(${_viper_codegen_target} PRIVATE
+                ${VIPER_TESTS_DIR}/common/WinDialogSuppress.c)
+    endif ()
     target_link_libraries(${_viper_codegen_target} PRIVATE viper_testing)
     add_test(
             NAME codegen_x86_64_${_viper_codegen_case}

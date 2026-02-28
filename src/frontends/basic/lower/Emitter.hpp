@@ -29,8 +29,8 @@
 
 namespace il::core
 {
-class BasicBlock;
-class Function;
+struct BasicBlock;
+struct Function;
 } // namespace il::core
 
 namespace il::frontends::basic

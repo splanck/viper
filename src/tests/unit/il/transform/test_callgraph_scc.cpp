@@ -26,6 +26,8 @@
 #include "il/core/Type.hpp"
 #include "tests/TestHarness.hpp"
 
+#include <algorithm>
+
 using namespace il::core;
 
 namespace

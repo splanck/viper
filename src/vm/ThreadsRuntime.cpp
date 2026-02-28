@@ -197,11 +197,11 @@ extern "C" void vm_thread_safe_entry_trampoline(void *raw)
     catch (...)
     {
         // Trap was intercepted by setjmp in the caller (safe_thread_entry).
-        // If not, this is an unexpected exception.
-        // The safe_thread_entry wrapper in rt_threads.c handles
-        // the setjmp/longjmp mechanism — exceptions that reach here
-        // were not caught by longjmp, so re-throw.
-        throw;
+        // If not, this is an unexpected exception.  Cannot re-throw from
+        // extern "C" linkage (UB / MSVC C4297), so abort.
+        delete payload;
+        rt_abort("Thread.StartSafe: unhandled exception in thread entry");
+        return;
     }
 
     delete payload;

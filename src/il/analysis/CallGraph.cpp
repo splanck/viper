@@ -131,12 +131,15 @@ void tarjanDFS(const std::string &start,
                 }
                 sccs.push_back(std::move(scc));
             }
+            // Save lowlink before popping — v is a reference into callStack
+            // and becomes dangling after pop_back().
+            const unsigned vLowlink = state.lowlink[v];
             callStack.pop_back();
             if (!callStack.empty())
             {
                 // Propagate lowlink upward to the parent frame.
                 const std::string &parent = callStack.back().node;
-                state.lowlink[parent] = std::min(state.lowlink[parent], state.lowlink[v]);
+                state.lowlink[parent] = std::min(state.lowlink[parent], vLowlink);
             }
         }
     }

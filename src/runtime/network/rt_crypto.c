@@ -1147,8 +1147,8 @@ void rt_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <wincrypt.h>
 #include <windows.h>
+#include <wincrypt.h>
 
 extern void rt_trap(const char *msg);
 

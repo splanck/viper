@@ -26,10 +26,26 @@
 #include <sys/stat.h>
 #include <time.h> // For struct timespec (defined in UCRT)
 #include <windows.h>
+#ifdef _DEBUG
+#include <crtdbg.h>
+#endif
 
-// Disable Windows abort dialog so tests exit cleanly on assertion failures
-// Call VIPER_DISABLE_ABORT_DIALOG() at the start of main() in test executables
-#define VIPER_DISABLE_ABORT_DIALOG() _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT)
+// Disable all Windows debug/error dialogs so tests exit cleanly.
+// Call VIPER_DISABLE_ABORT_DIALOG() at the start of main() in test executables.
+static inline void viper_disable_abort_dialog_(void)
+{
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+#ifdef _DEBUG
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_WARN, _CRTDBG_FILE_STDERR);
+#endif
+}
+#define VIPER_DISABLE_ABORT_DIALOG() viper_disable_abort_dialog_()
 
 // Standard file descriptors
 #ifndef STDIN_FILENO

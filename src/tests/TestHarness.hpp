@@ -108,6 +108,20 @@
 #include <utility>
 #include <vector>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <cstdlib>
+#ifdef _DEBUG
+#include <crtdbg.h>
+#endif
+#endif
+
 namespace viper_test
 {
 
@@ -227,7 +241,22 @@ struct TestRegistrar
 ///
 /// @param argc Pointer to argument count (unused).
 /// @param argv Pointer to argument array (unused).
-inline void init(int *, char ***) {}
+inline void init(int *, char ***)
+{
+#ifdef _WIN32
+    // Suppress all MSVC debug dialogs so tests run non-interactively.
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+#ifdef _DEBUG
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_WARN, _CRTDBG_FILE_STDERR);
+#endif
+#endif
+}
 
 /// @brief Initialize the test framework (no-op in this implementation).
 ///
@@ -236,7 +265,21 @@ inline void init(int *, char ***) {}
 ///
 /// @param argc Pointer to argument count (unused).
 /// @param argv Argument array (unused).
-inline void init(int *, char **) {}
+inline void init(int *, char **)
+{
+#ifdef _WIN32
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+#ifdef _DEBUG
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_WARN, _CRTDBG_FILE_STDERR);
+#endif
+#endif
+}
 
 /// @brief Report an assertion failure and throw a TestFailure exception.
 ///

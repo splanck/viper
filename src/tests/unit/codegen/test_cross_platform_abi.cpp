@@ -192,8 +192,8 @@ TEST(CrossPlatformABI, LinkerSupportArchiveExtension)
 #if defined(_WIN32)
     const std::string ext = path.extension().string();
     EXPECT_EQ(ext, std::string(".lib"));
-    // No "lib" prefix on Windows
-    EXPECT_EQ(path.filename().string().find("lib"), std::string::npos);
+    // No "lib" prefix on Windows (check stem to avoid matching ".lib" extension)
+    EXPECT_EQ(path.stem().string().find("lib"), std::string::npos);
 #else
     const std::string ext = path.extension().string();
     EXPECT_EQ(ext, std::string(".a"));

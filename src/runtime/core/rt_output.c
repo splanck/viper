@@ -36,6 +36,8 @@
 
 #include "rt_output.h"
 
+#include "rt_atomic_compat.h"
+
 #include <stdio.h>
 #include <string.h>
 

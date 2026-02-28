@@ -103,7 +103,7 @@ int main()
         const Instr &switchInstr = trapBlock.instructions.front();
         il::vm::VMTestHook::setContext(vm, state.fr, state.bb, state.ip, switchInstr);
         il::vm::detail::control::handleSwitchI32(
-            vm, state.fr, switchInstr, state.blocks, state.bb, state.ip);
+            vm, state.fr, switchInstr, *state.blocks, state.bb, state.ip);
 
         _exit(0); // Unreachable but placates compilers.
     }

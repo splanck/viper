@@ -22,6 +22,10 @@
 #include <optional>
 #include <vector>
 
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
+
 /// @brief AArch64 target-specific definitions for the Viper code generator.
 ///
 /// This namespace contains all AArch64-specific constants, types, and functions
@@ -486,7 +490,11 @@ class CallingConvention
 
         const uint64_t rotLeft1 = ((elem << 1) | (elem >> (N - 1))) & mask;
         const uint64_t transitions = elem ^ rotLeft1;
+#ifdef _MSC_VER
+        if (__popcnt64(transitions) == 2)
+#else
         if (__builtin_popcountll(transitions) == 2)
+#endif
             return true;
     }
     return false;

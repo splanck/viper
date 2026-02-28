@@ -72,6 +72,9 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #endif
 
@@ -763,31 +766,73 @@ Slot VM::runFunctionLoop(ExecState &st)
 }
 
 #if defined(_WIN32)
-/// @brief Execute one dispatch step, translating Windows hardware exceptions into
-/// Viper traps.  Kept in a separate function so that __try/__except (SEH) and
-/// C++ objects with non-trivial destructors never share the same stack frame,
-/// which is a requirement of the MSVC SEH implementation.
-bool VM::runDispatchStep(VMContext &context, ExecState &st)
+/// @brief Pure SEH wrapper — free of C++ objects that require unwinding.
+/// @param fn   Function pointer that performs the actual dispatch.
+/// @param ctx  Opaque context pointer forwarded to @p fn.
+/// @return 0 = not finished, 1 = finished, -1 = hardware exception.
+/// @brief SEH exception filter — only handle true hardware faults.
+/// @details C++ exceptions on MSVC are implemented via SEH with exception code
+///          0xE06D7363 ("msc" + prefix).  We must let those propagate so that
+///          TrapDispatchSignal reaches its C++ catch handler.
+static int sehFilter(unsigned int code)
 {
-    bool finished = false;
+    switch (code)
+    {
+    case EXCEPTION_ACCESS_VIOLATION:
+    case EXCEPTION_INT_DIVIDE_BY_ZERO:
+    case EXCEPTION_STACK_OVERFLOW:
+    case EXCEPTION_INT_OVERFLOW:
+    case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
+        return EXCEPTION_EXECUTE_HANDLER;
+    default:
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+}
+
+static int sehRunStep(int (*fn)(void *), void *ctx)
+{
+    int r = 0;
     __try
     {
-        if (dispatchDriver)
-            finished = dispatchDriver->run(*this, context, st);
+        r = fn(ctx);
     }
-    __except (EXCEPTION_EXECUTE_HANDLER)
+    __except (sehFilter(GetExceptionCode()))
     {
-        // Convert any hardware exception (AV, divide-by-zero, stack overflow)
-        // to a Viper RuntimeError trap so the program gets a clean error message.
+        r = -1;
+    }
+    return r;
+}
+
+/// @brief Execute one dispatch step, translating Windows hardware exceptions into
+/// Viper traps.
+bool VM::runDispatchStep(VMContext &context, ExecState &st)
+{
+    struct Args
+    {
+        VM *vm;
+        VMContext *ctx;
+        ExecState *st;
+    } args{this, &context, &st};
+
+    int result = sehRunStep(
+        [](void *p) -> int
+        {
+            auto *a = static_cast<Args *>(p);
+            if (a->vm->dispatchDriver)
+                return a->vm->dispatchDriver->run(*a->vm, *a->ctx, *a->st) ? 1 : 0;
+            return 0;
+        },
+        &args);
+    if (result < 0)
+    {
         RuntimeBridge::trap(
             TrapKind::RuntimeError,
             "hardware exception (access violation, divide by zero, or stack overflow)",
             {},
             "",
             "");
-        // RuntimeBridge::trap throws TrapDispatchSignal — unreachable.
     }
-    return finished;
+    return result > 0;
 }
 #endif
 

@@ -39,7 +39,11 @@ static bool extract_ws_key(const char *headers, char *out, size_t max_len)
     while ((p = strstr(p, "\r\n")) != NULL)
     {
         p += 2; // skip CRLF
+#ifdef _WIN32
+        if (_strnicmp(p, "Sec-WebSocket-Key:", 18) == 0)
+#else
         if (strncasecmp(p, "Sec-WebSocket-Key:", 18) == 0)
+#endif
         {
             const char *val = p + 18;
             while (*val == ' ' || *val == '\t')

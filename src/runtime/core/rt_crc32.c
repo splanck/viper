@@ -34,6 +34,8 @@
 
 #include "rt_crc32.h"
 
+#include "rt_atomic_compat.h"
+
 /// @brief CRC32 lookup table (256 entries for byte-at-a-time processing).
 static uint32_t crc32_table[256];
 

@@ -455,7 +455,7 @@ void rt_file_copy(rt_string src, rt_string dst)
     if (!rt_file_path_from_vstr(dst, &dst_path) || !dst_path)
         return;
 
-    int src_fd = open(src_path, O_RDONLY);
+    int src_fd = open(src_path, O_RDONLY | RT_FILE_O_BINARY);
     if (src_fd < 0)
     {
         char msg[512];
@@ -464,7 +464,7 @@ void rt_file_copy(rt_string src, rt_string dst)
         rt_trap(msg);
     }
 
-    int dst_fd = open(dst_path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    int dst_fd = open(dst_path, O_WRONLY | O_CREAT | O_TRUNC | RT_FILE_O_BINARY, 0666);
     if (dst_fd < 0)
     {
         // IO-H-4: destination open failure was previously silent — now traps
@@ -547,7 +547,7 @@ void *rt_file_read_bytes(rt_string path)
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return rt_bytes_new(0);
 
-    int fd = open(cpath, O_RDONLY);
+    int fd = open(cpath, O_RDONLY | RT_FILE_O_BINARY);
     if (fd < 0)
         return rt_bytes_new(0);
 
@@ -617,7 +617,7 @@ void rt_file_write_bytes(rt_string path, void *bytes)
     if (!bytes)
         return;
 
-    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC | RT_FILE_O_BINARY, 0666);
     if (fd < 0)
         return;
 

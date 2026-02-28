@@ -40,10 +40,16 @@
 #include "rt_internal.h" // struct rt_string_impl (data, literal_len fields)
 #include "rt_string.h"   // rt_string_ref, rt_string_unref, rt_str_len
 
-#include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
 
 // ============================================================================
 // FNV-1a 64-bit hash
@@ -76,7 +82,38 @@ typedef struct
 static InternSlot *g_slots_ = NULL;
 static size_t g_cap_ = 0;
 static size_t g_count_ = 0;
+
+#ifdef _WIN32
+static CRITICAL_SECTION g_lock_;
+static int g_lock_init_ = 0;
+
+static void intern_lock(void)
+{
+    if (!g_lock_init_)
+    {
+        InitializeCriticalSection(&g_lock_);
+        g_lock_init_ = 1;
+    }
+    EnterCriticalSection(&g_lock_);
+}
+
+static void intern_unlock(void)
+{
+    LeaveCriticalSection(&g_lock_);
+}
+#else
 static pthread_mutex_t g_lock_ = PTHREAD_MUTEX_INITIALIZER;
+
+static void intern_lock(void)
+{
+    pthread_mutex_lock(&g_lock_);
+}
+
+static void intern_unlock(void)
+{
+    pthread_mutex_unlock(&g_lock_);
+}
+#endif
 
 /// @brief Grow and rehash the table when load factor exceeds 5/8.
 /// @details Called while holding g_lock_.  On allocation failure the table is
@@ -125,7 +162,7 @@ rt_string rt_string_intern(rt_string s)
     size_t len = (size_t)rt_str_len(s);
     uint64_t h = hash_bytes(data, len);
 
-    pthread_mutex_lock(&g_lock_);
+    intern_lock();
     intern_ensure_capacity();
 
     size_t slot = (size_t)(h & (g_cap_ - 1));
@@ -141,7 +178,7 @@ rt_string rt_string_intern(rt_string s)
             g_count_++;
 
             rt_string result = rt_string_ref(s); // caller's reference
-            pthread_mutex_unlock(&g_lock_);
+            intern_unlock();
             return result;
         }
 
@@ -152,7 +189,7 @@ rt_string rt_string_intern(rt_string s)
             {
                 // Hit: return a retained reference to the canonical string.
                 rt_string result = rt_string_ref(e->str);
-                pthread_mutex_unlock(&g_lock_);
+                intern_unlock();
                 return result;
             }
         }
@@ -164,7 +201,7 @@ rt_string rt_string_intern(rt_string s)
 /// @brief Release all interned strings and free the table.
 void rt_string_intern_drain(void)
 {
-    pthread_mutex_lock(&g_lock_);
+    intern_lock();
 
     for (size_t i = 0; i < g_cap_; i++)
     {
@@ -180,5 +217,5 @@ void rt_string_intern_drain(void)
     g_cap_ = 0;
     g_count_ = 0;
 
-    pthread_mutex_unlock(&g_lock_);
+    intern_unlock();
 }

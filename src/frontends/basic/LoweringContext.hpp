@@ -23,7 +23,7 @@ namespace il
 
 namespace core
 {
-class Function;
+struct Function;
 } // namespace core
 
 namespace build

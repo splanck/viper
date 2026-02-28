@@ -150,6 +150,9 @@ function(viper_add_zia_tests)
     # Recursion depth limit tests
     viper_add_test(test_zia_depth_limits ${_VIPER_ZIA_DIR}/test_zia_depth_limits.cpp)
     target_link_libraries(test_zia_depth_limits PRIVATE ${VIPER_ZIA_LIBS})
+    if (WIN32)
+        target_link_options(test_zia_depth_limits PRIVATE /STACK:8388608)
+    endif ()
     viper_add_ctest(test_zia_depth_limits test_zia_depth_limits)
 
     # Type system soundness tests

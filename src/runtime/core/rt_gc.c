@@ -41,6 +41,7 @@
 
 #include "rt_gc.h"
 
+#include "rt_atomic_compat.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"

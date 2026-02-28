@@ -542,6 +542,10 @@ function(viper_add_il_utils_test)
     add_executable(
             test_il_alias_precision
             ${_VIPER_IL_DIR}/transform/alias_precision.cpp)
+    if (WIN32)
+        target_sources(test_il_alias_precision PRIVATE
+                ${VIPER_TESTS_DIR}/common/WinDialogSuppress.c)
+    endif ()
     target_link_libraries(
             test_il_alias_precision PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_alias_precision test_il_alias_precision)
