@@ -116,24 +116,21 @@ bool retNotFolded(const Module &module)
 
 TEST(ConstFoldEdge, SDivChk0_DivByZero)
 {
-    auto module = buildConstFoldTest(
-        Opcode::SDivChk0, Value::constInt(42), Value::constInt(0));
+    auto module = buildConstFoldTest(Opcode::SDivChk0, Value::constInt(42), Value::constInt(0));
     il::transform::constFold(module);
     ASSERT_TRUE(retNotFolded(module));
 }
 
 TEST(ConstFoldEdge, UDivChk0_DivByZero)
 {
-    auto module = buildConstFoldTest(
-        Opcode::UDivChk0, Value::constInt(42), Value::constInt(0));
+    auto module = buildConstFoldTest(Opcode::UDivChk0, Value::constInt(42), Value::constInt(0));
     il::transform::constFold(module);
     ASSERT_TRUE(retNotFolded(module));
 }
 
 TEST(ConstFoldEdge, SRemChk0_DivByZero)
 {
-    auto module = buildConstFoldTest(
-        Opcode::SRemChk0, Value::constInt(42), Value::constInt(0));
+    auto module = buildConstFoldTest(Opcode::SRemChk0, Value::constInt(42), Value::constInt(0));
     il::transform::constFold(module);
     ASSERT_TRUE(retNotFolded(module));
 }
@@ -145,10 +142,9 @@ TEST(ConstFoldEdge, SRemChk0_DivByZero)
 TEST(ConstFoldEdge, SDivChk0_MinDivNeg1)
 {
     // INT64_MIN / -1 overflows in two's complement
-    auto module = buildConstFoldTest(
-        Opcode::SDivChk0,
-        Value::constInt(std::numeric_limits<int64_t>::min()),
-        Value::constInt(-1));
+    auto module = buildConstFoldTest(Opcode::SDivChk0,
+                                     Value::constInt(std::numeric_limits<int64_t>::min()),
+                                     Value::constInt(-1));
     il::transform::constFold(module);
     ASSERT_TRUE(retNotFolded(module));
 }
@@ -157,9 +153,7 @@ TEST(ConstFoldEdge, IAddOvf_Overflow)
 {
     // INT64_MAX + 1 overflows
     auto module = buildConstFoldTest(
-        Opcode::IAddOvf,
-        Value::constInt(std::numeric_limits<int64_t>::max()),
-        Value::constInt(1));
+        Opcode::IAddOvf, Value::constInt(std::numeric_limits<int64_t>::max()), Value::constInt(1));
     il::transform::constFold(module);
     ASSERT_TRUE(retNotFolded(module));
 }
@@ -168,9 +162,7 @@ TEST(ConstFoldEdge, ISubOvf_Underflow)
 {
     // INT64_MIN - 1 underflows
     auto module = buildConstFoldTest(
-        Opcode::ISubOvf,
-        Value::constInt(std::numeric_limits<int64_t>::min()),
-        Value::constInt(1));
+        Opcode::ISubOvf, Value::constInt(std::numeric_limits<int64_t>::min()), Value::constInt(1));
     il::transform::constFold(module);
     ASSERT_TRUE(retNotFolded(module));
 }
@@ -179,9 +171,7 @@ TEST(ConstFoldEdge, IMulOvf_Overflow)
 {
     // INT64_MAX * 2 overflows
     auto module = buildConstFoldTest(
-        Opcode::IMulOvf,
-        Value::constInt(std::numeric_limits<int64_t>::max()),
-        Value::constInt(2));
+        Opcode::IMulOvf, Value::constInt(std::numeric_limits<int64_t>::max()), Value::constInt(2));
     il::transform::constFold(module);
     ASSERT_TRUE(retNotFolded(module));
 }
@@ -190,9 +180,7 @@ TEST(ConstFoldEdge, IMulOvf_MinTimesNeg1)
 {
     // INT64_MIN * -1 overflows (result would be INT64_MAX + 1)
     auto module = buildConstFoldTest(
-        Opcode::IMulOvf,
-        Value::constInt(std::numeric_limits<int64_t>::min()),
-        Value::constInt(-1));
+        Opcode::IMulOvf, Value::constInt(std::numeric_limits<int64_t>::min()), Value::constInt(-1));
     il::transform::constFold(module);
     ASSERT_TRUE(retNotFolded(module));
 }
@@ -205,9 +193,7 @@ TEST(ConstFoldEdge, IAddOvf_NoOverflow)
 {
     // INT64_MAX + 0 does not overflow
     auto module = buildConstFoldTest(
-        Opcode::IAddOvf,
-        Value::constInt(std::numeric_limits<int64_t>::max()),
-        Value::constInt(0));
+        Opcode::IAddOvf, Value::constInt(std::numeric_limits<int64_t>::max()), Value::constInt(0));
     il::transform::constFold(module);
     ASSERT_TRUE(retFoldedToInt(module, std::numeric_limits<int64_t>::max()));
 }
@@ -220,10 +206,7 @@ TEST(ConstFoldEdge, FDiv_ByZero)
 {
     // 1.0 / 0.0 => inf — constfolder must NOT fold (guards against non-finite results)
     auto module = buildConstFoldTest(
-        Opcode::FDiv,
-        Value::constFloat(1.0),
-        Value::constFloat(0.0),
-        Type(Type::Kind::F64));
+        Opcode::FDiv, Value::constFloat(1.0), Value::constFloat(0.0), Type(Type::Kind::F64));
     il::transform::constFold(module);
     ASSERT_TRUE(retNotFolded(module));
 }
@@ -231,11 +214,10 @@ TEST(ConstFoldEdge, FDiv_ByZero)
 TEST(ConstFoldEdge, FMul_InfTimesZero)
 {
     // INF * 0.0 => NaN — constfolder must NOT fold (non-finite result)
-    auto module = buildConstFoldTest(
-        Opcode::FMul,
-        Value::constFloat(std::numeric_limits<double>::infinity()),
-        Value::constFloat(0.0),
-        Type(Type::Kind::F64));
+    auto module = buildConstFoldTest(Opcode::FMul,
+                                     Value::constFloat(std::numeric_limits<double>::infinity()),
+                                     Value::constFloat(0.0),
+                                     Type(Type::Kind::F64));
     il::transform::constFold(module);
     ASSERT_TRUE(retNotFolded(module));
 }
@@ -245,11 +227,10 @@ TEST(ConstFoldEdge, FAdd_InfPlusInf)
     // INF + INF = INF, which is well-defined but non-finite.
     // The constfolder skips non-finite results, so this should NOT fold.
     // At minimum, verify the module is valid after the pass runs.
-    auto module = buildConstFoldTest(
-        Opcode::FAdd,
-        Value::constFloat(std::numeric_limits<double>::infinity()),
-        Value::constFloat(std::numeric_limits<double>::infinity()),
-        Type(Type::Kind::F64));
+    auto module = buildConstFoldTest(Opcode::FAdd,
+                                     Value::constFloat(std::numeric_limits<double>::infinity()),
+                                     Value::constFloat(std::numeric_limits<double>::infinity()),
+                                     Type(Type::Kind::F64));
     il::transform::constFold(module);
     // The constfolder refuses non-finite results, so the temp should remain.
     ASSERT_TRUE(retNotFolded(module));
@@ -262,8 +243,7 @@ TEST(ConstFoldEdge, FAdd_InfPlusInf)
 TEST(ConstFoldEdge, NormalArithmetic)
 {
     // iadd.ovf 3, 4 => 7
-    auto module = buildConstFoldTest(
-        Opcode::IAddOvf, Value::constInt(3), Value::constInt(4));
+    auto module = buildConstFoldTest(Opcode::IAddOvf, Value::constInt(3), Value::constInt(4));
     il::transform::constFold(module);
     ASSERT_TRUE(retFoldedToInt(module, 7));
 }
@@ -272,10 +252,7 @@ TEST(ConstFoldEdge, NormalComparison)
 {
     // scmp.lt 5, 10 => 1 (true)
     auto module = buildConstFoldTest(
-        Opcode::SCmpLT,
-        Value::constInt(5),
-        Value::constInt(10),
-        Type(Type::Kind::I1));
+        Opcode::SCmpLT, Value::constInt(5), Value::constInt(10), Type(Type::Kind::I1));
     il::transform::constFold(module);
 
     const auto &ret = module.functions[0].blocks[0].instructions.back();
@@ -293,8 +270,7 @@ TEST(ConstFoldEdge, NormalComparison)
 TEST(ConstFoldEdge, Shl_ByBitwidth)
 {
     // shl 1, 64 => undefined behavior — must NOT fold
-    auto module = buildConstFoldTest(
-        Opcode::Shl, Value::constInt(1), Value::constInt(64));
+    auto module = buildConstFoldTest(Opcode::Shl, Value::constInt(1), Value::constInt(64));
     il::transform::constFold(module);
     ASSERT_TRUE(retNotFolded(module));
 }
@@ -302,8 +278,7 @@ TEST(ConstFoldEdge, Shl_ByBitwidth)
 TEST(ConstFoldEdge, Shl_Normal)
 {
     // shl 1, 3 => 8
-    auto module = buildConstFoldTest(
-        Opcode::Shl, Value::constInt(1), Value::constInt(3));
+    auto module = buildConstFoldTest(Opcode::Shl, Value::constInt(1), Value::constInt(3));
     il::transform::constFold(module);
     ASSERT_TRUE(retFoldedToInt(module, 8));
 }
@@ -311,8 +286,7 @@ TEST(ConstFoldEdge, Shl_Normal)
 TEST(ConstFoldEdge, LShr_Normal)
 {
     // lshr 16, 2 => 4
-    auto module = buildConstFoldTest(
-        Opcode::LShr, Value::constInt(16), Value::constInt(2));
+    auto module = buildConstFoldTest(Opcode::LShr, Value::constInt(16), Value::constInt(2));
     il::transform::constFold(module);
     ASSERT_TRUE(retFoldedToInt(module, 4));
 }
@@ -324,8 +298,7 @@ TEST(ConstFoldEdge, LShr_Normal)
 TEST(ConstFoldEdge, IMul_Normal)
 {
     // imul.ovf 6, 7 => 42
-    auto module = buildConstFoldTest(
-        Opcode::IMulOvf, Value::constInt(6), Value::constInt(7));
+    auto module = buildConstFoldTest(Opcode::IMulOvf, Value::constInt(6), Value::constInt(7));
     il::transform::constFold(module);
     ASSERT_TRUE(retFoldedToInt(module, 42));
 }
@@ -333,8 +306,7 @@ TEST(ConstFoldEdge, IMul_Normal)
 TEST(ConstFoldEdge, ISub_Normal)
 {
     // isub.ovf 10, 3 => 7
-    auto module = buildConstFoldTest(
-        Opcode::ISubOvf, Value::constInt(10), Value::constInt(3));
+    auto module = buildConstFoldTest(Opcode::ISubOvf, Value::constInt(10), Value::constInt(3));
     il::transform::constFold(module);
     ASSERT_TRUE(retFoldedToInt(module, 7));
 }
@@ -342,8 +314,7 @@ TEST(ConstFoldEdge, ISub_Normal)
 TEST(ConstFoldEdge, SDivChk0_Normal)
 {
     // sdiv.chk0 42, 7 => 6
-    auto module = buildConstFoldTest(
-        Opcode::SDivChk0, Value::constInt(42), Value::constInt(7));
+    auto module = buildConstFoldTest(Opcode::SDivChk0, Value::constInt(42), Value::constInt(7));
     il::transform::constFold(module);
     ASSERT_TRUE(retFoldedToInt(module, 6));
 }

@@ -49,35 +49,43 @@ static void test_tls_parser_errors_independent(void)
     // Use a barrier-like flag to make both threads parse concurrently.
     volatile int go = 0;
 
-    std::thread t1([&]()
-    {
-        while (!go) {} // wait for go signal
-        // Parse valid XML — should succeed with no error
-        const char *xml = "<root><child/></root>";
-        rt_string s = rt_string_from_bytes(xml, strlen(xml));
-        void *doc = rt_xml_parse(s);
-        assert(doc != NULL && "valid XML must parse");
-        if (rt_obj_release_check0(doc))
-            rt_obj_free(doc);
-        // Check this thread's error state is clear
-        rt_string err = rt_xml_error();
-        thread1_no_error = (err == NULL || rt_str_len(err) == 0);
-        if (err) rt_string_unref(err);
-        rt_string_unref(s);
-    });
+    std::thread t1(
+        [&]()
+        {
+            while (!go)
+            {
+            } // wait for go signal
+            // Parse valid XML — should succeed with no error
+            const char *xml = "<root><child/></root>";
+            rt_string s = rt_string_from_bytes(xml, strlen(xml));
+            void *doc = rt_xml_parse(s);
+            assert(doc != NULL && "valid XML must parse");
+            if (rt_obj_release_check0(doc))
+                rt_obj_free(doc);
+            // Check this thread's error state is clear
+            rt_string err = rt_xml_error();
+            thread1_no_error = (err == NULL || rt_str_len(err) == 0);
+            if (err)
+                rt_string_unref(err);
+            rt_string_unref(s);
+        });
 
-    std::thread t2([&]()
-    {
-        while (!go) {} // wait for go signal
-        // Parse empty XML — should fail and set error
-        rt_string s = rt_string_from_bytes("", 0);
-        void *doc = rt_xml_parse(s);
-        assert(doc == NULL && "empty XML must fail");
-        rt_string err = rt_xml_error();
-        thread2_has_error = (err != NULL && rt_str_len(err) > 0);
-        if (err) rt_string_unref(err);
-        rt_string_unref(s);
-    });
+    std::thread t2(
+        [&]()
+        {
+            while (!go)
+            {
+            } // wait for go signal
+            // Parse empty XML — should fail and set error
+            rt_string s = rt_string_from_bytes("", 0);
+            void *doc = rt_xml_parse(s);
+            assert(doc == NULL && "empty XML must fail");
+            rt_string err = rt_xml_error();
+            thread2_has_error = (err != NULL && rt_str_len(err) > 0);
+            if (err)
+                rt_string_unref(err);
+            rt_string_unref(s);
+        });
 
     go = 1; // release both threads
     t1.join();
@@ -103,10 +111,7 @@ static void test_main_thread_detection(void)
 
     // Spawn a worker and verify it's NOT the main thread
     bool worker_is_main = true;
-    std::thread worker([&]()
-    {
-        worker_is_main = rt_is_main_thread() != 0;
-    });
+    std::thread worker([&]() { worker_is_main = rt_is_main_thread() != 0; });
     worker.join();
 
     assert(!worker_is_main && "worker thread must not be main");
@@ -132,18 +137,19 @@ static void test_string_intern_concurrent(void)
 
     for (int t = 0; t < kThreads; ++t)
     {
-        threads.emplace_back([&, t]()
-        {
-            results[t].resize(kStringsPerThread);
-            for (int i = 0; i < kStringsPerThread; ++i)
+        threads.emplace_back(
+            [&, t]()
             {
-                char buf[32];
-                snprintf(buf, sizeof(buf), "key_%d", i);
-                rt_string s = rt_string_from_bytes(buf, strlen(buf));
-                results[t][i] = rt_string_intern(s);
-                rt_string_unref(s);
-            }
-        });
+                results[t].resize(kStringsPerThread);
+                for (int i = 0; i < kStringsPerThread; ++i)
+                {
+                    char buf[32];
+                    snprintf(buf, sizeof(buf), "key_%d", i);
+                    rt_string s = rt_string_from_bytes(buf, strlen(buf));
+                    results[t][i] = rt_string_intern(s);
+                    rt_string_unref(s);
+                }
+            });
     }
 
     for (auto &th : threads)
@@ -183,10 +189,7 @@ static void test_atomic_violation_mode(void)
     il::runtime::setInvariantViolationMode(InvariantViolationMode::Trap);
 
     InvariantViolationMode worker_saw = InvariantViolationMode::Abort;
-    std::thread worker([&]()
-    {
-        worker_saw = il::runtime::getInvariantViolationMode();
-    });
+    std::thread worker([&]() { worker_saw = il::runtime::getInvariantViolationMode(); });
     worker.join();
 
     assert(worker_saw == InvariantViolationMode::Trap &&

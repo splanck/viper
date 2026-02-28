@@ -61,6 +61,17 @@ TrapKind map_err_to_trap(int err_code)
             return TrapKind::InvalidOperation;
         case 9:
             return TrapKind::RuntimeError;
+        case 10: // ConnectionRefused
+        case 11: // HostNotFound
+        case 12: // ConnectionReset
+        case 13: // Timeout
+        case 14: // ConnectionClosed
+        case 15: // DnsError
+        case 16: // InvalidUrl
+        case 17: // TlsError
+        case 18: // NetworkError
+        case 19: // ProtocolError
+            return TrapKind::NetworkError;
         default:
             return TrapKind::RuntimeError;
     }

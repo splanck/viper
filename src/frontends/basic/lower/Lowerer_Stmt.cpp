@@ -501,10 +501,15 @@ void Lowerer::lowerStmt(const Stmt &stmt)
         --stmtLowerDepth_;
         return;
     }
+
     struct DepthGuard
     {
         unsigned &d;
-        ~DepthGuard() { --d; }
+
+        ~DepthGuard()
+        {
+            --d;
+        }
     } stmtGuard_{stmtLowerDepth_};
 
     curLoc = stmt.loc;

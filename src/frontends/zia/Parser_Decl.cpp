@@ -222,6 +222,40 @@ BindDecl Parser::parseBindDecl()
 /// @return The parsed declaration, or nullptr on error.
 DeclPtr Parser::parseDeclaration()
 {
+    // Module-level export modifier: `expose func ...` sets Export linkage.
+    if (check(TokenKind::KwExpose))
+    {
+        advance(); // consume 'expose'
+        if (check(TokenKind::KwFunc))
+        {
+            auto decl = parseFunctionDecl();
+            if (decl)
+            {
+                auto *fn = static_cast<FunctionDecl *>(decl.get());
+                fn->visibility = Visibility::Public;
+            }
+            return decl;
+        }
+        error("expected 'func' after 'expose'");
+        return nullptr;
+    }
+    // Foreign function import: `foreign func name(...) -> Type` (no body).
+    if (check(TokenKind::KwForeign))
+    {
+        advance(); // consume 'foreign'
+        if (check(TokenKind::KwFunc))
+        {
+            auto decl = parseFunctionDecl(/*isForeign=*/true);
+            if (decl)
+            {
+                auto *fn = static_cast<FunctionDecl *>(decl.get());
+                fn->isForeign = true;
+            }
+            return decl;
+        }
+        error("expected 'func' after 'foreign'");
+        return nullptr;
+    }
     if (check(TokenKind::KwFunc))
     {
         return parseFunctionDecl();
@@ -263,8 +297,9 @@ DeclPtr Parser::parseDeclaration()
 }
 
 /// @brief Parse a function declaration (func name[T](...) -> RetType { body }).
+/// @param isForeign If true, this is a foreign import — no body is expected.
 /// @return The parsed FunctionDecl, or nullptr on error.
-DeclPtr Parser::parseFunctionDecl()
+DeclPtr Parser::parseFunctionDecl(bool isForeign)
 {
     Token funcTok = advance(); // consume 'func'
     SourceLoc loc = funcTok.loc;
@@ -278,6 +313,7 @@ DeclPtr Parser::parseFunctionDecl()
     std::string name = nameTok.text;
 
     auto func = std::make_unique<FunctionDecl>(loc, std::move(name));
+    func->isForeign = isForeign;
 
     // Generic parameters with optional constraints
     func->genericParams = parseGenericParamsWithConstraints(func->genericParamConstraints);
@@ -299,7 +335,13 @@ DeclPtr Parser::parseFunctionDecl()
             return nullptr;
     }
 
-    // Body
+    // Body — foreign functions have no body (they are import declarations).
+    if (isForeign)
+    {
+        // No body expected — function is defined in another module.
+        return func;
+    }
+
     if (check(TokenKind::LBrace))
     {
         func->body = parseBlock();
@@ -532,8 +574,7 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
 
         // Parse modifiers (can appear in any order when override is allowed)
         while (check(TokenKind::KwExpose) || check(TokenKind::KwHide) ||
-               (allowOverride && check(TokenKind::KwOverride)) ||
-               check(TokenKind::KwStatic))
+               (allowOverride && check(TokenKind::KwOverride)) || check(TokenKind::KwStatic))
         {
             if (match(TokenKind::KwExpose))
                 visibility = Visibility::Public;
@@ -742,10 +783,15 @@ DeclPtr Parser::parseNamespaceDecl()
         error("namespace nesting too deep (limit: 512)");
         return nullptr;
     }
+
     struct DepthGuard
     {
         unsigned &d;
-        ~DepthGuard() { --d; }
+
+        ~DepthGuard()
+        {
+            --d;
+        }
     } nsGuard_{stmtDepth_};
 
     Token nsTok = advance(); // consume 'namespace'

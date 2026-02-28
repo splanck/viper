@@ -417,10 +417,16 @@ class Lowerer
     Module lower(ModuleDecl &module);
 
     /// @brief Get the current source location for IL emission.
-    [[nodiscard]] il::support::SourceLoc sourceLocation() const noexcept { return curLoc_; }
+    [[nodiscard]] il::support::SourceLoc sourceLocation() const noexcept
+    {
+        return curLoc_;
+    }
 
     /// @brief Set the current source location for IL emission.
-    void setSourceLocation(il::support::SourceLoc loc) noexcept { curLoc_ = loc; }
+    void setSourceLocation(il::support::SourceLoc loc) noexcept
+    {
+        curLoc_ = loc;
+    }
 
   private:
     //=========================================================================
@@ -970,7 +976,8 @@ class Lowerer
     /// @param calleeName The function name.
     /// @param args The current argument values (may be padded in-place).
     /// @param callExpr The original call expression for arg count comparison.
-    void padDefaultArgs(const std::string &calleeName, std::vector<Value> &args,
+    void padDefaultArgs(const std::string &calleeName,
+                        std::vector<Value> &args,
                         CallExpr *callExpr);
 
     /// @brief Emit a function call with return value.

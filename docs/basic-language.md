@@ -191,6 +191,37 @@ Functions return values and are used in expressions:
 50 PRINT SQUARE(5)       ' 25
 ```
 
+### Exporting Functions
+
+Use `EXPORT` before `FUNCTION` or `SUB` to make a procedure visible to other
+modules in a mixed-language project:
+
+```basic
+EXPORT FUNCTION Factorial(n AS LONG) AS LONG
+    IF n <= 1 THEN
+        Factorial = 1
+    ELSE
+        Factorial = n * Factorial(n - 1)
+    END IF
+END FUNCTION
+```
+
+### Importing Foreign Functions
+
+Use `DECLARE FOREIGN` to declare a function defined in another module (e.g., a
+Zia library). The declaration has no body:
+
+```basic
+DECLARE FOREIGN FUNCTION ZiaHelper(n AS LONG) AS LONG
+DECLARE FOREIGN SUB InitSystem()
+
+PRINT ZiaHelper(42)
+InitSystem()
+```
+
+For full details on mixed-language projects, see the
+[Cross-Language Interop Guide](interop.md).
+
 ---
 
 ## 5. Objects
@@ -522,3 +553,4 @@ DIM H3 AS mylib.helper
 - Object-oriented patterns: builders, resource guards with `DESTRUCTOR`
 - Namespace organization strategies for large projects
 - Error handling best practices
+- [Cross-Language Interop](interop.md) — Mixed BASIC + Zia projects

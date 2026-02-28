@@ -35,7 +35,8 @@ static bool hasFunction(const il::core::Module &mod, const std::string &fnName)
     return false;
 }
 
-static bool hasCallee(const il::core::Module &mod, const std::string &fnName,
+static bool hasCallee(const il::core::Module &mod,
+                      const std::string &fnName,
                       const std::string &callee)
 {
     for (const auto &fn : mod.functions)

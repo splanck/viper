@@ -115,11 +115,10 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder)
     }
     // JCC "b" (below / unsigned less than) = condition code 8
     builder.append(MInstr::make(
-        MOpcode::JCC,
-        std::vector<Operand>{makeImmOperand(8), makeLabelOperand(passUpperLabel)}));
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(8), makeLabelOperand(passUpperLabel)}));
     builder.append(MInstr::make(MOpcode::UD2));
-    builder.append(MInstr::make(
-        MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(passUpperLabel)}));
+    builder.append(
+        MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(passUpperLabel)}));
 
     // Check lower bound: if index >= lower (unsigned above or equal), skip trap
     Operand lower = builder.makeOperandForValue(instr.ops[1], RegClass::GPR);
@@ -134,11 +133,10 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder)
     }
     // JCC "ae" (above or equal / unsigned >= ) = condition code 7
     builder.append(MInstr::make(
-        MOpcode::JCC,
-        std::vector<Operand>{makeImmOperand(7), makeLabelOperand(passLowerLabel)}));
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(7), makeLabelOperand(passLowerLabel)}));
     builder.append(MInstr::make(MOpcode::UD2));
-    builder.append(MInstr::make(
-        MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(passLowerLabel)}));
+    builder.append(
+        MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(passLowerLabel)}));
 }
 
 /// @brief Lower a switch_i32 instruction (multi-way branch).
@@ -176,19 +174,17 @@ void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder)
         // CMP scrutinee, case_value
         if (std::holds_alternative<OpImm>(caseVal))
         {
-            builder.append(
-                MInstr::make(MOpcode::CMPri, std::vector<Operand>{scrutinee, caseVal}));
+            builder.append(MInstr::make(MOpcode::CMPri, std::vector<Operand>{scrutinee, caseVal}));
         }
         else
         {
             caseVal = emit.materialiseGpr(std::move(caseVal));
-            builder.append(
-                MInstr::make(MOpcode::CMPrr, std::vector<Operand>{scrutinee, caseVal}));
+            builder.append(MInstr::make(MOpcode::CMPrr, std::vector<Operand>{scrutinee, caseVal}));
         }
 
         // JCC "e" (equal) = condition code 0
-        builder.append(MInstr::make(
-            MOpcode::JCC, std::vector<Operand>{makeImmOperand(0), caseLabel}));
+        builder.append(
+            MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(0), caseLabel}));
 
         idx += 2;
     }

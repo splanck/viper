@@ -160,9 +160,10 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
     // precedes this access, so emit a warning for potential null dereference.
     if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType())
     {
-        warn(WarningCode::W016_OptionalWithoutCheck, expr->loc,
-             "Accessing member '" + expr->field + "' on Optional type '" +
-                 baseType->toString() + "' without null check");
+        warn(WarningCode::W016_OptionalWithoutCheck,
+             expr->loc,
+             "Accessing member '" + expr->field + "' on Optional type '" + baseType->toString() +
+                 "' without null check");
         baseType = baseType->innerType();
     }
 
@@ -250,8 +251,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
         }
 
         // Field/method not found on this entity or value type
-        error(expr->loc,
-              "Type '" + baseType->name + "' has no member '" + expr->field + "'");
+        error(expr->loc, "Type '" + baseType->name + "' has no member '" + expr->field + "'");
         return types::unknown();
     }
 
@@ -299,8 +299,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
         (baseType->kind == TypeKindSem::Integer || baseType->kind == TypeKindSem::Number ||
          baseType->kind == TypeKindSem::Boolean || baseType->kind == TypeKindSem::Byte))
     {
-        error(expr->loc,
-              "Type '" + baseType->toString() + "' has no member '" + expr->field + "'");
+        error(expr->loc, "Type '" + baseType->toString() + "' has no member '" + expr->field + "'");
         return types::unknown();
     }
 
@@ -489,8 +488,7 @@ TypeRef Sema::analyzeAs(AsExpr *expr)
     TypeRef targetType = resolveTypeNode(expr->type.get());
 
     // Skip validation when types are unknown/unresolved
-    if (!sourceType || !targetType ||
-        sourceType->kind == TypeKindSem::Unknown ||
+    if (!sourceType || !targetType || sourceType->kind == TypeKindSem::Unknown ||
         targetType->kind == TypeKindSem::Unknown)
         return targetType;
 
@@ -499,8 +497,7 @@ TypeRef Sema::analyzeAs(AsExpr *expr)
         return targetType;
 
     // Allow entity-to-entity casts (downcasts and cross-casts for runtime checking)
-    if (sourceType->kind == TypeKindSem::Entity &&
-        targetType->kind == TypeKindSem::Entity)
+    if (sourceType->kind == TypeKindSem::Entity && targetType->kind == TypeKindSem::Entity)
         return targetType;
 
     // Allow Ptr <-> Entity/Value interop (both are pointers at IL level)

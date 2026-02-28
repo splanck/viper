@@ -18,6 +18,8 @@
 #include "il/internal/io/FunctionParser_Internal.hpp"
 #include "il/internal/io/TypeParser.hpp"
 
+#include "il/core/Linkage.hpp"
+
 #include <array>
 #include <sstream>
 #include <unordered_set>
@@ -104,7 +106,9 @@ Expected<std::string> parseSymbolName(Cursor &cur)
 }
 
 /// @brief Parse the function prototype: "(params) -> rettype".
-Expected<PrototypeParseResult> parsePrototype(Cursor &cur)
+/// @param cur Cursor positioned after the function name.
+/// @param isImport When true, the prototype has no opening brace (import declaration).
+Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false)
 {
     cur.skipWs();
     if (cur.atEnd())
@@ -151,6 +155,18 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur)
     if (cur.atEnd())
         return Expected<PrototypeParseResult>{
             makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
+
+    if (isImport)
+    {
+        // Import declarations have no body — return type is the rest of the line.
+        std::string retRaw(trimView(cur.view().substr(cur.offset())));
+        bool retOk = true;
+        Type retTy = parseType(retRaw, &retOk);
+        if (!retOk)
+            return Expected<PrototypeParseResult>{
+                makeSyntaxError(cursorPos(cur), "unknown return type", {})};
+        return PrototypeParseResult{Prototype{retTy, std::move(params)}, ccSegment};
+    }
 
     size_t brace = cur.view().find('{', cur.offset());
     if (brace == std::string_view::npos)
@@ -224,6 +240,26 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
     ParserSnapshot snapshot{st};
     Cursor cursor{header, SourcePos{st.lineNo, 0}};
 
+    // Parse optional linkage keyword between "func" and "@name".
+    // The header string starts with "func " already consumed by the caller's
+    // keyword check, but the cursor still sees the full line.
+    il::core::Linkage linkage = il::core::Linkage::Internal;
+    {
+        // Find the '@' that starts the function name.
+        size_t atPos = header.find('@');
+        if (atPos != std::string::npos && atPos >= 5)
+        {
+            // Extract text between "func " and "@"
+            std::string_view between = trimView(std::string_view(header).substr(4, atPos - 4));
+            if (between == "export")
+                linkage = il::core::Linkage::Export;
+            else if (between == "import")
+                linkage = il::core::Linkage::Import;
+        }
+    }
+
+    const bool isImport = (linkage == il::core::Linkage::Import);
+
     FunctionHeader fh;
     {
         auto name = parseSymbolName(cursor);
@@ -232,7 +268,7 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
         fh.name = std::move(name.value());
     }
     {
-        auto proto = parsePrototype(cursor);
+        auto proto = parsePrototype(cursor, isImport);
         if (!proto)
             return Expected<void>{proto.error()};
         auto parsedProto = std::move(proto.value());
@@ -242,6 +278,7 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
             return Expected<void>{cc.error()};
         fh.cc = cc.value();
     }
+    if (!isImport)
     {
         auto attrs = parseAttributes(cursor);
         if (!attrs)
@@ -288,6 +325,7 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
     st.nextTemp = nextId;
 
     il::core::Function fn{fh.name, fh.proto.retType, std::move(fh.proto.params), {}, {}};
+    fn.linkage = linkage;
     st.m.functions.push_back(std::move(fn));
     st.curFn = &st.m.functions.back();
     st.curBB = nullptr;

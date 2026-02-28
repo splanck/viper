@@ -35,6 +35,10 @@ bool EmitPass::run(AArch64Module &module, Diagnostics &diags)
     std::ostringstream os;
 
     // Emit rodata globals (string literals etc.) before function bodies.
+    // TODO(codegen): At O2, the IL optimizer may break const_str → print_str
+    // value chains, causing duplicate adrp+add pairs for the same rodata label.
+    // This is an IL-level issue (SCCP/CSE treats const_str outputs as independent
+    // values); fix requires teaching the optimizer about const_str semantics.
     module.rodataPool.emit(os);
 
     AsmEmitter emitter{*module.ti};
@@ -43,6 +47,15 @@ bool EmitPass::run(AArch64Module &module, Diagnostics &diags)
         emitter.emitFunction(os, fn);
         os << "\n";
     }
+
+    // Emit platform-specific directives at end of module.
+    // .subsections_via_symbols enables function-level dead stripping on macOS
+    // and prevents the linker from setting MH_ALLOW_STACK_EXECUTION.
+    // .note.GNU-stack marks the stack as non-executable on Linux ELF.
+    if (module.ti->isLinux())
+        os << ".section .note.GNU-stack,\"\",@progbits\n";
+    else if (!module.ti->isWindows())
+        os << ".subsections_via_symbols\n";
 
     module.assembly = os.str();
     return true;

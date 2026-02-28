@@ -123,6 +123,12 @@ extern "C"
     ///          no VM-bound context is active.
     RtContext *rt_legacy_context(void);
 
+    /// @brief Clean up the legacy runtime context at process shutdown.
+    /// @details Closes any open BASIC file channels, releases argument storage,
+    ///          and frees the type registry held by the static legacy context.
+    ///          No-op if the legacy context was never initialized.
+    void rt_legacy_context_shutdown(void);
+
 #ifdef __cplusplus
 }
 #endif

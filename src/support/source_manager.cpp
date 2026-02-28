@@ -119,6 +119,7 @@ std::string_view SourceManager::getPath(uint32_t file_id) const
         return {};
     return files_[file_id - 1];
 }
+
 std::string_view SourceManager::getLine(uint32_t file_id, uint32_t line) const
 {
     if (file_id == 0 || line == 0)

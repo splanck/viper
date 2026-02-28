@@ -14,7 +14,7 @@ Source layout for the Viper compiler toolchain (current tree, kept in sync).
 | `src/codegen/`         | Native code generation backends (`x86_64/`, `aarch64/`, `common/`)       |
 | `src/common/`          | Cross-cutting utils (mangling, integer helpers, process runner)          |
 | `src/frontends/`       | Language frontends: `basic/`, `zia/`, `common/`                          |
-| `src/il/`              | IL core types, builder, I/O, verifier, analysis, transforms, API         |
+| `src/il/`              | IL core types, builder, I/O, verifier, analysis, transforms, linker, API |
 | `src/lib/graphics/`    | ViperGFX 2D graphics library (C API, examples, tests)                    |
 | `src/parse/`           | Cursor utilities used by frontends (`include/viper/parse/Cursor.h`)      |
 | `src/pass/`            | Generic pass manager façade (`include/viper/pass/PassManager.hpp`)       |
@@ -31,7 +31,7 @@ Source layout for the Viper compiler toolchain (current tree, kept in sync).
 - Bytecode: `src/bytecode` (compiler, module, VM implementation)
 - Codegen: `src/codegen/{aarch64,common,x86_64}`
 - Frontends: `src/frontends/{basic,common,zia}`
-- IL: `src/il/{analysis,api,build,core,internal,io,runtime,transform,utils,verify}`
+- IL: `src/il/{analysis,api,build,core,internal,io,link,runtime,transform,utils,verify}`
 - Libraries: `src/lib/graphics`, `src/tui`
 - Runtime: `src/runtime` (C sources and headers)
 - Support & Infra: `src/{common,parse,pass,support}`

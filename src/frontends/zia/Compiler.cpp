@@ -75,8 +75,7 @@ void dumpTokenStream(const std::string &source,
     for (;;)
     {
         Token tok = lexer.next();
-        std::cerr << tok.loc.line << ':' << tok.loc.column << '\t'
-                  << tokenKindToString(tok.kind);
+        std::cerr << tok.loc.line << ':' << tok.loc.column << '\t' << tokenKindToString(tok.kind);
         if (!tok.text.empty())
             std::cerr << "\t\"" << tok.text << '"';
         if (tok.kind == TokenKind::IntegerLiteral)
@@ -145,9 +144,7 @@ CompilerResult compile(const CompilerInput &input,
     if (options.dumpAst)
     {
         ZiaAstPrinter printer;
-        std::cerr << "=== AST after parsing ===\n"
-                  << printer.dump(*module)
-                  << "=== End AST ===\n";
+        std::cerr << "=== AST after parsing ===\n" << printer.dump(*module) << "=== End AST ===\n";
     }
 
     debugTime("Phase 2.5: Import resolution");
@@ -173,8 +170,7 @@ CompilerResult compile(const CompilerInput &input,
     {
         ZiaAstPrinter printer;
         std::cerr << "=== AST after semantic analysis ===\n"
-                  << printer.dump(*module)
-                  << "=== End AST ===\n";
+                  << printer.dump(*module) << "=== End AST ===\n";
     }
 
     if (!semanticOk)
@@ -220,9 +216,9 @@ CompilerResult compile(const CompilerInput &input,
     // Dump IL after the full optimization pipeline.
     if (options.dumpILOpt)
     {
-        const char *level = (options.optLevel == OptLevel::O2) ? "O2"
-                          : (options.optLevel == OptLevel::O1) ? "O1"
-                                                               : "O0";
+        const char *level = (options.optLevel == OptLevel::O2)   ? "O2"
+                            : (options.optLevel == OptLevel::O1) ? "O1"
+                                                                 : "O0";
         std::cerr << "=== IL after optimization (" << level << ") ===\n";
         io::Serializer::write(result.module, std::cerr);
         std::cerr << "=== End IL ===\n";

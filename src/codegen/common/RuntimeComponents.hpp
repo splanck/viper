@@ -150,6 +150,33 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_msgbus_") || starts("rt_heap_") || starts("rt_output_"))
         return RtComponent::Base;
 
+    // -------------------------------------------------------------------------
+    // Viper.* namespace-qualified symbols (from OOP-style IL / Zia frontend).
+    // These are emitted as extern calls like @Viper.String.Left in IL and
+    // become assembly symbols like _Viper.String.Left.
+    // -------------------------------------------------------------------------
+    if (starts("Viper.Terminal.") || starts("Viper.String.") || starts("Viper.Math.") ||
+        starts("Viper.Core.") || starts("Viper.Environment."))
+        return RtComponent::Base;
+    if (starts("Viper.Collections."))
+        return RtComponent::Collections;
+    if (starts("Viper.Text."))
+        return RtComponent::Text;
+    if (starts("Viper.IO.") || starts("Viper.File.") || starts("Viper.Dir.") ||
+        starts("Viper.Path."))
+        return RtComponent::IoFs;
+    if (starts("Viper.Net.") || starts("Viper.Http.") || starts("Viper.WebSocket."))
+        return RtComponent::Network;
+    if (starts("Viper.Canvas.") || starts("Viper.Input.") || starts("Viper.GUI.") ||
+        starts("Viper.Graphics.") || starts("Viper.Color."))
+        return RtComponent::Graphics;
+    if (starts("Viper.Audio.") || starts("Viper.Sound.") || starts("Viper.Music."))
+        return RtComponent::Audio;
+    if (starts("Viper.Thread.") || starts("Viper.Channel.") || starts("Viper.Future."))
+        return RtComponent::Threads;
+    if (starts("Viper.Exec.") || starts("Viper.Machine."))
+        return RtComponent::Exec;
+
     return std::nullopt;
 }
 

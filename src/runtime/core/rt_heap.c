@@ -55,13 +55,26 @@
 /// @brief Whether the atexit shutdown handler has been registered.
 static int g_shutdown_registered = 0;
 
+/* Audio shutdown is defined in rt_audio.c (real impl or stub no-op).
+   Declared here via extern to avoid cross-layer header include. */
+extern void rt_audio_shutdown(void);
+
+/* Legacy context shutdown is defined in rt_context.c. */
+extern void rt_legacy_context_shutdown(void);
+
 /// @brief Global shutdown handler called at process exit via atexit().
 /// @details Releases runtime global state in dependency order:
-///          1. Interned strings (may free pool-allocated memory)
-///          2. GC tables (tracking array, weak ref buckets)
-///          3. Pool slabs (must be last — other cleanup may touch pool memory)
+///          1. GC finalizer sweep (flush files, close sockets, release GPU/audio handles)
+///          2. Audio system (destroy audio device after sound/music handles freed)
+///          3. Legacy context (close BASIC file channels, release args/type registry)
+///          4. Interned strings (may free pool-allocated memory)
+///          5. GC tables (tracking array, weak ref buckets)
+///          6. Pool slabs (must be last — other cleanup may touch pool memory)
 static void rt_global_shutdown(void)
 {
+    rt_gc_run_all_finalizers();
+    rt_audio_shutdown();
+    rt_legacy_context_shutdown();
     rt_string_intern_drain();
     rt_gc_shutdown();
     rt_pool_shutdown();

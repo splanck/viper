@@ -41,22 +41,20 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
             }
 
             // W010: Division by zero — check for literal zero divisor
-            if ((expr->op == BinaryOp::Div || expr->op == BinaryOp::Mod) &&
-                leftType->isNumeric() && rightType->isNumeric())
+            if ((expr->op == BinaryOp::Div || expr->op == BinaryOp::Mod) && leftType->isNumeric() &&
+                rightType->isNumeric())
             {
                 if (expr->right->kind == ExprKind::IntLiteral)
                 {
                     auto *lit = static_cast<IntLiteralExpr *>(expr->right.get());
                     if (lit->value == 0)
-                        warn(WarningCode::W010_DivisionByZero, expr->loc,
-                             "Division by zero");
+                        warn(WarningCode::W010_DivisionByZero, expr->loc, "Division by zero");
                 }
                 else if (expr->right->kind == ExprKind::NumberLiteral)
                 {
                     auto *lit = static_cast<NumberLiteralExpr *>(expr->right.get());
                     if (lit->value == 0.0)
-                        warn(WarningCode::W010_DivisionByZero, expr->loc,
-                             "Division by zero");
+                        warn(WarningCode::W010_DivisionByZero, expr->loc, "Division by zero");
                 }
             }
 
@@ -80,7 +78,8 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
             if ((expr->op == BinaryOp::Eq || expr->op == BinaryOp::Ne) &&
                 leftType->kind == TypeKindSem::Number && rightType->kind == TypeKindSem::Number)
             {
-                warn(WarningCode::W005_FloatEquality, expr->loc,
+                warn(WarningCode::W005_FloatEquality,
+                     expr->loc,
                      "Comparing floating-point values with " +
                          std::string(expr->op == BinaryOp::Eq ? "==" : "!=") +
                          " is unreliable; consider using an epsilon threshold");
@@ -94,7 +93,8 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
                 bool rightIsBoolLit = (expr->right->kind == ExprKind::BoolLiteral);
                 if (leftIsBoolLit || rightIsBoolLit)
                 {
-                    warn(WarningCode::W011_RedundantBoolComparison, expr->loc,
+                    warn(WarningCode::W011_RedundantBoolComparison,
+                         expr->loc,
                          "Redundant comparison with Boolean literal; use the expression directly");
                 }
             }
@@ -117,13 +117,15 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
             // W017: ^ is bitwise XOR, not exponentiation
             if (expr->op == BinaryOp::BitXor)
             {
-                warn(WarningCode::W017_XorConfusion, expr->loc,
+                warn(WarningCode::W017_XorConfusion,
+                     expr->loc,
                      "'^' is bitwise XOR in Zia; use Math.Pow() for exponentiation");
             }
             // W018: & is bitwise AND, not string concatenation
             if (expr->op == BinaryOp::BitAnd)
             {
-                warn(WarningCode::W018_BitwiseAndConfusion, expr->loc,
+                warn(WarningCode::W018_BitwiseAndConfusion,
+                     expr->loc,
                      "'&' is bitwise AND in Zia; use '+' for string concatenation");
             }
             // Bitwise operations
@@ -141,7 +143,8 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
                 auto *rhs = static_cast<IdentExpr *>(expr->right.get());
                 if (lhs->name == rhs->name)
                 {
-                    warn(WarningCode::W009_SelfAssignment, expr->loc,
+                    warn(WarningCode::W009_SelfAssignment,
+                         expr->loc,
                          "Self-assignment of '" + lhs->name + "' has no effect");
                 }
             }

@@ -41,6 +41,7 @@ enum class TrapKind : int32_t
     InvalidOperation = 8, ///< Operation outside the allowed state machine.
     RuntimeError = 9,     ///< Catch-all for unexpected runtime failures.
     Interrupt = 10,       ///< Program interrupted by Ctrl-C or requestInterrupt().
+    NetworkError = 11,    ///< Network I/O failure (connection, DNS, TLS, etc.).
 };
 
 /// @brief Structured representation of a VM error record.
@@ -92,6 +93,8 @@ constexpr std::string_view toString(TrapKind kind) noexcept
             return "RuntimeError";
         case TrapKind::Interrupt:
             return "Interrupt";
+        case TrapKind::NetworkError:
+            return "NetworkError";
     }
     return "RuntimeError";
 }
@@ -124,6 +127,10 @@ constexpr TrapKind trapKindFromValue(int32_t value) noexcept
             return TrapKind::InvalidOperation;
         case static_cast<int32_t>(TrapKind::RuntimeError):
             return TrapKind::RuntimeError;
+        case static_cast<int32_t>(TrapKind::Interrupt):
+            return TrapKind::Interrupt;
+        case static_cast<int32_t>(TrapKind::NetworkError):
+            return TrapKind::NetworkError;
     }
     return TrapKind::RuntimeError;
 }

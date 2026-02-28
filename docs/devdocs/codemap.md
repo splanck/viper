@@ -11,6 +11,7 @@ Source code organization for the Viper compiler toolchain.
 | [IL Build](codemap/il-build.md)               | IR builder for programmatic construction      |
 | [IL Core](codemap/il-core.md)                 | IR types, opcodes, modules, functions, values |
 | [IL I/O](codemap/il-i-o.md)                   | Text parser/serializer for `.il` files        |
+| [IL Link](codemap/il-link.md)                 | Cross-language module linker, boolean thunks  |
 | [IL Runtime](codemap/il-runtime.md)           | Runtime signatures, helper effects            |
 | [IL Transform](codemap/il-transform.md)       | Optimization passes and pass infra            |
 | [IL Utilities](codemap/il-utilities.md)       | Shared IL utilities                           |

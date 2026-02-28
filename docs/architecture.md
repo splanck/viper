@@ -47,6 +47,7 @@ Status notes:
 - src/il/core — IR types, opcodes, modules, functions, values
 - src/il/internal — Internal IL I/O utilities
 - src/il/io — Text parser/serializer for `.il` files
+- src/il/link — Module linker for cross-language interop (merge, boolean thunks)
 - src/il/runtime — Runtime signatures, helper effects, class name maps
 - src/il/transform — Pass framework and built-in passes (CheckOpt, ConstFold, DCE, DSE, EarlyCSE, GVN, IndVarSimplify, Inline, LateCleanup, LICM, LoopSimplify, LoopUnroll, Mem2Reg, Peephole, SCCP, SimplifyCFG)
 - src/il/utils — Shared IL utilities (UseDefInfo, Utils — use-def info and common helpers)
@@ -100,4 +101,6 @@ Public headers are under `include/viper/...`:
 - IL version: see `src/buildmeta/IL_VERSION` (current: 0.2.0)
 - Keep layering strict: frontends do not depend on VM/codegen; VM does not include codegen; codegen depends only on IL
   core/verify/support
+- Cross-language interop: Zia and BASIC modules can be linked at the IL level. See [Cross-Language Interop
+  Guide](interop.md) for syntax, type compatibility, and boolean bridging
 - See also: `devdocs/architecture.md` for a deeper architectural discussion

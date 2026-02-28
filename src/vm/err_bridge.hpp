@@ -41,6 +41,18 @@ enum class ErrCode : int32_t
     Err_Bounds = 7,
     Err_InvalidOperation = 8,
     Err_RuntimeError = 9,
+
+    // Network error codes (10–19).
+    Err_ConnectionRefused = 10,
+    Err_HostNotFound = 11,
+    Err_ConnectionReset = 12,
+    Err_Timeout = 13,
+    Err_ConnectionClosed = 14,
+    Err_DnsError = 15,
+    Err_InvalidUrl = 16,
+    Err_TlsError = 17,
+    Err_NetworkError = 18,
+    Err_ProtocolError = 19,
 };
 
 /// @brief Map a legacy runtime error code to the corresponding trap kind.

@@ -41,6 +41,7 @@
 
 #include "rt_gc.h"
 
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 
@@ -63,16 +64,16 @@ extern void rt_trap(const char *msg);
 /// Sentinel values for the open-addressing hash table.
 /// GC_EMPTY marks a slot that has never been used (terminates probe chains).
 /// GC_TOMBSTONE marks a deleted slot (skipped during probing, reusable on insert).
-#define GC_EMPTY     NULL
+#define GC_EMPTY NULL
 #define GC_TOMBSTONE ((void *)(uintptr_t)1)
 
 /// Entry in the tracked-object hash table.
 typedef struct gc_entry
 {
-    void *obj;                ///< Object pointer (NULL=empty, 1=tombstone, else live).
+    void *obj; ///< Object pointer (NULL=empty, 1=tombstone, else live).
     rt_gc_traverse_fn traverse;
-    int64_t trial_rc;         ///< Temporary refcount for cycle detection.
-    int8_t color;             ///< 0=white(unchecked), 1=gray(candidate), 2=black(reachable)
+    int64_t trial_rc; ///< Temporary refcount for cycle detection.
+    int8_t color;     ///< 0=white(unchecked), 1=gray(candidate), 2=black(reachable)
 } gc_entry;
 
 /// Weak reference record.
@@ -93,9 +94,9 @@ typedef struct weak_chain
 /// Global GC state.
 static struct
 {
-    gc_entry *entries;      ///< Open-addressing hash table (power-of-two capacity).
-    int64_t count;          ///< Number of live entries (excludes tombstones).
-    int64_t capacity;       ///< Table size (always a power of two, or 0).
+    gc_entry *entries; ///< Open-addressing hash table (power-of-two capacity).
+    int64_t count;     ///< Number of live entries (excludes tombstones).
+    int64_t capacity;  ///< Table size (always a power of two, or 0).
 
     weak_chain *weak_buckets;
     int64_t weak_bucket_count;
@@ -531,8 +532,7 @@ int64_t rt_gc_collect(void)
     /* Phase 1: Initialize trial refcounts and build a snapshot of all live
        entries for safe traversal outside the lock. */
     int64_t snap_count = 0;
-    gc_snap_entry *snapshot =
-        (gc_snap_entry *)malloc((size_t)g_gc.count * sizeof(gc_snap_entry));
+    gc_snap_entry *snapshot = (gc_snap_entry *)malloc((size_t)g_gc.count * sizeof(gc_snap_entry));
     if (!snapshot)
         rt_trap("gc: memory allocation failed");
 
@@ -566,8 +566,7 @@ int64_t rt_gc_collect(void)
     {
         gc_lock();
         int64_t idx = find_entry(snapshot[i].obj);
-        if (idx >= 0 && g_gc.entries[idx].trial_rc > 0
-            && g_gc.entries[idx].color != 2)
+        if (idx >= 0 && g_gc.entries[idx].trial_rc > 0 && g_gc.entries[idx].color != 2)
         {
             g_gc.entries[idx].color = 2; /* black = definitely reachable */
             gc_unlock();
@@ -602,8 +601,7 @@ int64_t rt_gc_collect(void)
 
         for (int64_t i = 0; i < g_gc.capacity && gi < garbage_count; i++)
         {
-            if (gc_slot_is_live(&g_gc.entries[i])
-                && g_gc.entries[i].color == 0)
+            if (gc_slot_is_live(&g_gc.entries[i]) && g_gc.entries[i].color == 0)
             {
                 garbage[gi++] = g_gc.entries[i].obj;
                 /* Tombstone the slot. */
@@ -684,6 +682,54 @@ int64_t rt_gc_pass_count(void)
 //=============================================================================
 // Shutdown
 //=============================================================================
+
+void rt_gc_run_all_finalizers(void)
+{
+    gc_lock();
+
+    if (g_gc.count == 0)
+    {
+        gc_unlock();
+        return;
+    }
+
+    /* Snapshot all live entries so we can release the lock before running
+       finalizers (same pattern as rt_gc_collect phase 4). */
+    int64_t snap_count = 0;
+    void **snapshot = (void **)malloc((size_t)g_gc.count * sizeof(void *));
+    if (!snapshot)
+    {
+        /* Best-effort: if malloc fails during shutdown, skip finalizer sweep.
+           The OS will reclaim file descriptors and sockets on process exit. */
+        gc_unlock();
+        return;
+    }
+
+    for (int64_t i = 0; i < g_gc.capacity; i++)
+    {
+        if (gc_slot_is_live(&g_gc.entries[i]))
+            snapshot[snap_count++] = g_gc.entries[i].obj;
+    }
+
+    gc_unlock();
+
+    /* Run finalizers outside the lock.  We skip the refcount check that
+       rt_obj_free performs because at shutdown ALL tracked objects must
+       release external resources regardless of outstanding references
+       (cycle members typically have refcnt > 0). */
+    for (int64_t i = 0; i < snap_count; i++)
+    {
+        rt_heap_hdr_t *hdr = rt_heap_hdr(snapshot[i]);
+        if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT && hdr->finalizer)
+        {
+            rt_heap_finalizer_t fin = hdr->finalizer;
+            hdr->finalizer = NULL; /* prevent double-finalization */
+            fin(snapshot[i]);
+        }
+    }
+
+    free(snapshot);
+}
 
 void rt_gc_shutdown(void)
 {

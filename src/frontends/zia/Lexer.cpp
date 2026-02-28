@@ -82,6 +82,8 @@ const char *tokenKindToString(TokenKind kind)
             return "expose";
         case TokenKind::KwHide:
             return "hide";
+        case TokenKind::KwForeign:
+            return "foreign";
         case TokenKind::KwOverride:
             return "override";
         case TokenKind::KwDeinit:
@@ -268,8 +270,8 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-// Sorted for binary search (44 keywords)
-constexpr std::array<KeywordEntry, 44> kKeywordTable = {{
+// Sorted for binary search (45 keywords)
+constexpr std::array<KeywordEntry, 45> kKeywordTable = {{
     {"and", TokenKind::KwAnd},
     {"as", TokenKind::KwAs},
     {"bind", TokenKind::KwBind},
@@ -285,6 +287,7 @@ constexpr std::array<KeywordEntry, 44> kKeywordTable = {{
     {"final", TokenKind::KwFinal},
     {"finally", TokenKind::KwFinally},
     {"for", TokenKind::KwFor},
+    {"foreign", TokenKind::KwForeign},
     {"func", TokenKind::KwFunc},
     {"guard", TokenKind::KwGuard},
     {"hide", TokenKind::KwHide},

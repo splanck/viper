@@ -511,7 +511,12 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
 
     for (const auto &g : m.globals)
     {
-        os << "global const " << g.type.toString() << " @" << g.name << " = \""
+        os << "global ";
+        if (g.linkage == Linkage::Export)
+            os << "export ";
+        else if (g.linkage == Linkage::Import)
+            os << "import ";
+        os << "const " << g.type.toString() << " @" << g.name << " = \""
            << encodeEscapedString(g.init) << "\"\n";
     }
 
@@ -521,14 +526,28 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
         SerializeContext ctx;
         ctx.valueNames = &f.valueNames;
 
-        os << "func @" << f.name << "(";
+        os << "func ";
+        if (f.linkage == Linkage::Export)
+            os << "export ";
+        else if (f.linkage == Linkage::Import)
+            os << "import ";
+        os << "@" << f.name << "(";
         for (size_t i = 0; i < f.params.size(); ++i)
         {
             if (i)
                 os << ", ";
             os << f.params[i].type.toString() << " %" << f.params[i].name;
         }
-        os << ") -> " << f.retType.toString() << " {\n";
+        os << ") -> " << f.retType.toString();
+
+        // Import-linkage functions have no body (declaration only)
+        if (f.linkage == Linkage::Import)
+        {
+            os << "\n";
+            continue;
+        }
+
+        os << " {\n";
         for (const auto &bb : f.blocks)
         {
             const bool handler = isHandlerBlock(bb);

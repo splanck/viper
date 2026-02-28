@@ -33,6 +33,7 @@
 
 #include "rt_threadpool.h"
 
+#include "rt_gc.h"
 #include "rt_object.h"
 #include "rt_threads.h"
 
@@ -85,13 +86,45 @@ extern void rt_trap(const char *msg);
 // Pool Management
 //=============================================================================
 
+/// @brief GC traverse callback for thread pools.
+/// @details Pools hold no strong references that participate in reference
+///          cycles, but we register them for GC tracking so the shutdown
+///          finalizer sweep (rt_gc_run_all_finalizers) can reach them.
+static void pool_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx)
+{
+    (void)obj;
+    (void)visitor;
+    (void)ctx;
+}
+
 static void pool_finalizer(void *obj)
 {
     pool_impl *pool = (pool_impl *)obj;
     if (!pool)
         return;
 
-    // Note: Should already be shut down when finalizer runs
+    /* If not already shut down, signal workers and join them.
+       This handles the case where a program exits without calling
+       rt_threadpool_shutdown() — the atexit finalizer sweep invokes
+       this finalizer to prevent abandoned worker threads. */
+    if (!pool->shutdown && pool->monitor)
+    {
+        pool->shutdown = 1;
+        pool->shutdown_now = 1;
+        rt_monitor_enter(pool->monitor);
+        rt_monitor_pause_all(pool->monitor);
+        rt_monitor_exit(pool->monitor);
+
+        for (int64_t i = 0; i < pool->worker_count; i++)
+        {
+            if (pool->workers && pool->workers[i].thread)
+            {
+                rt_thread_join(pool->workers[i].thread);
+                pool->workers[i].thread = NULL;
+            }
+        }
+    }
+
     // Clean up any remaining queue
     pool_task *task = pool->queue_head;
     while (task)
@@ -101,7 +134,7 @@ static void pool_finalizer(void *obj)
         task = next;
     }
 
-    // Free workers array (threads should already be joined)
+    // Free workers array
     if (pool->workers)
         free(pool->workers);
 
@@ -126,6 +159,7 @@ void *rt_threadpool_new(int64_t size)
         return NULL;
 
     rt_obj_set_finalizer(pool, pool_finalizer);
+    rt_gc_track(pool, pool_traverse);
 
     pool->monitor = rt_obj_new_i64(0, 1); // Create a monitor object
     if (!pool->monitor)

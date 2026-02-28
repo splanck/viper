@@ -579,8 +579,9 @@ class Parser
     DeclPtr parseDeclaration();
 
     /// @brief Parse a function declaration: func name(...) { }
+    /// @param isForeign If true, no body is required (import declaration).
     /// @return The parsed FunctionDecl.
-    DeclPtr parseFunctionDecl();
+    DeclPtr parseFunctionDecl(bool isForeign = false);
 
     /// @brief Parse a value type declaration: value Name { }
     /// @return The parsed ValueDecl.

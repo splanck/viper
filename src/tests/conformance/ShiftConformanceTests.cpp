@@ -97,22 +97,22 @@ int main()
     assert(runAShr(-8, 1) == -4);
     assert(runAShr(-8, 2) == -2);
     assert(runAShr(-8, 3) == -1);
-    assert(runAShr(-1, 1) == -1);      // All ones stays all ones
-    assert(runAShr(-1, 63) == -1);     // Still all ones at max shift
+    assert(runAShr(-1, 1) == -1);  // All ones stays all ones
+    assert(runAShr(-1, 63) == -1); // Still all ones at max shift
 
     // MAX shifted right
     assert(runAShr(maxVal, 1) == maxVal / 2);
     assert(runAShr(maxVal, 62) == 1);
-    assert(runAShr(maxVal, 63) == 0);  // Positive, sign bit 0 → 0
+    assert(runAShr(maxVal, 63) == 0); // Positive, sign bit 0 → 0
 
     // MIN shifted right
-    assert(runAShr(minVal, 1) == minVal / 2);     // -4611686018427387904
+    assert(runAShr(minVal, 1) == minVal / 2); // -4611686018427387904
     assert(runAShr(minVal, 62) == -2);
-    assert(runAShr(minVal, 63) == -1);            // Sign fills
+    assert(runAShr(minVal, 63) == -1); // Sign fills
 
     // Odd values — truncation toward negative infinity
-    assert(runAShr(-7, 1) == -4);   // -7 >> 1 = -4 (floor division)
-    assert(runAShr(7, 1) == 3);     // 7 >> 1 = 3
+    assert(runAShr(-7, 1) == -4); // -7 >> 1 = -4 (floor division)
+    assert(runAShr(7, 1) == 3);   // 7 >> 1 = 3
 
     //=========================================================================
     // AShr shift amount masking
@@ -149,8 +149,8 @@ int main()
 
     // Negative values — zero extends instead of sign extends
     // -1 = 0xFFFFFFFFFFFFFFFF
-    assert(runLShr(-1, 1) == maxVal);    // 0x7FFFFFFFFFFFFFFF
-    assert(runLShr(-1, 63) == 1);        // Only the high bit remains
+    assert(runLShr(-1, 1) == maxVal); // 0x7FFFFFFFFFFFFFFF
+    assert(runLShr(-1, 63) == 1);     // Only the high bit remains
 
     // -8 = 0xFFFFFFFFFFFFFFF8
     // LShr by 1: 0x7FFFFFFFFFFFFFFC = 9223372036854775804
@@ -201,10 +201,10 @@ int main()
     assert(runAShr(100, 3) == runLShr(100, 3));
 
     // For negative values, they diverge
-    assert(runAShr(-1, 1) == -1);          // Sign extends
-    assert(runLShr(-1, 1) == maxVal);      // Zero extends
-    assert(runAShr(minVal, 63) == -1);     // All sign bits
-    assert(runLShr(minVal, 63) == 1);      // Just the former sign bit
+    assert(runAShr(-1, 1) == -1);      // Sign extends
+    assert(runLShr(-1, 1) == maxVal);  // Zero extends
+    assert(runAShr(minVal, 63) == -1); // All sign bits
+    assert(runLShr(minVal, 63) == 1);  // Just the former sign bit
 
     return 0;
 }

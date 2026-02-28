@@ -219,6 +219,9 @@ struct FunctionDecl : Decl
     /// @brief Function visibility.
     Visibility visibility = Visibility::Private;
 
+    /// @brief True if this is a foreign function (imported from another module, no body).
+    bool isForeign = false;
+
     /// @brief True if this overrides a parent method.
     bool isOverride = false;
 

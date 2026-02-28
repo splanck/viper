@@ -178,8 +178,8 @@ void *rt_binfile_open(void *path, void *mode)
     if (!fp)
     {
         char buf[512];
-        snprintf(buf, sizeof(buf), "BinFile.Open: failed to open '%s': %s",
-                 path_str, strerror(errno));
+        snprintf(
+            buf, sizeof(buf), "BinFile.Open: failed to open '%s': %s", path_str, strerror(errno));
         rt_trap(buf);
         return NULL;
     }

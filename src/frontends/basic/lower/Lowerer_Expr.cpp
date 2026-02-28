@@ -940,10 +940,15 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
         // Return a dummy value to avoid cascading errors
         return RVal{Value::constInt(0), Type(Type::Kind::I64)};
     }
+
     struct DepthGuard
     {
         unsigned &d;
-        ~DepthGuard() { --d; }
+
+        ~DepthGuard()
+        {
+            --d;
+        }
     } exprGuard_{exprLowerDepth_};
 
     curLoc = expr.loc;

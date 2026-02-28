@@ -58,8 +58,8 @@ void Lowerer::lowerTryStmt(TryStmt *stmt)
     handlerParams.push_back({"err", Type(Type::Kind::Ptr)});
     handlerParams.push_back({"tok", Type(Type::Kind::I64)});
 
-    builder_->createBlock(*currentFunc_, "handler_" + std::to_string(blockMgr_.nextBlockId()),
-                          handlerParams);
+    builder_->createBlock(
+        *currentFunc_, "handler_" + std::to_string(blockMgr_.nextBlockId()), handlerParams);
     size_t handlerIdx = currentFunc_->blocks.size() - 1;
 
     // Optional: finally_normal block (only if we have a finally clause)

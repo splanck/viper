@@ -260,8 +260,8 @@ TEST(AArch64PhiCoalescer, LoopStructurePreserved)
     EXPECT_NE(asmText.find("cmp x"), std::string::npos);
     // Load from phi slot at loop entry must be present.
     EXPECT_NE(asmText.find("ldr x"), std::string::npos);
-    // Loop back-edge must be present.
-    EXPECT_NE(asmText.find("b loop"), std::string::npos);
+    // Loop back-edge must be present (block labels are L-prefixed).
+    EXPECT_NE(asmText.find("b Lloop"), std::string::npos);
     // Conditional loop exit must be present (cbnz from peephole or b.ne).
     const bool hasCondExit =
         asmText.find("cbnz") != std::string::npos || asmText.find("b.") != std::string::npos;

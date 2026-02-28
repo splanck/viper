@@ -14,6 +14,8 @@
 #include "frontends/zia/RuntimeNames.hpp"
 #include "frontends/zia/ZiaLocationScope.hpp"
 
+#include "il/core/Linkage.hpp"
+
 namespace il::frontends::zia
 {
 
@@ -606,6 +608,21 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     // Create function
     currentFunc_ = &builder_->startFunction(mangledName, ilReturnType, params);
     currentReturnType_ = returnType;
+
+    // Set IL linkage from AST visibility/foreign flag.
+    if (decl.isForeign)
+        currentFunc_->linkage = il::core::Linkage::Import;
+    else if (decl.visibility == Visibility::Public)
+        currentFunc_->linkage = il::core::Linkage::Export;
+
+    // Foreign (import) functions have no body — just a declaration.
+    if (decl.isForeign)
+    {
+        currentFunc_ = nullptr;
+        currentReturnType_ = nullptr;
+        return;
+    }
+
     blockMgr_.bind(builder_.get(), currentFunc_);
     locals_.clear();
     slots_.clear();
@@ -1599,16 +1616,16 @@ void Lowerer::emitItableInit()
             // Allocate itable: slotCount * 8 bytes
             size_t slotCount = ifaceInfo.methods.size();
             int64_t bytes = static_cast<int64_t>(slotCount * 8ULL);
-            Value itablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc",
-                                          {Value::constInt(bytes)});
+            Value itablePtr =
+                emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
 
             // Populate each slot with a function pointer
             for (size_t s = 0; s < slotCount; ++s)
             {
                 const std::string &methodName = ifaceInfo.methods[s]->name;
                 int64_t offset = static_cast<int64_t>(s * 8ULL);
-                Value slotPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr),
-                                           itablePtr, Value::constInt(offset));
+                Value slotPtr = emitBinary(
+                    Opcode::GEP, Type(Type::Kind::Ptr), itablePtr, Value::constInt(offset));
 
                 // Find the implementing method in the entity (or its bases)
                 std::string implName;

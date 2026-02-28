@@ -89,8 +89,8 @@
 
 #include "frontends/zia/AST.hpp"
 #include "frontends/zia/Types.hpp"
-#include "frontends/zia/Warnings.hpp"
 #include "frontends/zia/WarningSuppressions.hpp"
+#include "frontends/zia/Warnings.hpp"
 #include "support/diagnostics.hpp"
 #include <map>
 #include <memory>

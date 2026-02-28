@@ -68,8 +68,13 @@ std::optional<std::filesystem::path> findBuildDir()
 std::unordered_set<std::string> parseRuntimeSymbols(std::string_view text)
 {
     auto isIdent = [](unsigned char c) -> bool { return std::isalnum(c) || c == '_'; };
+    // Namespace-qualified symbols also contain dots.
+    auto isNsIdent = [](unsigned char c) -> bool
+    { return std::isalnum(c) || c == '_' || c == '.'; };
 
     std::unordered_set<std::string> symbols;
+
+    // Pass 1: Scan for rt_* symbols (existing logic).
     for (std::size_t i = 0; i + 3 < text.size(); ++i)
     {
         std::size_t start = std::string_view::npos;
@@ -99,6 +104,40 @@ std::unordered_set<std::string> parseRuntimeSymbols(std::string_view text)
             symbols.emplace(text.substr(start, j - start));
         i = j;
     }
+
+    // Pass 2: Scan for Viper.* namespace-qualified symbols (OOP-style IL).
+    // These appear as _Viper.Terminal.PrintStr or Viper.Collections.List.Add
+    // in the emitted assembly.
+    static constexpr std::string_view kViperPrefix = "Viper.";
+    for (std::size_t i = 0; i + kViperPrefix.size() < text.size(); ++i)
+    {
+        // Match "Viper." or "_Viper." at a word boundary.
+        std::size_t start = std::string_view::npos;
+        if (text.substr(i, kViperPrefix.size()) == kViperPrefix)
+        {
+            if (i == 0 || !isIdent(static_cast<unsigned char>(text[i - 1])))
+                start = i;
+        }
+        else if (text[i] == '_' && i + 1 + kViperPrefix.size() <= text.size() &&
+                 text.substr(i + 1, kViperPrefix.size()) == kViperPrefix)
+        {
+            if (i == 0 || !isIdent(static_cast<unsigned char>(text[i - 1])))
+                start = i + 1; // Skip the leading underscore
+        }
+
+        if (start == std::string_view::npos)
+            continue;
+
+        // Read the full namespace-qualified identifier (alphanumeric, _, .).
+        std::size_t j = start;
+        while (j < text.size() && isNsIdent(static_cast<unsigned char>(text[j])))
+            ++j;
+
+        if (j > start)
+            symbols.emplace(text.substr(start, j - start));
+        i = j;
+    }
+
     return symbols;
 }
 

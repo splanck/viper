@@ -609,6 +609,14 @@ class Parser
     /// @return SUB statement node.
     StmtPtr parseSubStatement();
 
+    /// @brief Parse an EXPORT FUNCTION/SUB statement.
+    /// @return Function or sub declaration with export linkage.
+    StmtPtr parseExportStatement();
+
+    /// @brief Parse a DECLARE FOREIGN FUNCTION/SUB statement (import, no body).
+    /// @return Function or sub declaration with import linkage.
+    StmtPtr parseDeclareStatement();
+
     /// @brief Parse a RETURN statement.
     /// @return RETURN statement node.
     StmtPtr parseReturnStatement();

@@ -235,12 +235,14 @@ inline const BinaryOpMapping *lookupBinaryOp(il::core::Opcode op)
         // Division (no immediate form on AArch64)
         case Opc::SDiv:
         {
-            static constexpr BinaryOpMapping m{Opc::SDiv, MOpcode::SDivRRR, false, MOpcode::SDivRRR};
+            static constexpr BinaryOpMapping m{
+                Opc::SDiv, MOpcode::SDivRRR, false, MOpcode::SDivRRR};
             return &m;
         }
         case Opc::UDiv:
         {
-            static constexpr BinaryOpMapping m{Opc::UDiv, MOpcode::UDivRRR, false, MOpcode::UDivRRR};
+            static constexpr BinaryOpMapping m{
+                Opc::UDiv, MOpcode::UDivRRR, false, MOpcode::UDivRRR};
             return &m;
         }
         // Floating-point operations

@@ -31,6 +31,7 @@
 #include "frontends/basic/LoweringPipeline.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 
+#include "il/core/Linkage.hpp"
 #include "viper/il/IRBuilder.hpp"
 
 #include <cassert>
@@ -445,7 +446,29 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     };
 
     const std::string ilName = decl.qualifiedName.empty() ? decl.name : decl.qualifiedName;
+
+    // Foreign (import) functions: emit declaration only, no body.
+    if (decl.isForeign)
+    {
+        std::vector<il::core::Param> irParams;
+        for (size_t i = 0; i < decl.params.size(); ++i)
+        {
+            il::core::Param p;
+            p.name = decl.params[i].name;
+            p.type = coreTypeForAstType(decl.params[i].type);
+            p.id = static_cast<unsigned>(i);
+            irParams.push_back(p);
+        }
+        auto &f = builder->startFunction(ilName, config.retType, irParams);
+        f.linkage = il::core::Linkage::Import;
+        return;
+    }
+
     lowerProcedure(ilName, decl.params, decl.body, config);
+
+    // Set export linkage after lowering (function is now in the module).
+    if (decl.isExport && !mod->functions.empty() && mod->functions.back().name == ilName)
+        mod->functions.back().linkage = il::core::Linkage::Export;
 }
 
 /// @brief Lower a BASIC SUB declaration into IL.
@@ -460,7 +483,29 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
     config.emitFinalReturn = [&]() { emitRetVoid(); };
 
     const std::string ilName = decl.qualifiedName.empty() ? decl.name : decl.qualifiedName;
+
+    // Foreign (import) subs: emit declaration only, no body.
+    if (decl.isForeign)
+    {
+        std::vector<il::core::Param> irParams;
+        for (size_t i = 0; i < decl.params.size(); ++i)
+        {
+            il::core::Param p;
+            p.name = decl.params[i].name;
+            p.type = coreTypeForAstType(decl.params[i].type);
+            p.id = static_cast<unsigned>(i);
+            irParams.push_back(p);
+        }
+        auto &f = builder->startFunction(ilName, config.retType, irParams);
+        f.linkage = il::core::Linkage::Import;
+        return;
+    }
+
     lowerProcedure(ilName, decl.params, decl.body, config);
+
+    // Set export linkage after lowering (function is now in the module).
+    if (decl.isExport && !mod->functions.empty() && mod->functions.back().name == ilName)
+        mod->functions.back().linkage = il::core::Linkage::Export;
 }
 
 // =============================================================================

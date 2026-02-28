@@ -95,7 +95,8 @@ static void test_string_alloc_oom()
     rt_set_alloc_hook(fail_once_hook);
 
     // String longer than SSO threshold forces heap allocation via rt_alloc
-    static const char *long_str = "this_is_a_string_that_definitely_exceeds_the_sso_limit_of_32_bytes";
+    static const char *long_str =
+        "this_is_a_string_that_definitely_exceeds_the_sso_limit_of_32_bytes";
     rt_string s = rt_string_from_bytes(long_str, strlen(long_str));
     assert(s == NULL);
     assert(g_trap_count == 1);

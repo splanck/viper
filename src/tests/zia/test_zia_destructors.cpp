@@ -64,7 +64,8 @@ static bool returnsVoid(const il::core::Module &mod, const std::string &fnName)
 }
 
 /// @brief Check if a function calls a specific callee.
-static bool hasCallee(const il::core::Module &mod, const std::string &fnName,
+static bool hasCallee(const il::core::Module &mod,
+                      const std::string &fnName,
                       const std::string &callee)
 {
     for (const auto &fn : mod.functions)

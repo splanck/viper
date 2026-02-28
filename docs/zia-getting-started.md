@@ -184,6 +184,34 @@ func start() {
 - Return type follows `->` (omit for void functions)
 - Functions can call other functions defined in the same module
 
+### Exporting Functions
+
+Use `expose` before `func` to make a function visible to other modules in a
+mixed-language project:
+
+```viper
+expose func calculateScore(x: Integer, y: Integer) -> Integer {
+    return x * y + 10
+}
+```
+
+### Importing Foreign Functions
+
+Use `foreign func` to declare a function defined in another module (e.g., a
+BASIC library). Foreign declarations have no body:
+
+```viper
+foreign func Factorial(n: Integer) -> Integer
+
+func start() {
+    var result = Factorial(10)
+    Say(ToString(result))
+}
+```
+
+For full details on mixed-language projects, see the
+[Cross-Language Interop Guide](interop.md).
+
 ---
 
 ## 5. Entity Types (Classes)
@@ -516,6 +544,7 @@ For more complete examples, see the `demos/zia/` directory:
 **Related Guides:**
 
 - [IL Guide](il-guide.md) — Understand the compiled output
+- [Cross-Language Interop](interop.md) — Mixed Zia + BASIC projects
 - [Frontend How-To](frontend-howto.md) — How frontends work
 
 ---

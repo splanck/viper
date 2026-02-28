@@ -84,6 +84,12 @@ struct FunctionDecl : Stmt
     /// Function body statements.
     std::vector<StmtPtr> body;
 
+    /// True if this function is exported (visible to other modules).
+    bool isExport = false;
+
+    /// True if this is a foreign function (imported from another module, no body).
+    bool isForeign = false;
+
     /// Location of trailing END FUNCTION keyword.
     il::support::SourceLoc endLoc{};
     void accept(StmtVisitor &visitor) const override;
@@ -114,6 +120,13 @@ struct SubDecl : Stmt
 
     /// Body statements.
     std::vector<StmtPtr> body;
+
+    /// True if this sub is exported (visible to other modules).
+    bool isExport = false;
+
+    /// True if this is a foreign sub (imported from another module, no body).
+    bool isForeign = false;
+
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };

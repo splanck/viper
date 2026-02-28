@@ -42,10 +42,16 @@ struct Printer
     }
 
     /// @brief Increase indentation by one level.
-    void push() { ++indent; }
+    void push()
+    {
+        ++indent;
+    }
 
     /// @brief Decrease indentation by one level.
-    void pop() { --indent; }
+    void pop()
+    {
+        --indent;
+    }
 };
 
 // ---------------------------------------------------------------------------
@@ -77,23 +83,40 @@ static const char *binaryOpName(BinaryOp op)
 {
     switch (op)
     {
-        case BinaryOp::Add: return "+";
-        case BinaryOp::Sub: return "-";
-        case BinaryOp::Mul: return "*";
-        case BinaryOp::Div: return "/";
-        case BinaryOp::Mod: return "%";
-        case BinaryOp::Eq: return "==";
-        case BinaryOp::Ne: return "!=";
-        case BinaryOp::Lt: return "<";
-        case BinaryOp::Le: return "<=";
-        case BinaryOp::Gt: return ">";
-        case BinaryOp::Ge: return ">=";
-        case BinaryOp::And: return "&&";
-        case BinaryOp::Or: return "||";
-        case BinaryOp::BitAnd: return "&";
-        case BinaryOp::BitOr: return "|";
-        case BinaryOp::BitXor: return "^";
-        case BinaryOp::Assign: return "=";
+        case BinaryOp::Add:
+            return "+";
+        case BinaryOp::Sub:
+            return "-";
+        case BinaryOp::Mul:
+            return "*";
+        case BinaryOp::Div:
+            return "/";
+        case BinaryOp::Mod:
+            return "%";
+        case BinaryOp::Eq:
+            return "==";
+        case BinaryOp::Ne:
+            return "!=";
+        case BinaryOp::Lt:
+            return "<";
+        case BinaryOp::Le:
+            return "<=";
+        case BinaryOp::Gt:
+            return ">";
+        case BinaryOp::Ge:
+            return ">=";
+        case BinaryOp::And:
+            return "&&";
+        case BinaryOp::Or:
+            return "||";
+        case BinaryOp::BitAnd:
+            return "&";
+        case BinaryOp::BitOr:
+            return "|";
+        case BinaryOp::BitXor:
+            return "^";
+        case BinaryOp::Assign:
+            return "=";
     }
     return "?";
 }
@@ -102,10 +125,14 @@ static const char *unaryOpName(UnaryOp op)
 {
     switch (op)
     {
-        case UnaryOp::Neg: return "-";
-        case UnaryOp::Not: return "!";
-        case UnaryOp::BitNot: return "~";
-        case UnaryOp::AddressOf: return "&";
+        case UnaryOp::Neg:
+            return "-";
+        case UnaryOp::Not:
+            return "!";
+        case UnaryOp::BitNot:
+            return "~";
+        case UnaryOp::AddressOf:
+            return "&";
     }
     return "?";
 }

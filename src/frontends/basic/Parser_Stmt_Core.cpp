@@ -819,4 +819,100 @@ StmtPtr Parser::parseSubStatement()
     return sub;
 }
 
+/// @brief Parse an EXPORT FUNCTION/SUB statement.
+/// @details Consumes the EXPORT keyword and delegates to the standard
+///          FUNCTION or SUB parser, marking the result as exported.
+/// @return Function or sub declaration with export linkage.
+StmtPtr Parser::parseExportStatement()
+{
+    consume(); // consume EXPORT
+
+    if (at(TokenKind::KeywordFunction))
+    {
+        auto stmt = parseFunctionStatement();
+        if (stmt)
+        {
+            auto *fn = static_cast<FunctionDecl *>(stmt.get());
+            fn->isExport = true;
+        }
+        return stmt;
+    }
+    if (at(TokenKind::KeywordSub))
+    {
+        auto stmt = parseSubStatement();
+        if (stmt)
+        {
+            auto *sub = static_cast<SubDecl *>(stmt.get());
+            sub->isExport = true;
+        }
+        return stmt;
+    }
+
+    emitError("B4999", peek(), "Expected FUNCTION or SUB after EXPORT");
+    return nullptr;
+}
+
+/// @brief Parse a DECLARE FOREIGN FUNCTION/SUB statement (import, no body).
+/// @details Consumes DECLARE FOREIGN, then parses the function/sub header
+///          without a body. The resulting declaration has isForeign=true.
+/// @return Function or sub declaration with import linkage.
+StmtPtr Parser::parseDeclareStatement()
+{
+    consume(); // consume DECLARE
+
+    if (!at(TokenKind::KeywordForeign))
+    {
+        emitError("B4999", peek(), "Expected FOREIGN after DECLARE");
+        return nullptr;
+    }
+    consume(); // consume FOREIGN
+
+    if (at(TokenKind::KeywordFunction))
+    {
+        auto fn = parseFunctionHeader();
+        if (fn)
+        {
+            fn->isForeign = true;
+            // Apply explicit return type (same logic as parseFunctionStatement).
+            if (fn->explicitRetType != BasicType::Unknown)
+            {
+                switch (fn->explicitRetType)
+                {
+                    case BasicType::Int:
+                        fn->ret = Type::I64;
+                        break;
+                    case BasicType::Float:
+                        fn->ret = Type::F64;
+                        break;
+                    case BasicType::String:
+                        fn->ret = Type::Str;
+                        break;
+                    case BasicType::Bool:
+                        fn->ret = Type::Bool;
+                        break;
+                    default:
+                        fn->ret = Type::I64;
+                        break;
+                }
+            }
+        }
+        return fn;
+    }
+    if (at(TokenKind::KeywordSub))
+    {
+        auto loc = peek().loc;
+        consume(); // consume SUB
+        Token nameTok = expect(TokenKind::Identifier);
+        auto sub = std::make_unique<SubDecl>();
+        sub->loc = loc;
+        sub->name = nameTok.lexeme;
+        sub->params = parseParamList();
+        sub->isForeign = true;
+        return sub;
+    }
+
+    emitError("B4999", peek(), "Expected FUNCTION or SUB after DECLARE FOREIGN");
+    return nullptr;
+}
+
 } // namespace il::frontends::basic

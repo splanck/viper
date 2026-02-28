@@ -36,8 +36,7 @@ static bool hasFunction(const il::core::Module &mod, const std::string &fnName)
 }
 
 /// @brief Check if a function contains an instruction with the given opcode.
-static bool hasOpcode(const il::core::Module &mod, const std::string &fnName,
-                      il::core::Opcode op)
+static bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il::core::Opcode op)
 {
     for (const auto &fn : mod.functions)
     {

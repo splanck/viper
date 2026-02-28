@@ -67,10 +67,10 @@ TEST(Arm64CLI, SwitchSmall)
     // Expect cmp <reg>, #1; b.eq L1 and cmp <reg>, #2; b.eq L2 then branch to default
     EXPECT_NE(asmText.find("cmp"), std::string::npos);
     EXPECT_NE(asmText.find("#1"), std::string::npos);
-    EXPECT_NE(asmText.find("b.eq L1"), std::string::npos);
+    EXPECT_NE(asmText.find("b.eq LL1"), std::string::npos);
     EXPECT_NE(asmText.find("#2"), std::string::npos);
-    EXPECT_NE(asmText.find("b.eq L2"), std::string::npos);
-    EXPECT_NE(asmText.find("b Ld"), std::string::npos);
+    EXPECT_NE(asmText.find("b.eq LL2"), std::string::npos);
+    EXPECT_NE(asmText.find("b LLd"), std::string::npos);
 }
 
 TEST(Arm64CLI, SwitchMany)
@@ -99,7 +99,7 @@ TEST(Arm64CLI, SwitchMany)
     EXPECT_NE(asmText.find("cmp"), std::string::npos);
     EXPECT_NE(asmText.find("#0"), std::string::npos);
     EXPECT_NE(asmText.find("#7"), std::string::npos);
-    EXPECT_NE(asmText.find("b Ld"), std::string::npos);
+    EXPECT_NE(asmText.find("b LLd"), std::string::npos);
 }
 
 TEST(Arm64CLI, SwitchDefaultOnly)
@@ -121,7 +121,7 @@ TEST(Arm64CLI, SwitchDefaultOnly)
     // 1. An explicit branch "b Ld" to the default block
     // 2. A fallthrough to the default block (no branch needed if immediately adjacent)
     // Both are correct; we just verify the default label exists
-    EXPECT_NE(asmText.find("Ld:"), std::string::npos);
+    EXPECT_NE(asmText.find("LLd:"), std::string::npos);
 }
 
 int main(int argc, char **argv)

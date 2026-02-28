@@ -187,8 +187,7 @@ void buildFloatBinary(Module &module, Opcode op, double lhs, double rhs)
 }
 
 /// Build a conversion function: main() -> i64 { return conv(val); }
-void buildConversion(Module &module, Opcode op, Type::Kind resultKind,
-                     int64_t operandBits)
+void buildConversion(Module &module, Opcode op, Type::Kind resultKind, int64_t operandBits)
 {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -275,8 +274,7 @@ int runNative(Module &module)
     out.close();
 
     const char *argv[] = {ilPath.c_str(), "-run-native"};
-    int result = viper::tools::ilc::cmd_codegen_arm64(
-        2, const_cast<char **>(argv));
+    int result = viper::tools::ilc::cmd_codegen_arm64(2, const_cast<char **>(argv));
 
     std::error_code ec;
     fs::remove(ilPath, ec);
@@ -298,8 +296,8 @@ int64_t runCrossLayer(Module &module)
     int natExit = nativeResult & 0xFF;
     if (vmExit != natExit)
     {
-        std::cerr << "  VM result=" << vmResult << " exit=" << vmExit
-                  << "  native exit=" << natExit << "\n";
+        std::cerr << "  VM result=" << vmResult << " exit=" << vmExit << "  native exit=" << natExit
+                  << "\n";
     }
     ASSERT_EQ(vmExit, natExit);
 #endif
@@ -318,8 +316,7 @@ int64_t runCrossLayer(Module &module)
 TEST(CrossLayerArith, AddMaxPlusOne)
 {
     Module module;
-    buildIntBinary(module, Opcode::Add,
-                   std::numeric_limits<int64_t>::max(), 1);
+    buildIntBinary(module, Opcode::Add, std::numeric_limits<int64_t>::max(), 1);
     int64_t result = runCrossLayer(module);
     EXPECT_TRUE(result == std::numeric_limits<int64_t>::min());
 }
@@ -327,8 +324,7 @@ TEST(CrossLayerArith, AddMaxPlusOne)
 TEST(CrossLayerArith, SubMinMinusOne)
 {
     Module module;
-    buildIntBinary(module, Opcode::Sub,
-                   std::numeric_limits<int64_t>::min(), 1);
+    buildIntBinary(module, Opcode::Sub, std::numeric_limits<int64_t>::min(), 1);
     int64_t result = runCrossLayer(module);
     EXPECT_TRUE(result == std::numeric_limits<int64_t>::max());
 }
@@ -446,8 +442,7 @@ TEST(CrossLayerArith, FDivByZero)
 TEST(CrossLayerArith, FMulNaN)
 {
     Module module;
-    buildFloatBinary(module, Opcode::FMul,
-                     std::numeric_limits<double>::quiet_NaN(), 5.0);
+    buildFloatBinary(module, Opcode::FMul, std::numeric_limits<double>::quiet_NaN(), 5.0);
     int64_t result = runVm(module);
     double d = bitsToDouble(result);
     EXPECT_TRUE(std::isnan(d));
@@ -517,8 +512,7 @@ TEST(CrossLayerArith, SitofpMax)
 {
     // INT64_MAX may lose precision in F64 (only 53 mantissa bits)
     Module module;
-    buildConversion(module, Opcode::Sitofp, Type::Kind::F64,
-                    std::numeric_limits<int64_t>::max());
+    buildConversion(module, Opcode::Sitofp, Type::Kind::F64, std::numeric_limits<int64_t>::max());
     int64_t result = runVm(module);
     double d = bitsToDouble(result);
     // The conversion rounds; just verify it's finite and close
@@ -529,8 +523,7 @@ TEST(CrossLayerArith, SitofpMax)
 TEST(CrossLayerArith, FptosiTruncation)
 {
     Module module;
-    buildConversion(module, Opcode::Fptosi, Type::Kind::I64,
-                    doubleBits(1.9));
+    buildConversion(module, Opcode::Fptosi, Type::Kind::I64, doubleBits(1.9));
     int64_t result = runCrossLayer(module);
     EXPECT_TRUE(result == 1); // Truncation toward zero
 }
@@ -538,8 +531,7 @@ TEST(CrossLayerArith, FptosiTruncation)
 TEST(CrossLayerArith, FptosiNegTruncation)
 {
     Module module;
-    buildConversion(module, Opcode::Fptosi, Type::Kind::I64,
-                    doubleBits(-1.9));
+    buildConversion(module, Opcode::Fptosi, Type::Kind::I64, doubleBits(-1.9));
     // -1 as exit code is 255 (0xFF), VM and native should agree on low 8 bits.
     int64_t result = runCrossLayer(module);
     EXPECT_TRUE(result == -1); // Truncation toward zero

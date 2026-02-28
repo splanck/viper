@@ -546,7 +546,8 @@ void Sema::checkUnusedVariables(const Scope &scope)
         if (!sym.used)
         {
             std::string what = (sym.kind == Symbol::Kind::Parameter) ? "Parameter" : "Variable";
-            warn(WarningCode::W001_UnusedVariable, sym.decl ? sym.decl->loc : SourceLoc{},
+            warn(WarningCode::W001_UnusedVariable,
+                 sym.decl ? sym.decl->loc : SourceLoc{},
                  what + " '" + name + "' is declared but never used");
         }
     }

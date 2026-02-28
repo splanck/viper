@@ -25,7 +25,8 @@ namespace
 // Helper: check if a function calls a specific callee
 // ============================================================================
 
-static bool hasCallee(const il::core::Module &mod, const std::string &fnName,
+static bool hasCallee(const il::core::Module &mod,
+                      const std::string &fnName,
                       const std::string &callee)
 {
     for (const auto &fn : mod.functions)
@@ -46,7 +47,8 @@ static bool hasCallee(const il::core::Module &mod, const std::string &fnName,
 }
 
 /// @brief Count the number of operands in the first call to a specific callee.
-static int countCallOperands(const il::core::Module &mod, const std::string &fnName,
+static int countCallOperands(const il::core::Module &mod,
+                             const std::string &fnName,
                              const std::string &callee)
 {
     for (const auto &fn : mod.functions)

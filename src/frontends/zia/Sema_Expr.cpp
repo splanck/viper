@@ -228,7 +228,8 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr)
         // Warn if variable used before initialization
         if (sym->kind == Symbol::Kind::Variable && !isInitialized(expr->name))
         {
-            warn(WarningCode::W015_UninitializedVariable, expr->loc,
+            warn(WarningCode::W015_UninitializedVariable,
+                 expr->loc,
                  "Variable '" + expr->name + "' may be used before initialization");
         }
 

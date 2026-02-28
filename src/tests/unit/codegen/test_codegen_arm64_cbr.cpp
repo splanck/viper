@@ -63,13 +63,13 @@ TEST(Arm64CLI, CBrOnCompareRR)
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    EXPECT_NE(asmText.find("entry:"), std::string::npos);
-    EXPECT_NE(asmText.find("t:"), std::string::npos);
-    EXPECT_NE(asmText.find("f:"), std::string::npos);
+    EXPECT_NE(asmText.find("Lentry:"), std::string::npos);
+    EXPECT_NE(asmText.find("Lt:"), std::string::npos);
+    EXPECT_NE(asmText.find("Lf:"), std::string::npos);
     EXPECT_NE(asmText.find("cmp x0, x1"), std::string::npos);
-    // Accept either original b.eq t or branch-inverted b.ne f (peephole optimization)
-    const bool hasOrigBranch = asmText.find("b.eq t") != std::string::npos;
-    const bool hasInvertedBranch = asmText.find("b.ne f") != std::string::npos;
+    // Accept either original b.eq Lt or branch-inverted b.ne Lf (peephole optimization)
+    const bool hasOrigBranch = asmText.find("b.eq Lt") != std::string::npos;
+    const bool hasInvertedBranch = asmText.find("b.ne Lf") != std::string::npos;
     EXPECT_TRUE(hasOrigBranch || hasInvertedBranch);
 }
 
@@ -94,9 +94,9 @@ TEST(Arm64CLI, CBrOnCompareImm)
     // Expect param1 moved to x0, cmp x0, #-7 and b.lt T
     EXPECT_NE(asmText.find("mov x0, x1"), std::string::npos);
     EXPECT_NE(asmText.find("cmp x0, #-7"), std::string::npos);
-    // Accept either original b.lt T or branch-inverted b.ge F (peephole optimization)
-    const bool hasOrigBranch = asmText.find("b.lt T") != std::string::npos;
-    const bool hasInvertedBranch = asmText.find("b.ge F") != std::string::npos;
+    // Accept either original b.lt LT or branch-inverted b.ge LF (peephole optimization)
+    const bool hasOrigBranch = asmText.find("b.lt LT") != std::string::npos;
+    const bool hasInvertedBranch = asmText.find("b.ge LF") != std::string::npos;
     EXPECT_TRUE(hasOrigBranch || hasInvertedBranch);
 }
 

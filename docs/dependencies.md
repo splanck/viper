@@ -306,9 +306,11 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `exit(code)` | `<stdlib.h>` | All | Terminate process |
 
 **Source locations:**
-- `src/runtime/rt_args.c:460-462` - `rt_env_exit` wrapper
-- `src/runtime/rt_term.c:127-131` - `atexit` for terminal cleanup
-- `src/runtime/rt_io.c:88` - Fatal error exit
+- `src/runtime/core/rt_heap.c` - `atexit(rt_global_shutdown)` — master shutdown handler (GC finalizer sweep, audio, legacy context, string intern, GC tables, pool slabs)
+- `src/runtime/core/rt_term.c` - `atexit` for terminal raw-mode cleanup
+- `src/runtime/core/rt_args.c` - `rt_env_exit` wrapper
+- `src/runtime/core/rt_io.c` - Fatal error exit
+- `src/runtime/network/rt_network.c` - `atexit(rt_net_cleanup_wsa)` (Windows only)
 
 #### Process Spawning (Optional - for Exec class)
 

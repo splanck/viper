@@ -45,9 +45,11 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
     constexpr auto kMaxSourceSize = static_cast<std::streamoff>(256ULL * 1024 * 1024);
     if (fileSize < 0 || fileSize > kMaxSourceSize)
     {
-        return il::support::Expected<LoadedSource>(il::support::Diagnostic{
-            il::support::Severity::Error,
-            "source file too large: " + path + " (limit: 256 MB)", {}, {}});
+        return il::support::Expected<LoadedSource>(
+            il::support::Diagnostic{il::support::Severity::Error,
+                                    "source file too large: " + path + " (limit: 256 MB)",
+                                    {},
+                                    {}});
     }
 
     std::string contents;
@@ -91,9 +93,11 @@ il::support::Expected<std::string> loadSourceFile(const std::string &path)
     constexpr auto kMaxSourceSize = static_cast<std::streamoff>(256ULL * 1024 * 1024);
     if (fileSize < 0 || fileSize > kMaxSourceSize)
     {
-        return il::support::Expected<std::string>(il::support::Diagnostic{
-            il::support::Severity::Error,
-            "source file too large: " + path + " (limit: 256 MB)", {}, {}});
+        return il::support::Expected<std::string>(
+            il::support::Diagnostic{il::support::Severity::Error,
+                                    "source file too large: " + path + " (limit: 256 MB)",
+                                    {},
+                                    {}});
     }
 
     try

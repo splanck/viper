@@ -168,6 +168,15 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
         tokens.push_back(token);
     }
 
+    // Parse optional linkage keyword (export/import) before "const".
+    il::core::Linkage globalLinkage = il::core::Linkage::Internal;
+    if (!tokens.empty() && (tokens.front() == "export" || tokens.front() == "import"))
+    {
+        globalLinkage =
+            (tokens.front() == "export") ? il::core::Linkage::Export : il::core::Linkage::Import;
+        tokens.erase(tokens.begin());
+    }
+
     if (!tokens.empty() && tokens.front() == "const")
     {
         tokens.erase(tokens.begin());
@@ -233,7 +242,7 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
     {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, errMsg)};
     }
-    st.m.globals.push_back({name, Type(Type::Kind::Str), decoded});
+    st.m.globals.push_back({name, Type(Type::Kind::Str), decoded, globalLinkage});
     return {};
 }
 

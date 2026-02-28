@@ -97,10 +97,15 @@ bool Parser::parsePatternCore(MatchArm::Pattern &out)
         error("pattern nesting too deep (limit: 256)");
         return false;
     }
+
     struct DepthGuard
     {
         unsigned &d;
-        ~DepthGuard() { --d; }
+
+        ~DepthGuard()
+        {
+            --d;
+        }
     } patternGuard_{patternDepth_};
 
     if (check(TokenKind::Identifier))
@@ -308,8 +313,7 @@ ExprPtr Parser::parseAssignment()
             return nullptr;
 
         // Build: lhs = lhsClone op rhs
-        auto arithExpr =
-            std::make_unique<BinaryExpr>(loc, op, std::move(lhsClone), std::move(rhs));
+        auto arithExpr = std::make_unique<BinaryExpr>(loc, op, std::move(lhsClone), std::move(rhs));
         return std::make_unique<BinaryExpr>(
             loc, BinaryOp::Assign, std::move(expr), std::move(arithExpr));
     }

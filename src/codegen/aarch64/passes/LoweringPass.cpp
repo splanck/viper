@@ -60,10 +60,16 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags)
 
         const std::string suffix = uniquify ? (std::string("_") + fn.name) : std::string{};
 
-        for (auto &bb : mir.blocks)
+        for (std::size_t bi = 0; bi < mir.blocks.size(); ++bi)
         {
+            auto &bb = mir.blocks[bi];
             const std::string old = bb.name;
-            const std::string neu = sanitizeLabel(old, suffix);
+            // All block labels use the Mach-O assembler-local "L" prefix so
+            // they stay out of the symbol table and are compatible with
+            // .subsections_via_symbols.  The function's external symbol
+            // (_main, _f, etc.) is emitted separately by AsmEmitter::
+            // emitFunctionHeader, so block labels are purely internal.
+            const std::string neu = "L" + sanitizeLabel(old, suffix);
             bbMap.emplace(old, neu);
             bb.name = neu;
         }
@@ -87,6 +93,8 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags)
                             remapBB(mi.ops[0].label);
                         break;
                     case MOpcode::BCond:
+                    case MOpcode::Cbz:
+                    case MOpcode::Cbnz:
                         if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
                             remapBB(mi.ops[1].label);
                         break;

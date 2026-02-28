@@ -59,6 +59,22 @@ typedef int socket_t;
 #include <dlfcn.h>
 #endif
 
+// SIGPIPE suppression.
+#if defined(__linux__) || defined(__viperdos__)
+#define SEND_FLAGS MSG_NOSIGNAL
+#else
+#define SEND_FLAGS 0
+#endif
+
+static void suppress_sigpipe(socket_t sock)
+{
+#if defined(__APPLE__) && defined(SO_NOSIGPIPE)
+    int val = 1;
+    setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val));
+#endif
+    (void)sock;
+}
+
 // TLS constants
 #define TLS_VERSION_1_2 0x0303
 #define TLS_VERSION_1_3 0x0304
@@ -369,8 +385,10 @@ static int send_record(rt_tls_session_t *session,
     size_t sent = 0;
     while (sent < record_len)
     {
-        int n =
-            send(session->socket_fd, (const char *)(record + sent), (int)(record_len - sent), 0);
+        int n = send(session->socket_fd,
+                     (const char *)(record + sent),
+                     (int)(record_len - sent),
+                     SEND_FLAGS);
         if (n < 0)
         {
             if (EINTR_CHECK)
@@ -2386,6 +2404,7 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
         freeaddrinfo(res);
         return NULL;
     }
+    suppress_sigpipe(sock);
 
     // Connect
     struct sockaddr_in addr;

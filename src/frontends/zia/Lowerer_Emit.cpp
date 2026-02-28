@@ -103,8 +103,8 @@ Lowerer::Value Lowerer::widenByteToInteger(Value value)
 ///          dangling pointers in the owning collection.
 static bool isBorrowedStringCall(const std::string &callee)
 {
-    return callee == kSeqGetStr ||     // raw pointer into Seq
-           callee == kUnboxStr;        // pointer into Box
+    return callee == kSeqGetStr || // raw pointer into Seq
+           callee == kUnboxStr;    // pointer into Box
 }
 
 Lowerer::Value Lowerer::emitCallRet(Type retTy,
@@ -761,7 +761,6 @@ bool Lowerer::equalsIgnoreCase(const std::string &a, const std::string &b)
     }
     return true;
 }
-
 
 //=============================================================================
 // Deferred Release (Automatic Memory Management)

@@ -10,7 +10,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "il/transform/PassManager.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -18,6 +17,7 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
+#include "il/transform/PassManager.hpp"
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 #include "tests/TestHarness.hpp"
@@ -242,8 +242,8 @@ Module buildCanonicalModule()
         loopExit.instructions.push_back(std::move(retCall));
         loopExit.terminated = true;
 
-        fn.blocks = {std::move(entry), std::move(earlyExit),
-                     std::move(loopHeader), std::move(loopExit)};
+        fn.blocks = {
+            std::move(entry), std::move(earlyExit), std::move(loopHeader), std::move(loopExit)};
         fn.valueNames.resize(nextId);
         fn.valueNames[0] = "n";
         fn.valueNames[1] = "alloca";
@@ -293,23 +293,90 @@ void testPassIsolation(const std::string &passId)
 
 // --- One test per pass ---
 
-TEST(PassIsolation, SimplifyCFG) { testPassIsolation("simplify-cfg"); }
-TEST(PassIsolation, LoopSimplify) { testPassIsolation("loop-simplify"); }
-TEST(PassIsolation, LICM) { testPassIsolation("licm"); }
-TEST(PassIsolation, SCCP) { testPassIsolation("sccp"); }
-TEST(PassIsolation, ConstFold) { testPassIsolation("constfold"); }
-TEST(PassIsolation, Peephole) { testPassIsolation("peephole"); }
-TEST(PassIsolation, DCE) { testPassIsolation("dce"); }
-TEST(PassIsolation, Mem2Reg) { testPassIsolation("mem2reg"); }
-TEST(PassIsolation, DSE) { testPassIsolation("dse"); }
-TEST(PassIsolation, EarlyCSE) { testPassIsolation("earlycse"); }
-TEST(PassIsolation, GVN) { testPassIsolation("gvn"); }
-TEST(PassIsolation, IndVarSimplify) { testPassIsolation("indvars"); }
-TEST(PassIsolation, LoopUnroll) { testPassIsolation("loop-unroll"); }
-TEST(PassIsolation, Inline) { testPassIsolation("inline"); }
-TEST(PassIsolation, CheckOpt) { testPassIsolation("check-opt"); }
-TEST(PassIsolation, LateCleanup) { testPassIsolation("late-cleanup"); }
-TEST(PassIsolation, SiblingRecursion) { testPassIsolation("sibling-recursion"); }
+TEST(PassIsolation, SimplifyCFG)
+{
+    testPassIsolation("simplify-cfg");
+}
+
+TEST(PassIsolation, LoopSimplify)
+{
+    testPassIsolation("loop-simplify");
+}
+
+TEST(PassIsolation, LICM)
+{
+    testPassIsolation("licm");
+}
+
+TEST(PassIsolation, SCCP)
+{
+    testPassIsolation("sccp");
+}
+
+TEST(PassIsolation, ConstFold)
+{
+    testPassIsolation("constfold");
+}
+
+TEST(PassIsolation, Peephole)
+{
+    testPassIsolation("peephole");
+}
+
+TEST(PassIsolation, DCE)
+{
+    testPassIsolation("dce");
+}
+
+TEST(PassIsolation, Mem2Reg)
+{
+    testPassIsolation("mem2reg");
+}
+
+TEST(PassIsolation, DSE)
+{
+    testPassIsolation("dse");
+}
+
+TEST(PassIsolation, EarlyCSE)
+{
+    testPassIsolation("earlycse");
+}
+
+TEST(PassIsolation, GVN)
+{
+    testPassIsolation("gvn");
+}
+
+TEST(PassIsolation, IndVarSimplify)
+{
+    testPassIsolation("indvars");
+}
+
+TEST(PassIsolation, LoopUnroll)
+{
+    testPassIsolation("loop-unroll");
+}
+
+TEST(PassIsolation, Inline)
+{
+    testPassIsolation("inline");
+}
+
+TEST(PassIsolation, CheckOpt)
+{
+    testPassIsolation("check-opt");
+}
+
+TEST(PassIsolation, LateCleanup)
+{
+    testPassIsolation("late-cleanup");
+}
+
+TEST(PassIsolation, SiblingRecursion)
+{
+    testPassIsolation("sibling-recursion");
+}
 
 int main(int argc, char **argv)
 {

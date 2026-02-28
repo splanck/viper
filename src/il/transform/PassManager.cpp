@@ -121,6 +121,7 @@ PassManager::PassManager()
                       "mem2reg",
                       "simplify-cfg",
                       "sccp",
+                      "constfold",
                       "dce",
                       "simplify-cfg",
                       "licm",
@@ -136,6 +137,7 @@ PassManager::PassManager()
                             "check-opt",     "dce",          "simplify-cfg", "sibling-recursion",
                             "inline",        "simplify-cfg",
                             "sccp", // Post-inline SCCP: propagate call-site constants
+                            "constfold", // Fold runtime math calls exposed by SCCP
                             "dce",  // Clean up after second SCCP
                             "simplify-cfg",  "licm",         "simplify-cfg", "gvn",
                             "earlycse",      "dse",          "peephole",     "dce",

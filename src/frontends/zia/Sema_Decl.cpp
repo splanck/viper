@@ -43,8 +43,8 @@ void Sema::analyzeBind(BindDecl &decl)
     // W012: Duplicate import
     if (binds_.count(decl.path))
     {
-        warn(WarningCode::W012_DuplicateImport, decl.loc,
-             "Duplicate import of '" + decl.path + "'");
+        warn(
+            WarningCode::W012_DuplicateImport, decl.loc, "Duplicate import of '" + decl.path + "'");
     }
 
     // Handle file binds (existing logic)
@@ -758,9 +758,9 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl)
         {
             if (!stmtAlwaysExits(decl.body.get()))
             {
-                warn(WarningCode::W008_MissingReturn, decl.loc,
-                     "Function '" + decl.name +
-                         "' may not return a value on all code paths");
+                warn(WarningCode::W008_MissingReturn,
+                     decl.loc,
+                     "Function '" + decl.name + "' may not return a value on all code paths");
             }
         }
     }
@@ -863,9 +863,9 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
         {
             if (!stmtAlwaysExits(decl.body.get()))
             {
-                warn(WarningCode::W008_MissingReturn, decl.loc,
-                     "Method '" + decl.name +
-                         "' may not return a value on all code paths");
+                warn(WarningCode::W008_MissingReturn,
+                     decl.loc,
+                     "Method '" + decl.name + "' may not return a value on all code paths");
             }
         }
     }

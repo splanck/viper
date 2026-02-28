@@ -34,10 +34,20 @@ void Lowerer::lowerStmt(Stmt *stmt)
         if (stmt)
             diag_.report({il::support::Severity::Error,
                           "statement nesting too deep during lowering (limit: 512)",
-                          stmt->loc, "V3201"});
+                          stmt->loc,
+                          "V3201"});
         return;
     }
-    struct DepthGuard { unsigned &d; ~DepthGuard() { --d; } } stmtGuard_{stmtLowerDepth_};
+
+    struct DepthGuard
+    {
+        unsigned &d;
+
+        ~DepthGuard()
+        {
+            --d;
+        }
+    } stmtGuard_{stmtLowerDepth_};
 
     ZiaLocationScope locScope(*this, stmt->loc);
 

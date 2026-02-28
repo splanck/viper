@@ -802,8 +802,7 @@ struct ForceUnwrapExpr : Expr
     /// @brief Construct a force-unwrap expression.
     /// @param l Source location.
     /// @param e The operand expression.
-    ForceUnwrapExpr(SourceLoc l, ExprPtr e)
-        : Expr(ExprKind::ForceUnwrap, l), operand(std::move(e))
+    ForceUnwrapExpr(SourceLoc l, ExprPtr e) : Expr(ExprKind::ForceUnwrap, l), operand(std::move(e))
     {
     }
 };

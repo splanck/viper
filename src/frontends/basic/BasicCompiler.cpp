@@ -51,8 +51,7 @@ void dumpTokenStream(std::string_view source, uint32_t fileId)
     for (;;)
     {
         Token tok = lexer.next();
-        std::cerr << tok.loc.line << ':' << tok.loc.column << '\t'
-                  << tokenKindToString(tok.kind);
+        std::cerr << tok.loc.line << ':' << tok.loc.column << '\t' << tokenKindToString(tok.kind);
         if (!tok.lexeme.empty())
             std::cerr << "\t\"" << tok.lexeme << '"';
         std::cerr << '\n';
@@ -157,9 +156,7 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     if (options.dumpAst)
     {
         AstPrinter printer;
-        std::cerr << "=== AST after parsing ===\n"
-                  << printer.dump(*program)
-                  << "=== End AST ===\n";
+        std::cerr << "=== AST after parsing ===\n" << printer.dump(*program) << "=== End AST ===\n";
     }
 
     // Post-parse: assign qualified names to procedures inside namespaces.

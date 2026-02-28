@@ -5,9 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Tests for SCCP fixes from the IL optimization review:
-// - FDiv by zero folds to IEEE 754 infinity (not left as unknown)
+// Tests for SCCP float division handling:
+// - FDiv by zero is NOT folded (non-finite results are unsafe to propagate)
 // - FDiv normal case folds correctly
+// - FDiv 0.0/0.0 is NOT folded (NaN is non-finite)
+//
+// Note: SCCP deliberately refuses to fold FDiv when the result is non-finite
+// (±inf or NaN) to align with ConstFold's conservative policy.  Folding
+// non-finite constants can cascade through the lattice and produce surprising
+// codegen.  The runtime handles IEEE 754 semantics at execution time.
 //
 //===----------------------------------------------------------------------===//
 
@@ -64,10 +70,19 @@ Module buildFDivModule(double lhs, double rhs)
     return module;
 }
 
+// Helper: check whether the FDiv instruction is still present (not folded)
+bool hasFDivInstr(const BasicBlock &bb)
+{
+    for (const auto &instr : bb.instructions)
+        if (instr.op == Opcode::FDiv)
+            return true;
+    return false;
+}
+
 } // namespace
 
-// Test that FDiv by zero folds to infinity per IEEE 754
-TEST(SCCP, FDivByZeroFoldsToInfinity)
+// FDiv by zero must NOT be folded — non-finite results are unsafe to propagate
+TEST(SCCP, FDivByZeroNotFolded)
 {
     Module module = buildFDivModule(1.0, 0.0);
     il::transform::sccp(module);
@@ -75,19 +90,12 @@ TEST(SCCP, FDivByZeroFoldsToInfinity)
     Function &fn = module.functions.front();
     BasicBlock &entry = fn.blocks.front();
 
-    // After SCCP, the ret operand should be a constant float (infinity)
-    Instr &ret = entry.instructions.back();
-    ASSERT_EQ(ret.op, Opcode::Ret);
-    ASSERT_FALSE(ret.operands.empty());
-
-    const Value &retVal = ret.operands[0];
-    EXPECT_EQ(retVal.kind, Value::Kind::ConstFloat);
-    EXPECT_TRUE(std::isinf(retVal.f64));
-    EXPECT_TRUE(retVal.f64 > 0.0); // positive infinity
+    // FDiv instruction should remain — producing +inf is not safe to fold
+    EXPECT_TRUE(hasFDivInstr(entry));
 }
 
-// Test that FDiv -1.0 / 0.0 folds to negative infinity
-TEST(SCCP, FDivNegByZeroFoldsToNegInfinity)
+// FDiv -1.0/0.0 must NOT be folded — would produce -inf
+TEST(SCCP, FDivNegByZeroNotFolded)
 {
     Module module = buildFDivModule(-1.0, 0.0);
     il::transform::sccp(module);
@@ -95,17 +103,10 @@ TEST(SCCP, FDivNegByZeroFoldsToNegInfinity)
     Function &fn = module.functions.front();
     BasicBlock &entry = fn.blocks.front();
 
-    Instr &ret = entry.instructions.back();
-    ASSERT_EQ(ret.op, Opcode::Ret);
-    ASSERT_FALSE(ret.operands.empty());
-
-    const Value &retVal = ret.operands[0];
-    EXPECT_EQ(retVal.kind, Value::Kind::ConstFloat);
-    EXPECT_TRUE(std::isinf(retVal.f64));
-    EXPECT_TRUE(retVal.f64 < 0.0); // negative infinity
+    EXPECT_TRUE(hasFDivInstr(entry));
 }
 
-// Test normal FDiv folds correctly
+// Normal FDiv folds correctly
 TEST(SCCP, FDivNormalFoldsCorrectly)
 {
     Module module = buildFDivModule(10.0, 2.0);
@@ -123,8 +124,8 @@ TEST(SCCP, FDivNormalFoldsCorrectly)
     EXPECT_EQ(retVal.f64, 5.0);
 }
 
-// Test that FDiv 0.0/0.0 produces NaN
-TEST(SCCP, FDivZeroByZeroFoldsToNaN)
+// FDiv 0.0/0.0 must NOT be folded — would produce NaN
+TEST(SCCP, FDivZeroByZeroNotFolded)
 {
     Module module = buildFDivModule(0.0, 0.0);
     il::transform::sccp(module);
@@ -132,13 +133,7 @@ TEST(SCCP, FDivZeroByZeroFoldsToNaN)
     Function &fn = module.functions.front();
     BasicBlock &entry = fn.blocks.front();
 
-    Instr &ret = entry.instructions.back();
-    ASSERT_EQ(ret.op, Opcode::Ret);
-    ASSERT_FALSE(ret.operands.empty());
-
-    const Value &retVal = ret.operands[0];
-    EXPECT_EQ(retVal.kind, Value::Kind::ConstFloat);
-    EXPECT_TRUE(std::isnan(retVal.f64));
+    EXPECT_TRUE(hasFDivInstr(entry));
 }
 
 int main(int argc, char **argv)

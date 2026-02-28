@@ -504,10 +504,7 @@ struct ThrowStmt : Stmt
     /// @brief Construct a throw statement.
     /// @param l Source location.
     /// @param v The value to throw.
-    ThrowStmt(SourceLoc l, ExprPtr v)
-        : Stmt(StmtKind::Throw, l), value(std::move(v))
-    {
-    }
+    ThrowStmt(SourceLoc l, ExprPtr v) : Stmt(StmtKind::Throw, l), value(std::move(v)) {}
 };
 
 /// @}

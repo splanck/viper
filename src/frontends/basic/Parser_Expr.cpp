@@ -160,10 +160,15 @@ ExprPtr Parser::parseBinary(int min_prec)
         emitError("B0001", peek(), "expression nesting too deep (limit: 512)");
         return nullptr;
     }
+
     struct DepthGuard
     {
         unsigned &d;
-        ~DepthGuard() { --d; }
+
+        ~DepthGuard()
+        {
+            --d;
+        }
     } exprGuard_{exprDepth_};
 
     auto lhs = parseUnary();

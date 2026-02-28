@@ -270,8 +270,7 @@ func start() {
                                 sm);
     // FIXED GAP-6: Missing field on entity is now caught at sema level.
     EXPECT_FALSE(result.succeeded());
-    EXPECT_TRUE(hasErrorContaining(result, "color") ||
-                hasErrorContaining(result, "member"));
+    EXPECT_TRUE(hasErrorContaining(result, "color") || hasErrorContaining(result, "member"));
 }
 
 TEST(ZiaTypeSoundness, PrivateFieldAccess)
@@ -306,8 +305,7 @@ func start() {
                                 sm);
     // FIXED GAP-6: Primitives have no fields — now rejected at sema level.
     EXPECT_FALSE(result.succeeded());
-    EXPECT_TRUE(hasErrorContaining(result, "member") ||
-                hasErrorContaining(result, "value"));
+    EXPECT_TRUE(hasErrorContaining(result, "member") || hasErrorContaining(result, "value"));
 }
 
 TEST(ZiaTypeSoundness, NonExistentFieldOnValue)
@@ -324,8 +322,7 @@ func start() {
                                 sm);
     // FIXED GAP-6: Missing field on value type is now caught at sema level.
     EXPECT_FALSE(result.succeeded());
-    EXPECT_TRUE(hasErrorContaining(result, "z") ||
-                hasErrorContaining(result, "member"));
+    EXPECT_TRUE(hasErrorContaining(result, "z") || hasErrorContaining(result, "member"));
 }
 
 //=============================================================================

@@ -250,8 +250,12 @@ il::support::Expected<ProjectConfig> discoverConvention(const fs::path &dir,
         return makeErr("no source files found in " + dir.string());
 
     if (!ziaFiles.empty() && !basFiles.empty())
+    {
+        // Mixed project detected — require a viper.project manifest to
+        // specify the entry point and 'lang mixed'.
         return makeErr("mixed .zia and .bas files in " + dir.string() +
-                       "; specify language with viper.project");
+                       "; create viper.project with 'lang mixed' and 'entry <file>'");
+    }
 
     ProjectConfig config;
     config.rootDir = fs::canonical(dir).string();
@@ -375,11 +379,13 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
                 config.lang = ProjectLang::Zia;
             else if (value == "basic")
                 config.lang = ProjectLang::Basic;
+            else if (value == "mixed")
+                config.lang = ProjectLang::Mixed;
             else
                 return makeManifestErr(manifestPath,
                                        lineNum,
                                        "invalid language '" + value +
-                                           "'; expected 'zia' or 'basic'");
+                                           "'; expected 'zia', 'basic', or 'mixed'");
         }
         else if (directive == "entry")
         {
@@ -478,7 +484,9 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         }
         else if (!allZia.empty() && !allBas.empty())
         {
-            return makeErr("mixed .zia and .bas files; specify lang in viper.project");
+            // Auto-detect mixed: requires 'entry' directive.
+            config.lang = ProjectLang::Mixed;
+            ext = ".zia"; // Will collect both below.
         }
         else
         {
@@ -486,13 +494,33 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         }
     }
 
-    for (const auto &sd : sourceDirs)
+    if (config.lang == ProjectLang::Mixed)
     {
-        fs::path srcDir = manifestDir / sd;
-        if (!fs::is_directory(srcDir))
-            return makeErr("sources directory not found: " + srcDir.string());
-        auto files = collectFiles(srcDir, ext, excludes);
-        config.sourceFiles.insert(config.sourceFiles.end(), files.begin(), files.end());
+        // Mixed projects: collect both .zia and .bas files.
+        for (const auto &sd : sourceDirs)
+        {
+            fs::path srcDir = manifestDir / sd;
+            if (!fs::is_directory(srcDir))
+                return makeErr("sources directory not found: " + srcDir.string());
+
+            auto zia = collectFiles(srcDir, ".zia", excludes);
+            auto bas = collectFiles(srcDir, ".bas", excludes);
+            config.ziaFiles.insert(config.ziaFiles.end(), zia.begin(), zia.end());
+            config.basicFiles.insert(config.basicFiles.end(), bas.begin(), bas.end());
+            config.sourceFiles.insert(config.sourceFiles.end(), zia.begin(), zia.end());
+            config.sourceFiles.insert(config.sourceFiles.end(), bas.begin(), bas.end());
+        }
+    }
+    else
+    {
+        for (const auto &sd : sourceDirs)
+        {
+            fs::path srcDir = manifestDir / sd;
+            if (!fs::is_directory(srcDir))
+                return makeErr("sources directory not found: " + srcDir.string());
+            auto files = collectFiles(srcDir, ext, excludes);
+            config.sourceFiles.insert(config.sourceFiles.end(), files.begin(), files.end());
+        }
     }
 
     // Deduplicate
@@ -506,6 +534,9 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
     // Entry point resolution
     if (!hasEntry)
     {
+        if (config.lang == ProjectLang::Mixed)
+            return makeErr("mixed-language projects require an 'entry' directive in viper.project");
+
         il::support::Expected<std::string> entry = (config.lang == ProjectLang::Zia)
                                                        ? findZiaEntry(config.sourceFiles)
                                                        : findBasicEntry(config.sourceFiles);

@@ -726,7 +726,8 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                     if (useImmediate)
                                     {
                                         // Emit with immediate operand - no need to materialize RHS
-                                        // Note: FP ops have supportsImmediate=false, so rc is always GPR here
+                                        // Note: FP ops have supportsImmediate=false, so rc is
+                                        // always GPR here
                                         bbOutFn().instrs.push_back(
                                             MInstr{binOp->immOp,
                                                    {MOperand::vregOp(rc, dst),

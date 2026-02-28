@@ -760,6 +760,66 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
     return true;
 }
 
+/// @brief Try to fold immediate-then-move: mov Rd, #imm; mov Rt, Rd -> mov Rt, #imm
+///
+/// This eliminates the common pattern where the register allocator materialises
+/// a constant into an intermediate register and then copies it to the target.
+///
+/// @param instrs Vector of instructions in a basic block.
+/// @param idx    Index of the first instruction to check.
+/// @param stats  Peephole statistics to update.
+/// @return true if a fold was performed.
+[[nodiscard]] bool tryFoldImmThenMove(std::vector<MInstr> &instrs,
+                                      std::size_t idx,
+                                      PeepholeStats &stats)
+{
+    if (idx + 1 >= instrs.size())
+        return false;
+
+    MInstr &first = instrs[idx];
+    MInstr &second = instrs[idx + 1];
+
+    // Pattern: MovRI Rd, #imm; MovRR Rt, Rd
+    if (first.opc != MOpcode::MovRI || first.ops.size() != 2)
+        return false;
+    if (second.opc != MOpcode::MovRR || second.ops.size() != 2)
+        return false;
+    if (!samePhysReg(second.ops[1], first.ops[0]))
+        return false;
+
+    // Don't fold if Rd is an argument register with a call nearby.
+    const MOperand &rd = first.ops[0];
+    if (isArgReg(rd))
+    {
+        for (std::size_t i = idx + 2; i < instrs.size(); ++i)
+        {
+            if (instrs[i].opc == MOpcode::Bl || instrs[i].opc == MOpcode::Blr)
+                return false;
+            if (definesReg(instrs[i], rd))
+                break;
+        }
+    }
+
+    // Check that Rd is not used after the second instruction in this block.
+    for (std::size_t i = idx + 2; i < instrs.size(); ++i)
+    {
+        if (usesReg(instrs[i], rd))
+            return false;
+        if (definesReg(instrs[i], rd))
+            break;
+    }
+
+    // Fold: second becomes MovRI Rt, #imm; first becomes identity MovRR
+    // which the Pass 3 identity-move removal will clean up.
+    const MOperand imm = first.ops[1];
+    first.opc = MOpcode::MovRR;
+    first.ops[1] = first.ops[0]; // MovRR Rd, Rd (identity)
+    second.opc = MOpcode::MovRI;
+    second.ops[1] = imm;
+    ++stats.consecutiveMovsFolded;
+    return true;
+}
+
 // Bring the shared compaction helper into this namespace scope so existing
 // callers within this file need no changes.
 using viper::codegen::common::removeMarkedInstructions;
@@ -2130,10 +2190,11 @@ PeepholeStats runPeephole(MFunction &fn)
         // Pass 1.97: Compute-into-target fold (op Rd, ...; mov Rt, Rd → op Rt, ...)
         foldComputeIntoTarget(instrs, stats);
 
-        // Pass 2: Try to fold consecutive moves
+        // Pass 2: Try to fold consecutive moves (including imm-then-move)
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
         {
-            (void)tryFoldConsecutiveMoves(instrs, i, stats);
+            if (!tryFoldImmThenMove(instrs, i, stats))
+                (void)tryFoldConsecutiveMoves(instrs, i, stats);
         }
 
         // Pass 3: Mark identity moves for removal

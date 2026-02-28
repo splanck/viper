@@ -25,7 +25,8 @@ namespace
 // Helper: check if a function contains a Call to a specific callee
 // ============================================================================
 
-static bool hasCall(const il::core::Module &mod, const std::string &fnName,
+static bool hasCall(const il::core::Module &mod,
+                    const std::string &fnName,
                     const std::string &callee)
 {
     for (const auto &fn : mod.functions)
@@ -45,8 +46,7 @@ static bool hasCall(const il::core::Module &mod, const std::string &fnName,
     return false;
 }
 
-static bool hasOpcode(const il::core::Module &mod, const std::string &fnName,
-                      il::core::Opcode op)
+static bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il::core::Opcode op)
 {
     for (const auto &fn : mod.functions)
     {

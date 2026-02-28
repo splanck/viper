@@ -34,8 +34,7 @@ using namespace il::core;
 namespace
 {
 
-void buildBinaryFunction(Module &module, Opcode op, Type::Kind type,
-                         int64_t lhs, int64_t rhs)
+void buildBinaryFunction(Module &module, Opcode op, Type::Kind type, int64_t lhs, int64_t rhs)
 {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -67,8 +66,7 @@ int64_t runBinary(Opcode op, Type::Kind type, int64_t lhs, int64_t rhs)
     return fixture.run(module);
 }
 
-void expectTrap(Opcode op, Type::Kind type, int64_t lhs, int64_t rhs,
-                const char *trapKind)
+void expectTrap(Opcode op, Type::Kind type, int64_t lhs, int64_t rhs, const char *trapKind)
 {
     Module module;
     buildBinaryFunction(module, op, type, lhs, rhs);
@@ -85,8 +83,8 @@ int main()
     // I32 Checked Overflow (IAddOvf, ISubOvf, IMulOvf at i32)
     //=========================================================================
 
-    constexpr int64_t i32Max = std::numeric_limits<int32_t>::max();  // 2147483647
-    constexpr int64_t i32Min = std::numeric_limits<int32_t>::min();  // -2147483648
+    constexpr int64_t i32Max = std::numeric_limits<int32_t>::max(); // 2147483647
+    constexpr int64_t i32Min = std::numeric_limits<int32_t>::min(); // -2147483648
 
     // Non-overflowing I32 addition
     assert(runBinary(Opcode::IAddOvf, Type::Kind::I32, 1, 2) == 3);
@@ -149,8 +147,8 @@ int main()
     // I16 Checked Overflow
     //=========================================================================
 
-    constexpr int64_t i16Max = std::numeric_limits<int16_t>::max();  // 32767
-    constexpr int64_t i16Min = std::numeric_limits<int16_t>::min();  // -32768
+    constexpr int64_t i16Max = std::numeric_limits<int16_t>::max(); // 32767
+    constexpr int64_t i16Min = std::numeric_limits<int16_t>::min(); // -32768
 
     // Non-overflowing I16
     assert(runBinary(Opcode::IAddOvf, Type::Kind::I16, 100, 200) == 300);

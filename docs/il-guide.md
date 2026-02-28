@@ -430,9 +430,37 @@ entry:
 }
 ```
 
+##### Function Linkage
+
+Functions may have a linkage keyword between `func` and the name:
+
+- **`Internal`** (default, no keyword) — visible only within the defining module.
+- **`export`** — defined here, callable from other modules.
+- **`import`** — declared here, defined in another module (no body required).
+
+```text
+func export @calculateScore(i64 %x, i64 %y) -> i64 {
+entry:
+  %r = mul %x, %y
+  ret %r
+}
+
+func import @BasicHelper(i64 %n) -> i64
+```
+
+Import functions have no body (no `{...}` block). The IL linker resolves them
+against matching export functions when linking multiple modules. Omitting the
+linkage keyword defaults to `Internal`, so all existing `.il` files are
+backwards compatible.
+
+See [Cross-Language Interop Guide](interop.md) for full details on linking
+multiple modules.
+
 ##### Extern Declarations
 
 External functions are declared with `extern` and may be called like normal functions.
+Externs reference runtime-provided functions (C ABI), while `import` references
+functions defined in other IL modules.
 
 ```text
 il 0.2.0
@@ -872,7 +900,8 @@ decl        ::= extern | global | func
 extern      ::= "extern" SYMBOL "(" type_list? ")" "->" type
 global      ::= "global" ("const")? type SYMBOL "=" ginit
 ginit       ::= STRING | INT | FLOAT | "null" | SYMBOL
-func        ::= "func" SYMBOL "(" func_params? ")" "->" type "{" block+ "}"
+linkage     ::= "export" | "import"
+func        ::= "func" linkage? SYMBOL "(" func_params? ")" "->" type ( "{" block+ "}" )?
 func_params ::= func_param ("," func_param)*
 func_param  ::= type TEMP | TEMP ":" type   (* canonical: "type %name"; legacy "%name: type" also accepted *)
 type_list   ::= type ("," type)*

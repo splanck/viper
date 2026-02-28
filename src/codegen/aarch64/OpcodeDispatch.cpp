@@ -381,9 +381,9 @@ bool lowerInstruction(const il::core::Instr &ins,
             bbOut().instrs.push_back(MInstr{MOpcode::MovRI,
                                             {MOperand::vregOp(RegClass::GPR, tmpGpr),
                                              MOperand::immOp(static_cast<long long>(bits))}});
-            bbOut().instrs.push_back(MInstr{MOpcode::FMovGR,
-                                            {MOperand::vregOp(RegClass::FPR, dst),
-                                             MOperand::vregOp(RegClass::GPR, tmpGpr)}});
+            bbOut().instrs.push_back(MInstr{
+                MOpcode::FMovGR,
+                {MOperand::vregOp(RegClass::FPR, dst), MOperand::vregOp(RegClass::GPR, tmpGpr)}});
             return true;
         }
         case Opcode::ConstNull:

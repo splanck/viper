@@ -36,10 +36,10 @@ void Sema::analyzeStmt(Stmt *stmt)
 
             // W014: Unused result — call returning non-void value discarded
             if (exprStmt->expr->kind == ExprKind::Call && resultType &&
-                resultType->kind != TypeKindSem::Void &&
-                resultType->kind != TypeKindSem::Unknown)
+                resultType->kind != TypeKindSem::Void && resultType->kind != TypeKindSem::Unknown)
             {
-                warn(WarningCode::W014_UnusedResult, exprStmt->loc,
+                warn(WarningCode::W014_UnusedResult,
+                     exprStmt->loc,
                      "Result of function call is unused");
             }
             break;
@@ -119,7 +119,8 @@ void Sema::analyzeBlockStmt(BlockStmt *stmt)
         // W002: Unreachable code after return/break/continue
         if (afterTerminator)
         {
-            warn(WarningCode::W002_UnreachableCode, s->loc,
+            warn(WarningCode::W002_UnreachableCode,
+                 s->loc,
                  "Unreachable code after return/break/continue");
             break; // Only warn once per block
         }
@@ -157,12 +158,12 @@ void Sema::analyzeVarStmt(VarStmt *stmt)
         }
 
         // W003: Implicit narrowing (Number assigned to Integer variable)
-        if (declaredType->kind == TypeKindSem::Integer &&
-            initType->kind == TypeKindSem::Number)
+        if (declaredType->kind == TypeKindSem::Integer && initType->kind == TypeKindSem::Number)
         {
-            warn(WarningCode::W003_ImplicitNarrowing, stmt->loc,
-                 "Implicit narrowing from Number to Integer in initialization of '" +
-                     stmt->name + "'");
+            warn(WarningCode::W003_ImplicitNarrowing,
+                 stmt->loc,
+                 "Implicit narrowing from Number to Integer in initialization of '" + stmt->name +
+                     "'");
         }
 
         // Both declared and inferred - check compatibility
@@ -193,7 +194,8 @@ void Sema::analyzeVarStmt(VarStmt *stmt)
         if (existing &&
             (existing->kind == Symbol::Kind::Variable || existing->kind == Symbol::Kind::Parameter))
         {
-            warn(WarningCode::W004_VariableShadowing, stmt->loc,
+            warn(WarningCode::W004_VariableShadowing,
+                 stmt->loc,
                  "Variable '" + stmt->name + "' shadows a variable in an outer scope");
         }
     }
@@ -220,7 +222,8 @@ void Sema::analyzeIfStmt(IfStmt *stmt)
         auto *binary = static_cast<BinaryExpr *>(stmt->condition.get());
         if (binary->op == BinaryOp::Assign)
         {
-            warn(WarningCode::W007_AssignmentInCondition, stmt->condition->loc,
+            warn(WarningCode::W007_AssignmentInCondition,
+                 stmt->condition->loc,
                  "Assignment in condition; did you mean '=='?");
         }
     }
@@ -237,7 +240,8 @@ void Sema::analyzeIfStmt(IfStmt *stmt)
         auto *block = static_cast<BlockStmt *>(stmt->thenBranch.get());
         if (block->statements.empty())
         {
-            warn(WarningCode::W013_EmptyBody, stmt->loc,
+            warn(WarningCode::W013_EmptyBody,
+                 stmt->loc,
                  "Empty if-body; consider removing or adding a comment");
         }
     }
@@ -248,7 +252,8 @@ void Sema::analyzeIfStmt(IfStmt *stmt)
         auto *block = static_cast<BlockStmt *>(stmt->elseBranch.get());
         if (block->statements.empty())
         {
-            warn(WarningCode::W013_EmptyBody, stmt->elseBranch->loc,
+            warn(WarningCode::W013_EmptyBody,
+                 stmt->elseBranch->loc,
                  "Empty else-body; consider removing or adding a comment");
         }
     }
@@ -328,7 +333,8 @@ void Sema::analyzeWhileStmt(WhileStmt *stmt)
         auto *binary = static_cast<BinaryExpr *>(stmt->condition.get());
         if (binary->op == BinaryOp::Assign)
         {
-            warn(WarningCode::W007_AssignmentInCondition, stmt->condition->loc,
+            warn(WarningCode::W007_AssignmentInCondition,
+                 stmt->condition->loc,
                  "Assignment in while-condition; did you mean '=='?");
         }
     }
@@ -345,8 +351,7 @@ void Sema::analyzeWhileStmt(WhileStmt *stmt)
         auto *block = static_cast<BlockStmt *>(stmt->body.get());
         if (block->statements.empty())
         {
-            warn(WarningCode::W006_EmptyLoopBody, stmt->loc,
-                 "Empty while-loop body");
+            warn(WarningCode::W006_EmptyLoopBody, stmt->loc, "Empty while-loop body");
         }
     }
 
@@ -377,8 +382,7 @@ void Sema::analyzeForStmt(ForStmt *stmt)
         auto *block = static_cast<BlockStmt *>(stmt->body.get());
         if (block->statements.empty())
         {
-            warn(WarningCode::W006_EmptyLoopBody, stmt->loc,
-                 "Empty for-loop body");
+            warn(WarningCode::W006_EmptyLoopBody, stmt->loc, "Empty for-loop body");
         }
     }
 

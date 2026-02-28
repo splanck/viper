@@ -139,6 +139,18 @@ extern "C"
     // Shutdown
     //=============================================================================
 
+    /// @brief Run finalizers on all GC-tracked objects without freeing them.
+    /// @details Iterates every live entry in the tracking table and invokes its
+    ///          heap finalizer (if present).  Finalizer pointers are cleared after
+    ///          invocation to prevent double-finalization.  Refcounts are NOT
+    ///          checked — at shutdown, every tracked object's external resources
+    ///          must be released regardless of outstanding references.
+    ///
+    ///          Must be called BEFORE rt_gc_shutdown() so the tracking table is
+    ///          still valid during traversal.
+    /// @note    Best-effort: malloc failure during snapshot is silently ignored.
+    void rt_gc_run_all_finalizers(void);
+
     /// @brief Release all GC internal state (tracking table, weak ref buckets).
     /// @details Should only be called during program shutdown after all tracked
     ///          objects have been freed or are about to be reclaimed by the OS.

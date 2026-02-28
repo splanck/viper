@@ -16,9 +16,9 @@
 
 #include "tests/common/PosixCompat.h"
 
+#include "rt_bytes.h"
 #include "rt_internal.h"
 #include "rt_network.h"
-#include "rt_bytes.h"
 #include "rt_string.h"
 
 #include <cassert>

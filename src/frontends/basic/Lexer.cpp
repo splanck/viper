@@ -85,7 +85,7 @@ using common::keyword_table::lookupKeywordBinary;
 namespace
 {
 
-constexpr std::array<KeywordEntry<TokenKind>, 104> kKeywordTable{{
+constexpr std::array<KeywordEntry<TokenKind>, 107> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},
     {"ABSTRACT", TokenKind::KeywordAbstract},
     {"ADDFILE", TokenKind::KeywordAddfile},
@@ -111,6 +111,7 @@ constexpr std::array<KeywordEntry<TokenKind>, 104> kKeywordTable{{
     {"CONST", TokenKind::KeywordConst},
     {"COS", TokenKind::KeywordCos},
     {"CURSOR", TokenKind::KeywordCursor},
+    {"DECLARE", TokenKind::KeywordDeclare},
     {"DELETE", TokenKind::KeywordDelete},
     {"DESTRUCTOR", TokenKind::KeywordDestructor},
     {"DIM", TokenKind::KeywordDim},
@@ -122,11 +123,13 @@ constexpr std::array<KeywordEntry<TokenKind>, 104> kKeywordTable{{
     {"EOF", TokenKind::KeywordEof},
     {"ERROR", TokenKind::KeywordError},
     {"EXIT", TokenKind::KeywordExit},
+    {"EXPORT", TokenKind::KeywordExport},
     {"FALSE", TokenKind::KeywordFalse},
     {"FINAL", TokenKind::KeywordFinal},
     {"FINALLY", TokenKind::KeywordFinally},
     {"FLOOR", TokenKind::KeywordFloor},
     {"FOR", TokenKind::KeywordFor},
+    {"FOREIGN", TokenKind::KeywordForeign},
     {"FUNCTION", TokenKind::KeywordFunction},
     {"GOSUB", TokenKind::KeywordGosub},
     {"GOTO", TokenKind::KeywordGoto},

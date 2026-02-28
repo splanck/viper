@@ -363,12 +363,18 @@ int emitAndMaybeLink(const Options &opts)
             std::unordered_map<std::string, std::string> bbMap;
             bbMap.reserve(mir.blocks.size());
             const bool uniquify = (mod.functions.size() > 1);
-            // Build map and rename blocks
-            for (auto &bb : mir.blocks)
+            // Build map and rename blocks.
+            // All block labels use the Mach-O assembler-local "L" prefix so
+            // they stay out of the symbol table and are compatible with
+            // .subsections_via_symbols.  The function's external symbol
+            // (_main, _f, etc.) is emitted separately by AsmEmitter::
+            // emitFunctionHeader, so block labels are purely internal.
+            for (std::size_t bi = 0; bi < mir.blocks.size(); ++bi)
             {
+                auto &bb = mir.blocks[bi];
                 const std::string old = bb.name;
                 const std::string suffix = uniquify ? (std::string("_") + fn.name) : std::string();
-                const std::string neu = sanitizeLabel(old, suffix);
+                const std::string neu = "L" + sanitizeLabel(old, suffix);
                 bbMap.emplace(old, neu);
                 bb.name = neu;
             }
@@ -391,6 +397,8 @@ int emitAndMaybeLink(const Options &opts)
                                 remapIfBB(mi.ops[0].label);
                             break;
                         case viper::codegen::aarch64::MOpcode::BCond:
+                        case viper::codegen::aarch64::MOpcode::Cbz:
+                        case viper::codegen::aarch64::MOpcode::Cbnz:
                             if (mi.ops.size() >= 2 &&
                                 mi.ops[1].kind == viper::codegen::aarch64::MOperand::Kind::Label)
                                 remapIfBB(mi.ops[1].label);
@@ -476,6 +484,15 @@ int emitAndMaybeLink(const Options &opts)
         emitter.emitFunction(asmStream, mir);
         asmStream << "\n";
     }
+
+    // Emit platform-specific directives at end of module.
+    // .subsections_via_symbols enables function-level dead stripping on macOS
+    // and prevents the linker from setting MH_ALLOW_STACK_EXECUTION.
+    // .note.GNU-stack marks the stack as non-executable on Linux ELF.
+    if (ti.isLinux())
+        asmStream << ".section .note.GNU-stack,\"\",@progbits\n";
+    else if (!ti.isWindows())
+        asmStream << ".subsections_via_symbols\n";
 
     std::string asmText = asmStream.str();
 

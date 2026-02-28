@@ -233,6 +233,15 @@ target_include_directories(il_utils PUBLIC
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
 
+add_library(il_link STATIC
+        il/link/ModuleLinker.cpp
+        il/link/InteropThunks.cpp)
+target_link_libraries(il_link PUBLIC viper_il_core PRIVATE viper_common_opts)
+target_include_directories(il_link PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
+)
+
 add_library(il_tools_common STATIC
         tools/common/module_loader.cpp
         tools/common/source_loader.cpp
@@ -369,6 +378,7 @@ set(VIPER_CLI_LINK_LIBS
         viper::il_full
         il_vm
         il_transform
+        il_link
         fe_basic
         fe_zia
         il_api

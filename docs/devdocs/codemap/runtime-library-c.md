@@ -15,9 +15,9 @@ Last updated: 2026-02-17
 |-----------------|------------------------------------------------------|
 | `rt_box.c`      | Boxed value types implementation                     |
 | `rt_box.h`      | Boxed value type declarations                        |
-| `rt_gc.c`       | Cycle-detecting garbage collector (trial deletion algorithm) |
-| `rt_gc.h`       | GC and zeroing weak reference declarations           |
-| `rt_heap.c`     | Reference-counted heap allocator with tagged headers |
+| `rt_gc.c`       | Cycle-detecting garbage collector (trial deletion algorithm); `rt_gc_run_all_finalizers()` for shutdown sweep |
+| `rt_gc.h`       | GC, zeroing weak reference, and shutdown declarations |
+| `rt_heap.c`     | Reference-counted heap allocator with tagged headers; `rt_global_shutdown()` atexit handler orchestrates process cleanup |
 | `rt_heap.h`     | Heap allocator declarations                          |
 | `rt_internal.h` | Internal runtime declarations and macros             |
 | `rt_memory.c`   | Guarded allocation helpers with overflow checks      |

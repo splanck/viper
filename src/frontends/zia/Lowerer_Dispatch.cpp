@@ -197,13 +197,14 @@ LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo
     Value classId = emitCallRet(Type(Type::Kind::I64), "rt_obj_class_id", {selfValue});
 
     // Emit itable lookup: rt_get_interface_impl(classId, ifaceId) -> Ptr to itable
-    Value itable = emitCallRet(Type(Type::Kind::Ptr), "rt_get_interface_impl",
+    Value itable = emitCallRet(Type(Type::Kind::Ptr),
+                               "rt_get_interface_impl",
                                {classId, Value::constInt(static_cast<int64_t>(ifaceInfo.ifaceId))});
 
     // Load function pointer from itable[slotIdx]
     int64_t offset = static_cast<int64_t>(slotIdx * 8ULL);
-    Value entryPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr),
-                                itable, Value::constInt(offset));
+    Value entryPtr =
+        emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), itable, Value::constInt(offset));
     Value fnPtr = emitLoad(entryPtr, Type(Type::Kind::Ptr));
 
     // Emit indirect call through function pointer

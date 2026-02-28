@@ -163,9 +163,7 @@ void rt_assert_main_thread_(const char *file, int line)
 {
     if (!rt_is_main_thread())
     {
-        fprintf(stderr,
-                "%s:%d: GUI/input state accessed from non-main thread\n",
-                file, line);
+        fprintf(stderr, "%s:%d: GUI/input state accessed from non-main thread\n", file, line);
         abort();
     }
 }
@@ -536,4 +534,21 @@ RtContext *rt_legacy_context(void)
 {
     rt_legacy_ensure_init();
     return &g_legacy_ctx;
+}
+
+/// @brief Clean up the legacy runtime context at process shutdown.
+/// @details Calls rt_context_cleanup on the static g_legacy_ctx to close
+///          any open BASIC file channels, release argument storage, and
+///          free the type registry.  No-op if the legacy context was never
+///          initialized.
+///
+///          Called from the rt_global_shutdown atexit handler in rt_heap.c,
+///          AFTER GC finalizers have run and BEFORE string intern teardown.
+void rt_legacy_context_shutdown(void)
+{
+    int state = __atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE);
+    if (state != 2)
+        return; /* never initialized — nothing to clean up */
+
+    rt_context_cleanup(&g_legacy_ctx);
 }

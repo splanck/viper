@@ -598,11 +598,10 @@ class ModuleAdapter
             case il::core::Opcode::ResumeSame:
             case il::core::Opcode::ResumeNext:
             case il::core::Opcode::ResumeLabel:
-                reportUnsupported(
-                    std::string{"Native codegen does not yet support structured "
-                                "error handling (opcode: "} +
-                    il::core::toString(instr.op) +
-                    "). Use VM execution for programs using try/catch.");
+                reportUnsupported(std::string{"Native codegen does not yet support structured "
+                                              "error handling (opcode: "} +
+                                  il::core::toString(instr.op) +
+                                  "). Use VM execution for programs using try/catch.");
 
             default:
                 reportUnsupported(std::string{"IL opcode '"} + il::core::toString(instr.op) +
@@ -780,8 +779,7 @@ class ModuleAdapter
         {
             const Value &cval = switchCaseValue(instr, ci);
             out.ops.push_back(convertValue(cval, ILValue::Kind::I64));
-            out.ops.push_back(
-                makeBlockLabelValue(currentFunc_->name, switchCaseLabel(instr, ci)));
+            out.ops.push_back(makeBlockLabelValue(currentFunc_->name, switchCaseLabel(instr, ci)));
         }
         // Default label as last operand
         const std::string &defLabel = switchDefaultLabel(instr);

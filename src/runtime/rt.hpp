@@ -50,6 +50,15 @@ extern "C"
     /// @return Null-terminated error string (thread-local storage).
     const char *rt_trap_get_error(void);
 
+    /// @brief Raise a network-specific trap with a categorized error code.
+    /// @param msg Human-readable description of the network failure.
+    /// @param err_code One of the Err_ConnectionRefused..Err_ProtocolError codes.
+    void rt_trap_net(const char *msg, int err_code);
+
+    /// @brief Retrieve the error code from the most recent network trap.
+    /// @return The Err_* code set by the last rt_trap_net() call on this thread.
+    int rt_trap_get_net_code(void);
+
     /// @brief Print string @p s to stdout.
     /// @param s Reference-counted string.
     void rt_print_str(rt_string s);

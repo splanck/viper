@@ -1,6 +1,5 @@
 il 0.2.0
 func @main() -> i64 {
 entry:
-  %t3 = iadd.ovf 42, 42
   ret 84
 }

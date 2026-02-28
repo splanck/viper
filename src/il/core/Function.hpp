@@ -26,6 +26,7 @@
 #pragma once
 
 #include "il/core/BasicBlock.hpp"
+#include "il/core/Linkage.hpp"
 #include "il/core/Param.hpp"
 #include "il/core/Type.hpp"
 #include <string>
@@ -78,6 +79,13 @@ struct Function
     /// @ownership Function owns this vector.
     /// @constraint Index aligns with SSA value numbering; entries may be empty.
     std::vector<std::string> valueNames;
+
+    /// @brief Cross-module visibility for the IL linker.
+    /// @details Defaults to Internal for backwards compatibility. Export makes
+    ///          the function callable from other modules; Import declares a
+    ///          function defined in another module (no body required).
+    /// @see ADR-0003, il/core/Linkage.hpp
+    Linkage linkage = Linkage::Internal;
 
     /// @brief Mutable attribute bundle describing semantic hints for the function.
     FunctionAttrs Attrs{};

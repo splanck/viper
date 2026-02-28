@@ -15,6 +15,7 @@
 
 #include "rt_box.h"
 #include "rt_bytes.h"
+#include "rt_error.h"
 #include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_object.h"
@@ -36,6 +37,10 @@
 #include <strings.h>
 #include <unistd.h>
 #endif
+
+// Forward declarations (defined in rt_io.c).
+extern void rt_trap(const char *msg);
+extern void rt_trap_net(const char *msg, int err_code);
 
 //=============================================================================
 // Internal Bytes Access
@@ -880,7 +885,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
 
     if (redirects_remaining <= 0)
     {
-        rt_trap("HTTP: too many redirects");
+        rt_trap_net("HTTP: too many redirects", Err_ProtocolError);
         return NULL;
     }
 
@@ -901,7 +906,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
         rt_tls_session_t *tls = rt_tls_connect(req->url.host, (uint16_t)req->url.port, &tls_config);
         if (!tls)
         {
-            rt_trap("HTTPS: connection failed");
+            rt_trap_net("HTTPS: connection failed", Err_NetworkError);
             return NULL;
         }
         http_conn_init_tls(&conn, tls);
@@ -916,7 +921,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
 
         if (!tcp || !rt_tcp_is_open(tcp))
         {
-            rt_trap("HTTP: connection failed");
+            rt_trap_net("HTTP: connection failed", Err_NetworkError);
             return NULL;
         }
 
@@ -944,7 +949,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     {
         free(request_str);
         http_conn_close(&conn);
-        rt_trap("HTTP: request too large");
+        rt_trap_net("HTTP: request too large", Err_ProtocolError);
         return NULL;
     }
     size_t request_len = header_len + req_body_len;
@@ -967,7 +972,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     {
         free(request_buf);
         http_conn_close(&conn);
-        rt_trap("HTTP: send failed");
+        rt_trap_net("HTTP: send failed", Err_NetworkError);
         return NULL;
     }
     free(request_buf);
@@ -977,7 +982,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     if (!status_line)
     {
         http_conn_close(&conn);
-        rt_trap("HTTP: invalid response");
+        rt_trap_net("HTTP: invalid response", Err_ProtocolError);
         return NULL;
     }
 
@@ -988,7 +993,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     if (status < 0)
     {
         http_conn_close(&conn);
-        rt_trap("HTTP: invalid status line");
+        rt_trap_net("HTTP: invalid status line", Err_ProtocolError);
         return NULL;
     }
 
@@ -1057,7 +1062,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
             else
             {
                 free(redirect_location);
-                rt_trap("HTTP: invalid redirect URL");
+                rt_trap_net("HTTP: invalid redirect URL", Err_InvalidUrl);
                 return NULL;
             }
         }
@@ -1152,7 +1157,7 @@ rt_string rt_http_get(rt_string url)
 {
     const char *url_str = rt_string_cstr(url);
     if (!url_str || *url_str == '\0')
-        rt_trap("HTTP: invalid URL");
+        rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
 
     // Create request
     rt_http_req_t req = {0};
@@ -1160,7 +1165,7 @@ rt_string rt_http_get(rt_string url)
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
 
     if (parse_url(url_str, &req.url) < 0)
-        rt_trap("HTTP: invalid URL format");
+        rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
 
     // Execute request
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
@@ -1168,7 +1173,7 @@ rt_string rt_http_get(rt_string url)
     free_parsed_url(&req.url);
 
     if (!res)
-        rt_trap("HTTP: request failed");
+        rt_trap_net("HTTP: request failed", Err_NetworkError);
 
     rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
 
@@ -1182,21 +1187,21 @@ void *rt_http_get_bytes(rt_string url)
 {
     const char *url_str = rt_string_cstr(url);
     if (!url_str || *url_str == '\0')
-        rt_trap("HTTP: invalid URL");
+        rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
 
     rt_http_req_t req = {0};
     req.method = strdup("GET");
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
 
     if (parse_url(url_str, &req.url) < 0)
-        rt_trap("HTTP: invalid URL format");
+        rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
 
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
     free(req.method);
     free_parsed_url(&req.url);
 
     if (!res)
-        rt_trap("HTTP: request failed");
+        rt_trap_net("HTTP: request failed", Err_NetworkError);
 
     void *result = rt_bytes_new((int64_t)res->body_len);
     uint8_t *result_ptr = bytes_data(result);
@@ -1215,14 +1220,14 @@ rt_string rt_http_post(rt_string url, rt_string body)
     const char *body_str = rt_string_cstr(body);
 
     if (!url_str || *url_str == '\0')
-        rt_trap("HTTP: invalid URL");
+        rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
 
     rt_http_req_t req = {0};
     req.method = strdup("POST");
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
 
     if (parse_url(url_str, &req.url) < 0)
-        rt_trap("HTTP: invalid URL format");
+        rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
 
     if (body_str)
     {
@@ -1245,7 +1250,7 @@ rt_string rt_http_post(rt_string url, rt_string body)
     free_headers(req.headers);
 
     if (!res)
-        rt_trap("HTTP: request failed");
+        rt_trap_net("HTTP: request failed", Err_NetworkError);
 
     rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
 
@@ -1260,14 +1265,14 @@ void *rt_http_post_bytes(rt_string url, void *body)
     const char *url_str = rt_string_cstr(url);
 
     if (!url_str || *url_str == '\0')
-        rt_trap("HTTP: invalid URL");
+        rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
 
     rt_http_req_t req = {0};
     req.method = strdup("POST");
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
 
     if (parse_url(url_str, &req.url) < 0)
-        rt_trap("HTTP: invalid URL format");
+        rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
 
     if (body)
     {
@@ -1286,7 +1291,7 @@ void *rt_http_post_bytes(rt_string url, void *body)
     free_headers(req.headers);
 
     if (!res)
-        rt_trap("HTTP: request failed");
+        rt_trap_net("HTTP: request failed", Err_NetworkError);
 
     void *result = rt_bytes_new((int64_t)res->body_len);
     uint8_t *result_ptr = bytes_data(result);
@@ -1362,21 +1367,21 @@ void *rt_http_head(rt_string url)
 {
     const char *url_str = rt_string_cstr(url);
     if (!url_str || *url_str == '\0')
-        rt_trap("HTTP: invalid URL");
+        rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
 
     rt_http_req_t req = {0};
     req.method = strdup("HEAD");
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
 
     if (parse_url(url_str, &req.url) < 0)
-        rt_trap("HTTP: invalid URL format");
+        rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
 
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
     free(req.method);
     free_parsed_url(&req.url);
 
     if (!res)
-        rt_trap("HTTP: request failed");
+        rt_trap_net("HTTP: request failed", Err_NetworkError);
 
     return res;
 }
@@ -1387,14 +1392,14 @@ rt_string rt_http_patch(rt_string url, rt_string body)
     const char *body_str = rt_string_cstr(body);
 
     if (!url_str || *url_str == '\0')
-        rt_trap("HTTP: invalid URL");
+        rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
 
     rt_http_req_t req = {0};
     req.method = strdup("PATCH");
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
 
     if (parse_url(url_str, &req.url) < 0)
-        rt_trap("HTTP: invalid URL format");
+        rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
 
     if (body_str)
     {
@@ -1415,7 +1420,7 @@ rt_string rt_http_patch(rt_string url, rt_string body)
     free_headers(req.headers);
 
     if (!res)
-        rt_trap("HTTP: request failed");
+        rt_trap_net("HTTP: request failed", Err_NetworkError);
 
     rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
 
@@ -1429,21 +1434,21 @@ rt_string rt_http_options(rt_string url)
 {
     const char *url_str = rt_string_cstr(url);
     if (!url_str || *url_str == '\0')
-        rt_trap("HTTP: invalid URL");
+        rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
 
     rt_http_req_t req = {0};
     req.method = strdup("OPTIONS");
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
 
     if (parse_url(url_str, &req.url) < 0)
-        rt_trap("HTTP: invalid URL format");
+        rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
 
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
     free(req.method);
     free_parsed_url(&req.url);
 
     if (!res)
-        rt_trap("HTTP: request failed");
+        rt_trap_net("HTTP: request failed", Err_NetworkError);
 
     rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
 
@@ -1465,7 +1470,7 @@ void *rt_http_req_new(rt_string method, rt_string url)
     if (!method_str || *method_str == '\0')
         rt_trap("HTTP: invalid method");
     if (!url_str || *url_str == '\0')
-        rt_trap("HTTP: invalid URL");
+        rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
 
     // Must use rt_obj_new_i64 for GC management
     rt_http_req_t *req = (rt_http_req_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_req_t));
@@ -1481,7 +1486,7 @@ void *rt_http_req_new(rt_string method, rt_string url)
     {
         free(req->method);
         // Note: GC-managed object, so we don't free it directly
-        rt_trap("HTTP: invalid URL format");
+        rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
     }
 
     return req;
@@ -2088,7 +2093,7 @@ void *rt_url_parse(rt_string url_str)
 {
     const char *str = rt_string_cstr(url_str);
     if (!str)
-        rt_trap("URL: Invalid URL string");
+        rt_trap_net("URL: Invalid URL string", Err_InvalidUrl);
 
     rt_url_t *url = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
     if (!url)
@@ -2099,7 +2104,7 @@ void *rt_url_parse(rt_string url_str)
 
     if (parse_url_full(str, url) != 0)
     {
-        rt_trap("URL: Failed to parse URL");
+        rt_trap_net("URL: Failed to parse URL", Err_InvalidUrl);
     }
 
     return url;

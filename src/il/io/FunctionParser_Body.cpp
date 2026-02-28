@@ -409,6 +409,10 @@ Expected<void> parseFunction(std::istream &is, std::string &header, ParserState 
     if (!headerResult)
         return headerResult;
 
+    // Import-linkage functions have no body; skip body parsing.
+    if (st.curFn && st.curFn->linkage == il::core::Linkage::Import)
+        return {};
+
     TokenStream tokens(is, st);
     parser_impl::ParserState local{};
     local.legacy = &st;

@@ -410,7 +410,8 @@ void emitGAddr(const ILInstr &instr, MIRBuilder &builder)
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
     EmitCommon emit(builder);
-    const Operand src = emit.materialiseGpr(builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
+    const Operand src =
+        emit.materialiseGpr(builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
     builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, src}));
 }
 
@@ -428,7 +429,8 @@ void emitAddrOf(const ILInstr &instr, MIRBuilder &builder)
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
     EmitCommon emit(builder);
-    const Operand src = emit.materialiseGpr(builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
+    const Operand src =
+        emit.materialiseGpr(builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
     builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, src}));
 }
 

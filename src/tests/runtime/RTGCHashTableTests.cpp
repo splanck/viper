@@ -87,14 +87,12 @@ static void test_track_many_objects()
         rt_gc_track(objs[i], test_node_traverse);
     }
 
-    ASSERT(rt_gc_tracked_count() == base + N,
-           "all 500 objects tracked");
+    ASSERT(rt_gc_tracked_count() == base + N, "all 500 objects tracked");
 
     // Verify each is individually findable
     for (int i = 0; i < N; i++)
     {
-        ASSERT(rt_gc_is_tracked(objs[i]) == 1,
-               "each object is tracked");
+        ASSERT(rt_gc_is_tracked(objs[i]) == 1, "each object is tracked");
     }
 
     // Untrack all
@@ -103,8 +101,7 @@ static void test_track_many_objects()
         rt_gc_untrack(objs[i]);
     }
 
-    ASSERT(rt_gc_tracked_count() == base,
-           "count back to base after untracking all");
+    ASSERT(rt_gc_tracked_count() == base, "count back to base after untracking all");
 
     // Clean up
     for (int i = 0; i < N; i++)
@@ -132,8 +129,7 @@ static void test_track_untrack_interleaved()
         rt_gc_untrack(objs[i]);
     }
 
-    ASSERT(rt_gc_tracked_count() == base + N / 2,
-           "half tracked after interleaved untrack");
+    ASSERT(rt_gc_tracked_count() == base + N / 2, "half tracked after interleaved untrack");
 
     // Verify correct tracking state
     for (int i = 0; i < N; i++)
@@ -189,8 +185,7 @@ static void test_collect_many_cycles()
 
     int64_t freed = rt_gc_collect();
     ASSERT(freed == N, "all cycle members freed in bulk collect");
-    ASSERT(rt_gc_tracked_count() == 0 || freed == N,
-           "tracked count decreased by freed amount");
+    ASSERT(rt_gc_tracked_count() == 0 || freed == N, "tracked count decreased by freed amount");
 }
 
 static void test_hash_table_growth()
@@ -206,15 +201,13 @@ static void test_hash_table_growth()
         objs[i] = make_node();
         rt_gc_track(objs[i], test_node_traverse);
         // Verify count stays consistent during growth
-        ASSERT(rt_gc_tracked_count() == base + i + 1,
-               "count consistent during growth");
+        ASSERT(rt_gc_tracked_count() == base + i + 1, "count consistent during growth");
     }
 
     // Verify all are still findable after multiple rehashes
     for (int i = 0; i < N; i++)
     {
-        ASSERT(rt_gc_is_tracked(objs[i]) == 1,
-               "all objects still tracked after rehash");
+        ASSERT(rt_gc_is_tracked(objs[i]) == 1, "all objects still tracked after rehash");
     }
 
     // Clean up
@@ -233,8 +226,7 @@ static void test_untrack_nonexistent()
 
     rt_gc_untrack(obj); // not tracked — should be harmless
 
-    ASSERT(rt_gc_tracked_count() == base,
-           "untrack nonexistent doesn't change count");
+    ASSERT(rt_gc_tracked_count() == base, "untrack nonexistent doesn't change count");
 
     free_node(obj);
 }
@@ -287,8 +279,7 @@ static void test_auto_trigger_collects_cycles()
 
     // The auto-trigger should have run at least once
     int64_t passes_after = rt_gc_pass_count();
-    ASSERT(passes_after > initial_passes,
-           "auto-trigger fired at least once");
+    ASSERT(passes_after > initial_passes, "auto-trigger fired at least once");
 
     // The cycle should have been collected
     ASSERT(rt_gc_is_tracked(a) == 0, "cycle node a collected by auto-trigger");
@@ -323,8 +314,7 @@ static void test_threshold_disabled_no_auto_collect()
         temps[i] = make_node();
 
     int64_t passes_after = rt_gc_pass_count();
-    ASSERT(passes_after == initial_passes,
-           "no auto-collect when threshold is 0");
+    ASSERT(passes_after == initial_passes, "no auto-collect when threshold is 0");
 
     // Objects should still be tracked
     ASSERT(rt_gc_is_tracked(a) == 1, "cycle node a still tracked");
@@ -355,7 +345,6 @@ int main()
     test_auto_trigger_collects_cycles();
     test_threshold_disabled_no_auto_collect();
 
-    printf("GC hash table + auto-trigger tests: %d/%d passed\n",
-           tests_passed, tests_run);
+    printf("GC hash table + auto-trigger tests: %d/%d passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
 }

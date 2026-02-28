@@ -68,6 +68,22 @@ function(viper_add_il_core_tests)
     target_compile_definitions(test_il_roundtrip PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples" ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/roundtrip")
     viper_add_ctest(test_il_roundtrip test_il_roundtrip)
 
+    viper_add_test(test_il_linkage_roundtrip ${CMAKE_SOURCE_DIR}/src/tests/il/LinkageRoundTrip.cpp)
+    target_link_libraries(test_il_linkage_roundtrip PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    viper_add_ctest(test_il_linkage_roundtrip test_il_linkage_roundtrip)
+
+    viper_add_test(test_il_module_linker ${CMAKE_SOURCE_DIR}/src/tests/il/ModuleLinkerTests.cpp)
+    target_link_libraries(test_il_module_linker PRIVATE il_link viper_il_core)
+    viper_add_ctest(test_il_module_linker test_il_module_linker)
+
+    viper_add_test(test_il_interop_thunks ${CMAKE_SOURCE_DIR}/src/tests/il/InteropThunkTests.cpp)
+    target_link_libraries(test_il_interop_thunks PRIVATE il_link viper_il_core)
+    viper_add_ctest(test_il_interop_thunks test_il_interop_thunks)
+
+    viper_add_test(test_il_interop_integration ${CMAKE_SOURCE_DIR}/src/tests/il/InteropIntegrationTests.cpp)
+    target_link_libraries(test_il_interop_integration PRIVATE il_link viper_il_core)
+    viper_add_ctest(test_il_interop_integration test_il_interop_integration)
+
     viper_add_test(test_il_io_print_parse_roundtrip ${CMAKE_SOURCE_DIR}/src/tests/il/IOPrintParseRoundTrip.cpp)
     target_link_libraries(test_il_io_print_parse_roundtrip PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
     set(_VIPER_IL_FIXTURE_DIRS
@@ -709,6 +725,14 @@ function(viper_add_il_utils_test)
     target_link_libraries(
             test_il_constfold_edgecases PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_constfold_edgecases test_il_constfold_edgecases)
+
+    # Constant folding audit tests (comprehensive coverage)
+    viper_add_test(
+            test_il_constfold_audit
+            ${_VIPER_IL_DIR}/transform/ConstFoldAuditTests.cpp)
+    target_link_libraries(
+            test_il_constfold_audit PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_constfold_audit test_il_constfold_audit)
 
     # IL optimization review regression tests
     viper_add_test(

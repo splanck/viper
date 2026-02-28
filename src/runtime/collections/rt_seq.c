@@ -33,11 +33,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_seq.h"
 #include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_random.h"
-#include "rt_seq.h"
 #include "rt_string.h"
 
 #include <stdlib.h>
@@ -82,10 +82,10 @@
 /// management via reference counting.
 typedef struct rt_seq_impl
 {
-    int64_t len;           ///< Number of elements currently in the sequence
-    int64_t cap;           ///< Current capacity (allocated slots)
-    void **items;          ///< Array of element pointers
-    int8_t owns_elements;  ///< 1 = retain on push, release on finalize/clear
+    int64_t len;          ///< Number of elements currently in the sequence
+    int64_t cap;          ///< Current capacity (allocated slots)
+    void **items;         ///< Array of element pointers
+    int8_t owns_elements; ///< 1 = retain on push, release on finalize/clear
 } rt_seq_impl;
 
 /// @brief Finalizer callback invoked when a Seq is garbage collected.

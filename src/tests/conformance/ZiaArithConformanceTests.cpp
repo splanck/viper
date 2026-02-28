@@ -45,7 +45,8 @@ bool hasOpcode(const il::core::Module &module, il::core::Opcode op)
 }
 
 /// Check if any function named `funcName` contains the given opcode.
-bool hasOpcodeInFunc(const il::core::Module &module, const std::string &funcName,
+bool hasOpcodeInFunc(const il::core::Module &module,
+                     const std::string &funcName,
                      il::core::Opcode op)
 {
     for (const auto &fn : module.functions)

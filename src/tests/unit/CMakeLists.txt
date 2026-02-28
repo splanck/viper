@@ -701,6 +701,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_network_timeout PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_network_timeout test_rt_network_timeout)
 
+    viper_add_test(test_rt_network_harden ${VIPER_TESTS_DIR}/runtime/RTNetworkHardenTests.cpp)
+    target_link_libraries(test_rt_network_harden PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_network_harden test_rt_network_harden)
+
     viper_add_test(test_rt_websocket ${VIPER_TESTS_DIR}/runtime/RTWebSocketTests.cpp)
     target_link_libraries(test_rt_websocket PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_websocket test_rt_websocket)
@@ -1409,4 +1413,9 @@ function(viper_add_runtime_tests)
     viper_add_test(test_source_loader_limits ${VIPER_TESTS_DIR}/unit/test_source_loader_limits.cpp)
     target_link_libraries(test_source_loader_limits PRIVATE il_tools_common viper_test_common)
     viper_add_ctest(test_source_loader_limits test_source_loader_limits)
+
+    # Shutdown path resource cleanup tests
+    viper_add_test(test_rt_shutdown ${VIPER_TESTS_DIR}/runtime/RTShutdownTests.cpp)
+    target_link_libraries(test_rt_shutdown PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_shutdown test_rt_shutdown)
 endfunction()

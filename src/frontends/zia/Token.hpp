@@ -200,6 +200,11 @@ enum class TokenKind
     /// Syntax: `hide var privateField: Integer;`
     KwHide,
 
+    /// @brief Foreign function import declaration.
+    /// @details Declares a function defined in another module (no body).
+    /// Syntax: `foreign func helper(n: Integer) -> Integer`
+    KwForeign,
+
     /// @brief Method override indicator.
     /// @details Indicates that a method overrides a parent class method.
     /// Syntax: `override func toString() -> String { ... }`

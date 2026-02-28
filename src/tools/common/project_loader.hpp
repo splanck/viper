@@ -29,7 +29,8 @@ namespace il::tools::common
 enum class ProjectLang
 {
     Zia,
-    Basic
+    Basic,
+    Mixed ///< Both .zia and .bas files; requires IL linker.
 };
 
 /// @brief Parsed project manifest or convention-inferred configuration.
@@ -54,6 +55,12 @@ struct ProjectConfig
 
     /// @brief All discovered source files (absolute paths).
     std::vector<std::string> sourceFiles;
+
+    /// @brief Zia source files (populated for Mixed projects).
+    std::vector<std::string> ziaFiles;
+
+    /// @brief BASIC source files (populated for Mixed projects).
+    std::vector<std::string> basicFiles;
 
     /// @brief Optimization level string ("O0", "O1", "O2").
     std::string optimizeLevel{"O0"};

@@ -40,7 +40,19 @@ extern "C"
         Err_DomainError = 6,      ///< Input outside valid domain.
         Err_Bounds = 7,           ///< Bounds check failed.
         Err_InvalidOperation = 8, ///< Operation unsupported in current state.
-        Err_RuntimeError = 9      ///< Unclassified runtime error.
+        Err_RuntimeError = 9,     ///< Unclassified runtime error.
+
+        // Network error codes (10–19).
+        Err_ConnectionRefused = 10, ///< Remote host actively refused connection.
+        Err_HostNotFound = 11,      ///< Hostname could not be resolved.
+        Err_ConnectionReset = 12,   ///< Connection reset by remote peer (EPIPE, RST).
+        Err_Timeout = 13,           ///< Operation timed out.
+        Err_ConnectionClosed = 14,  ///< Operation on a closed connection.
+        Err_DnsError = 15,          ///< DNS resolution failed.
+        Err_InvalidUrl = 16,        ///< URL is malformed or unparseable.
+        Err_TlsError = 17,          ///< TLS handshake or certificate failure.
+        Err_NetworkError = 18,      ///< Generic network I/O failure.
+        Err_ProtocolError = 19      ///< Protocol-level error (HTTP, WebSocket).
     };
 
     /// @brief Structured runtime error record propagated via out-parameters.

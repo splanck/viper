@@ -29,8 +29,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Forward declaration from rt_io.c
+// Forward declarations (defined in rt_io.c).
 extern void rt_trap(const char *msg);
+extern void rt_trap_net(const char *msg, int err_code);
+
+#include "rt_error.h"
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -51,6 +54,22 @@ typedef int socklen_t;
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
+
+// SIGPIPE suppression (same approach as rt_network.c).
+#if defined(__linux__) || defined(__viperdos__)
+#define SEND_FLAGS MSG_NOSIGNAL
+#else
+#define SEND_FLAGS 0
+#endif
+
+static void suppress_sigpipe(int sock)
+{
+#if defined(__APPLE__) && defined(SO_NOSIGPIPE)
+    int val = 1;
+    setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val));
+#endif
+    (void)sock;
+}
 
 // WebSocket opcodes
 #define WS_OP_CONTINUATION 0x00
@@ -307,7 +326,7 @@ static long ws_send(rt_ws_impl *ws, const void *data, size_t len)
     }
     else
     {
-        return send(ws->socket_fd, data, len, 0);
+        return send(ws->socket_fd, data, len, SEND_FLAGS);
     }
 }
 
@@ -405,6 +424,7 @@ static int create_tcp_socket(const char *host, int port, int64_t timeout_ms)
         fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
         if (fd < 0)
             continue;
+        suppress_sigpipe(fd);
 
         if (timeout_ms > 0)
         {
@@ -806,7 +826,7 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms)
 
     if (!parse_ws_url(url_cstr, &is_secure, &host, &port, &path))
     {
-        rt_trap("WebSocket: invalid URL");
+        rt_trap_net("WebSocket: invalid URL", Err_InvalidUrl);
         return NULL;
     }
 
@@ -848,7 +868,7 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms)
         free(path);
         if (rt_obj_release_check0(ws))
             rt_obj_free(ws);
-        rt_trap("WebSocket: connection failed");
+        rt_trap_net("WebSocket: connection failed", Err_NetworkError);
         return NULL;
     }
 
@@ -873,7 +893,7 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms)
             free(path);
             if (rt_obj_release_check0(ws))
                 rt_obj_free(ws);
-            rt_trap("WebSocket: TLS setup failed");
+            rt_trap_net("WebSocket: TLS setup failed", Err_TlsError);
             return NULL;
         }
 
@@ -883,7 +903,7 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms)
             free(path);
             if (rt_obj_release_check0(ws))
                 rt_obj_free(ws);
-            rt_trap("WebSocket: TLS handshake failed");
+            rt_trap_net("WebSocket: TLS handshake failed", Err_TlsError);
             return NULL;
         }
     }
@@ -895,7 +915,7 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms)
         free(path);
         if (rt_obj_release_check0(ws))
             rt_obj_free(ws);
-        rt_trap("WebSocket: handshake failed");
+        rt_trap_net("WebSocket: handshake failed", Err_ProtocolError);
         return NULL;
     }
 
@@ -956,7 +976,7 @@ void rt_ws_send(void *obj, rt_string text)
     rt_ws_impl *ws = obj;
     if (!ws->is_open)
     {
-        rt_trap("WebSocket: connection is closed");
+        rt_trap_net("WebSocket: connection is closed", Err_ConnectionClosed);
         return;
     }
 
@@ -966,7 +986,7 @@ void rt_ws_send(void *obj, rt_string text)
     if (!ws_send_frame(ws, WS_OP_TEXT, cstr, len))
     {
         ws->is_open = 0;
-        rt_trap("WebSocket: send failed");
+        rt_trap_net("WebSocket: send failed", Err_NetworkError);
     }
 }
 
@@ -977,7 +997,7 @@ void rt_ws_send_bytes(void *obj, void *data)
     rt_ws_impl *ws = obj;
     if (!ws->is_open)
     {
-        rt_trap("WebSocket: connection is closed");
+        rt_trap_net("WebSocket: connection is closed", Err_ConnectionClosed);
         return;
     }
 
@@ -996,7 +1016,7 @@ void rt_ws_send_bytes(void *obj, void *data)
     {
         free(buffer);
         ws->is_open = 0;
-        rt_trap("WebSocket: send failed");
+        rt_trap_net("WebSocket: send failed", Err_NetworkError);
         return;
     }
 

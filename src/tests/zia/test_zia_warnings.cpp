@@ -23,8 +23,7 @@ namespace
 {
 
 /// @brief Helper: compile with a specific warning policy.
-CompilerResult compileWithPolicy(const std::string &source,
-                                 WarningPolicy policy = {})
+CompilerResult compileWithPolicy(const std::string &source, WarningPolicy policy = {})
 {
     SourceManager sm;
     CompilerInput input{.source = source, .path = "test.zia"};
@@ -113,7 +112,8 @@ func foo(): Integer {
     var x = 2;
 }
 func start() { }
-)", policy);
+)",
+                               policy);
     EXPECT_TRUE(hasWarningCode(r, "W002"));
 }
 
@@ -130,7 +130,8 @@ module T;
 func start() {
     var x: Integer = 3.14;
 }
-)", policy);
+)",
+                               policy);
     EXPECT_TRUE(hasWarningCode(r, "W003"));
 }
 
@@ -150,7 +151,8 @@ func start() {
         var x = 2;
     }
 }
-)", policy);
+)",
+                               policy);
     EXPECT_TRUE(hasWarningCode(r, "W004"));
 }
 
@@ -185,7 +187,8 @@ module T;
 func start() {
     while (false) { }
 }
-)", policy);
+)",
+                               policy);
     EXPECT_TRUE(hasWarningCode(r, "W006"));
 }
 
@@ -205,7 +208,8 @@ func start() {
     var x = 0;
     if (x = 1) { }
 }
-)", policy);
+)",
+                               policy);
     EXPECT_TRUE(hasWarningCode(r, "W007"));
 }
 
@@ -285,7 +289,8 @@ func start() {
     var flag = true;
     var b = (flag == true);
 }
-)", policy);
+)",
+                               policy);
     EXPECT_TRUE(hasWarningCode(r, "W011"));
 }
 
@@ -302,7 +307,8 @@ module T;
 func start() {
     if (true) { }
 }
-)", policy);
+)",
+                               policy);
     EXPECT_TRUE(hasWarningCode(r, "W013"));
 }
 
@@ -322,7 +328,8 @@ func compute(): Integer {
 func start() {
     compute();
 }
-)", policy);
+)",
+                               policy);
     EXPECT_TRUE(hasWarningCode(r, "W014"));
 }
 
@@ -357,7 +364,8 @@ module T;
 func start() {
     var x = 10 / 0;
 }
-)", policy);
+)",
+                               policy);
     // Division by zero (W010) is default-enabled and should become an error
     EXPECT_TRUE(hasWarningCode(r, "W010"));
     // With -Werror, the compilation should fail
@@ -373,7 +381,8 @@ module T;
 func start() {
     var x = 10 / 0;
 }
-)", policy);
+)",
+                               policy);
     EXPECT_TRUE(r.succeeded());
     EXPECT_FALSE(hasWarningCode(r, "W010"));
 }
@@ -427,7 +436,8 @@ func foo(): Integer {
     var x = 2;
 }
 func start() { }
-)", policy);
+)",
+                                policy);
     EXPECT_TRUE(hasWarningCode(r2, "W002"));
 }
 
@@ -470,7 +480,8 @@ module Test;
 func start() {
     var x = 2 ^ 3;
 }
-)", policy);
+)",
+                               policy);
 
     EXPECT_TRUE(r.succeeded());
     EXPECT_TRUE(hasWarningCode(r, "W017"));
@@ -489,7 +500,8 @@ module Test;
 func start() {
     var x = 5 & 3;
 }
-)", policy);
+)",
+                               policy);
 
     EXPECT_TRUE(r.succeeded());
     EXPECT_TRUE(hasWarningCode(r, "W018"));

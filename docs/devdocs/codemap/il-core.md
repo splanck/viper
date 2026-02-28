@@ -41,6 +41,7 @@ An IL function definition with parameters, basic blocks, SSA value names, and se
 **Fields:**
 - `Attrs` — `FunctionAttrs`: mutable semantic attribute bundle
 - `blocks` — `std::vector<BasicBlock>`: basic blocks comprising the function body
+- `linkage` — `Linkage`: visibility for cross-module linking (default: `Internal`)
 - `name` — `std::string`: human-readable identifier, unique within its module
 - `params` — `std::vector<Param>`: ordered list of parameters
 - `retType` — `Type`: declared return type
@@ -101,6 +102,27 @@ Semantic attributes for call-like instructions.
 - `nothrow` — `bool`: call cannot throw (default: `false`)
 - `pure` — `bool`: call has no observable side effects or memory access (default: `false`)
 - `readonly` — `bool`: call may read but not write memory (default: `false`)
+
+## Linkage
+
+| File          | Purpose                                                   |
+|---------------|-----------------------------------------------------------|
+| `Linkage.hpp` | Linkage enum for cross-module function/global visibility  |
+
+### `Linkage` (`Linkage.hpp`)
+
+Enum class controlling whether a function or global is visible across module boundaries during linking.
+
+**Enum values:**
+- `Internal` — Module-private (default). Not visible to other modules. Name may be prefixed during linking to avoid collisions.
+- `Export` — Defined in this module and visible to other modules. The function must have a body.
+- `Import` — Declared in this module but defined elsewhere. The function has no body; the linker resolves it to a matching `Export` function.
+
+**Used by:** `Function::linkage`, `Global::linkage`
+
+**Related:** [Cross-Language Interop Guide](../../interop.md), [IL Guide: Function Linkage](../../il-guide.md)
+
+---
 
 ## Types and Values
 

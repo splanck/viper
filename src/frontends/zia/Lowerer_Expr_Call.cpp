@@ -743,7 +743,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 // Default Parameter Padding
 //=============================================================================
 
-void Lowerer::padDefaultArgs(const std::string &calleeName, std::vector<Value> &args,
+void Lowerer::padDefaultArgs(const std::string &calleeName,
+                             std::vector<Value> &args,
                              CallExpr *callExpr)
 {
     FunctionDecl *funcDecl = sema_.getFunctionDecl(calleeName);

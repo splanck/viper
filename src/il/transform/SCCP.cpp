@@ -496,13 +496,48 @@ static FoldResult foldIntegerArithmetic(Opcode op, const FoldContext &ctx)
             return FoldResult::constant(Value::constInt(lhs | rhs));
         case Opcode::Xor:
             return FoldResult::constant(Value::constInt(lhs ^ rhs));
-        case Opcode::Shl:
-            return FoldResult::constant(Value::constInt(lhs << (rhs & 63)));
-        case Opcode::LShr:
+        case Opcode::SDiv:
+            if (rhs == 0 ||
+                (lhs == std::numeric_limits<long long>::min() && rhs == -1))
+                return FoldResult::trap();
+            return FoldResult::constant(Value::constInt(lhs / rhs));
+        case Opcode::UDiv:
+        {
+            auto ulhs = static_cast<unsigned long long>(lhs);
+            auto urhs = static_cast<unsigned long long>(rhs);
+            if (urhs == 0)
+                return FoldResult::trap();
             return FoldResult::constant(
-                Value::constInt(static_cast<unsigned long long>(lhs) >> (rhs & 63)));
+                Value::constInt(static_cast<long long>(ulhs / urhs)));
+        }
+        case Opcode::SRem:
+            if (rhs == 0 ||
+                (lhs == std::numeric_limits<long long>::min() && rhs == -1))
+                return FoldResult::trap();
+            return FoldResult::constant(Value::constInt(lhs % rhs));
+        case Opcode::URem:
+        {
+            auto ulhs = static_cast<unsigned long long>(lhs);
+            auto urhs = static_cast<unsigned long long>(rhs);
+            if (urhs == 0)
+                return FoldResult::trap();
+            return FoldResult::constant(
+                Value::constInt(static_cast<long long>(ulhs % urhs)));
+        }
+        case Opcode::Shl:
+            if (rhs < 0 || rhs >= 64)
+                return FoldResult::unknown();
+            return FoldResult::constant(Value::constInt(lhs << rhs));
+        case Opcode::LShr:
+            if (rhs < 0 || rhs >= 64)
+                return FoldResult::unknown();
+            return FoldResult::constant(
+                Value::constInt(static_cast<long long>(
+                    static_cast<unsigned long long>(lhs) >> rhs)));
         case Opcode::AShr:
-            return FoldResult::constant(Value::constInt(lhs >> (rhs & 63)));
+            if (rhs < 0 || rhs >= 64)
+                return FoldResult::unknown();
+            return FoldResult::constant(Value::constInt(lhs >> rhs));
         default:
             return FoldResult::unknown();
     }
@@ -587,20 +622,30 @@ static FoldResult foldFloatArithmetic(Opcode op, const FoldContext &ctx)
     if (!ctx.getConstFloatOperand(0, lhs) || !ctx.getConstFloatOperand(1, rhs))
         return FoldResult::unknown();
 
+    double result{};
     switch (op)
     {
         case Opcode::FAdd:
-            return FoldResult::constant(Value::constFloat(lhs + rhs));
+            result = lhs + rhs;
+            break;
         case Opcode::FSub:
-            return FoldResult::constant(Value::constFloat(lhs - rhs));
+            result = lhs - rhs;
+            break;
         case Opcode::FMul:
-            return FoldResult::constant(Value::constFloat(lhs * rhs));
+            result = lhs * rhs;
+            break;
         case Opcode::FDiv:
-            // IEEE 754: x/0 produces ±inf or NaN; let the C++ runtime handle it.
-            return FoldResult::constant(Value::constFloat(lhs / rhs));
+            if (rhs == 0.0)
+                return FoldResult::unknown();
+            result = lhs / rhs;
+            break;
         default:
             return FoldResult::unknown();
     }
+    // Don't fold to inf/NaN — preserve runtime evaluation for non-finite results.
+    if (!std::isfinite(result))
+        return FoldResult::unknown();
+    return FoldResult::constant(Value::constFloat(result));
 }
 
 //===----------------------------------------------------------------------===//
@@ -773,6 +818,47 @@ static FoldResult foldCastFpToUi(const FoldContext &ctx)
 }
 
 //===----------------------------------------------------------------------===//
+// Legacy Conversions: Sitofp, Fptosi
+//===----------------------------------------------------------------------===//
+
+/// @brief Fold legacy signed integer to float (truncation, not round-to-even).
+static FoldResult foldFptosi(const FoldContext &ctx)
+{
+    double operand{};
+    if (!ctx.getConstFloatOperand(0, operand) || !std::isfinite(operand))
+        return FoldResult::unknown();
+
+    // Truncation semantics (towards zero), unlike CastFpToSiRteChk which rounds.
+    double truncated = std::trunc(operand);
+    if (!std::isfinite(truncated))
+        return FoldResult::trap();
+
+    constexpr double kMin = static_cast<double>(std::numeric_limits<long long>::min());
+    constexpr double kMax = static_cast<double>(std::numeric_limits<long long>::max());
+    if (truncated < kMin || truncated > kMax)
+        return FoldResult::trap();
+
+    return FoldResult::constant(Value::constInt(static_cast<long long>(truncated)));
+}
+
+//===----------------------------------------------------------------------===//
+// Ordered/Unordered Float Comparisons: FCmpOrd, FCmpUno
+//===----------------------------------------------------------------------===//
+
+/// @brief Fold ordered/unordered float comparisons.
+static FoldResult foldFCmpOrdUno(Opcode op, const FoldContext &ctx)
+{
+    double lhs{}, rhs{};
+    if (!ctx.getConstFloatOperand(0, lhs) || !ctx.getConstFloatOperand(1, rhs))
+        return FoldResult::unknown();
+
+    if (op == Opcode::FCmpOrd)
+        return FoldResult::constant(Value::constBool(!std::isnan(lhs) && !std::isnan(rhs)));
+    // FCmpUno
+    return FoldResult::constant(Value::constBool(std::isnan(lhs) || std::isnan(rhs)));
+}
+
+//===----------------------------------------------------------------------===//
 // Boolean Operations: Zext1, Trunc1
 //===----------------------------------------------------------------------===//
 
@@ -795,7 +881,7 @@ static FoldResult foldTrunc1(const FoldContext &ctx)
 }
 
 //===----------------------------------------------------------------------===//
-// Constant Materialization: ConstNull, ConstStr, AddrOf
+// Constant Materialization: ConstNull, ConstStr, AddrOf, ConstF64
 //===----------------------------------------------------------------------===//
 
 /// @brief Fold constant materialization instructions.
@@ -811,6 +897,11 @@ static FoldResult foldConstantMaterialization(const Instr &instr)
             return FoldResult::unknown();
         case Opcode::AddrOf:
             if (!instr.operands.empty())
+                return FoldResult::constant(instr.operands[0]);
+            return FoldResult::unknown();
+        case Opcode::ConstF64:
+            if (!instr.operands.empty() &&
+                instr.operands[0].kind == Value::Kind::ConstFloat)
                 return FoldResult::constant(instr.operands[0]);
             return FoldResult::unknown();
         default:
@@ -1321,6 +1412,10 @@ class SCCPSolver
             case Opcode::And:
             case Opcode::Or:
             case Opcode::Xor:
+            case Opcode::SDiv:
+            case Opcode::UDiv:
+            case Opcode::SRem:
+            case Opcode::URem:
             case Opcode::Shl:
             case Opcode::LShr:
             case Opcode::AShr:
@@ -1384,11 +1479,15 @@ class SCCPSolver
             case Opcode::FCmpGT:
             case Opcode::FCmpGE:
                 return foldFloatComparisons(instr.op, ctx);
+            case Opcode::FCmpOrd:
+            case Opcode::FCmpUno:
+                return foldFCmpOrdUno(instr.op, ctx);
 
             //===--------------------------------------------------------------===//
             // Type Conversions
             //===--------------------------------------------------------------===//
             case Opcode::CastSiToFp:
+            case Opcode::Sitofp:
                 return foldCastSiToFp(ctx);
             case Opcode::CastUiToFp:
                 return foldCastUiToFp(ctx);
@@ -1396,6 +1495,8 @@ class SCCPSolver
                 return foldCastFpToSi(ctx);
             case Opcode::CastFpToUiRteChk:
                 return foldCastFpToUi(ctx);
+            case Opcode::Fptosi:
+                return foldFptosi(ctx);
 
             //===--------------------------------------------------------------===//
             // Boolean Operations
@@ -1411,6 +1512,7 @@ class SCCPSolver
             case Opcode::ConstNull:
             case Opcode::ConstStr:
             case Opcode::AddrOf:
+            case Opcode::ConstF64:
                 return foldConstantMaterialization(instr);
 
             default:

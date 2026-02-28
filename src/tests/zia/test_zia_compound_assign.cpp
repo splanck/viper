@@ -25,8 +25,7 @@ namespace
 // Helper: check if a function contains a specific opcode
 // ============================================================================
 
-static bool hasOpcode(const il::core::Module &mod, const std::string &fnName,
-                      il::core::Opcode op)
+static bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il::core::Opcode op)
 {
     for (const auto &fn : mod.functions)
     {

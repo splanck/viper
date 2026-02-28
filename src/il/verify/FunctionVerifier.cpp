@@ -167,6 +167,15 @@ Expected<void> FunctionVerifier::run(const Module &module, DiagSink &sink)
 /// @return Success or a diagnostic describing the first failure.
 Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &sink)
 {
+    // Import-linkage functions are declarations with no body; skip body verification.
+    if (fn.linkage == Linkage::Import)
+    {
+        if (!fn.blocks.empty())
+            return Expected<void>{
+                makeError({}, formatFunctionDiag(fn, "import function must not have a body"))};
+        return {};
+    }
+
     if (fn.blocks.empty())
         return Expected<void>{makeError({}, formatFunctionDiag(fn, "function has no blocks"))};
 

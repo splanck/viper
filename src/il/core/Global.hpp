@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include "il/core/Linkage.hpp"
 #include "il/core/Type.hpp"
 #include <string>
 
@@ -48,6 +49,11 @@ struct Global
     /// @invariant Non-empty only for globals with constant values (e.g. UTF-8
     /// string literals).
     std::string init;
+
+    /// @brief Cross-module visibility for the IL linker.
+    /// @details Defaults to Internal for backwards compatibility.
+    /// @see ADR-0003, il/core/Linkage.hpp
+    Linkage linkage = Linkage::Internal;
 };
 
 } // namespace il::core

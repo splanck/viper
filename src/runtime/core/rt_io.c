@@ -67,6 +67,7 @@
 
 static _Thread_local jmp_buf *rt_trap_recovery_ = NULL;
 static _Thread_local char rt_trap_error_[512] = "";
+static _Thread_local int rt_trap_net_code_ = 0;
 
 void rt_trap_set_recovery(jmp_buf *buf)
 {
@@ -144,6 +145,27 @@ void rt_trap(const char *msg)
         longjmp(*rt_trap_recovery_, 1);
     }
     vm_trap(msg);
+}
+
+/// @brief Raise a network-specific trap with an error code.
+/// @details Stores the error code in thread-local storage before delegating to
+///          rt_trap(). The error code can be retrieved after recovery via
+///          rt_trap_get_net_code() for programmatic error classification.
+/// @param msg Human-readable description of the network failure.
+/// @param err_code One of the Err_Connection*/Err_Dns*/Err_Network* codes.
+void rt_trap_net(const char *msg, int err_code)
+{
+    rt_trap_net_code_ = err_code;
+    char buf[600];
+    snprintf(buf, sizeof(buf), "Network error %d: %s", err_code, msg ? msg : "unknown");
+    rt_trap(buf);
+}
+
+/// @brief Retrieve the error code from the most recent network trap.
+/// @return The Err_* code set by the last rt_trap_net() call on this thread.
+int rt_trap_get_net_code(void)
+{
+    return rt_trap_net_code_;
 }
 
 // =============================================================================

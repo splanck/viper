@@ -5,7 +5,7 @@ set -euo pipefail
 # Viper Unified Benchmark Suite
 # ============================================================================
 # Benchmarks all execution modes across IL stress programs and compares
-# against C (-O0/-O2/-O3), Rust, Lua, Python, and Java reference implementations.
+# against C (-O0/-O2/-O3), Rust, Lua, Python, Java, and C# reference implementations.
 #
 # Usage: scripts/benchmark.sh [options]
 #
@@ -18,6 +18,7 @@ set -euo pipefail
 #   lua                                 Lua reference (lua 5.4)
 #   python3                             Python 3 reference
 #   java                                Java reference
+#   csharp                              C# / .NET reference
 # ============================================================================
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
@@ -57,7 +58,7 @@ Options:
   --set-baseline         Save this run as benchmarks/baseline.jsonl
   --no-native            Skip native codegen benchmarks
   --no-vm                Skip VM benchmarks
-  --no-reference         Skip C/Rust/Lua/Python/Java reference benchmarks
+  --no-reference         Skip C/Rust/Lua/Python/Java/C# reference benchmarks
   --programs GLOB        Only run programs matching this glob (e.g. "fib*")
   -q, --quiet            Suppress progress output
   -h, --help             Show this help message
@@ -142,6 +143,17 @@ elif [[ -x /opt/homebrew/opt/openjdk/bin/javac ]] && /opt/homebrew/opt/openjdk/b
     HAS_JAVA=1
     JAVAC=/opt/homebrew/opt/openjdk/bin/javac
     JAVA=/opt/homebrew/opt/openjdk/bin/java
+fi
+
+# .NET / C#
+HAS_DOTNET=0
+DOTNET="dotnet"
+if command -v dotnet >/dev/null 2>&1; then
+    HAS_DOTNET=1
+elif [[ -x /opt/homebrew/opt/dotnet/libexec/dotnet ]]; then
+    HAS_DOTNET=1
+    DOTNET=/opt/homebrew/opt/dotnet/libexec/dotnet
+    export DOTNET_ROOT="/opt/homebrew/opt/dotnet/libexec"
 fi
 
 # python3 is required for JSON assembly and timing
@@ -322,6 +334,7 @@ if [[ "$NO_REFERENCE" != "1" ]]; then
     [[ "$HAS_LUA" == "1" ]] && log "    Lua:       lua"
     [[ "$HAS_PYTHON3" == "1" ]] && log "    Python:    python3"
     [[ "$HAS_JAVA" == "1" ]] && log "    Java:      javac + java"
+    [[ "$HAS_DOTNET" == "1" ]] && log "    C#:        dotnet ($($DOTNET --version 2>/dev/null || echo '?'))"
 fi
 log ""
 log "──────────────────────────────────────────────────────────────────────────"
@@ -352,6 +365,8 @@ for prog in "${PROGRAMS[@]}"; do
         local_java_class=$(snake_to_pascal "$prog")
         [[ "$HAS_PYTHON3" == "1" && -f "$REF_DIR/python/$prog.py" ]] && ((total_benchmarks++)) || true
         [[ "$HAS_JAVA" == "1" && -f "$REF_DIR/java/$local_java_class.java" ]] && ((total_benchmarks++)) || true
+        local_dotnet_class=$(snake_to_pascal "$prog")
+        [[ "$HAS_DOTNET" == "1" && -f "$REF_DIR/csharp/$local_dotnet_class.cs" ]] && ((total_benchmarks++)) || true
     fi
 done
 
@@ -496,6 +511,46 @@ print(','.join(parts))
         fi
     fi
 
+    # --- C# / .NET reference ---
+    if [[ "$NO_REFERENCE" != "1" && "$HAS_DOTNET" == "1" ]]; then
+        dotnet_class=$(snake_to_pascal "$prog")
+        csharp_file="$REF_DIR/csharp/$dotnet_class.cs"
+        if [[ -f "$csharp_file" ]]; then
+            log_progress "\r  [$completed_benchmarks/$total_benchmarks] $prog: csharp...                      "
+            dotnet_build_dir="$TMPDIR_BENCH/csharp_$prog"
+            mkdir -p "$dotnet_build_dir"
+            # Create minimal project, copy source, build Release
+            if [[ ! -f "$TMPDIR_BENCH/csharp_proj/BenchCS.csproj" ]]; then
+                mkdir -p "$TMPDIR_BENCH/csharp_proj"
+                cat > "$TMPDIR_BENCH/csharp_proj/BenchCS.csproj" <<'CSEOF'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+</Project>
+CSEOF
+            fi
+            cp "$csharp_file" "$TMPDIR_BENCH/csharp_proj/Program.cs"
+            if "$DOTNET" build "$TMPDIR_BENCH/csharp_proj" -c Release -o "$dotnet_build_dir" --nologo -v q 2>/dev/null; then
+                dotnet_exe="$dotnet_build_dir/BenchCS"
+                if [[ -x "$dotnet_exe" ]]; then
+                    result=$(time_executable "$dotnet_exe" "$ITERATIONS" "$WARMUP")
+                else
+                    # Fallback: run via dotnet command
+                    result=$(time_executable "$DOTNET" "$ITERATIONS" "$WARMUP" "$dotnet_build_dir/BenchCS.dll")
+                fi
+                [[ -n "$modes_json" ]] && modes_json="$modes_json,"
+                modes_json="$modes_json\"csharp\":$result"
+            else
+                [[ -n "$modes_json" ]] && modes_json="$modes_json,"
+                modes_json="$modes_json\"csharp\":{\"success\":false,\"skip_reason\":\"compilation failed\"}"
+            fi
+            ((completed_benchmarks++)) || true
+        fi
+    fi
+
     # Build per-program JSON
     PROGRAM_RESULTS+=("{\"program\":\"$prog\",\"modes\":{$modes_json}}")
 done
@@ -561,7 +616,7 @@ mode_order = [
     'native-arm64', 'native-x86_64',
     'c-O0', 'c-O2', 'c-O3',
     'rust-O', 'lua',
-    'python3', 'java'
+    'python3', 'java', 'csharp'
 ]
 
 # Collect all modes that appear in any benchmark

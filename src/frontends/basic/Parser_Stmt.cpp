@@ -49,6 +49,8 @@ void Parser::registerCoreParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordConst, &Parser::parseConstStatement);
     registry.registerHandler(TokenKind::KeywordFunction, &Parser::parseFunctionStatement);
     registry.registerHandler(TokenKind::KeywordSub, &Parser::parseSubStatement);
+    registry.registerHandler(TokenKind::KeywordExport, &Parser::parseExportStatement);
+    registry.registerHandler(TokenKind::KeywordDeclare, &Parser::parseDeclareStatement);
     registry.registerHandler(TokenKind::KeywordNamespace, &Parser::parseNamespaceDecl);
     registry.registerHandler(TokenKind::KeywordUsing, &Parser::parseUsingDecl);
 }
@@ -98,10 +100,15 @@ StmtPtr Parser::parseStatement(int line)
             consume();
         return nullptr;
     }
+
     struct DepthGuard
     {
         unsigned &d;
-        ~DepthGuard() { --d; }
+
+        ~DepthGuard()
+        {
+            --d;
+        }
     } stmtGuard_{stmtDepth_};
 
     // 1. Diagnose unexpected leading line numbers before statement content.

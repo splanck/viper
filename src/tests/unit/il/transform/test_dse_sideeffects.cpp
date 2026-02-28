@@ -360,8 +360,8 @@ TEST(DSESideEffects, StoreLoadDifferentAllocas)
 
     BasicBlock entry;
     entry.label = "entry";
-    entry.instructions.push_back(makeAlloca(0)); // A
-    entry.instructions.push_back(makeAlloca(1)); // B
+    entry.instructions.push_back(makeAlloca(0));                                  // A
+    entry.instructions.push_back(makeAlloca(1));                                  // B
     entry.instructions.push_back(makeStore(Value::temp(0), Value::constInt(10))); // store to A
     entry.instructions.push_back(makeStore(Value::temp(1), Value::constInt(20))); // store to B
     entry.instructions.push_back(makeBr("read"));

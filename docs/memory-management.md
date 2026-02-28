@@ -486,22 +486,37 @@ forget cleanup.
 ### 5. MEDIUM: Pool Memory Never Returned to OS
 
 The slab allocator retains all allocated slabs for the process lifetime.
-`rt_pool_shutdown()` exists but is never called. For long-running processes
-that create many short strings early, this memory remains allocated even if
-never used again.
+For long-running processes that create many short strings early, this memory
+remains allocated even if never used again. `rt_pool_shutdown()` is called
+at process exit via the `atexit` handler (see §Shutdown Cleanup below) but
+not during normal execution.
 
-### 6. MEDIUM: No Shutdown Cleanup Path
+### 6. ~~MEDIUM: No Shutdown Cleanup Path~~ — RESOLVED
 
-No `atexit` handler or main-cleanup path calls `rt_pool_shutdown()` or
-`rt_string_intern_drain()`. While the OS reclaims all memory at process exit,
-this makes leak-detection tools (Valgrind, ASan) noisy and complicates
-embedding Viper in larger applications.
+**Fixed.** An `atexit` handler (`rt_global_shutdown` in `rt_heap.c`) is now
+registered on first heap allocation. It runs the following cleanup in order:
+
+1. `rt_gc_run_all_finalizers()` — runs finalizers on all GC-tracked objects
+   (flushes files, closes sockets, releases audio/GPU handles)
+2. `rt_audio_shutdown()` — destroys the audio device (idempotent no-op if
+   audio was never initialized or already shut down)
+3. `rt_legacy_context_shutdown()` — closes BASIC file channels, releases
+   argument storage and type registry held by the static legacy context
+4. `rt_string_intern_drain()` — frees the interned string table
+5. `rt_gc_shutdown()` — frees the GC tracking hash table and weak-ref buckets
+6. `rt_pool_shutdown()` — frees all pool slabs
+
+This runs on all `exit()` paths: normal return, `rt_env_exit()`,
+`rt_abort()`/`vm_trap()`, Ctrl-C (SIGINT), and `rt_trap_div0()`. The
+stack-overflow handler uses `_exit(1)` and intentionally bypasses cleanup
+(stack is blown; running arbitrary code is unsafe).
 
 ### 7. LOW: Interned Strings Are Immortal
 
-The intern table retains strings forever. `rt_string_intern_drain()` exists
-for test cleanup but is not called during normal execution. Programs that
-intern many unique strings will see monotonically growing memory.
+The intern table retains strings forever during normal execution. Programs
+that intern many unique strings will see monotonically growing memory.
+`rt_string_intern_drain()` is called at process exit via the `atexit`
+handler.
 
 ### 8. LOW: GC Tracking Uses Linear Scan
 
@@ -560,14 +575,13 @@ Add a configurable memory budget for the pool allocator. When pool usage exceeds
 the budget, return slabs to the OS. Requires tracking total allocated bytes per
 size class and implementing a slab-return path.
 
-### P4: Shutdown Cleanup
+### ~~P4: Shutdown Cleanup~~ — DONE
 
-Register an `atexit` handler (or call from the main cleanup path) that invokes:
-- `rt_string_intern_drain()`
-- `rt_pool_shutdown()`
-- Any other global state cleanup
-
-Important for embedding scenarios and leak-detection tool hygiene.
+Implemented via `rt_global_shutdown()` in `rt_heap.c`, registered as an
+`atexit` handler on first heap allocation. The shutdown sequence runs:
+GC finalizer sweep → audio shutdown → legacy context cleanup → string
+intern drain → GC table teardown → pool slab release. Thread pools are
+GC-tracked so the finalizer sweep joins worker threads. See §6 above.
 
 ### P5: GC Performance
 

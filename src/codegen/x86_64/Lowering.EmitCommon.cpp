@@ -884,8 +884,8 @@ std::optional<int> EmitCommon::fcmpConditionCode(std::string_view opcode) noexce
         {"le", 9},
         {"gt", 6},
         {"ge", 7},
-        {"ord", 11},  // NP — no parity (neither operand is NaN)
-        {"uno", 10},  // P  — parity (at least one operand is NaN)
+        {"ord", 11}, // NP — no parity (neither operand is NaN)
+        {"uno", 10}, // P  — parity (at least one operand is NaN)
     };
 
     const std::string_view suffix = opcode.substr(5);

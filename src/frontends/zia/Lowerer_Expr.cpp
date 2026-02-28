@@ -46,10 +46,20 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
         --exprLowerDepth_;
         diag_.report({il::support::Severity::Error,
                       "expression nesting too deep during lowering (limit: 512)",
-                      expr->loc, "V3200"});
+                      expr->loc,
+                      "V3200"});
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
-    struct DepthGuard { unsigned &d; ~DepthGuard() { --d; } } exprGuard_{exprLowerDepth_};
+
+    struct DepthGuard
+    {
+        unsigned &d;
+
+        ~DepthGuard()
+        {
+            --d;
+        }
+    } exprGuard_{exprLowerDepth_};
 
     ZiaLocationScope locScope(*this, expr->loc);
 

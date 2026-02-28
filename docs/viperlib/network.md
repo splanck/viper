@@ -6,6 +6,7 @@
 
 ## Contents
 
+- [Error Handling](#error-handling)
 - [Viper.Network.Tcp](#vipernetworktcp)
 - [Viper.Network.TcpServer](#vipernetworktcpserver)
 - [Viper.Network.Udp](#vipernetworkudp)
@@ -18,6 +19,44 @@
 - [Viper.Network.RestClient](#vipernetworkrestclient)
 - [Viper.Network.RetryPolicy](#vipernetworkretrypolicy)
 - [Viper.Network.RateLimiter](#vipernetworkratelimiter)
+
+---
+
+## Error Handling
+
+Network operations raise categorized runtime errors on failure.
+BASIC programs handle these with `ON ERROR GOTO`; Zia programs can
+use structured error handling. Programs without error handlers receive
+a descriptive error message and clean exit.
+
+### Error Codes
+
+| Code | Name              | Raised When                                    |
+|------|-------------------|------------------------------------------------|
+| 10   | ConnectionRefused | Remote host actively refused the connection    |
+| 11   | HostNotFound      | Hostname could not be resolved                 |
+| 12   | ConnectionReset   | Connection reset by peer (EPIPE, RST)          |
+| 13   | Timeout           | Operation timed out                            |
+| 14   | ConnectionClosed  | Operation attempted on a closed connection     |
+| 15   | DnsError          | DNS resolution failed                          |
+| 16   | InvalidUrl        | URL is malformed or unparseable                |
+| 17   | TlsError          | TLS handshake or certificate failure           |
+| 18   | NetworkError      | Generic network I/O failure                    |
+| 19   | ProtocolError     | Protocol-level error (HTTP, WebSocket)         |
+
+### Default Timeouts
+
+| Operation     | Default   |
+|---------------|-----------|
+| TCP Connect   | 30 sec    |
+| HTTP Request  | 30 sec    |
+| WS Connect    | 30 sec    |
+
+### Programming Errors (Not Catchable)
+
+Passing NULL connections, invalid port numbers, or NULL data are
+programming errors that always terminate the program. They are not
+network conditions and cannot be recovered from.
 
 ---
 

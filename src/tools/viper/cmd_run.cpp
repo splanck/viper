@@ -17,6 +17,8 @@
 #include "frontends/zia/Compiler.hpp"
 #include "frontends/zia/Warnings.hpp"
 #include "il/api/expected_api.hpp"
+#include "il/link/InteropThunks.hpp"
+#include "il/link/ModuleLinker.hpp"
 #include "il/transform/PassManager.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
@@ -336,6 +338,71 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
     return std::move(result.module);
 }
 
+/// @brief Compile a mixed-language project (Zia + BASIC) and link the modules.
+il::support::Expected<il::core::Module> compileMixedProject(const ProjectConfig &project,
+                                                            bool noRuntimeNamespaces,
+                                                            const ilc::SharedCliOptions &shared,
+                                                            il::support::SourceManager &sm)
+{
+    // Determine entry language from file extension.
+    std::string entryExt;
+    if (project.entryFile.size() >= 4)
+        entryExt = project.entryFile.substr(project.entryFile.size() - 4);
+
+    bool entryIsZia = (entryExt == ".zia");
+
+    // Build a single-language project config for the entry module.
+    ProjectConfig entryProject = project;
+    entryProject.lang = entryIsZia ? ProjectLang::Zia : ProjectLang::Basic;
+    entryProject.sourceFiles = entryIsZia ? project.ziaFiles : project.basicFiles;
+
+    // Build a single-language project config for the library module.
+    ProjectConfig libProject = project;
+    libProject.lang = entryIsZia ? ProjectLang::Basic : ProjectLang::Zia;
+    libProject.sourceFiles = entryIsZia ? project.basicFiles : project.ziaFiles;
+
+    // Compile the entry module.
+    il::support::Expected<il::core::Module> entryResult =
+        entryIsZia ? compileZiaProject(entryProject, shared, sm)
+                   : compileBasicProject(entryProject, noRuntimeNamespaces, shared, sm);
+    if (!entryResult)
+        return entryResult;
+
+    // Compile the library module (the other language).
+    // Use the first library file as the entry file for the library project.
+    if (libProject.sourceFiles.empty())
+        return entryResult; // No library files, just return the entry module.
+
+    libProject.entryFile = libProject.sourceFiles[0];
+    il::support::Expected<il::core::Module> libResult =
+        entryIsZia ? compileBasicProject(libProject, noRuntimeNamespaces, shared, sm)
+                   : compileZiaProject(libProject, shared, sm);
+    if (!libResult)
+        return libResult;
+
+    // Generate boolean interop thunks.
+    auto thunks = il::link::generateBooleanThunks(entryResult.value(), libResult.value());
+    for (auto &thunk : thunks)
+        entryResult.value().functions.push_back(std::move(thunk.thunk));
+
+    // Link the two modules.
+    std::vector<il::core::Module> modules;
+    modules.push_back(std::move(entryResult.value()));
+    modules.push_back(std::move(libResult.value()));
+
+    auto linkResult = il::link::linkModules(std::move(modules));
+    if (!linkResult.succeeded())
+    {
+        std::string errMsg = "link errors:";
+        for (const auto &e : linkResult.errors)
+            errMsg += "\n  " + e;
+        return il::support::Expected<il::core::Module>(
+            il::support::Diagnostic{il::support::Severity::Error, errMsg, {}, {}});
+    }
+
+    return std::move(linkResult.module);
+}
+
 /// @brief Common implementation for both run and build commands.
 int runOrBuild(RunMode mode, int argc, char **argv)
 {
@@ -371,7 +438,9 @@ int runOrBuild(RunMode mode, int argc, char **argv)
     // Compile
     SourceManager sm;
     il::support::Expected<il::core::Module> moduleResult =
-        (proj.lang == ProjectLang::Zia)
+        (proj.lang == ProjectLang::Mixed)
+            ? compileMixedProject(proj, config.noRuntimeNamespaces, config.shared, sm)
+        : (proj.lang == ProjectLang::Zia)
             ? compileZiaProject(proj, config.shared, sm)
             : compileBasicProject(proj, config.noRuntimeNamespaces, config.shared, sm);
 

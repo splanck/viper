@@ -30,12 +30,14 @@
 #include "rt_network.h"
 
 #include "rt_bytes.h"
+#include "rt_error.h"
 #include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -112,6 +114,79 @@ typedef int socket_t;
 #define ADDR_IN_USE EADDRINUSE
 #define PERM_DENIED EACCES
 #endif
+
+//=============================================================================
+// SIGPIPE Suppression
+//=============================================================================
+
+// On Linux/ViperDOS, MSG_NOSIGNAL prevents SIGPIPE on send() to a closed peer.
+// On macOS, MSG_NOSIGNAL is unavailable; we use SO_NOSIGPIPE per-socket instead.
+#if defined(__linux__) || defined(__viperdos__)
+#define SEND_FLAGS MSG_NOSIGNAL
+#else
+#define SEND_FLAGS 0
+#endif
+
+/// @brief Suppress SIGPIPE for a socket (macOS only; no-op elsewhere).
+static void suppress_sigpipe(socket_t sock)
+{
+#ifdef __APPLE__
+    int val = 1;
+    setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val));
+#endif
+    (void)sock;
+}
+
+//=============================================================================
+// Typed Network Trap
+//=============================================================================
+
+// Forward declaration (defined in rt_io.c).
+extern void rt_trap_net(const char *msg, int err_code);
+
+/// @brief Map platform errno / WSAGetLastError() to an Err_* network code.
+static int net_classify_errno(void)
+{
+    int e = GET_LAST_ERROR();
+#ifdef _WIN32
+    switch (e)
+    {
+        case WSAECONNREFUSED:
+            return Err_ConnectionRefused;
+        case WSAECONNRESET:
+        case WSAECONNABORTED:
+            return Err_ConnectionReset;
+        case WSAETIMEDOUT:
+            return Err_Timeout;
+        case WSAENETUNREACH:
+        case WSAEHOSTUNREACH:
+            return Err_NetworkError;
+        case WSAESHUTDOWN:
+        case WSAENOTCONN:
+            return Err_ConnectionClosed;
+        default:
+            return Err_NetworkError;
+    }
+#else
+    switch (e)
+    {
+        case ECONNREFUSED:
+            return Err_ConnectionRefused;
+        case ECONNRESET:
+        case EPIPE:
+            return Err_ConnectionReset;
+        case ETIMEDOUT:
+            return Err_Timeout;
+        case ENETUNREACH:
+        case EHOSTUNREACH:
+            return Err_NetworkError;
+        case ENOTCONN:
+            return Err_ConnectionClosed;
+        default:
+            return Err_NetworkError;
+    }
+#endif
+}
 
 //=============================================================================
 // Internal Bytes Access
@@ -203,7 +278,7 @@ static void rt_tcp_server_finalize(void *obj)
 //=============================================================================
 
 #ifdef _WIN32
-static bool wsa_initialized = false;
+static volatile LONG wsa_init_state = 0; // 0=uninit, 1=in-progress, 2=done
 
 static void rt_net_cleanup_wsa(void)
 {
@@ -212,20 +287,32 @@ static void rt_net_cleanup_wsa(void)
 
 void rt_net_init_wsa(void)
 {
-    if (wsa_initialized)
+    // Fast path: already done.
+    if (wsa_init_state == 2)
         return;
 
+    // Try to claim the init slot (0→1). Losers spin until 2.
+    LONG prev = InterlockedCompareExchange(&wsa_init_state, 1, 0);
+    if (prev == 2)
+        return;
+    if (prev == 1)
+    {
+        while (wsa_init_state != 2)
+            Sleep(0);
+        return;
+    }
+
+    // We won (prev == 0, state is now 1). Do the actual init.
     WSADATA wsa_data;
     int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
     if (result != 0)
     {
+        InterlockedExchange(&wsa_init_state, 0);
         rt_trap("Network: WSAStartup failed");
     }
-    wsa_initialized = true;
-    // Ensure WSACleanup is called on process exit.  Calling it manually after
-    // each WSAStartup is not safe because other subsystems may still be using
-    // sockets.  atexit() guarantees cleanup happens exactly once at shutdown.
+    // Ensure WSACleanup is called on process exit.
     atexit(rt_net_cleanup_wsa);
+    InterlockedExchange(&wsa_init_state, 2);
 }
 #else
 void rt_net_init_wsa(void) {}
@@ -312,7 +399,8 @@ static int get_local_port(socket_t sock)
 
 void *rt_tcp_connect(rt_string host, int64_t port)
 {
-    return rt_tcp_connect_for(host, port, 0);
+    // Default 30-second timeout prevents indefinite blocking on unreachable hosts.
+    return rt_tcp_connect_for(host, port, 30000);
 }
 
 void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
@@ -352,7 +440,7 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
     if (status != 0)
     {
         free(host_cstr);
-        rt_trap("Network: host not found");
+        rt_trap_net("Network: host not found", Err_HostNotFound);
     }
 
     // Create socket
@@ -363,6 +451,7 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
         free(host_cstr);
         rt_trap("Network: failed to create socket");
     }
+    suppress_sigpipe(sock);
 
     // Connect with optional timeout
     int connect_result;
@@ -395,7 +484,7 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
                     CLOSE_SOCKET(sock);
                     freeaddrinfo(res);
                     free(host_cstr);
-                    rt_trap("Network: connection timeout");
+                    rt_trap_net("Network: connection timeout", Err_Timeout);
                 }
 
                 // Check if connection succeeded
@@ -408,8 +497,8 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
                     freeaddrinfo(res);
                     free(host_cstr);
                     if (so_error == CONN_REFUSED)
-                        rt_trap("Network: connection refused");
-                    rt_trap("Network: connection failed");
+                        rt_trap_net("Network: connection refused", Err_ConnectionRefused);
+                    rt_trap_net("Network: connection failed", Err_NetworkError);
                 }
             }
             else
@@ -418,8 +507,8 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
                 freeaddrinfo(res);
                 free(host_cstr);
                 if (err == CONN_REFUSED)
-                    rt_trap("Network: connection refused");
-                rt_trap("Network: connection failed");
+                    rt_trap_net("Network: connection refused", Err_ConnectionRefused);
+                rt_trap_net("Network: connection failed", Err_NetworkError);
             }
         }
 
@@ -443,8 +532,8 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
             freeaddrinfo(res);
             free(host_cstr);
             if (err == CONN_REFUSED)
-                rt_trap("Network: connection refused");
-            rt_trap("Network: connection failed");
+                rt_trap_net("Network: connection refused", Err_ConnectionRefused);
+            rt_trap_net("Network: connection failed", Err_NetworkError);
         }
     }
 
@@ -547,7 +636,7 @@ int64_t rt_tcp_send(void *obj, void *data)
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
     if (!tcp->is_open)
-        rt_trap("Network: connection closed");
+        rt_trap_net("Network: connection closed", Err_ConnectionClosed);
 
     int64_t len = bytes_len(data);
     uint8_t *buf = bytes_data(data);
@@ -555,11 +644,11 @@ int64_t rt_tcp_send(void *obj, void *data)
     if (len == 0)
         return 0;
 
-    int sent = send(tcp->sock, (const char *)buf, (int)len, 0);
+    int sent = send(tcp->sock, (const char *)buf, (int)len, SEND_FLAGS);
     if (sent == SOCK_ERROR)
     {
         tcp->is_open = false;
-        rt_trap("Network: send failed");
+        rt_trap_net("Network: send failed", net_classify_errno());
     }
 
     return sent;
@@ -572,18 +661,18 @@ int64_t rt_tcp_send_str(void *obj, rt_string text)
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
     if (!tcp->is_open)
-        rt_trap("Network: connection closed");
+        rt_trap_net("Network: connection closed", Err_ConnectionClosed);
 
     const char *text_ptr = rt_string_cstr(text);
     size_t len = strlen(text_ptr);
     if (len == 0)
         return 0;
 
-    int sent = send(tcp->sock, text_ptr, (int)len, 0);
+    int sent = send(tcp->sock, text_ptr, (int)len, SEND_FLAGS);
     if (sent == SOCK_ERROR)
     {
         tcp->is_open = false;
-        rt_trap("Network: send failed");
+        rt_trap_net("Network: send failed", net_classify_errno());
     }
 
     return sent;
@@ -598,7 +687,7 @@ void rt_tcp_send_all(void *obj, void *data)
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
     if (!tcp->is_open)
-        rt_trap("Network: connection closed");
+        rt_trap_net("Network: connection closed", Err_ConnectionClosed);
 
     int64_t len = bytes_len(data);
     uint8_t *buf = bytes_data(data);
@@ -606,16 +695,18 @@ void rt_tcp_send_all(void *obj, void *data)
     int64_t total_sent = 0;
     while (total_sent < len)
     {
-        int sent = send(tcp->sock, (const char *)(buf + total_sent), (int)(len - total_sent), 0);
+        int64_t remaining = len - total_sent;
+        int chunk = (int)(remaining > INT_MAX ? INT_MAX : remaining);
+        int sent = send(tcp->sock, (const char *)(buf + total_sent), chunk, SEND_FLAGS);
         if (sent == SOCK_ERROR)
         {
             tcp->is_open = false;
-            rt_trap("Network: send failed");
+            rt_trap_net("Network: send failed", net_classify_errno());
         }
         if (sent == 0)
         {
             tcp->is_open = false;
-            rt_trap("Network: connection closed by peer");
+            rt_trap_net("Network: connection closed by peer", Err_ConnectionClosed);
         }
         total_sent += sent;
     }
@@ -632,7 +723,7 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes)
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
     if (!tcp->is_open)
-        rt_trap("Network: connection closed");
+        rt_trap_net("Network: connection closed", Err_ConnectionClosed);
 
     if (max_bytes <= 0)
         return rt_bytes_new(0);
@@ -659,7 +750,7 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes)
         tcp->is_open = false;
         if (rt_obj_release_check0(result))
             rt_obj_free(result);
-        rt_trap("Network: receive failed");
+        rt_trap_net("Network: receive failed", net_classify_errno());
     }
 
     if (received == 0)
@@ -697,7 +788,7 @@ void *rt_tcp_recv_exact(void *obj, int64_t count)
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
     if (!tcp->is_open)
-        rt_trap("Network: connection closed");
+        rt_trap_net("Network: connection closed", Err_ConnectionClosed);
 
     if (count <= 0)
         return rt_bytes_new(0);
@@ -715,14 +806,15 @@ void *rt_tcp_recv_exact(void *obj, int64_t count)
             tcp->is_open = false;
             if (rt_obj_release_check0(result))
                 rt_obj_free(result);
-            rt_trap("Network: receive failed");
+            rt_trap_net("Network: receive failed", net_classify_errno());
         }
         if (received == 0)
         {
             tcp->is_open = false;
             if (rt_obj_release_check0(result))
                 rt_obj_free(result);
-            rt_trap("Network: connection closed before receiving all data");
+            rt_trap_net("Network: connection closed before receiving all data",
+                        Err_ConnectionClosed);
         }
         total_received += received;
     }
@@ -737,7 +829,7 @@ rt_string rt_tcp_recv_line(void *obj)
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
     if (!tcp->is_open)
-        rt_trap("Network: connection closed");
+        rt_trap_net("Network: connection closed", Err_ConnectionClosed);
 
     // Line buffer with initial capacity
     size_t cap = 256;
@@ -754,13 +846,13 @@ rt_string rt_tcp_recv_line(void *obj)
         {
             free(line);
             tcp->is_open = false;
-            rt_trap("Network: receive failed");
+            rt_trap_net("Network: receive failed", net_classify_errno());
         }
         if (received == 0)
         {
             free(line);
             tcp->is_open = false;
-            rt_trap("Network: connection closed before end of line");
+            rt_trap_net("Network: connection closed before end of line", Err_ConnectionClosed);
         }
 
         if (c == '\n')
@@ -773,10 +865,19 @@ rt_string rt_tcp_recv_line(void *obj)
             break;
         }
 
-        // Add character to buffer
+        // Cap at 64KB to prevent unbounded memory growth from a malicious peer.
+        if (len >= 65536)
+        {
+            free(line);
+            rt_trap_net("Network: line exceeds 64KB limit", Err_ProtocolError);
+        }
+
+        // Add character to buffer, growing if needed.
         if (len >= cap)
         {
             cap *= 2;
+            if (cap > 65536)
+                cap = 65536;
             char *new_line = (char *)realloc(line, cap);
             if (!new_line)
             {
@@ -866,6 +967,7 @@ void *rt_tcp_server_listen_at(rt_string address, int64_t port)
         free(addr_cstr);
         rt_trap("Network: failed to create socket");
     }
+    suppress_sigpipe(sock);
 
     // Enable address reuse
     int reuse = 1;
@@ -890,10 +992,10 @@ void *rt_tcp_server_listen_at(rt_string address, int64_t port)
         CLOSE_SOCKET(sock);
         free(addr_cstr);
         if (err == ADDR_IN_USE)
-            rt_trap("Network: port already in use");
+            rt_trap_net("Network: port already in use", Err_NetworkError);
         if (err == PERM_DENIED)
-            rt_trap("Network: permission denied (port < 1024?)");
-        rt_trap("Network: bind failed");
+            rt_trap_net("Network: permission denied (port < 1024?)", Err_NetworkError);
+        rt_trap_net("Network: bind failed", Err_NetworkError);
     }
 
     // Start listening
@@ -901,7 +1003,7 @@ void *rt_tcp_server_listen_at(rt_string address, int64_t port)
     {
         CLOSE_SOCKET(sock);
         free(addr_cstr);
-        rt_trap("Network: listen failed");
+        rt_trap_net("Network: listen failed", Err_NetworkError);
     }
 
     // Create server object
@@ -970,7 +1072,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms)
 
     rt_tcp_server_t *server = (rt_tcp_server_t *)obj;
     if (!server->is_listening)
-        rt_trap("Network: server not listening");
+        rt_trap_net("Network: server not listening", Err_ConnectionClosed);
 
     // Use select for timeout
     if (timeout_ms > 0)
@@ -983,7 +1085,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms)
         }
         if (ready < 0)
         {
-            rt_trap("Network: accept failed");
+            rt_trap_net("Network: accept failed", Err_NetworkError);
         }
     }
 
@@ -997,8 +1099,10 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms)
         // Check if server was closed
         if (!server->is_listening)
             return NULL;
-        rt_trap("Network: accept failed");
+        rt_trap_net("Network: accept failed", Err_NetworkError);
     }
+
+    suppress_sigpipe(client_sock);
 
     // Enable TCP_NODELAY
     set_nodelay(client_sock);
@@ -1096,6 +1200,7 @@ void *rt_udp_new(void)
     {
         rt_trap("Network: failed to create UDP socket");
     }
+    suppress_sigpipe(sock);
 
     rt_udp_t *udp = (rt_udp_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_udp_t));
     if (!udp)
@@ -1143,6 +1248,7 @@ void *rt_udp_bind_at(rt_string address, int64_t port)
     {
         rt_trap("Network: failed to create UDP socket");
     }
+    suppress_sigpipe(sock);
 
     // Enable address reuse
     int reuse = 1;
@@ -1165,10 +1271,10 @@ void *rt_udp_bind_at(rt_string address, int64_t port)
         int err = GET_LAST_ERROR();
         CLOSE_SOCKET(sock);
         if (err == ADDR_IN_USE)
-            rt_trap("Network: port already in use");
+            rt_trap_net("Network: port already in use", Err_NetworkError);
         if (err == PERM_DENIED)
-            rt_trap("Network: permission denied (port < 1024?)");
-        rt_trap("Network: bind failed");
+            rt_trap_net("Network: permission denied (port < 1024?)", Err_NetworkError);
+        rt_trap_net("Network: bind failed", Err_NetworkError);
     }
 
     // Get actual port if 0 was specified
@@ -1292,7 +1398,7 @@ int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data)
 
     rt_udp_t *udp = (rt_udp_t *)obj;
     if (!udp->is_open)
-        rt_trap("Network: socket closed");
+        rt_trap_net("Network: socket closed", Err_ConnectionClosed);
 
     const char *host_ptr = rt_string_cstr(host);
     if (!host_ptr || *host_ptr == '\0')
@@ -1309,17 +1415,17 @@ int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data)
 
     // Check packet size
     if (len > 65507)
-        rt_trap("Network: message too large (max 65507 bytes for UDP)");
+        rt_trap_net("Network: message too large (max 65507 bytes for UDP)", Err_NetworkError);
 
     // Resolve destination
     struct sockaddr_in dest_addr;
     if (resolve_host(host_ptr, (int)port, &dest_addr) != 0)
-        rt_trap("Network: host not found");
+        rt_trap_net("Network: host not found", Err_HostNotFound);
 
     int sent = sendto(udp->sock,
                       (const char *)buf,
                       (int)len,
-                      0,
+                      SEND_FLAGS,
                       (struct sockaddr *)&dest_addr,
                       sizeof(dest_addr));
     if (sent == SOCK_ERROR)
@@ -1327,12 +1433,12 @@ int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data)
 #ifdef _WIN32
         int err = WSAGetLastError();
         if (err == WSAEMSGSIZE)
-            rt_trap("Network: message too large");
+            rt_trap_net("Network: message too large", Err_NetworkError);
 #else
         if (errno == EMSGSIZE)
-            rt_trap("Network: message too large");
+            rt_trap_net("Network: message too large", Err_NetworkError);
 #endif
-        rt_trap("Network: send failed");
+        rt_trap_net("Network: send failed", net_classify_errno());
     }
 
     return sent;
@@ -1345,7 +1451,7 @@ int64_t rt_udp_send_to_str(void *obj, rt_string host, int64_t port, rt_string te
 
     rt_udp_t *udp = (rt_udp_t *)obj;
     if (!udp->is_open)
-        rt_trap("Network: socket closed");
+        rt_trap_net("Network: socket closed", Err_ConnectionClosed);
 
     const char *host_ptr = rt_string_cstr(host);
     if (!host_ptr || *host_ptr == '\0')
@@ -1361,18 +1467,22 @@ int64_t rt_udp_send_to_str(void *obj, rt_string host, int64_t port, rt_string te
         return 0;
 
     if (len > 65507)
-        rt_trap("Network: message too large (max 65507 bytes for UDP)");
+        rt_trap_net("Network: message too large (max 65507 bytes for UDP)", Err_NetworkError);
 
     // Resolve destination
     struct sockaddr_in dest_addr;
     if (resolve_host(host_ptr, (int)port, &dest_addr) != 0)
-        rt_trap("Network: host not found");
+        rt_trap_net("Network: host not found", Err_HostNotFound);
 
-    int sent =
-        sendto(udp->sock, text_ptr, (int)len, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    int sent = sendto(udp->sock,
+                      text_ptr,
+                      (int)len,
+                      SEND_FLAGS,
+                      (struct sockaddr *)&dest_addr,
+                      sizeof(dest_addr));
     if (sent == SOCK_ERROR)
     {
-        rt_trap("Network: send failed");
+        rt_trap_net("Network: send failed", net_classify_errno());
     }
 
     return sent;
@@ -1394,7 +1504,7 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes)
 
     rt_udp_t *udp = (rt_udp_t *)obj;
     if (!udp->is_open)
-        rt_trap("Network: socket closed");
+        rt_trap_net("Network: socket closed", Err_ConnectionClosed);
 
     if (max_bytes <= 0)
         return rt_bytes_new(0);
@@ -1421,7 +1531,7 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes)
             // Return empty bytes on timeout
             return rt_bytes_new(0);
         }
-        rt_trap("Network: receive failed");
+        rt_trap_net("Network: receive failed", net_classify_errno());
     }
 
     // Store sender info
@@ -1446,7 +1556,7 @@ void *rt_udp_recv_for(void *obj, int64_t max_bytes, int64_t timeout_ms)
 
     rt_udp_t *udp = (rt_udp_t *)obj;
     if (!udp->is_open)
-        rt_trap("Network: socket closed");
+        rt_trap_net("Network: socket closed", Err_ConnectionClosed);
 
     // Use select for timeout
     if (timeout_ms > 0)
@@ -1459,7 +1569,7 @@ void *rt_udp_recv_for(void *obj, int64_t max_bytes, int64_t timeout_ms)
         }
         if (ready < 0)
         {
-            rt_trap("Network: receive failed");
+            rt_trap_net("Network: receive failed", net_classify_errno());
         }
     }
 
@@ -1495,13 +1605,13 @@ void rt_udp_set_broadcast(void *obj, int8_t enable)
 
     rt_udp_t *udp = (rt_udp_t *)obj;
     if (!udp->is_open)
-        rt_trap("Network: socket closed");
+        rt_trap_net("Network: socket closed", Err_ConnectionClosed);
 
     int flag = enable ? 1 : 0;
     if (setsockopt(udp->sock, SOL_SOCKET, SO_BROADCAST, (const char *)&flag, sizeof(flag)) ==
         SOCK_ERROR)
     {
-        rt_trap("Network: failed to set broadcast option");
+        rt_trap_net("Network: failed to set broadcast option", Err_NetworkError);
     }
 }
 
@@ -1512,7 +1622,7 @@ void rt_udp_join_group(void *obj, rt_string group_addr)
 
     rt_udp_t *udp = (rt_udp_t *)obj;
     if (!udp->is_open)
-        rt_trap("Network: socket closed");
+        rt_trap_net("Network: socket closed", Err_ConnectionClosed);
 
     const char *addr_ptr = rt_string_cstr(group_addr);
     if (!addr_ptr || *addr_ptr == '\0')
@@ -1538,7 +1648,7 @@ void rt_udp_join_group(void *obj, rt_string group_addr)
     if (setsockopt(udp->sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const char *)&mreq, sizeof(mreq)) ==
         SOCK_ERROR)
     {
-        rt_trap("Network: failed to join multicast group");
+        rt_trap_net("Network: failed to join multicast group", Err_NetworkError);
     }
 }
 
@@ -1661,7 +1771,7 @@ rt_string rt_dns_resolve(rt_string hostname)
     {
         if (result)
             freeaddrinfo(result);
-        rt_trap("Network: hostname not found");
+        rt_trap_net("Network: hostname not found", Err_DnsError);
     }
 
     char ip_str[INET_ADDRSTRLEN];
@@ -1690,7 +1800,7 @@ void *rt_dns_resolve_all(rt_string hostname)
     {
         if (result)
             freeaddrinfo(result);
-        rt_trap("Network: hostname not found");
+        rt_trap_net("Network: hostname not found", Err_DnsError);
     }
 
     void *seq = rt_seq_new();
@@ -1740,7 +1850,7 @@ rt_string rt_dns_resolve4(rt_string hostname)
     {
         if (result)
             freeaddrinfo(result);
-        rt_trap("Network: no IPv4 address found");
+        rt_trap_net("Network: no IPv4 address found", Err_DnsError);
     }
 
     char ip_str[INET_ADDRSTRLEN];
@@ -1769,7 +1879,7 @@ rt_string rt_dns_resolve6(rt_string hostname)
     {
         if (result)
             freeaddrinfo(result);
-        rt_trap("Network: no IPv6 address found");
+        rt_trap_net("Network: no IPv6 address found", Err_DnsError);
     }
 
     char ip_str[INET6_ADDRSTRLEN];
@@ -1812,14 +1922,14 @@ rt_string rt_dns_reverse(rt_string ip_address)
     }
     else
     {
-        rt_trap("Network: invalid IP address");
+        rt_trap_net("Network: invalid IP address", Err_InvalidUrl);
     }
 
     char host[NI_MAXHOST];
     int ret = getnameinfo(sa, sa_len, host, sizeof(host), NULL, 0, NI_NAMEREQD);
     if (ret != 0)
     {
-        rt_trap("Network: reverse lookup failed");
+        rt_trap_net("Network: reverse lookup failed", Err_DnsError);
     }
 
     return rt_string_from_bytes(host, strlen(host));
@@ -1855,7 +1965,7 @@ rt_string rt_dns_local_host(void)
     char hostname[256];
     if (gethostname(hostname, sizeof(hostname)) != 0)
     {
-        rt_trap("Network: failed to get hostname");
+        rt_trap_net("Network: failed to get hostname", Err_DnsError);
     }
 
     return rt_string_from_bytes(hostname, strlen(hostname));
