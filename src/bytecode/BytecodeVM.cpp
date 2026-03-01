@@ -68,7 +68,11 @@ BytecodeVM::BytecodeVM()
     valueStack_.resize(kMaxStackSize * kMaxCallDepth);
     callStack_.reserve(kMaxCallDepth);
 
-    // Pre-allocate alloca buffer (64KB should be sufficient for most cases)
+    // Pre-allocate alloca buffer and reserve maximum capacity upfront.
+    // The buffer MUST NOT reallocate during execution because alloca pointers
+    // stored in registers and operand stack would become dangling.
+    // Reserve the 16MB maximum so resize() never triggers reallocation.
+    allocaBuffer_.reserve(16 * 1024 * 1024);
     allocaBuffer_.resize(64 * 1024);
 }
 

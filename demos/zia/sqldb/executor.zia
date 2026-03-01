@@ -965,20 +965,63 @@ entity Executor {
             outerTableAlias = savedOuterAlias2;
             currentTableAlias = savedCurrentAlias2;
 
-            // Get scalar result
+            // Determine if subquery is in an IN context by checking preceding text.
+            // IN context needs a parenthesized value list for multi-row results.
+            var beforeText = String.Substring(result, 0, idx);
+            var btLen = String.Length(beforeText);
+            var isInContext = false;
+            if btLen >= 3 {
+                var lastThree = String.ToUpper(String.Substring(beforeText, btLen - 3, 3));
+                if lastThree == "IN " {
+                    isInContext = true;
+                }
+            }
+
+            // Build replacement from subquery result
             var replacement = "NULL";
             if innerResult.success && innerResult.rowCount() > 0 {
-                var firstRow = innerResult.getRow(0);
-                if firstRow != null {
-                    var fr = firstRow;
-                    if fr.columnCount() > 0 {
-                        var val = fr.getValue(0);
-                        if val.kind == SQL_INTEGER {
-                            replacement = Fmt.Int(val.intValue);
-                        } else if val.kind == SQL_REAL {
-                            replacement = val.textValue;
-                        } else if val.kind == SQL_TEXT {
-                            replacement = "'" + val.textValue + "'";
+                if isInContext && innerResult.rowCount() > 1 {
+                    // Multi-row IN context: build (val1, val2, ...)
+                    var listStr = "(";
+                    var ri = 0;
+                    while ri < innerResult.rowCount() {
+                        var row = innerResult.getRow(ri);
+                        if row != null {
+                            var r = row;
+                            if r.columnCount() > 0 {
+                                if ri > 0 {
+                                    listStr = listStr + ", ";
+                                }
+                                var val = r.getValue(0);
+                                if val.kind == SQL_INTEGER {
+                                    listStr = listStr + Fmt.Int(val.intValue);
+                                } else if val.kind == SQL_REAL {
+                                    listStr = listStr + val.textValue;
+                                } else if val.kind == SQL_TEXT {
+                                    listStr = listStr + "'" + val.textValue + "'";
+                                } else {
+                                    listStr = listStr + "NULL";
+                                }
+                            }
+                        }
+                        ri = ri + 1;
+                    }
+                    listStr = listStr + ")";
+                    replacement = listStr;
+                } else {
+                    // Scalar context or single row: use first row value
+                    var firstRow = innerResult.getRow(0);
+                    if firstRow != null {
+                        var fr = firstRow;
+                        if fr.columnCount() > 0 {
+                            var val = fr.getValue(0);
+                            if val.kind == SQL_INTEGER {
+                                replacement = Fmt.Int(val.intValue);
+                            } else if val.kind == SQL_REAL {
+                                replacement = val.textValue;
+                            } else if val.kind == SQL_TEXT {
+                                replacement = "'" + val.textValue + "'";
+                            }
                         }
                     }
                 }

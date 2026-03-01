@@ -174,12 +174,39 @@ These are **platform bugs**, not SQL logic bugs.
 
 ---
 
+## BUG-ADV-011: Nested IN subquery returns 0 rows instead of expected results
+
+- **Status**: FIXED
+- **Severity**: P2 (wrong result)
+- **Component**: ViperSQL executor — `executor.zia` (`flattenSubqueries`)
+- **Symptom**: `SELECT n FROM nums WHERE n IN (SELECT n FROM nums WHERE n IN (SELECT n FROM nums WHERE n > 3))` returns 0 rows instead of {4, 5}. Two-level IN nesting works, three-level does not.
+- **Root cause**: `flattenSubqueries()` pre-executes inner subqueries and substitutes results as literals. When an inner subquery returns multiple rows (e.g., {4, 5}), the function takes only the FIRST row via `innerResult.getRow(0)` and produces a scalar replacement like `4`. For an IN context (`WHERE n IN (SELECT ...)`), this creates invalid SQL like `WHERE n IN 4` instead of `WHERE n IN (4, 5)`.
+- **Fix**: In `flattenSubqueries()`, detect IN context by checking if the text before `(SELECT` ends with `IN ` (case-insensitive). When in IN context with multiple rows, build a parenthesized value list `(val1, val2, ...)` instead of a scalar. Single-row and zero-row results use the existing scalar path.
+- **Regression test**: `test_adversarial.zia` — test 7.4 (nested IN subqueries)
+- **Found**: 2026-02-28
+- **Fixed**: 2026-02-28
+
+---
+
+## BUG-ADV-012: SIGABRT under memory pressure from BytecodeVM alloca buffer reallocation
+
+- **Status**: FIXED
+- **Severity**: P0 (crash)
+- **Component**: BytecodeVM — `src/bytecode/BytecodeVM.cpp` (alloca buffer management)
+- **Symptom**: Creating 50 tables + inserting 10,000 rows (100 batches of 100 rows) causes SIGABRT at `rt_heap.c:96` (`hdr->magic == RT_MAGIC` assertion). Crash occurs around batch 30 of 100.
+- **Root cause**: The BytecodeVM's `allocaBuffer_` (`std::vector<uint8_t>`) is initially sized to 64KB. When alloca usage exceeds capacity, the ALLOCA opcode handler calls `allocaBuffer_.resize(newSize)`, which reallocates the buffer to a new memory location. All previously computed alloca pointers (stored in the operand stack and local variables) become dangling — they point to the freed old buffer. Subsequent Load/Store operations dereference these stale pointers, causing heap-use-after-free. This eventually corrupts heap headers, triggering the `RT_MAGIC` assertion.
+- **Fix**: In the BytecodeVM constructor, call `allocaBuffer_.reserve(16 * 1024 * 1024)` before the initial `resize(64 * 1024)`. This pre-allocates virtual address space for the maximum 16MB limit, ensuring that subsequent `resize()` calls never trigger reallocation. All alloca pointers remain valid.
+- **Confirmed via ASAN**: AddressSanitizer identified the exact error as `heap-use-after-free` in `BytecodeVM::runThreaded()`, with the freed region being exactly the 65536-byte initial buffer.
+- **Regression test**: `demos/zia/sqldb/tests/test_scale_debug.zia` — creates 50 tables, inserts 10,000 rows, runs SELECT COUNT
+- **Found**: 2026-02-28
+- **Fixed**: 2026-02-28
+
+---
+
 ## Known Remaining Issues
 
 | Issue | Severity | Description |
 |-------|----------|-------------|
-| Nested IN subquery | P2 | `SELECT ... WHERE n IN (SELECT ... WHERE n IN (SELECT ...))` returns 0 rows instead of expected results. Two-level IN nesting works, three-level does not. |
-| Memory pressure crash | P2 | Creating 50 tables + 10000 rows causes `RT_MAGIC` assertion failure in `payload_to_hdr`. Heap corruption under scale. |
 | `PASSWORD` reserved keyword | P3 | `PASSWORD` is lexed as `TK_PASSWORD`, cannot be used as column name without quoting. |
 
 ---
@@ -199,3 +226,5 @@ These are **platform bugs**, not SQL logic bugs.
 | BUG-ADV-008 | P1 (wrong result) | SQL JOIN ambiguous columns | FIXED |
 | BUG-ADV-009 | P1 (wrong result) | SQL scalar subquery validation | FIXED |
 | BUG-ADV-010 | P1 (wrong result) | SQL stale eval error state | FIXED |
+| BUG-ADV-011 | P2 (wrong result) | SQL nested IN subquery flattening | FIXED |
+| BUG-ADV-012 | P0 (crash) | BytecodeVM alloca buffer reallocation | FIXED |
