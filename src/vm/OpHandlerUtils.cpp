@@ -74,6 +74,8 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
         if (in.type.kind != il::core::Type::Kind::Str) [[likely]]
         {
             fr.regs[destIndex] = val;
+            if (destIndex < fr.regIsStr.size()) [[likely]]
+                fr.regIsStr[destIndex] = 0;
             return;
         }
 
@@ -81,6 +83,8 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
         rt_str_release_maybe(fr.regs[destIndex].str);
         rt_str_retain_maybe(val.str);
         fr.regs[destIndex] = val;
+        if (destIndex < fr.regIsStr.size()) [[likely]]
+            fr.regIsStr[destIndex] = 1;
         return;
     }
 

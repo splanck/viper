@@ -210,7 +210,7 @@ entity Parser {
             // Otherwise treat as column name
             if currentToken.kind == TK_DOT {
                 advance();
-                if currentToken.kind != TK_IDENTIFIER {
+                if currentToken.kind != TK_IDENTIFIER && currentToken.isKeyword() == false {
                     setError("Expected column name after dot");
                     return exprNull();
                 }
@@ -392,7 +392,7 @@ entity Parser {
             // Check for table.column
             if currentToken.kind == TK_DOT {
                 advance();
-                if currentToken.kind != TK_IDENTIFIER {
+                if currentToken.kind != TK_IDENTIFIER && currentToken.isKeyword() == false {
                     setError("Expected column name after dot");
                     return exprNull();
                 }
@@ -508,6 +508,22 @@ entity Parser {
             existsExpr.init();
             existsExpr.initExists(existsSql);
             return existsExpr;
+        }
+
+        // Keywords used as identifiers (column/table names like PASSWORD, USER, etc.)
+        if currentToken.isKeyword() {
+            var kwName = currentToken.text;
+            advance();
+            // table.column syntax
+            if currentToken.kind == TK_DOT {
+                advance();
+                if currentToken.kind == TK_IDENTIFIER || currentToken.isKeyword() {
+                    var colName = currentToken.text;
+                    advance();
+                    return exprTableColumn(kwName, colName);
+                }
+            }
+            return exprColumn(kwName);
         }
 
         setError("Unexpected token in expression");
@@ -1136,7 +1152,8 @@ entity Parser {
         var col = new Column();
         col.init();
 
-        if currentToken.kind != TK_IDENTIFIER {
+        // Accept identifiers and keywords as column names (e.g., PASSWORD, USER, etc.)
+        if currentToken.kind != TK_IDENTIFIER && currentToken.isKeyword() == false {
             setError("Expected column name");
             return col;
         }
@@ -1910,7 +1927,7 @@ entity Parser {
         if currentToken.kind == TK_LPAREN {
             advance();
             while hasError == false {
-                if currentToken.kind != TK_IDENTIFIER {
+                if currentToken.kind != TK_IDENTIFIER && currentToken.isKeyword() == false {
                     setError("Expected column name");
                     return stmt;
                 }
@@ -2029,7 +2046,7 @@ entity Parser {
                 if currentToken.kind == TK_LPAREN {
                     advance();
                     while hasError == false {
-                        if currentToken.kind != TK_IDENTIFIER {
+                        if currentToken.kind != TK_IDENTIFIER && currentToken.isKeyword() == false {
                             setError("Expected column name in ON CONFLICT");
                             return stmt;
                         }
@@ -2053,7 +2070,7 @@ entity Parser {
                         advance();
                         if expect(TK_SET) == false { return stmt; }
                         while hasError == false {
-                            if currentToken.kind != TK_IDENTIFIER {
+                            if currentToken.kind != TK_IDENTIFIER && currentToken.isKeyword() == false {
                                 setError("Expected column name in DO UPDATE SET");
                                 return stmt;
                             }
@@ -3147,7 +3164,7 @@ entity Parser {
         }
 
         while hasError == false {
-            if currentToken.kind != TK_IDENTIFIER {
+            if currentToken.kind != TK_IDENTIFIER && currentToken.isKeyword() == false {
                 setError("Expected column name");
                 return stmt;
             }
@@ -3341,7 +3358,7 @@ entity Parser {
                     advance();
                     // Parse SET col = val, col = val, ...
                     while hasError == false {
-                        if currentToken.kind != TK_IDENTIFIER {
+                        if currentToken.kind != TK_IDENTIFIER && currentToken.isKeyword() == false {
                             setError("Expected column name in SET clause");
                             return stmt;
                         }
@@ -3384,7 +3401,7 @@ entity Parser {
                 if currentToken.kind == TK_LPAREN {
                     advance();
                     while hasError == false {
-                        if currentToken.kind != TK_IDENTIFIER {
+                        if currentToken.kind != TK_IDENTIFIER && currentToken.isKeyword() == false {
                             setError("Expected column name");
                             return stmt;
                         }
@@ -3482,7 +3499,7 @@ entity Parser {
         }
 
         while currentToken.kind != TK_RPAREN && hasError == false {
-            if currentToken.kind != TK_IDENTIFIER {
+            if currentToken.kind != TK_IDENTIFIER && currentToken.isKeyword() == false {
                 setError("Expected column name in index");
                 return stmt;
             }

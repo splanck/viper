@@ -203,11 +203,61 @@ These are **platform bugs**, not SQL logic bugs.
 
 ---
 
+## BUG-ADV-013: SHOW TABLES fails — "TABLES" lexed as identifier, not keyword
+
+- **Status**: FIXED
+- **Severity**: P2 (wrong result)
+- **Component**: ViperSQL executor — `executor.zia` (SHOW dispatch)
+- **Symptom**: `SHOW TABLES` returns "Unrecognized configuration parameter 'TABLES'" instead of listing tables.
+- **Root cause**: The lexer only matches "TABLE" (singular) as `TK_TABLE`. "TABLES" (plural) is lexed as `TK_IDENTIFIER`. The SHOW dispatch at line 3307 only checked for `TK_TABLE`, so `SHOW TABLES` fell through to the `executeShowVar` path which returned an error.
+- **Fix**: Added check for `TK_IDENTIFIER && text == "TABLES"` in the SHOW dispatch.
+- **Regression test**: `test_keyword_columns.zia` — tests 5a, 5b
+- **Found**: 2026-03-01
+- **Fixed**: 2026-03-01
+
+---
+
+## BUG-ADV-014: SQL keywords cannot be used as column names
+
+- **Status**: FIXED
+- **Severity**: P3 (usability)
+- **Component**: ViperSQL parser — `parser.zia`, `token.zia`
+- **Symptom**: `CREATE TABLE users (password TEXT)` fails with "Expected column name". Any SQL keyword (PASSWORD, USER, KEY, VALUE, etc.) used as a column name causes parser errors in CREATE TABLE, SELECT, UPDATE, INSERT, and qualified `table.column` references.
+- **Root cause**: Two issues:
+  1. `parseColumnDef()` and all column-name-accepting parser locations only accepted `TK_IDENTIFIER`, rejecting keyword tokens.
+  2. `Token.isKeyword()` only covered range 20-139, but keywords added in later phases used values 170+ (RESTRICT), 200+ (WITH, OVER), 213+ (USER, PASSWORD), up to 296 (MATCHED).
+- **Fix**:
+  - Updated `Token.isKeyword()` in `token.zia` to cover the full keyword range (20+), excluding operators (140-151) and punctuation (160-164).
+  - Modified `parseColumnDef()`, `parsePrimaryExpr()`, and 6 other column-name parser locations to accept keyword tokens as column names via `currentToken.isKeyword()`.
+  - Added catch-all keyword-as-identifier handler in `parsePrimaryExpr()` for SELECT/WHERE expression contexts.
+  - Fixed `table.column` dot syntax to accept keywords after the dot.
+- **Regression test**: `test_keyword_columns.zia` — 15 tests covering PASSWORD, USER, KEY, VALUE as column names in CREATE, INSERT, SELECT, UPDATE, qualified refs
+- **Found**: 2026-03-01
+- **Fixed**: 2026-03-01
+
+---
+
+## BUG-ADV-015: IL VM string register leak on frame exit
+
+- **Status**: FIXED
+- **Severity**: P2 (memory leak)
+- **Component**: IL VM — `src/vm/OpHandlerUtils.cpp`, `src/vm/VMInit.cpp`, `src/vm/VM.hpp`, `src/vm/VM.cpp`
+- **Symptom**: Every Str-typed value stored in an IL VM register via `storeResult` is retained (+1 refcount) but never released when the frame exits. Over many function calls, this causes unbounded refcount growth.
+- **Root cause**: `storeResult()` correctly retains strings on register write and releases old values on overwrite, but in SSA form each register is written exactly once — the final value in each register is never released. `releaseFrameBuffers()` pooled the register file without releasing owned strings.
+- **Fix**:
+  - Added `std::vector<uint8_t> regIsStr` to `Frame` struct (parallel to `regs`), tracking which registers hold retained strings.
+  - In `storeResult()`: set `regIsStr[i] = 1` for Str stores, `regIsStr[i] = 0` for non-Str stores.
+  - In `releaseFrameBuffers()`: release all regIsStr strings before pooling the register file.
+  - In `execFunction()`: retain the return value before releasing frame buffers when the function returns a Str type, preventing premature free.
+- **Note**: This fixes the storeResult retain leak. The compiler's `emitFieldLoad` retain (BUG-ADV-001) creates a separate +1 that is not tracked by regIsStr; that remains as a latent concern but does not cause crashes.
+- **Found**: 2026-03-01
+- **Fixed**: 2026-03-01
+
+---
+
 ## Known Remaining Issues
 
-| Issue | Severity | Description |
-|-------|----------|-------------|
-| `PASSWORD` reserved keyword | P3 | `PASSWORD` is lexed as `TK_PASSWORD`, cannot be used as column name without quoting. |
+(none)
 
 ---
 
@@ -228,3 +278,6 @@ These are **platform bugs**, not SQL logic bugs.
 | BUG-ADV-010 | P1 (wrong result) | SQL stale eval error state | FIXED |
 | BUG-ADV-011 | P2 (wrong result) | SQL nested IN subquery flattening | FIXED |
 | BUG-ADV-012 | P0 (crash) | BytecodeVM alloca buffer reallocation | FIXED |
+| BUG-ADV-013 | P2 (wrong result) | SHOW TABLES lexer mismatch | FIXED |
+| BUG-ADV-014 | P3 (usability) | SQL keywords as column names | FIXED |
+| BUG-ADV-015 | P2 (memory leak) | IL VM string register leak | FIXED |

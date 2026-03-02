@@ -936,6 +936,15 @@ Slot VM::execFunction(const Function &fn, std::span<const Slot> args)
 
     Slot result = runFunctionLoop(st);
 
+    // If the return value is a string, retain it before releasing frame buffers.
+    // releaseFrameBuffers will release all regIsStr registers, which would drop
+    // the refcount on the return value before the caller can retain it.
+    if (st.fr.func && st.fr.func->retType.kind == il::core::Type::Kind::Str
+        && st.hasPendingResult)
+    {
+        rt_str_retain_maybe(result.str);
+    }
+
     // Return frame buffers to pool for reuse by subsequent calls
     releaseFrameBuffers(st.fr);
 

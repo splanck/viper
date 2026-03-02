@@ -337,7 +337,11 @@ entity Token {
     }
 
     expose func isKeyword() -> Boolean {
-        return kind >= 20 && kind < 140;
+        if kind < 20 { return false; }
+        // Exclude operators (140-151) and punctuation (160-164)
+        if kind >= 140 && kind <= 151 { return false; }
+        if kind >= 160 && kind <= 164 { return false; }
+        return true;
     }
 
     expose func isOperator() -> Boolean {

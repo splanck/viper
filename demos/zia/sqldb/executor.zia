@@ -3303,8 +3303,8 @@ entity Executor {
             if parser.currentKind() == TK_ALL {
                 return executeShowAllVars();
             }
-            // SHOW TABLES (default for TK_TABLE or just SHOW)
-            if parser.currentKind() == TK_TABLE || parser.currentKind() == TK_EOF || parser.currentKind() == TK_SEMICOLON {
+            // SHOW TABLES (default for TK_TABLE/TABLES or just SHOW)
+            if parser.currentKind() == TK_TABLE || parser.currentKind() == TK_EOF || parser.currentKind() == TK_SEMICOLON || (parser.currentKind() == TK_IDENTIFIER && String.ToUpper(parser.currentText()) == "TABLES") {
                 return ddlHandler.executeShowTables();
             }
             // SHOW variable_name — show a session variable (supports dotted names)

@@ -482,6 +482,14 @@ void VM::releaseRegFile(std::vector<Slot> &&regs)
 
 void VM::releaseFrameBuffers(Frame &fr)
 {
+    // Release any owned string values before pooling the register file.
+    // Each regIsStr[i] == 1 indicates regs[i].str was retained by storeResult.
+    for (size_t i = 0; i < fr.regIsStr.size(); ++i)
+    {
+        if (fr.regIsStr[i])
+            rt_str_release_maybe(fr.regs[i].str);
+    }
+    fr.regIsStr.clear();
     releaseStackBuffer(std::move(fr.stack));
     releaseRegFile(std::move(fr.regs));
 }
@@ -551,6 +559,7 @@ Frame VM::setupFrame(const Function &fn, std::span<const Slot> args, const Basic
                      fn.valueNames.size());
         std::fflush(stderr);
     }
+    fr.regIsStr.assign(regCount, 0);
     fr.params.assign(fr.regs.size(), Slot{});
     fr.paramsSet.assign(fr.regs.size(), 0);
     // Acquire stack buffer from pool or allocate new.

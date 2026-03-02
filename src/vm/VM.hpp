@@ -210,6 +210,11 @@ struct Frame
     /// @ownership Owned by the frame; sized to the function's register count.
     std::vector<Slot> regs;
 
+    /// @brief Tracks which registers hold retained string values.
+    /// @details Parallel to regs; regIsStr[i] != 0 means regs[i].str is an
+    ///          owned string reference that must be released on frame exit.
+    std::vector<uint8_t> regIsStr;
+
     /// @brief Default operand stack size in bytes.
     /// @details Sized to accommodate typical alloca usage patterns.
     ///          64KB is sufficient for most BASIC programs including games
