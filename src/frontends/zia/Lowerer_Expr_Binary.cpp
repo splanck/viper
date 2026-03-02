@@ -388,6 +388,10 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
 
                 Value result =
                     emitCallRet(Type(Type::Kind::Str), kStringConcat, {left.value, rightStr});
+                // rt_str_concat consumes both operands (releases them internally).
+                // Remove them from deferred tracking to prevent double-free.
+                consumeDeferred(left.value);
+                consumeDeferred(rightStr);
                 return {result, Type(Type::Kind::Str)};
             }
             op = isFloat ? Opcode::FAdd : (options_.overflowChecks ? Opcode::IAddOvf : Opcode::Add);

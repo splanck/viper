@@ -445,8 +445,8 @@ typedef long long ssize_t;
 #define strcasecmp _stricmp
 #define strncasecmp _strnicmp
 
-// File I/O
-#define lseek _lseek
+// File I/O — use 64-bit variant for >2GB file support
+#define lseek _lseeki64
 
 // POSIX file type macros (Windows doesn't have these)
 #ifndef S_ISREG

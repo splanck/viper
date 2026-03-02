@@ -87,8 +87,7 @@ echo.
 
 REM Build Zia demos
 call :build_demo paint "%ZIA_DIR%\paint"
-REM viperide requires unimplemented vipergfx GUI widget layer (vg_* symbols)
-REM call :build_demo viperide "%ZIA_DIR%\viperide"
+call :build_demo viperide "%ZIA_DIR%\viperide"
 call :build_demo pacman-zia "%ZIA_DIR%\pacman"
 call :build_demo sqldb "%ZIA_DIR%\sqldb"
 call :build_demo chess-zia "%ZIA_DIR%\chess"

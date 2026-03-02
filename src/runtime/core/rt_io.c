@@ -527,10 +527,10 @@ int rt_eof_ch(int ch)
         return status;
 
     errno = 0;
-    off_t cur = lseek(fd, 0, SEEK_CUR);
+    int64_t cur = lseek(fd, 0, SEEK_CUR);
     if (cur >= 0)
     {
-        off_t end = lseek(fd, 0, SEEK_END);
+        int64_t end = lseek(fd, 0, SEEK_END);
         if (end < 0)
         {
             (void)lseek(fd, cur, SEEK_SET);
@@ -584,7 +584,7 @@ int64_t rt_lof_ch(int ch)
     }
 
     errno = 0;
-    off_t cur = lseek(fd, 0, SEEK_CUR);
+    int64_t cur = lseek(fd, 0, SEEK_CUR);
     if (cur < 0)
     {
         if (errno == ESPIPE || errno == EINVAL)
@@ -592,7 +592,7 @@ int64_t rt_lof_ch(int ch)
         return -(int64_t)Err_IOError;
     }
 
-    off_t end = lseek(fd, 0, SEEK_END);
+    int64_t end = lseek(fd, 0, SEEK_END);
     if (end < 0)
     {
         (void)lseek(fd, cur, SEEK_SET);
@@ -605,7 +605,7 @@ int64_t rt_lof_ch(int ch)
     if (end < 0)
         return 0;
 
-    return (int64_t)end;
+    return end;
 }
 
 /// @brief Report the current file position for the supplied channel.
@@ -623,7 +623,7 @@ int64_t rt_loc_ch(int ch)
         return -(int64_t)status;
 
     errno = 0;
-    off_t cur = lseek(fd, 0, SEEK_CUR);
+    int64_t cur = lseek(fd, 0, SEEK_CUR);
     if (cur < 0)
     {
         if (errno == ESPIPE || errno == EINVAL)
@@ -631,10 +631,7 @@ int64_t rt_loc_ch(int ch)
         return -(int64_t)Err_IOError;
     }
 
-    if (cur < 0)
-        return 0;
-
-    return (int64_t)cur;
+    return cur;
 }
 
 /// @brief Seek to a byte offset on the channel's underlying file descriptor.
@@ -655,12 +652,12 @@ int32_t rt_seek_ch_err(int ch, int64_t pos)
         return status;
 
     errno = 0;
-    off_t target = (off_t)pos;
+    int64_t target = pos;
     if (target < 0)
         return (int32_t)Err_InvalidOperation;
 
-    off_t res = lseek(fd, target, SEEK_SET);
-    if (res == (off_t)-1)
+    int64_t res = lseek(fd, target, SEEK_SET);
+    if (res == -1)
     {
         if (errno == ESPIPE || errno == EINVAL)
             return (int32_t)Err_InvalidOperation;

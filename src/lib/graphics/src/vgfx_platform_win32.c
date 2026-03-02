@@ -220,23 +220,22 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
         case WM_SIZE:
         {
-            /* Window resized.  With system DPI awareness, LOWORD/HIWORD give DIP
-             * (logical) client dimensions.  Multiply by scale_factor to get the
-             * physical pixel size for framebuffer operations. */
+            /* Window resized.  Update only the w32 logical dimensions used by
+             * StretchBlt.  Do NOT touch win->width / win->height / win->stride
+             * because they describe the framebuffer allocation size and must
+             * remain immutable (matching win->pixels and w32->dib_pixels).
+             * True resize support would require reallocating both buffers. */
             int dip_w = LOWORD(lparam);
             int dip_h = HIWORD(lparam);
 
             if (w32 && (dip_w != w32->width || dip_h != w32->height))
             {
-                w32->width = dip_w; /* keep logical for StretchBlt dest */
+                w32->width = dip_w; /* logical size for StretchBlt dest */
                 w32->height = dip_h;
 
-                /* Physical dimensions for the framebuffer */
+                /* Report physical pixel dimensions in the event for the app */
                 int phys_w = (int)(dip_w * win->scale_factor);
                 int phys_h = (int)(dip_h * win->scale_factor);
-                win->width = phys_w;
-                win->height = phys_h;
-                win->stride = phys_w * 4;
 
                 vgfx_event_t event = {.type = VGFX_EVENT_RESIZE,
                                       .time_ms = timestamp,

@@ -21,8 +21,8 @@ window management, pixel operations, drawing primitives, and input handling with
 | Platform | Status         | Backend                                    |
 |----------|----------------|--------------------------------------------|
 | macOS    | ✅ **Complete** | Cocoa/AppKit (`src/vgfx_platform_macos.m`) |
-| Linux    | ⏳ Stub only    | X11 (`src/vgfx_platform_linux.c`)          |
-| Windows  | ⏳ Stub only    | Win32 GDI (`src/vgfx_platform_win32.c`)    |
+| Linux    | ✅ **Complete** | X11 (`src/vgfx_platform_linux.c`)          |
+| Windows  | ✅ **Complete** | Win32 GDI (`src/vgfx_platform_win32.c`)    |
 | Testing  | ✅ Complete     | Mock backend (`src/vgfx_platform_mock.c`)  |
 
 ## Building Standalone
@@ -230,8 +230,8 @@ void* worker_thread(void* arg) {
 5. **No Image Loading** - No PNG/JPEG support (raw pixels only)
 6. **Platform Support**:
     - ✅ macOS: Full support (Cocoa backend)
-    - ⏳ Linux: Stub only (X11 backend needs implementation)
-    - ⏳ Windows: Stub only (Win32 backend needs implementation)
+    - ✅ Linux: Full support (X11 backend)
+    - ✅ Windows: Full support (Win32 GDI backend)
 
 ### Performance Characteristics
 
@@ -416,8 +416,8 @@ src/lib/graphics/
 │   ├── vgfx_draw.c         # Drawing algorithms (605 lines)
 │   ├── vgfx_internal.h     # Internal structures (312 lines)
 │   ├── vgfx_platform_macos.m    # macOS backend (760 lines)
-│   ├── vgfx_platform_linux.c    # Linux backend (stub)
-│   ├── vgfx_platform_win32.c    # Windows backend (stub)
+│   ├── vgfx_platform_linux.c    # Linux backend (1157 lines)
+│   ├── vgfx_platform_win32.c    # Windows backend (1226 lines)
 │   └── vgfx_platform_mock.c     # Mock backend for tests (430 lines)
 ├── tests/
 │   ├── test_window.c       # Window tests

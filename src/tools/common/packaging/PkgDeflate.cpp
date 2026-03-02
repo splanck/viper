@@ -243,7 +243,7 @@ struct HuffmanTree {
             maxLen = 1;
 
         tableBits = maxLen;
-        tableSize = 1U << tableBits;
+        tableSize = static_cast<size_t>(1) << tableBits;
         maxCode = numCodes;
 
         symbols = static_cast<uint16_t *>(

@@ -475,7 +475,20 @@ void Lowerer::emitFieldStore(const FieldLayout *field, Value selfPtr, Value val)
 {
     Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field->offset));
     Type fieldType = mapType(field->type);
-    emitStore(fieldAddr, val, fieldType);
+    // BUG-ADV-002: Retain/release string fields on store to maintain correct
+    // refcounts.  Without this, the caller's deferred release may free the
+    // string while the entity still holds a pointer to it.
+    if (fieldType.kind == Type::Kind::Str)
+    {
+        Value oldValue = emitLoad(fieldAddr, fieldType);
+        emitCall(runtime::kStrRetainMaybe, {val});
+        emitStore(fieldAddr, val, fieldType);
+        emitCall(runtime::kStrReleaseMaybe, {oldValue});
+    }
+    else
+    {
+        emitStore(fieldAddr, val, fieldType);
+    }
 }
 
 Lowerer::Value Lowerer::emitValueTypeCopy(const ValueTypeInfo &info, Value sourcePtr)

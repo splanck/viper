@@ -53,6 +53,8 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
+#include <iphlpapi.h>
+#pragma comment(lib, "iphlpapi.lib")
 
 typedef SOCKET socket_t;
 #define INVALID_SOCK INVALID_SOCKET
@@ -1978,43 +1980,59 @@ void *rt_dns_local_addrs(void)
     void *seq = rt_seq_new();
 
 #ifdef _WIN32
-    // Windows: use gethostname + getaddrinfo for local addresses
-    char hostname[256];
-    if (gethostname(hostname, sizeof(hostname)) != 0)
+    // Windows: use GetAdaptersAddresses for complete interface enumeration
+    ULONG bufLen = 15000;
+    PIP_ADAPTER_ADDRESSES addrs = (PIP_ADAPTER_ADDRESSES)malloc(bufLen);
+    if (!addrs)
         return seq;
 
-    struct addrinfo hints = {0};
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-
-    struct addrinfo *result = NULL;
-    if (getaddrinfo(hostname, NULL, &hints, &result) != 0)
-        return seq;
-
-    for (struct addrinfo *rp = result; rp != NULL; rp = rp->ai_next)
+    ULONG flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
+    ULONG ret = GetAdaptersAddresses(AF_UNSPEC, flags, NULL, addrs, &bufLen);
+    if (ret == ERROR_BUFFER_OVERFLOW)
     {
-        char ip_str[INET6_ADDRSTRLEN];
-
-        if (rp->ai_family == AF_INET)
-        {
-            struct sockaddr_in *addr = (struct sockaddr_in *)rp->ai_addr;
-            inet_ntop(AF_INET, &addr->sin_addr, ip_str, sizeof(ip_str));
-        }
-        else if (rp->ai_family == AF_INET6)
-        {
-            struct sockaddr_in6 *addr = (struct sockaddr_in6 *)rp->ai_addr;
-            inet_ntop(AF_INET6, &addr->sin6_addr, ip_str, sizeof(ip_str));
-        }
-        else
-        {
-            continue;
-        }
-
-        rt_string addr_str = rt_string_from_bytes(ip_str, strlen(ip_str));
-        rt_seq_push(seq, (void *)addr_str);
+        free(addrs);
+        addrs = (PIP_ADAPTER_ADDRESSES)malloc(bufLen);
+        if (!addrs)
+            return seq;
+        ret = GetAdaptersAddresses(AF_UNSPEC, flags, NULL, addrs, &bufLen);
+    }
+    if (ret != NO_ERROR)
+    {
+        free(addrs);
+        return seq;
     }
 
-    freeaddrinfo(result);
+    for (PIP_ADAPTER_ADDRESSES adapter = addrs; adapter; adapter = adapter->Next)
+    {
+        if (adapter->OperStatus != IfOperStatusUp)
+            continue;
+
+        for (PIP_ADAPTER_UNICAST_ADDRESS ua = adapter->FirstUnicastAddress; ua; ua = ua->Next)
+        {
+            char ip_str[INET6_ADDRSTRLEN];
+            int family = ua->Address.lpSockaddr->sa_family;
+
+            if (family == AF_INET)
+            {
+                struct sockaddr_in *addr = (struct sockaddr_in *)ua->Address.lpSockaddr;
+                inet_ntop(AF_INET, &addr->sin_addr, ip_str, sizeof(ip_str));
+            }
+            else if (family == AF_INET6)
+            {
+                struct sockaddr_in6 *addr = (struct sockaddr_in6 *)ua->Address.lpSockaddr;
+                inet_ntop(AF_INET6, &addr->sin6_addr, ip_str, sizeof(ip_str));
+            }
+            else
+            {
+                continue;
+            }
+
+            rt_string addr_str = rt_string_from_bytes(ip_str, strlen(ip_str));
+            rt_seq_push(seq, (void *)addr_str);
+        }
+    }
+
+    free(addrs);
 #else
     // Unix: use getifaddrs for local addresses
     struct ifaddrs *ifaddr, *ifa;

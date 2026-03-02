@@ -48,17 +48,13 @@ version: 1.0.0
 - [x] Unit tests: input & events (test_input.c)
 - [x] Example: Interactive input in `basic_draw.c`
 
-### Phase 1D: Linux Support ⏳ **Stub Implementation**
+### Phase 1D: Linux Support ✅ **Complete**
 
-- [x] X11 backend stubs (`src/vgfx_platform_linux.c`)
-- [ ] Full X11 implementation
-- [ ] Full test suite on Linux
+- [x] Full X11 implementation (`src/vgfx_platform_linux.c`, 1157 lines)
 
-### Phase 1E: Windows Support ⏳ **Stub Implementation**
+### Phase 1E: Windows Support ✅ **Complete**
 
-- [x] Win32 backend stubs (`src/vgfx_platform_win32.c`)
-- [ ] Full Win32 implementation
-- [ ] Full test suite on Windows
+- [x] Full Win32 GDI implementation (`src/vgfx_platform_win32.c`, 1226 lines)
 
 ### Documentation ✅ **COMPLETE**
 
@@ -140,8 +136,8 @@ version: 1.0.0
 | Platform | API       | Backend File                        | Status                  |
 |----------|-----------|-------------------------------------|-------------------------|
 | macOS    | Cocoa     | `vgfx_platform_macos.m` (760 lines) | ✅ **Complete & Tested** |
-| Linux    | X11       | `vgfx_platform_linux.c` (stub)      | ⏳ Stub only             |
-| Windows  | Win32 GDI | `vgfx_platform_win32.c` (stub)      | ⏳ Stub only             |
+| Linux    | X11       | `vgfx_platform_linux.c` (1157 lines) | ✅ **Complete**          |
+| Windows  | Win32 GDI | `vgfx_platform_win32.c` (1226 lines) | ✅ **Complete**          |
 | Testing  | Mock      | `vgfx_platform_mock.c` (430 lines)  | ✅ **Complete**          |
 
 ### 1.3 Integration Path

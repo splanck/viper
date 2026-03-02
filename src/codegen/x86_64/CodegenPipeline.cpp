@@ -319,13 +319,13 @@ int invokeLinker(const std::filesystem::path &asmPath,
             cmd.push_back(toNativePath(*pathOpt));
     }
 
-    // Find and link vipergfx and viperaud libraries (in lib/ instead of src/runtime/)
+    // Find and link vipergfx, vipergui, and viperaud libraries
     auto findLibArchive = [&](std::string_view libBaseName) -> std::optional<std::filesystem::path>
     {
         const std::string libFile = std::string(libBaseName) + ".lib";
         if (!buildDir.empty())
         {
-            // Try Release first, then Debug, then direct path
+            // Try Release first, then Debug, then direct path under lib/
             const std::filesystem::path releasePath = buildDir / "lib/Release" / libFile;
             if (fileExists(releasePath))
                 return releasePath;
@@ -335,12 +335,29 @@ int invokeLinker(const std::filesystem::path &asmPath,
             const std::filesystem::path directPath = buildDir / "lib" / libFile;
             if (fileExists(directPath))
                 return directPath;
+            // Also check src/lib/ subdirectories (vipergui lives under src/lib/gui/)
+            for (const auto &subdir : {"gui", "graphics", "audio"})
+            {
+                const std::filesystem::path srcRelease =
+                    buildDir / "src/lib" / subdir / "Release" / libFile;
+                if (fileExists(srcRelease))
+                    return srcRelease;
+                const std::filesystem::path srcDebug =
+                    buildDir / "src/lib" / subdir / "Debug" / libFile;
+                if (fileExists(srcDebug))
+                    return srcDebug;
+                const std::filesystem::path srcDirect = buildDir / "src/lib" / subdir / libFile;
+                if (fileExists(srcDirect))
+                    return srcDirect;
+            }
         }
         return std::nullopt;
     };
 
-    // Link graphics and audio backend libraries
-    const std::vector<std::string_view> backendLibs = {"vipergfx", "viperaud"};
+    // Link graphics, GUI widget, and audio backend libraries.
+    // vipergui must come before vipergfx: runtime calls vg_* from vipergui,
+    // which in turn calls the lower-level drawing APIs in vipergfx.
+    const std::vector<std::string_view> backendLibs = {"vipergui", "vipergfx", "viperaud"};
     for (const auto &lib : backendLibs)
     {
         const auto pathOpt = findLibArchive(lib);
@@ -370,7 +387,8 @@ int invokeLinker(const std::filesystem::path &asmPath,
     cmd.push_back("-lgdi32");
     cmd.push_back("-luser32");
     cmd.push_back("-lxinput");
-    cmd.push_back("-lole32"); // Required by viperaud (WASAPI/COM)
+    cmd.push_back("-lole32");     // Required by viperaud (WASAPI/COM)
+    cmd.push_back("-liphlpapi");  // Required by rt_network (GetAdaptersAddresses)
 
     // Set stack size (default 8MB for better recursion support)
     const std::size_t effectiveStackSize = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);
