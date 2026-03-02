@@ -584,9 +584,9 @@ int8_t rt_file_seek(RtFile *file, int64_t offset, int origin, RtError *out_err)
     }
 
     errno = 0;
-    off_t target = (off_t)offset;
-    off_t pos = lseek(file->fd, target, origin);
-    if (pos == (off_t)-1)
+    int64_t target = offset;
+    int64_t pos = lseek(file->fd, target, origin);
+    if (pos == -1)
     {
         int err = errno ? errno : EIO;
         rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
@@ -631,7 +631,7 @@ int8_t rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out
         if (chunk > UINT_MAX)
             chunk = UINT_MAX;
 #endif
-        ssize_t n = write(file->fd, data + written, chunk);
+        ssize_t n = write(file->fd, data + written, (unsigned int)chunk);
         if (n < 0)
         {
             if (errno == EINTR)

@@ -49,6 +49,11 @@ typedef int socket_t;
 #define EAGAIN_CHECK (errno == EAGAIN || errno == EWOULDBLOCK)
 #endif
 
+#ifdef _WIN32
+// Forward declaration (must be at file scope for MSVC)
+extern void rt_net_init_wsa(void);
+#endif
+
 // Platform-specific trust-store and crypto APIs (CS-1/CS-2/CS-3)
 #if defined(__APPLE__)
 #include <Security/Security.h>
@@ -1850,7 +1855,6 @@ static int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data
         }
 
         // Set the hash value directly (we already computed SHA-256 of the content)
-        DWORD hash_len_dw = 32;
         if (!CryptSetHashParam(hhash, HP_HASHVAL, content_hash, 0))
         {
             CryptDestroyHash(hhash);
@@ -2377,7 +2381,6 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
 {
 #ifdef _WIN32
     // Initialize Winsock
-    extern void rt_net_init_wsa(void);
     rt_net_init_wsa();
 #endif
 

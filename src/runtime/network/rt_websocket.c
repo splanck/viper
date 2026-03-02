@@ -326,7 +326,7 @@ static long ws_send(rt_ws_impl *ws, const void *data, size_t len)
     }
     else
     {
-        return send(ws->socket_fd, data, len, SEND_FLAGS);
+        return send(ws->socket_fd, data, (int)len, SEND_FLAGS);
     }
 }
 
@@ -339,7 +339,7 @@ static long ws_recv(rt_ws_impl *ws, void *buffer, size_t len)
     }
     else
     {
-        return recv(ws->socket_fd, buffer, len, 0);
+        return recv(ws->socket_fd, buffer, (int)len, 0);
     }
 }
 
@@ -421,7 +421,7 @@ static int create_tcp_socket(const char *host, int port, int64_t timeout_ms)
     int fd = -1;
     for (p = res; p; p = p->ai_next)
     {
-        fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        fd = (int)socket(p->ai_family, p->ai_socktype, p->ai_protocol);
         if (fd < 0)
             continue;
         suppress_sigpipe(fd);

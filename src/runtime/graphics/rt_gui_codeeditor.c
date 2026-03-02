@@ -381,7 +381,7 @@ void rt_codeeditor_set_line_number_width(void *editor, int64_t width)
     if (!editor)
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
-    ce->gutter_width = (int)width * 8; // Approximate char width
+    ce->gutter_width = (float)((int)width * 8); // Approximate char width
 }
 
 void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int64_t slot)

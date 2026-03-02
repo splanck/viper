@@ -25,11 +25,20 @@
 #include "LowerILToMIR.hpp"
 #include "MachineIR.hpp"
 
+#include <cstdint>
+#include <limits>
 #include <optional>
 #include <string_view>
 
 namespace viper::codegen::x64
 {
+
+/// @brief Test whether a 64-bit signed value fits in a sign-extended imm32 encoding.
+[[nodiscard]] inline bool fitsImm32(int64_t value) noexcept
+{
+    return value >= static_cast<int64_t>(std::numeric_limits<int32_t>::min()) &&
+           value <= static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+}
 
 /// @brief Shared helper façade that consolidates common lowering utilities.
 class EmitCommon

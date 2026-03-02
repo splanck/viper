@@ -138,7 +138,7 @@ function(viper_add_e2e_vm_suite)
             -DILC=$<TARGET_FILE:viper>
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/basic/numerics_pow.bas
             -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/basic/numerics_pow.bas.out
-            -DEXPECT_SUBSTR=DomainError
+            -DEXPECT_SUBSTR=domain\ error
             -P ${_VIPER_E2E_DIR}/test_basic_numeric_overflow.cmake)
     set_tests_properties(basic_numerics_pow PROPERTIES LABELS VM)
 

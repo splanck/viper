@@ -298,7 +298,9 @@ int invokeLinker(const std::filesystem::path &asmPath,
 
     std::vector<std::string> cmd = {kCcCommand, toNativePath(asmPath)};
 
-    // Link all runtime libraries that exist (simpler than symbol detection)
+    // Link all runtime libraries that exist (simpler than symbol detection).
+    // Note: viper_rt_audio must appear before viper_rt_base because
+    // rt_global_shutdown() in base calls rt_audio_shutdown() in audio.
     const std::vector<std::string_view> rtLibs = {"viper_rt_graphics",
                                                   "viper_rt_network",
                                                   "viper_rt_exec",
@@ -308,6 +310,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
                                                   "viper_rt_arrays",
                                                   "viper_rt_threads",
                                                   "viper_rt_oop",
+                                                  "viper_rt_audio",
                                                   "viper_rt_base"};
     for (const auto &lib : rtLibs)
     {
@@ -352,6 +355,9 @@ int invokeLinker(const std::filesystem::path &asmPath,
         cmd.push_back("-lmsvcrtd");
         cmd.push_back("-lucrtd");
         cmd.push_back("-lvcruntimed");
+        // Suppress LNK4098: the debug CRT conflicts with the static release CRT
+        // that clang links by default.
+        cmd.push_back("-Wl,/NODEFAULTLIB:libcmt");
     }
     else
     {
@@ -360,10 +366,11 @@ int invokeLinker(const std::filesystem::path &asmPath,
         cmd.push_back("-lvcruntime");
     }
 
-    // Add Windows system libraries needed for graphics and input
+    // Add Windows system libraries needed for graphics, input, and audio
     cmd.push_back("-lgdi32");
     cmd.push_back("-luser32");
     cmd.push_back("-lxinput");
+    cmd.push_back("-lole32"); // Required by viperaud (WASAPI/COM)
 
     // Set stack size (default 8MB for better recursion support)
     const std::size_t effectiveStackSize = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);

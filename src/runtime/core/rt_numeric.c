@@ -325,10 +325,14 @@ static bool rt_strtod_c_locale(const char *input, char **out_end, double *out_va
 
         va_list args;
         va_start(args, fmt);
+#if !defined(_MSC_VER)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#endif
         int written = vsnprintf(out, cap, fmt, args);
+#if !defined(_MSC_VER)
 #pragma GCC diagnostic pop
+#endif
         va_end(args);
 
         if (written < 0)

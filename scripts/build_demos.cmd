@@ -48,6 +48,22 @@ if not exist "%VIPER%" (
     exit /b 1
 )
 
+REM Ensure clang is on PATH (needed for assembly/linking)
+where clang >nul 2>nul
+if errorlevel 1 (
+    if exist "C:\Program Files\LLVM\bin\clang.exe" (
+        echo Adding LLVM to PATH: C:\Program Files\LLVM\bin
+        set "PATH=C:\Program Files\LLVM\bin;%PATH%"
+    ) else if exist "C:\Program Files (x86)\LLVM\bin\clang.exe" (
+        echo Adding LLVM to PATH: C:\Program Files ^(x86^)\LLVM\bin
+        set "PATH=C:\Program Files (x86)\LLVM\bin;%PATH%"
+    ) else (
+        echo ERROR: clang not found on PATH or in standard locations.
+        echo Install LLVM/Clang from https://releases.llvm.org/ or add it to PATH.
+        exit /b 1
+    )
+)
+
 REM Create directories
 if not exist "%BIN_DIR%" mkdir "%BIN_DIR%"
 
@@ -109,16 +125,16 @@ set "EXE_FILE=%BIN_DIR%\%NAME%.exe"
 
 echo   Compiling...
 "%VIPER%" build "%PROJECT_DIR%" --arch x64 -o "%EXE_FILE%" 2>nul
-if errorlevel 1 (
-    echo   FAILED
-    "%VIPER%" build "%PROJECT_DIR%" --arch x64 -o "%EXE_FILE%" 2>&1
-    set /a FAILED+=1
-    echo.
-    goto :eof
-)
+if errorlevel 1 goto :build_demo_failed
 echo   OK
-
 echo   Built: %EXE_FILE%
 set /a SUCCEEDED+=1
+echo.
+goto :eof
+
+:build_demo_failed
+echo   FAILED
+"%VIPER%" build "%PROJECT_DIR%" --arch x64 -o "%EXE_FILE%" 2>&1
+set /a FAILED+=1
 echo.
 goto :eof

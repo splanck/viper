@@ -112,7 +112,13 @@ void canonicaliseCmp(MInstr &instr)
     }
     if (instr.opcode == MOpcode::CMPrr && isImm(instr.operands[1]))
     {
-        instr.opcode = MOpcode::CMPri;
+        // Only promote to CMPri when the immediate fits in a sign-extended imm32.
+        const auto &imm = std::get<OpImm>(instr.operands[1]);
+        if (imm.val >= std::numeric_limits<int32_t>::min() &&
+            imm.val <= std::numeric_limits<int32_t>::max())
+        {
+            instr.opcode = MOpcode::CMPri;
+        }
     }
     if (instr.opcode == MOpcode::CMPri && !isImm(instr.operands[1]))
     {

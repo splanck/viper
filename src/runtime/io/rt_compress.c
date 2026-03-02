@@ -299,7 +299,7 @@ static bool build_huffman_tree(huffman_tree_t *tree, const uint8_t *lengths, int
     uint16_t code = 0;
     for (int bits = 1; bits <= MAX_BITS; bits++)
     {
-        code = (code + bl_count[bits - 1]) << 1;
+        code = (uint16_t)((code + bl_count[bits - 1]) << 1);
         next_code[bits] = code;
     }
 
@@ -314,7 +314,7 @@ static bool build_huffman_tree(huffman_tree_t *tree, const uint8_t *lengths, int
         max_len = 1;
 
     tree->table_bits = max_len; /* Support full 15-bit Huffman codes per RFC 1951 */
-    tree->table_size = 1 << tree->table_bits;
+    tree->table_size = (size_t)1 << tree->table_bits;
     tree->max_code = num_codes;
 
     // Allocate symbol table
@@ -616,7 +616,7 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out)
     uint8_t cl_lengths[MAX_CODE_LEN_CODES] = {0};
     for (int i = 0; i < hclen; i++)
     {
-        cl_lengths[code_length_order[i]] = br_read(br, 3);
+        cl_lengths[code_length_order[i]] = (uint8_t)br_read(br, 3);
     }
 
     // Build code length tree
@@ -641,7 +641,7 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out)
         if (sym < 16)
         {
             // Literal length
-            lengths[i++] = sym;
+            lengths[i++] = (uint8_t)sym;
         }
         else if (sym == 16)
         {
@@ -980,12 +980,12 @@ static void deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int
             if (len_code <= 279)
             {
                 // 7 bits: codes 256-279 map to 0000000-0010111
-                write_code(bw, len_code - 256, 7);
+                write_code(bw, (uint16_t)(len_code - 256), 7);
             }
             else
             {
                 // 8 bits: codes 280-287 map to 11000000-11000111
-                write_code(bw, 0xC0 + (len_code - 280), 8);
+                write_code(bw, (uint16_t)(0xC0 + (len_code - 280)), 8);
             }
 
             // Extra length bits
@@ -996,7 +996,7 @@ static void deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int
 
             // Distance code (5 bits for fixed)
             int dist_code = get_dist_code(match_dist);
-            write_code(bw, dist_code, 5);
+            write_code(bw, (uint16_t)dist_code, 5);
 
             // Extra distance bits
             if (dist_extra_bits[dist_code] > 0)

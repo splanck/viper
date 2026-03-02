@@ -25,6 +25,36 @@ namespace
 {
 [[nodiscard]] ILModule makeTrivialModule()
 {
+    // Build a callee so the main function is non-leaf and the backend
+    // cannot eliminate the prologue/epilogue via leaf-frame optimisation.
+    ILValue calleeZero{};
+    calleeZero.kind = ILValue::Kind::I64;
+    calleeZero.i64 = 0;
+
+    ILInstr calleeRet{};
+    calleeRet.opcode = "ret";
+    calleeRet.ops = {calleeZero};
+
+    ILBlock calleeEntry{};
+    calleeEntry.name = "entry";
+    calleeEntry.instrs = {calleeRet};
+
+    ILFunction callee{};
+    callee.name = "helper";
+    callee.blocks = {calleeEntry};
+
+    // Main function: call helper(), then return 0.
+    ILValue helperLabel{};
+    helperLabel.kind = ILValue::Kind::LABEL;
+    helperLabel.id = -1;
+    helperLabel.label = "helper";
+
+    ILInstr call{};
+    call.opcode = "call";
+    call.resultId = 1;
+    call.resultKind = ILValue::Kind::I64;
+    call.ops = {helperLabel};
+
     ILValue zero{};
     zero.kind = ILValue::Kind::I64;
     zero.i64 = 0;
@@ -35,14 +65,14 @@ namespace
 
     ILBlock entry{};
     entry.name = "entry";
-    entry.instrs = {ret};
+    entry.instrs = {call, ret};
 
     ILFunction func{};
     func.name = "prologue_epilogue";
     func.blocks = {entry};
 
     ILModule module{};
-    module.funcs = {func};
+    module.funcs = {callee, func};
     return module;
 }
 

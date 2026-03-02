@@ -1174,7 +1174,7 @@ void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent)
 void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t type)
 {
     (void)win;
-    static LPCWSTR const s_cursor_ids[] = {
+    static LPCTSTR const s_cursor_ids[] = {
         IDC_ARROW,  /* 0: default */
         IDC_HAND,   /* 1: pointer */
         IDC_IBEAM,  /* 2: text    */
@@ -1183,7 +1183,7 @@ void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t type)
         IDC_WAIT,   /* 5: wait    */
     };
     int idx = (type >= 0 && type < 6) ? type : 0;
-    HCURSOR hc = LoadCursorW(NULL, s_cursor_ids[idx]);
+    HCURSOR hc = LoadCursor(NULL, s_cursor_ids[idx]);
     if (hc)
         SetCursor(hc);
 }

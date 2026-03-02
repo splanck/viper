@@ -179,12 +179,12 @@ int64_t rt_duration_div(int64_t duration, int64_t divisor)
 
 int64_t rt_duration_abs(int64_t duration)
 {
-    return duration >= 0 ? duration : (int64_t)(-(uint64_t)duration);
+    return duration >= 0 ? duration : (int64_t)(0 - (uint64_t)duration);
 }
 
 int64_t rt_duration_neg(int64_t duration)
 {
-    return (int64_t)(-(uint64_t)duration);
+    return (int64_t)(0 - (uint64_t)duration);
 }
 
 //=============================================================================

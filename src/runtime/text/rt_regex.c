@@ -824,11 +824,10 @@ static bool match_quant(match_context *ctx, re_node *n, int pos, int *end_pos)
     if (greedy)
     {
         // Try longest first
-        for (int i = num - 1; i >= 0; i--)
+        if (num > 0)
         {
-            *end_pos = positions[i];
+            *end_pos = positions[num - 1];
             found = true;
-            break;
         }
     }
     else

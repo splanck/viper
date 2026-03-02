@@ -36,23 +36,7 @@
 namespace viper::codegen::x64
 {
 
-namespace
-{
-
-/// @brief Check whether a 64-bit integer fits in the 32-bit immediate domain.
-/// @details The check is used before selecting immediate-based instruction
-///          forms.  Guarding the conversion prevents accidental truncation when
-///          lowering wide IL constants into Machine IR encodings that only
-///          accept 32-bit operands.
-/// @param value Signed integer to test.
-/// @return True when @p value lies within the signed 32-bit range.
-[[nodiscard]] bool fitsImm32(int64_t value) noexcept
-{
-    return value >= static_cast<int64_t>(std::numeric_limits<int32_t>::min()) &&
-           value <= static_cast<int64_t>(std::numeric_limits<int32_t>::max());
-}
-
-} // namespace
+// fitsImm32() is now declared inline in Lowering.EmitCommon.hpp.
 
 /// @brief Construct an @ref EmitCommon helper that appends to @p builder.
 /// @details Stores the builder pointer for later reuse so subsequent helper
@@ -434,7 +418,7 @@ void EmitCommon::emitCmp(const ILInstr &instr, RegClass cls, int defaultCond)
     }
 
     Operand lhs = builder().makeOperandForValue(instr.ops[0], cls);
-    const Operand rhs = builder().makeOperandForValue(instr.ops[1], cls);
+    Operand rhs = builder().makeOperandForValue(instr.ops[1], cls);
 
     // x86 CMP requires the first operand to be a register, not an immediate.
     // If LHS is an immediate, materialize it to a temporary register first.
@@ -444,6 +428,17 @@ void EmitCommon::emitCmp(const ILInstr &instr, RegClass cls, int defaultCond)
         const Operand tmpOp = makeVRegOperand(tmp.cls, tmp.id);
         builder().append(MInstr::make(MOpcode::MOVri, std::vector<Operand>{tmpOp, lhs}));
         lhs = tmpOp;
+    }
+
+    // If RHS is an immediate that doesn't fit in the sign-extended imm32
+    // encoding, materialise it into a register so the assembler doesn't reject
+    // the instruction.
+    if (cls == RegClass::GPR)
+    {
+        if (const auto *imm = std::get_if<OpImm>(&rhs); imm && !fitsImm32(imm->val))
+        {
+            rhs = materialiseGpr(std::move(rhs));
+        }
     }
 
     const MOpcode cmpOpc = cls == RegClass::XMM ? MOpcode::UCOMIS : MOpcode::CMPrr;

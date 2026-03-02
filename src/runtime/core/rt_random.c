@@ -38,6 +38,11 @@
 #include <assert.h>
 #include <math.h>
 
+// Forward declare to avoid header dependency (must be at file scope for MSVC)
+extern int64_t rt_seq_len(void *);
+extern void *rt_seq_get(void *, int64_t);
+extern void rt_seq_set(void *, int64_t, void *);
+
 /// @brief Seed the random generator with an unsigned 64-bit value.
 /// @details Replaces the linear congruential generator state in the current
 ///          VM's context with the provided seed so that future calls to
@@ -214,11 +219,6 @@ void rt_rand_shuffle(void *seq)
 {
     if (!seq)
         return;
-
-    // Forward declare to avoid header dependency
-    extern int64_t rt_seq_len(void *);
-    extern void *rt_seq_get(void *, int64_t);
-    extern void rt_seq_set(void *, int64_t, void *);
 
     int64_t n = rt_seq_len(seq);
     if (n <= 1)

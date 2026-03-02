@@ -633,7 +633,6 @@ void *rt_archive_create(rt_string path)
     if (h == INVALID_HANDLE_VALUE)
         rt_trap("Archive: failed to create file");
     CloseHandle(h);
-    int fd = -1; // We'll write at Finish time
 #else
     int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0)

@@ -39,8 +39,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Forward declaration of runtime trap function
+// Forward declarations
 extern void rt_trap(const char *msg);
+extern void *rt_crypto_rand_bytes(int64_t count);
 
 //=============================================================================
 // AES Constants (FIPS-197)
@@ -872,8 +873,6 @@ static void derive_key(const char *password, uint8_t key[32])
 /// @brief Generate random IV using rt_crypto_rand_bytes
 static void generate_iv(uint8_t iv[16])
 {
-    extern void *rt_crypto_rand_bytes(int64_t count);
-
     void *rand_bytes = rt_crypto_rand_bytes(16);
     for (int i = 0; i < 16; i++)
         iv[i] = (uint8_t)rt_bytes_get(rand_bytes, i);

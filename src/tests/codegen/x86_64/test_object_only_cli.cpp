@@ -240,8 +240,24 @@ entry:
 
 } // namespace
 
+/// @brief Check whether clang is available on the system PATH.
+[[nodiscard]] bool hasClangOnPath()
+{
+#if defined(_WIN32)
+    const int rc = std::system("where clang >NUL 2>NUL");
+#else
+    const int rc = std::system("command -v clang >/dev/null 2>&1");
+#endif
+    return rc == 0;
+}
+
 int main()
 {
+    if (!hasClangOnPath())
+    {
+        std::cerr << "SKIP: clang not found on PATH\n";
+        return EXIT_SUCCESS; // Graceful skip — not a failure.
+    }
     const ObjectOnlyResult result = runObjectOnlyCompileTest();
     if (!result.success)
     {

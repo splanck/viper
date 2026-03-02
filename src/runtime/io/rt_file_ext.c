@@ -80,6 +80,22 @@ static inline uint8_t *file_bytes_data(void *obj)
 #define RT_FILE_O_BINARY 0
 #endif
 
+// On Windows, _read/_write take unsigned int; on POSIX they take size_t.
+// These wrappers suppress C4267 truncation warnings on MSVC.
+#if RT_PLATFORM_WINDOWS
+static inline ssize_t rt_posix_read(int fd, void *buf, size_t count)
+{
+    return read(fd, buf, (unsigned int)count);
+}
+static inline ssize_t rt_posix_write(int fd, const void *buf, size_t count)
+{
+    return write(fd, buf, (unsigned int)count);
+}
+#else
+#define rt_posix_read  read
+#define rt_posix_write write
+#endif
+
 /// @brief Convert a runtime string path to a host path; traps on failure.
 /// @param path Runtime string containing the path.
 /// @param context Trap message to use when conversion fails.
@@ -143,7 +159,7 @@ rt_string rt_io_file_read_all_text(rt_string path)
     size_t off = 0;
     while (off < size)
     {
-        ssize_t n = read(fd, buf + off, size - off);
+        ssize_t n = rt_posix_read(fd, buf + off, size - off);
         if (n < 0)
         {
             if (errno == EINTR)
@@ -181,7 +197,7 @@ void rt_io_file_write_all_text(rt_string path, rt_string contents)
     size_t written = 0;
     while (written < len)
     {
-        ssize_t n = write(fd, data + written, len - written);
+        ssize_t n = rt_posix_write(fd, data + written, len - written);
         if (n < 0)
         {
             if (errno == EINTR)
@@ -212,7 +228,7 @@ void rt_io_file_append_line(rt_string path, rt_string text)
     size_t written = 0;
     while (written < len)
     {
-        ssize_t n = write(fd, data + written, len - written);
+        ssize_t n = rt_posix_write(fd, data + written, len - written);
         if (n < 0)
         {
             if (errno == EINTR)
@@ -232,7 +248,7 @@ void rt_io_file_append_line(rt_string path, rt_string text)
     ssize_t n;
     do
     {
-        n = write(fd, &nl, 1);
+        n = rt_posix_write(fd, &nl, 1);
     } while (n < 0 && errno == EINTR);
     if (n != 1)
     {
@@ -279,7 +295,7 @@ void *rt_io_file_read_all_bytes(rt_string path)
     size_t off = 0;
     while (off < size)
     {
-        ssize_t n = read(fd, buf + off, size - off);
+        ssize_t n = rt_posix_read(fd, buf + off, size - off);
         if (n < 0)
         {
             if (errno == EINTR)
@@ -329,7 +345,7 @@ void rt_io_file_write_all_bytes(rt_string path, void *bytes)
         size_t written = 0;
         while (written < (size_t)len)
         {
-            ssize_t n = write(fd, src + written, (size_t)len - written);
+            ssize_t n = rt_posix_write(fd, src + written, (size_t)len - written);
             if (n < 0)
             {
                 if (errno == EINTR)
@@ -385,7 +401,7 @@ void *rt_io_file_read_all_lines(rt_string path)
     size_t off = 0;
     while (off < size)
     {
-        ssize_t n = read(fd, buf + off, size - off);
+        ssize_t n = rt_posix_read(fd, buf + off, size - off);
         if (n < 0)
         {
             if (errno == EINTR)
@@ -480,12 +496,12 @@ void rt_file_copy(rt_string src, rt_string dst)
 
     char buf[8192];
     ssize_t n;
-    while ((n = read(src_fd, buf, sizeof(buf))) > 0)
+    while ((n = rt_posix_read(src_fd, buf, sizeof(buf))) > 0)
     {
         size_t written = 0;
         while (written < (size_t)n)
         {
-            ssize_t w = write(dst_fd, buf + written, (size_t)n - written);
+            ssize_t w = rt_posix_write(dst_fd, buf + written, (size_t)n - written);
             if (w < 0)
             {
                 if (errno == EINTR)
@@ -581,7 +597,7 @@ void *rt_file_read_bytes(rt_string path)
     size_t off = 0;
     while (off < size)
     {
-        ssize_t n = read(fd, buf + off, size - off);
+        ssize_t n = rt_posix_read(fd, buf + off, size - off);
         if (n < 0)
         {
             if (errno == EINTR)
@@ -630,7 +646,7 @@ void rt_file_write_bytes(rt_string path, void *bytes)
         size_t written = 0;
         while (written < (size_t)len)
         {
-            ssize_t n = write(fd, src + written, (size_t)len - written);
+            ssize_t n = rt_posix_write(fd, src + written, (size_t)len - written);
             if (n < 0)
             {
                 if (errno == EINTR)
@@ -711,7 +727,7 @@ void rt_file_write_lines(rt_string path, void *lines)
             size_t written = 0;
             while (written < len)
             {
-                ssize_t n = write(fd, data + written, len - written);
+                ssize_t n = rt_posix_write(fd, data + written, len - written);
                 if (n < 0)
                 {
                     if (errno == EINTR)
@@ -726,7 +742,7 @@ void rt_file_write_lines(rt_string path, void *lines)
         ssize_t n;
         do
         {
-            n = write(fd, &nl, 1);
+            n = rt_posix_write(fd, &nl, 1);
         } while (n < 0 && errno == EINTR);
     }
 
@@ -751,7 +767,7 @@ void rt_file_append(rt_string path, rt_string text)
     size_t written = 0;
     while (written < len)
     {
-        ssize_t n = write(fd, data + written, len - written);
+        ssize_t n = rt_posix_write(fd, data + written, len - written);
         if (n < 0)
         {
             if (errno == EINTR)

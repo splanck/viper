@@ -44,6 +44,7 @@
 #include "rt_seq.h"
 #include "rt_sprite.h"
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -174,8 +175,6 @@ static void apply_node_transform(scene_node_impl *node)
         }
         else
         {
-            extern double cos(double);
-            extern double sin(double);
             double rad = node->parent->world_rotation * 3.14159265359 / 180.0;
             double cos_r = cos(rad);
             double sin_r = sin(rad);

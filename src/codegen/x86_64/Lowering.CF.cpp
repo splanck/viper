@@ -104,7 +104,7 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder)
 
     // Check upper bound: if index < upper (unsigned below), skip trap
     Operand upper = builder.makeOperandForValue(instr.ops[2], RegClass::GPR);
-    if (std::holds_alternative<OpImm>(upper))
+    if (const auto *imm = std::get_if<OpImm>(&upper); imm && fitsImm32(imm->val))
     {
         builder.append(MInstr::make(MOpcode::CMPri, std::vector<Operand>{index, upper}));
     }
@@ -122,7 +122,7 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder)
 
     // Check lower bound: if index >= lower (unsigned above or equal), skip trap
     Operand lower = builder.makeOperandForValue(instr.ops[1], RegClass::GPR);
-    if (std::holds_alternative<OpImm>(lower))
+    if (const auto *imm = std::get_if<OpImm>(&lower); imm && fitsImm32(imm->val))
     {
         builder.append(MInstr::make(MOpcode::CMPri, std::vector<Operand>{index, lower}));
     }
@@ -172,7 +172,7 @@ void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder)
         const Operand caseLabel = builder.makeLabelOperand(instr.ops[idx + 1]);
 
         // CMP scrutinee, case_value
-        if (std::holds_alternative<OpImm>(caseVal))
+        if (const auto *imm = std::get_if<OpImm>(&caseVal); imm && fitsImm32(imm->val))
         {
             builder.append(MInstr::make(MOpcode::CMPri, std::vector<Operand>{scrutinee, caseVal}));
         }

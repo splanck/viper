@@ -925,7 +925,7 @@ static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t 
 
         if (box_type == RT_BOX_I1)
         {
-            int8_t val = rt_unbox_i1(obj);
+            int8_t val = (int8_t)rt_unbox_i1(obj);
             sb_append(sb, val ? "true" : "false");
             return;
         }

@@ -628,7 +628,7 @@ extern "C"
         if (value < 0)
         {
             negative = 1;
-            uvalue = (uint64_t)(-(uint64_t)value);
+            uvalue = 0 - (uint64_t)value;
         }
         else
         {
