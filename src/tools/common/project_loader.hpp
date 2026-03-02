@@ -18,6 +18,7 @@
 #pragma once
 
 #include "support/diag_expected.hpp"
+#include "tools/common/packaging/PackageConfig.hpp"
 
 #include <string>
 #include <vector>
@@ -73,6 +74,9 @@ struct ProjectConfig
 
     /// @brief Enable null dereference checks (Zia only).
     bool nullChecks{true};
+
+    /// @brief Package configuration (from package-* directives).
+    viper::pkg::PackageConfig packageConfig;
 };
 
 /// @brief Resolve a project from a CLI target path.

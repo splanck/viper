@@ -1,4 +1,15 @@
+# ViperPaint — A simple drawing application
 project paint
 version 0.1.0
 lang zia
 entry main.zia
+
+# === Package Metadata ===
+package-name ViperPaint
+package-description "A simple drawing application built with Viper"
+package-identifier org.viper-lang.paint
+# package-icon assets/paint-icon.png
+
+# === Shortcuts ===
+shortcut-desktop on
+shortcut-menu on

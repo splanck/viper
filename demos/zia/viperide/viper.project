@@ -1,4 +1,26 @@
+# ViperIDE — A lightweight code editor built with Viper
 project viperide
 version 0.1.0
 lang zia
 entry main.zia
+
+# === Package Metadata ===
+package-name ViperIDE
+package-author "Stephen Smith"
+package-description "A lightweight code editor built with Viper"
+package-homepage https://viper-lang.org/viperide
+package-license GPL-3.0
+package-identifier org.viper-lang.viperide
+# package-icon assets/icon-512.png
+
+# === File Associations ===
+file-assoc .zia "Zia Source File" text/x-zia
+file-assoc .bas "BASIC Source File" text/x-basic
+file-assoc .il "Viper IL File" text/x-viper-il
+
+# === Shortcuts ===
+shortcut-desktop on
+shortcut-menu on
+
+# === Platform Requirements ===
+min-os-macos 11.0

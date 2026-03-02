@@ -446,6 +446,118 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
                 return il::support::Expected<ProjectConfig>(b.error());
             config.nullChecks = b.value();
         }
+        //=================================================================
+        // Package directives (new for VAPS)
+        //=================================================================
+        else if (directive == "package-name")
+        {
+            config.packageConfig.displayName = value;
+        }
+        else if (directive == "package-author")
+        {
+            // Value may be quoted
+            if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
+                value = value.substr(1, value.size() - 2);
+            config.packageConfig.author = value;
+        }
+        else if (directive == "package-description")
+        {
+            if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
+                value = value.substr(1, value.size() - 2);
+            config.packageConfig.description = value;
+        }
+        else if (directive == "package-homepage")
+        {
+            config.packageConfig.homepage = value;
+        }
+        else if (directive == "package-license")
+        {
+            config.packageConfig.license = value;
+        }
+        else if (directive == "package-identifier")
+        {
+            config.packageConfig.identifier = value;
+        }
+        else if (directive == "package-icon")
+        {
+            config.packageConfig.iconPath = value;
+        }
+        else if (directive == "asset")
+        {
+            // Format: asset <source-path> <target-relative-dir>
+            auto sp = value.find_first_of(" \t");
+            if (sp == std::string::npos)
+                return makeManifestErr(manifestPath, lineNum,
+                    "asset requires <source> <target>; got '" + value + "'");
+            std::string src = value.substr(0, sp);
+            std::string tgt = value.substr(value.find_first_not_of(" \t", sp));
+            config.packageConfig.assets.push_back({src, tgt});
+        }
+        else if (directive == "file-assoc")
+        {
+            // Format: file-assoc <extension> <description> <mime-type>
+            // Extension is first token, description is quoted, mime is last
+            auto sp1 = value.find_first_of(" \t");
+            if (sp1 == std::string::npos)
+                return makeManifestErr(manifestPath, lineNum,
+                    "file-assoc requires <ext> <description> <mime>; got '" + value + "'");
+            std::string ext = value.substr(0, sp1);
+            std::string rest = value.substr(value.find_first_not_of(" \t", sp1));
+            // Description may be quoted
+            std::string desc, mime;
+            if (rest.front() == '"') {
+                auto closeQuote = rest.find('"', 1);
+                if (closeQuote == std::string::npos)
+                    return makeManifestErr(manifestPath, lineNum,
+                        "unterminated quote in file-assoc description");
+                desc = rest.substr(1, closeQuote - 1);
+                auto mimeStart = rest.find_first_not_of(" \t", closeQuote + 1);
+                mime = (mimeStart != std::string::npos) ? rest.substr(mimeStart) : "";
+            } else {
+                auto sp2 = rest.find_first_of(" \t");
+                desc = rest.substr(0, sp2);
+                if (sp2 != std::string::npos)
+                    mime = rest.substr(rest.find_first_not_of(" \t", sp2));
+            }
+            config.packageConfig.fileAssociations.push_back({ext, desc, mime});
+        }
+        else if (directive == "shortcut-desktop")
+        {
+            auto b = parseBool(value, manifestPath, lineNum, "shortcut-desktop");
+            if (!b)
+                return il::support::Expected<ProjectConfig>(b.error());
+            config.packageConfig.shortcutDesktop = b.value();
+        }
+        else if (directive == "shortcut-menu")
+        {
+            auto b = parseBool(value, manifestPath, lineNum, "shortcut-menu");
+            if (!b)
+                return il::support::Expected<ProjectConfig>(b.error());
+            config.packageConfig.shortcutMenu = b.value();
+        }
+        else if (directive == "min-os-windows")
+        {
+            config.packageConfig.minOsWindows = value;
+        }
+        else if (directive == "min-os-macos")
+        {
+            config.packageConfig.minOsMacos = value;
+        }
+        else if (directive == "target-arch")
+        {
+            if (value != "x64" && value != "arm64")
+                return makeManifestErr(manifestPath, lineNum,
+                    "invalid target-arch '" + value + "'; expected 'x64' or 'arm64'");
+            config.packageConfig.targetArchitectures.push_back(value);
+        }
+        else if (directive == "post-install")
+        {
+            config.packageConfig.postInstallScript = value;
+        }
+        else if (directive == "pre-uninstall")
+        {
+            config.packageConfig.preUninstallScript = value;
+        }
         else
         {
             return makeManifestErr(manifestPath, lineNum, "unknown directive '" + directive + "'");

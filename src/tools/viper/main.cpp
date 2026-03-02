@@ -262,6 +262,8 @@ void usage()
         << "Usage: viper run <target> [options] [-- program-args...]\n"
         << "       viper build <target> [-o output] [options]\n"
         << "       viper init <project-name> [--lang zia|basic]\n"
+        << "       viper package [target] [--target macos|linux|windows|tarball]\n"
+        << "                              [--arch arm64|x64] [-o output]\n"
         << "\n"
         << "  <target> is a .zia file, .bas file, directory, or viper.project path.\n"
         << "  If omitted, defaults to current directory.\n"
@@ -373,6 +375,23 @@ int main(int argc, char **argv)
     if (cmd == "init")
     {
         return cmdInit(argc - 2, argv + 2);
+    }
+    if (cmd == "package")
+    {
+        return cmdPackage(argc - 2, argv + 2);
+    }
+    if (cmd == "help")
+    {
+        if (argc >= 3 && std::string(argv[2]) == "package")
+        {
+            // Show package-specific help via --help flag
+            char helpFlag[] = "--help";
+            char *helpArgv[] = {helpFlag};
+            cmdPackage(1, helpArgv);
+            return 0;
+        }
+        usage();
+        return 0;
     }
     if (cmd == "-run")
     {

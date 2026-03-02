@@ -249,6 +249,33 @@ add_library(il_tools_common STATIC
         tools/common/vm_executor.cpp
 )
 target_link_libraries(il_tools_common PUBLIC il_api viper_bytecode PRIVATE viper_common_opts)
+
+# Packaging library — self-contained C++, no runtime (viper_rt_*) dependencies.
+# Only links rt_crc32.o directly (no GC dependency, pure function).
+add_library(viper_packaging STATIC
+        tools/common/packaging/PkgDeflate.cpp
+        tools/common/packaging/PkgGzip.cpp
+        tools/common/packaging/PkgMD5.cpp
+        tools/common/packaging/PkgPNG.cpp
+        tools/common/packaging/ZipWriter.cpp
+        tools/common/packaging/ArWriter.cpp
+        tools/common/packaging/TarWriter.cpp
+        tools/common/packaging/PlistGenerator.cpp
+        tools/common/packaging/DesktopEntryGenerator.cpp
+        tools/common/packaging/IconGenerator.cpp
+        tools/common/packaging/MacOSPackageBuilder.cpp
+        tools/common/packaging/LinuxPackageBuilder.cpp
+        tools/common/packaging/PEBuilder.cpp
+        tools/common/packaging/LnkWriter.cpp
+        tools/common/packaging/WindowsPackageBuilder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/runtime/core/rt_crc32.c
+)
+target_link_libraries(viper_packaging PRIVATE viper_common_opts)
+target_include_directories(viper_packaging PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tools/common/packaging>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/runtime/core>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+)
 target_include_directories(il_tools_common PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
@@ -370,6 +397,7 @@ set(VIPER_CLI_SOURCES
         tools/viper/cmd_codegen_x64.cpp
         tools/viper/cmd_bench.cpp
         tools/viper/cmd_init.cpp
+        tools/viper/cmd_package.cpp
         tools/viper/cli.cpp
         tools/viper/break_spec.cpp)
 
@@ -387,7 +415,8 @@ set(VIPER_CLI_LINK_LIBS
         viper_codegen_x86_64
         il_codegen_aarch64
         viper_cmd_arm64
-        viper_bytecode)
+        viper_bytecode
+        viper_packaging)
 
 add_executable(viper ${VIPER_CLI_SOURCES})
 set_target_properties(viper PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/viper)

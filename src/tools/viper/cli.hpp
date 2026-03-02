@@ -198,6 +198,17 @@ int cmdBuild(int argc, char **argv);
 /// @return `0` on success, non-zero on failure.
 int cmdInit(int argc, char **argv);
 
+/// @brief Handle `viper package` subcommand.
+///
+/// Compiles a project to a native binary and packages it into a
+/// platform-specific installer (.zip for macOS, .deb for Linux,
+/// .exe for Windows).
+///
+/// @param argc Number of arguments following `package`.
+/// @param argv Array of argument strings.
+/// @return `0` on success, non-zero on failure.
+int cmdPackage(int argc, char **argv);
+
 /// @brief Print usage information for viper.
 ///
 /// Called when no or invalid arguments are supplied to `viper` or when a handler
