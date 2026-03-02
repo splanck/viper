@@ -144,6 +144,19 @@ class EmitCommon
     ///          floating-point compare opcodes produced by the IL.
     [[nodiscard]] static std::optional<int> fcmpConditionCode(std::string_view opcode) noexcept;
 
+    /// @brief Emit a NaN-safe floating-point comparison.
+    /// @details After UCOMISD with NaN operands, x86 sets ZF=1, PF=1, CF=1.  A
+    ///          single SETcc cannot correctly implement IEEE 754 semantics for
+    ///          fcmp_eq, fcmp_ne, fcmp_lt, or fcmp_le.  This helper emits the
+    ///          multi-instruction sequences required:
+    ///          - eq: SETE ∧ SETNP (ordered equal)
+    ///          - ne: SETNE ∨ SETP (unordered not-equal)
+    ///          - lt: swap operands + SETA (ordered less-than)
+    ///          - le: swap operands + SETAE (ordered less-or-equal)
+    /// @param instr IL fcmp instruction.
+    /// @param suffix The comparison suffix (eq, ne, lt, le).
+    void emitFCmpNanSafe(const ILInstr &instr, std::string_view suffix);
+
     /// @brief Try to recognise (base + (idx << shift) + disp) addressing.
     /// @details Best-effort pattern matcher that returns an OpMem operand when
     ///          the address producer encodes a base pointer plus a scaled index

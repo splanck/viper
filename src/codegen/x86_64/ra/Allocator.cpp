@@ -325,18 +325,24 @@ void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix)
     {
         return;
     }
-    // Deterministic victim selection: pick the active vreg whose live interval
-    // ends furthest from the current instruction (Belady-style heuristic).
-    // Ties are broken by vreg ID for determinism, since unordered_set iteration
-    // order is implementation-defined.
+    // Deterministic victim selection with two-pass Belady-style heuristic:
+    // Pass 1: Prefer evicting non-cached vregs (those not loaded this block) to
+    //         avoid thrashing the in-block register cache.
+    // Pass 2: Fall back to all active vregs if all are cached.
+    // Within each pass, pick the vreg whose live interval ends furthest from the
+    // current instruction. Ties are broken by vreg ID for determinism.
     uint16_t victimId = 0;
     bool found = false;
     std::size_t furthestEnd = 0;
+
+    // Pass 1: non-cached vregs only
     for (uint16_t vreg : active)
     {
         auto stateIt = states_.find(vreg);
         if (stateIt == states_.end() || !stateIt->second.hasPhys)
             continue;
+        if (stateIt->second.cachedInBlock)
+            continue; // Skip cached vregs in first pass
         const auto *interval = intervals_.lookup(vreg);
         const std::size_t end = interval ? interval->end : std::numeric_limits<std::size_t>::max();
         if (!found || end > furthestEnd || (end == furthestEnd && vreg > victimId))
@@ -344,6 +350,25 @@ void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix)
             furthestEnd = end;
             victimId = vreg;
             found = true;
+        }
+    }
+
+    // Pass 2: all vregs (fallback if all active are cached)
+    if (!found)
+    {
+        for (uint16_t vreg : active)
+        {
+            auto stateIt = states_.find(vreg);
+            if (stateIt == states_.end() || !stateIt->second.hasPhys)
+                continue;
+            const auto *interval = intervals_.lookup(vreg);
+            const std::size_t end = interval ? interval->end : std::numeric_limits<std::size_t>::max();
+            if (!found || end > furthestEnd || (end == furthestEnd && vreg > victimId))
+            {
+                furthestEnd = end;
+                victimId = vreg;
+                found = true;
+            }
         }
     }
     if (!found)
@@ -411,6 +436,7 @@ void LinearScanAllocator::expireIntervals()
         {
             releaseRegister(it->second.phys, RegClass::GPR);
             it->second.hasPhys = false;
+            it->second.cachedInBlock = false;
         }
         removeActive(RegClass::GPR, vreg);
     }
@@ -422,6 +448,7 @@ void LinearScanAllocator::expireIntervals()
         {
             releaseRegister(it->second.phys, RegClass::XMM);
             it->second.hasPhys = false;
+            it->second.cachedInBlock = false;
         }
         removeActive(RegClass::XMM, vreg);
     }
@@ -525,6 +552,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                             }
                             releaseRegister(state.phys, RegClass::GPR);
                             state.hasPhys = false;
+                            state.cachedInBlock = false;
                             removeActive(RegClass::GPR, vreg);
                             break; // Only one vreg can be in a physical register
                         }
@@ -608,8 +636,51 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                 xmmToSpill.push_back(vreg);
             }
 
-            // Now spill the collected values using lifetime-based slot reuse
+            // Helper: find a free callee-saved register in the pool for re-homing.
+            // Returns {true, reg} if found, {false, _} otherwise.
+            auto findFreeCalleeSaved = [this](RegClass cls) -> std::pair<bool, PhysReg>
+            {
+                auto &pool = poolFor(cls);
+                const auto &bits =
+                    cls == RegClass::GPR ? callerSavedGPRBits_ : callerSavedFPRBits_;
+                for (auto it = pool.begin(); it != pool.end(); ++it)
+                {
+                    // NOT caller-saved = callee-saved
+                    if (!bits.test(static_cast<std::size_t>(*it)))
+                    {
+                        PhysReg reg = *it;
+                        pool.erase(it);
+                        return {true, reg};
+                    }
+                }
+                return {false, PhysReg::RAX};
+            };
+
+            // Phase 1: Try to re-home GPR values to free callee-saved registers.
+            // This avoids a memory round-trip by moving the value to a register
+            // that survives the CALL.
+            std::vector<uint16_t> gprStillNeedSpill{};
             for (auto vreg : gprToSpill)
+            {
+                auto &state = states_[vreg];
+                auto [found, csReg] = findFreeCalleeSaved(RegClass::GPR);
+                if (found)
+                {
+                    // Move value to callee-saved register — survives the CALL.
+                    prefix.push_back(makeMove(RegClass::GPR, csReg, state.phys));
+                    releaseRegister(state.phys, RegClass::GPR);
+                    state.phys = csReg;
+                    result_.vregToPhys[vreg] = csReg;
+                    // Value stays active with new physical register; cachedInBlock preserved.
+                }
+                else
+                {
+                    gprStillNeedSpill.push_back(vreg);
+                }
+            }
+
+            // Phase 2: Spill remaining GPR values to memory.
+            for (auto vreg : gprStillNeedSpill)
             {
                 auto &state = states_[vreg];
                 const auto *interval = intervals_.lookup(vreg);
@@ -626,10 +697,32 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                 prefix.push_back(spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
                 releaseRegister(state.phys, RegClass::GPR);
                 state.hasPhys = false;
+                state.cachedInBlock = false;
                 removeActive(RegClass::GPR, vreg);
             }
 
+            // Phase 1: Try to re-home XMM values to free callee-saved XMM registers
+            // (relevant on Win64 where XMM6-15 are callee-saved).
+            std::vector<uint16_t> xmmStillNeedSpill{};
             for (auto vreg : xmmToSpill)
+            {
+                auto &state = states_[vreg];
+                auto [found, csReg] = findFreeCalleeSaved(RegClass::XMM);
+                if (found)
+                {
+                    prefix.push_back(makeMove(RegClass::XMM, csReg, state.phys));
+                    releaseRegister(state.phys, RegClass::XMM);
+                    state.phys = csReg;
+                    result_.vregToPhys[vreg] = csReg;
+                }
+                else
+                {
+                    xmmStillNeedSpill.push_back(vreg);
+                }
+            }
+
+            // Phase 2: Spill remaining XMM values to memory.
+            for (auto vreg : xmmStillNeedSpill)
             {
                 auto &state = states_[vreg];
                 const auto *interval = intervals_.lookup(vreg);
@@ -646,6 +739,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                 prefix.push_back(spiller_.makeStore(RegClass::XMM, state.spill, state.phys));
                 releaseRegister(state.phys, RegClass::XMM);
                 state.hasPhys = false;
+                state.cachedInBlock = false;
                 removeActive(RegClass::XMM, vreg);
             }
 
@@ -677,6 +771,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                     // Value is dead after CQO, just release the register
                     releaseRegister(state.phys, RegClass::GPR);
                     state.hasPhys = false;
+                    state.cachedInBlock = false;
                     removeActive(RegClass::GPR, vreg);
                 }
                 else
@@ -687,6 +782,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                     prefix.push_back(spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
                     releaseRegister(state.phys, RegClass::GPR);
                     state.hasPhys = false;
+                    state.cachedInBlock = false;
                     removeActive(RegClass::GPR, vreg);
                 }
                 break; // Only one vreg can be in RDX
@@ -763,6 +859,7 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block)
         // For single-block vregs, we can just release without spilling.
         releaseRegister(it->second.phys, RegClass::GPR);
         it->second.hasPhys = false;
+        it->second.cachedInBlock = false;
     }
     activeGPR_.clear();
 
@@ -777,6 +874,7 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block)
 
         releaseRegister(it->second.phys, RegClass::XMM);
         it->second.hasPhys = false;
+        it->second.cachedInBlock = false;
     }
     activeXMM_.clear();
 
@@ -1004,6 +1102,17 @@ void LinearScanAllocator::processRegOperand(OpReg &reg,
     auto &state = stateFor(reg.cls, reg.idOrPhys);
     if (state.spill.needsSpill)
     {
+        if (state.hasPhys && state.cachedInBlock)
+        {
+            // Already cached this block — reuse the register without reloading.
+            if (role.isDef)
+            {
+                suffix.push_back(spiller_.makeStore(state.cls, state.spill, state.phys));
+            }
+            reg = makePhysReg(state.cls, static_cast<uint16_t>(state.phys));
+            return;
+        }
+        // First access this block — allocate, load, and cache for subsequent uses.
         spiller_.ensureSpillSlot(state.cls, state.spill);
         const PhysReg phys = takeRegister(state.cls, prefix);
         if (role.isUse)
@@ -1014,7 +1123,11 @@ void LinearScanAllocator::processRegOperand(OpReg &reg,
         {
             suffix.push_back(spiller_.makeStore(state.cls, state.spill, phys));
         }
-        scratch.push_back(ScratchRelease{phys, state.cls});
+        state.hasPhys = true;
+        state.phys = phys;
+        state.cachedInBlock = true;
+        addActive(state.cls, reg.idOrPhys);
+        result_.vregToPhys[reg.idOrPhys] = phys;
         reg = makePhysReg(state.cls, static_cast<uint16_t>(phys));
         return;
     }

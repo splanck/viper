@@ -851,6 +851,74 @@ std::optional<int> EmitCommon::icmpConditionCode(std::string_view opcode) noexce
     return std::nullopt;
 }
 
+/// @brief Emit a NaN-safe floating-point comparison sequence.
+/// @details After UCOMISD with NaN operands, x86 sets ZF=1, PF=1, CF=1.
+///          This makes simple SETcc incorrect for eq/ne/lt/le:
+///          - eq (SETE): NaN sets ZF=1 → wrongly true.  Fix: SETE ∧ SETNP.
+///          - ne (SETNE): NaN sets ZF=1 → wrongly false.  Fix: SETNE ∨ SETP.
+///          - lt (SETB): NaN sets CF=1 → wrongly true.  Fix: swap operands + SETA.
+///          - le (SETBE): NaN sets CF=1|ZF=1 → wrongly true.  Fix: swap + SETAE.
+///
+///          For lt/le the fix swaps UCOMISD operands so a<b becomes UCOMISD(b,a)
+///          which yields CF=0,ZF=0 → SETA=true; NaN still yields CF=1,ZF=1 →
+///          SETA=false. For eq/ne a two-SETcc compound with AND/OR is required.
+/// @param instr IL fcmp instruction with at least 2 F64 operands.
+/// @param suffix The comparison suffix ("eq", "ne", "lt", or "le").
+void EmitCommon::emitFCmpNanSafe(const ILInstr &instr, std::string_view suffix)
+{
+    if (instr.ops.size() < 2 || instr.resultId < 0)
+    {
+        return;
+    }
+
+    Operand lhs = builder().makeOperandForValue(instr.ops[0], RegClass::XMM);
+    Operand rhs = builder().makeOperandForValue(instr.ops[1], RegClass::XMM);
+
+    const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
+    const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+
+    if (suffix == "lt" || suffix == "le")
+    {
+        // Swap operands: UCOMISD(rhs, lhs) so that a<b → SETA, a<=b → SETAE.
+        // NaN gives CF=1,ZF=1 regardless of order → SETA/SETAE → false.
+        builder().append(
+            MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{clone(rhs), lhs}));
+        const int code = (suffix == "lt") ? 6 : 7; // SETA / SETAE
+        builder().append(
+            MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(code), dest}));
+        return;
+    }
+
+    // eq / ne: emit UCOMISD(lhs, rhs) then two SETcc + logical combine.
+    builder().append(
+        MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{clone(lhs), rhs}));
+
+    if (suffix == "eq")
+    {
+        // Ordered equal: (ZF=1) AND (PF=0) → SETE ∧ SETNP.
+        const VReg tmp = builder().makeTempVReg(RegClass::GPR);
+        const Operand tmpOp = makeVRegOperand(tmp.cls, tmp.id);
+        builder().append(
+            MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(11), tmpOp})); // SETNP
+        builder().append(
+            MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(0), dest})); // SETE
+        builder().append(
+            MInstr::make(MOpcode::ANDrr, std::vector<Operand>{dest, tmpOp}));
+    }
+    else // "ne"
+    {
+        // Unordered not-equal: (ZF=0) OR (PF=1) → SETNE ∨ SETP.
+        const VReg tmp = builder().makeTempVReg(RegClass::GPR);
+        const Operand tmpOp = makeVRegOperand(tmp.cls, tmp.id);
+        builder().append(
+            MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(10), tmpOp})); // SETP
+        builder().append(
+            MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(1), dest})); // SETNE
+        builder().append(
+            MInstr::make(MOpcode::ORrr, std::vector<Operand>{dest, tmpOp}));
+    }
+}
+
 /// @brief Map a floating-point compare opcode string to a condition code.
 /// @details Similar to @ref icmpConditionCode but handles the `fcmp_*` family of
 ///          opcodes, returning the encoding index consumed by SETcc expansion.

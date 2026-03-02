@@ -230,6 +230,7 @@ void Spiller::spillValue(RegClass cls,
     prefix.push_back(makeStore(cls, alloc.spill, alloc.phys));
     pool.push_back(alloc.phys);
     alloc.hasPhys = false;
+    alloc.cachedInBlock = false;
     alloc.spill.needsSpill = true;
     result.vregToPhys.erase(vreg);
 }
@@ -261,6 +262,7 @@ void Spiller::spillValueWithReuse(RegClass cls,
     prefix.push_back(makeStore(cls, alloc.spill, alloc.phys));
     pool.push_back(alloc.phys);
     alloc.hasPhys = false;
+    alloc.cachedInBlock = false;
     alloc.spill.needsSpill = true;
     result.vregToPhys.erase(vreg);
 }

@@ -14,7 +14,10 @@ endif ()
 set(_viper_codegen_x86_64_tests
         abi_probe
         add_ret
+        addr_stress
         addressing_modes
+        asm_encoding
+        cf_stress
         varargs_al
         diff_vm_native
         div_trap
@@ -29,6 +32,8 @@ set(_viper_codegen_x86_64_tests
         shifts
         string_literal
         regalloc_consistency
+        regalloc_stress
+        fp_stress
         udiv_pow2)
 
 list(APPEND _viper_codegen_x86_64_tests
