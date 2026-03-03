@@ -219,9 +219,15 @@ const std::vector<CallLoweringPlan> &LowerILToMIR::callPlans() const noexcept
 void LowerILToMIR::resetFunctionState()
 {
     nextVReg_ = 1U;
+    nextLocalLabel_ = 0U;
     valueToVReg_.clear();
     blockInfo_.clear();
     callPlans_.clear();
+}
+
+uint32_t LowerILToMIR::nextLocalLabelId() noexcept
+{
+    return nextLocalLabel_++;
 }
 
 /// @brief Map an IL value kind to a machine register class for the target.

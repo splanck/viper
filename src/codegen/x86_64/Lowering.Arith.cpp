@@ -235,11 +235,10 @@ void emitFpToUi(const ILInstr &instr, MIRBuilder &builder)
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
-    static uint32_t fptouiCounter = 0;
-    const std::string trapLabel = ".Lfptoui_trap_" + std::to_string(fptouiCounter);
-    const std::string smallLabel = ".Lfptoui_sm_" + std::to_string(fptouiCounter);
-    const std::string doneLabel = ".Lfptoui_done_" + std::to_string(fptouiCounter);
-    ++fptouiCounter;
+    const uint32_t labelId = builder.lower().nextLocalLabelId();
+    const std::string trapLabel = ".Lfptoui_trap_" + std::to_string(labelId);
+    const std::string smallLabel = ".Lfptoui_sm_" + std::to_string(labelId);
+    const std::string doneLabel = ".Lfptoui_done_" + std::to_string(labelId);
 
     // NaN check: ucomisd %src, %src — PF=1 if NaN.
     builder.append(
@@ -357,10 +356,9 @@ void emitUiToFp(const ILInstr &instr, MIRBuilder &builder)
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
-    static uint32_t uitofpCounter = 0;
-    const std::string highLabel = ".Luitofp_hi_" + std::to_string(uitofpCounter);
-    const std::string doneLabel = ".Luitofp_done_" + std::to_string(uitofpCounter);
-    ++uitofpCounter;
+    const uint32_t labelId = builder.lower().nextLocalLabelId();
+    const std::string highLabel = ".Luitofp_hi_" + std::to_string(labelId);
+    const std::string doneLabel = ".Luitofp_done_" + std::to_string(labelId);
 
     // TEST src, src — sets SF if bit 63 is set.
     builder.append(

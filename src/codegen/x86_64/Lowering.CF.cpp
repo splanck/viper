@@ -97,10 +97,9 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder)
     builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, index}));
 
     // Generate unique labels for the skip points
-    static uint32_t idxChkCounter = 0;
-    const std::string passUpperLabel = ".Lidxchk_u_" + std::to_string(idxChkCounter);
-    const std::string passLowerLabel = ".Lidxchk_l_" + std::to_string(idxChkCounter);
-    ++idxChkCounter;
+    const uint32_t labelId = builder.lower().nextLocalLabelId();
+    const std::string passUpperLabel = ".Lidxchk_u_" + std::to_string(labelId);
+    const std::string passLowerLabel = ".Lidxchk_l_" + std::to_string(labelId);
 
     // Check upper bound: if index < upper (unsigned below), skip trap
     Operand upper = builder.makeOperandForValue(instr.ops[2], RegClass::GPR);

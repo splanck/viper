@@ -204,6 +204,12 @@ class LowerILToMIR
     /// \brief Retrieve the collected call lowering plans emitted during lowering.
     [[nodiscard]] const std::vector<CallLoweringPlan> &callPlans() const noexcept;
 
+    /// @brief Return the next per-function local label id and advance the counter.
+    /// @details Used for internal labels (trap sites, conversion branches) that need
+    ///          unique names within a function. Resets to 0 at the start of each function
+    ///          to ensure deterministic output across compilations.
+    [[nodiscard]] uint32_t nextLocalLabelId() noexcept;
+
     friend class MIRBuilder;
 
   private:
@@ -219,6 +225,7 @@ class LowerILToMIR
     std::unordered_map<std::string, BlockInfo> blockInfo_{};
     std::vector<CallLoweringPlan> callPlans_{};
     AsmEmitter::RoDataPool *roDataPool_{nullptr};
+    uint32_t nextLocalLabel_{0};
 
     /// @brief Reset all per-function lowering state (vreg counter, maps, call plans).
     void resetFunctionState();

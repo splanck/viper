@@ -920,11 +920,13 @@ void testISelPatterns(TestContext &ctx)
 // Test 8: Static counter awareness
 // ===----------------------------------------------------------------------===
 
-void testStaticCounterAwareness(TestContext &ctx)
+void testPerFunctionLabelCounters(TestContext &ctx)
 {
-    ctx.beginCategory("Static counter labels");
+    ctx.beginCategory("Per-function label ids");
 
-    // Build a module that triggers the fptoui static counter.
+    // Build a module that triggers fptoui label generation.
+    // Labels are now per-function (reset to 0 each function), so repeated
+    // compilations must produce identical output without normalization.
     ILBlock entry{};
     entry.name = "entry";
     entry.paramIds = {0};
@@ -935,18 +937,23 @@ void testStaticCounterAwareness(TestContext &ctx)
     };
 
     ILFunction fn{};
-    fn.name = "fptoui_counter_test";
+    fn.name = "fptoui_label_test";
     fn.blocks = {entry};
 
     ILModule mod{};
     mod.funcs = {fn};
 
-    const auto first = compileToAsm(mod);
-    const auto second = compileToAsm(mod);
+    const auto baseline = compileToAsm(mod);
 
-    // After normalizing counter labels, outputs should be identical.
-    // This validates that the ONLY difference is the counter-based labels.
-    ctx.checkEqualNormalized("normalized_match", first, second);
+    // Verify labels start at 0 (per-function reset)
+    ctx.checkAsm("label_starts_at_0", baseline, ".Lfptoui_trap_0");
+
+    // Compile again — must be byte-identical (no counter drift)
+    for (int i = 1; i <= 10; ++i)
+    {
+        const auto current = compileToAsm(mod);
+        ctx.checkEqual(("iter_" + std::to_string(i)).c_str(), baseline, current);
+    }
 }
 
 } // namespace
@@ -966,7 +973,7 @@ int main()
     testComplexCfg(ctx);             // Test 5: N=50
     testSeparateConstruction(ctx);   // Test 6: pointer independence
     testISelPatterns(ctx);           // Test 7: N=50
-    testStaticCounterAwareness(ctx); // Test 8: known issue
+    testPerFunctionLabelCounters(ctx); // Test 8: per-function label ids
 
     ctx.printSummary();
 
