@@ -43,6 +43,19 @@ viper init my-app --lang basic  # BASIC project
 viper run my-app
 ```
 
+Try the interactive REPL:
+
+```bash
+viper repl
+```
+
+```
+zia> Say("Hello from the REPL")
+Hello from the REPL
+zia> Say(Fmt.Int(2 + 3))
+5
+```
+
 Run a Zia program:
 
 ```bash
@@ -280,6 +293,7 @@ See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete AP
 | Tool | Purpose |
 |------|---------|
 | `viper` | Unified compiler driver — run, build, compile, and package projects |
+| `viper repl` | Interactive REPL for experimenting with Zia code |
 | `viper package` | Generate platform-native installers (.app, .deb, .exe, .tar.gz) |
 | `zia` | Run or compile Zia programs |
 | `vbasic` | Run or compile BASIC programs |
@@ -368,6 +382,7 @@ This configures, builds, tests, and installs Viper in one step.
 | Document | Description |
 |----------|-------------|
 | [Getting Started](docs/getting-started.md) | Build and run your first program |
+| [REPL Guide](docs/repl.md) | Interactive Zia experimentation |
 | [Zia Getting Started](docs/zia-getting-started.md) | Learn Zia by example |
 | [Zia Reference](docs/zia-reference.md) | Complete Zia language specification |
 | [Runtime Library](docs/viperlib/README.md) | Viper.* classes, methods, and properties |
