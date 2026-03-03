@@ -18,6 +18,7 @@ set(_viper_codegen_x86_64_tests
         addressing_modes
         asm_encoding
         cf_stress
+        determinism
         varargs_al
         diff_vm_native
         div_trap
