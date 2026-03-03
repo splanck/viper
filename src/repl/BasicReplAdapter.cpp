@@ -42,6 +42,9 @@
 #if defined(__unix__) || defined(__APPLE__)
 #include <fcntl.h>
 #include <unistd.h>
+#elif defined(_WIN32)
+#include <fcntl.h>
+#include <io.h>
 #endif
 
 namespace viper::repl
@@ -385,9 +388,9 @@ EvalResult BasicReplAdapter::compileAndRun(const std::string &source)
     // Capture stdout during execution
     std::fflush(stdout);
 
-    int pipeFds[2];
     bool captured = false;
     int savedStdout = -1;
+    int pipeFds[2] = {-1, -1};
 
 #if defined(__unix__) || defined(__APPLE__)
     if (pipe(pipeFds) == 0)
@@ -395,6 +398,16 @@ EvalResult BasicReplAdapter::compileAndRun(const std::string &source)
         savedStdout = dup(STDOUT_FILENO);
         dup2(pipeFds[1], STDOUT_FILENO);
         close(pipeFds[1]);
+        pipeFds[1] = -1;
+        captured = true;
+    }
+#elif defined(_WIN32)
+    if (_pipe(pipeFds, 65536, _O_BINARY) == 0)
+    {
+        savedStdout = _dup(_fileno(stdout));
+        _dup2(pipeFds[1], _fileno(stdout));
+        _close(pipeFds[1]);
+        pipeFds[1] = -1;
         captured = true;
     }
 #endif
@@ -402,10 +415,11 @@ EvalResult BasicReplAdapter::compileAndRun(const std::string &source)
     bcVm.exec("main", {});
 
     std::string capturedOutput;
-#if defined(__unix__) || defined(__APPLE__)
     if (captured)
     {
         std::fflush(stdout);
+
+#if defined(__unix__) || defined(__APPLE__)
         dup2(savedStdout, STDOUT_FILENO);
         close(savedStdout);
 
@@ -418,8 +432,19 @@ EvalResult BasicReplAdapter::compileAndRun(const std::string &source)
             capturedOutput.append(readBuf, static_cast<size_t>(n));
         }
         close(pipeFds[0]);
-    }
+#elif defined(_WIN32)
+        _dup2(savedStdout, _fileno(stdout));
+        _close(savedStdout);
+
+        char readBuf[4096];
+        int n;
+        while ((n = _read(pipeFds[0], readBuf, sizeof(readBuf))) > 0)
+        {
+            capturedOutput.append(readBuf, static_cast<size_t>(n));
+        }
+        _close(pipeFds[0]);
 #endif
+    }
 
     if (bcVm.state() == viper::bytecode::VMState::Trapped)
     {

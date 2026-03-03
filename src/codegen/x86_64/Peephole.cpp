@@ -950,6 +950,21 @@ void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs
             usedRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
             break;
 
+        case MOpcode::CQO:
+            // CQO sign-extends RAX into RDX:RAX — implicitly reads RAX
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::RAX));
+            break;
+
+        case MOpcode::IDIVrm:
+        case MOpcode::DIVrm:
+            // IDIV/DIV divides RDX:RAX by the explicit operand — implicitly reads RAX and RDX
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::RAX));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::RDX));
+            // Also add the explicit divisor operand
+            if (instr.operands.size() >= 1)
+                addIfPhysReg(instr.operands[0]);
+            break;
+
         default:
             // For other instructions, conservatively assume all operand registers are used
             for (const auto &op : instr.operands)

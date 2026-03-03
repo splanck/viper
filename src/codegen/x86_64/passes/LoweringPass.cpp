@@ -998,6 +998,9 @@ class ModuleAdapter
     }
 
     /// @brief Add terminator edges for branch instructions.
+    /// @details Handles both SSA temps (via SSA id) and constants (via ILValue
+    ///          materialization in emitEdgeCopies). For constants, a sentinel -1
+    ///          is stored in argIds and the full ILValue is stored in argValues.
     void addTerminatorEdges(const il::core::Instr &instr, ILBlock &block)
     {
         const std::size_t succCount = instr.labels.size();
@@ -1011,11 +1014,26 @@ class ModuleAdapter
             {
                 for (const auto &arg : instr.brArgs[idx])
                 {
-                    if (arg.kind != il::core::Value::Kind::Temp)
+                    // Infer the kind hint for the block argument based on
+                    // the destination block's parameter types.
+                    std::optional<ILValue::Kind> hint;
+                    if (arg.kind == il::core::Value::Kind::ConstInt)
                     {
-                        reportUnsupported("non-SSA block argument in Phase A lowering");
+                        hint = arg.isBool ? ILValue::Kind::I1 : ILValue::Kind::I64;
                     }
-                    edge.argIds.push_back(static_cast<int>(arg.id));
+
+                    const ILValue converted = convertValue(arg, hint);
+                    edge.argValues.push_back(converted);
+
+                    if (arg.kind == il::core::Value::Kind::Temp)
+                    {
+                        edge.argIds.push_back(static_cast<int>(arg.id));
+                    }
+                    else
+                    {
+                        // Sentinel: constant to be materialized in emitEdgeCopies.
+                        edge.argIds.push_back(-1);
+                    }
                 }
             }
             block.terminatorEdges.push_back(std::move(edge));

@@ -68,8 +68,9 @@ struct ILBlock
 {
     struct EdgeArg
     {
-        std::string to{};          ///< Destination block label.
-        std::vector<int> argIds{}; ///< SSA ids mapped onto destination params.
+        std::string to{};              ///< Destination block label.
+        std::vector<int> argIds{};     ///< SSA ids mapped onto destination params (-1 for constants).
+        std::vector<ILValue> argValues{}; ///< Full IL values for each argument (enables constant materialization).
     };
 
     std::string name{};                      ///< Block label.

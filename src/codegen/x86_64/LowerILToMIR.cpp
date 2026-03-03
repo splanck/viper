@@ -407,7 +407,9 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
 /// @brief Emit PX_COPY instructions to satisfy block parameter semantics.
 /// @details Inserts copies on outgoing edges so successor block parameters have
 ///          the expected values.  Operates after each block's instructions are
-///          lowered to ensure value mappings exist.
+///          lowered to ensure value mappings exist.  For constant block arguments
+///          (sentinel -1 in argIds), materializes the value into a fresh vreg
+///          before emitting the copy.
 /// @param source IL block providing edge metadata.
 /// @param block Machine block receiving the copies.
 void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block)
@@ -428,13 +430,50 @@ void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block)
         MInstr px = MInstr::make(MOpcode::PX_COPY, {});
         for (std::size_t idx = 0; idx < params.size() && idx < edge.argIds.size(); ++idx)
         {
-            const auto valIt = valueToVReg_.find(edge.argIds[idx]);
-            if (valIt == valueToVReg_.end())
+            Operand srcOp;
+            if (edge.argIds[idx] >= 0)
             {
-                continue;
+                // SSA temp: look up the existing vreg mapping.
+                const auto valIt = valueToVReg_.find(edge.argIds[idx]);
+                if (valIt == valueToVReg_.end())
+                {
+                    continue;
+                }
+                srcOp = makeVRegOperand(valIt->second.cls, valIt->second.id);
+            }
+            else
+            {
+                // Constant: materialize into a fresh vreg.
+                // PX_COPY requires register operands, so we must emit a MOV
+                // instruction that loads the constant into a temporary vreg.
+                assert(idx < edge.argValues.size() && "argValues missing for constant block arg");
+                const ILValue &val = edge.argValues[idx];
+                const RegClass cls = params[idx].cls;
+
+                if (cls == RegClass::XMM)
+                {
+                    // F64 constant: load from rodata pool into XMM vreg.
+                    assert(roDataPool_ && "RoData pool unavailable for f64 block arg");
+                    const int poolIdx = roDataPool_->addF64Literal(val.f64);
+                    const std::string label = roDataPool_->f64Label(poolIdx);
+                    const VReg tmp = makeTempVReg(RegClass::XMM);
+                    srcOp = makeVRegOperand(tmp.cls, tmp.id);
+                    const Operand ripOp = makeRipLabelOperand(label);
+                    block.append(MInstr::make(MOpcode::MOVSDmr,
+                                              std::vector<Operand>{cloneOperand(srcOp), ripOp}));
+                }
+                else
+                {
+                    // Integer/pointer/bool constant: MOVri into GPR vreg.
+                    const VReg tmp = makeTempVReg(RegClass::GPR);
+                    srcOp = makeVRegOperand(tmp.cls, tmp.id);
+                    block.append(MInstr::make(MOpcode::MOVri,
+                                              std::vector<Operand>{cloneOperand(srcOp),
+                                                                   makeImmOperand(val.i64)}));
+                }
             }
             px.operands.push_back(makeVRegOperand(params[idx].cls, params[idx].id));
-            px.operands.push_back(makeVRegOperand(valIt->second.cls, valIt->second.id));
+            px.operands.push_back(srcOp);
         }
 
         if (!px.operands.empty())
