@@ -86,6 +86,14 @@ struct vgfx_window
     ///          divide by scale_factor to recover the logical (point) dimensions.
     float scale_factor;
 
+    /// @brief Coordinate transform scale (default 1.0 = no transform).
+    /// @details When > 1.0, all public drawing API coordinates are multiplied by
+    ///          this value before operating on the physical-pixel framebuffer.
+    ///          Mouse positions are divided by this value before returning.
+    ///          Set via vgfx_set_coord_scale() — the Canvas API enables this so
+    ///          games/demos draw in logical pixels; the GUI layer leaves it at 1.0.
+    float coord_scale;
+
     /// @brief Target frame rate for this window.
     /// @details fps > 0: Target that specific FPS with frame limiting.
     ///          fps < 0: Unlimited (no frame rate limiting).

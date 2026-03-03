@@ -117,6 +117,13 @@ void appendGraphicsLibs(const LinkContext &ctx,
                         std::vector<std::string> &cmd,
                         const std::vector<std::string> &frameworks);
 
+/// @brief Append audio backend library and platform frameworks to the link command.
+/// @details Only appends if the link context requires the audio runtime component.
+///          Adds libviperaud and platform-specific audio frameworks (AudioToolbox on macOS).
+/// @param ctx The link context to check for audio dependency.
+/// @param cmd The command-line vector to append flags to.
+void appendAudioLibs(const LinkContext &ctx, std::vector<std::string> &cmd);
+
 // =========================================================================
 // Tool invocation
 // =========================================================================

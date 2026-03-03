@@ -284,6 +284,35 @@ void appendGraphicsLibs(const LinkContext &ctx,
     }
 }
 
+void appendAudioLibs(const LinkContext &ctx, std::vector<std::string> &cmd)
+{
+    if (!hasComponent(ctx, RtComponent::Audio))
+        return;
+
+#ifdef _WIN32
+    const char *audLibName = "viperaud.lib";
+#else
+    const char *audLibName = "libviperaud.a";
+#endif
+
+    std::filesystem::path audLib;
+    if (!ctx.buildDir.empty())
+        audLib = ctx.buildDir / "lib" / audLibName;
+    else
+        audLib = std::filesystem::path("lib") / audLibName;
+
+    if (fileExists(audLib))
+        cmd.push_back(audLib.string());
+
+#if defined(__APPLE__)
+    cmd.push_back("-framework");
+    cmd.push_back("AudioToolbox");
+#elif !defined(_WIN32)
+    // Linux: ALSA
+    cmd.push_back("-lasound");
+#endif
+}
+
 // =========================================================================
 // Tool invocation
 // =========================================================================

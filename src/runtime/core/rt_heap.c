@@ -56,8 +56,14 @@
 static int g_shutdown_registered = 0;
 
 /* Audio shutdown is defined in rt_audio.c (real impl or stub no-op).
-   Declared here via extern to avoid cross-layer header include. */
+   Weak default here so programs that don't use audio link without pulling
+   in the audio component and its viperaud dependency.  When the audio
+   component IS linked, its strong definition overrides this no-op. */
+#if defined(_MSC_VER)
 extern void rt_audio_shutdown(void);
+#else
+__attribute__((weak)) void rt_audio_shutdown(void) {}
+#endif
 
 /* Legacy context shutdown is defined in rt_context.c. */
 extern void rt_legacy_context_shutdown(void);

@@ -112,6 +112,10 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height)
         return NULL;
     }
 
+    // Enable HiDPI coordinate scaling so Canvas apps draw in logical pixels
+    // while the framebuffer is at physical resolution.
+    vgfx_set_coord_scale(canvas->gfx_win, vgfx_window_get_scale(canvas->gfx_win));
+
     // Cache the title for GetTitle
     if (title)
     {
@@ -312,11 +316,13 @@ int64_t rt_canvas_poll(void *canvas_ptr)
         else if (canvas->last_event.type == VGFX_EVENT_KEY_UP)
             rt_keyboard_on_key_up((int64_t)canvas->last_event.data.key.key);
 
-        // Forward mouse events to mouse module
+        // Forward mouse events to mouse module (convert physical → logical)
         if (canvas->last_event.type == VGFX_EVENT_MOUSE_MOVE)
         {
-            rt_mouse_update_pos((int64_t)canvas->last_event.data.mouse_move.x,
-                                (int64_t)canvas->last_event.data.mouse_move.y);
+            float cs = vgfx_window_get_scale(canvas->gfx_win);
+            int64_t emx = (int64_t)(canvas->last_event.data.mouse_move.x / cs);
+            int64_t emy = (int64_t)(canvas->last_event.data.mouse_move.y / cs);
+            rt_mouse_update_pos(emx, emy);
         }
         else if (canvas->last_event.type == VGFX_EVENT_MOUSE_DOWN)
         {
@@ -639,54 +645,70 @@ void rt_canvas_blit(void *canvas_ptr, int64_t x, int64_t y, void *pixels_ptr)
     if (!pixels->data)
         return;
 
-    // Get framebuffer for direct access
     vgfx_framebuffer_t fb;
     if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
         return;
 
-    // Blit with clipping
+    float cs = vgfx_window_get_scale(canvas->gfx_win);
+    int32_t isf = (cs > 1.0f) ? (int32_t)cs : 1;
+
+    // Scale destination to physical pixels
+    int64_t dst_x = x * isf;
+    int64_t dst_y = y * isf;
     int64_t src_w = pixels->width;
     int64_t src_h = pixels->height;
-    int64_t dst_x = x;
-    int64_t dst_y = y;
     int64_t src_x = 0;
     int64_t src_y = 0;
 
-    // Clip to destination bounds
+    // Clip source against scaled destination bounds
     if (dst_x < 0)
     {
-        src_x -= dst_x;
-        src_w += dst_x;
-        dst_x = 0;
+        int64_t skip = (-dst_x + isf - 1) / isf; // logical pixels to skip
+        src_x += skip;
+        src_w -= skip;
+        dst_x += skip * isf;
     }
     if (dst_y < 0)
     {
-        src_y -= dst_y;
-        src_h += dst_y;
-        dst_y = 0;
+        int64_t skip = (-dst_y + isf - 1) / isf;
+        src_y += skip;
+        src_h -= skip;
+        dst_y += skip * isf;
     }
-    if (dst_x + src_w > fb.width)
-        src_w = fb.width - dst_x;
-    if (dst_y + src_h > fb.height)
-        src_h = fb.height - dst_y;
+    if (dst_x + src_w * isf > fb.width)
+        src_w = (fb.width - dst_x) / isf;
+    if (dst_y + src_h * isf > fb.height)
+        src_h = (fb.height - dst_y) / isf;
 
     if (src_w <= 0 || src_h <= 0)
         return;
 
-    // Copy pixels (convert from RGBA to framebuffer format)
+    // Copy pixels with nearest-neighbor upscale (each src pixel → isf×isf block)
     for (int64_t row = 0; row < src_h; row++)
     {
-        uint32_t *src_row = &pixels->data[(src_y + row) * pixels->width + src_x];
-        uint8_t *dst_row = &fb.pixels[((dst_y + row) * fb.stride) + (dst_x * 4)];
-
+        uint32_t *src_row_data = &pixels->data[(src_y + row) * pixels->width + src_x];
         for (int64_t col = 0; col < src_w; col++)
         {
-            uint32_t rgba = src_row[col];
-            // Pixels format: 0xRRGGBBAA, framebuffer: RGBA bytes
-            dst_row[col * 4 + 0] = (rgba >> 24) & 0xFF; // R
-            dst_row[col * 4 + 1] = (rgba >> 16) & 0xFF; // G
-            dst_row[col * 4 + 2] = (rgba >> 8) & 0xFF;  // B
-            dst_row[col * 4 + 3] = rgba & 0xFF;         // A
+            uint32_t rgba = src_row_data[col];
+            uint8_t r = (rgba >> 24) & 0xFF;
+            uint8_t g = (rgba >> 16) & 0xFF;
+            uint8_t b = (rgba >> 8) & 0xFF;
+            uint8_t a = rgba & 0xFF;
+
+            for (int32_t sy = 0; sy < isf; sy++)
+            {
+                int64_t py = dst_y + row * isf + sy;
+                if (py >= fb.height)
+                    break;
+                uint8_t *dst = &fb.pixels[py * fb.stride + (dst_x + col * isf) * 4];
+                for (int32_t sx = 0; sx < isf; sx++)
+                {
+                    dst[sx * 4 + 0] = r;
+                    dst[sx * 4 + 1] = g;
+                    dst[sx * 4 + 2] = b;
+                    dst[sx * 4 + 3] = a;
+                }
+            }
         }
     }
 }
@@ -715,58 +737,53 @@ void rt_canvas_blit_region(void *canvas_ptr,
     if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
         return;
 
-    // Clip source to pixels bounds
-    if (sx < 0)
-    {
-        w += sx;
-        dx -= sx;
-        sx = 0;
-    }
-    if (sy < 0)
-    {
-        h += sy;
-        dy -= sy;
-        sy = 0;
-    }
-    if (sx + w > pixels->width)
-        w = pixels->width - sx;
-    if (sy + h > pixels->height)
-        h = pixels->height - sy;
+    float cs = vgfx_window_get_scale(canvas->gfx_win);
+    int32_t isf = (cs > 1.0f) ? (int32_t)cs : 1;
 
-    // Clip destination to framebuffer bounds
-    if (dx < 0)
-    {
-        w += dx;
-        sx -= dx;
-        dx = 0;
-    }
-    if (dy < 0)
-    {
-        h += dy;
-        sy -= dy;
-        dy = 0;
-    }
-    if (dx + w > fb.width)
-        w = fb.width - dx;
-    if (dy + h > fb.height)
-        h = fb.height - dy;
+    // Clip source to pixels bounds (source coords are not scaled)
+    if (sx < 0) { w += sx; dx -= sx; sx = 0; }
+    if (sy < 0) { h += sy; dy -= sy; sy = 0; }
+    if (sx + w > pixels->width)  w = pixels->width - sx;
+    if (sy + h > pixels->height) h = pixels->height - sy;
+
+    // Scale destination to physical
+    int64_t pdx = dx * isf;
+    int64_t pdy = dy * isf;
+
+    // Clip destination to framebuffer bounds (in logical, then convert)
+    if (pdx < 0) { int64_t skip = (-pdx + isf - 1) / isf; w -= skip; sx += skip; pdx += skip * isf; }
+    if (pdy < 0) { int64_t skip = (-pdy + isf - 1) / isf; h -= skip; sy += skip; pdy += skip * isf; }
+    if (pdx + w * isf > fb.width)  w = (fb.width - pdx) / isf;
+    if (pdy + h * isf > fb.height) h = (fb.height - pdy) / isf;
 
     if (w <= 0 || h <= 0)
         return;
 
-    // Copy pixels
+    // Copy pixels with nearest-neighbor upscale
     for (int64_t row = 0; row < h; row++)
     {
         uint32_t *src_row = &pixels->data[(sy + row) * pixels->width + sx];
-        uint8_t *dst_row = &fb.pixels[((dy + row) * fb.stride) + (dx * 4)];
-
         for (int64_t col = 0; col < w; col++)
         {
             uint32_t rgba = src_row[col];
-            dst_row[col * 4 + 0] = (rgba >> 24) & 0xFF;
-            dst_row[col * 4 + 1] = (rgba >> 16) & 0xFF;
-            dst_row[col * 4 + 2] = (rgba >> 8) & 0xFF;
-            dst_row[col * 4 + 3] = rgba & 0xFF;
+            uint8_t r = (rgba >> 24) & 0xFF;
+            uint8_t g = (rgba >> 16) & 0xFF;
+            uint8_t b = (rgba >> 8) & 0xFF;
+            uint8_t a = rgba & 0xFF;
+
+            for (int32_t ys = 0; ys < isf; ys++)
+            {
+                int64_t py = pdy + row * isf + ys;
+                if (py >= fb.height) break;
+                uint8_t *dst = &fb.pixels[py * fb.stride + (pdx + col * isf) * 4];
+                for (int32_t xs = 0; xs < isf; xs++)
+                {
+                    dst[xs * 4 + 0] = r;
+                    dst[xs * 4 + 1] = g;
+                    dst[xs * 4 + 2] = b;
+                    dst[xs * 4 + 3] = a;
+                }
+            }
         }
     }
 }
@@ -788,39 +805,29 @@ void rt_canvas_blit_alpha(void *canvas_ptr, int64_t x, int64_t y, void *pixels_p
     if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
         return;
 
+    float cs = vgfx_window_get_scale(canvas->gfx_win);
+    int32_t isf = (cs > 1.0f) ? (int32_t)cs : 1;
+
     int64_t src_w = pixels->width;
     int64_t src_h = pixels->height;
-    int64_t dst_x = x;
-    int64_t dst_y = y;
+    int64_t dst_x = x * isf;
+    int64_t dst_y = y * isf;
     int64_t src_x = 0;
     int64_t src_y = 0;
 
     // Clip to destination bounds
-    if (dst_x < 0)
-    {
-        src_x -= dst_x;
-        src_w += dst_x;
-        dst_x = 0;
-    }
-    if (dst_y < 0)
-    {
-        src_y -= dst_y;
-        src_h += dst_y;
-        dst_y = 0;
-    }
-    if (dst_x + src_w > fb.width)
-        src_w = fb.width - dst_x;
-    if (dst_y + src_h > fb.height)
-        src_h = fb.height - dst_y;
+    if (dst_x < 0) { int64_t skip = (-dst_x + isf - 1) / isf; src_x += skip; src_w -= skip; dst_x += skip * isf; }
+    if (dst_y < 0) { int64_t skip = (-dst_y + isf - 1) / isf; src_y += skip; src_h -= skip; dst_y += skip * isf; }
+    if (dst_x + src_w * isf > fb.width)  src_w = (fb.width - dst_x) / isf;
+    if (dst_y + src_h * isf > fb.height) src_h = (fb.height - dst_y) / isf;
 
     if (src_w <= 0 || src_h <= 0)
         return;
 
-    // Alpha blend pixels
+    // Alpha blend pixels with nearest-neighbor upscale
     for (int64_t row = 0; row < src_h; row++)
     {
         uint32_t *src_row = &pixels->data[(src_y + row) * pixels->width + src_x];
-        uint8_t *dst_row = &fb.pixels[((dst_y + row) * fb.stride) + (dst_x * 4)];
 
         for (int64_t col = 0; col < src_w; col++)
         {
@@ -830,28 +837,33 @@ void rt_canvas_blit_alpha(void *canvas_ptr, int64_t x, int64_t y, void *pixels_p
             uint8_t sb = (rgba >> 8) & 0xFF;
             uint8_t sa = rgba & 0xFF;
 
-            if (sa == 255)
-            {
-                // Fully opaque - direct copy
-                dst_row[col * 4 + 0] = sr;
-                dst_row[col * 4 + 1] = sg;
-                dst_row[col * 4 + 2] = sb;
-                dst_row[col * 4 + 3] = 255;
-            }
-            else if (sa > 0)
-            {
-                // Alpha blend: out = src * alpha + dst * (1 - alpha)
-                uint8_t dr = dst_row[col * 4 + 0];
-                uint8_t dg = dst_row[col * 4 + 1];
-                uint8_t db = dst_row[col * 4 + 2];
-                uint16_t inv_alpha = 255 - sa;
+            if (sa == 0) continue;
 
-                dst_row[col * 4 + 0] = (uint8_t)((sr * sa + dr * inv_alpha) / 255);
-                dst_row[col * 4 + 1] = (uint8_t)((sg * sa + dg * inv_alpha) / 255);
-                dst_row[col * 4 + 2] = (uint8_t)((sb * sa + db * inv_alpha) / 255);
-                dst_row[col * 4 + 3] = 255;
+            for (int32_t ys = 0; ys < isf; ys++)
+            {
+                int64_t py = dst_y + row * isf + ys;
+                if (py >= fb.height) break;
+                uint8_t *dst = &fb.pixels[py * fb.stride + (dst_x + col * isf) * 4];
+
+                for (int32_t xs = 0; xs < isf; xs++)
+                {
+                    if (sa == 255)
+                    {
+                        dst[xs * 4 + 0] = sr;
+                        dst[xs * 4 + 1] = sg;
+                        dst[xs * 4 + 2] = sb;
+                        dst[xs * 4 + 3] = 255;
+                    }
+                    else
+                    {
+                        uint16_t inv_alpha = 255 - sa;
+                        dst[xs * 4 + 0] = (uint8_t)((sr * sa + dst[xs * 4 + 0] * inv_alpha) / 255);
+                        dst[xs * 4 + 1] = (uint8_t)((sg * sa + dst[xs * 4 + 1] * inv_alpha) / 255);
+                        dst[xs * 4 + 2] = (uint8_t)((sb * sa + dst[xs * 4 + 2] * inv_alpha) / 255);
+                        dst[xs * 4 + 3] = 255;
+                    }
+                }
             }
-            // sa == 0: fully transparent, skip
         }
     }
 }
@@ -1153,7 +1165,15 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
     if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
         return;
 
-    // Bounds check
+    // Scale start coordinates to physical pixels
+    float cs = vgfx_window_get_scale(canvas->gfx_win);
+    if (cs > 1.0f)
+    {
+        start_x = (int64_t)(start_x * cs);
+        start_y = (int64_t)(start_y * cs);
+    }
+
+    // Bounds check (physical)
     if (start_x < 0 || start_x >= fb.width || start_y < 0 || start_y >= fb.height)
         return;
 
@@ -1908,11 +1928,16 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
         return pixels;
     }
 
+    // Scale logical coordinates to physical framebuffer space.
+    // Each logical pixel samples the top-left corner of its sf×sf physical block.
+    float cs = vgfx_window_get_scale(canvas->gfx_win);
+    int32_t isf = (cs > 1.0f) ? (int32_t)cs : 1;
+
     rt_pixels_impl *pix = (rt_pixels_impl *)pixels;
 
     for (int64_t py = 0; py < h; py++)
     {
-        int64_t src_y = y + py;
+        int64_t src_y = (y + py) * isf;
         if (src_y < 0 || src_y >= fb.height)
             continue;
 
@@ -1921,7 +1946,7 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
 
         for (int64_t px = 0; px < w; px++)
         {
-            int64_t src_x = x + px;
+            int64_t src_x = (x + px) * isf;
             if (src_x < 0 || src_x >= fb.width)
             {
                 dst_row[px] = 0;
@@ -2414,6 +2439,7 @@ void rt_canvas_gradient_h(
     if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
     {
         // Fallback: per-column vgfx_line for mock/headless contexts.
+        // vgfx_line auto-scales via coord_scale, so pass logical coords.
         for (int64_t col = 0; col < w; col++)
         {
             int64_t color = rt_color_lerp(c1, c2, col * 100 / (w - 1 > 0 ? w - 1 : 1));
@@ -2427,11 +2453,17 @@ void rt_canvas_gradient_h(
         return;
     }
 
-    // Build a single gradient row (clamped to framebuffer bounds).
-    int64_t x0 = x < 0 ? 0 : x;
-    int64_t x1_clip = x + w > fb.width ? fb.width : x + w;
-    int64_t y0 = y < 0 ? 0 : y;
-    int64_t y1_clip = y + h > fb.height ? fb.height : y + h;
+    // Scale logical coordinates to physical framebuffer space.
+    float cs = vgfx_window_get_scale(canvas->gfx_win);
+    int32_t isf = (cs > 1.0f) ? (int32_t)cs : 1;
+    int64_t px = x * isf, py = y * isf;
+    int64_t pw = w * isf, ph = h * isf;
+
+    // Build a single gradient row (clamped to physical framebuffer bounds).
+    int64_t x0 = px < 0 ? 0 : px;
+    int64_t x1_clip = px + pw > fb.width ? fb.width : px + pw;
+    int64_t y0 = py < 0 ? 0 : py;
+    int64_t y1_clip = py + ph > fb.height ? fb.height : py + ph;
 
     if (x1_clip <= x0 || y1_clip <= y0)
         return;
@@ -2441,10 +2473,12 @@ void rt_canvas_gradient_h(
     if (!row_buf)
         return;
 
+    // Gradient interpolation uses logical width so colour distribution is unchanged.
     int64_t w_minus1 = w > 1 ? w - 1 : 1;
     for (int64_t i = 0; i < draw_w; i++)
     {
-        int64_t col = (x0 - x) + i;
+        // Map physical column back to logical for gradient interpolation.
+        int64_t col = ((x0 - px) + i) / isf;
         int64_t color = rt_color_lerp(c1, c2, col * 100 / w_minus1);
         row_buf[i * 4 + 0] = (uint8_t)((color >> 16) & 0xFF); // R
         row_buf[i * 4 + 1] = (uint8_t)((color >> 8) & 0xFF);  // G
@@ -2473,6 +2507,7 @@ void rt_canvas_gradient_v(
     vgfx_framebuffer_t fb;
     if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
     {
+        // Fallback: vgfx_line auto-scales via coord_scale, so pass logical coords.
         for (int64_t row = 0; row < h; row++)
         {
             int64_t color = rt_color_lerp(c1, c2, row * 100 / (h - 1 > 0 ? h - 1 : 1));
@@ -2486,10 +2521,16 @@ void rt_canvas_gradient_v(
         return;
     }
 
-    int64_t x0 = x < 0 ? 0 : x;
-    int64_t x1_clip = x + w > fb.width ? fb.width : x + w;
-    int64_t y0 = y < 0 ? 0 : y;
-    int64_t y1_clip = y + h > fb.height ? fb.height : y + h;
+    // Scale logical coordinates to physical framebuffer space.
+    float cs = vgfx_window_get_scale(canvas->gfx_win);
+    int32_t isf = (cs > 1.0f) ? (int32_t)cs : 1;
+    int64_t px = x * isf, py = y * isf;
+    int64_t pw = w * isf, ph = h * isf;
+
+    int64_t x0 = px < 0 ? 0 : px;
+    int64_t x1_clip = px + pw > fb.width ? fb.width : px + pw;
+    int64_t y0 = py < 0 ? 0 : py;
+    int64_t y1_clip = py + ph > fb.height ? fb.height : py + ph;
 
     if (x1_clip <= x0 || y1_clip <= y0)
         return;
@@ -2499,7 +2540,8 @@ void rt_canvas_gradient_v(
 
     for (int64_t row = y0; row < y1_clip; row++)
     {
-        int64_t r_idx = (y0 - y) + (row - y0); // = row - y
+        // Map physical row back to logical for gradient interpolation.
+        int64_t r_idx = (row - py) / isf;
         int64_t color = rt_color_lerp(c1, c2, r_idx * 100 / h_minus1);
         uint8_t cr = (uint8_t)((color >> 16) & 0xFF);
         uint8_t cg = (uint8_t)((color >> 8) & 0xFF);

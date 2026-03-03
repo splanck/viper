@@ -72,10 +72,24 @@ if (NOT RESULT EQUAL 0)
     message(FATAL_ERROR "Failed to assemble:\n${STDERR}")
 endif ()
 
+# Locate viperaud (audio backend) — derived from RUNTIME_LIB path
+get_filename_component(_RT_DIR ${RUNTIME_LIB} DIRECTORY)
+get_filename_component(_BUILD_DIR ${_RT_DIR} DIRECTORY ABSOLUTE)
+set(VIPERAUD_LIB "${_BUILD_DIR}/lib/libviperaud.a")
+
 # Step 4: Link
 message(STATUS "Linking ${OBJ_FILE} with runtime...")
+set(_LINK_CMD clang++ ${OBJ_FILE} ${RUNTIME_LIB})
+if (EXISTS ${VIPERAUD_LIB})
+    list(APPEND _LINK_CMD ${VIPERAUD_LIB})
+endif ()
+# macOS: AudioToolbox framework for audio backend
+if (APPLE)
+    list(APPEND _LINK_CMD -framework AudioToolbox)
+endif ()
+list(APPEND _LINK_CMD -o ${EXE_FILE})
 execute_process(
-        COMMAND clang++ ${OBJ_FILE} ${RUNTIME_LIB} -o ${EXE_FILE}
+        COMMAND ${_LINK_CMD}
         RESULT_VARIABLE RESULT
         ERROR_VARIABLE STDERR
 )

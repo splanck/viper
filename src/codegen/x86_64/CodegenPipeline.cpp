@@ -417,6 +417,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
 #endif
         appendGraphicsLibs(ctx, cmd, frameworks);
     }
+    appendAudioLibs(ctx, cmd);
 
 #if defined(__APPLE__)
     cmd.push_back("-Wl,-dead_strip");

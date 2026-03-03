@@ -231,6 +231,7 @@ static int linkToExe(const std::string &asmPath,
     // UniformTypeIdentifiers is required by vipergui's native file dialog on macOS.
     appendGraphicsLibs(
         ctx, linkCmd, {"Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers"});
+    appendAudioLibs(ctx, linkCmd);
 
     // C++ runtime archives (e.g. Threads) need the C++ standard library.
     if (hasComponent(ctx, codegen::RtComponent::Threads))

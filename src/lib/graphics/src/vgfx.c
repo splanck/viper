@@ -697,6 +697,7 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params)
     win->width = (int32_t)(actual_params.width * win->scale_factor);
     win->height = (int32_t)(actual_params.height * win->scale_factor);
     win->stride = win->width * 4;
+    win->coord_scale = 1.0f; /* No coordinate scaling by default (GUI layer) */
 
     /* Set FPS (apply default if params.fps == 0, clamp if positive) */
     if (actual_params.fps == 0)
@@ -884,10 +885,11 @@ int32_t vgfx_get_size(vgfx_window_t window, int32_t *width, int32_t *height)
     if (!window)
         return 0;
 
+    float cs = window->coord_scale;
     if (width)
-        *width = window->width;
+        *width = (cs > 1.0f) ? (int32_t)(window->width / cs) : window->width;
     if (height)
-        *height = window->height;
+        *height = (cs > 1.0f) ? (int32_t)(window->height / cs) : window->height;
     return 1;
 }
 
@@ -900,6 +902,14 @@ float vgfx_window_get_scale(vgfx_window_t window)
     if (!win)
         return 1.0f;
     return win->scale_factor > 0.0f ? win->scale_factor : 1.0f;
+}
+
+void vgfx_set_coord_scale(vgfx_window_t window, float scale)
+{
+    struct vgfx_window *win = (struct vgfx_window *)window;
+    if (!win)
+        return;
+    win->coord_scale = (scale >= 1.0f) ? scale : 1.0f;
 }
 
 /// @brief Get the physical pixel width of the window framebuffer.
@@ -1026,7 +1036,38 @@ int32_t vgfx_close_requested(vgfx_window_t window)
 /// @post If (x, y) in bounds: pixel at (x, y) is set to color with alpha=0xFF
 void vgfx_pset(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color)
 {
-    /* Silent no-op if out of bounds or NULL window */
+    if (!window)
+        return;
+
+    float cs = window->coord_scale;
+    if (cs > 1.0f)
+    {
+        /* HiDPI: fill a cs×cs block at the scaled position */
+        int32_t px = (int32_t)(x * cs);
+        int32_t py = (int32_t)(y * cs);
+        int32_t sz = (int32_t)cs;
+        uint8_t r = (color >> 16) & 0xFF;
+        uint8_t g = (color >> 8) & 0xFF;
+        uint8_t b = (color >> 0) & 0xFF;
+        for (int32_t dy = 0; dy < sz; dy++)
+        {
+            for (int32_t dx = 0; dx < sz; dx++)
+            {
+                int32_t bx = px + dx, by = py + dy;
+                if (bx >= 0 && bx < window->width && by >= 0 && by < window->height)
+                {
+                    int32_t off = by * window->stride + bx * 4;
+                    window->pixels[off + 0] = r;
+                    window->pixels[off + 1] = g;
+                    window->pixels[off + 2] = b;
+                    window->pixels[off + 3] = 0xFF;
+                }
+            }
+        }
+        return;
+    }
+
+    /* Standard 1:1 path */
     if (!vgfx_internal_in_bounds(window, x, y))
         return;
 
@@ -1037,8 +1078,72 @@ void vgfx_pset(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color)
     window->pixels[offset + 3] = 0xFF;                 /* A (fully opaque) */
 }
 
+/// @brief Plot a pixel in the physical framebuffer (no coord_scale applied).
+/// @details Used by internal code paths (blit, flood fill) that have already
+///          converted to physical coordinates.
+static void vgfx_pset_phys(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color)
+{
+    if (!vgfx_internal_in_bounds(window, x, y))
+        return;
+    int32_t offset = y * window->stride + x * 4;
+    window->pixels[offset + 0] = (color >> 16) & 0xFF;
+    window->pixels[offset + 1] = (color >> 8) & 0xFF;
+    window->pixels[offset + 2] = (color >> 0) & 0xFF;
+    window->pixels[offset + 3] = 0xFF;
+}
+
+static void vgfx_pset_alpha_block(vgfx_window_t window, int32_t px, int32_t py, int32_t sz,
+                                   uint32_t color)
+{
+    uint8_t src_a = (uint8_t)((color >> 24) & 0xFF);
+    if (src_a == 0)
+        return;
+    uint8_t src_r = (uint8_t)((color >> 16) & 0xFF);
+    uint8_t src_g = (uint8_t)((color >> 8) & 0xFF);
+    uint8_t src_b = (uint8_t)(color & 0xFF);
+
+    for (int32_t dy = 0; dy < sz; dy++)
+    {
+        for (int32_t dx = 0; dx < sz; dx++)
+        {
+            int32_t bx = px + dx, by = py + dy;
+            if (bx < 0 || bx >= window->width || by < 0 || by >= window->height)
+                continue;
+            int32_t off = by * window->stride + bx * 4;
+            if (src_a == 0xFF)
+            {
+                window->pixels[off + 0] = src_r;
+                window->pixels[off + 1] = src_g;
+                window->pixels[off + 2] = src_b;
+                window->pixels[off + 3] = 0xFF;
+            }
+            else
+            {
+                uint32_t inv_a = 255u - src_a;
+                window->pixels[off + 0] =
+                    (uint8_t)((src_r * src_a + window->pixels[off + 0] * inv_a) / 255u);
+                window->pixels[off + 1] =
+                    (uint8_t)((src_g * src_a + window->pixels[off + 1] * inv_a) / 255u);
+                window->pixels[off + 2] =
+                    (uint8_t)((src_b * src_a + window->pixels[off + 2] * inv_a) / 255u);
+                window->pixels[off + 3] = 0xFF;
+            }
+        }
+    }
+}
+
 void vgfx_pset_alpha(vgfx_window_t window, int32_t x, int32_t y, uint32_t color)
 {
+    if (!window)
+        return;
+
+    float cs = window->coord_scale;
+    if (cs > 1.0f)
+    {
+        vgfx_pset_alpha_block(window, (int32_t)(x * cs), (int32_t)(y * cs), (int32_t)cs, color);
+        return;
+    }
+
     if (!vgfx_internal_in_bounds(window, x, y))
         return;
 
@@ -1089,10 +1194,17 @@ void vgfx_pset_alpha(vgfx_window_t window, int32_t x, int32_t y, uint32_t color)
 /// @post If 1 returned: *out_color contains RGB color at (x, y)
 int32_t vgfx_point(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t *out_color)
 {
-    if (!vgfx_internal_in_bounds(window, x, y) || !out_color)
+    if (!window || !out_color)
         return 0;
 
-    int32_t offset = y * window->stride + x * 4;
+    float cs = window->coord_scale;
+    int32_t px = (cs > 1.0f) ? (int32_t)(x * cs) : x;
+    int32_t py = (cs > 1.0f) ? (int32_t)(y * cs) : y;
+
+    if (!vgfx_internal_in_bounds(window, px, py))
+        return 0;
+
+    int32_t offset = py * window->stride + px * 4;
     uint8_t r = window->pixels[offset + 0];
     uint8_t g = window->pixels[offset + 1];
     uint8_t b = window->pixels[offset + 2];
@@ -1161,6 +1273,13 @@ void vgfx_draw_fill_circle(
 void vgfx_line(
     vgfx_window_t window, int32_t x1, int32_t y1, int32_t x2, int32_t y2, vgfx_color_t color)
 {
+    float cs = window ? window->coord_scale : 1.0f;
+    if (cs > 1.0f)
+    {
+        vgfx_draw_line(window, (int32_t)(x1 * cs), (int32_t)(y1 * cs), (int32_t)(x2 * cs),
+                        (int32_t)(y2 * cs), color);
+        return;
+    }
     vgfx_draw_line(window, x1, y1, x2, y2, color);
 }
 
@@ -1176,6 +1295,13 @@ void vgfx_line(
 /// @param color  RGB color (format: 0x00RRGGBB)
 void vgfx_rect(vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_t h, vgfx_color_t color)
 {
+    float cs = window ? window->coord_scale : 1.0f;
+    if (cs > 1.0f)
+    {
+        vgfx_draw_rect(window, (int32_t)(x * cs), (int32_t)(y * cs), (int32_t)(w * cs),
+                        (int32_t)(h * cs), color);
+        return;
+    }
     vgfx_draw_rect(window, x, y, w, h, color);
 }
 
@@ -1192,6 +1318,13 @@ void vgfx_rect(vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_t h,
 void vgfx_fill_rect(
     vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_t h, vgfx_color_t color)
 {
+    float cs = window ? window->coord_scale : 1.0f;
+    if (cs > 1.0f)
+    {
+        vgfx_draw_fill_rect(window, (int32_t)(x * cs), (int32_t)(y * cs), (int32_t)(w * cs),
+                             (int32_t)(h * cs), color);
+        return;
+    }
     vgfx_draw_fill_rect(window, x, y, w, h, color);
 }
 
@@ -1206,6 +1339,13 @@ void vgfx_fill_rect(
 /// @param color  RGB color (format: 0x00RRGGBB)
 void vgfx_circle(vgfx_window_t window, int32_t cx, int32_t cy, int32_t radius, vgfx_color_t color)
 {
+    float cs = window ? window->coord_scale : 1.0f;
+    if (cs > 1.0f)
+    {
+        vgfx_draw_circle(window, (int32_t)(cx * cs), (int32_t)(cy * cs), (int32_t)(radius * cs),
+                          color);
+        return;
+    }
     vgfx_draw_circle(window, cx, cy, radius, color);
 }
 
@@ -1221,6 +1361,13 @@ void vgfx_circle(vgfx_window_t window, int32_t cx, int32_t cy, int32_t radius, v
 void vgfx_fill_circle(
     vgfx_window_t window, int32_t cx, int32_t cy, int32_t radius, vgfx_color_t color)
 {
+    float cs = window ? window->coord_scale : 1.0f;
+    if (cs > 1.0f)
+    {
+        vgfx_draw_fill_circle(window, (int32_t)(cx * cs), (int32_t)(cy * cs),
+                               (int32_t)(radius * cs), color);
+        return;
+    }
     vgfx_draw_fill_circle(window, cx, cy, radius, color);
 }
 
@@ -1286,15 +1433,26 @@ int32_t vgfx_mouse_pos(vgfx_window_t window, int32_t *x, int32_t *y)
     if (!window)
         return 0;
 
-    /* Always fill output pointers */
-    if (x)
-        *x = window->mouse_x;
-    if (y)
-        *y = window->mouse_y;
+    float cs = window->coord_scale;
+    int32_t mx = window->mouse_x;
+    int32_t my = window->mouse_y;
 
-    /* Return 1 if inside bounds, 0 otherwise */
-    return (window->mouse_x >= 0 && window->mouse_x < window->width && window->mouse_y >= 0 &&
-            window->mouse_y < window->height);
+    /* Return logical coordinates when coord_scale is active */
+    if (cs > 1.0f)
+    {
+        mx = (int32_t)(mx / cs);
+        my = (int32_t)(my / cs);
+    }
+
+    if (x)
+        *x = mx;
+    if (y)
+        *y = my;
+
+    /* Logical bounds check */
+    int32_t lw = (cs > 1.0f) ? (int32_t)(window->width / cs) : window->width;
+    int32_t lh = (cs > 1.0f) ? (int32_t)(window->height / cs) : window->height;
+    return (mx >= 0 && mx < lw && my >= 0 && my < lh);
 }
 
 /// @brief Check if a mouse button is currently pressed.

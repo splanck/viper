@@ -235,8 +235,8 @@ inline std::vector<RtComponent> resolveRequiredComponents(const SymbolRange &sym
     auto add = [&](RtComponent c) { needed.insert(static_cast<int>(c)); };
 
     // Apply dependency rules (internal runtime calls between components).
-    // Base always depends on Audio (rt_global_shutdown calls rt_audio_shutdown).
-    add(RtComponent::Audio);
+    // Note: Base's calls to rt_audio_shutdown and rt_file_state_cleanup use
+    // weak symbols, so Audio/IoFs are NOT unconditionally required.
     if (has(RtComponent::Text) || has(RtComponent::IoFs) || has(RtComponent::Exec) ||
         has(RtComponent::Network))
         add(RtComponent::Collections);

@@ -714,7 +714,16 @@ void vgfx_set_clip(vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_
     if (!win)
         return;
 
-    /* Store clip rectangle */
+    /* Scale clip rect to physical pixels when coord_scale is active */
+    float cs = win->coord_scale;
+    if (cs > 1.0f)
+    {
+        x = (int32_t)(x * cs);
+        y = (int32_t)(y * cs);
+        w = (int32_t)(w * cs);
+        h = (int32_t)(h * cs);
+    }
+
     win->clip_x = x;
     win->clip_y = y;
     win->clip_w = w;

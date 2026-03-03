@@ -57,8 +57,16 @@
 #include <pthread.h>
 #endif
 
+/* Cross-component forward declarations — weak defaults so programs that
+   don't use file I/O or OOP don't need to link viper_rt_io_fs / viper_rt_oop.
+   When those components ARE linked, their strong definitions override these. */
+#if defined(_MSC_VER)
 void rt_file_state_cleanup(RtContext *ctx);
 void rt_type_registry_cleanup(RtContext *ctx);
+#else
+__attribute__((weak)) void rt_file_state_cleanup(RtContext *ctx) { (void)ctx; }
+__attribute__((weak)) void rt_type_registry_cleanup(RtContext *ctx) { (void)ctx; }
+#endif
 void rt_args_state_cleanup(RtContext *ctx);
 
 /// @brief Thread-local pointer to the active runtime context.

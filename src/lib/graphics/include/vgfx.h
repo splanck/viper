@@ -497,6 +497,19 @@ extern "C"
     /// @return Scale factor (≥ 1.0)
     float vgfx_window_get_scale(vgfx_window_t window);
 
+    /// @brief Enable coordinate-space scaling for the drawing API.
+    /// @details When set to a value > 1.0, all public drawing functions
+    ///          (vgfx_pset, vgfx_line, vgfx_fill_rect, etc.) automatically
+    ///          multiply input coordinates by this factor.  Mouse positions
+    ///          returned by vgfx_mouse_pos() are divided by it.  vgfx_get_size()
+    ///          returns logical (divided) dimensions.
+    ///          Intended for the Canvas (game) API so apps draw in logical
+    ///          pixels while the framebuffer is at physical resolution.
+    ///          The GUI widget layer leaves this at the default 1.0.
+    /// @param window Window handle
+    /// @param scale  Coordinate scale (typically vgfx_window_get_scale(window))
+    void vgfx_set_coord_scale(vgfx_window_t window, float scale);
+
     /// @brief Get the physical pixel width of the window framebuffer.
     /// @details Returns win->width, which equals (logical_width × scale_factor)
     ///          after vgfx_create_window().  Use for framebuffer operations.
