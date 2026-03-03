@@ -60,6 +60,35 @@ Run it:
 
 ---
 
+## Try Zia Interactively
+
+Before writing files, you can experiment with Zia in the interactive REPL:
+
+```bash
+viper repl
+```
+
+The REPL lets you type Zia code and see results immediately:
+
+```
+zia> "Hello, world"
+Hello, world
+zia> 2 + 3 * 4
+14
+zia> var x = 42
+zia> x
+42
+zia> func square(n: Integer) -> Integer { return n * n; }
+zia> square(7)
+49
+```
+
+Expressions are automatically evaluated and printed. Variables persist across inputs. You can define functions, import modules with `bind`, and redefine functions. Errors are reported without losing your session state.
+
+Type `.help` for available commands and `.quit` to exit. See the **[REPL Guide](repl.md)** for full documentation.
+
+---
+
 ## 2. Variables and Types
 
 ### Variable Declaration
@@ -540,6 +569,10 @@ For more complete examples, see the `demos/zia/` directory:
 - `demos/zia/frogger/` — Complete Frogger game example
 - `demos/zia/centipede/` — Centipede arcade game
 - `demos/zia/pacman/` — Pac-Man game
+
+**Interactive:**
+
+- [REPL Guide](repl.md) — Interactive Zia experimentation
 
 **Related Guides:**
 

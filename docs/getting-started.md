@@ -127,6 +127,33 @@ Hello, World!
 
 ---
 
+## Try the Interactive REPL
+
+For quick experimentation, launch the interactive REPL:
+
+```sh
+viper repl
+```
+
+The REPL lets you type Zia code and see results immediately:
+
+```
+zia> "Hello from the REPL"
+Hello from the REPL
+zia> 2 + 3 * 4
+14
+zia> var x = 42
+zia> x
+42
+zia> func square(n: Integer) -> Integer { return n * n; }
+zia> square(7)
+49
+```
+
+Type `.help` for available commands and `.quit` to exit. See the [REPL Guide](repl.md) for full documentation.
+
+---
+
 ## Working with IL Programs
 
 You can inspect the generated IL or run IL programs directly:

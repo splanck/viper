@@ -386,6 +386,25 @@ target_link_libraries(viper_native_compiler
 target_include_directories(viper_native_compiler PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 
+# REPL library (custom line editor, session, adapters)
+add_library(viper_repl STATIC
+        repl/ReplLineEditor.cpp
+        repl/ReplInputClassifier.cpp
+        repl/ReplMetaCommands.cpp
+        repl/ReplSession.cpp
+        repl/ZiaReplAdapter.cpp
+        repl/BasicReplAdapter.cpp)
+target_include_directories(viper_repl PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_link_libraries(viper_repl
+        PUBLIC
+        viper_common_opts
+        tui
+        fe_zia
+        fe_basic
+        viper::il_full
+        viper_bytecode)
+
 # Build viper (CLI) sources list conditionally based on enabled frontends
 set(VIPER_CLI_SOURCES
         tools/viper/main.cpp
@@ -398,6 +417,7 @@ set(VIPER_CLI_SOURCES
         tools/viper/cmd_bench.cpp
         tools/viper/cmd_init.cpp
         tools/viper/cmd_package.cpp
+        tools/viper/cmd_repl.cpp
         tools/viper/cli.cpp
         tools/viper/break_spec.cpp)
 
@@ -416,7 +436,8 @@ set(VIPER_CLI_LINK_LIBS
         il_codegen_aarch64
         viper_cmd_arm64
         viper_bytecode
-        viper_packaging)
+        viper_packaging
+        viper_repl)
 
 add_executable(viper ${VIPER_CLI_SOURCES})
 set_target_properties(viper PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/viper)
@@ -446,7 +467,8 @@ target_link_libraries(vbasic
         il_codegen_aarch64
         viper_cmd_arm64
         viper_common
-        viper_bytecode)
+        viper_bytecode
+        viper_repl)
 install(TARGETS vbasic RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_executable(zia

@@ -262,6 +262,7 @@ void usage()
         << "Usage: viper run <target> [options] [-- program-args...]\n"
         << "       viper build <target> [-o output] [options]\n"
         << "       viper init <project-name> [--lang zia|basic]\n"
+        << "       viper repl [zia|basic]       Interactive REPL session\n"
         << "       viper package [target] [--target macos|linux|windows|tarball]\n"
         << "                              [--arch arm64|x64] [-o output]\n"
         << "\n"
@@ -379,6 +380,10 @@ int main(int argc, char **argv)
     if (cmd == "package")
     {
         return cmdPackage(argc - 2, argv + 2);
+    }
+    if (cmd == "repl")
+    {
+        return cmdRepl(argc - 2, argv + 2);
     }
     if (cmd == "help")
     {
