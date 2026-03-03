@@ -10,11 +10,11 @@
 
 ## Download
 
-**Latest Release:** [v0.2.1-dev](https://github.com/splanck/viper/releases/tag/v0.2.1-dev) (2/19/2026)
+**Latest Release:** [v0.2.2-dev](https://github.com/splanck/viper/releases/tag/v0.2.2-dev) (3/2/2026)
 
-- [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.2.1-dev.tar.gz)
-- [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.2.1-dev.zip)
-- [Release Notes](docs/release_notes/Viper_Release_Notes_0_2_1.md)
+- [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.2.2-dev.tar.gz)
+- [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.2.2-dev.zip)
+- [Release Notes](docs/release_notes/Viper_Release_Notes_0_2_2.md)
 
 > **Working with the latest code:** The `master` branch is a live snapshot of current
 > development and may be ahead of (or different from) any tagged release. To work with
@@ -92,14 +92,15 @@ Viper is in **early development**. All components are functional but incomplete:
 
 | Component | Notes |
 |-----------|-------|
-| Zia Frontend | Flagship language with entities, generics, modules, imports; actively developed |
-| Viper IL | Stable core; instruction set still expanding |
-| Virtual Machine | Functional with multiple dispatch strategies |
-| AArch64 Backend | Validated on Apple Silicon; actively developed |
-| x86-64 Backend | Validated on Windows; System V and Windows x64 ABI support |
-| Runtime Libraries | Comprehensive: core types, collections, I/O, text, math, graphics, audio, GUI, input, networking, system, diagnostics, utilities, crypto, time, threads |
+| Zia Frontend | Full feature parity with BASIC: entities, generics, properties, destructors, try/catch, modules, 18 warning codes |
+| Viper IL | Stable core; module linker for cross-language interop |
+| Virtual Machine | Functional with multiple dispatch strategies; SIGINT handling, SEH trap conversion |
+| AArch64 Backend | Validated on Apple Silicon and Windows ARM64; actively developed |
+| x86-64 Backend | Validated on Windows and Linux; 300+ stress tests, IEEE 754 NaN-safe comparisons |
+| Runtime Libraries | 226 classes: core types, collections, I/O, text, math, graphics, audio, GUI, input, networking, system, diagnostics, utilities, crypto, time, threads |
 | BASIC Frontend | Core language implemented; OOP features work but are evolving |
-| IL Optimizer | Basic passes implemented; more planned |
+| IL Optimizer | SimplifyCFG, SCCP, EarlyCSE, Mem2Reg, DSE (MemorySSA), CheckOpt, Inliner |
+| Packaging | `viper package` generates native installers (.app, .deb, .exe, .tar.gz) |
 | Debugger/IDE | Early work; not yet usable |
 
 Expect breaking changes. The IL specification, APIs, and tool interfaces are not stable.
@@ -129,6 +130,8 @@ Native binaries are output to `demos/bin/`. See the **[demos/](demos/README.md)*
 | `demos/zia/viperide` | Simple Viper IDE with tabs, find/replace, and integrated build |
 | `demos/zia/paint` | Paint application with drawing tools, shapes, and color picker |
 | `demos/zia/pacman` | Pac-Man clone with ghost AI, animations, and tile-based rendering |
+| `demos/zia/chess` | Chess engine with alpha-beta AI, transposition tables, and canvas UI |
+| `demos/zia/novarun` | "Nova Run" 2D sidescroller platformer with boss fights and parallax backgrounds |
 | `demos/zia/sqldb` | SQL database engine with REPL, query execution, and persistent storage |
 | `demos/zia/webserver` | Multi-threaded HTTP server with routing and request logging |
 | `demos/zia/telnet` | Telnet client and server with interactive shell |
@@ -276,7 +279,8 @@ See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete AP
 
 | Tool | Purpose |
 |------|---------|
-| `viper` | Unified compiler driver — run, build, and compile projects |
+| `viper` | Unified compiler driver — run, build, compile, and package projects |
+| `viper package` | Generate platform-native installers (.app, .deb, .exe, .tar.gz) |
 | `zia` | Run or compile Zia programs |
 | `vbasic` | Run or compile BASIC programs |
 | `ilrun` | Execute IL programs |
