@@ -105,14 +105,10 @@ typedef struct rt_bag_impl
 ///         Returns "" with length 0 if key is NULL.
 static const char *get_key_data(rt_string key, size_t *out_len)
 {
-    const char *cstr = rt_string_cstr(key);
-    if (!cstr)
-    {
-        *out_len = 0;
+    *out_len = (size_t)rt_str_len(key);
+    if (*out_len == 0)
         return "";
-    }
-    *out_len = strlen(cstr);
-    return cstr;
+    return key->data;
 }
 
 /// @brief Finds an entry in a bucket's collision chain.

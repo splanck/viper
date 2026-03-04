@@ -209,8 +209,7 @@ void rt_playlist_add(void *obj, rt_string path)
     playlist_impl *pl = (playlist_impl *)obj;
 
     // Copy the path string
-    const char *str = rt_string_cstr(path);
-    rt_string copy = str ? rt_string_from_bytes(str, strlen(str)) : rt_const_cstr("");
+    rt_string copy = path ? rt_string_ref(path) : rt_const_cstr("");
     rt_seq_push(pl->tracks, (void *)copy);
 
     // Regenerate shuffle order if needed
@@ -226,8 +225,7 @@ void rt_playlist_insert(void *obj, int64_t index, rt_string path)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
 
-    const char *str = rt_string_cstr(path);
-    rt_string copy = str ? rt_string_from_bytes(str, strlen(str)) : rt_const_cstr("");
+    rt_string copy = path ? rt_string_ref(path) : rt_const_cstr("");
     rt_seq_insert(pl->tracks, index, (void *)copy);
 
     // Adjust current if needed

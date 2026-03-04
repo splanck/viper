@@ -318,6 +318,15 @@ void emitSIToFP(const ILInstr &instr, MIRBuilder &builder);
 /// @param builder The MIR builder to append instructions to.
 void emitFPToSI(const ILInstr &instr, MIRBuilder &builder);
 
+/// @brief Emits x86-64 MIR for checked `fptosi_chk` (float to signed int with NaN/overflow trap).
+///
+/// Generates UCOMISD NaN check, CVTTSD2SI, then verifies the result is not the overflow
+/// sentinel (0x8000000000000000). Traps via UD2 on NaN, Inf, or out-of-range values.
+///
+/// @param instr The IL fptosi_chk instruction with floating-point operand.
+/// @param builder The MIR builder to append instructions to.
+void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder);
+
 /// @brief Emits x86-64 MIR for IL `fptoui` instruction (float to unsigned int, checked).
 /// @param instr The IL fptoui instruction with F64 operand.
 /// @param builder The MIR builder to append instructions to.
@@ -658,7 +667,7 @@ struct RuleSpec
 ///
 /// @see lookupRuleSpec() to find a rule for an instruction
 /// @see matchesRuleSpec() for the rule matching implementation
-inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 50>{
+inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 51>{
     // === Arithmetic Operations ===
     RuleSpec{"add",
              OperandShape{2U,
@@ -1046,6 +1055,17 @@ inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 50>{
              RuleFlags::None,
              &emitFPToSI,
              "fptosi"},
+    RuleSpec{"fptosi_chk",
+             OperandShape{1U,
+                          1U,
+                          1U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitFPToSIChecked,
+             "fptosi_chk"},
     RuleSpec{"eh.push",
              OperandShape{1U,
                           1U,

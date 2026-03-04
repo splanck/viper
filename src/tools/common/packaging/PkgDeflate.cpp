@@ -27,6 +27,8 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <memory>
+#include <mutex>
 
 namespace viper::pkg {
 
@@ -124,11 +126,13 @@ struct BitReader {
 //=============================================================================
 
 struct BitWriter {
-    uint8_t *data;
-    size_t capacity;
-    size_t len;
-    uint32_t buffer;
-    int bitsInBuf;
+    uint8_t *data = nullptr;
+    size_t capacity = 0;
+    size_t len = 0;
+    uint32_t buffer = 0;
+    int bitsInBuf = 0;
+
+    ~BitWriter() { std::free(data); }
 
     void init(size_t initialCap)
     {
@@ -321,29 +325,29 @@ static const int kCodeLengthOrder[kMaxCodeLenCodes] = {
 
 static HuffmanTree *sFixedLitTree = nullptr;
 static HuffmanTree *sFixedDistTree = nullptr;
+static std::once_flag sFixedTreesFlag;
 
 static void initFixedTrees()
 {
-    if (sFixedLitTree)
-        return;
+    std::call_once(sFixedTreesFlag, []() {
+        // Literal/length code lengths (RFC 1951 section 3.2.6)
+        auto lit = std::make_unique<HuffmanTree>();
+        uint8_t litLengths[kFixedLitCodes];
+        for (int i = 0; i <= 143; i++) litLengths[i] = 8;
+        for (int i = 144; i <= 255; i++) litLengths[i] = 9;
+        for (int i = 256; i <= 279; i++) litLengths[i] = 7;
+        for (int i = 280; i <= 287; i++) litLengths[i] = 8;
+        lit->build(litLengths, kFixedLitCodes);
 
-    // Literal/length code lengths (RFC 1951 section 3.2.6)
-    auto *lit = new HuffmanTree();
-    uint8_t litLengths[kFixedLitCodes];
-    for (int i = 0; i <= 143; i++) litLengths[i] = 8;
-    for (int i = 144; i <= 255; i++) litLengths[i] = 9;
-    for (int i = 256; i <= 279; i++) litLengths[i] = 7;
-    for (int i = 280; i <= 287; i++) litLengths[i] = 8;
-    lit->build(litLengths, kFixedLitCodes);
+        // Distance code lengths (all 5 bits)
+        auto dist = std::make_unique<HuffmanTree>();
+        uint8_t distLengths[kFixedDistCodes];
+        for (int i = 0; i < kFixedDistCodes; i++) distLengths[i] = 5;
+        dist->build(distLengths, kFixedDistCodes);
 
-    // Distance code lengths (all 5 bits)
-    auto *dist = new HuffmanTree();
-    uint8_t distLengths[kFixedDistCodes];
-    for (int i = 0; i < kFixedDistCodes; i++) distLengths[i] = 5;
-    dist->build(distLengths, kFixedDistCodes);
-
-    sFixedLitTree = lit;
-    sFixedDistTree = dist;
+        sFixedLitTree = lit.release();
+        sFixedDistTree = dist.release();
+    });
 }
 
 //=============================================================================
@@ -580,8 +584,10 @@ static std::vector<uint8_t> inflateData(const uint8_t *data, size_t len)
 
 // LZ77 hash table
 struct LZ77State {
-    int *head;
-    int *prev;
+    int *head = nullptr;
+    int *prev = nullptr;
+
+    ~LZ77State() { std::free(head); std::free(prev); }
 
     static constexpr int kHashBits = 15;
     static constexpr int kHashSize = 1 << kHashBits;

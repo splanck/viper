@@ -257,7 +257,7 @@ size_t rt_box_hash(void *elem)
                 const char *cstr = rt_string_cstr(s);
                 if (!cstr)
                     return 0;
-                return (size_t)rt_fnv1a(cstr, strlen(cstr));
+                return (size_t)rt_fnv1a(cstr, (size_t)rt_str_len(s));
             }
             default:
                 break;

@@ -765,4 +765,15 @@ void rt_gc_shutdown(void)
     __atomic_store_n(&g_gc_alloc_counter, 0, __ATOMIC_RELAXED);
 
     gc_unlock();
+
+    /* Destroy lock primitive. */
+    if (g_gc.lock_init)
+    {
+#ifdef _WIN32
+        DeleteCriticalSection(&g_gc.lock);
+#else
+        pthread_mutex_destroy(&g_gc.lock);
+#endif
+        g_gc.lock_init = 0;
+    }
 }

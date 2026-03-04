@@ -162,6 +162,11 @@ static void threads_thread_start_handler(void **args, void *result)
 
     auto *payload = new VmThreadStartPayload{&module, std::move(program), entryFn, arg};
     void *thread = rt_thread_start(reinterpret_cast<void *>(&vm_thread_entry_trampoline), payload);
+    if (!thread)
+    {
+        delete payload;
+        rt_trap("Thread.Start: failed to create thread");
+    }
     if (result)
         *reinterpret_cast<void **>(result) = thread;
 }
@@ -244,6 +249,11 @@ static void threads_thread_start_safe_handler(void **args, void *result)
     auto *payload = new VmThreadStartPayload{&module, std::move(program), entryFn, arg};
     void *thread =
         rt_thread_start_safe(reinterpret_cast<void *>(&vm_thread_safe_entry_trampoline), payload);
+    if (!thread)
+    {
+        delete payload;
+        rt_trap("Thread.StartSafe: failed to create thread");
+    }
     if (result)
         *reinterpret_cast<void **>(result) = thread;
 }

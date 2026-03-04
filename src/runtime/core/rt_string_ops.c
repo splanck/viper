@@ -2036,12 +2036,10 @@ rt_string rt_str_camel_case(rt_string str)
 {
     if (!str)
         return rt_string_from_bytes("", 0);
-    const char *src = rt_string_cstr(str);
-    if (!src)
-        return rt_string_from_bytes("", 0);
-    size_t len = strlen(src);
+    size_t len = rt_string_len_bytes(str);
     if (len == 0)
         return rt_string_from_bytes("", 0);
+    const char *src = str->data;
 
     char *wbuf = (char *)malloc(len + 256);
     if (!wbuf)
@@ -2079,12 +2077,10 @@ rt_string rt_str_pascal_case(rt_string str)
 {
     if (!str)
         return rt_string_from_bytes("", 0);
-    const char *src = rt_string_cstr(str);
-    if (!src)
-        return rt_string_from_bytes("", 0);
-    size_t len = strlen(src);
+    size_t len = rt_string_len_bytes(str);
     if (len == 0)
         return rt_string_from_bytes("", 0);
+    const char *src = str->data;
 
     char *wbuf = (char *)malloc(len + 256);
     if (!wbuf)
@@ -2121,12 +2117,10 @@ rt_string rt_str_snake_case(rt_string str)
 {
     if (!str)
         return rt_string_from_bytes("", 0);
-    const char *src = rt_string_cstr(str);
-    if (!src)
-        return rt_string_from_bytes("", 0);
-    size_t len = strlen(src);
+    size_t len = rt_string_len_bytes(str);
     if (len == 0)
         return rt_string_from_bytes("", 0);
+    const char *src = str->data;
 
     char *wbuf = (char *)malloc(len + 256);
     if (!wbuf)
@@ -2160,12 +2154,10 @@ rt_string rt_str_kebab_case(rt_string str)
 {
     if (!str)
         return rt_string_from_bytes("", 0);
-    const char *src = rt_string_cstr(str);
-    if (!src)
-        return rt_string_from_bytes("", 0);
-    size_t len = strlen(src);
+    size_t len = rt_string_len_bytes(str);
     if (len == 0)
         return rt_string_from_bytes("", 0);
+    const char *src = str->data;
 
     char *wbuf = (char *)malloc(len + 256);
     if (!wbuf)
@@ -2199,12 +2191,10 @@ rt_string rt_str_screaming_snake(rt_string str)
 {
     if (!str)
         return rt_string_from_bytes("", 0);
-    const char *src = rt_string_cstr(str);
-    if (!src)
-        return rt_string_from_bytes("", 0);
-    size_t len = strlen(src);
+    size_t len = rt_string_len_bytes(str);
     if (len == 0)
         return rt_string_from_bytes("", 0);
+    const char *src = str->data;
 
     char *wbuf = (char *)malloc(len + 256);
     if (!wbuf)
@@ -2324,22 +2314,18 @@ static int8_t like_match(
 
 int8_t rt_string_like(rt_string text, rt_string pattern)
 {
-    const char *t = rt_string_cstr(text);
-    const char *p = rt_string_cstr(pattern);
-    if (!t)
-        t = "";
-    if (!p)
-        p = "";
-    return like_match(t, strlen(t), p, strlen(p), 0);
+    size_t tlen = rt_string_len_bytes(text);
+    size_t plen = rt_string_len_bytes(pattern);
+    const char *t = tlen ? text->data : "";
+    const char *p = plen ? pattern->data : "";
+    return like_match(t, tlen, p, plen, 0);
 }
 
 int8_t rt_string_like_ci(rt_string text, rt_string pattern)
 {
-    const char *t = rt_string_cstr(text);
-    const char *p = rt_string_cstr(pattern);
-    if (!t)
-        t = "";
-    if (!p)
-        p = "";
-    return like_match(t, strlen(t), p, strlen(p), 1);
+    size_t tlen = rt_string_len_bytes(text);
+    size_t plen = rt_string_len_bytes(pattern);
+    const char *t = tlen ? text->data : "";
+    const char *p = plen ? pattern->data : "";
+    return like_match(t, tlen, p, plen, 1);
 }

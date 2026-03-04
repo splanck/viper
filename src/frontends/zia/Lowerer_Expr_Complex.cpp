@@ -1239,16 +1239,66 @@ LowerResult Lowerer::lowerAs(AsExpr *expr)
     // Resolve the target type
     TypeRef targetType = sema_.resolveType(expr->type.get());
     Type ilTargetType = mapType(targetType);
+    TypeRef sourceType = sema_.typeOf(expr->value.get());
 
-    // For entity/object types, the cast is essentially a no-op at the IL level
-    // since all objects are represented as pointers. The semantic analysis
-    // already validated the cast is valid.
-    //
-    // For primitive type conversions (e.g., Integer as Float), we'd need
-    // conversion instructions, but Zia typically uses explicit conversion
-    // functions for those.
-    //
-    // Simply return the source value with the target type.
+    // Numeric conversions require actual IL conversion instructions to avoid
+    // raw bit reinterpretation (e.g., f64 bits read as i64 → garbage).
+    if (sourceType && targetType)
+    {
+        if (sourceType->kind == TypeKindSem::Number &&
+            targetType->kind == TypeKindSem::Integer)
+        {
+            // f64 → i64: checked truncation (traps on NaN/overflow)
+            unsigned convId = nextTempId();
+            il::core::Instr conv;
+            conv.result = convId;
+            conv.op = Opcode::CastFpToSiRteChk;
+            conv.type = Type(Type::Kind::I64);
+            conv.operands = {source.value};
+            conv.loc = curLoc_;
+            blockMgr_.currentBlock()->instructions.push_back(conv);
+            return {Value::temp(convId), conv.type};
+        }
+        if (sourceType->kind == TypeKindSem::Integer &&
+            targetType->kind == TypeKindSem::Number)
+        {
+            // i64 → f64: widening (may lose precision for values > 2^53)
+            unsigned convId = nextTempId();
+            il::core::Instr conv;
+            conv.result = convId;
+            conv.op = Opcode::Sitofp;
+            conv.type = Type(Type::Kind::F64);
+            conv.operands = {source.value};
+            conv.loc = curLoc_;
+            blockMgr_.currentBlock()->instructions.push_back(conv);
+            return {Value::temp(convId), conv.type};
+        }
+        if (sourceType->kind == TypeKindSem::Integer &&
+            targetType->kind == TypeKindSem::Byte)
+        {
+            // i64 → i32 (byte): checked narrowing (traps on overflow)
+            unsigned convId = nextTempId();
+            il::core::Instr conv;
+            conv.result = convId;
+            conv.op = Opcode::CastSiNarrowChk;
+            conv.type = Type(Type::Kind::I32);
+            conv.operands = {source.value};
+            conv.loc = curLoc_;
+            blockMgr_.currentBlock()->instructions.push_back(conv);
+            return {Value::temp(convId), conv.type};
+        }
+        if (sourceType->kind == TypeKindSem::Byte &&
+            targetType->kind == TypeKindSem::Integer)
+        {
+            // i32 → i64: zero-extend widening
+            Value widened = widenByteToInteger(source.value);
+            return {widened, Type(Type::Kind::I64)};
+        }
+    }
+
+    // For entity/object types, the cast is a no-op at the IL level since all
+    // objects are represented as pointers. The semantic analysis already
+    // validated the cast is valid.
     return {source.value, ilTargetType};
 }
 

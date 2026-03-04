@@ -195,6 +195,98 @@ void emitFPToSI(const ILInstr &instr, MIRBuilder &builder)
     EmitCommon(builder).emitCast(instr, MOpcode::CVTTSD2SI, RegClass::GPR, RegClass::XMM);
 }
 
+/// @brief Lower a checked `fptosi_chk` instruction (floating-point to signed int).
+/// @details Guards against NaN and out-of-range values that CVTTSD2SI would
+///          silently convert to 0x8000000000000000 (INT64_MIN).
+///
+///          Generated sequence:
+///            ucomisd %src, %src            ; NaN check (PF=1 if NaN)
+///            jp      .Ltrap               ; trap on NaN
+///            cvttsd2si %src, %dst          ; truncate to signed i64
+///            movabs  $0x8000000000000000, %tmp
+///            cmp     %tmp, %dst
+///            jne     .Ldone               ; not the sentinel → ok
+///            ucomisd limit_lo, %src        ; re-check if src was genuinely INT64_MIN
+///            jne     .Ltrap               ; not exactly −2^63 → overflow
+///          .Ldone:
+void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder)
+{
+    if (instr.resultId < 0 || instr.ops.empty())
+        return;
+
+    EmitCommon emit(builder);
+    const Operand src = emit.materialise(
+        builder.makeOperandForValue(instr.ops[0], RegClass::XMM), RegClass::XMM);
+    const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+
+    const uint32_t labelId = builder.lower().nextLocalLabelId();
+    const std::string trapLabel = ".Lfptosi_chk_trap_" + std::to_string(labelId);
+    const std::string doneLabel = ".Lfptosi_chk_done_" + std::to_string(labelId);
+
+    // NaN check: ucomisd %src, %src — PF=1 if NaN.
+    builder.append(
+        MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(src), emit.clone(src)}));
+    // JP → trap (condition code 10 = "p" / parity)
+    builder.append(
+        MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(10),
+                                                         makeLabelOperand(trapLabel)}));
+
+    // Convert: CVTTSD2SI. On out-of-range, produces 0x8000000000000000.
+    builder.append(
+        MInstr::make(MOpcode::CVTTSD2SI, std::vector<Operand>{emit.clone(dest), emit.clone(src)}));
+
+    // Check for the overflow sentinel 0x8000000000000000 (INT64_MIN).
+    const VReg sentinelReg = builder.makeTempVReg(RegClass::GPR);
+    const Operand sentinelOp = makeVRegOperand(sentinelReg.cls, sentinelReg.id);
+    builder.append(MInstr::make(MOpcode::MOVri,
+                                std::vector<Operand>{sentinelOp,
+                                                     makeImmOperand(
+                                                         static_cast<int64_t>(0x8000000000000000ULL))}));
+    builder.append(
+        MInstr::make(MOpcode::CMPrr, std::vector<Operand>{emit.clone(dest), emit.clone(sentinelOp)}));
+    // JNE → done (result is not the sentinel, conversion was valid)
+    builder.append(
+        MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(5),
+                                                         makeLabelOperand(doneLabel)}));
+
+    // Result is INT64_MIN — this is valid ONLY if src was exactly -2^63.0.
+    // -2^63 as double = 0xC3E0000000000000 = -9223372036854775808.0
+    const VReg limitGpr = builder.makeTempVReg(RegClass::GPR);
+    const Operand limitGprOp = makeVRegOperand(limitGpr.cls, limitGpr.id);
+    const VReg limitXmm = builder.makeTempVReg(RegClass::XMM);
+    const Operand limitXmmOp = makeVRegOperand(limitXmm.cls, limitXmm.id);
+    builder.append(MInstr::make(MOpcode::MOVri,
+                                std::vector<Operand>{limitGprOp,
+                                                     makeImmOperand(
+                                                         static_cast<int64_t>(0xC3E0000000000000ULL))}));
+    builder.append(MInstr::make(MOpcode::MOVQrx,
+                                std::vector<Operand>{emit.clone(limitXmmOp), emit.clone(limitGprOp)}));
+    builder.append(
+        MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(src), emit.clone(limitXmmOp)}));
+    // JNE → trap (src was not exactly -2^63, so overflow)
+    builder.append(
+        MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(5),
+                                                         makeLabelOperand(trapLabel)}));
+    // JP → trap (parity means unordered, i.e. NaN — shouldn't reach here, but be safe)
+    builder.append(
+        MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(10),
+                                                         makeLabelOperand(trapLabel)}));
+
+    // Fall through: src was exactly -2^63.0, result INT64_MIN is correct.
+    builder.append(
+        MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(doneLabel)}));
+
+    // Trap block: UD2.
+    builder.append(
+        MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(trapLabel)}));
+    builder.append(MInstr::make(MOpcode::UD2));
+
+    // Done.
+    builder.append(
+        MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(doneLabel)}));
+}
+
 /// @brief Lower an IL `fptoui` instruction (floating-point to unsigned int, checked).
 /// @details Handles the full unsigned 64-bit output range [0, 2^64).
 ///

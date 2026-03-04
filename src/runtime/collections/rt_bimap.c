@@ -80,14 +80,10 @@ typedef struct rt_bm_inv_link rt_bm_inv_link;
 
 static const char *get_str_data(rt_string s, size_t *out_len)
 {
-    const char *cstr = rt_string_cstr(s);
-    if (!cstr)
-    {
-        *out_len = 0;
+    *out_len = (size_t)rt_str_len(s);
+    if (*out_len == 0)
         return "";
-    }
-    *out_len = strlen(cstr);
-    return cstr;
+    return s->data;
 }
 
 static rt_bm_entry *find_fwd(rt_bm_entry *head, const char *key, size_t key_len)

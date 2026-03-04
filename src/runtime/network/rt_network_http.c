@@ -1349,13 +1349,14 @@ int8_t rt_http_download(rt_string url, rt_string dest_path)
 
     size_t expected = res->body_len;
     size_t written = fwrite(res->body, 1, expected, f);
-    fclose(f);
+    int close_err = fclose(f);
 
     if (rt_obj_release_check0(res))
         rt_obj_free(res);
 
-    // RC-14: if fwrite wrote fewer bytes (disk full, etc.), remove the partial file
-    if (written != expected)
+    // RC-14: if fwrite wrote fewer bytes (disk full, etc.) or fclose failed
+    // (buffered data flush failure), remove the partial/corrupt file.
+    if (written != expected || close_err != 0)
     {
         remove(path_str);
         return 0;

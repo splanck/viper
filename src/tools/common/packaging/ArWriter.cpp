@@ -130,6 +130,8 @@ void ArWriter::finishToFile(const std::string &path) const
         throw std::runtime_error("cannot write ar archive: " + path);
     f.write(reinterpret_cast<const char *>(data.data()),
             static_cast<std::streamsize>(data.size()));
+    if (!f)
+        throw std::runtime_error("failed to write ar archive: " + path);
 }
 
 } // namespace viper::pkg

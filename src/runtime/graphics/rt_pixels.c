@@ -50,6 +50,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Use 64-bit seek/tell to support files larger than 2 GB on Windows
+// where `long` (and thus ftell/fseek) is only 32 bits even on 64-bit builds.
+#if defined(_WIN32)
+#define px_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
+#define px_ftell(fp) _ftelli64((fp))
+#else
+#define px_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
+#define px_ftell(fp) ftello((fp))
+#endif
+
 /// @brief Pixels implementation structure.
 typedef struct rt_pixels_impl
 {
@@ -648,10 +658,10 @@ void *rt_pixels_load_png(void *path)
     if (!f)
         return NULL;
 
-    // Read entire file into memory
-    fseek(f, 0, SEEK_END);
-    long file_len = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    // Read entire file into memory (64-bit safe)
+    px_fseek(f, 0, SEEK_END);
+    int64_t file_len = px_ftell(f);
+    px_fseek(f, 0, SEEK_SET);
     if (file_len < 8)
     {
         fclose(f);
@@ -1115,6 +1125,9 @@ save_cleanup:
     {
         fflush(out);
         fclose(out);
+        // Remove corrupt PNG if write failed partway through
+        if (!result)
+            remove(filepath);
     }
     if (comp_bytes)
     {

@@ -2689,7 +2689,10 @@ static void rt_viper_tls_finalize(void *obj)
     rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
     if (tls->session)
     {
+        int fd = rt_tls_get_socket(tls->session);
         rt_tls_close(tls->session);
+        if (fd >= 0)
+            CLOSE_SOCKET(fd);
         tls->session = NULL;
     }
     if (tls->host)
@@ -2729,15 +2732,13 @@ void *rt_viper_tls_connect(rt_string host, int64_t port)
     }
 
     tls->session = session;
+    tls->host = NULL;
+    tls->port = port;
+    rt_obj_set_finalizer(tls, rt_viper_tls_finalize);
+
     tls->host = strdup(host_cstr);
     if (!tls->host)
-    {
-        rt_tls_close(session);
         return NULL;
-    }
-    tls->port = port;
-
-    rt_obj_set_finalizer(tls, rt_viper_tls_finalize);
 
     return tls;
 }
@@ -2774,15 +2775,13 @@ void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
     }
 
     tls->session = session;
+    tls->host = NULL;
+    tls->port = port;
+    rt_obj_set_finalizer(tls, rt_viper_tls_finalize);
+
     tls->host = strdup(host_cstr);
     if (!tls->host)
-    {
-        rt_tls_close(session);
         return NULL;
-    }
-    tls->port = port;
-
-    rt_obj_set_finalizer(tls, rt_viper_tls_finalize);
 
     return tls;
 }

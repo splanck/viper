@@ -113,6 +113,40 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 }
             }
 
+            // Numeric coercion: emit conversion instructions to avoid raw bit
+            // reinterpretation when assigning between Number and Integer types.
+            if (targetType && rightType)
+            {
+                if (targetType->kind == TypeKindSem::Integer &&
+                    rightType->kind == TypeKindSem::Number)
+                {
+                    unsigned convId = nextTempId();
+                    il::core::Instr conv;
+                    conv.result = convId;
+                    conv.op = Opcode::CastFpToSiRteChk;
+                    conv.type = Type(Type::Kind::I64);
+                    conv.operands = {assignValue};
+                    conv.loc = curLoc_;
+                    blockMgr_.currentBlock()->instructions.push_back(conv);
+                    assignValue = Value::temp(convId);
+                    assignType = conv.type;
+                }
+                else if (targetType->kind == TypeKindSem::Number &&
+                         rightType->kind == TypeKindSem::Integer)
+                {
+                    unsigned convId = nextTempId();
+                    il::core::Instr conv;
+                    conv.result = convId;
+                    conv.op = Opcode::Sitofp;
+                    conv.type = Type(Type::Kind::F64);
+                    conv.operands = {assignValue};
+                    conv.loc = curLoc_;
+                    blockMgr_.currentBlock()->instructions.push_back(conv);
+                    assignValue = Value::temp(convId);
+                    assignType = conv.type;
+                }
+            }
+
             // Handle value type copy semantics - deep copy on assignment
             if (rightType && rightType->kind == TypeKindSem::Value)
             {
@@ -151,6 +185,36 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                             if (fieldILType.kind != Type::Kind::Ptr)
                                 fieldValue = emitUnbox(fieldValue, fieldILType).value;
                         }
+                        // Numeric coercion for field assignment
+                        if (field->type && rightType)
+                        {
+                            if (field->type->kind == TypeKindSem::Integer &&
+                                rightType->kind == TypeKindSem::Number)
+                            {
+                                unsigned convId = nextTempId();
+                                il::core::Instr conv;
+                                conv.result = convId;
+                                conv.op = Opcode::CastFpToSiRteChk;
+                                conv.type = Type(Type::Kind::I64);
+                                conv.operands = {fieldValue};
+                                conv.loc = curLoc_;
+                                blockMgr_.currentBlock()->instructions.push_back(conv);
+                                fieldValue = Value::temp(convId);
+                            }
+                            else if (field->type->kind == TypeKindSem::Number &&
+                                     rightType->kind == TypeKindSem::Integer)
+                            {
+                                unsigned convId = nextTempId();
+                                il::core::Instr conv;
+                                conv.result = convId;
+                                conv.op = Opcode::Sitofp;
+                                conv.type = Type(Type::Kind::F64);
+                                conv.operands = {fieldValue};
+                                conv.loc = curLoc_;
+                                blockMgr_.currentBlock()->instructions.push_back(conv);
+                                fieldValue = Value::temp(convId);
+                            }
+                        }
                         emitFieldStore(field, selfPtr, fieldValue);
                         return right;
                     }
@@ -174,6 +238,36 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                             Type fieldILType = mapType(field->type);
                             if (fieldILType.kind != Type::Kind::Ptr)
                                 fieldValue = emitUnbox(fieldValue, fieldILType).value;
+                        }
+                        // Numeric coercion for field assignment
+                        if (field->type && rightType)
+                        {
+                            if (field->type->kind == TypeKindSem::Integer &&
+                                rightType->kind == TypeKindSem::Number)
+                            {
+                                unsigned convId = nextTempId();
+                                il::core::Instr conv;
+                                conv.result = convId;
+                                conv.op = Opcode::CastFpToSiRteChk;
+                                conv.type = Type(Type::Kind::I64);
+                                conv.operands = {fieldValue};
+                                conv.loc = curLoc_;
+                                blockMgr_.currentBlock()->instructions.push_back(conv);
+                                fieldValue = Value::temp(convId);
+                            }
+                            else if (field->type->kind == TypeKindSem::Number &&
+                                     rightType->kind == TypeKindSem::Integer)
+                            {
+                                unsigned convId = nextTempId();
+                                il::core::Instr conv;
+                                conv.result = convId;
+                                conv.op = Opcode::Sitofp;
+                                conv.type = Type(Type::Kind::F64);
+                                conv.operands = {fieldValue};
+                                conv.loc = curLoc_;
+                                blockMgr_.currentBlock()->instructions.push_back(conv);
+                                fieldValue = Value::temp(convId);
+                            }
                         }
                         emitFieldStore(field, selfPtr, fieldValue);
                         return right;

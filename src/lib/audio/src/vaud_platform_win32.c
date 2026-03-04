@@ -415,6 +415,8 @@ void vaud_platform_shutdown(vaud_context_t ctx)
     DeleteCriticalSection(&plat->pause_cs);
     free(plat);
     ctx->platform_data = NULL;
+
+    CoUninitialize();
 }
 
 void vaud_platform_pause(vaud_context_t ctx)

@@ -141,10 +141,10 @@ void rt_bloomfilter_add(void *filter, rt_string item)
         return;
     rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)filter;
 
-    const char *data = rt_string_cstr(item);
+    size_t len = (size_t)rt_str_len(item);
+    const char *data = item->data;
     if (!data)
         return;
-    size_t len = strlen(data);
 
     for (int64_t i = 0; i < bf->hash_count; i++)
     {
@@ -161,10 +161,10 @@ int64_t rt_bloomfilter_might_contain(void *filter, rt_string item)
         return 0;
     rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)filter;
 
-    const char *data = rt_string_cstr(item);
+    size_t len = (size_t)rt_str_len(item);
+    const char *data = item->data;
     if (!data)
         return 0;
-    size_t len = strlen(data);
 
     for (int64_t i = 0; i < bf->hash_count; i++)
     {

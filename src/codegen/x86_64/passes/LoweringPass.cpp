@@ -518,6 +518,8 @@ class ModuleAdapter
                 adaptSiToFp(instr, out);
                 break;
             case il::core::Opcode::CastFpToSiRteChk:
+                adaptFpToSiChecked(instr, out);
+                break;
             case il::core::Opcode::Fptosi:
                 adaptFpToSi(instr, out);
                 break;
@@ -889,6 +891,13 @@ class ModuleAdapter
     {
         setResultKind(out, instr, instr.type);
         out.opcode = "fptosi";
+        convertOperands(instr, {ILValue::Kind::F64}, out);
+    }
+
+    void adaptFpToSiChecked(const il::core::Instr &instr, ILInstr &out)
+    {
+        setResultKind(out, instr, instr.type);
+        out.opcode = "fptosi_chk";
         convertOperands(instr, {ILValue::Kind::F64}, out);
     }
 

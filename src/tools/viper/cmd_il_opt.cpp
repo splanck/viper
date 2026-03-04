@@ -241,5 +241,10 @@ int cmdILOpt(int argc, char **argv)
         return 1;
     }
     io::Serializer::write(m, ofs, io::Serializer::Mode::Canonical);
+    if (!ofs)
+    {
+        std::cerr << "error: failed to write IL to " << outFile << "\n";
+        return 1;
+    }
     return 0;
 }

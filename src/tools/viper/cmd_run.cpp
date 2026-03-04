@@ -477,6 +477,11 @@ int runOrBuild(RunMode mode, int argc, char **argv)
                 return 1;
             }
             io::Serializer::write(module, outFile);
+            if (!outFile)
+            {
+                std::cerr << "error: failed to write IL to " << config.outputPath << "\n";
+                return 1;
+            }
             return 0;
         }
 
@@ -491,6 +496,11 @@ int runOrBuild(RunMode mode, int argc, char **argv)
                 return 1;
             }
             io::Serializer::write(module, tempFile);
+            if (!tempFile)
+            {
+                std::cerr << "error: failed to write IL to temporary file\n";
+                return 1;
+            }
         }
         int rc = viper::tools::compileToNative(tempIlPath, config.outputPath, arch);
         std::error_code ec;

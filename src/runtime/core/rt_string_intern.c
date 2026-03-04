@@ -218,4 +218,12 @@ void rt_string_intern_drain(void)
     g_count_ = 0;
 
     intern_unlock();
+
+#ifdef _WIN32
+    if (g_lock_init_)
+    {
+        DeleteCriticalSection(&g_lock_);
+        g_lock_init_ = 0;
+    }
+#endif
 }

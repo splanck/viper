@@ -50,8 +50,8 @@ std::vector<uint8_t> readFile(const std::string &path)
     f.seekg(0);
     std::vector<uint8_t> data(static_cast<size_t>(size));
     f.read(reinterpret_cast<char *>(data.data()), size);
-    if (!f)
-        throw std::runtime_error("failed to read file: " + path);
+    if (!f || f.gcount() != size)
+        throw std::runtime_error("incomplete read of: " + path);
     return data;
 }
 

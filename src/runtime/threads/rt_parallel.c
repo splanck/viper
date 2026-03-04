@@ -376,7 +376,14 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool)
     // Allocate task array
     foreach_task *tasks = (foreach_task *)malloc(count * sizeof(foreach_task));
     if (!tasks)
+    {
+#ifdef _WIN32
+        CloseHandle(event);
+#else
+        parallel_sync_wait_and_free(sync);
+#endif
         rt_trap("Parallel.ForEach: memory allocation failed");
+    }
 
     // Submit all tasks
     for (int64_t i = 0; i < count; i++)
@@ -437,7 +444,14 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool)
     // Allocate task array
     map_task *tasks = (map_task *)malloc(count * sizeof(map_task));
     if (!tasks)
+    {
+#ifdef _WIN32
+        CloseHandle(event);
+#else
+        parallel_sync_wait_and_free(sync);
+#endif
         rt_trap("Parallel.Map: memory allocation failed");
+    }
 
     // Submit all tasks
     for (int64_t i = 0; i < count; i++)
@@ -508,7 +522,14 @@ void rt_parallel_invoke_pool(void *funcs, void *pool)
     // Allocate task array
     invoke_task *tasks = (invoke_task *)malloc(count * sizeof(invoke_task));
     if (!tasks)
+    {
+#ifdef _WIN32
+        CloseHandle(event);
+#else
+        parallel_sync_wait_and_free(sync);
+#endif
         rt_trap("Parallel.Invoke: memory allocation failed");
+    }
 
     // Submit all tasks
     for (int64_t i = 0; i < count; i++)
@@ -595,6 +616,11 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
     reduce_task *tasks = (reduce_task *)malloc((size_t)nworkers * sizeof(reduce_task));
     if (!tasks)
     {
+#ifdef _WIN32
+        CloseHandle(event);
+#else
+        parallel_sync_wait_and_free(sync);
+#endif
         free(items);
         rt_trap("Parallel.Reduce: memory allocation failed");
     }
@@ -673,7 +699,14 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool)
     // Allocate task array
     for_task *tasks = (for_task *)malloc(count * sizeof(for_task));
     if (!tasks)
+    {
+#ifdef _WIN32
+        CloseHandle(event);
+#else
+        parallel_sync_wait_and_free(sync);
+#endif
         rt_trap("Parallel.For: memory allocation failed");
+    }
 
     // Submit all tasks
     for (int64_t i = 0; i < count; i++)

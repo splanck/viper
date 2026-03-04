@@ -39,6 +39,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Use 64-bit seek/tell to support files larger than 2 GB on Windows
+// where `long` (and thus ftell/fseek) is only 32 bits even on 64-bit builds.
+#if defined(_WIN32)
+#define lr_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
+#define lr_ftell(fp) _ftelli64((fp))
+#else
+#define lr_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
+#define lr_ftell(fp) ftello((fp))
+#endif
+
 /// @brief LineReader implementation structure.
 typedef struct rt_linereader_impl
 {
@@ -523,14 +533,14 @@ rt_string rt_linereader_read_all(void *obj)
         return rt_string_from_bytes("", 0);
     }
 
-    // Get current position and file size
-    long pos = ftell(lr->fp);
+    // Get current position and file size (64-bit safe)
+    int64_t pos = lr_ftell(lr->fp);
     if (pos < 0)
         pos = 0;
 
-    fseek(lr->fp, 0, SEEK_END);
-    long end = ftell(lr->fp);
-    fseek(lr->fp, pos, SEEK_SET);
+    lr_fseek(lr->fp, 0, SEEK_END);
+    int64_t end = lr_ftell(lr->fp);
+    lr_fseek(lr->fp, pos, SEEK_SET);
 
     size_t remaining = (end > pos) ? (size_t)(end - pos) : 0;
 

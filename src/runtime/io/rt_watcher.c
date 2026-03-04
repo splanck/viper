@@ -470,6 +470,7 @@ void rt_watcher_start(void *obj)
                                     NULL);
     if (!ok)
     {
+        CloseHandle(w->overlapped.hEvent);
         CloseHandle(w->dir_handle);
         w->dir_handle = INVALID_HANDLE_VALUE;
         rt_trap("Watcher.Start: failed to start watching");
