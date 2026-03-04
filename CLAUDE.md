@@ -18,6 +18,8 @@ NOTES: Never mention Claude in any commit messages or comments. Never commit cha
 3. **Discovery Before Questions** — Search codebase for 3-5 similar implementations before asking users.
 4. **Small Increments** — Each change = one coherent, verifiable unit (<50 files).
 5. **Determinism** — VM and native outputs must match for all defined programs.
+6. **Zero Dependendcies** - Viper is 100% a from scratch project. We dont introduce external dependencies for any reason.
+7. **Cross platform** - Every feature must be completely implemented for Macos, Windows, and Linux. 100% cross platform always!
 
 ---
 
@@ -133,6 +135,12 @@ When responding to a task:
 
 # Build all demos
 ./scripts/build_demos.sh
+
+# Build and test Viper on Windows
+.\scripts\build_viper.cmd
+
+# Build all demos on Windows
+.\scripts\build_demos.cmd
 
 # Build and test ViperDOS (NEVER use build_viper.sh for ViperDOS!)
 ./scripts/build_viperdos.sh

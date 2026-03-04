@@ -23,6 +23,10 @@
 #include "rt_ecdsa_p256.h"
 #include <string.h>
 
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
+
 //=============================================================================
 // 256-bit unsigned integer type (big-endian limb order: [0]=MSW, [3]=LSW)
 //=============================================================================
@@ -113,6 +117,15 @@ static void u256_from_bytes(u256 r, const uint8_t b[32])
 }
 
 // r = a + b, returns carry (0 or 1)
+#ifdef _MSC_VER
+static uint64_t u256_add(u256 r, const u256 a, const u256 b)
+{
+    unsigned char carry = 0;
+    for (int i = 3; i >= 0; i--)
+        carry = _addcarry_u64(carry, a[i], b[i], &r[i]);
+    return carry;
+}
+#else
 static uint64_t u256_add(u256 r, const u256 a, const u256 b)
 {
     uint64_t carry = 0;
@@ -124,8 +137,18 @@ static uint64_t u256_add(u256 r, const u256 a, const u256 b)
     }
     return carry;
 }
+#endif
 
 // r = a - b, returns borrow (0 or 1)
+#ifdef _MSC_VER
+static uint64_t u256_sub(u256 r, const u256 a, const u256 b)
+{
+    unsigned char borrow = 0;
+    for (int i = 3; i >= 0; i--)
+        borrow = _subborrow_u64(borrow, a[i], b[i], &r[i]);
+    return borrow;
+}
+#else
 static uint64_t u256_sub(u256 r, const u256 a, const u256 b)
 {
     uint64_t borrow = 0;
@@ -137,8 +160,32 @@ static uint64_t u256_sub(u256 r, const u256 a, const u256 b)
     }
     return borrow;
 }
+#endif
 
 // 256x256 → 512 schoolbook multiplication
+#ifdef _MSC_VER
+static void u256_mul_wide(u512 r, const u256 a, const u256 b)
+{
+    memset(r, 0, 8 * sizeof(uint64_t));
+    for (int i = 3; i >= 0; i--)
+    {
+        uint64_t carry = 0;
+        for (int j = 3; j >= 0; j--)
+        {
+            uint64_t hi;
+            uint64_t lo = _umul128(a[i], b[j], &hi);
+            // Add existing value at r[i+j+1]
+            unsigned char c = _addcarry_u64(0, lo, r[i + j + 1], &r[i + j + 1]);
+            // Add incoming carry to hi
+            unsigned char c2 = _addcarry_u64(c, hi, carry, &carry);
+            // If c2 overflows, it propagates into the next iteration's carry
+            // (cannot happen in practice for 256×256, but be safe)
+            (void)c2;
+        }
+        r[i] += carry;
+    }
+}
+#else
 static void u256_mul_wide(u512 r, const u256 a, const u256 b)
 {
     memset(r, 0, 8 * sizeof(uint64_t));
@@ -154,6 +201,7 @@ static void u256_mul_wide(u512 r, const u256 a, const u256 b)
         r[i] += (uint64_t)carry;
     }
 }
+#endif
 
 //=============================================================================
 // Field arithmetic mod p (NIST P-256 prime)
@@ -422,6 +470,11 @@ static void fp_inv(u256 r, const u256 a)
     u256 exp;
     u256_copy(exp, P256_P);
     // p - 2
+#ifdef _MSC_VER
+    unsigned char borrow_c = _subborrow_u64(0, exp[3], 2, &exp[3]);
+    for (int i = 2; i >= 0 && borrow_c; i--)
+        borrow_c = _subborrow_u64(borrow_c, exp[i], 0, &exp[i]);
+#else
     uint64_t borrow = 0;
     __uint128_t diff = (__uint128_t)exp[3] - 2 - borrow;
     exp[3] = (uint64_t)diff;
@@ -432,6 +485,7 @@ static void fp_inv(u256 r, const u256 a)
         exp[i] = (uint64_t)diff;
         borrow = (diff >> 127) & 1;
     }
+#endif
 
     fp_pow(r, a, exp);
 }
@@ -528,6 +582,11 @@ static void sn_inv(u256 r, const u256 a)
     u256 exp;
     u256_copy(exp, P256_N);
     // n - 2
+#ifdef _MSC_VER
+    unsigned char borrow_c = _subborrow_u64(0, exp[3], 2, &exp[3]);
+    for (int i = 2; i >= 0 && borrow_c; i--)
+        borrow_c = _subborrow_u64(borrow_c, exp[i], 0, &exp[i]);
+#else
     uint64_t borrow = 0;
     __uint128_t diff = (__uint128_t)exp[3] - 2 - borrow;
     exp[3] = (uint64_t)diff;
@@ -538,6 +597,7 @@ static void sn_inv(u256 r, const u256 a)
         exp[i] = (uint64_t)diff;
         borrow = (diff >> 127) & 1;
     }
+#endif
 
     // Square-and-multiply: a^exp mod n
     u256 base, result;
