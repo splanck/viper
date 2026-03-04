@@ -98,7 +98,9 @@ void rt_abort(const char *msg)
         fprintf(stderr, "%s\n", msg);
     else
         fprintf(stderr, "Trap\n");
-    exit(1);
+    fflush(stdout);
+    fflush(stderr);
+    _Exit(1);
 }
 
 /// @brief Default trap handler invoked by helper routines.

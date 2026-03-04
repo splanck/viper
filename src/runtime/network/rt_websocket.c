@@ -90,6 +90,10 @@ static void suppress_sigpipe(int sock)
 #define WS_CLOSE_UNSUPPORTED 1003
 #define WS_CLOSE_NO_STATUS 1005
 #define WS_CLOSE_ABNORMAL 1006
+#define WS_CLOSE_MESSAGE_TOO_BIG 1009
+
+// Maximum total size for reassembled fragmented messages (64 MB)
+#define WS_MAX_REASSEMBLY_SIZE (64u * 1024u * 1024u)
 
 /// @brief WebSocket connection implementation.
 typedef struct rt_ws_impl
@@ -1085,6 +1089,14 @@ rt_string rt_ws_recv(void *obj)
         // Accumulate fragment payload
         if (len > 0)
         {
+            // F-1: Cap total reassembled message size (RFC 6455 close code 1009)
+            if (frag_len + len > WS_MAX_REASSEMBLY_SIZE)
+            {
+                free(data);
+                free(frag_buf);
+                rt_ws_close_with(ws, WS_CLOSE_MESSAGE_TOO_BIG, rt_str_empty());
+                return rt_str_empty();
+            }
             uint8_t *new_buf = (uint8_t *)realloc(frag_buf, frag_len + len);
             if (!new_buf)
             {
@@ -1180,6 +1192,14 @@ void *rt_ws_recv_bytes(void *obj)
         // Accumulate fragment payload
         if (len > 0)
         {
+            // F-1: Cap total reassembled message size (RFC 6455 close code 1009)
+            if (frag_len + len > WS_MAX_REASSEMBLY_SIZE)
+            {
+                free(data);
+                free(frag_buf);
+                rt_ws_close_with(ws, WS_CLOSE_MESSAGE_TOO_BIG, rt_str_empty());
+                return rt_bytes_new(0);
+            }
             uint8_t *new_buf = (uint8_t *)realloc(frag_buf, frag_len + len);
             if (!new_buf)
             {

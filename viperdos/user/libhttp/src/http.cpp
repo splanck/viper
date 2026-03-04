@@ -80,7 +80,13 @@ static int parse_url(const char *url, parsed_url_t *parsed) {
             return HTTP_ERROR_PARSE;
         memcpy(parsed->host, url, host_len);
         parsed->host[host_len] = '\0';
-        parsed->port = (uint16_t)atoi(colon + 1);
+        {
+            char *endp;
+            long port_val = strtol(colon + 1, &endp, 10);
+            if (endp == colon + 1 || port_val < 1 || port_val > 65535)
+                return HTTP_ERROR_PARSE;
+            parsed->port = (uint16_t)port_val;
+        }
         url = slash ? slash : colon + strlen(colon + 1) + 1;
     } else if (slash) {
         size_t host_len = slash - url;
@@ -107,28 +113,33 @@ static int http_connect(const parsed_url_t *url, http_connection_t *conn, int ve
     memset(conn, 0, sizeof(*conn));
     conn->socket_fd = -1;
 
-    /* Resolve hostname */
-    struct hostent *he = gethostbyname(url->host);
-    if (!he)
+    /* Resolve hostname using getaddrinfo (thread-safe, F-6) */
+    struct addrinfo hints, *res = NULL;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+
+    char port_str[8];
+    snprintf(port_str, sizeof(port_str), "%u", url->port);
+
+    if (getaddrinfo(url->host, port_str, &hints, &res) != 0 || !res)
         return HTTP_ERROR_CONNECT;
 
     /* Create socket */
-    conn->socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (conn->socket_fd < 0)
-        return HTTP_ERROR_CONNECT;
-
-    /* Connect */
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(url->port);
-    memcpy(&addr.sin_addr, he->h_addr_list[0], 4);
-
-    if (connect(conn->socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        close(conn->socket_fd);
-        conn->socket_fd = -1;
+    conn->socket_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (conn->socket_fd < 0) {
+        freeaddrinfo(res);
         return HTTP_ERROR_CONNECT;
     }
+
+    /* Connect */
+    if (connect(conn->socket_fd, res->ai_addr, res->ai_addrlen) < 0) {
+        close(conn->socket_fd);
+        conn->socket_fd = -1;
+        freeaddrinfo(res);
+        return HTTP_ERROR_CONNECT;
+    }
+    freeaddrinfo(res);
 
     /* Setup TLS if needed */
     if (strcmp(url->scheme, "https") == 0) {
@@ -292,11 +303,24 @@ void http_request_init(http_request_t *request) {
     request->timeout_ms = 10000;
     request->follow_redirects = 1;
     request->max_redirects = 5;
-    request->verify_tls = 0; /* Disabled by default for bring-up */
+    request->verify_tls = 1;
+}
+
+/// @brief Check if a string contains CR or LF characters (CRLF injection guard).
+static int has_crlf(const char *s) {
+    for (; *s; s++) {
+        if (*s == '\r' || *s == '\n')
+            return 1;
+    }
+    return 0;
 }
 
 int http_request_add_header(http_request_t *request, const char *name, const char *value) {
     if (request->header_count >= HTTP_MAX_HEADERS)
+        return HTTP_ERROR;
+
+    // F-3: Reject header names/values containing CR/LF to prevent HTTP request splitting
+    if (!name || !value || has_crlf(name) || has_crlf(value))
         return HTTP_ERROR;
 
     http_header_t *hdr = &request->headers[request->header_count];
@@ -359,24 +383,46 @@ int http_request(const http_request_t *request, http_response_t *response) {
                        method_str,
                        url.path,
                        url.host);
+    // F-4: Validate snprintf didn't overflow the buffer
+    if (len < 0 || (size_t)len >= sizeof(req_buf)) {
+        http_disconnect(&conn);
+        return HTTP_ERROR;
+    }
 
     /* Add custom headers */
     for (int i = 0; i < request->header_count; i++) {
-        len += snprintf(req_buf + len,
-                        sizeof(req_buf) - len,
-                        "%s: %s\r\n",
-                        request->headers[i].name,
-                        request->headers[i].value);
+        int n = snprintf(req_buf + len,
+                         sizeof(req_buf) - (size_t)len,
+                         "%s: %s\r\n",
+                         request->headers[i].name,
+                         request->headers[i].value);
+        if (n < 0 || (size_t)len + (size_t)n >= sizeof(req_buf)) {
+            http_disconnect(&conn);
+            return HTTP_ERROR;
+        }
+        len += n;
     }
 
     /* Add content length for POST/PUT */
     if (request->body && request->body_len > 0) {
-        len += snprintf(
-            req_buf + len, sizeof(req_buf) - len, "Content-Length: %zu\r\n", request->body_len);
+        int n = snprintf(
+            req_buf + len, sizeof(req_buf) - (size_t)len, "Content-Length: %zu\r\n", request->body_len);
+        if (n < 0 || (size_t)len + (size_t)n >= sizeof(req_buf)) {
+            http_disconnect(&conn);
+            return HTTP_ERROR;
+        }
+        len += n;
     }
 
     /* End headers */
-    len += snprintf(req_buf + len, sizeof(req_buf) - len, "\r\n");
+    {
+        int n = snprintf(req_buf + len, sizeof(req_buf) - (size_t)len, "\r\n");
+        if (n < 0 || (size_t)len + (size_t)n >= sizeof(req_buf)) {
+            http_disconnect(&conn);
+            return HTTP_ERROR;
+        }
+        len += n;
+    }
 
     /* Send request */
     if (http_send(&conn, req_buf, len) < 0) {

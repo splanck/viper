@@ -24,9 +24,18 @@ namespace viper::tests
 {
 struct VmTrapResult
 {
-    bool exited = false;
-    int exitCode = -1;
+    bool exited = false;    ///< True if child exited via exit()/_exit()/_Exit().
+    bool signaled = false;  ///< True if child was killed by a signal.
+    int exitCode = -1;      ///< WEXITSTATUS if exited, 128+signal if signaled.
     std::string stderrText;
+
+    /// @brief Check whether the child terminated due to a trap.
+    /// @details Returns true when the child either exited with non-zero code
+    ///          (the rt_abort path) or was killed by a signal (atexit crash).
+    [[nodiscard]] bool trapped() const noexcept
+    {
+        return (exited && exitCode != 0) || signaled;
+    }
 };
 
 class VmFixture

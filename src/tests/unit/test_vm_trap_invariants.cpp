@@ -19,7 +19,6 @@
 #include "common/VmFixture.hpp"
 #include "il/build/IRBuilder.hpp"
 
-#include <cassert>
 #include <cstdio>
 #include <string>
 
@@ -30,7 +29,7 @@ using viper::tests::VmFixture;
 // Test: Trap instruction produces correct diagnostics (DomainError)
 //===----------------------------------------------------------------------===//
 
-static void testTrapInstruction()
+static int testTrapInstruction()
 {
     Module m;
     il::build::IRBuilder b(m);
@@ -54,22 +53,27 @@ static void testTrapInstruction()
     VmFixture fixture;
     const std::string out = fixture.captureTrap(m);
 
-    // Check that line number is included
-    bool hasLine = out.find("line 42") != std::string::npos;
-    assert(hasLine && "Trap message should include source line 42");
-
-    // Check that trap kind is DomainError
-    bool hasDomain = out.find("DomainError") != std::string::npos;
-    assert(hasDomain && "Trap instruction should produce DomainError");
+    if (out.find("line 42") == std::string::npos)
+    {
+        std::fprintf(stderr, "FAIL testTrapInstruction: missing 'line 42' in: %s\n", out.c_str());
+        return 1;
+    }
+    if (out.find("DomainError") == std::string::npos)
+    {
+        std::fprintf(stderr, "FAIL testTrapInstruction: missing 'DomainError' in: %s\n",
+                     out.c_str());
+        return 1;
+    }
 
     std::printf("  testTrapInstruction: PASSED\n");
+    return 0;
 }
 
 //===----------------------------------------------------------------------===//
 // Test: Division by zero produces correct trap kind
 //===----------------------------------------------------------------------===//
 
-static void testDivideByZeroTrap()
+static int testDivideByZeroTrap()
 {
     Module m;
     il::build::IRBuilder b(m);
@@ -115,20 +119,28 @@ static void testDivideByZeroTrap()
     VmFixture fixture;
     const std::string out = fixture.captureTrap(m);
 
-    bool hasDivZero = out.find("DivideByZero") != std::string::npos;
-    assert(hasDivZero && "Should produce DivideByZero trap");
-
-    bool hasLine = out.find("line 100") != std::string::npos;
-    assert(hasLine && "Should include source line 100");
+    if (out.find("DivideByZero") == std::string::npos)
+    {
+        std::fprintf(stderr, "FAIL testDivideByZeroTrap: missing 'DivideByZero' in: %s\n",
+                     out.c_str());
+        return 1;
+    }
+    if (out.find("line 100") == std::string::npos)
+    {
+        std::fprintf(stderr, "FAIL testDivideByZeroTrap: missing 'line 100' in: %s\n",
+                     out.c_str());
+        return 1;
+    }
 
     std::printf("  testDivideByZeroTrap: PASSED\n");
+    return 0;
 }
 
 //===----------------------------------------------------------------------===//
 // Test: Overflow trap produces correct kind
 //===----------------------------------------------------------------------===//
 
-static void testOverflowTrap()
+static int testOverflowTrap()
 {
     Module m;
     il::build::IRBuilder b(m);
@@ -174,20 +186,26 @@ static void testOverflowTrap()
     VmFixture fixture;
     const std::string out = fixture.captureTrap(m);
 
-    bool hasOverflow = out.find("Overflow") != std::string::npos;
-    assert(hasOverflow && "Should produce Overflow trap");
-
-    bool hasLine = out.find("line 200") != std::string::npos;
-    assert(hasLine && "Should include source line 200");
+    if (out.find("Overflow") == std::string::npos)
+    {
+        std::fprintf(stderr, "FAIL testOverflowTrap: missing 'Overflow' in: %s\n", out.c_str());
+        return 1;
+    }
+    if (out.find("line 200") == std::string::npos)
+    {
+        std::fprintf(stderr, "FAIL testOverflowTrap: missing 'line 200' in: %s\n", out.c_str());
+        return 1;
+    }
 
     std::printf("  testOverflowTrap: PASSED\n");
+    return 0;
 }
 
 //===----------------------------------------------------------------------===//
 // Test: Bounds check trap (idx.chk)
 //===----------------------------------------------------------------------===//
 
-static void testBoundsTrap()
+static int testBoundsTrap()
 {
     Module m;
     il::build::IRBuilder b(m);
@@ -233,20 +251,26 @@ static void testBoundsTrap()
     VmFixture fixture;
     const std::string out = fixture.captureTrap(m);
 
-    bool hasBounds = out.find("Bounds") != std::string::npos;
-    assert(hasBounds && "Should produce Bounds trap");
-
-    bool hasLine = out.find("line 300") != std::string::npos;
-    assert(hasLine && "Should include source line 300");
+    if (out.find("Bounds") == std::string::npos)
+    {
+        std::fprintf(stderr, "FAIL testBoundsTrap: missing 'Bounds' in: %s\n", out.c_str());
+        return 1;
+    }
+    if (out.find("line 300") == std::string::npos)
+    {
+        std::fprintf(stderr, "FAIL testBoundsTrap: missing 'line 300' in: %s\n", out.c_str());
+        return 1;
+    }
 
     std::printf("  testBoundsTrap: PASSED\n");
+    return 0;
 }
 
 //===----------------------------------------------------------------------===//
 // Test: Successful execution produces no trap
 //===----------------------------------------------------------------------===//
 
-static void testSuccessfulExecutionNoTrap()
+static int testSuccessfulExecutionNoTrap()
 {
     Module m;
     il::build::IRBuilder b(m);
@@ -270,9 +294,15 @@ static void testSuccessfulExecutionNoTrap()
 
     VmFixture fixture;
     int64_t result = fixture.run(m);
-    assert(result == 42 && "Should return 42");
+    if (result != 42)
+    {
+        std::fprintf(stderr, "FAIL testSuccessfulExecutionNoTrap: expected 42, got %lld\n",
+                     static_cast<long long>(result));
+        return 1;
+    }
 
     std::printf("  testSuccessfulExecutionNoTrap: PASSED\n");
+    return 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -283,12 +313,18 @@ int main()
 {
     std::printf("Running trap invariant tests...\n");
 
-    testTrapInstruction();
-    testDivideByZeroTrap();
-    testOverflowTrap();
-    testBoundsTrap();
-    testSuccessfulExecutionNoTrap();
+    int failures = 0;
+    failures += testTrapInstruction();
+    failures += testDivideByZeroTrap();
+    failures += testOverflowTrap();
+    failures += testBoundsTrap();
+    failures += testSuccessfulExecutionNoTrap();
 
+    if (failures > 0)
+    {
+        std::fprintf(stderr, "%d trap invariant test(s) FAILED.\n", failures);
+        return 1;
+    }
     std::printf("All trap invariant tests passed.\n");
     return 0;
 }

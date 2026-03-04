@@ -39,6 +39,7 @@ std::string captureTrap(Module &module, const Function &fn, const std::vector<il
     {
         close(fds[0]);
         dup2(fds[1], 2);
+        close(fds[1]);
         il::vm::VM vm(module);
         il::vm::VMTestHook::run(vm, fn, args);
         _exit(0);

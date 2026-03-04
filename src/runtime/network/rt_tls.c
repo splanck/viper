@@ -62,6 +62,7 @@ extern void rt_net_init_wsa(void);
 #pragma comment(lib, "crypt32.lib")
 #else
 #include <dlfcn.h>
+#include "rt_ecdsa_p256.h"
 #endif
 
 // SIGPIPE suppression.
@@ -162,7 +163,7 @@ struct rt_tls_session
 
     // Transcript hash
     uint8_t transcript_hash[32];
-    uint8_t transcript_buffer[8192];
+    uint8_t transcript_buffer[32768];
     size_t transcript_len;
 
     // Record layer
@@ -1900,8 +1901,180 @@ static int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data
     return RT_TLS_ERROR_HANDSHAKE;
 }
 
-#else // Linux — attempt dlopen(libssl) for ECDSA/RSA verification
+#else // Linux — native ECDSA P-256 + dlopen(libcrypto) fallback for RSA-PSS
 
+// EC public key OIDs
+static const uint8_t OID_EC_PUBLIC_KEY[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01}; // 1.2.840.10045.2.1
+static const uint8_t OID_PRIME256V1[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07}; // 1.2.840.10045.3.1.7
+
+/// @brief Extract the P-256 public key (X, Y) from a DER-encoded certificate.
+/// Navigates: Certificate → TBSCertificate → SubjectPublicKeyInfo → BIT STRING.
+/// @return 0 on success, -1 on error (not an EC key, wrong curve, parse failure).
+static int cert_get_ec_pubkey(const uint8_t *cert_der, size_t cert_len,
+                              uint8_t x_out[32], uint8_t y_out[32])
+{
+    uint8_t tag;
+    size_t vl, hl;
+    const uint8_t *p = cert_der;
+    size_t rem = cert_len;
+
+    // Certificate ::= SEQUENCE { TBSCertificate, signatureAlgorithm, signatureValue }
+    if (der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return -1;
+    p += hl;
+    rem = vl; // inside Certificate SEQUENCE
+
+    // TBSCertificate ::= SEQUENCE { ... }
+    if (der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return -1;
+    const uint8_t *tbs = p + hl;
+    size_t tbs_rem = vl;
+
+    // Skip version [0] EXPLICIT (if present)
+    if (der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0)
+        return -1;
+    if (tag == 0xA0) // explicit context [0] = version
+    {
+        tbs += hl + vl;
+        tbs_rem -= hl + vl;
+        if (der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0)
+            return -1;
+    }
+
+    // serialNumber (INTEGER) — skip
+    if (tag != 0x02)
+        return -1;
+    tbs += hl + vl;
+    tbs_rem -= hl + vl;
+
+    // signature (AlgorithmIdentifier SEQUENCE) — skip
+    if (der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return -1;
+    tbs += hl + vl;
+    tbs_rem -= hl + vl;
+
+    // issuer (Name SEQUENCE) — skip
+    if (der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return -1;
+    tbs += hl + vl;
+    tbs_rem -= hl + vl;
+
+    // validity (SEQUENCE) — skip
+    if (der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return -1;
+    tbs += hl + vl;
+    tbs_rem -= hl + vl;
+
+    // subject (Name SEQUENCE) — skip
+    if (der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return -1;
+    tbs += hl + vl;
+    tbs_rem -= hl + vl;
+
+    // SubjectPublicKeyInfo ::= SEQUENCE { algorithm, subjectPublicKey }
+    if (der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return -1;
+    const uint8_t *spki = tbs + hl;
+    size_t spki_rem = vl;
+
+    // AlgorithmIdentifier ::= SEQUENCE { algorithm OID, parameters }
+    if (der_read_tlv(spki, spki_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return -1;
+    const uint8_t *algo = spki + hl;
+    size_t algo_rem = vl;
+    spki += hl + vl;
+    spki_rem -= hl + vl;
+
+    // Check algorithm OID = id-ecPublicKey
+    if (der_read_tlv(algo, algo_rem, &tag, &vl, &hl) != 0 || tag != 0x06)
+        return -1;
+    if (!oid_matches(algo + hl, vl, OID_EC_PUBLIC_KEY, sizeof(OID_EC_PUBLIC_KEY)))
+        return -1; // not an EC key
+    algo += hl + vl;
+    algo_rem -= hl + vl;
+
+    // Check curve parameter = prime256v1
+    if (der_read_tlv(algo, algo_rem, &tag, &vl, &hl) != 0 || tag != 0x06)
+        return -1;
+    if (!oid_matches(algo + hl, vl, OID_PRIME256V1, sizeof(OID_PRIME256V1)))
+        return -1; // wrong curve
+
+    // subjectPublicKey (BIT STRING)
+    if (der_read_tlv(spki, spki_rem, &tag, &vl, &hl) != 0 || tag != 0x03)
+        return -1;
+    const uint8_t *bits = spki + hl;
+    // First byte = number of unused bits (should be 0)
+    if (vl < 66 || bits[0] != 0x00)
+        return -1;
+    // Second byte = 0x04 (uncompressed point format)
+    if (bits[1] != 0x04)
+        return -1;
+    // bytes 2..33 = X, bytes 34..65 = Y
+    memcpy(x_out, bits + 2, 32);
+    memcpy(y_out, bits + 34, 32);
+
+    return 0;
+}
+
+/// @brief Parse a DER-encoded ECDSA signature: SEQUENCE { INTEGER r, INTEGER s }.
+/// Strips leading zero padding from DER integers and right-aligns into 32-byte buffers.
+/// @return 0 on success, -1 on error (malformed signature).
+static int parse_ecdsa_sig_der(const uint8_t *sig, size_t sig_len,
+                               uint8_t r_out[32], uint8_t s_out[32])
+{
+    uint8_t tag;
+    size_t vl, hl;
+
+    // Outer SEQUENCE
+    if (der_read_tlv(sig, sig_len, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return -1;
+    const uint8_t *inner = sig + hl;
+    size_t inner_rem = vl;
+
+    // INTEGER r
+    if (der_read_tlv(inner, inner_rem, &tag, &vl, &hl) != 0 || tag != 0x02)
+        return -1;
+    const uint8_t *r_bytes = inner + hl;
+    size_t r_len = vl;
+    inner += hl + vl;
+    inner_rem -= hl + vl;
+
+    // INTEGER s
+    if (der_read_tlv(inner, inner_rem, &tag, &vl, &hl) != 0 || tag != 0x02)
+        return -1;
+    const uint8_t *s_bytes = inner + hl;
+    size_t s_len = vl;
+
+    (void)inner_rem; // remaining bytes after s not needed
+
+    // Strip leading zeros (DER sign padding) and right-align into 32 bytes
+    memset(r_out, 0, 32);
+    memset(s_out, 0, 32);
+
+    // Strip leading zeros from r
+    while (r_len > 1 && r_bytes[0] == 0x00)
+    {
+        r_bytes++;
+        r_len--;
+    }
+    if (r_len > 32)
+        return -1;
+    memcpy(r_out + (32 - r_len), r_bytes, r_len);
+
+    // Strip leading zeros from s
+    while (s_len > 1 && s_bytes[0] == 0x00)
+    {
+        s_bytes++;
+        s_len--;
+    }
+    if (s_len > 32)
+        return -1;
+    memcpy(s_out + (32 - s_len), s_bytes, s_len);
+
+    return 0;
+}
+
+// dlopen typedefs for RSA-PSS fallback only
 typedef void *EVP_PKEY;
 typedef void *X509;
 typedef void *EVP_PKEY_CTX;
@@ -1925,27 +2098,13 @@ typedef int (*EVP_PKEY_CTX_set_rsa_pss_saltlen_fn)(EVP_PKEY_CTX *, int);
 #define RSA_PKCS1_PSS_PADDING 6
 #define RSA_PSS_SALTLEN_DIGEST -1
 
-static int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_t len)
+/// @brief Fallback to dlopen(libcrypto) for RSA-PSS signature verification.
+/// Used only when the server selects an RSA-PSS scheme (0x0804/0x0805/0x0806).
+static int tls_verify_rsa_pss_dlopen(rt_tls_session_t *session,
+                                     uint16_t sig_scheme,
+                                     const uint8_t *sig_bytes, uint16_t sig_len,
+                                     const uint8_t *content_hash)
 {
-    if (len < 4)
-    {
-        session->error = "TLS: CertificateVerify message too short";
-        return RT_TLS_ERROR_HANDSHAKE;
-    }
-
-    uint16_t sig_scheme = ((uint16_t)data[0] << 8) | data[1];
-    uint16_t sig_len = ((uint16_t)data[2] << 8) | data[3];
-    if (4 + sig_len > len)
-    {
-        session->error = "TLS: CertificateVerify signature length overflows";
-        return RT_TLS_ERROR_HANDSHAKE;
-    }
-    const uint8_t *sig_bytes = data + 4;
-
-    uint8_t content_hash[32];
-    build_cert_verify_content(session->cert_transcript_hash, content_hash);
-
-    // Try to load libssl for verification
     void *ssl_lib = dlopen("libssl.so.3", RTLD_LAZY | RTLD_LOCAL);
     if (!ssl_lib)
         ssl_lib = dlopen("libssl.so.1.1", RTLD_LAZY | RTLD_LOCAL);
@@ -1957,9 +2116,8 @@ static int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data
     {
         if (ssl_lib)
             dlclose(ssl_lib);
-        // libssl not available — chain + hostname verified, CertVerify skipped
-        // This is acceptable for Linux systems without OpenSSL installed
-        return RT_TLS_OK;
+        session->error = "TLS: CertVerify: RSA-PSS requires libcrypto (not available)";
+        return RT_TLS_ERROR_HANDSHAKE;
     }
 
     d2i_X509_fn fn_d2i_X509 = (d2i_X509_fn)dlsym(crypto_lib, "d2i_X509");
@@ -1989,7 +2147,8 @@ static int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data
         dlclose(crypto_lib);
         if (ssl_lib)
             dlclose(ssl_lib);
-        return RT_TLS_OK; // libssl present but symbols missing — skip
+        session->error = "TLS: CertVerify: libcrypto symbols missing for RSA-PSS";
+        return RT_TLS_ERROR_HANDSHAKE;
     }
 
     const unsigned char *der_ptr = session->server_cert_der;
@@ -2027,15 +2186,12 @@ static int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    // Set digest algorithm
     void *md = NULL;
     switch (sig_scheme)
     {
-        case 0x0403:
         case 0x0804:
             md = fn_sha256();
             break;
-        case 0x0503:
         case 0x0805:
             md = (fn_sha384 ? fn_sha384() : NULL);
             break;
@@ -2053,24 +2209,19 @@ static int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data
         dlclose(crypto_lib);
         if (ssl_lib)
             dlclose(ssl_lib);
-        session->error = "TLS: CertificateVerify: unsupported sig scheme (Linux)";
+        session->error = "TLS: CertVerify: unsupported RSA-PSS hash (Linux)";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
     fn_set_md(ctx, md);
 
-    // For RSA-PSS schemes, set padding
-    if ((sig_scheme == 0x0804 || sig_scheme == 0x0805 || sig_scheme == 0x0806) && fn_set_padding &&
-        fn_set_pss)
+    if (fn_set_padding && fn_set_pss)
     {
         fn_set_padding(ctx, RSA_PKCS1_PSS_PADDING);
         fn_set_pss(ctx, RSA_PSS_SALTLEN_DIGEST);
     }
 
-    // Determine hash length
-    size_t hash_len = (sig_scheme == 0x0503 || sig_scheme == 0x0805) ? 48
-                      : (sig_scheme == 0x0806)                       ? 64
-                                                                     : 32;
+    size_t hash_len = (sig_scheme == 0x0805) ? 48 : (sig_scheme == 0x0806) ? 64 : 32;
 
     int rc = fn_verify(ctx, sig_bytes, sig_len, content_hash, hash_len);
 
@@ -2082,11 +2233,66 @@ static int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data
 
     if (rc != 1)
     {
-        session->error = "TLS: CertificateVerify signature verification failed (Linux)";
+        session->error = "TLS: CertificateVerify RSA-PSS verification failed (Linux)";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
     return RT_TLS_OK;
+}
+
+static int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_t len)
+{
+    if (len < 4)
+    {
+        session->error = "TLS: CertificateVerify message too short";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    uint16_t sig_scheme = ((uint16_t)data[0] << 8) | data[1];
+    uint16_t sig_len = ((uint16_t)data[2] << 8) | data[3];
+    if (4 + sig_len > len)
+    {
+        session->error = "TLS: CertificateVerify signature length overflows";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+    const uint8_t *sig_bytes = data + 4;
+
+    uint8_t content_hash[32];
+    build_cert_verify_content(session->cert_transcript_hash, content_hash);
+
+    // Native ECDSA P-256 verification (no external dependencies)
+    if (sig_scheme == 0x0403) // ecdsa_secp256r1_sha256
+    {
+        uint8_t px[32], py[32];
+        if (cert_get_ec_pubkey(session->server_cert_der, session->server_cert_der_len, px, py) != 0)
+        {
+            session->error = "TLS: CertVerify: could not extract EC public key from certificate";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+
+        uint8_t sig_r[32], sig_s[32];
+        if (parse_ecdsa_sig_der(sig_bytes, sig_len, sig_r, sig_s) != 0)
+        {
+            session->error = "TLS: CertVerify: malformed ECDSA signature";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+
+        if (!ecdsa_p256_verify(px, py, content_hash, sig_r, sig_s))
+        {
+            session->error = "TLS: CertificateVerify ECDSA signature verification failed";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+        return RT_TLS_OK;
+    }
+
+    // RSA-PSS schemes fall through to dlopen(libcrypto)
+    if (sig_scheme == 0x0804 || sig_scheme == 0x0805 || sig_scheme == 0x0806)
+    {
+        return tls_verify_rsa_pss_dlopen(session, sig_scheme, sig_bytes, sig_len, content_hash);
+    }
+
+    session->error = "TLS: CertificateVerify: unsupported signature scheme";
+    return RT_TLS_ERROR_HANDSHAKE;
 }
 
 #endif // Platform CertificateVerify

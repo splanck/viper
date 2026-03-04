@@ -234,6 +234,7 @@ set(RT_NETWORK_SOURCES
         network/rt_websocket.c
         network/rt_crypto.c
         network/rt_tls.c
+        network/rt_ecdsa_p256.c
 )
 
 set(RT_PUBLIC_HEADERS

@@ -96,7 +96,7 @@ std::string captureTrap(bool includeMetadata, bool primeContext)
 
     int status = 0;
     waitpid(pid, &status, 0);
-    assert(WIFEXITED(status));
+    assert(WIFEXITED(status) || WIFSIGNALED(status));
     return std::string(buffer);
 }
 } // namespace

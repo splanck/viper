@@ -1078,19 +1078,6 @@ void vgfx_pset(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color)
     window->pixels[offset + 3] = 0xFF;                 /* A (fully opaque) */
 }
 
-/// @brief Plot a pixel in the physical framebuffer (no coord_scale applied).
-/// @details Used by internal code paths (blit, flood fill) that have already
-///          converted to physical coordinates.
-static void vgfx_pset_phys(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color)
-{
-    if (!vgfx_internal_in_bounds(window, x, y))
-        return;
-    int32_t offset = y * window->stride + x * 4;
-    window->pixels[offset + 0] = (color >> 16) & 0xFF;
-    window->pixels[offset + 1] = (color >> 8) & 0xFF;
-    window->pixels[offset + 2] = (color >> 0) & 0xFF;
-    window->pixels[offset + 3] = 0xFF;
-}
 
 static void vgfx_pset_alpha_block(vgfx_window_t window, int32_t px, int32_t py, int32_t sz,
                                    uint32_t color)

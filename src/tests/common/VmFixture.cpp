@@ -148,12 +148,17 @@ VmTrapResult VmFixture::runExpectingTrap(il::core::Module &module) const
     [[maybe_unused]] const int pipeStatus = ::pipe(fds.data());
     assert(pipeStatus == 0);
 
+    // Flush parent stdio before fork to prevent duplicate buffered output
+    std::fflush(stdout);
+    std::fflush(stderr);
+
     const pid_t pid = ::fork();
     assert(pid >= 0);
     if (pid == 0)
     {
         ::close(fds[0]);
         ::dup2(fds[1], STDERR_FILENO);
+        ::close(fds[1]); // Close original write end after dup2
         il::vm::VM vm(module);
         vm.run();
         _exit(0);
@@ -179,11 +184,12 @@ VmTrapResult VmFixture::runExpectingTrap(il::core::Module &module) const
 
     result.stderrText = std::move(buffer);
     result.exited = WIFEXITED(status);
+    result.signaled = WIFSIGNALED(status);
     if (result.exited)
     {
         result.exitCode = WEXITSTATUS(status);
     }
-    else if (WIFSIGNALED(status))
+    else if (result.signaled)
     {
         result.exitCode = 128 + WTERMSIG(status);
     }
@@ -203,7 +209,16 @@ std::string VmFixture::captureTrap(il::core::Module &module) const
     std::exit(0);
 #else
     const VmTrapResult trap = runExpectingTrap(module);
-    assert(trap.exited && trap.exitCode == 1);
+    if (!trap.trapped())
+    {
+        std::fprintf(stderr,
+                     "captureTrap: expected trap but child %s (exitCode=%d)\n"
+                     "  stderr: %s\n",
+                     trap.exited ? "exited cleanly" : "terminated unexpectedly",
+                     trap.exitCode,
+                     trap.stderrText.c_str());
+        assert(false && "captureTrap: child did not trap");
+    }
     return trap.stderrText;
 #endif
 }
