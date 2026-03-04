@@ -154,6 +154,7 @@ void runFunctionPipeline(const ILFunction &ilFunc,
     isel.lowerArithmetic(machineFunc);
     isel.lowerCompareAndBranch(machineFunc);
     isel.lowerSelect(machineFunc);
+    isel.validateSelectLowering(machineFunc);
 
     lowerSignedDivRem(machineFunc);
     lowerOverflowOps(machineFunc);

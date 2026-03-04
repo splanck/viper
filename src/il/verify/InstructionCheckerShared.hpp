@@ -198,6 +198,13 @@ std::optional<Type> typeFromClass(TypeClass typeClass);
 /// @return Success when the error context and operands are valid.
 [[nodiscard]] Expected<void> checkTrapFromErr(const VerifyCtx &ctx);
 
+/// @brief Verify a shift instruction and warn when the constant amount is out of bounds.
+/// @details If the shift amount operand is a constant integer with value >= 64 or < 0,
+///          emits a warning diagnostic. On x86, shifts by >= 64 produce undefined results.
+/// @param ctx Verification context containing the shift instruction.
+/// @return Always succeeds (warnings do not block verification).
+[[nodiscard]] Expected<void> checkShift(const VerifyCtx &ctx);
+
 /// @brief Default validator that records the declared instruction result type.
 /// @param ctx Verification context that owns the instruction.
 /// @return Always empty because structural checks handle failures.

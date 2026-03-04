@@ -68,7 +68,11 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
     constexpr const char *kOverflowMessage = "fp overflow in cast.fp_to_ui.rte.chk";
 
     auto trap = [&](TrapKind kind, const char *message)
-    { RuntimeBridge::trap(kind, message, in.loc, fr.func->name, bb ? bb->label : ""); };
+    {
+        RuntimeBridge::trap(kind, message, in.loc,
+                            fr.func ? fr.func->name : std::string(),
+                            bb ? bb->label : std::string());
+    };
 
     if (!std::isfinite(operand) || std::signbit(operand))
     {
@@ -510,8 +514,8 @@ VM::ExecResult handleFptosi(VM &vm,
         RuntimeBridge::trap(TrapKind::InvalidCast,
                             "invalid fp operand in fptosi",
                             in.loc,
-                            fr.func->name,
-                            bb ? bb->label : "");
+                            fr.func ? fr.func->name : std::string(),
+                            bb ? bb->label : std::string());
     }
 
     constexpr double kMin = static_cast<double>(std::numeric_limits<int64_t>::min());
@@ -521,8 +525,8 @@ VM::ExecResult handleFptosi(VM &vm,
         RuntimeBridge::trap(TrapKind::Overflow,
                             "fp overflow in fptosi",
                             in.loc,
-                            fr.func->name,
-                            bb ? bb->label : "");
+                            fr.func ? fr.func->name : std::string(),
+                            bb ? bb->label : std::string());
     }
 
     Slot out{};
@@ -564,8 +568,8 @@ VM::ExecResult handleCastFpToSiRteChk(VM &vm,
         RuntimeBridge::trap(TrapKind::InvalidCast,
                             "invalid fp operand in cast.fp_to_si.rte.chk",
                             in.loc,
-                            fr.func->name,
-                            bb ? bb->label : "");
+                            fr.func ? fr.func->name : std::string(),
+                            bb ? bb->label : std::string());
     }
 
     const double rounded = std::nearbyint(operand);
@@ -574,8 +578,8 @@ VM::ExecResult handleCastFpToSiRteChk(VM &vm,
         RuntimeBridge::trap(TrapKind::Overflow,
                             "fp overflow in cast.fp_to_si.rte.chk",
                             in.loc,
-                            fr.func->name,
-                            bb ? bb->label : "");
+                            fr.func ? fr.func->name : std::string(),
+                            bb ? bb->label : std::string());
     }
 
     constexpr double kMin = static_cast<double>(std::numeric_limits<int64_t>::min());
@@ -585,8 +589,8 @@ VM::ExecResult handleCastFpToSiRteChk(VM &vm,
         RuntimeBridge::trap(TrapKind::Overflow,
                             "fp overflow in cast.fp_to_si.rte.chk",
                             in.loc,
-                            fr.func->name,
-                            bb ? bb->label : "");
+                            fr.func ? fr.func->name : std::string(),
+                            bb ? bb->label : std::string());
     }
 
     Slot out{};

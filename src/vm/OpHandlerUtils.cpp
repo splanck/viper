@@ -90,11 +90,13 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
 
     // Cold path: safety fallback for release builds (should not be reached)
     fr.regs.resize(destIndex + 1);
+    fr.regIsStr.resize(destIndex + 1, 0);
 
     if (in.type.kind == il::core::Type::Kind::Str) [[unlikely]]
     {
         // New register, no old value to release, just retain
         rt_str_retain_maybe(val.str);
+        fr.regIsStr[destIndex] = 1;
     }
     fr.regs[destIndex] = val;
 }

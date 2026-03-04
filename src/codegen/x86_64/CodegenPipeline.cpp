@@ -570,6 +570,17 @@ PipelineResult CodegenPipeline::run()
                                    "dce"});
             ilpm.runPipeline(module, "codegen-O1");
         }
+
+
+        // Re-verify IL after optimization to catch optimizer bugs early.
+        if (!il::tools::common::verifyModule(module, err))
+        {
+            err << "error: IL verification failed after optimization\n";
+            result.exit_code = 1;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
     }
 
     passes::Module pipelineModule{};

@@ -365,19 +365,32 @@ Token Lexer::lexNumber()
     bool seenDot = false;
     bool seenExp = false;
     char suffix = '\0';
+    constexpr size_t kMaxNumLen = 1024;
     if (peek() == '.')
     {
         seenDot = true;
         s.push_back(get());
     }
-    while (isDigit(peek()))
+    while (isDigit(peek()) && s.size() < kMaxNumLen)
         s.push_back(get());
+    if (s.size() >= kMaxNumLen)
+    {
+        while (isDigit(peek()))
+            get();
+        return {TokenKind::Number, s, loc};
+    }
     if (!seenDot && peek() == '.')
     {
         seenDot = true;
         s.push_back(get());
-        while (isDigit(peek()))
+        while (isDigit(peek()) && s.size() < kMaxNumLen)
             s.push_back(get());
+        if (s.size() >= kMaxNumLen)
+        {
+            while (isDigit(peek()))
+                get();
+            return {TokenKind::Number, s, loc};
+        }
     }
     if ((peek() == 'e' || peek() == 'E'))
     {
@@ -385,8 +398,14 @@ Token Lexer::lexNumber()
         s.push_back(get());
         if (peek() == '+' || peek() == '-')
             s.push_back(get());
-        while (isDigit(peek()))
+        while (isDigit(peek()) && s.size() < kMaxNumLen)
             s.push_back(get());
+        if (s.size() >= kMaxNumLen)
+        {
+            while (isDigit(peek()))
+                get();
+            return {TokenKind::Number, s, loc};
+        }
     }
     if (peek() == '#' || peek() == '!' || peek() == '%' || peek() == '&')
         suffix = get();
@@ -409,8 +428,18 @@ Token Lexer::lexIdentifierOrKeyword()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
     std::string s;
+    constexpr size_t kMaxIdentLen = 1024;
     while (isAlphanumeric(peek()) || peek() == '_')
+    {
+        if (s.size() >= kMaxIdentLen)
+        {
+            // Skip remaining identifier characters to avoid OOM
+            while (isAlphanumeric(peek()) || peek() == '_')
+                get();
+            return {TokenKind::Unknown, s, loc};
+        }
         s.push_back(toUpper(get()));
+    }
     if (peek() == '$' || peek() == '#' || peek() == '!' || peek() == '%' || peek() == '&')
         s.push_back(toUpper(get()));
     TokenKind kind = lookupKeyword(s);
@@ -429,10 +458,20 @@ Token Lexer::lexString()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
     std::string s;
+    constexpr size_t kMaxStringLen = 16 * 1024 * 1024; // 16MB
     /// @brief Retrieves  value.
     get(); // consume opening quote
     while (!eof())
     {
+        if (s.size() >= kMaxStringLen)
+        {
+            // Skip to closing quote or EOF to avoid OOM
+            while (!eof() && peek() != '"')
+                get();
+            if (!eof())
+                get(); // consume closing quote
+            return {TokenKind::String, s, loc};
+        }
         if (peek() == '"')
         {
             get(); // consume the quote
@@ -466,6 +505,8 @@ Token Lexer::lexString()
 /// @return The next token, which may be EndOfLine or EndOfFile.
 Token Lexer::next()
 {
+    for (;;)
+    {
     skipWhitespaceAndComments();
 
     if (eof())
@@ -577,14 +618,15 @@ Token Lexer::next()
             if (!eof() && peek() == '\n')
             {
                 get(); // consume the newline
-                // Recursively get next token (skipping the line break)
-                return next();
+                // Restart token dispatch (iterative, avoids stack overflow)
+                continue;
             }
             // Otherwise, _ is an unknown character
             return {TokenKind::Unknown, "_", loc};
         }
     }
     return {TokenKind::Unknown, std::string(1, c), loc};
+    } // for(;;)
 }
 
 } // namespace il::frontends::basic

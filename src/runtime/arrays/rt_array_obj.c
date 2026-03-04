@@ -33,6 +33,7 @@
 
 #include "rt_array_obj.h"
 
+#include "rt_array.h" // for rt_arr_oob_panic
 #include "rt_heap.h"
 #include "rt_object.h"
 
@@ -40,6 +41,8 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+
+extern void rt_trap(const char *msg);
 
 /// @brief Return the heap header associated with an object array payload.
 /// @details The payload pointer is the first element of the array; the header
@@ -97,10 +100,12 @@ size_t rt_arr_obj_len(void **arr)
 /// @return Retained object pointer (may be NULL if the slot is empty).
 void *rt_arr_obj_get(void **arr, size_t idx)
 {
-    assert(arr != NULL);
+    if (!arr)
+        rt_trap("rt_arr_obj_get: null array");
     rt_heap_hdr_t *hdr = rt_arr_obj_hdr(arr);
     rt_arr_obj_assert_header(hdr);
-    assert(idx < hdr->len);
+    if (idx >= hdr->len)
+        rt_arr_oob_panic(idx, hdr->len);
     void *p = arr[idx];
     rt_obj_retain_maybe(p);
     return p;
@@ -116,10 +121,12 @@ void *rt_arr_obj_get(void **arr, size_t idx)
 /// @param obj Object reference to store (may be NULL).
 void rt_arr_obj_put(void **arr, size_t idx, void *obj)
 {
-    assert(arr != NULL);
+    if (!arr)
+        rt_trap("rt_arr_obj_put: null array");
     rt_heap_hdr_t *hdr = rt_arr_obj_hdr(arr);
     rt_arr_obj_assert_header(hdr);
-    assert(idx < hdr->len);
+    if (idx >= hdr->len)
+        rt_arr_oob_panic(idx, hdr->len);
 
     // Retain new first to handle self-assignment safely
     rt_obj_retain_maybe(obj);

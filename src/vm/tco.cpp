@@ -91,6 +91,7 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
     const size_t maxSsaId = detail::VMAccess::computeMaxSsaId(vm, *callee);
     const size_t regCount = maxSsaId + 1;
     fr.regs.resize(regCount);
+    fr.regIsStr.assign(regCount, 0);
     fr.sp = 0;
     // Reset params to new size
     fr.params.assign(fr.regs.size(), Slot{});

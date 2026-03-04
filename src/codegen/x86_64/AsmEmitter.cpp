@@ -29,6 +29,7 @@
 #include <bit>
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
 #include <iomanip>
 #include <span>
 #include <sstream>
@@ -1111,7 +1112,8 @@ std::string_view AsmEmitter::conditionSuffix(std::int64_t code) noexcept
             return "no";
         default:
             assert(false && "unknown condition code in conditionSuffix");
-            return "e";
+            std::abort();
+            return "e"; // unreachable; suppresses compiler warning
     }
 }
 

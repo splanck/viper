@@ -42,6 +42,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern void rt_trap(const char *msg);
+
 /// Initial number of buckets.
 #define MAP_INITIAL_CAPACITY 16
 
@@ -276,11 +278,9 @@ void *rt_map_new(void)
     map->buckets = (rt_map_entry **)calloc(MAP_INITIAL_CAPACITY, sizeof(rt_map_entry *));
     if (!map->buckets)
     {
-        // Can't trap here, just return partially initialized
-        map->capacity = 0;
-        map->count = 0;
-        rt_obj_set_finalizer(map, rt_map_finalize);
-        return map;
+        if (rt_obj_release_check0(map))
+            rt_obj_free(map);
+        rt_trap("Map: memory allocation failed");
     }
     map->capacity = MAP_INITIAL_CAPACITY;
     map->count = 0;
@@ -368,8 +368,6 @@ void rt_map_set(void *obj, rt_string key, void *value)
         return;
 
     rt_map_impl *map = (rt_map_impl *)obj;
-    if (map->capacity == 0)
-        return; // Bucket allocation failed
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
@@ -392,13 +390,13 @@ void rt_map_set(void *obj, rt_string key, void *value)
     // Create new entry
     rt_map_entry *entry = (rt_map_entry *)malloc(sizeof(rt_map_entry));
     if (!entry)
-        return;
+        rt_trap("Map.Set: memory allocation failed");
 
     entry->key = (char *)malloc(key_len + 1);
     if (!entry->key)
     {
         free(entry);
-        return;
+        rt_trap("Map.Set: key allocation failed");
     }
     memcpy(entry->key, key_data, key_len);
     entry->key[key_len] = '\0';

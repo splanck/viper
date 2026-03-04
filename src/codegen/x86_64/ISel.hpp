@@ -42,6 +42,9 @@ class ISel
     /// \brief Lower select-like idioms to canonical register sequences.
     void lowerSelect(MFunction &func) const;
 
+    /// \brief Verify that no 3-operand select pseudos survived instruction selection.
+    void validateSelectLowering(const MFunction &func) const;
+
   private:
     const TargetInfo *target_{nullptr};
 

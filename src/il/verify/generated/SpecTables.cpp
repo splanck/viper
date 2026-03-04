@@ -264,6 +264,7 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
         VerifyStrategy::Default,
         nullptr,
     },
+    // Shl: left shift
     {
         il::core::ResultArity::One,
         il::core::TypeCategory::I64,
@@ -273,9 +274,10 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
         false,
         static_cast<uint8_t>(0),
         false,
-        VerifyStrategy::Default,
+        VerifyStrategy::Shift,
         nullptr,
     },
+    // LShr: logical shift right
     {
         il::core::ResultArity::One,
         il::core::TypeCategory::I64,
@@ -285,9 +287,10 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
         false,
         static_cast<uint8_t>(0),
         false,
-        VerifyStrategy::Default,
+        VerifyStrategy::Shift,
         nullptr,
     },
+    // AShr: arithmetic shift right
     {
         il::core::ResultArity::One,
         il::core::TypeCategory::I64,
@@ -297,7 +300,7 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
         false,
         static_cast<uint8_t>(0),
         false,
-        VerifyStrategy::Default,
+        VerifyStrategy::Shift,
         nullptr,
     },
     {

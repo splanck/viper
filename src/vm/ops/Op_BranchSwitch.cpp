@@ -155,7 +155,15 @@ VM::ExecResult branchToTarget(VM &vm,
                               const il::core::BasicBlock *&bb,
                               size_t &ip)
 {
-    assert(idx < in.labels.size() && "branch target index out of range");
+    if (idx >= in.labels.size())
+    {
+        const std::string blockLabel = bb ? bb->label : std::string();
+        RuntimeBridge::trap(TrapKind::InvalidOperation,
+                            "branch target index out of range",
+                            in.loc,
+                            fr.func ? fr.func->name : std::string(),
+                            blockLabel);
+    }
 
     il::vm::ops::common::Target target{};
     target.vm = &vm;

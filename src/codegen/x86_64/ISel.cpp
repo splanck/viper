@@ -23,6 +23,7 @@
 
 #include "ISel.hpp"
 #include "OperandUtils.hpp"
+#include "Unsupported.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -1051,6 +1052,31 @@ void ISel::foldLeaIntoMem(MFunction &func) const
                 }
             }
             (void)foldedAny;
+        }
+    }
+}
+
+/// @brief Verify that no 3-operand select pseudo-instructions survived ISel.
+/// @details The lowering pass emits MOVri/MOVrr/MOVSDrr with 3 operands
+///          (dest, falseVal, trueVal) as SELECT placeholders. lowerSelect()
+///          is supposed to replace each one with a TEST+MOV+CMOV sequence.
+///          If any survive, the assembler silently drops the 3rd operand,
+///          producing always-false SELECT output.
+void ISel::validateSelectLowering(const MFunction &func) const
+{
+    for (const auto &block : func.blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if ((instr.opcode == MOpcode::MOVri || instr.opcode == MOpcode::MOVrr ||
+                 instr.opcode == MOpcode::MOVSDrr) &&
+                instr.operands.size() > 2)
+            {
+                phaseAUnsupported(("select pseudo survived ISel (opcode=" +
+                                   std::to_string(static_cast<int>(instr.opcode)) +
+                                   ", operands=" + std::to_string(instr.operands.size()) + ")")
+                                      .c_str());
+            }
         }
     }
 }

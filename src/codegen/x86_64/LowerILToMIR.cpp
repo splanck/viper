@@ -417,7 +417,11 @@ void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block)
     for (const auto &edge : source.terminatorEdges)
     {
         const auto destIt = blockInfo_.find(edge.to);
-        if (destIt == blockInfo_.end() || destIt->second.paramVRegs.empty())
+        if (destIt == blockInfo_.end())
+        {
+            phaseAUnsupported(("edge references non-existent block: " + edge.to).c_str());
+        }
+        if (destIt->second.paramVRegs.empty())
         {
             continue;
         }
@@ -446,7 +450,8 @@ void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block)
                 // Constant: materialize into a fresh vreg.
                 // PX_COPY requires register operands, so we must emit a MOV
                 // instruction that loads the constant into a temporary vreg.
-                assert(idx < edge.argValues.size() && "argValues missing for constant block arg");
+                if (idx >= edge.argValues.size())
+                    phaseAUnsupported("edge argument index out of bounds in block parameter copy");
                 const ILValue &val = edge.argValues[idx];
                 const RegClass cls = params[idx].cls;
 

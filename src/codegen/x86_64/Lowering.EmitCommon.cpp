@@ -27,6 +27,7 @@
 ///          guaranteeing consistent register-class handling.
 
 #include "Lowering.EmitCommon.hpp"
+#include "Unsupported.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -266,7 +267,7 @@ void EmitCommon::emitBinary(
 {
     if (instr.resultId < 0 || instr.ops.size() < 2)
     {
-        return;
+        phaseAUnsupported("binary op: missing operands");
     }
 
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
@@ -346,7 +347,7 @@ void EmitCommon::emitShift(const ILInstr &instr, MOpcode opcImm, MOpcode opcReg)
 {
     if (instr.resultId < 0 || instr.ops.size() < 2)
     {
-        return;
+        phaseAUnsupported("shift: missing operands");
     }
 
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
@@ -403,7 +404,7 @@ void EmitCommon::emitCmp(const ILInstr &instr, RegClass cls, int defaultCond)
 {
     if (instr.ops.size() < 2)
     {
-        return;
+        phaseAUnsupported("compare: missing operands");
     }
 
     int condCode = defaultCond;
@@ -466,7 +467,7 @@ void EmitCommon::emitSelect(const ILInstr &instr)
 {
     if (instr.resultId < 0 || instr.ops.size() < 3)
     {
-        return;
+        phaseAUnsupported("select: missing operands");
     }
 
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
@@ -524,7 +525,7 @@ void EmitCommon::emitBranch(const ILInstr &instr)
 {
     if (instr.ops.empty())
     {
-        return;
+        phaseAUnsupported("branch: missing target label");
     }
     builder().append(
         MInstr::make(MOpcode::JMP, std::vector<Operand>{builder().makeLabelOperand(instr.ops[0])}));
@@ -539,7 +540,7 @@ void EmitCommon::emitCondBranch(const ILInstr &instr)
 {
     if (instr.ops.size() < 3)
     {
-        return;
+        phaseAUnsupported("cond branch: missing operands");
     }
 
     const Operand cond = builder().makeOperandForValue(instr.ops[0], RegClass::GPR);
@@ -623,7 +624,7 @@ void EmitCommon::emitLoad(const ILInstr &instr, RegClass cls)
 {
     if (instr.resultId < 0 || instr.ops.empty())
     {
-        return;
+        phaseAUnsupported("load: missing operands");
     }
 
     Operand baseOp = builder().makeOperandForValue(instr.ops[0], RegClass::GPR);
@@ -665,7 +666,7 @@ void EmitCommon::emitStore(const ILInstr &instr)
 {
     if (instr.ops.size() < 2)
     {
-        return;
+        phaseAUnsupported("store: missing operands");
     }
 
     // IL store format: store type, addr, value
@@ -722,7 +723,7 @@ void EmitCommon::emitCast(const ILInstr &instr, MOpcode opc, RegClass dstCls, Re
 {
     if (instr.resultId < 0 || instr.ops.empty())
     {
-        return;
+        phaseAUnsupported("cast: missing operands");
     }
 
     const Operand src = builder().makeOperandForValue(instr.ops[0], srcCls);
@@ -769,7 +770,7 @@ void EmitCommon::emitDivRem(const ILInstr &instr, std::string_view opcode)
 {
     if (instr.resultId < 0 || instr.ops.size() < 2)
     {
-        return;
+        phaseAUnsupported("div/rem: missing operands");
     }
 
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
@@ -868,7 +869,7 @@ void EmitCommon::emitFCmpNanSafe(const ILInstr &instr, std::string_view suffix)
 {
     if (instr.ops.size() < 2 || instr.resultId < 0)
     {
-        return;
+        phaseAUnsupported("fcmp: missing operands");
     }
 
     Operand lhs = builder().makeOperandForValue(instr.ops[0], RegClass::XMM);

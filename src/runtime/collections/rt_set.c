@@ -41,6 +41,8 @@
 
 #include <stdlib.h>
 
+extern void rt_trap(const char *msg);
+
 /// Initial number of buckets.
 #define SET_INITIAL_CAPACITY 16
 
@@ -176,7 +178,7 @@ int8_t rt_set_put(void *obj, void *elem)
     // Create new entry
     rt_set_entry *entry = malloc(sizeof(rt_set_entry));
     if (!entry)
-        return 0;
+        rt_trap("Set.Put: memory allocation failed");
 
     entry->elem = elem;
     entry->next = set->buckets[idx];

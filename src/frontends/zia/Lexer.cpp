@@ -943,6 +943,8 @@ Token Lexer::lexInterpolatedStringContinuation()
             if (interpolationDepth_ >= 32)
             {
                 reportError(tok.loc, "string interpolation nesting too deep (limit: 32)");
+                interpolationDepth_ = 0;
+                braceDepth_.clear();
                 tok.kind = TokenKind::Error;
                 return tok;
             }
@@ -959,6 +961,8 @@ Token Lexer::lexInterpolatedStringContinuation()
         if (c == '\n' || c == '\r')
         {
             reportError(tok.loc, "newline in string literal");
+            interpolationDepth_ = 0;
+            braceDepth_.clear();
             tok.kind = TokenKind::Error;
             return tok;
         }
@@ -970,6 +974,8 @@ Token Lexer::lexInterpolatedStringContinuation()
             if (eof())
             {
                 reportError(tok.loc, "unterminated escape sequence");
+                interpolationDepth_ = 0;
+                braceDepth_.clear();
                 tok.kind = TokenKind::Error;
                 return tok;
             }
@@ -991,6 +997,8 @@ Token Lexer::lexInterpolatedStringContinuation()
     }
 
     reportError(tok.loc, "unterminated interpolated string");
+    interpolationDepth_ = 0;
+    braceDepth_.clear();
     tok.kind = TokenKind::Error;
     return tok;
 }

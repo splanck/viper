@@ -23,6 +23,7 @@
 #include "LoweringRuleTable.hpp"
 
 #include "LowerILToMIR.hpp"
+#include "Unsupported.hpp"
 #include "Lowering.EmitCommon.hpp"
 #include "MachineIR.hpp"
 
@@ -83,7 +84,7 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder)
 {
     if (instr.resultId < 0 || instr.ops.size() < 3)
     {
-        return;
+        phaseAUnsupported("idx_chk: missing operands");
     }
 
     EmitCommon emit(builder);
@@ -148,7 +149,7 @@ void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder)
 {
     if (instr.ops.empty())
     {
-        return;
+        phaseAUnsupported("switch: missing scrutinee");
     }
 
     EmitCommon emit(builder);

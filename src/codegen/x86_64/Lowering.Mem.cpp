@@ -24,6 +24,7 @@
 #include "LowerILToMIR.hpp"
 #include "Lowering.EmitCommon.hpp"
 #include "OperandUtils.hpp"
+#include "Unsupported.hpp"
 
 #include "il/runtime/RuntimeSignatures.hpp"
 
@@ -46,10 +47,12 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder)
 {
     if (instr.ops.empty())
     {
-        return;
+        phaseAUnsupported("call: missing callee");
     }
 
     CallLoweringPlan plan{};
+    if (instr.ops.front().kind != ILValue::Kind::LABEL)
+        phaseAUnsupported("call target is not a label");
     plan.calleeLabel = instr.ops.front().label;
     // Query the runtime signature registry to determine if the callee uses
     // C-style variadic arguments. The utility consults registered signatures
@@ -142,7 +145,7 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder)
 {
     if (instr.ops.empty())
     {
-        return;
+        phaseAUnsupported("call.indirect: missing target");
     }
 
     CallLoweringPlan plan{};
@@ -247,7 +250,7 @@ void emitConstStr(const ILInstr &instr, MIRBuilder &builder)
 {
     if (instr.ops.empty() || instr.resultId < 0)
     {
-        return;
+        phaseAUnsupported("const_str: missing operands");
     }
 
     // The operand contains the string literal data
@@ -303,7 +306,7 @@ void emitGEP(const ILInstr &instr, MIRBuilder &builder)
 {
     if (instr.resultId < 0 || instr.ops.size() < 2)
     {
-        return;
+        phaseAUnsupported("gep: missing operands");
     }
 
     // Reserve the result vreg for the pointer

@@ -54,6 +54,7 @@ using checker::checkDefault;
 using checker::checkGEP;
 using checker::checkIdxChk;
 using checker::checkLoad;
+using checker::checkShift;
 using checker::checkStore;
 using checker::checkTrapErr;
 using checker::checkTrapFromErr;
@@ -279,6 +280,18 @@ Expected<void> applyCastUiNarrowChk(const VerifyCtx &ctx, const InstructionSpec 
     return {};
 }
 
+/// @brief Validate shift instructions and warn on out-of-bounds constant amounts.
+/// @details Records the result type and delegates to @ref checker::checkShift
+///          which emits a warning when the shift amount is a constant >= 64.
+/// @param ctx Verification context for the instruction.
+/// @param spec Specification entry driving strategy selection.
+/// @return Empty on success (warnings do not block verification).
+Expected<void> applyShift(const VerifyCtx &ctx, const InstructionSpec &spec)
+{
+    ctx.types.recordResult(ctx.instr, resolveResultType(ctx, spec));
+    return checkShift(ctx);
+}
+
 /// @brief Force verification failure for explicitly rejected opcodes.
 /// @details Emits the rejection message provided by the specification so
 ///          tooling can surface meaningful diagnostics for disabled opcodes.
@@ -309,6 +322,7 @@ constexpr std::array<StrategyFn, static_cast<size_t>(VerifyStrategy::Count)> kSt
     &applyCastFpToUiRteChk,
     &applyCastSiNarrowChk,
     &applyCastUiNarrowChk,
+    &applyShift,
     &applyReject,
 };
 

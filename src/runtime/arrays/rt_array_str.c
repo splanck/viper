@@ -33,12 +33,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_array_str.h"
+#include "rt_array.h" // for rt_arr_oob_panic
 #include "rt_internal.h"
 
 #include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+
+extern void rt_trap(const char *msg);
 
 // Generate standard array helper functions using macros from rt_internal.h
 RT_ARR_DEFINE_HDR_FN(rt_arr_str_hdr, rt_string)
@@ -92,13 +95,14 @@ void rt_arr_str_release(rt_string *arr, size_t size)
 /// @return String handle at @p idx (retained for caller), or NULL if slot is empty.
 rt_string rt_arr_str_get(rt_string *arr, size_t idx)
 {
-    assert(arr != NULL);
+    if (!arr)
+        rt_trap("rt_arr_str_get: null array");
 
     rt_heap_hdr_t *hdr = rt_arr_str_hdr(arr);
     rt_arr_str_assert_header(hdr);
 
-    // Bounds checking (optional - could be done by caller/IL)
-    assert(idx < hdr->len);
+    if (idx >= hdr->len)
+        rt_arr_oob_panic(idx, hdr->len);
 
     rt_string value = arr[idx];
 
@@ -116,13 +120,14 @@ rt_string rt_arr_str_get(rt_string *arr, size_t idx)
 /// @param value String handle to store (may be NULL); will be retained.
 void rt_arr_str_put(rt_string *arr, size_t idx, rt_string value)
 {
-    assert(arr != NULL);
+    if (!arr)
+        rt_trap("rt_arr_str_put: null array");
 
     rt_heap_hdr_t *hdr = rt_arr_str_hdr(arr);
     rt_arr_str_assert_header(hdr);
 
-    // Bounds checking (optional - could be done by caller/IL)
-    assert(idx < hdr->len);
+    if (idx >= hdr->len)
+        rt_arr_oob_panic(idx, hdr->len);
 
     // Retain new value first (in case value == arr[idx])
     rt_str_retain_maybe(value);

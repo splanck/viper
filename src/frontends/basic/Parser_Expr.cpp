@@ -591,11 +591,16 @@ ExprPtr Parser::parsePrimary()
                 i += 2;
                 // BUG-OOP-040 fix: Use isMemberIdentToken() to allow keyword segments in
                 // dotted namespaces (e.g., Viper.Random.Next, Viper.IO.File.Delete).
-                while (isMemberIdentToken(peek(i).kind) && peek(i + 1).kind == TokenKind::Dot)
+                // Cap probe distance to prevent unbounded token buffering (OOM).
+                constexpr size_t kMaxProbeDistance = 512;
+                while (i < kMaxProbeDistance && isMemberIdentToken(peek(i).kind) &&
+                       peek(i + 1).kind == TokenKind::Dot)
                 {
                     sawAdditionalDot = true;
                     i += 2;
                 }
+                if (i >= kMaxProbeDistance)
+                    ok = false;
                 // Accept final segment as identifier or keyword (e.g.,
                 // Viper.Text.StringBuilder.Append, Viper.Terminal.Color). (BUG-OOP-021)
                 if (!(isMemberIdentToken(peek(i).kind) && peek(i + 1).kind == TokenKind::LParen))

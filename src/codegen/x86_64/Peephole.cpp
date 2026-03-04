@@ -1111,6 +1111,11 @@ std::size_t runPeepholes(MFunction &fn)
                     if (!isGprReg(instr.operands[0]) || !isZeroImm(instr.operands[1]))
                         break;
 
+                    // XOR clobbers EFLAGS; skip rewrite when a subsequent
+                    // instruction reads flags before they are overwritten.
+                    if (nextInstrReadsFlags(instrs, i))
+                        break;
+
                     rewriteToXor(instr, instr.operands[0]);
                     ++stats.movZeroToXor;
                     break;

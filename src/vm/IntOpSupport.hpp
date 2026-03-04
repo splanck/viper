@@ -49,7 +49,9 @@ inline void emitTrap(TrapKind kind,
                      Frame &fr,
                      const il::core::BasicBlock *bb)
 {
-    RuntimeBridge::trap(kind, message, in.loc, fr.func->name, bb ? bb->label : "");
+    RuntimeBridge::trap(kind, message, in.loc,
+                        fr.func ? fr.func->name : std::string(),
+                        bb ? bb->label : std::string());
 }
 
 /// @brief Apply an overflow-checking binary operation for a specific integer type.

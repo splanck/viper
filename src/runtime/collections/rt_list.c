@@ -249,7 +249,7 @@ void rt_list_push(void *list, void *elem)
     size_t len = rt_arr_obj_len(L->arr);
     void **arr2 = rt_arr_obj_resize(L->arr, len + 1);
     if (!arr2)
-        return;
+        rt_trap("List.Push: memory allocation failed");
     L->arr = arr2;
     rt_arr_obj_put(L->arr, len, elem);
 }

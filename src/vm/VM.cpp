@@ -1132,13 +1132,14 @@ bool VM::prepareTrap(VmError &error)
                     // Use shared helper to compute/cache register file size
                     const size_t maxSsaId = detail::VMAccess::computeMaxSsaId(*this, *ownerFn);
                     fr.regs.resize(maxSsaId + 1);
+                    fr.regIsStr.assign(fr.regs.size(), 0);
                     fr.params.assign(fr.regs.size(), Slot{});
                     fr.paramsSet.assign(fr.regs.size(), 0);
                     st->blocks = &getOrBuildBlockMap(*ownerFn);
                 }
             }
 
-            if (!record.handler->params.empty())
+            if (record.handler && !record.handler->params.empty())
             {
                 const auto &params = record.handler->params;
                 if (params[0].id < fr.params.size())

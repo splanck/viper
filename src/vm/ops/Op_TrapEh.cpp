@@ -128,9 +128,23 @@ VM::ExecResult handleEhPush(VM &vm,
     (void)vm;
     (void)bb;
     (void)ip;
-    assert(!in.labels.empty() && "eh.push requires handler label");
+    if (in.labels.empty())
+    {
+        RuntimeBridge::trap(TrapKind::InvalidOperation,
+                            "eh.push requires handler label",
+                            in.loc,
+                            fr.func ? fr.func->name : std::string(),
+                            bb ? bb->label : std::string());
+    }
     auto it = blocks.find(in.labels[0]);
-    assert(it != blocks.end() && "eh.push target must exist");
+    if (it == blocks.end())
+    {
+        RuntimeBridge::trap(TrapKind::InvalidOperation,
+                            "eh.push handler block not found",
+                            in.loc,
+                            fr.func ? fr.func->name : std::string(),
+                            bb ? bb->label : std::string());
+    }
     Frame::HandlerRecord record{};
     record.handler = it->second;
     record.ipSnapshot = ip;
@@ -356,6 +370,14 @@ VM::ExecResult handleTrapErr(VM &vm,
     (void)ip;
     (void)fr;
 
+    if (in.operands.empty())
+    {
+        RuntimeBridge::trap(TrapKind::InvalidOperation,
+                            "trap.err: missing error code operand",
+                            in.loc,
+                            fr.func ? fr.func->name : std::string(),
+                            bb ? bb->label : std::string());
+    }
     Slot codeSlot = VMAccess::eval(vm, fr, in.operands[0]);
     const int32_t code = static_cast<int32_t>(codeSlot.i64);
 
@@ -407,6 +429,11 @@ VM::ExecResult handleTrap(VM &vm,
             break;
         case il::core::Opcode::TrapFromErr:
         {
+            if (in.operands.empty())
+            {
+                vm_raise(TrapKind::RuntimeError);
+                break;
+            }
             Slot codeSlot = VMAccess::eval(vm, fr, in.operands[0]);
             const auto trapKind = map_err_to_trap(static_cast<int32_t>(codeSlot.i64));
             vm_raise(trapKind, static_cast<int32_t>(codeSlot.i64));

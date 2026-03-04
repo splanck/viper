@@ -74,6 +74,7 @@ inline size_t minimumAlignmentFor(il::core::Type::Kind kind)
         case il::core::Type::Kind::Void:
             return 1U;
     }
+    assert(false && "unknown type kind in minimumAlignmentFor");
     return 1U;
 }
 
@@ -107,6 +108,7 @@ inline size_t sizeOfKind(il::core::Type::Kind kind)
         case il::core::Type::Kind::Void:
             return 0;
     }
+    assert(false && "unknown type kind in sizeOfKind");
     return 0;
 }
 

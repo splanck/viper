@@ -117,8 +117,15 @@ void jump(Frame &frame, Target target)
                 for (size_t i = 0; i < target.instr->labels.size(); ++i)
                 {
                     auto it = target.blocks->find(target.instr->labels[i]);
-                    assert(it != target.blocks->end() &&
-                           "branch target must resolve to a basic block");
+                    if (it == target.blocks->end())
+                    {
+                        RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                            "branch target label not found",
+                                            target.instr->loc,
+                                            frame.func ? frame.func->name : std::string(),
+                                            *target.currentBlock ? (*target.currentBlock)->label
+                                                                 : std::string());
+                    }
                     resolved[i] = it->second;
                 }
             }
@@ -127,7 +134,15 @@ void jump(Frame &frame, Target target)
         else
         {
             auto it = target.blocks->find(target.instr->labels[target.labelIndex]);
-            assert(it != target.blocks->end() && "branch target must resolve to a basic block");
+            if (it == target.blocks->end())
+            {
+                RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                    "branch target label not found",
+                                    target.instr->loc,
+                                    frame.func ? frame.func->name : std::string(),
+                                    *target.currentBlock ? (*target.currentBlock)->label
+                                                         : std::string());
+            }
             dest = it->second;
         }
         const il::core::BasicBlock *sourceBlock = *target.currentBlock;
@@ -146,7 +161,14 @@ void jump(Frame &frame, Target target)
             {
                 const auto &param = dest->params[i];
                 const auto id = param.id;
-                assert(id < frame.params.size());
+                if (id >= frame.params.size())
+                {
+                    RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                        "block parameter ID out of range",
+                                        target.instr->loc,
+                                        frame.func ? frame.func->name : std::string(),
+                                        dest->label);
+                }
 
                 Slot incoming = detail::VMAccess::eval(*target.vm, frame, args[i]);
 
