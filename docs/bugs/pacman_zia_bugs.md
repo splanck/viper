@@ -28,7 +28,7 @@ This document tracks all bugs encountered during the development of the Pac-Man 
 When attempting to display the rendered frame using `canvas.Show()`, the runtime threw "Null indirect callee" error.
 
 **Error Message:**
-```
+```text
 Null indirect callee
 ```
 

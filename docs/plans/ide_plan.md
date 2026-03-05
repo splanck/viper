@@ -1,3 +1,9 @@
+---
+status: draft
+audience: internal
+last-verified: 2026-03-04
+---
+
 # ViperIDE — Complete Design Specification
 
 **Project:** ViperIDE
@@ -72,7 +78,7 @@ palette, find/replace, minimap, and a fully themeable UI.
 
 ### 2.1 System Architecture
 
-```
+```text
 +-----------------------------------------------------------------------+
 |                            ViperIDE                                    |
 |-----------------------------------------------------------------------|
@@ -170,7 +176,7 @@ func main() {
 
 ### 2.3 Threading Model
 
-```
+```text
 Main Thread (UI)                    Worker Threads
 ===================                 ===================
 Poll() / Render()                   BuildThread
@@ -223,7 +229,7 @@ entity ComponentName {
 All source files live in `demos/zia/viperide/`. The main entry point binds all
 other files using Zia's `bind` directive.
 
-```
+```text
 demos/zia/viperide/
   main.zia                          # Entry point, event loop
   app_shell.zia                     # Top-level UI layout
@@ -418,7 +424,7 @@ func main() {
 
 ### 4.1 Widget Hierarchy
 
-```
+```rust
 App ("ViperIDE", 1280, 800)
  |
  Root
@@ -1264,7 +1270,7 @@ func RunGit(args: String, projectRoot: String) -> String {
 
 **Status parsing:**
 
-```
+```bash
 git status --porcelain
 ```
 
@@ -1555,7 +1561,7 @@ No full parser needed — we extract enough structure for useful completions.
 
 **Algorithm:**
 
-```
+```text
 for each line in file:
     trimmed = line.Trim()
     if trimmed.StartsWith("func "):
@@ -1605,7 +1611,7 @@ Sort by score descending, return top N results.
 
 Scan for block boundaries using brace counting and indentation:
 
-```
+```text
 foldRegions = []
 stack = []
 
@@ -1638,14 +1644,14 @@ Parse compiler stderr output into structured `Diagnostic` entries.
 
 **Zia compiler error format:**
 
-```
+```text
 file.zia:12:5: error: undeclared identifier 'foo'
 file.zia:20:10: warning: unused variable 'x'
 ```
 
 **Parser:**
 
-```
+```text
 for each line in compilerOutput:
     parts = line.Split(":")
     if parts.Count >= 4:
@@ -1669,7 +1675,7 @@ for each line in compilerOutput:
 
 Background thread scans all project files for a query string.
 
-```
+```text
 func searchWorker(query, rootPath, caseSensitive, regex, channel):
     files = collectFiles(rootPath)  // recursive Dir.FilesSeq
     for each file in files:
@@ -1695,7 +1701,7 @@ func searchWorker(query, rootPath, caseSensitive, regex, channel):
 
 Parse `git status --porcelain` output:
 
-```
+```text
 for each line in statusOutput:
     if line.Length < 3: continue
     indexStatus = line.Substring(0, 1)

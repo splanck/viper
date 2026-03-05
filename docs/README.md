@@ -1,6 +1,12 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Viper Documentation
 
-Documentation for the Viper compiler toolchain: two language frontends (Zia and BASIC), a shared intermediate language (IL), a VM interpreter, native code generation backends, and a comprehensive runtime library.
+Documentation for the Viper compiler toolchain: two language frontends (Zia and BASIC), a shared intermediate language (IL), a VM, native code generation backends, and a comprehensive runtime library.
 
 ## Start Here
 

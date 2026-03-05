@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Viper Runtime Library Reference
 
 > **This documentation has moved to [docs/viperlib/](viperlib/README.md)**

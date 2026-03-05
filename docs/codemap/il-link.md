@@ -1,8 +1,12 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # CODEMAP: IL Link
 
 Cross-language module linker (`src/il/link/`) that merges multiple IL modules into a single module, resolving export/import linkage and generating boolean conversion thunks.
-
-Last updated: 2026-02-27
 
 ## Overview
 

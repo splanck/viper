@@ -142,7 +142,7 @@ Shared components extracted for frontend reuse:
 
 ### Architecture
 
-```
+```text
 ┌──────────────┐  ┌───────────────┐
 │ BASIC Source │  │  Zia Source  │
 └──────┬───────┘  └──────┬────────┘
@@ -627,7 +627,7 @@ Portable C runtime providing:
 
 ### Architecture
 
-```
+```text
 ┌──────────────┐
 │ BASIC Source │
 └──────┬───────┘

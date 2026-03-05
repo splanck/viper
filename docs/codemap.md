@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # Code Map
 
 Source layout for the Viper compiler toolchain (current tree, kept in sync).
@@ -70,7 +76,7 @@ For architecture and layering, see [architecture.md](architecture.md).
 | Component                                | Description                               |
 |------------------------------------------|-------------------------------------------|
 | [Codegen](codemap/codegen.md)            | x86_64 and AArch64 native code generation |
-| [Virtual Machine](codemap/vm-runtime.md) | IL interpreter, handlers, debug, bridge   |
+| [Virtual Machine](codemap/vm-runtime.md) | IL VM, opcode handlers, debug, bridge     |
 
 ### Runtime & Support
 

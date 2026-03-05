@@ -484,7 +484,7 @@ Patterns are proven solutions to recurring design problems. They give you vocabu
 
 The most common pattern organizes code into horizontal layers, each with a distinct responsibility:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    Presentation Layer                        │
 │            (User interface, API endpoints, CLI)              │
@@ -514,7 +514,7 @@ Why this rule? It protects your core business logic from changes in presentation
 
 Example folder structure:
 
-```
+```text
 project/
 ├── presentation/
 │   ├── web/
@@ -556,7 +556,7 @@ project/
 
 MVC separates user interface applications into three components:
 
-```
+```text
                     ┌───────────────┐
         User        │               │
        Interacts ──►│     View      │
@@ -717,7 +717,7 @@ MVC keeps each component focused. The model can be tested without a UI. The view
 
 Clean architecture extends layered architecture with a strict dependency rule: dependencies always point inward, toward the center.
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────┐
 │                      Frameworks & Drivers                     │
 │              (Web, Database, UI, External APIs)               │

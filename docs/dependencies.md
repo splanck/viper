@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # ViperDOS Dependencies for Viper Compiler Toolchain
 
 This document catalogs all external environment dependencies required to port the Viper compiler toolchain (vbasic, zia, viper, runtime/VM) to ViperDOS. Dependencies are grouped by category and prioritized by criticality.

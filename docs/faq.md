@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Viper FAQ
 
 Frequently asked questions about the Viper compiler toolchain.
@@ -14,7 +20,7 @@ exploring language implementation, compiler design, and runtime systems.
 
 ### 2. What makes Viper different?
 
-Viper uses a modern compiler architecture with an intermediate representation (IL) that separates language semantics
+Viper uses a modern compiler architecture with an IL that separates language semantics
 from execution. Programs can run in a VM for development/debugging or be compiled to native code for performance. The IL
 layer makes it easy to add new language frontends—Zia and BASIC both compile to the same IL and share a common
 runtime.
@@ -226,13 +232,13 @@ Tools available:
 
 - `il-dis` - Disassembler
 - `il-verify` - IL verifier
-- `ilrun` - IL interpreter
+- `ilrun` - IL runner
 
 ### 21. How does the compilation pipeline work?
 
-```
+```text
 Source (Zia/BASIC) → Parser → Semantic Analysis → IL Generation → IL Transforms →
-  ├─→ VM Interpreter (for development/debugging)
+  ├─→ VM (for development/debugging)
   └─→ Native Codegen (for performance)
 ```
 
@@ -244,7 +250,7 @@ The IL layer provides optimization passes, verification, and serialization. Diff
 
 ### 22. What's the difference between VM and native execution?
 
-- **VM (Interpreter)**: Executes IL directly. Slower but includes debugging support (breakpoints, stepping, watches).
+- **VM**: Executes IL directly. Slower but includes debugging support (breakpoints, stepping, watches).
   Default execution mode.
 - **Native**: Compiles IL to machine code. Much faster but fewer debugging features.
 
@@ -356,4 +362,3 @@ clang-format -i <files>
 
 ---
 
-*Last updated: February 2026*

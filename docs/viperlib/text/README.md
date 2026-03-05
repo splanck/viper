@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Text Processing
 > String manipulation, encoding, parsing, and data format libraries.
 

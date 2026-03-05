@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Input & Output
 > File system, streams, compression, and IO utilities.
 

@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # Zia vs Viper BASIC: Feature Parity Matrix
 
 ## Context

@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Application Components
 > MenuBar, Toolbar, StatusBar, Dialogs, Notifications, Utilities, Themes
 

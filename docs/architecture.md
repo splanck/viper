@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-02-17
+last-verified: 2026-03-04
 ---
 
 # Viper Architecture Overview
@@ -16,7 +16,7 @@ If you're new to the IL, start with the [IL Quickstart](il-quickstart.md).
 ## Project goals
 
 - Multi-language front ends (Zia, BASIC) that all lower to a common IL "thin waist."
-- Interpreter backend that executes IL directly for fast bring-up, tests, and debugging.
+- VM backend that executes IL directly for fast bring-up, tests, and debugging.
 - Native backends that translate IL to assembly (x86-64 SysV and ARM64 AAPCS64), assembled and linked into runnable
   binaries.
 - Small, solo-friendly codebase with clear module boundaries, strong tests, and a documented runtime ABI (versioned;
@@ -30,7 +30,7 @@ The core stages and artifacts:
 - **Lowering:** AST → IL module (functions, blocks, instructions).
 - **Optimization passes:** constant folding, dead code elimination, peephole rewriting.
 - **Execution backends:**
-    - **VM interpreter** — primary development/debugging target.
+    - **VM** — primary development/debugging target.
     - **Code generation** — AArch64 validated (Apple Silicon); x86_64 implemented and validated.
 
 ```text
@@ -54,7 +54,7 @@ The core stages and artifacts:
                |
    +-----------v----------+        +---------------------+
    |       IL VM          |        |   Codegen Backend   |
-   |    (Interpreter)     |        |    (IL → Assembly)  |
+   |        (VM)          |        |    (IL → Assembly)  |
    +----------------------+        +---------------------+
 ```
 
@@ -79,7 +79,7 @@ READY
 10
 ```
 
-When the native backend is enabled, the same IL feeds the code generator instead of the interpreter.
+When the native backend is enabled, the same IL feeds the code generator instead of the VM.
 
 ## Source layout (where things live)
 
@@ -337,7 +337,7 @@ bumping the IL version and updating consumers.
 ### Namespaces and libraries
 
 - `il::core`, `il::build`, `il::io`, `il::verify` for IL infrastructure.
-- `il::vm` for the interpreter engine.
+- `il::vm` for the VM engine.
 - `il::codegen::x86_64` for the native backend.
 - `fe::basic` for the BASIC front end.
 - `rt` (C ABI) for the runtime library.

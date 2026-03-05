@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-02-27
+last-verified: 2026-03-04
 ---
 
 # Zia — Reference
@@ -96,7 +96,7 @@ func start() {
 
 Identifiers start with a letter or underscore, followed by letters, digits, or underscores:
 
-```
+```text
 identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 ```
 
@@ -1149,7 +1149,7 @@ The following words are reserved and cannot be used as identifiers:
 
 ### Keywords
 
-```
+```text
 and         as          bind        break       catch
 continue    deinit      else        entity      expose
 extends     false       final       finally     for
@@ -1163,7 +1163,7 @@ value       var         weak        while
 
 ### Type Names
 
-```
+```text
 Boolean     Integer     List        Map         Number
 Ptr         String
 ```
@@ -1174,7 +1174,7 @@ Ptr         String
 
 ### Module
 
-```
+```text
 module      ::= "module" IDENT ";" bind* decl*
 bind        ::= "bind" STRING ["as" IDENT] ";"
               | "bind" qualifiedName ["as" IDENT] ["{" identList "}"] ";"
@@ -1182,7 +1182,7 @@ bind        ::= "bind" STRING ["as" IDENT] ";"
 
 ### Declarations
 
-```
+```text
 decl        ::= entityDecl | valueDecl | interfaceDecl | funcDecl | varDecl | namespaceDecl
 entityDecl  ::= "entity" IDENT ["extends" IDENT] ["implements" identList] "{" member* "}"
 valueDecl   ::= "value" IDENT ["implements" identList] "{" member* "}"
@@ -1199,7 +1199,7 @@ deinitDecl  ::= "deinit" block
 
 ### Statements
 
-```
+```text
 stmt        ::= block | varStmt | ifStmt | whileStmt | forStmt | forInStmt
               | returnStmt | breakStmt | continueStmt | guardStmt | matchStmt
               | tryStmt | throwStmt | exprStmt
@@ -1221,7 +1221,7 @@ exprStmt    ::= expr ";"
 
 ### Expressions
 
-```
+```text
 expr        ::= assignment
 assignment  ::= ternary [("=" | "+=" | "-=" | "*=" | "/=" | "%=") assignment]
 ternary     ::= logicalOr ["?" expr ":" ternary]
@@ -1239,7 +1239,7 @@ primary     ::= literal | IDENT | "(" expr ")" | "new" type "(" args ")"
 
 ### Types
 
-```
+```text
 type        ::= IDENT ["[" typeList "]"] ["?"]
               | "(" typeList ")" "->" type
 ```

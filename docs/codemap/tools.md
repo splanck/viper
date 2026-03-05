@@ -1,8 +1,12 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # CODEMAP: Tools
 
 Command-line tools (`src/tools/`) for the Viper toolchain.
-
-Last updated: 2026-02-17
 
 ## Overview
 
@@ -15,7 +19,7 @@ Last updated: 2026-02-17
 | File             | Purpose                                  |
 |------------------|------------------------------------------|
 | `cli_compat.cpp` | Compatibility shim for viper integration |
-| `main.cpp`       | BASIC interpreter/compiler entry point   |
+| `main.cpp`       | BASIC VM/compiler entry point            |
 | `usage.cpp`      | Help text implementation                 |
 | `usage.hpp`      | Help text and usage information          |
 
@@ -24,7 +28,7 @@ Last updated: 2026-02-17
 | File             | Purpose                                  |
 |------------------|------------------------------------------|
 | `cli_compat.cpp` | Compatibility shim for viper integration |
-| `main.cpp`       | Zia interpreter/compiler entry point     |
+| `main.cpp`       | Zia VM/compiler entry point              |
 | `usage.cpp`      | Help text implementation                 |
 | `usage.hpp`      | Help text and usage information          |
 

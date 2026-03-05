@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # BASIC Frontend Grammar Notes
 
 This document records small grammar extensions supported by the BASIC frontend so contributors know what to expect when
@@ -228,13 +234,13 @@ Notes:
 - The frontend lowers `IS`/`AS` to runtime helpers (type id queries and itable checks). See also the dispatch and RTTI
   details in the [OOP Semantics](basic-reference.md#oop-semantics) section of the BASIC reference.
 
-# Milestone D: Static Members and Properties
+## Milestone D: Static Members and Properties
 
 ## STATIC modifier placement
 
 `STATIC` applies to the next member declaration inside a `CLASS`:
 
-```
+```basic
 CLASS C
   STATIC value AS INTEGER      ' static field
   STATIC SUB Ping()            ' static method
@@ -246,7 +252,7 @@ END CLASS
 
 ## PROPERTY blocks
 
-```
+```basic
 PROPERTY <Name> AS <Type>
   [<AccessorAccess>] GET
     <statements>
@@ -264,7 +270,7 @@ END PROPERTY
 
 One static constructor per class is supported using the standard constructor syntax preceded by `STATIC`:
 
-```
+```basic
 CLASS A
   STATIC SUB NEW()
     ' one-time initialization for the class

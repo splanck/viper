@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Network
 
 > TCP and UDP networking with HTTP/HTTPS client and DNS resolution support.
@@ -1213,7 +1219,7 @@ binary messages following RFC 6455.
 ### URL Format
 
 WebSocket URLs follow this format:
-```
+```text
 ws://host[:port][/path]      # Unencrypted (port 80 default)
 wss://host[:port][/path]     # TLS encrypted (port 443 default)
 ```

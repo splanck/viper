@@ -105,7 +105,7 @@ This single line creates an array named `scores` containing five numbers. The sq
 
 Imagine an apartment building with a row of mailboxes in the lobby. Each mailbox is identical in size and shape, but each has a different number. The mailboxes are numbered 0, 1, 2, 3, 4 (we'll explain why they start at 0 shortly).
 
-```
+```text
    scores
    +-----+-----+-----+-----+-----+
    |  85 |  92 |  78 |  95 |  88 |
@@ -119,7 +119,7 @@ The array name `scores` refers to the entire row. The number in brackets (the *i
 
 Think of an array as a train. The entire train has one name (like "Express 42"), but each car has a number. Car 0 is at the front, then car 1, car 2, and so on. Each car holds one piece of cargo (one value).
 
-```
+```text
     Engine -> [Car 0] -> [Car 1] -> [Car 2] -> [Car 3] -> [Car 4]
                (85)       (92)       (78)       (95)       (88)
 ```
@@ -130,7 +130,7 @@ To access cargo, you specify which car: "Get me the cargo from car 2 of the Expr
 
 Picture a hallway of lockers in a school. The lockers are all in a row, numbered 0, 1, 2, 3, and so on. Each locker can hold whatever the student puts in it. When you want to find something, you go to a specific locker number.
 
-```
+```text
    +--------+--------+--------+--------+--------+
    |   85   |   92   |   78   |   95   |   88   |
    | Locker | Locker | Locker | Locker | Locker |
@@ -142,7 +142,7 @@ Picture a hallway of lockers in a school. The lockers are all in a row, numbered
 
 If you've used a spreadsheet like Excel or Google Sheets, think of an array as a single row. Each cell in the row is identified by its column number (starting from 0).
 
-```
+```text
      A     B     C     D     E
    +-----+-----+-----+-----+-----+
 1  |  85 |  92 |  78 |  95 |  88 |
@@ -181,7 +181,7 @@ The answer lies in how computers actually work with memory. When you create an a
 
 To find where an element is stored, the computer needs to calculate:
 
-```
+```text
 element address = starting address + (index x element size)
 ```
 
@@ -198,7 +198,7 @@ Think of it this way: if you're standing at the start of a row of lockers and so
 
 Imagine a fence with posts and the spaces between them:
 
-```
+```text
    |   |   |   |   |   |
    0   1   2   3   4   5   <- post numbers
      0   1   2   3   4     <- space numbers
@@ -643,7 +643,7 @@ for i in 0..scores.Length {
 ```
 
 Output:
-```
+```text
 Student 1 scored 85
 Student 2 scored 92
 Student 3 scored 78
@@ -785,7 +785,7 @@ var z = arr[-1];   // Error: negative indices don't exist
 
 Viper performs *bounds checking* — it verifies that every array access is within valid range. If you try to read or write an invalid index, the program stops with a clear error message:
 
-```
+```text
 Runtime Error: Array index out of bounds
   Index: 5
   Valid range: 0 to 4
@@ -872,7 +872,7 @@ for i in 0..fruits.Length {
 ```
 
 Output:
-```
+```text
 Menu:
 1. apple
 2. banana
@@ -938,7 +938,7 @@ var grid = [
 
 Visualize it as a grid:
 
-```
+```text
          Column 0  Column 1  Column 2
         +--------+--------+--------+
 Row 0   |   1    |   2    |   3    |
@@ -1015,7 +1015,7 @@ for row in 0..grid.Length {
 ```
 
 Output:
-```
+```text
 1 2 3
 4 5 6
 7 8 9
@@ -1053,7 +1053,7 @@ printBoard(board);
 ```
 
 Output:
-```
+```text
  X | O | X
 -----------
    | X | O
@@ -1125,7 +1125,7 @@ for row in 0..image.Length {
 ```
 
 Output:
-```
+```text
 ..#..
 ..#..
 #####
@@ -1215,7 +1215,7 @@ func start() {
 ```
 
 Sample session:
-```
+```text
 === Todo List Manager ===
 Commands: add, done, list, remove, quit
 
@@ -1749,7 +1749,7 @@ func start() {
 ```
 
 Sample run:
-```
+```text
 === Student Grade Tracker ===
 Enter grades (enter -1 to finish):
 
@@ -1872,7 +1872,7 @@ Arrays are one of the most fundamental and widely-used concepts in programming. 
 - Print the board in a nice format
 - Check if there's a winner (three in a row horizontally, vertically, or diagonally)
 
-```
+```text
  X | O | X
 -----------
    | X | O

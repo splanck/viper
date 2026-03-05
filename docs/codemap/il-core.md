@@ -1,8 +1,12 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # CODEMAP: IL Core
 
 Core IL data structures (`src/il/core/`) representing modules, functions, blocks, and instructions.
-
-Last updated: 2026-02-17
 
 ## Overview
 

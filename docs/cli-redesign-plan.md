@@ -2,7 +2,7 @@
 status: phase-1-complete
 audience: internal
 created: 2025-11-15
-updated: 2026-01-19
+last-verified: 2026-03-04
 ---
 
 # CLI Redesign Implementation Plan
@@ -31,7 +31,7 @@ backwards compatibility.
 
 ### Existing Tool Structure
 
-```
+```text
 src/
 ├── tools/
 │   ├── viper/                 # Monolithic tool (18MB binary)
@@ -96,7 +96,7 @@ src/
 
 **Files Created**:
 
-```
+```text
 src/tools/vbasic/
 ├── main.cpp          # Thin wrapper
 └── cli_compat.cpp    # CLI compatibility and help text
@@ -257,7 +257,7 @@ install(TARGETS vbasic RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 **Files Created**:
 
-```
+```text
 src/tools/ilrun/
 ├── main.cpp          # Thin wrapper
 └── cli_compat.cpp    # CLI compatibility and help text
@@ -609,7 +609,7 @@ install(TARGETS ilopt RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 ## File Structure After Implementation
 
-```
+```text
 src/tools/
 ├── vbasic/                     # User-friendly BASIC tool (implemented)
 │   ├── main.cpp

@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # Viper VM C++ Code Review
 
 > **Historical snapshot (November 2025), updated February 2026.** Several issues in this review have since been fixed, including iterator invalidation in `prepareTrap()` (now uses index-based iteration), `Slot` union `memcmp` (replaced by `bitwiseEquals()`), magic number constants (`kDebugPauseSentinel`, `kDebugBreakpointSentinel`), and `SmallVector` optimizations. See source code for current state. Resolved issues are marked inline.

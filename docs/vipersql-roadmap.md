@@ -1,3 +1,9 @@
+---
+status: draft
+audience: internal
+last-verified: 2026-03-04
+---
+
 # ViperSQL Database Server - Development Roadmap
 
 ## Vision
@@ -38,7 +44,7 @@ Transform the Zia SQL database demo into **ViperSQL**, a fully-featured, product
 
 ## Target Architecture (v3.0)
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Client Applications                       │
 │         (CLI, REPL, GUI Tools, Application Code)                │
@@ -108,7 +114,7 @@ Transform the Zia SQL database demo into **ViperSQL**, a fully-featured, product
 - [x] Default database (`main` or `default`)
 
 #### Architecture Changes
-```
+```rust
 DatabaseServer (new entity)
 ├── databases: Map[String -> Database]
 ├── currentDatabase: Database
@@ -143,7 +149,7 @@ DatabaseServer (new entity)
 #### 2.1 Page-Based Storage
 
 **File Format** (`.vdb` extension)
-```
+```text
 ┌─────────────────────────────────────────────────┐
 │ File Header (Page 0)                            │
 │ ┌─────────────────────────────────────────────┐ │
@@ -200,7 +206,7 @@ DatabaseServer (new entity)
 
 #### 2.2 Value Serialization
 
-```
+```text
 SqlValue Binary Format:
 ┌────────┬──────────────────────────────────┐
 │ Type   │ Encoding                         │
@@ -215,7 +221,7 @@ SqlValue Binary Format:
 
 #### 2.3 Buffer Pool (Page Cache)
 
-```
+```rust
 BufferPool entity:
 ├── pageSize: 4096
 ├── maxPages: configurable (default 1000 = 4MB cache)
@@ -265,7 +271,7 @@ BufferPool entity:
 - Secondary indexes (leaf nodes store row pointers)
 
 #### Operations
-```
+```rust
 BTreeIndex entity:
 ├── rootPage: PageID
 ├── keyColumns: List[String]
@@ -308,7 +314,7 @@ BTreeCursor entity:
 **Estimated Effort**: 3-4 weeks | ~2,500 lines
 
 #### WAL Design
-```
+```text
 WAL File Format (.vdb-wal):
 ┌────────────────────────────────────────────┐
 │ WAL Header                                 │
@@ -383,7 +389,7 @@ Default: READ COMMITTED (like PostgreSQL)
 **Recommendation**: Start with 2PL (simpler), migrate to MVCC in v3.0
 
 #### Lock Manager
-```
+```rust
 LockManager entity:
 ├── lockTable: Map[ResourceID -> LockEntry]
 ├── waitGraph: Graph[TxnID -> TxnID]
@@ -426,7 +432,7 @@ SET TRANSACTION ISOLATION LEVEL {level};
 #### Wire Protocol Options
 
 **Option A: Text Protocol (Simple)**
-```
+```text
 Client → Server:
   QUERY\n
   SELECT * FROM users WHERE id = 1;\n
@@ -440,7 +446,7 @@ Server → Client:
 ```
 
 **Option B: Binary Protocol (Efficient)**
-```
+```text
 ┌────────────────────────────────────────┐
 │ Message Header (8 bytes)               │
 │ ├── Length (4 bytes)                   │
@@ -456,7 +462,7 @@ Server → Client:
 **Recommendation**: Start with text protocol, add binary later
 
 #### Server Components
-```
+```rust
 NetworkServer entity:
 ├── config: ServerConfig
 │   ├── host: String
@@ -504,7 +510,7 @@ Session entity:
 | `net/tls.zia` | TLS wrapper (if Zia supports) | 400 |
 
 #### Client Library
-```
+```rust
 ViperSQLClient entity:
 ├── connect(host, port, user, pass) -> Connection
 ├── execute(sql) -> QueryResult
@@ -525,7 +531,7 @@ PreparedStatement entity:
 **Estimated Effort**: 4-6 weeks | ~4,000 lines
 
 #### Query Plan Representation
-```
+```rust
 PlanNode (abstract)
 ├── EstimatedRows: Integer
 ├── EstimatedCost: Float
@@ -554,7 +560,7 @@ Concrete nodes:
 5. **Constant Folding**: Evaluate constant expressions at plan time
 
 #### Statistics
-```
+```rust
 TableStats entity:
 ├── rowCount: Integer
 ├── columnStats: Map[String -> ColumnStats]

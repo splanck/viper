@@ -1,8 +1,12 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # CODEMAP: IL Build
 
 IR construction utilities (`src/il/build/`) for programmatic IL generation.
-
-Last updated: 2026-02-17
 
 ## Overview
 

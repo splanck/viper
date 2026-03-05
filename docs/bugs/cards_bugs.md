@@ -130,7 +130,7 @@ List methods are:
 
 Using `PUBLIC suit AS I32` in class fields causes IL verification errors:
 
-```
+```text
 call arg type mismatch: @rt_obj_retain_maybe parameter 0 expects ptr but got i64
 ```
 
@@ -171,7 +171,7 @@ Lower_OOP_Expr.cpp (lines 764-772, 1355-1362, 1381-1388).
 
 `RETURN NOTHING` to return a null object reference previously failed with type mismatch:
 
-```
+```text
 ret value type mismatch: expected ptr but got i64
 ```
 
@@ -195,7 +195,7 @@ returns a custom class type (which uses `ptr`), the type mismatch occurred.
 
 When running the full Blackjack game, the VM was crashing with:
 
-```
+```text
 Assertion failed: (hdr->magic == RT_MAGIC), function rt_heap_validate_header
 ```
 

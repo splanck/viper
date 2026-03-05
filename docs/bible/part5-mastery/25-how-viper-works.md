@@ -24,7 +24,7 @@ Picture a car factory. Raw materials enter at one end and finished cars roll out
 
 The Viper compiler works like this assembly line:
 
-```
+```text
 Source → Tokens → Tree → Checked Tree → IL → Executable
 ```
 
@@ -42,7 +42,7 @@ Your source code is like a recipe. It describes what should happen, but it isn't
 
 When you run a Viper program, your code passes through several distinct stages. Here's the complete picture:
 
-```
+```text
 Source Code → Lexer → Parser → Semantic Analyzer → IL Generator → Runtime
      ↓           ↓        ↓            ↓                ↓           ↓
   Characters   Tokens    AST      Checked AST      IL Code      Results
@@ -77,7 +77,7 @@ Think of this like reading a sentence. You don't process individual letters—yo
 
 The lexer scans through your source code and identifies patterns:
 
-```
+```text
 func   → TOKEN_FUNC        (keyword)
 add    → TOKEN_IDENTIFIER  (name: "add")
 (      → TOKEN_LPAREN      (punctuation)
@@ -140,7 +140,7 @@ Consider the difference between "Dog bites man" and "Man bites dog." Same words,
 
 For our `add` function, the parser produces:
 
-```
+```text
 FunctionDecl
 ├── name: "add"
 ├── params:
@@ -171,7 +171,7 @@ var result = (3 + 4) * 2;
 
 The parentheses matter! This should compute 7 * 2 = 14, not 3 + 8 = 11. The tree captures this:
 
-```
+```text
 BinaryExpr
 ├── op: MULTIPLY
 ├── left: BinaryExpr
@@ -303,7 +303,7 @@ IL is a lower-level representation of your program. It's simpler than your sourc
 
 Here's what our `add` function becomes in IL:
 
-```
+```il
 .func add(i64, i64) -> i64
 entry:
     %sum = add %0, %1        ; add parameters together
@@ -332,7 +332,7 @@ You might wonder: why not go straight from source code to machine code? IL exist
 
 Viper supports two frontend languages: Zia and BASIC. Both compile to the same IL:
 
-```
+```text
 Zia ───┐
        ├──► IL ───► VM/Native
 BASIC ─┘
@@ -371,7 +371,7 @@ END FUNCTION
 
 Both produce identical IL:
 
-```
+```il
 .func square(i64) -> i64
 entry:
     %t0 = mul %0, %0         ; multiply x by itself
@@ -396,7 +396,7 @@ var result = (3 + 4) * 2;
 
 Becomes:
 
-```
+```il
 iconst 3     ; push 3 onto stack         → stack: [3]
 iconst 4     ; push 4 onto stack         → stack: [3, 4]
 iadd         ; pop two, add, push result → stack: [7]
@@ -432,7 +432,7 @@ Every value has a known type. The IL verifier ensures types match everywhere.
 Here's a guide to common IL instructions:
 
 **Arithmetic**
-```
+```il
 add %a, %b    ; integer addition
 sub %a, %b    ; integer subtraction
 mul %a, %b    ; integer multiplication
@@ -441,7 +441,7 @@ fadd %a, %b   ; floating-point addition
 ```
 
 **Comparisons** (produce `i1` boolean)
-```
+```il
 icmp_eq %a, %b    ; equal?
 icmp_ne %a, %b    ; not equal?
 scmp_lt %a, %b    ; less than? (signed)
@@ -449,21 +449,21 @@ scmp_gt %a, %b    ; greater than? (signed)
 ```
 
 **Control Flow**
-```
+```il
 br label         ; unconditional jump
 cbr %cond, then, else  ; conditional branch
 ret %value       ; return from function
 ```
 
 **Memory**
-```
+```il
 alloca 8         ; allocate 8 bytes on stack
 load i64, %ptr   ; read i64 from memory
 store i64, %ptr, %val  ; write i64 to memory
 ```
 
 **Calls**
-```
+```il
 call @funcname(%arg1, %arg2)  ; call function
 ```
 
@@ -482,7 +482,7 @@ func factorial(n: Integer) -> Integer {
 
 This becomes:
 
-```
+```il
 .func factorial(i64) -> i64
 entry:
     %cond = scmp_le %0, 1      ; n <= 1?
@@ -524,7 +524,7 @@ The VM is an interpreter that reads IL instructions and executes them one by one
 
 Here's how the VM executes our add function call:
 
-```
+```text
 Step 1: Execute `iconst 3`
         Action: Push 3 onto the value stack
         Stack:  [3]
@@ -560,7 +560,7 @@ The VM maintains:
 
 For maximum performance, Viper can compile IL to native machine code:
 
-```
+```text
 IL instruction:        Native x86-64:
 iadd                   pop rbx       ; pop second operand
                        pop rax       ; pop first operand
@@ -611,7 +611,7 @@ Viper uses a mark-and-sweep garbage collector. Here's how it works:
 **Phase 1: Mark**
 Starting from "roots" (global variables, the stack), the collector follows every reference and marks objects as "reachable."
 
-```
+```text
 Roots → [Player object] → [name: "Alice"]
                         → [inventory: [...]]
 
@@ -621,7 +621,7 @@ Roots → [Player object] → [name: "Alice"]
 **Phase 2: Sweep**
 Any object not marked is garbage—nothing can reach it, so nothing can use it. The collector frees these objects.
 
-```
+```text
 Before:  [Player ✓] [name ✓] [inventory ✓] [old_data ✗]
 After:   [Player ✓] [name ✓] [inventory ✓] [          ]
                                             ^ freed!
@@ -741,23 +741,23 @@ func start() {
 When you see an error message, you can often tell which stage caught it:
 
 **Lexer error**: Usually mentions "unexpected character" or "invalid literal"
-```
+```text
 Error at line 5, column 12: unexpected character '@'
 ```
 
 **Parser error**: Usually mentions "expected" something
-```
+```text
 Error at line 10: expected ')' after function parameters
 ```
 
 **Semantic error**: Usually mentions types or names
-```
+```text
 Error at line 15: cannot assign value of type 'string' to variable of type 'i64'
 Error at line 20: undefined function 'foo'
 ```
 
 **Runtime error**: Happens when running, often with a stack trace
-```
+```text
 Runtime error: division by zero
   at divide (myprogram.zia:3)
   at start (myprogram.zia:8)
@@ -789,7 +789,7 @@ func start() {
 
 The lexer produces this stream of tokens:
 
-```
+```text
 FUNC IDENT("max") LPAREN IDENT("a") COLON TYPE("i64") COMMA
 IDENT("b") COLON TYPE("i64") RPAREN ARROW TYPE("i64") LBRACE
 IF IDENT("a") GT IDENT("b") LBRACE
@@ -808,7 +808,7 @@ EOF
 
 The parser builds this tree:
 
-```
+```text
 Module
 ├── FunctionDecl
 │   ├── name: "max"
@@ -846,7 +846,7 @@ No errors found—proceed to IL generation.
 
 ### Stage 4: IL Generation
 
-```
+```il
 .func max(i64, i64) -> i64
 entry:
     %cond = scmp_gt %0, %1     ; a > b?
@@ -867,7 +867,7 @@ entry:
 
 ### Stage 5: Execution (VM)
 
-```
+```text
 === Executing start() ===
 
 Instruction: call @max(10, 25)
@@ -1004,7 +1004,7 @@ END SUB
 
 ### Both Produce the Same IL
 
-```
+```il
 .func greet(str) -> void
 entry:
     %t0 = const_str @.hello       ; "Hello, "

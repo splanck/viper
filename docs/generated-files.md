@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # Generated Files Guide
 
 This document describes auto-generated C++ files in the Viper project, their sources of truth, and how to maintain them.

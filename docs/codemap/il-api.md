@@ -1,8 +1,12 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # CODEMAP: IL API
 
 Public API facades (`src/il/api/`) for IL operations.
-
-Last updated: 2026-02-17
 
 ## Overview
 

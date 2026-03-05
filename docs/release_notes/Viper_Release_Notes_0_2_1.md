@@ -244,7 +244,7 @@ viper init myapp --lang zia
 
 Generates:
 
-```
+```text
 myapp/
 ├── viper.project      # name, version, lang, entry
 └── main.zia           # starter module with bind + start()
@@ -412,7 +412,7 @@ A comprehensive naming audit brings uniform conventions across all 197 classes:
 The 390-file flat `src/runtime/` directory is restructured into 11 logical subdirectories
 matching the library namespace hierarchy:
 
-```
+```text
 src/runtime/
 ├── core/         heap, strings, math, datetime, formatting, GC
 ├── arrays/       typed arrays and lists (i64, f64, str, obj)
@@ -570,7 +570,7 @@ is in the Breaking Changes section above.
 
 ### Architecture
 
-```
+```text
 ┌──────────────┐  ┌──────────────┐
 │ BASIC Source │  │  Zia Source  │
 │    (.bas)    │  │    (.zia)    │
@@ -805,7 +805,7 @@ Sprite, tilemap, and camera support for 2D games:
 
 ### Architecture
 
-```
+```text
 ┌──────────────┐  ┌──────────────┐
 │ BASIC Source │  │  Zia Source  │
 │    (.bas)    │  │    (.zia)    │

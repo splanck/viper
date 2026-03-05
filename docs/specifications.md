@@ -1,3 +1,9 @@
+---
+status: active
+audience: internal
+last-verified: 2026-03-04
+---
+
 # Viper C++ Compiler Specifications
 
 This document provides the complete specification for the Viper C++ system compiler.
@@ -1228,7 +1234,7 @@ class C : public A, public B { int c; };
 ```
 
 Layout of C:
-```
+```text
 Offset  Member
 ------  ------
 0       A::vptr (points to C's vtable for A)
@@ -1257,7 +1263,7 @@ class C : public A, public B { int c; };
 
 #### 12.7.1 Vtable Structure (Itanium C++ ABI)
 
-```
+```text
 Offset    Contents
 ------    --------
 -24       Virtual base offset (if any)
@@ -1280,7 +1286,7 @@ class Base {
 ```
 
 Vtable for Base:
-```
+```text
 Offset  Content
 ------  -------
 -16     0 (offset to top)
@@ -1301,7 +1307,7 @@ class Derived : public Base {
 ```
 
 Vtable for Derived:
-```
+```text
 Offset  Content
 ------  -------
 -16     0 (offset to top)

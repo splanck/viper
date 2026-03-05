@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-02-02
+last-verified: 2026-03-04
 ---
 
 # Getting Started with Viper
@@ -55,7 +55,7 @@ viper init my-app
 
 This creates a project directory with a manifest and entry-point source file:
 
-```
+```text
 my-app/
   viper.project    # Project manifest (name, version, language, entry point)
   main.zia         # Entry-point source file
@@ -96,7 +96,7 @@ viper run examples/basic/ex1_hello_cond.bas
 
 **Expected output:**
 
-```
+```text
 Hello, World!
 Condition is true
 ```
@@ -105,7 +105,7 @@ Condition is true
 
 Create a file `hello.zia`:
 
-```viper
+```rust
 module Hello;
 
 func start() {
@@ -121,7 +121,7 @@ viper run hello.zia
 
 **Expected output:**
 
-```
+```text
 Hello, World!
 ```
 
@@ -137,7 +137,7 @@ viper repl
 
 The REPL lets you type Zia code and see results immediately:
 
-```
+```text
 zia> "Hello from the REPL"
 Hello from the REPL
 zia> 2 + 3 * 4

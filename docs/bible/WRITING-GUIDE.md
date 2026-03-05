@@ -123,12 +123,12 @@ When showing the same concept in both languages, use this structure:
 **Zia**
 ```rust
 // Zia code here
-```
+```text
 
 **BASIC**
 ```basic
 ' BASIC code here
-```
+```text
 ```
 
 ### Line-by-Line Walkthrough
@@ -142,7 +142,7 @@ while count < 5 {     // Keep going as long as count is less than 5
     Say(count);       // Print the current value
     count = count + 1; // Add 1 to count
 }
-```
+```text
 ```
 
 ---

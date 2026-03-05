@@ -1012,7 +1012,7 @@ The traffic light object transitions through states: red, green, yellow, red, gr
 
 When designing entities with complex state, it helps to think in terms of state diagrams:
 
-```
+```text
     +---------+       +---------+       +----------+
     |   RED   | ----> |  GREEN  | ----> |  YELLOW  |
     +---------+       +---------+       +----------+

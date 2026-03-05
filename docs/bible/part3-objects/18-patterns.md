@@ -274,7 +274,7 @@ Many experienced programmers avoid singletons when possible, preferring to pass 
 
 You're building a game with different enemy types: goblins, orcs, dragons. Your level loading code reads a file that specifies which enemies to place:
 
-```
+```text
 enemy: goblin at 10, 20
 enemy: orc at 30, 40
 enemy: dragon at 100, 100

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-updated: 2026-02-02
+last-verified: 2026-03-04
 ---
 
 # How to Extend the Viper Runtime
@@ -60,7 +60,7 @@ Extend the runtime when you need to:
 
 ### The Runtime Extension Pipeline
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        RUNTIME EXTENSION PIPELINE                            │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -503,7 +503,7 @@ PRINT c.Value      ' Expected: 1
 ```
 
 **`counter_test.expected`:**
-```
+```text
 0
 1
 ```

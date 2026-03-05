@@ -129,7 +129,7 @@ PRINT area#   # Output: 95.0330975 ✅
 
 ✅ **228/228 tests passing (100%)**
 
-```
+```text
 100% tests passed, 0 tests failed out of 228
 Total Test time (real) = 17.45 sec
 ```

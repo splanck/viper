@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # GUI Widgets
 > Window, layout, and widget types for building graphical user interfaces.
 

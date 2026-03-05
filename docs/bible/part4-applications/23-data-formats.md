@@ -95,7 +95,7 @@ Before examining specific formats, let us understand what "structured data" mean
 Structured data has organization. It is not just a soup of bytes or a stream of text --- it has identifiable parts with relationships between them.
 
 Consider a contact:
-```
+```text
 Name: Alice Smith
 Phone: 555-1234
 Email: alice@example.com
@@ -123,7 +123,7 @@ You can see exactly what this says. If something is wrong, you can spot it.
 
 **Binary formats** use raw bytes that do not correspond to printable characters. They are compact and fast but inscrutable to humans. Open a binary file in a text editor and you see gibberish.
 
-```
+```text
 56 49 50 52 00 00 00 01 00 00 00 05 48 65 72 6F
 ```
 
@@ -572,19 +572,19 @@ Notice that all values must be strings. CSV does not have a concept of numbers -
 
 Real-world CSV data is messy. What if a value contains a comma?
 
-```
+```text
 "Doe, John",5,87.5
 ```
 
 Values with commas must be quoted. What if a value contains a quote?
 
-```
+```text
 "He said ""hello""",5,87.5
 ```
 
 Quotes inside quoted strings are doubled. What if a value spans multiple lines?
 
-```
+```text
 "This is a
 multi-line note",5,87.5
 ```
@@ -639,7 +639,7 @@ player.y = 200.0;
 ```
 
 Memory visualization:
-```
+```text
 player:
   name -----> "Hero"
   level ----> 5
@@ -652,50 +652,50 @@ player:
 Now we call `player.toJSON()`. Here is what happens:
 
 **Step 1**: Create an empty JSON object
-```
+```text
 obj: {}
 ```
 
 **Step 2**: `obj.Set("name", self.name)` --- Add the name
-```
+```text
 obj: {"name": "Hero"}
 ```
 
 **Step 3**: `obj.Set("level", self.level)` --- Add the level
-```
+```text
 obj: {"name": "Hero", "level": 5}
 ```
 
 **Step 4**: `obj.Set("health", self.health)` --- Add the health
-```
+```text
 obj: {"name": "Hero", "level": 5, "health": 87.5}
 ```
 
 **Step 5**: Create an empty JSON array for inventory
-```
+```text
 inv: []
 ```
 
 **Step 6**: Loop through inventory, adding each item
-```
+```text
 inv.Add("sword")  -> inv: ["sword"]
 inv.Add("shield") -> inv: ["sword", "shield"]
 ```
 
 **Step 7**: `obj.Set("inventory", inv)` --- Attach inventory to player
-```
+```text
 obj: {"name": "Hero", "level": 5, "health": 87.5, "inventory": ["sword", "shield"]}
 ```
 
 **Step 8**: Create position object
-```
+```text
 pos: {}
 pos.Set("x", 100.0) -> pos: {"x": 100.0}
 pos.Set("y", 200.0) -> pos: {"x": 100.0, "y": 200.0}
 ```
 
 **Step 9**: `obj.Set("position", pos)` --- Attach position
-```
+```text
 obj: {"name": "Hero", "level": 5, "health": 87.5, "inventory": ["sword", "shield"], "position": {"x": 100.0, "y": 200.0}}
 ```
 
@@ -735,7 +735,7 @@ We call `JSON.Parse(jsonText)`:
 
 The result is a tree structure in memory:
 
-```
+```text
 data:
   "name" -----> JSONValue(string: "Hero")
   "level" ----> JSONValue(number: 5)
@@ -753,27 +753,27 @@ data:
 Now we call `Player.fromJSON(data)`:
 
 **Step 1**: Create an empty Player
-```
+```text
 player: Player()
 ```
 
 **Step 2**: `data["name"]` navigates to the JSONValue for "name", `.asString()` extracts "Hero"
-```
+```text
 player.name = "Hero"
 ```
 
 **Step 3**: `data["level"].asInt()` extracts 5
-```
+```text
 player.level = 5
 ```
 
 **Step 4**: `data["health"].asFloat()` extracts 87.5
-```
+```text
 player.health = 87.5
 ```
 
 **Step 5**: `data["inventory"].asArray()` returns an array we can iterate:
-```
+```text
 for item in array:
     item = JSONValue(string: "sword") -> .asString() -> "sword"
     player.inventory.Push("sword")
@@ -783,7 +783,7 @@ for item in array:
 ```
 
 **Step 6**: `data["position"]["x"].asFloat()` chains access:
-```
+```text
 data["position"] -> JSONValue(object with x and y)
 ["x"] -> JSONValue(number: 100.0)
 .asFloat() -> 100.0

@@ -471,7 +471,7 @@ Portable C runtime providing:
 
 ### Architecture
 
-```
+```text
 ┌──────────────┐
 │ BASIC Source │
 └──────┬───────┘

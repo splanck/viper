@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-02-17
+last-verified: 2026-03-04
 ---
 
 # Object Layout and Call ABI (Milestone B)

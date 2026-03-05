@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-02-17
+last-verified: 2026-03-04
 ---
 
 # Threading Model and Global State

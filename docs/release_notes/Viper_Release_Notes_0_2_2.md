@@ -654,7 +654,7 @@ Over 170 individual bug fixes across all layers. Organized by subsystem:
 
 ### Architecture
 
-```
+```text
 ┌──────────────┐  ┌──────────────┐
 │ BASIC Source │  │  Zia Source  │
 │    (.bas)    │  │    (.zia)    │

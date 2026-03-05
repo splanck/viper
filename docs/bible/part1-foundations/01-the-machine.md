@@ -98,7 +98,7 @@ You're about to learn how to write those instructions. You're about to become so
 
 The processor only understands numbers. Literally. Every instruction is a number. Every piece of data is a number. This is called *machine code*, and it looks like this:
 
-```
+```text
 48 89 e5 48 83 ec 10 c7 45 fc 00 00 00 00
 ```
 
@@ -204,7 +204,7 @@ This is a subtle but crucial distinction. A chef doesn't cook by giving instruct
 
 Let's trace through a simple process to see this mental model in action. Suppose you want a program that asks for your name and then greets you. Here's the basic idea in pseudocode (simplified — real Zia syntax is taught in the next chapters):
 
-```
+```text
 print("What is your name? ")
 name = input()
 print("Hello, " + name + "!")
@@ -220,7 +220,7 @@ Now let's trace through what happens when someone runs this program:
 6. **No more instructions**: program ends
 
 If the user typed "Alice", the screen would show:
-```
+```text
 What is your name? Alice
 Hello, Alice!
 ```

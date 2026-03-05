@@ -1,8 +1,12 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # CODEMAP: Virtual Machine
 
 The Virtual Machine (`src/vm/`) interprets Viper IL with configurable dispatch strategies.
-
-Last updated: 2026-02-17
 
 ## Overview
 

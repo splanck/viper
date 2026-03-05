@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # CODEMAP: Zia Frontend
 
 The Zia frontend (`src/frontends/zia/`) compiles Zia source to IL.

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-02-17
+last-verified: 2026-03-04
 ---
 
 # Viper BASIC — Reference
@@ -32,7 +32,7 @@ Complete language reference for Viper BASIC. This document describes **statement
 - [Expressions & Operators](#expressions--operators)
 - [Built-in Functions](#built-in-functions)
 - [Namespaces & USING](#namespaces--using)
-- [Standard Library & Namespaces](#standard-library--namespaces)
+- [ViperLib & Namespaces](#viperlib--namespaces)
 - [Reserved Root](#reserved-root)
 - [Keyword Index](#keyword-index)
 - [Runtime Classes (Viper.*)](#runtime-classes-viper)
@@ -376,7 +376,7 @@ Structured error handling that scopes a handler to a lexical block.
 
 Syntax:
 
-```
+```basic
 TRY
   ' protected statements
 CATCH [errVar]
@@ -411,7 +411,7 @@ Divide by zero is caught and control resumes after the block:
 
 Output:
 
-```
+```text
 caught 0
 after
 ```
@@ -434,7 +434,7 @@ Nested TRY where the inner handler fires and does not leak outward:
 
 Output:
 
-```
+```text
 inner
 outer-body
 ```
@@ -710,9 +710,9 @@ The following built-ins are available. Use them in expressions (e.g., `LET X = A
 50 CLOSE #1
 ```
 
-## Standard Library & Namespaces
+## ViperLib & Namespaces
 
-The Viper standard library exposes procedures and types under the reserved `Viper.*` root namespace. You can call
+ViperLib exposes procedures and types under the reserved `Viper.*` root namespace. You can call
 procedures fully qualified, or import a namespace with `USING`.
 
 - Fully qualified:
@@ -785,7 +785,7 @@ Error and diagnostic utilities:
 
 ### Runtime Types
 
-Standard library classes are recognized under `Viper.*`. These namespaced runtime types are known to the compiler for
+ViperLib classes are recognized under `Viper.*`. These namespaced runtime types are known to the compiler for
 declarations and construction. Their method surfaces are being exposed progressively.
 
 #### Viper
@@ -840,7 +840,7 @@ counterparts. New code should use the canonical names.
 
 ## Reserved Root
 
-The `Viper` root namespace is reserved for the standard library. User code may not declare symbols under `Viper` (for
+The `Viper` root namespace is reserved for ViperLib. User code may not declare symbols under `Viper` (for
 example, `NAMESPACE Viper.Tools` is an error). You may import and call `Viper.*` library procedures, but define your own
 symbols under a different root.
 
@@ -1139,7 +1139,7 @@ Conventions and semantics:
   with the receiver passed explicitly as the first argument. Use these forms where convenient or when a member name
   collides with a BASIC keyword (e.g., APPEND).
 
-Cross-reference: See [Standard Library & Namespaces](#standard-library--namespaces) for procedural helpers under
+Cross-reference: See [ViperLib & Namespaces](#viperlib--namespaces) for procedural helpers under
 Viper.String.* and Viper.Text.*.
 
 ---

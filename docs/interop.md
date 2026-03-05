@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers, users
-last-verified: 2026-02-27
+last-verified: 2026-03-04
 ---
 
 # Cross-Language Interop Guide
@@ -37,7 +37,7 @@ is needed.
 
 Use `expose` before `func` at module scope to mark a function as exported:
 
-```zia
+```rust
 // mathlib.zia
 expose func factorial(n: Integer) -> Integer {
     if n <= 1 {
@@ -52,7 +52,7 @@ expose func factorial(n: Integer) -> Integer {
 Use `foreign func` to declare a function defined in another module. Foreign
 function declarations have no body:
 
-```zia
+```rust
 // main.zia
 foreign func Factorial(n: Integer) -> Integer
 
@@ -110,7 +110,7 @@ an `entry` directive specifying which file provides the entry point.
 
 ### Manifest Format
 
-```
+```text
 project MyMixedApp
 lang mixed
 entry main.zia
@@ -118,7 +118,7 @@ entry main.zia
 
 Or with a BASIC entry point:
 
-```
+```text
 project MyMixedApp
 lang mixed
 entry main.bas
@@ -126,7 +126,7 @@ entry main.bas
 
 ### Directory Layout
 
-```
+```text
 my-project/
   viper.project
   main.zia          <-- entry point (has start())
@@ -193,7 +193,7 @@ At the IL level, functions and globals have a `Linkage` attribute:
 
 ### IL Text Syntax
 
-```
+```text
 func export @calculateScore(i64, i64) -> i64 { ... }
 func import @BasicHelper(i64) -> i64
 func @internalHelper(i64) -> i64 { ... }
@@ -237,7 +237,7 @@ The IL module linker (`il::link::linkModules`) merges multiple modules:
 
 ### `viper.project`
 
-```
+```text
 project FactorialDemo
 lang mixed
 entry main.zia
@@ -245,7 +245,7 @@ entry main.zia
 
 ### `main.zia`
 
-```zia
+```rust
 bind Viper.Terminal;
 bind Viper.Core.Convert;
 

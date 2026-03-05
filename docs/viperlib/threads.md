@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Threads
 
 > Shared-memory threading primitives with FIFO fairness.

@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # Viper Memory Management
 
 > **Status**: Active reference. Some aspects (particularly Zia frontend lifetime
@@ -16,7 +22,7 @@ prioritises determinism and low latency over throughput.
 
 ## Architecture Overview
 
-```
+```text
 ┌───────────────────────────────────────────────────────────────┐
 │                     Viper Program                             │
 │  (Zia / BASIC source → IL → VM or Native)                    │
@@ -44,7 +50,7 @@ prioritises determinism and low latency over throughput.
 Every heap object — string, array, or runtime object — is allocated through
 `rt_heap_alloc()` and prefixed by a common header:
 
-```
+```text
 Memory layout:
 ┌──────────────────────────┬─────────────────────────┐
 │     rt_heap_hdr_t        │       Payload            │
@@ -140,7 +146,7 @@ called (currently only used in tests).
 
 Objects use a two-step release pattern that allows finalizer interleaving:
 
-```
+```text
 1. rt_obj_release_check0(obj)  → decrements refcount (deferred)
                                   returns 1 if count reached zero
 2. [caller runs custom cleanup]
@@ -214,7 +220,7 @@ explicitly registered objects.
 
 The collector runs synchronously in four phases:
 
-```
+```text
 Phase 1 — Initialize
   For each tracked object: trial_rc = 1, color = white
 
@@ -557,7 +563,7 @@ Options:
 
 Add a `using` statement to Zia for deterministic cleanup:
 
-```
+```rust
 using reader = IO.File.OpenReader("data.txt")
     ' reader is automatically closed at block exit
 end using

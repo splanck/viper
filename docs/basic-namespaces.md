@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-02-17
+last-verified: 2026-03-04
 ---
 
 # Viper BASIC Namespaces — Reference
@@ -51,7 +51,7 @@ A.F()   ' qualified call
 
 Output:
 
-```
+```text
 ok
 ```
 
@@ -67,7 +67,7 @@ A.B.F() ' fully-qualified call
 
 Output:
 
-```
+```text
 ok
 ```
 
@@ -86,7 +86,7 @@ A.B.Main()
 
 Output:
 
-```
+```text
 ok
 ```
 
@@ -322,7 +322,7 @@ The `Viper` root namespace is **reserved** for future built-in libraries (Track 
 - Declare namespaces under `Viper` (e.g., `NAMESPACE Viper.MyLib`)
 - Use `USING Viper` (the root itself)
 
-This ensures future compatibility with Viper's standard library.
+This ensures future compatibility with ViperLib.
 
 ```basic
 REM ✗ WRONG: Reserved namespace
@@ -721,7 +721,7 @@ Both `List` and `Dictionary` belong to `Collections` namespace after linking.
 
 ## Viper.* Runtime Namespace (Implemented)
 
-The Viper standard library exposes runtime functions and types under the reserved `Viper.*` root namespace. This
+ViperLib exposes runtime functions and types under the reserved `Viper.*` root namespace. This
 canonical namespace organization is now implemented and available in IL and BASIC code.
 
 ### Runtime Functions by Namespace

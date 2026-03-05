@@ -124,7 +124,7 @@ Let's trace through this program step by step, exactly as the computer does:
 6. **Line 7**: This line is outside the `if` statement. It runs no matter what. Print "Have a nice day."
 
 Output:
-```
+```text
 It's hot today!
 Have a nice day.
 ```
@@ -137,7 +137,7 @@ Now, what if we change the temperature to 25?
 4. **Line 7**: Print "Have a nice day."
 
 Output:
-```
+```text
 Have a nice day.
 ```
 
@@ -145,7 +145,7 @@ See the difference? The "hot today" message only appears when the condition is t
 
 ### The Structure Explained
 
-```
+```text
 if condition {
     // code that runs when condition is true
 }
@@ -788,7 +788,7 @@ This creates a tree of decisions:
 
 Think of nested conditions as a decision tree:
 
-```
+```text
                     hasAccount?
                     /         \
                   No           Yes

@@ -181,7 +181,7 @@ In native code, `rt_modvar_addr_i64` is not implemented correctly - it returns g
 
 ### Backtrace
 
-```
+```text
 rt_abort
 vm_trap
 rt_trap
@@ -351,7 +351,7 @@ Viper.Time.SleepMs(100)  ' Causes linker error for native
 
 ### Error Message
 
-```
+```text
 Undefined symbols for architecture arm64:
   "_Viper.Time.SleepMs", referenced from:
       ...

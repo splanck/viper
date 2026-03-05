@@ -1,3 +1,9 @@
+---
+status: draft
+audience: internal
+last-verified: 2026-03-04
+---
+
 # ViperDOS — Technical Specification v1.2
 
 ## Complete Implementation-Ready Specification
@@ -42,7 +48,7 @@
 |----|--------------------------------------------------|-----------------------------------------|
 | 17 | [Installed System](#17-installed-system)         | Complete file listing for fresh install |
 | 18 | [Directory Layout](#18-directory-layout)         | Filesystem hierarchy, drive naming      |
-| 19 | [Standard Library](#19-standard-library)         | Viper.* namespace hierarchy             |
+| 19 | [ViperLib](#19-viperlib)                          | Viper.* namespace hierarchy             |
 | 20 | [Core Utilities](#20-core-utilities)             | Programs that ship with ViperDOS         |
 | 21 | [Shell (vsh)](#21-shell-vsh)                     | Command shell, prompt, syntax           |
 | 22 | [Configuration Format](#22-configuration-format) | ViperConfig (.vcfg) syntax              |
@@ -66,7 +72,7 @@
 
 ---
 
-# Part I: Core Architecture
+## Part I: Core Architecture
 
 ---
 
@@ -78,7 +84,7 @@ ViperDOS is a custom operating system designed from scratch to natively host the
 operating systems that treat applications as opaque binaries, ViperDOS understands Viper IL as its native execution
 format.
 
-```
+```text
 ┌────────────────────────────────────────────────────────────────┐
 │  Viper Application                                             │
 ├────────────────────────────────────────────────────────────────┤
@@ -140,7 +146,7 @@ debugging only.
 
 ### 3.1 Boot Sequence Overview
 
-```
+```text
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
 │  Firmware   │───▶│   vboot     │───▶│   Kernel    │───▶│   vinit     │
 │  (UEFI)     │    │ (bootloader)│    │  (ring 0)   │    │ (user space)│
@@ -167,7 +173,7 @@ vboot is a UEFI application that:
 
 #### 3.2.1 ESP Layout
 
-```
+```text
 ESP (FAT32)
 ├── EFI/
 │   └── BOOT/
@@ -181,7 +187,7 @@ ESP (FAT32)
 
 #### 3.2.2 Kernel Loading
 
-```
+```text
 Kernel ELF:
   Entry point:     0xFFFF_FFFF_8010_0000 (virtual)
   Load address:    0x0000_0000_0010_0000 (physical, 1MB)
@@ -189,7 +195,7 @@ Kernel ELF:
 
 #### 3.2.3 Page Table Setup
 
-```
+```text
 PML4[0]   → Identity map (first 1GB, temporary)
 PML4[256] → HHDM at 0xFFFF_8000_0000_0000
 PML4[511] → Kernel at 0xFFFF_FFFF_8000_0000
@@ -199,7 +205,7 @@ PML4[511] → Kernel at 0xFFFF_FFFF_8000_0000
 
 #### 3.3.1 x86-64 Entry State
 
-```
+```text
 RDI = VBootInfo* (physical address)
 RSP = valid 16KB stack
 Paging enabled, interrupts disabled
@@ -207,7 +213,7 @@ Paging enabled, interrupts disabled
 
 #### 3.3.2 AArch64 Entry State
 
-```
+```text
 X0 = VBootInfo* (physical address)
 SP = valid 16KB stack
 MMU enabled, interrupts masked
@@ -285,7 +291,7 @@ Serial output is maintained in parallel for debugging.
 
 A simple ViperDOS logo displayed immediately after graphics console initialization:
 
-```
+```text
     ╔═══════════════════════════════════════╗
     ║                                       ║
     ║           ░▒▓█ VIPER █▓▒░             ║
@@ -352,7 +358,7 @@ void kprintf(const char* fmt, ...) {
 
 On kernel panic:
 
-```
+```text
 ┌────────────────────────────────────────────────────────────────┐
 │ ████████████████████████████████████████████████████████████████│
 │ █                                                              █│
@@ -379,7 +385,7 @@ Green (#00AA44) background, yellow (#FFDD00) text.
 
 ### 5.1 Virtual Memory Layout
 
-```
+```text
 User Space:
 0x0000_0000_0000_0000    Null guard
 0x0000_0000_0000_1000    User space start
@@ -505,7 +511,7 @@ Every KHeap object lives behind a capability.
 
 ---
 
-# Part II: Subsystems
+## Part II: Subsystems
 
 ---
 
@@ -565,7 +571,7 @@ Architecture (context switch, interrupts) and Platform (timer, serial) interface
 
 ---
 
-# Part III: User Space
+## Part III: User Space
 
 ---
 
@@ -575,7 +581,7 @@ This section defines the exact files present on a freshly installed ViperDOS sys
 
 ### 17.1 Complete File Manifest
 
-```
+```text
 SYS:                                    # Boot device (D0:\)
 │
 ├── kernel.elf                          # Kernel binary
@@ -703,7 +709,7 @@ Minimum disk requirement: 2 MB (with room for logs and user files).
 
 The ESP is separate from the ViperDOS filesystem:
 
-```
+```text
 ESP (FAT32, ~64 MB)
 ├── EFI\
 │   └── BOOT\
@@ -768,7 +774,7 @@ by a colon.
 
 Users can create, modify, or remove logical devices:
 
-```
+```bash
 > assign                          # List all assigns
 > assign WORK: D1:projects        # Create new assign
 > assign WORK: D1:other           # Change existing
@@ -778,7 +784,7 @@ Users can create, modify, or remove logical devices:
 
 ### 18.4 Path Syntax
 
-```
+```bash
 SYS:c\copy.vpr          # Full path with device
 c:copy.vpr              # Device-relative (C: assign)
 copy.vpr                # Search PATH for command
@@ -808,11 +814,11 @@ When a command is entered without a path:
 
 ---
 
-## 19. Standard Library
+## 19. ViperLib
 
 ### 19.1 Namespace Hierarchy
 
-```
+```text
 Viper.
 ├── Core           # Base types, memory, errors
 ├── System         # Syscalls, handles, capabilities
@@ -1121,7 +1127,7 @@ Example: `protect myfile.vpr +e-d` (add execute, remove delete)
 
 ### 20.10 Example Session
 
-```
+```text
 SYS:> version
 ViperDOS 0.1.0 (November 2025)
 Viper Platform Runtime
@@ -1197,7 +1203,7 @@ Shutting down...
 
 The shell displays the current device and directory:
 
-```
+```text
 SYS:> _
 HOME:> _
 WORK:projects> _
@@ -1240,7 +1246,7 @@ These commands are built into the shell (not external programs):
 
 Scripts use the following syntax:
 
-```
+```text
 ; This is a comment
 
 ; Simple commands
@@ -1282,7 +1288,7 @@ Echo "First argument: $1"
 
 ### 21.5 Redirection & Pipes
 
-```
+```text
 ; Output redirection
 List >RAM:dirlist.txt
 Dir >>RAM:dirlist.txt      ; Append
@@ -1304,7 +1310,7 @@ On boot, the shell executes:
 
 Example `S:startup-sequence`:
 
-```
+```text
 ; ViperDOS Startup Sequence
 Echo "ViperDOS starting..."
 
@@ -1471,7 +1477,7 @@ serial_port = 0x3F8
 
 ### 22.2 Grammar (Formal)
 
-```
+```text
 config     = { line }
 line       = comment | assignment | section | table_array | NEWLINE
 comment    = "#" { ANY } NEWLINE
@@ -1498,7 +1504,7 @@ inline_table = "{" [ assignment { "," assignment } ] "}"
 
 Viper Program - compiled IL module.
 
-```
+```text
 Header:
   magic:      "VPR\0" (4 bytes)
   version:    uint16 (IL version)
@@ -1519,7 +1525,7 @@ Sections:
 
 Viper Library - shared code module.
 
-```
+```text
 Header:
   magic:      "VLIB" (4 bytes)
   version:    uint16
@@ -1536,7 +1542,7 @@ Sections:
 
 Bitmap font for graphical console.
 
-```
+```text
 Header:
   magic:      "FONT" (4 bytes)
   width:      uint8 (glyph width in pixels)
@@ -1556,7 +1562,7 @@ Text format as defined in Section 22.
 
 Future format for distributing applications.
 
-```
+```text
 Archive containing:
   manifest.vcfg     # Package metadata
   bin/              # Executables
@@ -1567,7 +1573,7 @@ Archive containing:
 
 ---
 
-# Part IV: Development
+## Part IV: Development
 
 ---
 

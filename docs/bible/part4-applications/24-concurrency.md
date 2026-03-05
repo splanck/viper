@@ -246,7 +246,7 @@ When two threads execute these steps concurrently, they can interleave disastrou
 
 Let's trace what happens when both threads try to increment a counter that starts at 5:
 
-```
+```text
 Initial: counter = 5
 
 Thread 1                          Thread 2
@@ -335,7 +335,7 @@ func start() {
 ### Unpredictable Interleaving
 
 Output might be:
-```
+```text
 Main thread starting
 Main thread continues
 Worker thread running
@@ -344,7 +344,7 @@ All done
 ```
 
 Or:
-```
+```text
 Main thread starting
 Worker thread running
 Main thread continues
@@ -464,7 +464,7 @@ The section of code between `lock()` and `unlock()` is called the *critical sect
 
 ### Visualizing Mutex Protection
 
-```
+```text
 Thread 1                          Thread 2
 --------                          --------
 lock() - acquires mutex
@@ -881,7 +881,7 @@ t2.Join();
 
 ### Visualizing Deadlock
 
-```
+```text
 Time  Thread 1                    Thread 2
 ----  --------                    --------
 0     lock(mutex1) - acquired     lock(mutex2) - acquired

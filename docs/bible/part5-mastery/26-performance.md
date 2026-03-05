@@ -38,7 +38,7 @@ Before measuring anything, let's build intuition about how programs become slow.
 
 Imagine your program as a highway system. Data flows from input, through processing, to output. Like traffic, it can flow smoothly or get stuck in jams.
 
-```
+```text
        ┌─────────┐      ┌────────────┐      ┌─────────┐
 Input ─►  Parse  ├─────►│  Process   ├─────►│ Output  ├──► Result
        └─────────┘      └────────────┘      └─────────┘
@@ -69,7 +69,7 @@ Here's a fact that surprises many programmers: in most programs, 80% of executio
 
 This means most of your code doesn't matter for performance. You could triple the speed of 80% of your program and see almost no improvement. But double the speed of that critical 20%, and your program runs nearly twice as fast.
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │ Total Execution Time                                         │
 ├─────────────────────────────────────────────────────────────┤
@@ -143,7 +143,7 @@ func processData(data: [Record]) {
 ```
 
 Output might look like:
-```
+```text
 Parsing: 150 ms
 Validation: 2340 ms
 Computation: 89 ms
@@ -204,7 +204,7 @@ zia --profile myprogram.zia
 
 After your program finishes, you'll see output like:
 
-```
+```text
 Function                  Calls      Time (ms)    % Total    Avg (ms)
 ───────────────────────────────────────────────────────────────────────
 processImage              1000       4500         45.0%      4.50
@@ -248,7 +248,7 @@ zia --profile=memory myprogram.zia
 ```
 
 Output shows allocations:
-```
+```text
 Type                Allocations    Total Size    % Memory
 ─────────────────────────────────────────────────────────
 String              50000          4.5 MB        45%
@@ -288,7 +288,7 @@ With 100 people, you might check up to 100 names. With 1000 people, up to 1000 n
 
 Here's how different complexities compare:
 
-```
+```text
 Work │
   ▲  │                                         .  O(n²)
      │                                      .
@@ -520,7 +520,7 @@ func start() {
 ```
 
 Typical results:
-```
+```text
 --- Size: 1000 ---
 O(n²):      45 ms
 O(n log n): 2 ms
@@ -956,7 +956,7 @@ func countWords_v1(text: String) -> Map[String, Integer] {
 ```
 
 Let's profile it on a 10MB text file:
-```
+```text
 countWords_v1: 2340 ms
   - split: 450 ms (creates huge array of strings)
   - toLowerCase: 380 ms (creates new String each time)
@@ -1054,7 +1054,7 @@ Result: **890 ms** (62% faster than v1). Much fewer allocations.
 
 ### Step 4: Measure the Improvement
 
-```
+```text
 Version 1: 2340 ms  (baseline)
 Version 2: 1650 ms  (30% faster)
 Version 3:  890 ms  (62% faster)
@@ -1324,7 +1324,7 @@ for item in items {
 
 Don't assume your change helped. Measure again:
 
-```
+```text
 Before: 2340 ms
 After:  1850 ms
 Improvement: 21%

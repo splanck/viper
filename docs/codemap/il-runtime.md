@@ -1,8 +1,12 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # CODEMAP: IL Runtime
 
 Runtime signature metadata (`src/il/runtime/`) for C ABI helpers.
-
-Last updated: 2026-02-17
 
 ## Overview
 

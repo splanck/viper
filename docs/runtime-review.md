@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # Viper Runtime API — Per-Function Robustness, Security & Optimization Review
 
 **Reviewed:** 2026-02-17

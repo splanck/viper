@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # CLI Tools Reference
 
 Reference documentation for the Viper command-line tools.
@@ -122,7 +128,7 @@ viper -run <file.il> [flags]
 | `--trace=il`                 | Emit line-per-instruction trace              |
 | `--trace=src`                | Show source file, line, column for each step |
 | `--stdin-from <file>`        | Feed program stdin from file                 |
-| `--max-steps <N>`            | Limit execution to N interpreter steps       |
+| `--max-steps <N>`            | Limit execution to N VM steps                |
 | `--bounds-checks`            | Enable runtime bounds checking               |
 | `--break <Label\|file:line>` | Halt before executing instruction            |
 | `--break-src <file:line>`    | Explicit source-line breakpoint              |

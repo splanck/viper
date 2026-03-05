@@ -26,7 +26,7 @@ END CLASS
 
 **Error**:
 
-```
+```text
 error: PLAYER.ISALIVE:entry_PLAYER.ISALIVE: ret %t7: ret value type mismatch: expected i1 but got i64
 ```
 
@@ -102,7 +102,7 @@ END CLASS
 
 **Error**:
 
-```
+```text
 error: ROOM.GETEXIT:entry_ROOM.GETEXIT: call %t5: unknown callee @exits
 ```
 
@@ -145,7 +145,7 @@ TestSub(obj)
 
 **Error**:
 
-```
+```text
 error: TESTSUB:entry_TESTSUB: call %t4 42: unknown callee @SETVALUE
 ```
 
@@ -181,7 +181,7 @@ x = obj.value  ' ERROR HERE
 
 **Error**:
 
-```
+```text
 error: main:obj_assign_cont1: call %t9: call arg type mismatch
 ```
 

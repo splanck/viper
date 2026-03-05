@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Viper REPL
 
 The Viper REPL (Read-Eval-Print Loop) provides an interactive environment for experimenting with Zia or BASIC code. Each line of input is compiled and executed immediately, with results displayed inline.
@@ -18,7 +24,7 @@ vbasic
 
 You'll see a prompt where you can type code:
 
-```
+```text
 Viper zia REPL v0.2.2-snapshot
 Type .help for commands, .quit to exit.
 
@@ -62,7 +68,7 @@ The REPL supports both the **Zia** and **BASIC** languages.
 - **Keyword completion**: Tab completion for BASIC keywords and session variables
 - **Error recovery**: Syntax and type errors are reported without losing session state
 
-```
+```text
 basic> DIM x AS Integer = 42
 basic> x + 8
 50
@@ -108,7 +114,7 @@ The REPL maintains a history of previous inputs. Use the Up and Down arrow keys 
 
 History is automatically saved to disk when the REPL exits and loaded on startup. The history file location is:
 
-```
+```text
 ~/.viper/repl_history_zia      # Zia REPL history
 ~/.viper/repl_history_basic    # BASIC REPL history
 ```
@@ -128,7 +134,7 @@ Press **Tab** to trigger context-aware completions powered by the Zia `Completio
 - **Type names**: After `new` or in type annotations
 - **Member access**: After `.`, shows methods and fields of the expression type
 
-```
+```text
 zia> var myCounter = 42
 zia> myC<Tab>
 myCounter
@@ -144,7 +150,7 @@ When you type an input with unclosed brackets or block keywords, the REPL automa
 
 **Zia** — tracks bracket depth (`{`, `(`, `[`):
 
-```
+```text
 zia> func greet(name: String) -> String {
 ...>     return "Hello, " + name;
 ...> }
@@ -154,7 +160,7 @@ Hello, World
 
 **BASIC** — tracks block keywords (`IF`/`END IF`, `FOR`/`NEXT`, `DO`/`LOOP`, `SUB`/`END SUB`, etc.):
 
-```
+```text
 basic> FOR i = 1 TO 3
 ...>   PRINT i
 ...> NEXT
@@ -169,7 +175,7 @@ The continuation prompt `...>` indicates that the REPL is waiting for more input
 
 When you type an expression (not a statement like `var` or `if`), the REPL automatically evaluates it and prints the result:
 
-```
+```text
 zia> 2 + 3 * 4
 14
 zia> "Hello, " + "World"
@@ -188,7 +194,7 @@ Inputs that start with keywords (`var`, `if`, `while`, `for`, `func`, etc.) are 
 
 Variables persist across inputs. Declare a variable and use it in later inputs:
 
-```
+```text
 zia> var x = 42
 zia> var y = x + 8
 zia> y
@@ -200,7 +206,7 @@ zia> x
 
 Use `.vars` to see all declared variables with their types:
 
-```
+```text
 zia> .vars
   x : Integer
   y : Integer
@@ -212,7 +218,7 @@ Variable types are automatically inferred from their initializer. Reassignment u
 
 Define functions and call them across inputs:
 
-```
+```text
 zia> func square(x: Integer) -> Integer { return x * x; }
 zia> square(7)
 49
@@ -220,7 +226,7 @@ zia> square(7)
 
 You can redefine a function to update its behavior:
 
-```
+```text
 zia> func greet(name: String) -> String { return "Hi, " + name; }
 zia> Say(greet("World"))
 Hi, World
@@ -233,7 +239,7 @@ Hey there, World
 
 Import runtime modules using `bind`:
 
-```
+```text
 zia> bind Math = Viper.Math
 zia> Math.Sqrt(16.0)
 4
@@ -262,7 +268,7 @@ Meta-commands start with `.` and provide REPL-specific functionality:
 
 ### Examples
 
-```
+```text
 zia> .help
 Available commands:
   .help   Show this help message

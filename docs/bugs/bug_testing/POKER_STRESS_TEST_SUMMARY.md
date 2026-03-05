@@ -75,7 +75,7 @@ B becomes corrupted with string cleanup code from unrelated contexts, causing "u
 
 **IL Evidence**:
 
-```
+```il
 func @DECK.__ctor(ptr %ME) -> void {
 entry_DECK.__ctor(%ME:ptr):
   %t1 = alloca 8

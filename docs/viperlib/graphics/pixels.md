@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Images & Sprites
 > Pixels, Sprite, SpriteSheet, Tilemap
 
@@ -668,7 +674,7 @@ LOOP
 
 Tiles in the tileset image are arranged left-to-right, top-to-bottom:
 
-```
+```text
 +---+---+---+---+
 | 0 | 1 | 2 | 3 |
 +---+---+---+---+

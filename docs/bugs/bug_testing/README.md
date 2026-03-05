@@ -96,7 +96,7 @@ See STRESS_TEST_SUMMARY.md for detailed workarounds.
 
 ## Files Overview
 
-```
+```text
 docs/bugs/bug_testing/
 ├── README.md                      (this file)
 ├── STRESS_TEST_SUMMARY.md         (full report)

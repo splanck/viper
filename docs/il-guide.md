@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-02-02
+last-verified: 2026-03-04
 ---
 
 # Viper IL — Complete Guide
@@ -413,7 +413,7 @@ See [examples/il](../examples/il/) for complete programs.
 
 Each function has the form:
 
-```
+```il
 func @name(param_list?) -> ret_type {
 entry:
   ...
@@ -1017,7 +1017,7 @@ for a recursion sanity check.
 BASIC programs lower procedures first, then wrap remaining top-level statements
 into a synthetic `@main` function:
 
-```
+```text
 Program
 ├─ procs[] → @<name>
 └─ main[]  → @main
@@ -1080,7 +1080,7 @@ names across runs.
 
 Example BASIC and corresponding IL excerpt:
 
-```
+```basic
 10 FUNCTION F(X)
 20 FOR I = 0 TO 1
 30   WHILE X < 10
@@ -1093,7 +1093,7 @@ Example BASIC and corresponding IL excerpt:
 100 END FUNCTION
 ```
 
-```
+```il
 func @F(i64 %X) -> i64 {
   entry_F:
     br for_head_0_F

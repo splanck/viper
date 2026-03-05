@@ -74,7 +74,7 @@ c.value = 100  ' ERROR: no such property 'VALUE' on 'CHILD'
 
 **Error:**
 
-```
+```text
 error[E_PROP_NO_SUCH_PROPERTY]: no such property 'VALUE' on 'CHILD'
 ```
 
@@ -109,7 +109,7 @@ c.Greet()  ' ERROR: no matching overload for 'GREET()'
 
 **Error:**
 
-```
+```text
 error[E_OVERLOAD_NO_MATCH]: no matching overload for 'GREET()'
 ```
 
@@ -173,7 +173,7 @@ END INTERFACE
 
 **Error:**
 
-```
+```text
 error[B0001]: unknown statement 'INTERFACE'; expected keyword or procedure call
 ```
 
@@ -202,7 +202,7 @@ END IF
 
 **Error:**
 
-```
+```text
 error[B0001]: expected THEN, got IS
 ```
 
@@ -304,7 +304,7 @@ END CLASS
 
 **Error:**
 
-```
+```text
 error[B0001]: expected END, got ?
 ```
 
@@ -327,7 +327,7 @@ END CLASS
 
 **Error:**
 
-```
+```text
 error[B0001]: expected ident, got BASE
 ```
 

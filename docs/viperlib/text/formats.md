@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Data Formats
 > Json, JsonPath, JsonStream, Csv, Toml, Ini, Xml, Yaml, and serialization
 

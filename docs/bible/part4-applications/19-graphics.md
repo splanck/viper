@@ -24,7 +24,7 @@ Think of your screen like a giant mosaic. A mosaic artist creates images by plac
 
 When we "draw a circle" on screen, we're not actually creating a perfect mathematical circle. We're choosing which pixels to light up and what color to make each one, in a pattern that looks like a circle to human eyes. The more pixels we have, the smoother curves appear — but at the fundamental level, it's always a mosaic of tiny squares.
 
-```
+```text
 What a "circle" really looks like at the pixel level:
 
       # # #
@@ -44,7 +44,7 @@ Your graphics card maintains a region of memory called the *frame buffer*. This 
 
 The frame buffer is like a painter's canvas, but with an important difference: you can erase and redraw it many times per second. This is how animation works — by rapidly updating the frame buffer with slightly different images, we create the illusion of movement, just like how a flipbook creates animation from a stack of drawings.
 
-```
+```text
 Frame buffer in memory (simplified):
 
 Address     Color Value
@@ -78,7 +78,7 @@ In computer graphics, we have a convention that might surprise you if you rememb
 - **X increases to the right** (same as in math)
 - **Y increases downward** (opposite of math!)
 
-```
+```text
 (0,0) ─────────────────────────────────► X (increases right)
   │
   │
@@ -100,7 +100,7 @@ A point at (100, 50) means:
 
 Let's visualize this:
 
-```
+```text
 (0,0)
   ┌──────────────────────────────────────┐
   │                                      │
@@ -241,7 +241,7 @@ Let's trace through what happens when this program runs:
 
 Here's what we drew:
 
-```
+```text
 (0,0)
   ┌──────────────────────────────────────────────────┐
   │                                                  │
@@ -287,7 +287,7 @@ canvas.drawRect(x, y, width, height);
 
 The difference between `fillRect` and `drawRect`:
 
-```
+```text
 fillRect(50, 50, 100, 80)         drawRect(50, 50, 100, 80)
   ┌───────────────┐                  ┌───────────────┐
   │███████████████│                  │               │
@@ -313,7 +313,7 @@ canvas.drawEllipse(x, y, width, height);
 
 For circles, you specify where the *center* is and how big the radius is. For ellipses, you specify a bounding rectangle, and the ellipse fills it.
 
-```
+```text
 fillCircle(200, 150, 50)          fillEllipse(100, 100, 120, 60)
 
          ●●●●●●                        ●●●●●●●●●●●●●●
@@ -337,7 +337,7 @@ canvas.drawLine(x1, y1, x2, y2);
 
 Lines connect two points. There's no "filled" version — a line is inherently just a path.
 
-```
+```text
 drawLine(50, 50, 200, 150)
 
   (50,50)
@@ -385,7 +385,7 @@ canvas.fillPolygon(pentagon);
 
 The points define the vertices (corners) of the shape. The graphics system connects them in order, and the last point connects back to the first.
 
-```
+```text
 Triangle from [(100,200), (150,100), (200,200)]:
 
          (150,100)
@@ -411,7 +411,7 @@ canvas.drawText(100, 100, "Hello, Graphics!");
 
 The coordinates (100, 100) specify where the text starts — specifically, the left edge at the text's *baseline*. The baseline is the line that letters sit on (think of the bottom of letters like 'a' or 'x', but letters like 'g' and 'y' extend below it).
 
-```
+```text
 canvas.drawText(100, 100, "Hello, y")
 
          ___         ___  ___
@@ -529,7 +529,7 @@ Remember flipbooks? Each page has a drawing that's slightly different from the l
 
 At the heart of every game and animation is the *game loop* — a continuous cycle of three steps:
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────┐
 │                                                              │
 │    ┌───────────┐     ┌────────────┐     ┌────────────┐      │
@@ -671,7 +671,7 @@ Notice we fill the entire screen with black at the start of each frame. Why?
 
 If we didn't clear, the previous frame's drawing would still be there. The ball would leave a trail of red circles across the screen:
 
-```
+```text
 Without clearing:           With clearing:
 
 Frame 1:   ●                Frame 1:   ●
@@ -693,7 +693,7 @@ The solution is *delta time* — the time elapsed since the last frame.
 
 ### The Problem
 
-```
+```text
 60 FPS computer:
   Frame 1: x = 100
   Frame 2: x = 105  (moved 5)
@@ -734,7 +734,7 @@ while canvas.isOpen() {
 
 Now `speed` means "pixels per second" rather than "pixels per frame":
 
-```
+```text
 60 FPS computer:
   dt = 1/60 = 0.0167 seconds per frame
   Movement per frame = 300 * 0.0167 = 5 pixels
@@ -792,7 +792,7 @@ Imagine someone watching you paint. If they look while you're half-done erasing 
 
 ### How Double Buffering Works
 
-```
+```text
 ┌─────────────────┐      ┌─────────────────┐
 │  BACK BUFFER    │      │  FRONT BUFFER   │
 │                 │      │                 │
@@ -863,7 +863,7 @@ A common technique: create a sprite facing right, then flip it horizontally when
 
 PNG images can have transparent areas. This lets you draw a character that isn't a rectangle:
 
-```
+```text
 Without transparency:          With transparency:
 
 ┌─────────────────┐

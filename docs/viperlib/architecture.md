@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Runtime Architecture
 
 > Internal architecture and type system reference.
@@ -22,7 +28,7 @@ The Viper runtime is defined in `src/il/runtime/runtime.def` using X-macros. Thi
 
 ### RT_FUNC Syntax
 
-```
+```cpp
 RT_FUNC(id, c_symbol, "canonical_name", "signature")
 ```
 
@@ -33,7 +39,7 @@ RT_FUNC(id, c_symbol, "canonical_name", "signature")
 
 ### RT_CLASS Syntax
 
-```
+```cpp
 RT_CLASS_BEGIN("canonical_name", type_id, "layout", ctor_id)
     RT_PROP("name", "type", getter_id, setter_id_or_none)
     RT_METHOD("name", "signature", target_id)
@@ -127,7 +133,7 @@ available via `rt_gc_total_collected()` and `rt_gc_pass_count()`.
 The GC provides zeroing weak references via `rt_weakref`. When a target object is collected, all weak references
 pointing to it are automatically set to NULL. This prevents dangling pointer access.
 
-```
+```c
 rt_weakref *ref = rt_weakref_new(target);
 void *obj = rt_weakref_get(ref);    // returns target, or NULL if collected
 int alive = rt_weakref_alive(ref);  // 1 if target still alive

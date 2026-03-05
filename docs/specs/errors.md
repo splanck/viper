@@ -1,6 +1,6 @@
 ---
 status: draft
-last-verified: 2026-02-17
+last-verified: 2026-03-04
 audience: public
 ---
 
@@ -54,7 +54,7 @@ handler. Control then jumps into the handler block with two parameters:
 
 ### Trap Dispatch Sequence
 
-```
+```text
 [Trap raised]
       |
       v
@@ -78,7 +78,7 @@ control-flow schematic; `%tok` is the resume token received by the handler.
 
 #### `resume.same %tok`
 
-```
+```text
 [Handler]
     |
     | resume.same %tok
@@ -92,7 +92,7 @@ instruction.
 
 #### `resume.next %tok`
 
-```
+```text
 [Handler]
     |
     | resume.next %tok
@@ -105,7 +105,7 @@ continue within the same block (mirrors BASIC `RESUME NEXT`).
 
 #### `resume.label %tok, ^L`
 
-```
+```text
 [Handler]
     |
     | resume.label %tok, ^L
@@ -176,7 +176,7 @@ BASIC:
 
 Lowered IL (excerpt):
 
-```
+```il
 entry:
   eh.push ^handler
   br ^body
@@ -212,7 +212,7 @@ crafted IL must not forge resume tokens.
 
 IL:
 
-```
+```il
   %q = sdiv.chk0 %numerator, %denominator
 ```
 
@@ -224,7 +224,7 @@ IL:
 
 IL:
 
-```
+```il
   %item = idx.chk %array, %index
 ```
 
@@ -235,7 +235,7 @@ IL:
 
 Runtime call from BASIC:
 
-```
+```il
   %ok = call @rt_file_open(%handle, %path, %err_out)
   brnz %ok, ^continue, ^trap
 
@@ -253,7 +253,7 @@ message and `RESUME NEXT` to continue without the file.
 If no `eh.push` is active when a trap occurs, the VM terminates with a deterministic
 multi-field diagnostic:
 
-```
+```text
 Trap: <Kind>
 Function: <function name>
 IL: <function>#<block>#<instruction index>
@@ -262,7 +262,7 @@ Source line: <line number or -1>
 
 For example, an unhandled divide-by-zero might report:
 
-```
+```text
 Trap: DivideByZero
 Function: @main
 IL: @main#L2#7

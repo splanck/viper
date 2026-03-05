@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Cryptography
 
 > Cryptographic hashing, authentication, key derivation, and secure random generation.
@@ -112,13 +118,13 @@ High-level symmetric encryption using ChaCha20-Poly1305 AEAD with automatic key 
 
 Password-based encryption produces ciphertext in this format:
 
-```
+```text
 [salt(16 bytes)][nonce(12 bytes)][ciphertext][tag(16 bytes)]
 ```
 
 Key-based encryption produces:
 
-```
+```text
 [nonce(12 bytes)][ciphertext][tag(16 bytes)]
 ```
 
@@ -397,7 +403,7 @@ DIM binaryMac AS STRING = Viper.Crypto.Hash.HmacSHA256Bytes(keyBytes, dataBytes)
 
 HMAC (Hash-based Message Authentication Code) provides message authentication using a secret key:
 
-```
+```text
 HMAC(K, m) = H((K' xor opad) || H((K' xor ipad) || m))
 ```
 
@@ -803,7 +809,7 @@ High-level password hashing and verification using PBKDF2. Provides a simple API
 
 `Hash` and `HashIters` return a self-describing string in the format:
 
-```
+```text
 PBKDF2$<iterations>$<base64-salt>$<base64-hash>
 ```
 

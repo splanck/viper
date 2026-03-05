@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Viper Debugging Guide
 
 This guide covers all debugging features available in the Viper platform, including both the VM interpreter and the Zia/BASIC frontends.
@@ -37,7 +43,7 @@ viper -run program.il --trace=il
 ```
 
 Output format:
-```
+```text
 [IL] fn=@main blk=L3 ip=#5 op=add 10, 20 -> %t5
 ```
 
@@ -50,7 +56,7 @@ viper -run program.il --trace=src
 ```
 
 Output format:
-```
+```text
 [SRC] main.zia:42:10 (fn=@main blk=L3 ip=#5)
 ```
 
@@ -111,7 +117,7 @@ viper -run program.il --watch x --watch total
 ```
 
 Output format:
-```
+```text
 [WATCH] x=I64:42 (fn=@main blk=L3 ip=#5)
 ```
 
@@ -182,7 +188,7 @@ The debug script file contains one command per line:
 | `step N` | Execute exactly N instructions |
 
 Example `script.dbg`:
-```
+```text
 step 5
 continue
 step 10
@@ -218,12 +224,12 @@ auto status = runner.continueRun();
 
 All compiler diagnostics follow this format:
 
-```
+```text
 <path>:<line>:<column>: <severity>[<code>]: <message>
 ```
 
 For example:
-```
+```text
 main.zia:42:15: error[V3000]: Type mismatch: expected Integer, got String
  42 | var x: Integer = "hello";
     |                  ^
@@ -244,12 +250,12 @@ When a source manager is available and the source file can be loaded, diagnostic
 
 Runtime traps (VM errors) use this format:
 
-```
+```text
 Trap @function:block#ip line N: Kind (code=C)
 ```
 
 For example:
-```
+```text
 Trap @processRow:L3#2 line 145: Bounds (code=0)
 ```
 
@@ -279,7 +285,7 @@ Use `--dump-trap` to ensure trap messages are printed to stderr even when the pr
 
 The runtime provides a leveled logging system accessible from both Zia and BASIC:
 
-```
+```rust
 Viper.Log.Debug("detailed info")
 Viper.Log.Info("normal info")
 Viper.Log.Warn("potential issue")
@@ -287,7 +293,7 @@ Viper.Log.Error("something failed")
 ```
 
 Output format:
-```
+```text
 [INFO] 14:30:05 normal info
 ```
 
@@ -318,7 +324,7 @@ The runtime assertion library provides 12 assertion variants for test and debug 
 ### Debug Print
 
 For quick debugging, use:
-```
+```rust
 Viper.Debug.PrintI32(value)    // Print integer to stderr
 Viper.Debug.PrintStr(text)     // Print string to stderr
 ```
@@ -340,7 +346,7 @@ viper front basic -run program.bas --dump-tokens
 
 Prints every token produced by the lexer with location, kind, text, and literal values:
 
-```
+```text
 === Zia Token Stream ===
 1:1     module  "module"
 1:8     identifier      "Test"
@@ -359,7 +365,7 @@ viper run --dump-ast program.zia
 
 Prints the parsed AST (abstract syntax tree) as an indented tree. For Zia, this includes source locations, node kinds, operators, and literal values:
 
-```
+```text
 === AST after parsing ===
 ModuleDecl "Test" (1:1)
   FunctionDecl "start" (2:1)
@@ -393,7 +399,7 @@ viper run --dump-il program.zia
 
 Prints the IL module immediately after lowering from the AST, before any optimization:
 
-```
+```il
 === IL after lowering ===
 il 0.2.0
 extern @Viper.Terminal.SayInt(i64) -> void
@@ -415,7 +421,7 @@ viper run -O1 --dump-il-passes program.zia
 
 Prints the full IL module before and after each optimization pass. Requires `-O1` or `-O2` (at `-O0`, the only passes are SimplifyCFG and DCE). Uses the PassManager's built-in instrumentation hooks:
 
-```
+```text
 *** IR before pass 'simplify-cfg' ***
 ...
 *** IR after pass 'simplify-cfg' ***
@@ -432,7 +438,7 @@ viper run -O1 --dump-il-opt program.zia
 
 Prints the IL module after the entire optimization pipeline has completed:
 
-```
+```text
 === IL after optimization (O1) ===
 ...
 === End IL ===
@@ -561,7 +567,7 @@ config.pollCallback = [&]() -> bool {
 
 Viper IL uses structured exception handling with `EhEntry`/`EhExit` opcodes:
 
-```
+```il
 EhEntry handler_block
   ; protected code
 EhExit
@@ -595,7 +601,7 @@ viper bench program.il -n 5 --all
 
 Runs the program multiple times across different VM dispatch strategies and reports timing:
 
-```
+```text
 BENCH program.il table instr=50000 time_ms=12 insns_per_sec=4166666
 ```
 
@@ -639,7 +645,7 @@ viper -run program.il --count
 ```
 
 Output:
-```
+```text
 [SUMMARY] instr=142857
 ```
 
@@ -650,7 +656,7 @@ viper -run program.il --time
 ```
 
 Output:
-```
+```text
 [SUMMARY] time_ms=42
 ```
 

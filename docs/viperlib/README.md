@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Viper Runtime Library Reference
 
 > **Version:** 0.2.0

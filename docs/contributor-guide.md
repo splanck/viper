@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-02-17
+last-verified: 2026-03-04
 ---
 
 # Contributor Guide
@@ -169,7 +169,7 @@ enum class TokenKind {
 Floating point outputs in end-to-end tests can vary slightly. To keep tests stable, expectations are
 stored in files containing lines such as:
 
-```
+```text
 EXPECT≈ 3.14 0.05
 ```
 
@@ -214,7 +214,7 @@ that are defined later in the file and supports recursion.
 
 Example diagnostics emitted by the analyzer:
 
-```
+```text
 10 FUNCTION F(A, A)
               ^
 error[B1005]: duplicate parameter 'A'

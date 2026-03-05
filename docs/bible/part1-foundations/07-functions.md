@@ -122,7 +122,7 @@ One of the most powerful ideas in programming is thinking of functions as **blac
 
 Imagine a vending machine. You put in money and press a button (inputs). A snack comes out (output). You don't need to know how the internal mechanisms work --- the conveyor belts, the sensors, the coin counter. The machine is a black box. Input goes in, output comes out, internal details are hidden.
 
-```
+```text
      +-----------------+
      |                 |
 ---->|  calculateArea  |----> 50
@@ -184,7 +184,7 @@ func start() {
 ```
 
 Output:
-```
+```text
 Hello!
 Welcome to the program.
 Hello!
@@ -218,7 +218,7 @@ func start() {
 ```
 
 Output:
-```
+```text
 Hello, Alice!
 Hello, Bob!
 Hello, Carol!
@@ -287,7 +287,7 @@ func start() {
 ```
 
 Output:
-```
+```text
 Alice is 30 years old.
 Bob is 25 years old.
 ```
@@ -624,14 +624,14 @@ func start() {
 Here's how the call stack evolves:
 
 **Step 1**: `start()` is called
-```
+```text
 +------------------+
 |  start()         |  <-- current
 +------------------+
 ```
 
 **Step 2**: `start` calls `sumOfSquares(3, 4)`
-```
+```text
 +------------------+
 |  sumOfSquares()  |  <-- current
 |  x=3, y=4        |
@@ -641,7 +641,7 @@ Here's how the call stack evolves:
 ```
 
 **Step 3**: `sumOfSquares` calls `square(3)`
-```
+```text
 +------------------+
 |  square()        |  <-- current
 |  n=3             |
@@ -654,7 +654,7 @@ Here's how the call stack evolves:
 ```
 
 **Step 4**: `square` calls `multiply(3, 3)`
-```
+```text
 +------------------+
 |  multiply()      |  <-- current
 |  a=3, b=3        |
@@ -670,7 +670,7 @@ Here's how the call stack evolves:
 ```
 
 **Step 5**: `multiply` returns 9, gets popped off
-```
+```text
 +------------------+
 |  square()        |  <-- current (has 9)
 |  n=3             |
@@ -683,7 +683,7 @@ Here's how the call stack evolves:
 ```
 
 **Step 6**: `square` returns 9, gets popped off
-```
+```text
 +------------------+
 |  sumOfSquares()  |  <-- current (has sq1=9)
 |  x=3, y=4        |
@@ -803,7 +803,7 @@ func start() {
 
 Let's trace `factorial(5)` step by step:
 
-```
+```text
 factorial(5)
   = 5 * factorial(4)
   = 5 * (4 * factorial(3))
@@ -820,7 +820,7 @@ The function keeps calling itself with smaller values until it hits the base cas
 
 On the call stack:
 
-```
+```text
 +------------------+
 |  factorial(1)    |  <- returns 1 (base case)
 +------------------+
@@ -871,7 +871,7 @@ Output: `0 1 1 2 3 5 8 13 21 34`
 
 The Fibonacci function above is elegant but inefficient. To calculate `fib(5)`, it calculates `fib(4)` and `fib(3)`. But `fib(4)` also calculates `fib(3)`. We're doing the same work multiple times!
 
-```
+```text
 fib(5)
 ├── fib(4)
 │   ├── fib(3)

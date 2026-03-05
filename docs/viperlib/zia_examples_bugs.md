@@ -1,3 +1,9 @@
+---
+status: deprecated
+audience: internal
+last-verified: 2026-03-04
+---
+
 # Zia Examples Audit — Bug Report
 
 > Generated during systematic audit of viper-lib documentation.
@@ -64,14 +70,14 @@ methods. The class is now fully functional.
 **Status:** Still reproduces
 
 **VM output:**
-```
+```text
 UUID: <valid-uuid>
 Valid: true
 Invalid: false
 ```
 
 **ARM64 native output:**
-```
+```text
 UUID: <valid-uuid>
 Valid: false
 Invalid: false
@@ -91,7 +97,7 @@ Invalid: false
 **Status:** Still reproduces
 
 **VM output:**
-```
+```text
 Ext: .txt
 Name: test.txt
 Dir: /tmp
@@ -99,7 +105,7 @@ Stem: test
 ```
 
 **ARM64 native output:**
-```
+```text
 Ext:
 Name: Ext:
 Dir: .

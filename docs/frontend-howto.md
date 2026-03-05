@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-updated: 2026-02-02
+last-verified: 2026-03-04
 ---
 
 # How to Write a Viper Frontend
@@ -51,14 +51,14 @@ Viper is a compiler infrastructure with multiple components:
 | Component    | Description                                                |
 |--------------|------------------------------------------------------------|
 | **IL**       | SSA-based intermediate representation (similar to LLVM IR) |
-| **VM**       | Bytecode interpreter for rapid development and testing     |
+| **VM**       | Virtual machine for rapid development and testing          |
 | **Runtime**  | C-based runtime library (strings, arrays, I/O, GC)         |
 | **Verifier** | Static analysis and type checking for IL                   |
 | **Codegen**  | Native code generation (x86-64 and AArch64)                |
 
 **Compilation flow:**
 
-```
+```text
 Source Language → Frontend → IL → VM/Codegen → Execution
 ```
 
@@ -480,7 +480,7 @@ cmake --build build
 
 **Output (IL text format):**
 
-```
+```il
 il 0.2.0
 
 extern @rt_print_i64(i64) -> void
@@ -558,7 +558,7 @@ infrastructure. Each frontend is a self-contained directory with its own CMakeLi
 
 Create your frontend under `src/frontends/`:
 
-```
+```text
 src/frontends/yourfrontend/
 ├── CMakeLists.txt              # Build configuration (dependencies, sources)
 ├── Lexer.{cpp,hpp}             # Tokenization
@@ -905,7 +905,7 @@ strategy, and file organization patterns.
 **Understanding the flow:** Modern compilers use a multi-stage pipeline where each stage transforms the input into a
 progressively lower-level representation. This modularity makes the compiler easier to understand, test, and debug.
 
-```
+```text
 Source Code
     ↓
 ┌──────────────────┐
@@ -1005,7 +1005,7 @@ navigate the code ("where does type checking happen?" → SemanticAnalyzer.cpp).
 
 Organize by **compilation phase**, not by language feature:
 
-```
+```text
 src/frontends/yourfrontend/
 ├── Lexer.{cpp,hpp}              # Tokenization (Phase 1)
 ├── Parser.{cpp,hpp}             # AST construction (Phase 2)
@@ -3464,13 +3464,13 @@ Compare generated IL against expected output.
 
 **Input:** `tests/golden/yourfrontend/hello.src`
 
-```
+```text
 print("Hello, World!")
 ```
 
 **Expected:** `tests/golden/yourfrontend/hello.il`
 
-```
+```il
 il 0.2
 
 extern @rt_print_str(str) -> void
@@ -3513,7 +3513,7 @@ Run complete programs and check output.
 
 **Input:** `tests/e2e/yourfrontend/fibonacci.src`
 
-```
+```text
 function fib(n) {
     if n <= 1 then return n
     return fib(n - 1) + fib(n - 2)

@@ -375,7 +375,7 @@ Users of `EmailValidator` only need `isValid`. The helper functions are implemen
 
 A typical project structure:
 
-```
+```text
 my_project/
 ├── main.zia       # Entry point
 ├── player.zia     # Player module
@@ -405,7 +405,7 @@ The file system structure mirrors the module hierarchy. This makes it easy to fi
 There are several common ways to organize a project:
 
 **By feature** (recommended for most projects):
-```
+```text
 my_game/
 ├── main.zia
 ├── player/
@@ -427,7 +427,7 @@ my_game/
 Each feature gets its own directory. Related code lives together.
 
 **By layer** (common in business applications):
-```
+```text
 my_app/
 ├── main.zia
 ├── ui/
@@ -444,7 +444,7 @@ my_app/
 Code is organized by its role in the system.
 
 **Flat** (fine for small projects):
-```
+```text
 my_tool/
 ├── main.zia
 ├── parser.zia
@@ -501,7 +501,7 @@ Understanding that these are namespaces helps you know where to look for functio
 
 Modules can bind other modules, creating a dependency graph:
 
-```
+```text
 main.zia
     └── binds game.zia
         ├── binds player.zia
@@ -924,7 +924,7 @@ func start() {
 
 Now each concept lives in its own file. The dependency graph is clean:
 
-```
+```text
 main.zia
 ├── binds Vec2
 ├── binds Player
@@ -943,7 +943,7 @@ Let's look at how modules would organize different kinds of projects:
 
 ### A Utility Library
 
-```
+```text
 string_utils/
 ├── string_utils.zia      # Main module, re-exports everything
 ├── manipulation.zia      # Transformations: reverse, capitalize, etc.
@@ -968,7 +968,7 @@ if string_utils.validation.isEmail(email) {
 
 ### A Web Application
 
-```
+```text
 web_app/
 ├── main.zia
 ├── routes/
@@ -1001,7 +1001,7 @@ This separation means:
 
 ### A Game
 
-```
+```text
 platformer/
 ├── main.zia
 ├── core/

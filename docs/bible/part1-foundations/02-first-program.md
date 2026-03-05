@@ -73,7 +73,7 @@ zia --version
 ```
 
 You should see something like:
-```
+```text
 Viper 0.1.3
 ```
 
@@ -143,27 +143,27 @@ Now save this file as `hello.zia` in your project folder.
 
 Here's the code again, character by character, with every piece called out:
 
-```
+```text
 m o d u l e   H e l l o ;
 ```
 That's the word "module", a space, the word "Hello", and a semicolon.
 
-```
+```text
 bind Viper.Terminal;
 ```
 That's "bind", a space, "Viper.Terminal", and a semicolon. This imports the terminal functions.
 
-```
+```text
 func start() {
 ```
 That's "func" (short for function), a space, "start", open parenthesis, close parenthesis, a space, and an open curly brace.
 
-```
+```text
     Say("Hello, World!");
 ```
 That's four spaces (or one tab), then "Say", open parenthesis, a double quote, the text "Hello, World!", a double quote, close parenthesis, and a semicolon.
 
-```
+```text
 }
 ```
 Just a closing curly brace.
@@ -190,7 +190,7 @@ And press Enter.
 
 If everything worked, you'll see:
 
-```
+```text
 Hello, World!
 ```
 
@@ -269,7 +269,7 @@ func start() {
 ```
 
 You'll get an error like:
-```
+```text
 hello.zia:1:1: error: expected 'module' declaration
 ```
 
@@ -298,7 +298,7 @@ func start() {
 ```
 
 You'll get:
-```
+```text
 hello.zia:4:5: error: undefined identifier 'Say'
 ```
 
@@ -343,7 +343,7 @@ func begin() {
 ```
 
 Running this produces:
-```
+```text
 hello.zia: error: no entry point found (missing 'start' function)
 ```
 
@@ -374,7 +374,7 @@ This is the line that actually makes something happen. Let's examine each piece:
 ```
 
 Error:
-```
+```text
 hello.zia:5:1: error: expected ';' before '}'
 ```
 
@@ -387,7 +387,7 @@ The compiler reached the closing brace and realized the previous statement was n
 ```
 
 Error:
-```
+```text
 hello.zia:4:5: error: 'say' is not a member of 'Viper.Terminal'
 ```
 
@@ -400,7 +400,7 @@ Zia is case-sensitive. `Say` and `say` are completely different names. Most of t
 ```
 
 Error:
-```
+```text
 hello.zia:4:27: error: expected expression
 hello.zia:4:28: error: unexpected token '!'
 ```
@@ -426,7 +426,7 @@ func start() {
 ```
 
 Error:
-```
+```text
 hello.zia:5:1: error: unexpected end of file, expected '}'
 ```
 
@@ -594,7 +594,7 @@ func start() {
 ```
 
 Output:
-```
+```text
 Line one.
 Line two.
 Line three.
@@ -619,7 +619,7 @@ func start() {
 ```
 
 Output:
-```
+```text
 One Two Three
 ```
 
@@ -648,7 +648,7 @@ func start() {
 ```
 
 Output:
-```
+```text
   *
  ***
 *****
@@ -675,7 +675,7 @@ func start() {
 ```
 
 Run it:
-```
+```text
 hello.zia:4:31: error: unterminated string literal
     Viper.Terminal.Say("Hello, World!);
                               ^
@@ -701,7 +701,7 @@ func start() {
 ```
 
 Run it:
-```
+```text
 hello.zia:5:1: error: expected ';' before '}'
 }
 ^
@@ -722,7 +722,7 @@ func start() {
 ```
 
 Run it:
-```
+```text
 hello.zia:4:5: error: 'Sya' is not a member of 'Viper.Terminal'
     Viper.Terminal.Sya("Hello, World!");
                    ^~~
@@ -766,7 +766,7 @@ Here are the key concepts from this chapter:
 
 **Exercise 2.6** (Challenge): Using only what you've learned so far, display this exact output:
 
-```
+```text
 ***********
 *  HELLO  *
 ***********

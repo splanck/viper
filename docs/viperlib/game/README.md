@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Game Utilities
 > Game development helpers: physics, animation, timers, and state machines.
 

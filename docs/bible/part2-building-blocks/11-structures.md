@@ -181,7 +181,7 @@ position.y = 25.0;
 
 Think of a structure as a box with multiple compartments, each labeled with a name. A `Point` box has two compartments: one labeled "x" and one labeled "y". When you create a `Point`, you're filling in the compartments with values.
 
-```
+```text
     +------ Point -------+
     |  x:    |  y:       |
     |  10.5  |  20.3     |
@@ -194,7 +194,7 @@ The box travels as a unit. When you pass a `Point` to a function, you're passing
 
 Another way to think about it: a structure is like a paper form. A "Person" form has blanks for name, age, and email. When you fill out the form, all the information stays together on the same piece of paper. You file the form, hand it to someone, or put it in a stack — always as one complete document.
 
-```
+```text
     +------------------------+
     |   PERSON FORM          |
     |                        |
@@ -209,7 +209,7 @@ Another way to think about it: a structure is like a paper form. A "Person" form
 
 If you've seen a database or spreadsheet, think of a structure as defining what columns exist, and an instance (a specific structure value) as one row of data:
 
-```
+```text
 Table: Points
 +--------+--------+
 |   x    |   y    |
@@ -388,7 +388,7 @@ This is different from how some languages handle objects, where assignment creat
 
 Think of structure assignment like photocopying a document. If you have a form filled out with information and you photocopy it, you now have two independent pieces of paper. Writing on the photocopy doesn't change the original. They started with the same information but are now completely separate.
 
-```
+```text
 Original p1:          After p2 = p1:           After p2.x = 99:
 +-----------+         +-----------+            +-----------+
 | x: 10.0   |         | x: 10.0   | p1         | x: 10.0   | p1

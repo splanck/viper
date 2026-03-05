@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Core Types
 
 > Foundational types that form the basis of all Viper programs.
@@ -242,7 +248,7 @@ Safe string parsing utilities. Methods return a success flag or a default value 
 
 ### Parse.Double and Parse.Int64 Example
 
-```zia
+```rust
 var n = Parse.Double("3.14")    // returns 3.14
 var bad = Parse.Double("abc")   // returns null
 if bad == null then

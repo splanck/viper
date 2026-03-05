@@ -1,6 +1,10 @@
-# AArch64 (arm64) Backend — Status and Plan
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
 
-**Last Updated:** February 2026
+# AArch64 (arm64) Backend — Status and Plan
 
 This document captures the current state of the AArch64 backend, recent bug fixes, missing features needed for real
 programs, and the development roadmap. It is kept developer-focused with concrete source references and test cases.
@@ -207,7 +211,7 @@ The AArch64 CLI supports flags to dump Machine IR for debugging:
 
 The complete inspection pipeline from source to native is:
 
-```
+```text
 --dump-tokens → --dump-ast → --dump-il → --dump-il-passes → --dump-il-opt → --dump-mir-* → assembly
 ```
 
@@ -219,7 +223,7 @@ The complete inspection pipeline from source to native is:
 
 **Example output:**
 
-```
+```text
 === MIR after RA: test_func ===
 MFunction: test_func
   Block: entry

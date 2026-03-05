@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Graphics
 > 2D graphics, sprites, tilemaps, and scene management.
 

@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Viper Arithmetic Semantics Reference
 
 This document specifies the exact arithmetic semantics that Viper guarantees across

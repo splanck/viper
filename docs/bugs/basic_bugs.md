@@ -120,7 +120,7 @@ End Function
 
 **Error Message**:
 
-```
+```text
 poker_hand.bas:100:17: error: HAND.HASTHREEOFKIND:if_then_0_HAND.HASTHREEOFKIND: ret: ret value type mismatch
 ```
 
@@ -237,7 +237,7 @@ End Class
 
 **Error Message**:
 
-```
+```text
 rt_arr_i32: index 6 out of bounds (len=5)
 ```
 
@@ -486,7 +486,7 @@ NEXT i
 
 **Error Message**:
 
-```
+```text
 Trap @main#2 line 33: Overflow (code=0): stack overflow in alloca
 ```
 
@@ -598,7 +598,7 @@ END SUB
 
 **Error Message**:
 
-```
+```text
 error[B0001]: expected ident, got ?
 error[B0001]: expected ), got eol
 ```
@@ -669,7 +669,7 @@ rec = NEW Record()  ' Runtime error here
 
 **Error Message**:
 
-```
+```text
 error: RECORD.__ctor:entry_RECORD.__ctor: ret: missing result
 ```
 
@@ -741,7 +741,7 @@ obj = NEW TestClass()  ' Runtime error here
 
 **Error Message**:
 
-```
+```text
 error: TESTCLASS.__ctor:entry_TESTCLASS.__ctor: ret: missing result
 ```
 
@@ -818,7 +818,7 @@ NEXT i
 
 **Error Message**:
 
-```
+```text
 error: DB_SORTBYLASTNAME:bc_ok1_DB_SORTBYLASTNAME: %60 = call %t43 %t59:
 unknown callee @rt_str_gt
 ```
@@ -889,7 +889,7 @@ End If
 
 **Error Message**:
 
-```
+```text
 error[E1002]: Logical operator AND requires BOOLEAN operands, got INT and INT.
 ```
 
@@ -966,7 +966,7 @@ Print GetChar()
 
 **Error Message**:
 
-```
+```text
 error: GETCHAR: unknown label and_rhs_0_GETCHAR
 ```
 
@@ -1080,7 +1080,7 @@ cause a runtime trap in certain contexts, though simple tests with values like 3
 
 **Original Error** (from Pac-Man development):
 
-```
+```text
 Trap @DRAWGHOST#8 line 1424: InvalidCast (code=0): value out of range in cast.si_narrow.chk
 ```
 
@@ -1318,7 +1318,7 @@ for (const auto &[methodName, methodInfo] : info.methods)
 
 **Test Result**:
 
-```
+```bash
 $ ./build/src/tools/viper/viper front basic -emit-il /tmp/bug_testing/frogger_test02d_isalive.bas
 error[B2017]: method 'ISALIVE' conflicts with field 'ISALIVE' (names are case-insensitive); rename one to avoid runtime errors
 ```
@@ -1377,7 +1377,7 @@ END IF
 
 **Error Message**:
 
-```
+```text
 error: main:if_then_0: %62 = call %t54: unknown temp %54; use before def of %54
 ```
 
@@ -1496,7 +1496,7 @@ though they were stored in arrays, causing runtime assertion failure in heap man
 
 **Error Message**:
 
-```
+```text
 Assertion failed: (hdr->magic == RT_MAGIC), function payload_to_hdr, file rt_heap.c, line 48
 ```
 
@@ -1543,7 +1543,7 @@ refcount=1 for the array's reference.
 
 **Test Results After Fix**:
 
-```
+```text
 ✅ test_bug105_combo.bas      - Dual classes + variable reuse (was crashing, now works)
 ✅ test_bug105_nested.bas     - Complex nested structure (now works)
 ✅ test_bug105_reuse.bas      - Single class with reuse (still works)
@@ -2531,7 +2531,7 @@ vehicles(0) = NEW Vehicle(10)  ' This works fine!
 
 **Error Message**:
 
-```
+```text
 error: CONTAINER.__ctor:bc_ok0_CONTAINER.__ctor: call %t16 0 %t7: @rt_arr_i32_set value operand must be i64
 ```
 
@@ -2680,7 +2680,7 @@ NEXT i
 
 **Error Message**:
 
-```
+```text
 error: MANAGER.UPDATEALL:bc_ok0_MANAGER.UPDATEALL: call %t24: unknown callee @UPDATE
 ```
 
@@ -2856,7 +2856,7 @@ container.items(0).Show()  ' ✗ ERROR: unknown callee @SHOW
 
 **Error Message**:
 
-```
+```text
 error: unknown callee @SHOW
 ```
 
@@ -3149,14 +3149,14 @@ END IF
 
 Before the fix, the parser produced this AST:
 
-```
+```text
 IF (1 = 1) THEN
   (IF (2 = 2) THEN PRINT "A" ELSE PRINT "B")  ← ELSE wrongly attached to inner IF!
 ```
 
 After the fix, the parser produces the correct AST:
 
-```
+```text
 IF (1 = 1) THEN
   (IF (2 = 2) THEN PRINT "A")
 ELSE
@@ -3306,7 +3306,7 @@ type scanner.
 
 **Error Message**:
 
-```
+```text
 Assertion failed: (!stack_.empty()), function pop, file Scan_ExprTypes.cpp, line 108
 ```
 
@@ -3358,7 +3358,7 @@ void after(const ArrayExpr &expr)
 
 **Error Message**:
 
-```
+```text
 Assertion failed: (hdr->elem_kind == RT_ELEM_NONE), function rt_arr_obj_assert_header, file rt_array_obj.c, line 34.
 ```
 
@@ -3408,7 +3408,7 @@ compiler error.
 
 **Error Message**:
 
-```
+```text
 error: unknown callee @SETVAL
 ```
 

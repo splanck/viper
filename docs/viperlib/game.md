@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Game
 
 > 2D game primitives: physics, scenes, cameras, tilemaps, particles, animations, pathfinding, and more.

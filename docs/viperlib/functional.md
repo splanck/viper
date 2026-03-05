@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Functional Types
 
 > Lazy evaluation, optional values, and result types for safe and expressive programming.

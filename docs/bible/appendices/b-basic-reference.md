@@ -2809,7 +2809,7 @@ END CLASS
 
 Complete alphabetical list of Viper BASIC reserved keywords:
 
-```
+```text
 AND         AS          BOOLEAN     BYTE        BYREF
 BYVAL       CALL        CASE        CATCH       CLASS
 CLOSE       CONST       CONTINUE    DATE        DECLARE

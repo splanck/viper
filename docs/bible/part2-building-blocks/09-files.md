@@ -63,7 +63,7 @@ Files are organized in a tree structure of directories (also called folders). At
 
 On Linux and Mac, the root is simply `/`:
 
-```
+```text
 /
 ├── home/
 │   └── alice/
@@ -81,7 +81,7 @@ On Linux and Mac, the root is simply `/`:
 
 On Windows, each drive has its own root (C:\, D:\, etc.):
 
-```
+```text
 C:\
 ├── Users\
 │   └── Alice\
@@ -454,7 +454,7 @@ appendText("log.txt", "Event 3 occurred\n");
 ```
 
 After these three calls, `log.txt` contains:
-```
+```text
 Event 1 occurred
 Event 2 occurred
 Event 3 occurred
@@ -516,7 +516,7 @@ Text files contain human-readable characters. When you open them in Notepad, you
 Examples: `.txt`, `.csv`, `.json`, `.html`, `.py`, `.md`
 
 A text file containing "Hello" looks like this in bytes:
-```
+```text
 72  101  108  108  111
 H   e    l    l    o
 ```
@@ -1005,7 +1005,7 @@ func start() {
 ```
 
 Example `settings.cfg`:
-```
+```text
 # Application settings
 # Edit with care!
 
@@ -1059,7 +1059,7 @@ func processData() {
 ```
 
 Example log output:
-```
+```text
 [2024-03-15 10:23:45] [INFO] Application started
 [2024-03-15 10:23:45] [INFO] Loading configuration
 [2024-03-15 10:23:46] [INFO] Starting data processing

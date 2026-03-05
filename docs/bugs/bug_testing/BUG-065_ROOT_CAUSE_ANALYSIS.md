@@ -48,7 +48,7 @@ ret_TEST.SETITEM:
 
 The assignment is correctly parsed as an `ArrayExpr`:
 
-```
+```text
 (METHOD SETITEM (IDX VAL) {0:(LET (ARR IDX) VAL)})
 ```
 

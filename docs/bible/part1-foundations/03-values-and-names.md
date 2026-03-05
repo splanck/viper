@@ -229,7 +229,7 @@ func start() {
 ```
 
 Output:
-```
+```text
 Name: Alice
 Age: 30
 ```
@@ -537,7 +537,7 @@ bind Viper.Terminal;
 Say("Line one\nLine two\nLine three");
 ```
 Output:
-```
+```text
 Line one
 Line two
 Line three
@@ -552,7 +552,7 @@ Say("Alice\t30\tNew York");
 Say("Bob\t25\tChicago");
 ```
 Output:
-```
+```text
 Name    Age     City
 Alice   30      New York
 Bob     25      Chicago
@@ -565,7 +565,7 @@ bind Viper.Terminal;
 Say("Path: C:\\Users\\Alice\\Documents");
 ```
 Output:
-```
+```text
 Path: C:\Users\Alice\Documents
 ```
 
@@ -576,7 +576,7 @@ bind Viper.Terminal;
 Say("\"To be or not to be,\" he pondered.");
 ```
 Output:
-```
+```text
 "To be or not to be," he pondered.
 ```
 
@@ -602,7 +602,7 @@ var age = 30;
 Say(name + " is " + age + " years old.");
 ```
 Output:
-```
+```text
 Alice is 30 years old.
 ```
 
@@ -944,7 +944,7 @@ func start() {
 ```
 
 Running this:
-```
+```text
 What is your name? Alice
 Hello, Alice!
 ```
@@ -1149,7 +1149,7 @@ func start() {
 ```
 
 Running it:
-```
+```text
 Simple Calculator
 ================
 Enter first number: 10

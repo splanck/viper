@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # Viper Bytecode VM - Comprehensive Technical Design
 
 **Status:** IMPLEMENTED (see `src/bytecode/`)
@@ -202,7 +208,7 @@ These figures were measured against the IL-tree-walking VM before bytecode VM im
 
 **Primary Format: 32-bit fixed-width**
 
-```
+```text
 ┌───────────┬───────────┬───────────┬───────────┐
 │ opcode(8) │  arg0(8)  │  arg1(8)  │  arg2(8)  │
 └───────────┴───────────┴───────────┴───────────┘
@@ -210,7 +216,7 @@ These figures were measured against the IL-tree-walking VM before bytecode VM im
 
 **Extended Format: 64-bit for large operands**
 
-```
+```text
 ┌───────────┬───────────┬───────────┬───────────┬───────────────────────────────┐
 │ opcode(8) │  ext(8)   │  arg0(8)  │  arg1(8)  │           arg32(32)           │
 └───────────┴───────────┴───────────┴───────────┴───────────────────────────────┘
@@ -228,7 +234,7 @@ These figures were measured against the IL-tree-walking VM before bytecode VM im
 
 ### 3.3 Stack Model
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    Bytecode Frame                           │
 ├─────────────────────────────────────────────────────────────┤
@@ -573,7 +579,7 @@ class BytecodeVM {
 
 ### 6.1 Compilation Pipeline
 
-```
+```text
 IL Module
     │
     ▼
@@ -1263,7 +1269,7 @@ Phase 1 establishes the core bytecode infrastructure with basic functionality:
 
 ### 13.2 Deliverables
 
-```
+```text
 src/bytecode/
 ├── Bytecode.hpp           # Opcode definitions, instruction encoding
 ├── BytecodeModule.hpp     # Module and function data structures
@@ -1311,7 +1317,7 @@ Phase 2 adds runtime integration and basic memory management:
 - String reference counting
 
 **Deliverables:**
-```
+```text
 src/bytecode/
 ├── BytecodeVM_Threaded.cpp    # Computed goto dispatch
 ├── RuntimeIntegration.cpp     # Native call handling
@@ -1348,7 +1354,7 @@ Phase 3 adds exception handling and debugging:
 - Variable watches
 
 **Deliverables:**
-```
+```text
 src/bytecode/
 ├── ExceptionHandling.cpp     # Trap and handler logic
 ├── DebugSupport.cpp         # Breakpoints, stepping, watches
@@ -1384,7 +1390,7 @@ Phase 4 adds threading and CLI integration:
 - Thread spawning and joining
 
 **Deliverables:**
-```
+```text
 src/bytecode/
 ├── ThreadSupport.cpp         # Multi-VM threading
 └── tests/
@@ -1477,7 +1483,7 @@ See Section 4 for complete opcode specification.
 
 The bytecode subsystem is fully implemented at `src/bytecode/`:
 
-```
+```text
 src/bytecode/
 ├── Bytecode.hpp              # Opcode enum, BCSlot type, kMaxCallDepth, kMaxStackSize
 ├── Bytecode.cpp              # opcodeName() and opcode table helpers

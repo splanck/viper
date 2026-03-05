@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-02-17
+last-verified: 2026-03-04
 ---
 
 # Testing Guide
@@ -261,7 +261,7 @@ ctest --test-dir build-tsan --output-on-failure
 
 TSan reports data races with stack traces. Example:
 
-```
+```text
 WARNING: ThreadSanitizer: data race
   Write of size 8 at 0x7fff5fbff9a0 by thread T2:
     #0 vm::someFunction() src/vm/VMContext.cpp:123
@@ -280,7 +280,7 @@ Key fields:
 
 Some benign races may be suppressed in a `tsan.supp` file:
 
-```
+```text
 # Example suppression file (create as tsan.supp)
 race:deliberate_benign_race_function
 ```

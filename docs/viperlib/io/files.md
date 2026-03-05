@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Files & Directories
 > File, BinFile, TempFile, Dir, Path, Glob
 

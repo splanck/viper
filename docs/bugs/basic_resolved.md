@@ -26,7 +26,7 @@ END CLASS
 
 Error:
 
-```
+```text
 error[B0001]: expected END, got ident
     inventory(10) AS Item
     ^

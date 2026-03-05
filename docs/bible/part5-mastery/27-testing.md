@@ -243,7 +243,7 @@ Think of end-to-end tests as verifying that the completed building is habitable 
 
 A well-tested application has many more unit tests than integration tests, and many more integration tests than end-to-end tests. This is often visualized as a pyramid:
 
-```
+```text
         /\
        /  \        End-to-End Tests (few, slow, comprehensive)
       /----\
@@ -291,7 +291,7 @@ zia test myprogram.zia
 
 Output:
 
-```
+```text
 Running tests...
 Pass: add returns sum of two numbers
 1 test passed, 0 failed
@@ -686,7 +686,7 @@ Good test names:
 
 Imagine all your tests listed together:
 
-```
+```text
 Pass: new user starts with zero balance
 Pass: deposit increases balance by deposit amount
 Pass: deposit with negative amount fails
@@ -1279,7 +1279,7 @@ zia test --coverage myprogram.zia
 
 Output:
 
-```
+```text
 File                  Statements    Branches    Coverage
 --------------------------------------------------------------
 math.zia            45/50         12/15       87%
@@ -1328,7 +1328,7 @@ Coverage is a tool for finding untested code, not a goal in itself.
 
 Low coverage in a file suggests tests are missing. Look at the uncovered lines:
 
-```
+```text
 utils.zia: 52% coverage
 
 Uncovered lines:

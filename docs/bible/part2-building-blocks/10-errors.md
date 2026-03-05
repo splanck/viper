@@ -130,7 +130,7 @@ Error messages often look intimidating. They're full of technical jargon, file p
 
 Let's dissect a typical error message:
 
-```
+```text
 Error: IndexOutOfBounds at main.zia:23:15
   Array index 10 is out of range for array of length 3
 
@@ -241,7 +241,7 @@ Say("Done");
 ```
 
 Output:
-```
+```text
 Step 1
 Caught: Division by zero
 Done
@@ -330,7 +330,7 @@ if index >= 0 && index < arr.Length {
 
 When an error occurs, the error message often includes a *stack trace* or *call stack*. This shows the chain of function calls that led to the error.
 
-```
+```text
 Error: DivisionByZero at calculations.zia:15:20
   Cannot divide by zero
 

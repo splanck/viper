@@ -1,8 +1,12 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # CODEMAP: BASIC Frontend
 
 The BASIC frontend (`src/frontends/basic/`) compiles Viper BASIC source to IL.
-
-Last updated: 2026-02-17
 
 ## Overview
 

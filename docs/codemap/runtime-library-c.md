@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # CODEMAP: Runtime Library (C)
 
 Portable C runtime library (`src/runtime/`) providing core types, collections, I/O, text, math,

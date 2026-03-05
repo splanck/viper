@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Encoding & Identity
 > Codec (Base64, Hex, URL encoding), Uuid
 

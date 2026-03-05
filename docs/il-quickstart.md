@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-02-02
+last-verified: 2026-03-04
 ---
 
 # Viper IL — Quickstart
@@ -16,7 +16,7 @@ IL programs.
 Viper IL is a **typed, readable intermediate language** that serves as the core of the Viper toolchain:
 
 - **Frontends** (Zia, BASIC, etc.) compile to IL
-- **VM** executes IL directly via bytecode interpretation
+- **VM** executes IL directly via VM execution
 - **Verifier** checks IL for safety and correctness
 - **Transforms** (SimplifyCFG, Liveness, etc.) optimize IL
 - **Backends** compile IL to native code
@@ -67,7 +67,7 @@ viper -run hello.il
 
 Output:
 
-```
+```text
 Hello, Viper IL!
 ```
 

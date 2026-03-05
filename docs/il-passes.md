@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # IL Optimization Passes
 
 ## Analysis Caching & Instrumentation

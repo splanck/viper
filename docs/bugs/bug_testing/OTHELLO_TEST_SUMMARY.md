@@ -134,7 +134,7 @@ END CLASS
 
 The **othello_simple.bas** program successfully demonstrates:
 
-```
+```text
 ================================================================
                     OTHELLO SIMPLE
 ================================================================

@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Maps & Sets
 > Map, Set, OrderedMap, SortedSet, FrozenMap, FrozenSet, TreeMap
 

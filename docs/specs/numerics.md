@@ -1,7 +1,7 @@
 ---
 status: draft
 audience: internal
-last-verified: 2026-02-17
+last-verified: 2026-03-04
 ---
 
 # Numeric Semantics
@@ -93,7 +93,7 @@ operation. The evaluator must detect:
 `VAL` parses ASCII/UTF‑8 according to the grammar below (whitespace `ws` is
 `[ \t\r\n]*`).
 
-```
+```text
 VALInput ::= ws Number? (Trailing*)
 Number   ::= Sign? Digits ('.' Digits?)? Exponent?
 Sign     ::= '+' | '-'

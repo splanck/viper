@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-02-17
+last-verified: 2026-03-04
 ---
 
 # ViperGFX Graphics Library
@@ -295,7 +295,7 @@ This will lower to calls to the ViperGFX runtime functions.
 
 ### Component Structure
 
-```
+```text
 src/lib/graphics/
 ├── include/
 │   ├── vgfx.h           # Public API (window, drawing, input, color, clipboard)

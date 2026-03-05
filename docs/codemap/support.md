@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # CODEMAP: Support & Common
 
 Shared support and infrastructure used across the toolchain.

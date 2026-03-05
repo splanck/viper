@@ -1,3 +1,9 @@
+---
+status: active
+audience: internal
+last-verified: 2026-03-04
+---
+
 # ViperDOS C++ Profile
 
 This document defines the **ViperDOS C++ Profile** — a minimal, well-defined subset of C++20 required to compile Viper OS kernel and userspace. This profile enables staged compiler development while ensuring the OS can be built incrementally.

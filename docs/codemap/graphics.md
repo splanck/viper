@@ -1,8 +1,12 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # CODEMAP: Graphics Library
 
 Cross-platform software 2D graphics library (`src/lib/graphics/`) and Viper runtime graphics classes (`src/runtime/rt_*.c`).
-
-Last updated: 2026-02-22
 
 ## Runtime Classes (`src/runtime/`)
 

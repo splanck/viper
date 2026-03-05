@@ -36,7 +36,7 @@ Before writing a single line of code, let us think about how games are structure
 
 Every game has a heartbeat, a loop that runs continuously from the moment the game starts until it ends:
 
-```
+```text
 while game is running:
     1. Handle input (read what the player is doing)
     2. Update state (move objects, check collisions, apply rules)
@@ -91,7 +91,7 @@ Games become interesting when objects interact. Collision detection answers the 
 
 For rectangular objects (which is what we will use), collision detection is beautifully simple. Two rectangles overlap if and only if they overlap on both axes. On the X axis, rectangle A overlaps rectangle B if A's left edge is before B's right edge AND A's right edge is after B's left edge. Same logic for the Y axis. If both are true, the rectangles collide.
 
-```
+```text
 Rectangle A overlaps Rectangle B when:
   A.left < B.right AND A.right > B.left AND
   A.top < B.bottom AND A.bottom > B.top
@@ -141,7 +141,7 @@ Converting between them keeps code clean. Game logic thinks in tiles (is the fro
 
 We will organize the code into modules, each responsible for one aspect of the game:
 
-```
+```text
 frogger/
 ├── main.zia        # Entry point and game loop
 ├── config.zia      # Constants and settings

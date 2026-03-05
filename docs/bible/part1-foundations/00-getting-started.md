@@ -198,12 +198,12 @@ Or find "Terminal" in your applications menu.
 When the terminal opens, you'll see something like this:
 
 **On macOS/Linux:**
-```
+```text
 username@computername ~ %
 ```
 
 **On Windows:**
-```
+```text
 C:\Users\YourName>
 ```
 
@@ -435,7 +435,7 @@ zia --version
 ```
 
 **What you should see:**
-```
+```text
 Viper 0.1.3
 ```
 
@@ -500,7 +500,7 @@ zia test.zia
 ```
 
 **What you should see:**
-```
+```text
 Setup complete!
 ```
 
@@ -654,7 +654,7 @@ One of the most common mistakes is forgetting to save before running. You make c
 
 As you work through this book, you'll create many programs. Keep them organized:
 
-```
+```text
 viper-projects/
     chapter02/
         hello.zia
@@ -685,7 +685,7 @@ Let's recap what all these tools do and how they work together:
 
 The flow looks like this:
 
-```
+```text
 You write code     -->    Code is saved    -->    Compiler reads    -->    Compiler outputs    -->    Computer runs
 in your editor           to a .zia file        and translates it        machine instructions        the program
 ```
@@ -751,7 +751,7 @@ zia hello.zia
 ```
 
 You should see:
-```
+```text
 Hello, World!
 ```
 

@@ -22,7 +22,7 @@ Reproduction:
 
 Observed Diagnostics:
 
-```
+```text
 /tmp/cmd.bas:1:7: error[B2001]: COMMAND$: expected 4368290772-8736581632 args (got 0)
 PRINT COMMAND$()
       ^

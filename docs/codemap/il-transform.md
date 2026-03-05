@@ -1,8 +1,12 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # CODEMAP: IL Transform
 
 Optimization passes (`src/il/transform/`) for IL programs.
-
-Last updated: 2026-02-17
 
 ## Overview
 

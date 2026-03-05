@@ -1,12 +1,12 @@
 ---
 status: active
-audience: developers
-last-updated: 2026-01-15
+audience: contributors
+last-verified: 2026-03-04
 ---
 
 # Viper VM — Architecture & Implementation Guide
 
-Comprehensive guide to the Viper Virtual Machine (VM), a stack-based bytecode interpreter that executes Viper IL
+Comprehensive guide to the Viper Virtual Machine (VM), which executes Viper IL
 programs. This document covers the VM's design philosophy, architecture, execution model, and source code organization.
 
 ---
@@ -31,7 +31,7 @@ programs. This document covers the VM's design philosophy, architecture, executi
 
 ### What is the Viper VM?
 
-The Viper VM is a **stack-based bytecode interpreter** that executes programs written in Viper's Intermediate Language (
+The Viper VM is the primary execution engine for programs written in Viper's Intermediate Language (
 IL). It serves as the primary execution engine for the Viper toolchain, providing:
 
 - **Deterministic execution** of IL programs
@@ -67,7 +67,7 @@ The VM design prioritizes several key principles:
 
 ### High-Level Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                      VM (Interpreter)                    │
 ├─────────────────────────────────────────────────────────┤
@@ -243,7 +243,7 @@ ExecResult handler(VM& vm, Frame& fr, const Instr& in,
 
 ### Execution Flow
 
-```
+```text
 1. VM::run()
    ├─ Lookup "main" function
    └─ Call execFunction()
@@ -452,7 +452,7 @@ viper bench program.il --max-steps 1000000
 
 **Output format (text):**
 
-```
+```text
 BENCH <file> <strategy> instr=<N> time_ms=<T> insns_per_sec=<R>
 ```
 
@@ -679,7 +679,7 @@ struct TraceConfig {
 
 Output format:
 
-```
+```text
 [func:block:ip] opcode operands → result
 ```
 
@@ -735,7 +735,7 @@ Tracks reads/writes to specific memory ranges.
 
 ### Directory Structure
 
-```
+```text
 src/vm/
 ├── VM.hpp/cpp                  # Main VM class and core interpreter logic
 ├── VMContext.hpp/cpp           # Execution context helpers
@@ -1024,7 +1024,7 @@ Allows embedding applications to maintain responsiveness.
 - `src/runtime/` — C runtime library
 - `src/tests/vm/` — VM unit tests
 
-# Viper VM — Performance Tuning and Benchmarking
+## Performance Tuning and Benchmarking
 
 This guide summarizes runtime tuning knobs for the VM and how to benchmark dispatch performance across modes.
 
@@ -1069,7 +1069,7 @@ the actual dispatch kind, and instruction counts extracted from `--count` and `-
 
 Example:
 
-```
+```bash
 RUNS_PER_CASE=5 IL_DIR='src/tests/il/e2e' scripts/vm_benchmark.sh
 ```
 

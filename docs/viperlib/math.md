@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Mathematics
 
 > Mathematical functions, vectors, matrices, bit operations, and random numbers.

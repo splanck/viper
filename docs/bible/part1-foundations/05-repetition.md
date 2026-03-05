@@ -119,7 +119,7 @@ while count <= 5 {
 ```
 
 Output:
-```
+```text
 1
 2
 3
@@ -128,7 +128,7 @@ Output:
 ```
 
 **The structure:**
-```
+```text
 while condition {
     // body: code to repeat
 }
@@ -198,7 +198,7 @@ Say("Loop finished");
 ```
 
 Output:
-```
+```text
 Loop finished
 ```
 
@@ -321,7 +321,7 @@ for i in 1..6 {
 ```
 
 Output:
-```
+```text
 1
 2
 3
@@ -332,7 +332,7 @@ Output:
 The variable `i` automatically takes on values 1, 2, 3, 4, 5. You don't need to declare it with `var`, initialize it, or increment it. The `for` loop does all of that.
 
 **The structure:**
-```
+```text
 for variable in range {
     // body
 }
@@ -420,7 +420,7 @@ for i in (1..=10).rev() {
 ```
 
 Output:
-```
+```text
 10
 9
 8
@@ -447,7 +447,7 @@ Say("Liftoff!");
 ```
 
 Output:
-```
+```text
 5
 4
 3
@@ -553,7 +553,7 @@ Say("Loop finished");
 ```
 
 Output:
-```
+```text
 1 squared is 1
 2 squared is 4
 3 squared is 9
@@ -657,7 +657,7 @@ for i in 1..=10 {
 ```
 
 Output:
-```
+```text
 1
 3
 5
@@ -692,7 +692,7 @@ for i in 0..values.Length {
 ```
 
 Output:
-```
+```text
 Processing: 10
 Processing: 20
 Processing: 30
@@ -768,7 +768,7 @@ for row in 1..=3 {
 ```
 
 Output:
-```
+```text
 ****
 ****
 ****
@@ -821,7 +821,7 @@ for row in 1..=5 {
 ```
 
 Output:
-```
+```text
     1   2   3   4   5
   +-------------------
 1 |  1   2   3   4   5
@@ -852,7 +852,7 @@ for row in 0..5 {
 ```
 
 Output:
-```
+```text
 #.#.#
 .#.#.
 #.#.#
@@ -879,7 +879,7 @@ for i in 1..=3 {
 ```
 
 Output:
-```
+```text
 i=1, j=1
 Inner loop ended for i=1
 i=2, j=1
@@ -1366,7 +1366,7 @@ func start() {
 ```
 
 Sample run (player wins):
-```
+```text
 === Number Guessing Game ===
 I'm thinking of a number between 1 and 10.
 You have 3 tries to guess it.
@@ -1386,7 +1386,7 @@ You got it in 3 tries!
 ```
 
 Sample run (player loses):
-```
+```text
 === Number Guessing Game ===
 I'm thinking of a number between 1 and 10.
 You have 3 tries to guess it.
@@ -1437,7 +1437,7 @@ The loop condition `tries < MAX_TRIES && !won` captures both exit conditions: we
 **Exercise 5.4**: Write a program that asks for a positive integer and prints whether it's prime. A prime number is only divisible by 1 and itself. (Hint: loop from 2 to n-1 and check if any number divides n evenly. Use `break` when you find a divisor.)
 
 **Exercise 5.5**: Print this pattern using nested loops:
-```
+```text
 *
 **
 ***
@@ -1448,7 +1448,7 @@ The loop condition `tries < MAX_TRIES && !won` captures both exit conditions: we
 **Exercise 5.6**: Write a program that calculates the sum of all even numbers between 1 and 100. Then calculate the sum of all odd numbers. Print both sums.
 
 **Exercise 5.7**: Write a program that asks for a number and prints its multiplication table (1x through 10x). For example, if the user enters 7:
-```
+```text
 7 x 1 = 7
 7 x 2 = 14
 7 x 3 = 21
@@ -1459,7 +1459,7 @@ The loop condition `tries < MAX_TRIES && !won` captures both exit conditions: we
 **Exercise 5.8**: Write a number guessing game where the computer has unlimited guesses. The computer should guess systematically (perhaps using a counter from 1 to 10) and stop when it guesses correctly. (This is the reverse of our example - the user picks a number, the computer guesses.)
 
 **Exercise 5.9** (Challenge): Print this pattern:
-```
+```text
     *
    ***
   *****

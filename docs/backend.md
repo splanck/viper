@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-updated: 2026-01-09
+last-verified: 2026-03-04
 ---
 
 # Viper Backend — Native Code Generation
@@ -43,7 +43,7 @@ and source code organization.
 The Viper backend is a **native code generator** that translates Viper IL (Intermediate Language) programs into
 executable x86-64 machine code. It implements the final compilation stage in the Viper toolchain:
 
-```
+```text
 Source → Frontend → IL → Backend → Assembly → Executable
 ```
 
@@ -85,7 +85,7 @@ The backend design emphasizes:
 
 ### High-Level Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                    Backend Pipeline                      │
 ├─────────────────────────────────────────────────────────┤
@@ -429,7 +429,7 @@ x86-64 restricts immediate sizes:
 
 Fuse compare/test instructions with conditional branches:
 
-```
+```text
 CMPrr %a, %b
 SETcc %tmp
 TESTrr %tmp, %tmp
@@ -438,7 +438,7 @@ JCC label
 
 →
 
-```
+```text
 CMPrr %a, %b
 JCC label
 ```
@@ -447,7 +447,7 @@ JCC label
 
 IL `i1` values are materialized using `SETcc` + `MOVZXrr32`:
 
-```
+```text
 CMPrr %a, %b
 SETcc %result8      # Set byte based on condition
 MOVZXrr32 %result, %result8  # Zero-extend to 64-bit
@@ -457,7 +457,7 @@ MOVZXrr32 %result, %result8  # Zero-extend to 64-bit
 
 Select-like patterns are lowered to `CMOVcc`:
 
-```
+```text
 CMPrr %cond, 0
 CMOVNErr %dest, %true_val  # Move if not equal (cond != 0)
 ```
@@ -466,14 +466,14 @@ CMOVNErr %dest, %true_val  # Move if not equal (cond != 0)
 
 Single-use `LEA` instructions are folded into memory operands:
 
-```
+```text
 LEA %tmp, [%base + disp]
 MOV %dest, [%tmp]
 ```
 
 →
 
-```
+```text
 MOV %dest, [%base + disp]
 ```
 
@@ -561,7 +561,7 @@ When no free registers are available:
 
 **Spill code example:**
 
-```
+```text
 # Before allocation
 ADDrr %v1, %v2
 
@@ -590,7 +590,7 @@ class Coalescer {
 
 **When successful:**
 
-```
+```text
 PX_COPY %v2, %v1  → (eliminated, %v2 uses same phys reg as %v1)
 ```
 
@@ -612,7 +612,7 @@ struct AllocationResult {
 
 System V AMD64 stack frame (grows downward):
 
-```
+```text
 Higher addresses
 ┌────────────────────┐
 │  Return address    │  [rbp + 8]
@@ -679,7 +679,7 @@ void assignSpillSlots(MFunction& func, FrameInfo& frame);
 
 Replaces abstract spill slots with concrete stack offsets:
 
-```
+```text
 # Before
 MOV [SPILL_GPR(0)], %rax
 
@@ -921,7 +921,7 @@ x86-64 backend but is tailored for the ARM instruction set and AAPCS64 calling c
 
 ### Source Files
 
-```
+```text
 src/codegen/aarch64/
 ├── AsmEmitter.hpp/cpp         # ARM assembly emission
 ├── FastPaths.hpp/cpp          # Fast-path instruction selection
@@ -963,7 +963,7 @@ viper codegen arm64 program.il -run-native
 
 ### Directory Structure
 
-```
+```text
 src/codegen/
 ├── common/                        # Shared utilities
 │   ├── Diagnostics.hpp/cpp        # Codegen diagnostic reporting

@@ -1,3 +1,9 @@
+---
+status: draft
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # Zia Generics Implementation Plan
 
 ## Executive Summary
@@ -14,7 +20,7 @@ This document outlines a comprehensive plan to implement full generics support i
 
 ### 1.1 Type System Layers
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                      Source Code                             │
 │    value Box[T] { T contents; }                             │
@@ -767,7 +773,7 @@ LowerResult Lowerer::lowerCall(CallExpr* expr)
 
 #### 6.2.4 IL Name Mangling Convention
 
-```
+```text
 Base Type:     Box              → Box
 Instantiated:  Box[Integer]     → Box$Integer
 Nested:        Box[List[T]]     → Box$List$Integer  (when T=Integer)
@@ -1134,7 +1140,7 @@ interface Functor[F[_]] {
 
 ## Appendix A: Example IL Output
 
-```
+```text
 ; Source: value Box[T] { T contents; func get() -> T { return contents; } }
 ; Instantiation: Box[Integer]
 

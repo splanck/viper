@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # Viper C++ Compiler Requirements Specification
 
 This document specifies the complete set of C and C++ language features, standard library
@@ -647,7 +653,7 @@ The freestanding environment must NOT require:
 
 ### 9.3 Compiler Flags for Freestanding (AArch64)
 
-```
+```text
 -ffreestanding
 -fno-exceptions
 -fno-rtti
@@ -1047,7 +1053,7 @@ The OS includes 7 assembly files (`.S`) requiring:
 #### 11.8.4 Key Assembly Constructs
 
 **Exception Vector Table Layout (2048 bytes, 16 entries × 128 bytes):**
-```
+```text
 VBAR_EL1 → 0x000: SP0 sync/IRQ/FIQ/SError (invalid)
            0x200: SPx sync/IRQ/FIQ/SError (kernel mode)
            0x400: EL0 sync/IRQ/FIQ/SError (user mode)
@@ -1055,7 +1061,7 @@ VBAR_EL1 → 0x000: SP0 sync/IRQ/FIQ/SError (invalid)
 ```
 
 **ExceptionFrame Structure (288 bytes):**
-```
+```text
 [0-238]:   x0-x29 (30 registers × 8 bytes)
 [240-248]: x30 (LR), SP
 [256-264]: ELR_EL1, SPSR_EL1
@@ -1063,7 +1069,7 @@ VBAR_EL1 → 0x000: SP0 sync/IRQ/FIQ/SError (invalid)
 ```
 
 **TaskContext Structure (104 bytes):**
-```
+```text
 [0x00-0x50]: x19-x29 (callee-saved), x30 (LR)
 [0x60]:      SP (stack pointer)
 ```
@@ -1214,7 +1220,7 @@ void operator delete(void*, size_t) noexcept;  // Sized delete
 
 #### 11.11.2 Clang Target Triple
 
-```
+```text
 --target=aarch64-none-elf
 ```
 

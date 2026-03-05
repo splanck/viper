@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Specialized Maps
 > BiMap, MultiMap, CountMap, IntMap, DefaultMap, LruCache, WeakMap, SparseArray
 

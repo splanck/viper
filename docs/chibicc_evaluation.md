@@ -1,3 +1,9 @@
+---
+status: active
+audience: internal
+last-verified: 2026-03-04
+---
+
 # Comprehensive Evaluation: chibicc as Bootstrap Foundation for Viper C++ Compiler
 
 ## Executive Summary

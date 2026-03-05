@@ -46,7 +46,7 @@ But here's a twist: a single computer might be running many programs that all wa
 
 This is where **ports** come in. A port is like an apartment number within a building. The IP address gets the data to the right computer (the building), and the port number gets it to the right program (the apartment).
 
-```
+```text
 IP Address: 192.168.1.100     (which computer)
 Port:       8080              (which program on that computer)
 
@@ -87,7 +87,7 @@ TCP is like registered mail with delivery confirmation. When you send data using
 
 Here's what TCP communication looks like conceptually:
 
-```
+```text
 Your Computer                                      Server
      |                                                |
      |-------- "Hello, I want to connect" ---------> |
@@ -124,7 +124,7 @@ UDP is like sending a postcard. It's simple, fast, and lightweight, but you get 
 
 **Lightweight and fast**: Because UDP skips all the reliability overhead, it's significantly faster. No waiting for acknowledgments, no retransmission delays, no ordering buffers.
 
-```
+```text
 Your Computer                                      Server
      |                                                |
      |-------- "Here's my position: x=10, y=20" ---> |
@@ -167,7 +167,7 @@ When two computers communicate, they typically play different roles. One compute
 
 Think about a restaurant. The kitchen prepares food and waits for orders. Customers come in, place orders, receive food, and leave. The kitchen doesn't seek out hungry people --- it waits for them to arrive. Customers don't cook --- they request from the kitchen.
 
-```
+```text
 CLIENT-SERVER MODEL
 
       +---------+                     +---------+
@@ -212,7 +212,7 @@ Clients are typically temporary. You open a browser, visit some pages, then clos
 
 Let's trace through exactly what happens when you type `www.example.com` into your browser and press Enter:
 
-```
+```text
 Step 1: DNS Lookup (What's the IP address?)
 +---------+                            +-----------+
 | Browser |----"Where is example.com?"->| DNS      |
@@ -414,7 +414,7 @@ func start() {
 
 Let's trace through the JSON parsing:
 
-```
+```text
 Server Response (text):
 {"temp": 72.5, "conditions": "Sunny", "humidity": 45.0}
 
@@ -476,7 +476,7 @@ func start() {
 
 Let's trace through what happens:
 
-```
+```text
 Step 1: TcpSocket.connect("example.com", 80)
    - DNS lookup: "example.com" -> 93.184.216.34
    - Create a socket (OS allocates resources)
@@ -542,7 +542,7 @@ func start() {
 
 The server's lifecycle:
 
-```
+```text
                 +-------------------+
                 |   TcpServer.      |
                 |   listen(8080)    |
@@ -577,7 +577,7 @@ Let's apply what we've learned to build something real: a chat system where mult
 
 ### Understanding the Architecture
 
-```
+```text
          +----------------+
          |  Chat Server   |
          |  (port 9000)   |
@@ -703,7 +703,7 @@ func start() {
 
 Let's trace through a typical server session:
 
-```
+```text
 Time 0:00 - Server starts
   server.listen(9000) - now accepting connections
   clients = []
@@ -835,7 +835,7 @@ The client uses two threads --- one for sending and one for receiving. This is n
 1. **Reading blocks**: `readLine()` waits until data arrives. If we used one thread, we couldn't type while waiting for messages.
 2. **Input blocks**: `Ask()` waits for user input. If we used one thread, we couldn't receive messages while typing.
 
-```
+```text
 Main Thread                     Receiver Thread
     |                               |
     |   Terminal.Ask()              |   socket.hasData()?
@@ -1173,7 +1173,7 @@ func start() {
 
 If a server is overloaded, hammering it with rapid retry attempts makes things worse. Exponential backoff (waiting longer after each failure) gives the server time to recover:
 
-```
+```text
 Retry 1: Wait 1 second
 Retry 2: Wait 2 seconds
 Retry 3: Wait 4 seconds

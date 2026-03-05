@@ -10,7 +10,7 @@ In Chapter 3, we introduced strings briefly. Now we go deep. By the end of this 
 
 At the most fundamental level, a string is simply an array of characters stored consecutively in memory. When you write `"Hello"`, the computer stores five separate values — the character codes for H, e, l, l, and o — one after another.
 
-```
+```text
 Memory address:  1000  1001  1002  1003  1004
 Character:         H     e     l     l     o
 Code:             72   101   108   108   111
@@ -48,7 +48,7 @@ Because text manipulation is so common, languages provide rich sets of string op
 
 A string is a sequence of characters. "Hello" contains 5 characters: H, e, l, l, o. Each character has a position, numbered from 0:
 
-```
+```text
 Index:     0   1   2   3   4
 String:    H   e   l   l   o
 ```
@@ -114,7 +114,7 @@ for i in 0..text.Length {
 ```
 
 Output:
-```
+```text
 Character 0: V
 Character 1: i
 Character 2: p
@@ -1002,7 +1002,7 @@ for fruit in fruits {
 ```
 
 Output:
-```
+```text
 apple
 banana
 cherry
@@ -1092,7 +1092,7 @@ for line in lines {
 ```
 
 Output:
-```
+```text
 Alice is 30 years old, lives in Boston
 Bob is 25 years old, lives in Seattle
 Carol is 35 years old, lives in Denver
@@ -1356,7 +1356,7 @@ var char = Char.fromCode(65); // 'A'
 
 ### Essential ASCII Values
 
-```
+```text
 '0' = 48, '1' = 49, ... '9' = 57
 'A' = 65, 'B' = 66, ... 'Z' = 90
 'a' = 97, 'b' = 98, ... 'z' = 122
@@ -1884,7 +1884,7 @@ func start() {
 ```
 
 Sample run:
-```
+```text
 Enter some text:
 Hello World from Viper
 

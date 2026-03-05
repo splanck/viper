@@ -172,7 +172,7 @@ Sprite, tilemap, and camera support for 2D games:
 
 ### Architecture
 
-```
+```text
 ┌──────────────┐  ┌──────────────┐
 │ BASIC Source │  │  Zia Source  │
 │    (.bas)    │  │    (.zia)    │

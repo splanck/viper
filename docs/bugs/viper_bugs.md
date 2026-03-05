@@ -30,7 +30,7 @@ Dim arr(size) As Integer  ' ERROR: expected label or number
 
 ### Error Message
 
-```
+```text
 error[B0001]: expected label or number
     Dim arr(MAX_SIZE) As Integer
             ^
@@ -113,7 +113,7 @@ x = Viper.Random.Next() Mod 100  ' ERROR: operand type mismatch
 
 ### Error Message
 
-```
+```text
 error[B2001]: operand type mismatch
     x = Viper.Random.Next() Mod 100
                             ^

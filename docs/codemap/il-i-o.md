@@ -1,8 +1,12 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # CODEMAP: IL I/O
 
 Text parsing and serialization (`src/il/io/`) for IL modules.
-
-Last updated: 2026-02-17
 
 ## Overview
 

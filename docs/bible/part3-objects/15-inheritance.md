@@ -453,7 +453,7 @@ fido.fetch();    // Dog's own: "Fido fetches the ball"
 
 While hierarchies can extend as deep as you need, deeper isn't always better. Consider this hierarchy:
 
-```
+```text
 Entity
   └── LivingThing
         └── Animal

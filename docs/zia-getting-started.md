@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-02-17
+last-verified: 2026-03-04
 ---
 
 # Zia — Getting Started
@@ -70,7 +70,7 @@ viper repl
 
 The REPL lets you type Zia code and see results immediately:
 
-```
+```text
 zia> "Hello, world"
 Hello, world
 zia> 2 + 3 * 4

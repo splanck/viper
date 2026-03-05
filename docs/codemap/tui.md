@@ -1,8 +1,12 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-03-04
+---
+
 # CODEMAP: TUI
 
 Terminal UI library (`src/tui/`) for text-based interfaces.
-
-Last updated: 2026-01-15
 
 ## Overview
 

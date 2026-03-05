@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-04
+---
+
 # Physics & Collision
 > Grid2D, CollisionRect, Collision, Physics2D, Quadtree
 

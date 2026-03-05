@@ -40,7 +40,7 @@ Counter()
 
 **Previous Error**:
 
-```
+```text
 error[B0001]: unknown statement 'STATIC'; expected keyword or procedure call
     STATIC count
     ^^^^^^
@@ -48,7 +48,7 @@ error[B0001]: unknown statement 'STATIC'; expected keyword or procedure call
 
 **Current Error**:
 
-```
+```text
 Assertion failed: (storage && "variable should have resolved storage"),
 function lowerVarExpr, file LowerExpr.cpp, line 52.
 ```
@@ -79,7 +79,7 @@ END IF
 
 **Current Errors**:
 
-```
+```text
 error[B2001]: STR$: arg 1 must be number (got unknown)
 PRINT "flag = " + STR$(flag)
                        ^
@@ -127,13 +127,13 @@ t.UseGlobal()
 
 **Expected Error** (from bug report):
 
-```
+```text
 Exit code 139 (segmentation fault)
 ```
 
 **Actual Output**:
 
-```
+```text
 Hello World
 ```
 
@@ -164,7 +164,7 @@ PRINT "HALF = " + STR$(HALF)
 
 **Expected Output**:
 
-```
+```text
 PI = 3.14159
 E = 2.71828
 HALF = 0.5
@@ -172,7 +172,7 @@ HALF = 0.5
 
 **Actual Output**:
 
-```
+```text
 PI = 3
 E = 3
 HALF = 0
