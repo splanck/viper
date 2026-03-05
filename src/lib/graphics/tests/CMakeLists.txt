@@ -25,6 +25,11 @@ target_include_directories(vipergfx_mock PUBLIC
 
 target_compile_features(vipergfx_mock PUBLIC c_std_99)
 
+# POSIX feature test macros for Linux (posix_memalign, etc.)
+if (NOT WIN32 AND NOT APPLE)
+    target_compile_definitions(vipergfx_mock PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
+endif ()
+
 # Compiler warnings
 if (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(vipergfx_mock PRIVATE

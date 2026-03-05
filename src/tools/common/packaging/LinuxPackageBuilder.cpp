@@ -33,6 +33,7 @@
 #include "IconGenerator.hpp"
 #include "TarWriter.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>

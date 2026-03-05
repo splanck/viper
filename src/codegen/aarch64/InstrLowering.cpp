@@ -89,6 +89,7 @@
 
 #include "il/runtime/RuntimeNameMap.hpp"
 
+#include <algorithm>
 #include <cstring>
 
 namespace viper::codegen::aarch64

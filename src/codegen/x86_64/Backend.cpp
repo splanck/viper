@@ -220,6 +220,13 @@ CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
 
     emitter.emitRoData(asmStream);
 
+    // Mark the stack as non-executable on ELF targets.  Without this directive
+    // the GNU linker defaults to an executable stack, triggering a warning and
+    // creating a security issue.
+#if !defined(__APPLE__) && !defined(_WIN32)
+    asmStream << "\n.section .note.GNU-stack,\"\",@progbits\n";
+#endif
+
     result.asmText = asmStream.str();
     result.errors = errorStream.str();
 
@@ -262,6 +269,10 @@ CodegenResult emitFunctionToAssembly(const ILFunction &func, const CodegenOption
 
     emitter.emitFunction(asmStream, machineFunc, target);
     emitter.emitRoData(asmStream);
+
+#if !defined(__APPLE__) && !defined(_WIN32)
+    asmStream << "\n.section .note.GNU-stack,\"\",@progbits\n";
+#endif
 
     result.asmText = asmStream.str();
     result.errors = errorStream.str();

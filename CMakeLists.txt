@@ -532,11 +532,15 @@ set(VIPER_PUBLIC_LIB_TARGETS
   fe_common
   fe_basic
   il_api
-  vipergfx
-  vipergui
 )
 
-# Add viperaud to export set if it was built (platform-dependent)
+# Add platform-dependent targets to export set only if they were built
+if (TARGET vipergfx)
+  list(APPEND VIPER_PUBLIC_LIB_TARGETS vipergfx)
+endif ()
+if (TARGET vipergui)
+  list(APPEND VIPER_PUBLIC_LIB_TARGETS vipergui)
+endif ()
 if (TARGET viperaud)
   list(APPEND VIPER_PUBLIC_LIB_TARGETS viperaud)
 endif ()

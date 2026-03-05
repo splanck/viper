@@ -40,6 +40,8 @@
 #include "rt_gui_internal.h"
 #include "rt_platform.h"
 
+#ifdef VIPER_ENABLE_GRAPHICS
+
 //=============================================================================
 // Font Functions
 //=============================================================================
@@ -597,3 +599,91 @@ int64_t rt_treeview_node_is_expanded(void *node)
     vg_tree_node_t *n = (vg_tree_node_t *)node;
     return n->expanded ? 1 : 0;
 }
+
+#else /* !VIPER_ENABLE_GRAPHICS */
+
+void *rt_font_load(rt_string path) { (void)path; return NULL; }
+void rt_font_destroy(void *font) { (void)font; }
+
+void rt_widget_destroy(void *widget) { (void)widget; }
+void rt_widget_set_visible(void *widget, int64_t visible) { (void)widget; (void)visible; }
+void rt_widget_set_enabled(void *widget, int64_t enabled) { (void)widget; (void)enabled; }
+void rt_widget_set_size(void *widget, int64_t width, int64_t height)
+{
+    (void)widget; (void)width; (void)height;
+}
+void rt_widget_set_flex(void *widget, double flex) { (void)widget; (void)flex; }
+void rt_widget_add_child(void *parent, void *child) { (void)parent; (void)child; }
+void rt_widget_set_margin(void *widget, int64_t margin) { (void)widget; (void)margin; }
+void rt_widget_set_tab_index(void *widget, int64_t idx) { (void)widget; (void)idx; }
+int64_t rt_widget_is_visible(void *widget) { (void)widget; return 0; }
+int64_t rt_widget_is_enabled(void *widget) { (void)widget; return 0; }
+int64_t rt_widget_get_width(void *widget) { (void)widget; return 0; }
+int64_t rt_widget_get_height(void *widget) { (void)widget; return 0; }
+int64_t rt_widget_get_x(void *widget) { (void)widget; return 0; }
+int64_t rt_widget_get_y(void *widget) { (void)widget; return 0; }
+double rt_widget_get_flex(void *widget) { (void)widget; return 0.0; }
+
+void *rt_label_new(void *parent, rt_string text) { (void)parent; (void)text; return NULL; }
+void rt_label_set_text(void *label, rt_string text) { (void)label; (void)text; }
+void rt_label_set_font(void *label, void *font, double size) { (void)label; (void)font; (void)size; }
+void rt_label_set_color(void *label, int64_t color) { (void)label; (void)color; }
+
+void *rt_button_new(void *parent, rt_string text) { (void)parent; (void)text; return NULL; }
+void rt_button_set_text(void *button, rt_string text) { (void)button; (void)text; }
+void rt_button_set_font(void *button, void *font, double size)
+{
+    (void)button; (void)font; (void)size;
+}
+void rt_button_set_style(void *button, int64_t style) { (void)button; (void)style; }
+void rt_button_set_icon(void *button, rt_string icon) { (void)button; (void)icon; }
+void rt_button_set_icon_pos(void *button, int64_t pos) { (void)button; (void)pos; }
+
+void *rt_textinput_new(void *parent) { (void)parent; return NULL; }
+void rt_textinput_set_text(void *input, rt_string text) { (void)input; (void)text; }
+rt_string rt_textinput_get_text(void *input) { (void)input; return rt_str_empty(); }
+void rt_textinput_set_placeholder(void *input, rt_string placeholder)
+{
+    (void)input; (void)placeholder;
+}
+void rt_textinput_set_font(void *input, void *font, double size)
+{
+    (void)input; (void)font; (void)size;
+}
+
+void *rt_checkbox_new(void *parent, rt_string text) { (void)parent; (void)text; return NULL; }
+void rt_checkbox_set_checked(void *checkbox, int64_t checked) { (void)checkbox; (void)checked; }
+int64_t rt_checkbox_is_checked(void *checkbox) { (void)checkbox; return 0; }
+void rt_checkbox_set_text(void *checkbox, rt_string text) { (void)checkbox; (void)text; }
+
+void *rt_scrollview_new(void *parent) { (void)parent; return NULL; }
+void rt_scrollview_set_scroll(void *scroll, double x, double y) { (void)scroll; (void)x; (void)y; }
+void rt_scrollview_set_content_size(void *scroll, double width, double height)
+{
+    (void)scroll; (void)width; (void)height;
+}
+double rt_scrollview_get_scroll_x(void *scroll) { (void)scroll; return 0.0; }
+double rt_scrollview_get_scroll_y(void *scroll) { (void)scroll; return 0.0; }
+
+void *rt_treeview_new(void *parent) { (void)parent; return NULL; }
+void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text)
+{
+    (void)tree; (void)parent_node; (void)text; return NULL;
+}
+void rt_treeview_remove_node(void *tree, void *node) { (void)tree; (void)node; }
+void rt_treeview_clear(void *tree) { (void)tree; }
+void rt_treeview_expand(void *tree, void *node) { (void)tree; (void)node; }
+void rt_treeview_collapse(void *tree, void *node) { (void)tree; (void)node; }
+void rt_treeview_select(void *tree, void *node) { (void)tree; (void)node; }
+void rt_treeview_set_font(void *tree, void *font, double size)
+{
+    (void)tree; (void)font; (void)size;
+}
+void *rt_treeview_get_selected(void *tree) { (void)tree; return NULL; }
+int64_t rt_treeview_was_selection_changed(void *tree) { (void)tree; return 0; }
+rt_string rt_treeview_node_get_text(void *node) { (void)node; return rt_str_empty(); }
+void rt_treeview_node_set_data(void *node, rt_string data) { (void)node; (void)data; }
+rt_string rt_treeview_node_get_data(void *node) { (void)node; return rt_str_empty(); }
+int64_t rt_treeview_node_is_expanded(void *node) { (void)node; return 0; }
+
+#endif /* VIPER_ENABLE_GRAPHICS */

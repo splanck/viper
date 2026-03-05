@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <iostream>
 #include <set>
 #include <sstream>

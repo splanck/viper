@@ -28,6 +28,7 @@
 #include <cassert>
 #include <functional>
 #include <iostream>
+#include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <typeindex>

@@ -219,7 +219,9 @@ const std::vector<CallLoweringPlan> &LowerILToMIR::callPlans() const noexcept
 void LowerILToMIR::resetFunctionState()
 {
     nextVReg_ = 1U;
-    nextLocalLabel_ = 0U;
+    // Note: nextLocalLabel_ is intentionally NOT reset — it is a module-wide
+    // counter so that local labels (e.g. .Lfptosi_chk_trap_N) stay unique
+    // across all functions emitted into the same assembly stream.
     valueToVReg_.clear();
     blockInfo_.clear();
     callPlans_.clear();
@@ -609,35 +611,38 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
     // function entry to copy parameters from physical registers to virtual registers,
     // which the register allocator will properly manage (spilling across calls).
 
-    // Emit moves for register-passed parameters at the start of the entry block
+    // Emit a single PX_COPY for all register-passed parameters at function entry.
+    // Using PX_COPY instead of individual MOVs ensures the coalescer resolves
+    // the parallel move correctly (topological sort + cycle-breaking), avoiding
+    // write-before-read hazards when physical register destinations alias sources.
     if (!entryParamToPhysReg.empty() && !result.blocks.empty())
     {
         auto &entryBlock = result.blocks[0];
-        for (const auto &[paramId, physOp] : entryParamToPhysReg)
-        {
-            // Find the kind for this parameter
-            const auto &entryParams = func.blocks[0];
-            ILValue::Kind kind = ILValue::Kind::I64; // default
-            for (std::size_t p = 0; p < entryParams.paramIds.size(); ++p)
-            {
-                if (entryParams.paramIds[p] == paramId && p < entryParams.paramKinds.size())
-                {
-                    kind = entryParams.paramKinds[p];
-                    break;
-                }
-            }
+        MInstr px = MInstr::make(MOpcode::PX_COPY, {});
 
-            // Create a vreg and emit MOV from physical register to vreg
+        // Iterate in parameter declaration order (deterministic), not map order.
+        const auto &entryParams = func.blocks[0];
+        for (std::size_t p = 0; p < entryParams.paramIds.size(); ++p)
+        {
+            const int paramId = entryParams.paramIds[p];
+            auto it = entryParamToPhysReg.find(paramId);
+            if (it == entryParamToPhysReg.end())
+                continue; // stack-passed param, handled separately
+
+            ILValue::Kind kind = (p < entryParams.paramKinds.size())
+                                     ? entryParams.paramKinds[p]
+                                     : ILValue::Kind::I64;
+
             const VReg vreg = ensureVReg(paramId, kind);
             const Operand dest = makeVRegOperand(vreg.cls, vreg.id);
-            if (vreg.cls == RegClass::XMM)
-            {
-                entryBlock.instructions.push_back(MInstr::make(MOpcode::MOVSDrr, {dest, physOp}));
-            }
-            else
-            {
-                entryBlock.instructions.push_back(MInstr::make(MOpcode::MOVrr, {dest, physOp}));
-            }
+            px.operands.push_back(dest);
+            px.operands.push_back(it->second);
+        }
+
+        if (!px.operands.empty())
+        {
+            entryBlock.instructions.insert(
+                entryBlock.instructions.begin(), std::move(px));
         }
     }
 

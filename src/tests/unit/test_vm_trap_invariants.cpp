@@ -231,12 +231,13 @@ static int testBoundsTrap()
     i1.operands.push_back(Value::constInt(0));
     bb.instructions.push_back(i1);
 
-    // %2 = idx.chk %0, %1  (10 >= 5, should trap)
+    // %2 = idx.chk %0, lo=0, hi=%1  (index 10 not in [0,5), should trap)
     Instr chk;
     chk.op = Opcode::IdxChk;
     chk.result = 2;
     chk.type = Type(Type::Kind::I64);
     chk.operands.push_back(Value::temp(0));
+    chk.operands.push_back(Value::constInt(0));
     chk.operands.push_back(Value::temp(1));
     chk.loc = {1, 300, 1}; // {file_id, line, column}
     bb.instructions.push_back(chk);

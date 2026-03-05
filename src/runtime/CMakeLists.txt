@@ -412,6 +412,11 @@ foreach (_rtobj IN LISTS VIPER_RUNTIME_COMPONENT_OBJECT_LIBS)
     endif ()
     if (NOT WIN32)
         target_compile_definitions(${_rtobj} PRIVATE _POSIX_C_SOURCE=200809L)
+        if (NOT APPLE)
+            # _DEFAULT_SOURCE is needed on Linux (glibc) to expose SIGSTKSZ,
+            # sigaltstack, SA_ONSTACK, etc. when _POSIX_C_SOURCE is set.
+            target_compile_definitions(${_rtobj} PRIVATE _DEFAULT_SOURCE)
+        endif ()
     endif ()
 endforeach ()
 

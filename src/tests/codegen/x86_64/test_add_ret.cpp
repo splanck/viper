@@ -70,9 +70,9 @@ namespace
     // Check for required patterns that verify correct codegen:
     // 1. Function is exported with correct name
     // 2. An add instruction exists (the actual register allocation may vary)
-    // 3. Result ends up in RAX for return
+    // 3. Result ends up in RAX for return (register source varies by allocator)
     // 4. Function returns
-    constexpr std::string_view kPatterns[] = {".globl add", "addq", "movq %rdx, %rax", "ret"};
+    constexpr std::string_view kPatterns[] = {".globl add", "addq", ", %rax", "ret"};
 
     for (const std::string_view pattern : kPatterns)
     {

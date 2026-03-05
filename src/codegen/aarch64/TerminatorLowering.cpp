@@ -90,6 +90,8 @@
 #include "InstrLowering.hpp"
 #include "OpcodeMappings.hpp"
 
+#include <algorithm>
+
 namespace viper::codegen::aarch64
 {
 

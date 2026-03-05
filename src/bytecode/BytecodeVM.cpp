@@ -1776,6 +1776,10 @@ bool BytecodeVM::checkBreakpoint()
 void BytecodeVM::runThreaded()
 {
     // Dispatch table for computed goto
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wc99-designator"
+#endif
     static void *dispatchTable[256] = {
         // Stack Operations (0x00-0x0F)
         [0x00] = &&L_NOP,
@@ -1919,6 +1923,9 @@ void BytecodeVM::runThreaded()
         [0xCB] = &&L_RESUME_NEXT,
         [0xCC] = &&L_RESUME_LABEL,
     };
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
     // Fill uninitialized entries with default handler (once only)
     static bool tableInitialized = false;

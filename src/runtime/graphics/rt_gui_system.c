@@ -37,6 +37,8 @@
 #include "rt_gui_internal.h"
 #include "rt_platform.h"
 
+#ifdef VIPER_ENABLE_GRAPHICS
+
 // Clipboard Functions (Phase 1)
 //=============================================================================
 
@@ -684,3 +686,61 @@ void rt_widget_reset_cursor(void *widget)
     (void)widget;
     rt_cursor_reset();
 }
+
+#else /* !VIPER_ENABLE_GRAPHICS */
+
+void rt_clipboard_set_text(rt_string text) { (void)text; }
+rt_string rt_clipboard_get_text(void) { return rt_str_empty(); }
+int64_t rt_clipboard_has_text(void) { return 0; }
+void rt_clipboard_clear(void) {}
+
+void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description)
+{
+    (void)id; (void)keys; (void)description;
+}
+void rt_shortcuts_unregister(rt_string id) { (void)id; }
+void rt_shortcuts_clear(void) {}
+int64_t rt_shortcuts_was_triggered(rt_string id) { (void)id; return 0; }
+void rt_shortcuts_clear_triggered(void) {}
+int rt_shortcuts_check_key(int key, int mods) { (void)key; (void)mods; return 0; }
+rt_string rt_shortcuts_get_triggered(void) { return rt_str_empty(); }
+void rt_shortcuts_set_enabled(rt_string id, int64_t enabled) { (void)id; (void)enabled; }
+int64_t rt_shortcuts_is_enabled(rt_string id) { (void)id; return 0; }
+void rt_shortcuts_set_global_enabled(int64_t enabled) { (void)enabled; }
+int64_t rt_shortcuts_get_global_enabled(void) { return 0; }
+
+void rt_app_set_title(void *app, rt_string title) { (void)app; (void)title; }
+rt_string rt_app_get_title(void *app) { (void)app; return rt_str_empty(); }
+void rt_app_set_size(void *app, int64_t width, int64_t height)
+{
+    (void)app; (void)width; (void)height;
+}
+int64_t rt_app_get_width(void *app) { (void)app; return 0; }
+int64_t rt_app_get_height(void *app) { (void)app; return 0; }
+void rt_app_set_position(void *app, int64_t x, int64_t y) { (void)app; (void)x; (void)y; }
+int64_t rt_app_get_x(void *app) { (void)app; return 0; }
+int64_t rt_app_get_y(void *app) { (void)app; return 0; }
+void rt_app_minimize(void *app) { (void)app; }
+void rt_app_maximize(void *app) { (void)app; }
+void rt_app_restore(void *app) { (void)app; }
+int64_t rt_app_is_minimized(void *app) { (void)app; return 0; }
+int64_t rt_app_is_maximized(void *app) { (void)app; return 0; }
+void rt_app_set_fullscreen(void *app, int64_t fullscreen) { (void)app; (void)fullscreen; }
+int64_t rt_app_is_fullscreen(void *app) { (void)app; return 0; }
+void rt_app_focus(void *app) { (void)app; }
+int64_t rt_app_is_focused(void *app) { (void)app; return 0; }
+void rt_app_set_prevent_close(void *app, int64_t prevent) { (void)app; (void)prevent; }
+int64_t rt_app_was_close_requested(void *app) { (void)app; return 0; }
+int64_t rt_app_get_monitor_width(void *app) { (void)app; return 0; }
+int64_t rt_app_get_monitor_height(void *app) { (void)app; return 0; }
+void rt_app_set_window_size(void *app, int64_t w, int64_t h) { (void)app; (void)w; (void)h; }
+double rt_app_get_font_size(void *app) { (void)app; return 14.0; }
+void rt_app_set_font_size(void *app, double size) { (void)app; (void)size; }
+
+void rt_cursor_set(int64_t type) { (void)type; }
+void rt_cursor_reset(void) {}
+void rt_cursor_set_visible(int64_t visible) { (void)visible; }
+void rt_widget_set_cursor(void *widget, int64_t type) { (void)widget; (void)type; }
+void rt_widget_reset_cursor(void *widget) { (void)widget; }
+
+#endif /* VIPER_ENABLE_GRAPHICS */

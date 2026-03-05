@@ -84,6 +84,11 @@ if (MSVC)
     target_compile_options(vipergfx PRIVATE /utf-8 /FS)
 endif ()
 
+# POSIX feature test macros for Linux (posix_memalign, etc.)
+if (NOT WIN32 AND NOT APPLE)
+    target_compile_definitions(vipergfx PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
+endif ()
+
 # Link platform-specific libraries
 target_link_libraries(vipergfx PRIVATE ${VGFX_PLATFORM_LIBS})
 

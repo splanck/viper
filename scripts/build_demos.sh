@@ -49,12 +49,16 @@ if [[ ! -x "$VIPER" ]]; then
     exit 1
 fi
 
-# Check architecture
+# Detect architecture
 ARCH=$(uname -m)
-if [[ "$ARCH" != "arm64" ]]; then
-    echo -e "${YELLOW}Warning: This script builds ARM64 binaries but running on $ARCH${NC}"
-    echo "Binaries may not run on this machine"
-fi
+case "$ARCH" in
+    arm64|aarch64) ARCH_FLAG="--arch arm64" ;;
+    x86_64|amd64)  ARCH_FLAG="--arch x64"   ;;
+    *)
+        echo -e "${YELLOW}Warning: Unknown architecture $ARCH — defaulting to host${NC}"
+        ARCH_FLAG=""
+        ;;
+esac
 
 # Create directories
 mkdir -p "$BIN_DIR"
@@ -121,9 +125,9 @@ for demo in "${BASIC_DEMOS[@]}"; do
     echo "Building $name..."
 
     if build_demo "$name" "$project_dir"; then
-        ((SUCCEEDED++))
+        SUCCEEDED=$((SUCCEEDED + 1))
     else
-        ((FAILED++))
+        FAILED=$((FAILED + 1))
     fi
     echo ""
 done
@@ -136,9 +140,9 @@ for demo in "${ZIA_DEMOS[@]}"; do
     echo "Building $name..."
 
     if build_demo "$name" "$project_dir"; then
-        ((SUCCEEDED++))
+        SUCCEEDED=$((SUCCEEDED + 1))
     else
-        ((FAILED++))
+        FAILED=$((FAILED + 1))
     fi
     echo ""
 done

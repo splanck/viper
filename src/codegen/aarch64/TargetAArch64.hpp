@@ -19,6 +19,7 @@
 
 #include "codegen/common/TargetInfoBase.hpp"
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 

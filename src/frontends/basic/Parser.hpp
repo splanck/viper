@@ -60,6 +60,7 @@
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <initializer_list>
 #include <memory>
@@ -149,7 +150,7 @@ class Parser
 
     // Tracked constants discovered during parsing (for SELECT CASE label resolution).
     // Keys are canonicalised via CanonicalizeIdent for case-insensitive lookup.
-    std::unordered_map<std::string, long long> knownConstInts_{};
+    std::unordered_map<std::string, int64_t> knownConstInts_{};
     std::unordered_map<std::string, std::string> knownConstStrs_{};
 
     struct NamedLabelEntry

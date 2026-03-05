@@ -35,6 +35,7 @@
 #include "frontends/zia/Lexer.hpp"
 #include "frontends/common/CharUtils.hpp"
 #include "frontends/common/NumberParsing.hpp"
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <string_view>

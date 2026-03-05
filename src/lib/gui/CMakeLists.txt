@@ -90,6 +90,8 @@ target_link_libraries(vipergui
 # Link math library on Unix
 if (UNIX AND NOT APPLE)
     target_link_libraries(vipergui PRIVATE m)
+    # GNU feature test macros for Linux (strdup, FNM_CASEFOLD, etc.)
+    target_compile_definitions(vipergui PRIVATE _GNU_SOURCE)
 endif ()
 
 # Link UniformTypeIdentifiers framework on macOS (for file dialogs)

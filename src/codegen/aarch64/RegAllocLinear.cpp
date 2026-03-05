@@ -124,6 +124,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <climits>
 #include <deque>
 #include <stdexcept>
 #include <unordered_map>

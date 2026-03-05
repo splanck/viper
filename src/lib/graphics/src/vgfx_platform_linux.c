@@ -1154,4 +1154,28 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     XFlush(x11->display);
 }
 
+// ============================================================================
+// Clipboard (stub — X11 clipboard requires ICCCM selection protocol)
+// ============================================================================
+
+int vgfx_clipboard_has_format(vgfx_clipboard_format_t format)
+{
+    (void)format;
+    return 0;
+}
+
+char *vgfx_clipboard_get_text(void)
+{
+    return NULL;
+}
+
+void vgfx_clipboard_set_text(const char *text)
+{
+    (void)text;
+}
+
+void vgfx_clipboard_clear(void)
+{
+}
+
 #endif /* __linux__ || __unix__ */

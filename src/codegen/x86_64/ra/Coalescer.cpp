@@ -196,16 +196,19 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out)
             }
             else if (task.src.kind == CopySource::Kind::Reg)
             {
-                bool srcIsDest = false;
+                // A move (dest←src) can be emitted when dest is NOT used as
+                // a source by any other pending move.  Writing to dest first
+                // would clobber the value another move still needs to read.
+                bool destIsSource = false;
                 for (const auto &other : tasks)
                 {
-                    if (other.destKind == CopyTask::DestKind::Reg && other.destReg == task.src.reg)
+                    if (other.src.kind == CopySource::Kind::Reg && other.src.reg == task.destReg)
                     {
-                        srcIsDest = true;
+                        destIsSource = true;
                         break;
                     }
                 }
-                canEmit = !srcIsDest || task.destReg == task.src.reg;
+                canEmit = !destIsSource || task.destReg == task.src.reg;
             }
 
             if (!canEmit)

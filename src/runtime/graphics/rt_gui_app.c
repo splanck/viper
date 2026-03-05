@@ -43,6 +43,8 @@
 #include "rt_gui_internal.h"
 #include "rt_platform.h"
 
+#ifdef VIPER_ENABLE_GRAPHICS
+
 // Global pointer to the current app for widget constructors to access the default font.
 rt_gui_app_t *s_current_app = NULL;
 
@@ -601,3 +603,38 @@ static void render_widget_tree(vgfx_window_t window,
         child = child->next_sibling;
     }
 }
+
+#else /* !VIPER_ENABLE_GRAPHICS */
+
+rt_gui_app_t *s_current_app = NULL;
+
+void rt_gui_set_active_dialog(void *dlg) { (void)dlg; }
+void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
+{
+    (void)title;
+    (void)width;
+    (void)height;
+    return NULL;
+}
+void rt_gui_ensure_default_font(void) {}
+void rt_gui_app_destroy(void *app_ptr) { (void)app_ptr; }
+int64_t rt_gui_app_should_close(void *app_ptr)
+{
+    (void)app_ptr;
+    return 1;
+}
+void rt_gui_app_poll(void *app_ptr) { (void)app_ptr; }
+void rt_gui_app_render(void *app_ptr) { (void)app_ptr; }
+void *rt_gui_app_get_root(void *app_ptr)
+{
+    (void)app_ptr;
+    return NULL;
+}
+void rt_gui_app_set_font(void *app_ptr, void *font, double size)
+{
+    (void)app_ptr;
+    (void)font;
+    (void)size;
+}
+
+#endif /* VIPER_ENABLE_GRAPHICS */

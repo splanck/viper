@@ -38,6 +38,8 @@
 
 #include "rt_gui_internal.h"
 
+#ifdef VIPER_ENABLE_GRAPHICS
+
 //=============================================================================
 // CodeEditor Enhancements - Syntax Highlighting (Phase 4)
 //=============================================================================
@@ -1862,3 +1864,233 @@ rt_string rt_codeeditor_get_line(void *editor, int64_t line_index)
     vg_code_line_t *line = &ce->lines[(int)line_index];
     return rt_string_from_bytes(line->text, line->length);
 }
+
+#else /* !VIPER_ENABLE_GRAPHICS */
+
+void rt_codeeditor_set_language(void *editor, rt_string language)
+{
+    (void)editor; (void)language;
+}
+void rt_codeeditor_set_token_color(void *editor, int64_t token_type, int64_t color)
+{
+    (void)editor; (void)token_type; (void)color;
+}
+void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords)
+{
+    (void)editor; (void)keywords;
+}
+void rt_codeeditor_clear_highlights(void *editor) { (void)editor; }
+void rt_codeeditor_add_highlight(void *editor, int64_t start_line, int64_t start_col,
+                                  int64_t end_line, int64_t end_col, int64_t color)
+{
+    (void)editor; (void)start_line; (void)start_col; (void)end_line; (void)end_col; (void)color;
+}
+void rt_codeeditor_refresh_highlights(void *editor) { (void)editor; }
+
+void rt_codeeditor_set_show_line_numbers(void *editor, int64_t show) { (void)editor; (void)show; }
+int64_t rt_codeeditor_get_show_line_numbers(void *editor) { (void)editor; return 0; }
+void rt_codeeditor_set_line_number_width(void *editor, int64_t width) { (void)editor; (void)width; }
+void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int64_t slot)
+{
+    (void)editor; (void)line; (void)pixels; (void)slot;
+}
+void rt_codeeditor_clear_gutter_icon(void *editor, int64_t line, int64_t slot)
+{
+    (void)editor; (void)line; (void)slot;
+}
+void rt_codeeditor_clear_all_gutter_icons(void *editor, int64_t slot)
+{
+    (void)editor; (void)slot;
+}
+void rt_gui_set_gutter_click(int64_t line, int64_t slot) { (void)line; (void)slot; }
+void rt_gui_clear_gutter_click(void) {}
+int64_t rt_codeeditor_was_gutter_clicked(void *editor) { (void)editor; return 0; }
+int64_t rt_codeeditor_get_gutter_clicked_line(void *editor) { (void)editor; return -1; }
+int64_t rt_codeeditor_get_gutter_clicked_slot(void *editor) { (void)editor; return -1; }
+void rt_codeeditor_set_show_fold_gutter(void *editor, int64_t show) { (void)editor; (void)show; }
+
+void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end_line)
+{
+    (void)editor; (void)start_line; (void)end_line;
+}
+void rt_codeeditor_remove_fold_region(void *editor, int64_t start_line)
+{
+    (void)editor; (void)start_line;
+}
+void rt_codeeditor_clear_fold_regions(void *editor) { (void)editor; }
+void rt_codeeditor_fold(void *editor, int64_t line) { (void)editor; (void)line; }
+void rt_codeeditor_unfold(void *editor, int64_t line) { (void)editor; (void)line; }
+void rt_codeeditor_toggle_fold(void *editor, int64_t line) { (void)editor; (void)line; }
+int64_t rt_codeeditor_is_folded(void *editor, int64_t line) { (void)editor; (void)line; return 0; }
+void rt_codeeditor_fold_all(void *editor) { (void)editor; }
+void rt_codeeditor_unfold_all(void *editor) { (void)editor; }
+void rt_codeeditor_set_auto_fold_detection(void *editor, int64_t enable)
+{
+    (void)editor; (void)enable;
+}
+
+int64_t rt_codeeditor_get_cursor_count(void *editor) { (void)editor; return 0; }
+void rt_codeeditor_add_cursor(void *editor, int64_t line, int64_t col)
+{
+    (void)editor; (void)line; (void)col;
+}
+void rt_codeeditor_remove_cursor(void *editor, int64_t index) { (void)editor; (void)index; }
+void rt_codeeditor_clear_extra_cursors(void *editor) { (void)editor; }
+int64_t rt_codeeditor_get_cursor_line_at(void *editor, int64_t index)
+{
+    (void)editor; (void)index; return 0;
+}
+int64_t rt_codeeditor_get_cursor_col_at(void *editor, int64_t index)
+{
+    (void)editor; (void)index; return 0;
+}
+int64_t rt_codeeditor_get_cursor_line(void *editor) { (void)editor; return 0; }
+int64_t rt_codeeditor_get_cursor_col(void *editor) { (void)editor; return 0; }
+void rt_codeeditor_set_cursor_position_at(void *editor, int64_t index, int64_t line, int64_t col)
+{
+    (void)editor; (void)index; (void)line; (void)col;
+}
+void rt_codeeditor_set_cursor_selection(void *editor, int64_t index, int64_t start_line,
+                                         int64_t start_col, int64_t end_line, int64_t end_col)
+{
+    (void)editor; (void)index; (void)start_line; (void)start_col; (void)end_line; (void)end_col;
+}
+int64_t rt_codeeditor_cursor_has_selection(void *editor, int64_t index)
+{
+    (void)editor; (void)index; return 0;
+}
+void rt_codeeditor_undo(void *editor) { (void)editor; }
+void rt_codeeditor_redo(void *editor) { (void)editor; }
+int64_t rt_codeeditor_copy(void *editor) { (void)editor; return 0; }
+int64_t rt_codeeditor_cut(void *editor) { (void)editor; return 0; }
+int64_t rt_codeeditor_paste(void *editor) { (void)editor; return 0; }
+void rt_codeeditor_select_all(void *editor) { (void)editor; }
+
+int64_t rt_messagebox_info(rt_string title, rt_string message)
+{
+    (void)title; (void)message; return 0;
+}
+int64_t rt_messagebox_warning(rt_string title, rt_string message)
+{
+    (void)title; (void)message; return 0;
+}
+int64_t rt_messagebox_error(rt_string title, rt_string message)
+{
+    (void)title; (void)message; return 0;
+}
+int64_t rt_messagebox_question(rt_string title, rt_string message)
+{
+    (void)title; (void)message; return 0;
+}
+int64_t rt_messagebox_confirm(rt_string title, rt_string message)
+{
+    (void)title; (void)message; return 0;
+}
+rt_string rt_messagebox_prompt(rt_string title, rt_string message)
+{
+    (void)title; (void)message; return rt_string_from_bytes("", 0);
+}
+void *rt_messagebox_new(rt_string title, rt_string message, int64_t type)
+{
+    (void)title; (void)message; (void)type; return NULL;
+}
+void rt_messagebox_add_button(void *box, rt_string text, int64_t id)
+{
+    (void)box; (void)text; (void)id;
+}
+void rt_messagebox_set_default_button(void *box, int64_t id) { (void)box; (void)id; }
+int64_t rt_messagebox_show(void *box) { (void)box; return -1; }
+void rt_messagebox_destroy(void *box) { (void)box; }
+
+rt_string rt_filedialog_open(rt_string title, rt_string filter, rt_string default_path)
+{
+    (void)title; (void)filter; (void)default_path; return rt_string_from_bytes("", 0);
+}
+rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, rt_string filter)
+{
+    (void)title; (void)default_path; (void)filter; return rt_string_from_bytes("", 0);
+}
+rt_string rt_filedialog_save(rt_string title, rt_string filter, rt_string default_name,
+                              rt_string default_path)
+{
+    (void)title; (void)filter; (void)default_name; (void)default_path;
+    return rt_string_from_bytes("", 0);
+}
+rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path)
+{
+    (void)title; (void)default_path; return rt_string_from_bytes("", 0);
+}
+void *rt_filedialog_new(int64_t type) { (void)type; return NULL; }
+void rt_filedialog_set_title(void *dialog, rt_string title) { (void)dialog; (void)title; }
+void rt_filedialog_set_path(void *dialog, rt_string path) { (void)dialog; (void)path; }
+void rt_filedialog_set_filter(void *dialog, rt_string name, rt_string pattern)
+{
+    (void)dialog; (void)name; (void)pattern;
+}
+void rt_filedialog_add_filter(void *dialog, rt_string name, rt_string pattern)
+{
+    (void)dialog; (void)name; (void)pattern;
+}
+void rt_filedialog_set_default_name(void *dialog, rt_string name) { (void)dialog; (void)name; }
+void rt_filedialog_set_multiple(void *dialog, int64_t multiple) { (void)dialog; (void)multiple; }
+int64_t rt_filedialog_show(void *dialog) { (void)dialog; return 0; }
+rt_string rt_filedialog_get_path(void *dialog)
+{
+    (void)dialog; return rt_string_from_bytes("", 0);
+}
+int64_t rt_filedialog_get_path_count(void *dialog) { (void)dialog; return 0; }
+rt_string rt_filedialog_get_path_at(void *dialog, int64_t index)
+{
+    (void)dialog; (void)index; return rt_string_from_bytes("", 0);
+}
+void rt_filedialog_destroy(void *dialog) { (void)dialog; }
+
+void *rt_findbar_new(void *parent) { (void)parent; return NULL; }
+void rt_findbar_destroy(void *bar) { (void)bar; }
+void rt_findbar_bind_editor(void *bar, void *editor) { (void)bar; (void)editor; }
+void rt_findbar_unbind_editor(void *bar) { (void)bar; }
+void rt_findbar_set_replace_mode(void *bar, int64_t replace) { (void)bar; (void)replace; }
+int64_t rt_findbar_is_replace_mode(void *bar) { (void)bar; return 0; }
+void rt_findbar_set_find_text(void *bar, rt_string text) { (void)bar; (void)text; }
+rt_string rt_findbar_get_find_text(void *bar)
+{
+    (void)bar; return rt_string_from_bytes("", 0);
+}
+void rt_findbar_set_replace_text(void *bar, rt_string text) { (void)bar; (void)text; }
+rt_string rt_findbar_get_replace_text(void *bar)
+{
+    (void)bar; return rt_string_from_bytes("", 0);
+}
+void rt_findbar_set_case_sensitive(void *bar, int64_t sensitive) { (void)bar; (void)sensitive; }
+int64_t rt_findbar_is_case_sensitive(void *bar) { (void)bar; return 0; }
+void rt_findbar_set_whole_word(void *bar, int64_t whole) { (void)bar; (void)whole; }
+int64_t rt_findbar_is_whole_word(void *bar) { (void)bar; return 0; }
+void rt_findbar_set_regex(void *bar, int64_t regex) { (void)bar; (void)regex; }
+int64_t rt_findbar_is_regex(void *bar) { (void)bar; return 0; }
+int64_t rt_findbar_find_next(void *bar) { (void)bar; return 0; }
+int64_t rt_findbar_find_previous(void *bar) { (void)bar; return 0; }
+int64_t rt_findbar_replace(void *bar) { (void)bar; return 0; }
+int64_t rt_findbar_replace_all(void *bar) { (void)bar; return 0; }
+int64_t rt_findbar_get_match_count(void *bar) { (void)bar; return 0; }
+int64_t rt_findbar_get_current_match(void *bar) { (void)bar; return 0; }
+void rt_findbar_set_visible(void *bar, int64_t visible) { (void)bar; (void)visible; }
+int64_t rt_findbar_is_visible(void *bar) { (void)bar; return 0; }
+void rt_findbar_focus(void *bar) { (void)bar; }
+
+int64_t rt_codeeditor_get_cursor_pixel_x(void *editor) { (void)editor; return 0; }
+int64_t rt_codeeditor_get_cursor_pixel_y(void *editor) { (void)editor; return 0; }
+void rt_codeeditor_insert_at_cursor(void *editor, rt_string text) { (void)editor; (void)text; }
+rt_string rt_codeeditor_get_word_at_cursor(void *editor)
+{
+    (void)editor; return rt_str_empty();
+}
+void rt_codeeditor_replace_word_at_cursor(void *editor, rt_string new_text)
+{
+    (void)editor; (void)new_text;
+}
+rt_string rt_codeeditor_get_line(void *editor, int64_t line_index)
+{
+    (void)editor; (void)line_index; return rt_str_empty();
+}
+
+#endif /* VIPER_ENABLE_GRAPHICS */

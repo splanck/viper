@@ -99,6 +99,7 @@
 
 #include "il/core/Opcode.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 

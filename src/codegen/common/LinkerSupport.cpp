@@ -282,6 +282,10 @@ void appendGraphicsLibs(const LinkContext &ctx,
         cmd.push_back("-framework");
         cmd.push_back(fw);
     }
+
+#if !defined(__APPLE__) && !defined(_WIN32)
+    cmd.push_back("-lX11");
+#endif
 }
 
 void appendAudioLibs(const LinkContext &ctx, std::vector<std::string> &cmd)
