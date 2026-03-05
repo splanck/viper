@@ -64,7 +64,12 @@ typedef struct
     Window window;         ///< Native X11 window handle
     GC gc;                 ///< Graphics context for drawing
     Atom wm_delete_window; ///< Atom for WM_DELETE_WINDOW protocol
-    XImage *ximage;        ///< XImage wrapper for framebuffer
+    XImage *ximage;        ///< XImage wrapper for presentation buffer
+    uint8_t *ximage_buf;   ///< BGRA presentation buffer (R↔B swizzled from win->pixels)
+    Visual *visual;        ///< Visual used for window and XImage
+    int depth;             ///< Depth matching visual (24 or 32)
+    Colormap colormap;     ///< Colormap for the chosen visual (None if default)
+    int ximage_buf_size;   ///< Size of ximage_buf in bytes
     int width;             ///< Cached window width
     int height;            ///< Cached window height
     int close_requested;   ///< 1 if WM_DELETE_WINDOW received, 0 otherwise
@@ -256,10 +261,29 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     x11->screen = DefaultScreen(x11->display);
     Window root = RootWindow(x11->display, x11->screen);
 
-    /* Create window with 32-bit depth for RGBA support */
+    /* Find a visual that matches our 32-bit RGBA framebuffer.  Prefer a
+     * 32-bit TrueColor visual so XPutImage can blit the pixel buffer without
+     * depth conversion.  Fall back to the default visual (usually 24-bit)
+     * which still works — the alpha byte in each 32-bpp pixel is ignored. */
+    XVisualInfo vinfo;
+    if (XMatchVisualInfo(x11->display, x11->screen, 32, TrueColor, &vinfo))
+    {
+        x11->visual = vinfo.visual;
+        x11->depth = 32;
+        x11->colormap =
+            XCreateColormap(x11->display, root, x11->visual, AllocNone);
+    }
+    else
+    {
+        x11->visual = DefaultVisual(x11->display, x11->screen);
+        x11->depth = DefaultDepth(x11->display, x11->screen);
+        x11->colormap = DefaultColormap(x11->display, x11->screen);
+    }
+
     XSetWindowAttributes attrs;
-    attrs.background_pixel = BlackPixel(x11->display, x11->screen);
-    attrs.border_pixel = BlackPixel(x11->display, x11->screen);
+    attrs.background_pixel = 0;
+    attrs.border_pixel = 0;
+    attrs.colormap = x11->colormap;
     attrs.event_mask = KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask |
                        PointerMotionMask | ExposureMask | FocusChangeMask | StructureNotifyMask;
 
@@ -270,10 +294,10 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
                                 params->width,
                                 params->height,
                                 0,              /* border width */
-                                CopyFromParent, /* depth */
+                                x11->depth,     /* depth matching our visual */
                                 InputOutput,    /* class */
-                                CopyFromParent, /* visual */
-                                CWBackPixel | CWBorderPixel | CWEventMask,
+                                x11->visual,    /* visual matching our depth */
+                                CWBackPixel | CWBorderPixel | CWColormap | CWEventMask,
                                 &attrs);
 
     if (!x11->window)
@@ -320,14 +344,31 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         return 0;
     }
 
-    /* Create XImage wrapper for framebuffer (32-bit RGBA, ZPixmap) */
-    /* Note: XImage does NOT own the pixel data; it just wraps win->pixels */
+    /* Allocate a presentation buffer for the XImage.  The draw code writes
+     * pixels in RGBA byte order (R=byte[0], G=byte[1], B=byte[2], A=byte[3])
+     * which matches macOS CGImage.  X11 TrueColor visuals on little-endian
+     * systems expect BGRA byte order (pixel value 0xAARRGGBB stored as
+     * BB,GG,RR,AA).  We swizzle R↔B during present rather than changing all
+     * draw code, keeping macOS/Windows unaffected. */
+    x11->ximage_buf_size = params->height * win->stride;
+    x11->ximage_buf = (uint8_t *)calloc(1, x11->ximage_buf_size);
+    if (!x11->ximage_buf)
+    {
+        XFreeGC(x11->display, x11->gc);
+        XDestroyWindow(x11->display, x11->window);
+        XCloseDisplay(x11->display);
+        free(x11);
+        win->platform_data = NULL;
+        vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to allocate XImage buffer");
+        return 0;
+    }
+
     x11->ximage = XCreateImage(x11->display,
-                               DefaultVisual(x11->display, x11->screen),
-                               32,                  /* depth (32-bit RGBA) */
-                               ZPixmap,             /* format */
-                               0,                   /* offset */
-                               (char *)win->pixels, /* data pointer (points to our framebuffer) */
+                               x11->visual,
+                               x11->depth,
+                               ZPixmap,                  /* format */
+                               0,                        /* offset */
+                               (char *)x11->ximage_buf,  /* presentation buffer */
                                params->width,
                                params->height,
                                32,         /* bitmap_pad (32-bit alignment) */
@@ -336,6 +377,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 
     if (!x11->ximage)
     {
+        free(x11->ximage_buf);
         XFreeGC(x11->display, x11->gc);
         XDestroyWindow(x11->display, x11->window);
         XCloseDisplay(x11->display);
@@ -345,7 +387,6 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         return 0;
     }
 
-    /* Set byte order for XImage (LSBFirst for little-endian RGBA) */
     x11->ximage->byte_order = LSBFirst;
 
     /* Map (show) the window */
@@ -372,19 +413,31 @@ void vgfx_platform_destroy_window(struct vgfx_window *win)
 
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
 
-    /* Destroy XImage (does NOT free win->pixels, we manage that separately) */
+    /* Destroy XImage — set data to NULL to prevent XDestroyImage from
+     * freeing our ximage_buf (we manage it separately). */
     if (x11->ximage)
     {
-        x11->ximage->data = NULL; /* Prevent XDestroyImage from freeing our pixels */
+        x11->ximage->data = NULL;
         XDestroyImage(x11->ximage);
         x11->ximage = NULL;
     }
+
+    /* Free the presentation buffer */
+    free(x11->ximage_buf);
+    x11->ximage_buf = NULL;
 
     /* Free graphics context */
     if (x11->gc)
     {
         XFreeGC(x11->display, x11->gc);
         x11->gc = NULL;
+    }
+
+    /* Free colormap if we created one (not the default) */
+    if (x11->colormap && x11->colormap != DefaultColormap(x11->display, x11->screen))
+    {
+        XFreeColormap(x11->display, x11->colormap);
+        x11->colormap = 0;
     }
 
     /* Destroy window */
@@ -681,7 +734,28 @@ int vgfx_platform_present(struct vgfx_window *win)
     if (!x11->display || !x11->window || !x11->ximage)
         return 0;
 
-    /* Blit framebuffer to window using XPutImage */
+    /* Swizzle RGBA → BGRA: swap bytes 0 (R) and 2 (B) per pixel so that
+     * the X11 TrueColor visual interprets colours correctly.  The draw
+     * code writes R,G,B,A; X11 on little-endian expects B,G,R,A. */
+    {
+        const uint32_t *src = (const uint32_t *)win->pixels;
+        uint32_t *dst = (uint32_t *)x11->ximage_buf;
+        const int pixel_count = win->width * win->height;
+        for (int i = 0; i < pixel_count; ++i)
+        {
+            const uint32_t px = src[i];
+            /* px on LE: byte[0]=R, byte[1]=G, byte[2]=B, byte[3]=A
+             *           = 0xAABBGGRR as uint32_t
+             * need:     byte[0]=B, byte[1]=G, byte[2]=R, byte[3]=A
+             *           = 0xAARRGGBB as uint32_t
+             * Swap the RR (bits 0-7) and BB (bits 16-23) fields. */
+            dst[i] = (px & 0xFF00FF00u)              /* keep G and A */
+                   | ((px & 0x000000FFu) << 16)       /* R → bits 16-23 */
+                   | ((px & 0x00FF0000u) >> 16);      /* B → bits 0-7 */
+        }
+    }
+
+    /* Blit presentation buffer to window using XPutImage */
     XPutImage(x11->display,
               x11->window,
               x11->gc,
