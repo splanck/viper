@@ -58,6 +58,9 @@ extern void rt_net_init_wsa(void);
 #if defined(__APPLE__)
 #include <Security/Security.h>
 #elif defined(_WIN32)
+#ifndef _WINDOWS_
+#error "windows.h must be included before wincrypt.h"
+#endif
 #include <wincrypt.h>
 #pragma comment(lib, "crypt32.lib")
 #else

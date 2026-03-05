@@ -46,8 +46,11 @@ extern void rt_trap(const char *msg);
 
 #ifdef _WIN32
 #include <process.h>
-#include <wincrypt.h>
 #include <windows.h>
+#ifndef _WINDOWS_
+#error "windows.h must be included before wincrypt.h"
+#endif
+#include <wincrypt.h>
 #else
 #include <fcntl.h>
 #include <sys/stat.h>

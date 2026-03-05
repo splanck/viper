@@ -42,8 +42,11 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <wincrypt.h>
 #include <windows.h>
+#ifndef _WINDOWS_
+#error "windows.h must be included before wincrypt.h"
+#endif
+#include <wincrypt.h>
 #else
 #include <fcntl.h>
 #include <time.h>

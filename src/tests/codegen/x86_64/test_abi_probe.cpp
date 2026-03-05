@@ -107,7 +107,7 @@ template <std::size_t N>
     // first 4 float args in XMM0-XMM3, rest on stack
     constexpr std::array<std::string_view, 4> kGprPatterns{", %rcx", ", %rdx", ", %r8", ", %r9"};
     constexpr std::array<std::string_view, 4> kXmmPatterns{
-        ", %xmm0", ", %xmm1", ", %xmm2", ", %xmm3"};
+        "%xmm0", "%xmm1", "%xmm2", "%xmm3"};
 #else
     // SysV ABI: first 6 integer args in RDI, RSI, RDX, RCX, R8, R9
     // first 8 float args in XMM0-XMM7
