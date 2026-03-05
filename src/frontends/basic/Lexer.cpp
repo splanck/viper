@@ -507,125 +507,125 @@ Token Lexer::next()
 {
     for (;;)
     {
-    skipWhitespaceAndComments();
+        skipWhitespaceAndComments();
 
-    if (eof())
-        return {TokenKind::EndOfFile, "", {file_id_, line_, column_}};
+        if (eof())
+            return {TokenKind::EndOfFile, "", {file_id_, line_, column_}};
 
-    char c = peek();
+        char c = peek();
 
-    if (c == '\n')
-    {
+        if (c == '\n')
+        {
+            il::support::SourceLoc loc{file_id_, line_, column_};
+            /// @brief Retrieves  value.
+            get();
+            return {TokenKind::EndOfLine, "\n", loc};
+        }
+
+        if (isDigit(c) || (c == '.' && pos_ + 1 < src_.size() && isDigit(src_[pos_ + 1])))
+            return lexNumber();
+        if (isLetter(c))
+            return lexIdentifierOrKeyword();
+        if (c == '"')
+            return lexString();
+
         il::support::SourceLoc loc{file_id_, line_, column_};
         /// @brief Retrieves  value.
         get();
-        return {TokenKind::EndOfLine, "\n", loc};
-    }
-
-    if (isDigit(c) || (c == '.' && pos_ + 1 < src_.size() && isDigit(src_[pos_ + 1])))
-        return lexNumber();
-    if (isLetter(c))
-        return lexIdentifierOrKeyword();
-    if (c == '"')
-        return lexString();
-
-    il::support::SourceLoc loc{file_id_, line_, column_};
-    /// @brief Retrieves  value.
-    get();
-    switch (c)
-    {
-        case '+':
-            return {TokenKind::Plus, "+", loc};
-        case '-':
-            return {TokenKind::Minus, "-", loc};
-        case '*':
-            return {TokenKind::Star, "*", loc};
-        case '/':
-            return {TokenKind::Slash, "/", loc};
-        case '\\':
-            return {TokenKind::Backslash, "\\", loc};
-        case '^':
-            return {TokenKind::Caret, "^", loc};
-        case '&':
-            return {TokenKind::Ampersand, "&", loc};
-        case '=':
-            return {TokenKind::Equal, "=", loc};
-        case '<':
-            if (peek() == '>')
-            {
-                /// @brief Retrieves  value.
-                get();
-                return {TokenKind::NotEqual, "<>", loc};
-            }
-            if (peek() == '=')
-            {
-                /// @brief Retrieves  value.
-                get();
-                return {TokenKind::LessEqual, "<=", loc};
-            }
-            return {TokenKind::Less, "<", loc};
-        case '>':
-            if (peek() == '=')
-            {
-                /// @brief Retrieves  value.
-                get();
-                return {TokenKind::GreaterEqual, ">=", loc};
-            }
-            return {TokenKind::Greater, ">", loc};
-        case '(':
-            return {TokenKind::LParen, "(", loc};
-        case ')':
-            return {TokenKind::RParen, ")", loc};
-        case ',':
-            return {TokenKind::Comma, ",", loc};
-        case ';':
-            return {TokenKind::Semicolon, ";", loc};
-        case ':':
-            return {TokenKind::Colon, ":", loc};
-        case '#':
-            return {TokenKind::Hash, "#", loc};
-        case '.':
+        switch (c)
         {
-            // If previous and next chars are digits, this is part of a numeric literal; fallthrough
-            // to number logic. Otherwise, return TokenKind::Dot.
-            bool prevIsDigit = false;
-            if (pos_ >= 2)
+            case '+':
+                return {TokenKind::Plus, "+", loc};
+            case '-':
+                return {TokenKind::Minus, "-", loc};
+            case '*':
+                return {TokenKind::Star, "*", loc};
+            case '/':
+                return {TokenKind::Slash, "/", loc};
+            case '\\':
+                return {TokenKind::Backslash, "\\", loc};
+            case '^':
+                return {TokenKind::Caret, "^", loc};
+            case '&':
+                return {TokenKind::Ampersand, "&", loc};
+            case '=':
+                return {TokenKind::Equal, "=", loc};
+            case '<':
+                if (peek() == '>')
+                {
+                    /// @brief Retrieves  value.
+                    get();
+                    return {TokenKind::NotEqual, "<>", loc};
+                }
+                if (peek() == '=')
+                {
+                    /// @brief Retrieves  value.
+                    get();
+                    return {TokenKind::LessEqual, "<=", loc};
+                }
+                return {TokenKind::Less, "<", loc};
+            case '>':
+                if (peek() == '=')
+                {
+                    /// @brief Retrieves  value.
+                    get();
+                    return {TokenKind::GreaterEqual, ">=", loc};
+                }
+                return {TokenKind::Greater, ">", loc};
+            case '(':
+                return {TokenKind::LParen, "(", loc};
+            case ')':
+                return {TokenKind::RParen, ")", loc};
+            case ',':
+                return {TokenKind::Comma, ",", loc};
+            case ';':
+                return {TokenKind::Semicolon, ";", loc};
+            case ':':
+                return {TokenKind::Colon, ":", loc};
+            case '#':
+                return {TokenKind::Hash, "#", loc};
+            case '.':
             {
-                prevIsDigit = isDigit(src_[pos_ - 2]);
+                // If previous and next chars are digits, this is part of a numeric literal;
+                // fallthrough to number logic. Otherwise, return TokenKind::Dot.
+                bool prevIsDigit = false;
+                if (pos_ >= 2)
+                {
+                    prevIsDigit = isDigit(src_[pos_ - 2]);
+                }
+                bool nextIsDigit = false;
+                if (pos_ < src_.size())
+                {
+                    nextIsDigit = isDigit(src_[pos_]);
+                }
+                if (prevIsDigit && nextIsDigit)
+                {
+                    if (column_ > 1)
+                        --column_;
+                    --pos_;
+                    return lexNumber();
+                }
+                return {TokenKind::Dot, ".", loc};
             }
-            bool nextIsDigit = false;
-            if (pos_ < src_.size())
+            case '_':
             {
-                nextIsDigit = isDigit(src_[pos_]);
-            }
-            if (prevIsDigit && nextIsDigit)
-            {
-                if (column_ > 1)
-                    --column_;
-                --pos_;
-                return lexNumber();
-            }
-            return {TokenKind::Dot, ".", loc};
-        }
-        case '_':
-        {
-            // Line continuation: _ followed by optional whitespace and newline
-            // Skip horizontal whitespace after _
-            while (!eof() && (peek() == ' ' || peek() == '\t' || peek() == '\r'))
-                get();
+                // Line continuation: _ followed by optional whitespace and newline
+                // Skip horizontal whitespace after _
+                while (!eof() && (peek() == ' ' || peek() == '\t' || peek() == '\r'))
+                    get();
 
-            // Check if followed by newline
-            if (!eof() && peek() == '\n')
-            {
-                get(); // consume the newline
-                // Restart token dispatch (iterative, avoids stack overflow)
-                continue;
+                // Check if followed by newline
+                if (!eof() && peek() == '\n')
+                {
+                    get(); // consume the newline
+                    // Restart token dispatch (iterative, avoids stack overflow)
+                    continue;
+                }
+                // Otherwise, _ is an unknown character
+                return {TokenKind::Unknown, "_", loc};
             }
-            // Otherwise, _ is an unknown character
-            return {TokenKind::Unknown, "_", loc};
         }
-    }
-    return {TokenKind::Unknown, std::string(1, c), loc};
+        return {TokenKind::Unknown, std::string(1, c), loc};
     } // for(;;)
 }
 

@@ -64,8 +64,15 @@
 void rt_file_state_cleanup(RtContext *ctx);
 void rt_type_registry_cleanup(RtContext *ctx);
 #else
-__attribute__((weak)) void rt_file_state_cleanup(RtContext *ctx) { (void)ctx; }
-__attribute__((weak)) void rt_type_registry_cleanup(RtContext *ctx) { (void)ctx; }
+__attribute__((weak)) void rt_file_state_cleanup(RtContext *ctx)
+{
+    (void)ctx;
+}
+
+__attribute__((weak)) void rt_type_registry_cleanup(RtContext *ctx)
+{
+    (void)ctx;
+}
 #endif
 void rt_args_state_cleanup(RtContext *ctx);
 

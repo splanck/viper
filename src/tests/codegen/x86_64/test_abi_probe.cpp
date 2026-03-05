@@ -116,8 +116,7 @@ template <std::size_t N>
     // register for the call).  When all XMM params are pass-through (same
     // register for entry and call), no XMM instructions appear at all.
     // We verify GPR registers that require shuffling are present.
-    constexpr std::array<std::string_view, 4> kGprPatterns{
-        "%rdi", "%rsi", "%rcx", "%r9"};
+    constexpr std::array<std::string_view, 4> kGprPatterns{"%rdi", "%rsi", "%rcx", "%r9"};
 #endif
     constexpr std::array<std::string_view, 1> kAlignmentPattern{"addq $-8, %rsp"};
 

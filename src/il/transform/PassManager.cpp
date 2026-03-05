@@ -136,9 +136,9 @@ PassManager::PassManager()
                             "sccp", // Pre-inline SCCP: simplify callees
                             "check-opt",     "dce",          "simplify-cfg", "sibling-recursion",
                             "inline",        "simplify-cfg",
-                            "sccp", // Post-inline SCCP: propagate call-site constants
+                            "sccp",      // Post-inline SCCP: propagate call-site constants
                             "constfold", // Fold runtime math calls exposed by SCCP
-                            "dce",  // Clean up after second SCCP
+                            "dce",       // Clean up after second SCCP
                             "simplify-cfg",  "licm",         "simplify-cfg", "gvn",
                             "earlycse",      "dse",          "peephole",     "dce",
                             "late-cleanup"});

@@ -235,9 +235,9 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    ilc_path = os.path.join(repo_root, "build", "src", "tools", "ilc", "ilc")
+    ilc_path = os.path.join(repo_root, "build", "src", "tools", "viper", "viper")
     if not os.path.exists(ilc_path):
-        print(f"error: ilc not found at {ilc_path}", file=sys.stderr)
+        print(f"error: viper not found at {ilc_path}", file=sys.stderr)
         return 1
 
     zia_dir = os.path.join(repo_root, "tests", "zia_runtime")

@@ -32,8 +32,8 @@ class ReplSession;
 /// @brief A single meta-command entry.
 struct MetaCommandEntry
 {
-    std::string name;                                        ///< Command name (without dot).
-    std::string help;                                        ///< Short help description.
+    std::string name; ///< Command name (without dot).
+    std::string help; ///< Short help description.
     std::function<void(ReplSession &, const std::string &)> handler; ///< Handler receiving args.
 };
 
@@ -48,7 +48,8 @@ class ReplMetaCommands
     /// @param name Command name (without leading dot).
     /// @param help Short description shown in .help output.
     /// @param handler Function called with (session, remaining_args).
-    void registerCommand(const std::string &name, const std::string &help,
+    void registerCommand(const std::string &name,
+                         const std::string &help,
                          std::function<void(ReplSession &, const std::string &)> handler);
 
     /// @brief Try to handle input as a meta-command.

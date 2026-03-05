@@ -83,7 +83,8 @@ static bool startsWithKeyword(const std::string &s, size_t offset, const char *k
 static void appendAutoSemicolon(std::string &src, const std::string &input)
 {
     size_t lastNonSpace = input.find_last_not_of(" \t\r\n");
-    if (lastNonSpace != std::string::npos && input[lastNonSpace] != ';' && input[lastNonSpace] != '}')
+    if (lastNonSpace != std::string::npos && input[lastNonSpace] != ';' &&
+        input[lastNonSpace] != '}')
     {
         src += ";";
     }
@@ -100,7 +101,10 @@ ZiaReplAdapter::ZiaReplAdapter()
     bindStatements_.push_back("bind Obj = Viper.Core.Object");
 }
 
-std::string_view ZiaReplAdapter::languageName() const { return "zia"; }
+std::string_view ZiaReplAdapter::languageName() const
+{
+    return "zia";
+}
 
 void ZiaReplAdapter::reset()
 {
@@ -167,12 +171,14 @@ bool ZiaReplAdapter::isVarDecl(const std::string &input) const
 bool ZiaReplAdapter::isAssignment(const std::string &input) const
 {
     size_t pos = skipWhitespace(input);
-    if (pos >= input.size() || !(std::isalpha(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
+    if (pos >= input.size() ||
+        !(std::isalpha(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
         return false;
 
     // Read identifier
     size_t idStart = pos;
-    while (pos < input.size() && (std::isalnum(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
+    while (pos < input.size() &&
+           (std::isalnum(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
         ++pos;
     std::string ident = input.substr(idStart, pos - idStart);
 
@@ -193,7 +199,8 @@ std::string ZiaReplAdapter::extractAssignTarget(const std::string &input) const
 {
     size_t pos = skipWhitespace(input);
     size_t idStart = pos;
-    while (pos < input.size() && (std::isalnum(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
+    while (pos < input.size() &&
+           (std::isalnum(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
         ++pos;
     return input.substr(idStart, pos - idStart);
 }
@@ -205,9 +212,22 @@ bool ZiaReplAdapter::isLikelyExpression(const std::string &input) const
         return false;
 
     // Statement keywords — these are never expressions
-    static const char *stmtKeywords[] = {"var",     "let",    "func",  "entity",  "value", "interface",
-                                          "if",      "while",  "for",   "return",  "bind",  "module",
-                                          "throw",   "try",    "break", "continue"};
+    static const char *stmtKeywords[] = {"var",
+                                         "let",
+                                         "func",
+                                         "entity",
+                                         "value",
+                                         "interface",
+                                         "if",
+                                         "while",
+                                         "for",
+                                         "return",
+                                         "bind",
+                                         "module",
+                                         "throw",
+                                         "try",
+                                         "break",
+                                         "continue"};
     for (const char *kw : stmtKeywords)
     {
         if (startsWithKeyword(input, start, kw))
@@ -238,7 +258,8 @@ std::string ZiaReplAdapter::extractFuncName(const std::string &input) const
     pos += 5;
     pos = skipWhitespace(input, pos);
     size_t nameStart = pos;
-    while (pos < input.size() && (std::isalnum(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
+    while (pos < input.size() &&
+           (std::isalnum(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
         ++pos;
     return input.substr(nameStart, pos - nameStart);
 }
@@ -257,7 +278,8 @@ std::string ZiaReplAdapter::extractTypeName(const std::string &input) const
 
     pos = skipWhitespace(input, pos);
     size_t nameStart = pos;
-    while (pos < input.size() && (std::isalnum(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
+    while (pos < input.size() &&
+           (std::isalnum(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
         ++pos;
     return input.substr(nameStart, pos - nameStart);
 }
@@ -274,7 +296,8 @@ std::pair<std::string, std::string> ZiaReplAdapter::extractVarInfo(const std::st
     pos = skipWhitespace(input, pos);
 
     size_t nameStart = pos;
-    while (pos < input.size() && (std::isalnum(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
+    while (pos < input.size() &&
+           (std::isalnum(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
         ++pos;
     std::string name = input.substr(nameStart, pos - nameStart);
 
@@ -286,8 +309,8 @@ std::pair<std::string, std::string> ZiaReplAdapter::extractVarInfo(const std::st
         ++pos;
         pos = skipWhitespace(input, pos);
         size_t typeStart = pos;
-        while (pos < input.size() && !std::isspace(static_cast<unsigned char>(input[pos])) && input[pos] != '=' &&
-               input[pos] != ';')
+        while (pos < input.size() && !std::isspace(static_cast<unsigned char>(input[pos])) &&
+               input[pos] != '=' && input[pos] != ';')
             ++pos;
         type = input.substr(typeStart, pos - typeStart);
     }
@@ -623,6 +646,7 @@ EvalResult ZiaReplAdapter::eval(const std::string &input)
             const char *format; // printf-style: %s is the expression
             ResultType type;
         };
+
         static const Wrapper wrappers[] = {
             {"Say(Fmt.Bool(%s))", ResultType::Boolean},
             {"Say(Fmt.Int(%s))", ResultType::Integer},
@@ -633,7 +657,8 @@ EvalResult ZiaReplAdapter::eval(const std::string &input)
 
         // Strip trailing semicolons from expression for wrapping
         std::string expr = input;
-        while (!expr.empty() && (expr.back() == ';' || std::isspace(static_cast<unsigned char>(expr.back()))))
+        while (!expr.empty() &&
+               (expr.back() == ';' || std::isspace(static_cast<unsigned char>(expr.back()))))
             expr.pop_back();
 
         for (const auto &w : wrappers)
@@ -675,7 +700,8 @@ EvalResult ZiaReplAdapter::eval(const std::string &input)
             // Strip trailing semicolons from input for storage
             std::string cleanInput = input;
             while (!cleanInput.empty() &&
-                   (cleanInput.back() == ';' || std::isspace(static_cast<unsigned char>(cleanInput.back()))))
+                   (cleanInput.back() == ';' ||
+                    std::isspace(static_cast<unsigned char>(cleanInput.back()))))
                 cleanInput.pop_back();
             pv->lastAssignment = cleanInput;
 
@@ -704,7 +730,8 @@ EvalResult ZiaReplAdapter::eval(const std::string &input)
             // Strip trailing semicolons from the declaration for storage
             std::string cleanDecl = input;
             while (!cleanDecl.empty() &&
-                   (cleanDecl.back() == ';' || std::isspace(static_cast<unsigned char>(cleanDecl.back()))))
+                   (cleanDecl.back() == ';' ||
+                    std::isspace(static_cast<unsigned char>(cleanDecl.back()))))
                 cleanDecl.pop_back();
 
             // Add to persistent state first (so buildSource includes it)
@@ -758,6 +785,7 @@ std::string ZiaReplAdapter::getExprType(const std::string &expr)
         const char *format;
         const char *typeName;
     };
+
     static const TypeProbe probes[] = {
         {"Say(Fmt.Bool(%s))", "Boolean"},
         {"Say(Fmt.Int(%s))", "Integer"},
@@ -794,8 +822,10 @@ std::string ZiaReplAdapter::getExprType(const std::string &expr)
 // Tab completion
 // ---------------------------------------------------------------------------
 
-std::string ZiaReplAdapter::buildSourceForCompletion(const std::string &input, size_t cursor,
-                                                      int &line, int &col) const
+std::string ZiaReplAdapter::buildSourceForCompletion(const std::string &input,
+                                                     size_t cursor,
+                                                     int &line,
+                                                     int &col) const
 {
     std::string src;
     src.reserve(2048);
@@ -900,8 +930,7 @@ std::vector<std::string> ZiaReplAdapter::complete(const std::string &input, size
     {
         for (const auto &pv : persistentVars_)
         {
-            if (pv.name.size() >= prefix.size() &&
-                pv.name.compare(0, prefix.size(), prefix) == 0 &&
+            if (pv.name.size() >= prefix.size() && pv.name.compare(0, prefix.size(), prefix) == 0 &&
                 seen.insert(pv.name).second)
             {
                 matches.push_back(beforeToken + pv.name + afterCursor);
@@ -911,8 +940,7 @@ std::vector<std::string> ZiaReplAdapter::complete(const std::string &input, size
         // Supplement with session functions
         for (const auto &[name, src] : definedFunctions_)
         {
-            if (name.size() >= prefix.size() &&
-                name.compare(0, prefix.size(), prefix) == 0 &&
+            if (name.size() >= prefix.size() && name.compare(0, prefix.size(), prefix) == 0 &&
                 seen.insert(name).second)
             {
                 matches.push_back(beforeToken + name + afterCursor);
@@ -932,8 +960,8 @@ std::string ZiaReplAdapter::getIL(const std::string &input)
     using namespace il::frontends::zia;
 
     std::string cleanInput = input;
-    while (!cleanInput.empty() &&
-           (cleanInput.back() == ';' || std::isspace(static_cast<unsigned char>(cleanInput.back()))))
+    while (!cleanInput.empty() && (cleanInput.back() == ';' ||
+                                   std::isspace(static_cast<unsigned char>(cleanInput.back()))))
         cleanInput.pop_back();
 
     // Try wrapping as expression first (with Say to make it valid)
@@ -994,6 +1022,9 @@ std::vector<FuncInfo> ZiaReplAdapter::listFunctions() const
     return funcs;
 }
 
-std::vector<std::string> ZiaReplAdapter::listBinds() const { return bindStatements_; }
+std::vector<std::string> ZiaReplAdapter::listBinds() const
+{
+    return bindStatements_;
+}
 
 } // namespace viper::repl

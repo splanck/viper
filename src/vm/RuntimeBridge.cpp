@@ -652,8 +652,8 @@ void RuntimeBridge::trap(TrapKind kind,
             handleGenericTrap(ctx);
             break;
     }
-    // handleOverflow / handleDivByZero / handleGenericTrap always throw
-    // TrapDispatchSignal or call rt_abort(); control never reaches here.
+        // handleOverflow / handleDivByZero / handleGenericTrap always throw
+        // TrapDispatchSignal or call rt_abort(); control never reaches here.
 #ifdef _MSC_VER
     __assume(0);
 #else

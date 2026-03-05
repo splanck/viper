@@ -60,8 +60,8 @@ static int testTrapInstruction()
     }
     if (out.find("DomainError") == std::string::npos)
     {
-        std::fprintf(stderr, "FAIL testTrapInstruction: missing 'DomainError' in: %s\n",
-                     out.c_str());
+        std::fprintf(
+            stderr, "FAIL testTrapInstruction: missing 'DomainError' in: %s\n", out.c_str());
         return 1;
     }
 
@@ -121,14 +121,13 @@ static int testDivideByZeroTrap()
 
     if (out.find("DivideByZero") == std::string::npos)
     {
-        std::fprintf(stderr, "FAIL testDivideByZeroTrap: missing 'DivideByZero' in: %s\n",
-                     out.c_str());
+        std::fprintf(
+            stderr, "FAIL testDivideByZeroTrap: missing 'DivideByZero' in: %s\n", out.c_str());
         return 1;
     }
     if (out.find("line 100") == std::string::npos)
     {
-        std::fprintf(stderr, "FAIL testDivideByZeroTrap: missing 'line 100' in: %s\n",
-                     out.c_str());
+        std::fprintf(stderr, "FAIL testDivideByZeroTrap: missing 'line 100' in: %s\n", out.c_str());
         return 1;
     }
 
@@ -297,7 +296,8 @@ static int testSuccessfulExecutionNoTrap()
     int64_t result = fixture.run(m);
     if (result != 42)
     {
-        std::fprintf(stderr, "FAIL testSuccessfulExecutionNoTrap: expected 42, got %lld\n",
+        std::fprintf(stderr,
+                     "FAIL testSuccessfulExecutionNoTrap: expected 42, got %lld\n",
                      static_cast<long long>(result));
         return 1;
     }

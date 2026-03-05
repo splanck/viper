@@ -67,11 +67,7 @@ static void emitBinOp(BasicBlock &bb,
 }
 
 /// Emit a unary operation instruction into a basic block.
-static void emitUnaryOp(BasicBlock &bb,
-                        Opcode op,
-                        Value operand,
-                        unsigned resultId,
-                        Type ty)
+static void emitUnaryOp(BasicBlock &bb, Opcode op, Value operand, unsigned resultId, Type ty)
 {
     Instr instr;
     instr.op = op;
@@ -133,8 +129,7 @@ static bool retIsConstBool(const BasicBlock &entry, bool expected)
     if (ret.op != Opcode::Ret || ret.operands.empty())
         return false;
     const Value &v = ret.operands[0];
-    return v.kind == Value::Kind::ConstInt && v.isBool &&
-           v.i64 == (expected ? 1 : 0);
+    return v.kind == Value::Kind::ConstInt && v.isBool && v.i64 == (expected ? 1 : 0);
 }
 
 /// Check that the given opcode still exists as an instruction (was NOT folded).
@@ -213,9 +208,11 @@ TEST(ConstFoldAudit, OverflowAddNotFolded)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::IAddOvf,
+    emitBinOp(entry,
+              Opcode::IAddOvf,
               Value::constInt(std::numeric_limits<long long>::max()),
-              Value::constInt(1), id);
+              Value::constInt(1),
+              id);
     builder.emitRet(Value::temp(id), {});
 
     optimizeAndSerialize(module);
@@ -308,9 +305,11 @@ TEST(ConstFoldAudit, SDivMinByNeg1NotFolded)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::SDiv,
+    emitBinOp(entry,
+              Opcode::SDiv,
               Value::constInt(std::numeric_limits<long long>::min()),
-              Value::constInt(-1), id);
+              Value::constInt(-1),
+              id);
     builder.emitRet(Value::temp(id), {});
 
     optimizeNoVerify(module);
@@ -367,8 +366,11 @@ TEST(ConstFoldAudit, FloatAdd)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::FAdd,
-              Value::constFloat(1.5), Value::constFloat(2.5), id,
+    emitBinOp(entry,
+              Opcode::FAdd,
+              Value::constFloat(1.5),
+              Value::constFloat(2.5),
+              id,
               Type(Type::Kind::F64));
     builder.emitRet(Value::temp(id), {});
 
@@ -386,8 +388,11 @@ TEST(ConstFoldAudit, FloatMul)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::FMul,
-              Value::constFloat(3.0), Value::constFloat(2.0), id,
+    emitBinOp(entry,
+              Opcode::FMul,
+              Value::constFloat(3.0),
+              Value::constFloat(2.0),
+              id,
               Type(Type::Kind::F64));
     builder.emitRet(Value::temp(id), {});
 
@@ -405,8 +410,11 @@ TEST(ConstFoldAudit, FloatDivByZeroNotFolded)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::FDiv,
-              Value::constFloat(1.0), Value::constFloat(0.0), id,
+    emitBinOp(entry,
+              Opcode::FDiv,
+              Value::constFloat(1.0),
+              Value::constFloat(0.0),
+              id,
               Type(Type::Kind::F64));
     builder.emitRet(Value::temp(id), {});
 
@@ -430,15 +438,12 @@ TEST(ConstFoldAudit, ConstF64Propagation)
 
     // %x = const.f64 3.0
     unsigned xId = builder.reserveTempId();
-    emitUnaryOp(entry, Opcode::ConstF64,
-                Value::constFloat(3.0), xId,
-                Type(Type::Kind::F64));
+    emitUnaryOp(entry, Opcode::ConstF64, Value::constFloat(3.0), xId, Type(Type::Kind::F64));
 
     // %y = fadd %x, 1.0 → should fold to 4.0 after SCCP propagates %x
     unsigned yId = builder.reserveTempId();
-    emitBinOp(entry, Opcode::FAdd,
-              Value::temp(xId), Value::constFloat(1.0), yId,
-              Type(Type::Kind::F64));
+    emitBinOp(
+        entry, Opcode::FAdd, Value::temp(xId), Value::constFloat(1.0), yId, Type(Type::Kind::F64));
     builder.emitRet(Value::temp(yId), {});
 
     optimizeAndSerialize(module);
@@ -459,9 +464,8 @@ TEST(ConstFoldAudit, IntegerCmpEq)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::ICmpEq,
-              Value::constInt(5), Value::constInt(5), id,
-              Type(Type::Kind::I1));
+    emitBinOp(
+        entry, Opcode::ICmpEq, Value::constInt(5), Value::constInt(5), id, Type(Type::Kind::I1));
     builder.emitRet(Value::temp(id), {});
 
     optimizeAndSerialize(module);
@@ -478,9 +482,8 @@ TEST(ConstFoldAudit, SignedCmpLT)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::SCmpLT,
-              Value::constInt(3), Value::constInt(5), id,
-              Type(Type::Kind::I1));
+    emitBinOp(
+        entry, Opcode::SCmpLT, Value::constInt(3), Value::constInt(5), id, Type(Type::Kind::I1));
     builder.emitRet(Value::temp(id), {});
 
     optimizeAndSerialize(module);
@@ -497,8 +500,11 @@ TEST(ConstFoldAudit, FloatCmpEq)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::FCmpEQ,
-              Value::constFloat(1.0), Value::constFloat(1.0), id,
+    emitBinOp(entry,
+              Opcode::FCmpEQ,
+              Value::constFloat(1.0),
+              Value::constFloat(1.0),
+              id,
               Type(Type::Kind::I1));
     builder.emitRet(Value::temp(id), {});
 
@@ -520,8 +526,11 @@ TEST(ConstFoldAudit, FCmpOrdBothFinite)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::FCmpOrd,
-              Value::constFloat(1.0), Value::constFloat(2.0), id,
+    emitBinOp(entry,
+              Opcode::FCmpOrd,
+              Value::constFloat(1.0),
+              Value::constFloat(2.0),
+              id,
               Type(Type::Kind::I1));
     builder.emitRet(Value::temp(id), {});
 
@@ -539,8 +548,11 @@ TEST(ConstFoldAudit, FCmpUnoBothFinite)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::FCmpUno,
-              Value::constFloat(1.0), Value::constFloat(2.0), id,
+    emitBinOp(entry,
+              Opcode::FCmpUno,
+              Value::constFloat(1.0),
+              Value::constFloat(2.0),
+              id,
               Type(Type::Kind::I1));
     builder.emitRet(Value::temp(id), {});
 
@@ -558,9 +570,11 @@ TEST(ConstFoldAudit, FCmpOrdWithNaN)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::FCmpOrd,
+    emitBinOp(entry,
+              Opcode::FCmpOrd,
               Value::constFloat(std::numeric_limits<double>::quiet_NaN()),
-              Value::constFloat(1.0), id,
+              Value::constFloat(1.0),
+              id,
               Type(Type::Kind::I1));
     builder.emitRet(Value::temp(id), {});
 
@@ -578,9 +592,11 @@ TEST(ConstFoldAudit, FCmpUnoWithNaN)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::FCmpUno,
+    emitBinOp(entry,
+              Opcode::FCmpUno,
               Value::constFloat(std::numeric_limits<double>::quiet_NaN()),
-              Value::constFloat(1.0), id,
+              Value::constFloat(1.0),
+              id,
               Type(Type::Kind::I1));
     builder.emitRet(Value::temp(id), {});
 
@@ -677,8 +693,7 @@ TEST(ConstFoldAudit, SitofpFolded)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitUnaryOp(entry, Opcode::Sitofp, Value::constInt(42), id,
-                Type(Type::Kind::F64));
+    emitUnaryOp(entry, Opcode::Sitofp, Value::constInt(42), id, Type(Type::Kind::F64));
     builder.emitRet(Value::temp(id), {});
 
     optimizeNoVerify(module);
@@ -696,8 +711,7 @@ TEST(ConstFoldAudit, FptosiTruncation)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitUnaryOp(entry, Opcode::Fptosi, Value::constFloat(3.9), id,
-                Type(Type::Kind::I64));
+    emitUnaryOp(entry, Opcode::Fptosi, Value::constFloat(3.9), id, Type(Type::Kind::I64));
     builder.emitRet(Value::temp(id), {});
 
     optimizeNoVerify(module);
@@ -715,8 +729,7 @@ TEST(ConstFoldAudit, FptosiNegative)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitUnaryOp(entry, Opcode::Fptosi, Value::constFloat(-3.9), id,
-                Type(Type::Kind::I64));
+    emitUnaryOp(entry, Opcode::Fptosi, Value::constFloat(-3.9), id, Type(Type::Kind::I64));
     builder.emitRet(Value::temp(id), {});
 
     optimizeNoVerify(module);
@@ -734,8 +747,7 @@ TEST(ConstFoldAudit, CastSiToFpFolded)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitUnaryOp(entry, Opcode::CastSiToFp, Value::constInt(-7), id,
-                Type(Type::Kind::F64));
+    emitUnaryOp(entry, Opcode::CastSiToFp, Value::constInt(-7), id, Type(Type::Kind::F64));
     builder.emitRet(Value::temp(id), {});
 
     optimizeAndSerialize(module);
@@ -752,8 +764,7 @@ TEST(ConstFoldAudit, CastFpToSiRteChkFolded)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitUnaryOp(entry, Opcode::CastFpToSiRteChk, Value::constFloat(3.7), id,
-                Type(Type::Kind::I64));
+    emitUnaryOp(entry, Opcode::CastFpToSiRteChk, Value::constFloat(3.7), id, Type(Type::Kind::I64));
     builder.emitRet(Value::temp(id), {});
 
     optimizeAndSerialize(module);
@@ -775,8 +786,7 @@ TEST(ConstFoldAudit, Zext1Folded)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitUnaryOp(entry, Opcode::Zext1, Value::constBool(true), id,
-                Type(Type::Kind::I64));
+    emitUnaryOp(entry, Opcode::Zext1, Value::constBool(true), id, Type(Type::Kind::I64));
     builder.emitRet(Value::temp(id), {});
 
     optimizeAndSerialize(module);
@@ -793,8 +803,7 @@ TEST(ConstFoldAudit, Trunc1Folded)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitUnaryOp(entry, Opcode::Trunc1, Value::constInt(42), id,
-                Type(Type::Kind::I1));
+    emitUnaryOp(entry, Opcode::Trunc1, Value::constInt(42), id, Type(Type::Kind::I1));
     builder.emitRet(Value::temp(id), {});
 
     optimizeAndSerialize(module);
@@ -914,9 +923,11 @@ TEST(ConstFoldAudit, IMulOvfNotFolded)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::IMulOvf,
+    emitBinOp(entry,
+              Opcode::IMulOvf,
               Value::constInt(std::numeric_limits<long long>::max()),
-              Value::constInt(2), id);
+              Value::constInt(2),
+              id);
     builder.emitRet(Value::temp(id), {});
 
     optimizeAndSerialize(module);
@@ -934,8 +945,7 @@ TEST(ConstFoldAudit, SDivChk0ByZeroNotFolded)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::SDivChk0,
-              Value::constInt(10), Value::constInt(0), id);
+    emitBinOp(entry, Opcode::SDivChk0, Value::constInt(10), Value::constInt(0), id);
     builder.emitRet(Value::temp(id), {});
 
     optimizeAndSerialize(module);
@@ -957,8 +967,7 @@ TEST(ConstFoldAudit, AndFolded)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::And,
-              Value::constInt(0xFF), Value::constInt(0x0F), id);
+    emitBinOp(entry, Opcode::And, Value::constInt(0xFF), Value::constInt(0x0F), id);
     builder.emitRet(Value::temp(id), {});
 
     optimizeAndSerialize(module);
@@ -975,8 +984,7 @@ TEST(ConstFoldAudit, XorFolded)
     builder.setInsertPoint(entry);
 
     unsigned id = builder.reserveTempId();
-    emitBinOp(entry, Opcode::Xor,
-              Value::constInt(0xAA), Value::constInt(0xFF), id);
+    emitBinOp(entry, Opcode::Xor, Value::constInt(0xAA), Value::constInt(0xFF), id);
     builder.emitRet(Value::temp(id), {});
 
     optimizeAndSerialize(module);

@@ -7,9 +7,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$ROOT_DIR/build"
-BIN_DIR="$ROOT_DIR/demos/bin"
-BASIC_DIR="$ROOT_DIR/demos/basic"
-ZIA_DIR="$ROOT_DIR/demos/zia"
+BIN_DIR="$ROOT_DIR/examples/bin"
+GAMES_DIR="$ROOT_DIR/examples/games"
+APPS_DIR="$ROOT_DIR/examples/apps"
 
 VIPER="$BUILD_DIR/src/tools/viper/viper"
 
@@ -70,19 +70,19 @@ fi
 
 # Demo configurations: name:project_dir
 BASIC_DEMOS=(
-    "chess:${BASIC_DIR}/chess"
-    "vtris:${BASIC_DIR}/vtris"
-    "frogger:${BASIC_DIR}/frogger"
-    "centipede:${BASIC_DIR}/centipede"
-    "pacman:${BASIC_DIR}/pacman"
+    "chess:${GAMES_DIR}/chess-basic"
+    "vtris:${GAMES_DIR}/vtris"
+    "frogger:${GAMES_DIR}/frogger-basic"
+    "centipede:${GAMES_DIR}/centipede-basic"
+    "pacman:${GAMES_DIR}/pacman-basic"
 )
 
 ZIA_DEMOS=(
-    "paint:${ZIA_DIR}/paint"
-    "viperide:${ZIA_DIR}/viperide"
-    "pacman-zia:${ZIA_DIR}/pacman"
-    "sqldb:${ZIA_DIR}/sqldb"
-    "chess-zia:${ZIA_DIR}/chess"
+    "paint:${APPS_DIR}/paint"
+    "viperide:${APPS_DIR}/viperide"
+    "pacman-zia:${GAMES_DIR}/pacman"
+    "sqldb:${APPS_DIR}/sqldb"
+    "chess-zia:${GAMES_DIR}/chess"
 )
 
 build_demo() {

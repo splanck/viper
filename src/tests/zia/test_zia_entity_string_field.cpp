@@ -13,7 +13,7 @@
 //   - Applies to both value types and entity types
 // Ownership/Lifetime:
 //   - Test-scoped objects only
-// Links: demos/zia/sqldb/PLATFORM_BUGS_20260228.md (BUG-ADV-001)
+// Links: examples/apps/sqldb/PLATFORM_BUGS_20260228.md (BUG-ADV-001)
 //
 //===----------------------------------------------------------------------===//
 
@@ -40,8 +40,7 @@ CompilerResult compileSource(SourceManager &sm, const std::string &source)
 
 /// @brief Count how many times a callee appears as a Call instruction
 ///        in the named function within the compiled module.
-int countCallsTo(const Module &mod, const std::string &funcName,
-                 const std::string &calleeName)
+int countCallsTo(const Module &mod, const std::string &funcName, const std::string &calleeName)
 {
     int count = 0;
     for (const auto &fn : mod.functions)
@@ -73,8 +72,7 @@ bool hasRetainAfterStrLoad(const Module &mod, const std::string &funcName)
             const auto &instrs = block.instructions;
             for (size_t i = 0; i + 1 < instrs.size(); ++i)
             {
-                if (instrs[i].op == Opcode::Load &&
-                    instrs[i].type.kind == Type::Kind::Str)
+                if (instrs[i].op == Opcode::Load && instrs[i].type.kind == Type::Kind::Str)
                 {
                     // The next instruction should be a Call to
                     // rt_str_retain_maybe

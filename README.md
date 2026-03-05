@@ -59,13 +59,13 @@ zia> Say(Fmt.Int(2 + 3))
 Run a Zia program:
 
 ```bash
-./build/src/tools/viper/viper run demos/zia/paint/main.zia
+./build/src/tools/viper/viper run examples/apps/paint/main.zia
 ```
 
 Run a project directory (auto-discovers language and entry point):
 
 ```bash
-./build/src/tools/viper/viper run demos/zia/pacman/
+./build/src/tools/viper/viper run examples/games/pacman/
 ```
 
 Run an IL program directly:
@@ -134,42 +134,41 @@ scripts\build_demos.cmd           # Build all demos as native x86-64 binaries
 scripts\build_demos.cmd --clean   # Clean and rebuild
 ```
 
-Native binaries are output to `demos/bin/`. See the **[demos/](demos/README.md)** directory for more details.
+Native binaries are output to `examples/bin/`. See the **[examples/](examples/README.md)** directory for more details.
 
-### Zia Demos
-
-| Demo | Description |
-|------|-------------|
-| `demos/zia/viperide` | Simple Viper IDE with tabs, find/replace, and integrated build |
-| `demos/zia/paint` | Paint application with drawing tools, shapes, and color picker |
-| `demos/zia/pacman` | Pac-Man clone with ghost AI, animations, and tile-based rendering |
-| `demos/zia/chess` | Chess engine with alpha-beta AI, transposition tables, and canvas UI |
-| `demos/zia/novarun` | "Nova Run" 2D sidescroller platformer with boss fights and parallax backgrounds |
-| `demos/zia/sqldb` | SQL database engine with REPL, query execution, and persistent storage |
-| `demos/zia/webserver` | Multi-threaded HTTP server with routing and request logging |
-| `demos/zia/telnet` | Telnet client and server with interactive shell |
-| `demos/zia/gfx_centipede` | Centipede arcade game using the Canvas graphics API |
-| `demos/zia/vedit` | Lightweight GUI text editor |
-| `demos/zia/varc` | Archive utility with DEFLATE compression and AES encryption |
-
-### BASIC Demos
+### Applications
 
 | Demo | Description |
 |------|-------------|
-| `demos/basic/chess` | Console chess with AI opponent |
-| `demos/basic/vtris` | Tetris clone with high scores |
-| `demos/basic/frogger` | Frogger clone (console) |
-| `demos/basic/centipede` | Classic arcade game with OOP |
-| `demos/basic/pacman` | Pac-Man clone with ghost AI |
+| `examples/apps/viperide` | Simple Viper IDE with tabs, find/replace, and integrated build |
+| `examples/apps/paint` | Paint application with drawing tools, shapes, and color picker |
+| `examples/apps/sqldb` | SQL database engine with REPL, query execution, and persistent storage |
+| `examples/apps/webserver` | Multi-threaded HTTP server with routing and request logging |
+| `examples/apps/telnet` | Telnet client and server with interactive shell |
+| `examples/apps/varc` | Archive utility with DEFLATE compression and AES encryption |
+
+### Games
+
+| Demo | Language | Description |
+|------|----------|-------------|
+| `examples/games/chess` | Zia | Chess engine with alpha-beta AI, transposition tables, and canvas UI |
+| `examples/games/pacman` | Zia | Pac-Man clone with ghost AI, animations, and tile-based rendering |
+| `examples/games/sidescroller` | Zia | 2D sidescroller platformer with boss fights and parallax backgrounds |
+| `examples/games/centipede` | Zia | Centipede arcade game using the Canvas graphics API |
+| `examples/games/chess-basic` | BASIC | Console chess with AI opponent |
+| `examples/games/vtris` | BASIC | Tetris clone with high scores |
+| `examples/games/frogger-basic` | BASIC | Frogger clone (console) |
+| `examples/games/centipede-basic` | BASIC | Classic arcade game with OOP |
+| `examples/games/pacman-basic` | BASIC | Pac-Man clone with ghost AI |
 
 Run demos via the VM or compile to native:
 
 ```bash
 # Run in VM
-./build/src/tools/viper/viper run demos/zia/paint/
+./build/src/tools/viper/viper run examples/apps/paint/
 
 # Compile to native binary
-./build/src/tools/viper/viper build demos/zia/paint/ -o paint
+./build/src/tools/viper/viper build examples/apps/paint/ -o paint
 ./paint
 ```
 
@@ -308,7 +307,7 @@ See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete AP
 ./build/src/tools/viper/viper run program.zia
 
 # Run a project directory (discovers files and entry point)
-./build/src/tools/viper/viper run demos/zia/pacman/
+./build/src/tools/viper/viper run examples/games/pacman/
 
 # Compile to IL
 ./build/src/tools/viper/viper build program.zia -o output.il

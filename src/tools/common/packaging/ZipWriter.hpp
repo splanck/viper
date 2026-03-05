@@ -30,10 +30,12 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
-class ZipWriter {
-public:
+class ZipWriter
+{
+  public:
     ZipWriter();
     ~ZipWriter();
 
@@ -45,11 +47,14 @@ public:
     /// @param data File contents.
     /// @param len Length of data.
     /// @param unixMode Unix permission bits (e.g. 0100755 for executable).
-    void addFile(const std::string &name, const uint8_t *data, size_t len,
+    void addFile(const std::string &name,
+                 const uint8_t *data,
+                 size_t len,
                  uint32_t unixMode = 0100644);
 
     /// @brief Add a file entry from a string.
-    void addFileString(const std::string &name, const std::string &content,
+    void addFileString(const std::string &name,
+                       const std::string &content,
                        uint32_t unixMode = 0100644);
 
     /// @brief Add a directory entry.
@@ -70,8 +75,9 @@ public:
     /// @brief Finalize and return the ZIP as bytes.
     std::vector<uint8_t> finishToVector();
 
-private:
-    struct Entry {
+  private:
+    struct Entry
+    {
         std::string name;
         uint32_t crc32;
         uint32_t compressedSize;

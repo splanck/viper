@@ -243,8 +243,7 @@ static void testMovFamily(TestContext &ctx)
     // MOVrm — indexed SIB
     ctx.check(
         "MOVrm_indexed",
-        MInstr::make(MOpcode::MOVrm,
-                     {idxmem(PhysReg::RDI, PhysReg::RSI, 4, 8), gpr(PhysReg::RAX)}),
+        MInstr::make(MOpcode::MOVrm, {idxmem(PhysReg::RDI, PhysReg::RSI, 4, 8), gpr(PhysReg::RAX)}),
         "movq %rax, 8(%rdi,%rsi,4)");
 
     // MOVmr — base+disp
@@ -255,19 +254,16 @@ static void testMovFamily(TestContext &ctx)
     // MOVmr — indexed
     ctx.check(
         "MOVmr_indexed",
-        MInstr::make(MOpcode::MOVmr,
-                     {gpr(PhysReg::RAX), idxmem(PhysReg::RDI, PhysReg::R8, 8, 0)}),
+        MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), idxmem(PhysReg::RDI, PhysReg::R8, 8, 0)}),
         "(%rdi,%r8,8)");
 
     // MOVmr — RIP-relative
-    ctx.check("MOVmr_rip",
-              MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), rip("data")}),
-              "data(%rip)");
+    ctx.check(
+        "MOVmr_rip", MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), rip("data")}), "data(%rip)");
 
     // MOVri — zero
-    ctx.check("MOVri_zero",
-              MInstr::make(MOpcode::MOVri, {gpr(PhysReg::RAX), imm(0)}),
-              "movq $0, %rax");
+    ctx.check(
+        "MOVri_zero", MInstr::make(MOpcode::MOVri, {gpr(PhysReg::RAX), imm(0)}), "movq $0, %rax");
 
     // MOVri — positive
     ctx.check("MOVri_positive",
@@ -305,11 +301,10 @@ static void testLea(TestContext &ctx)
               "leaq -8(%rbp), %rax");
 
     // LEA — indexed
-    ctx.check("LEA_indexed",
-              MInstr::make(MOpcode::LEA,
-                           {gpr(PhysReg::RDX),
-                            idxmem(PhysReg::RDI, PhysReg::RSI, 4, 16)}),
-              "leaq 16(%rdi,%rsi,4), %rdx");
+    ctx.check(
+        "LEA_indexed",
+        MInstr::make(MOpcode::LEA, {gpr(PhysReg::RDX), idxmem(PhysReg::RDI, PhysReg::RSI, 4, 16)}),
+        "leaq 16(%rdi,%rsi,4), %rdx");
 
     // LEA — label (becomes RIP-relative)
     ctx.check("LEA_label",
@@ -317,16 +312,14 @@ static void testLea(TestContext &ctx)
               "sym(%rip), %rax");
 
     // LEA — RIP label
-    ctx.check("LEA_rip",
-              MInstr::make(MOpcode::LEA, {gpr(PhysReg::R8), rip("data")}),
-              "data(%rip), %r8");
+    ctx.check(
+        "LEA_rip", MInstr::make(MOpcode::LEA, {gpr(PhysReg::R8), rip("data")}), "data(%rip), %r8");
 
     // LEA — hi base + hi index
-    ctx.check("LEA_hi_base",
-              MInstr::make(MOpcode::LEA,
-                           {gpr(PhysReg::R12),
-                            idxmem(PhysReg::R13, PhysReg::R14, 8, 32)}),
-              "leaq 32(%r13,%r14,8), %r12");
+    ctx.check(
+        "LEA_hi_base",
+        MInstr::make(MOpcode::LEA, {gpr(PhysReg::R12), idxmem(PhysReg::R13, PhysReg::R14, 8, 32)}),
+        "leaq 32(%r13,%r14,8), %r12");
 }
 
 static void testIntegerAlu(TestContext &ctx)
@@ -341,37 +334,30 @@ static void testIntegerAlu(TestContext &ctx)
               MInstr::make(MOpcode::ADDrr, {gpr(PhysReg::R8), gpr(PhysReg::R12)}),
               "addq %r12, %r8");
 
-    ctx.check("ADDri",
-              MInstr::make(MOpcode::ADDri, {gpr(PhysReg::RSI), imm(100)}),
-              "addq $100, %rsi");
+    ctx.check(
+        "ADDri", MInstr::make(MOpcode::ADDri, {gpr(PhysReg::RSI), imm(100)}), "addq $100, %rsi");
 
-    ctx.check("ADDri_neg",
-              MInstr::make(MOpcode::ADDri, {gpr(PhysReg::RAX), imm(-1)}),
-              "addq $-1, %rax");
+    ctx.check(
+        "ADDri_neg", MInstr::make(MOpcode::ADDri, {gpr(PhysReg::RAX), imm(-1)}), "addq $-1, %rax");
 
     ctx.check("ANDrr",
               MInstr::make(MOpcode::ANDrr, {gpr(PhysReg::RDI), gpr(PhysReg::RSI)}),
               "andq %rsi, %rdi");
 
-    ctx.check("ANDri",
-              MInstr::make(MOpcode::ANDri, {gpr(PhysReg::RAX), imm(255)}),
-              "andq $255, %rax");
+    ctx.check(
+        "ANDri", MInstr::make(MOpcode::ANDri, {gpr(PhysReg::RAX), imm(255)}), "andq $255, %rax");
 
-    ctx.check("ORrr",
-              MInstr::make(MOpcode::ORrr, {gpr(PhysReg::R8), gpr(PhysReg::R9)}),
-              "orq %r9, %r8");
+    ctx.check(
+        "ORrr", MInstr::make(MOpcode::ORrr, {gpr(PhysReg::R8), gpr(PhysReg::R9)}), "orq %r9, %r8");
 
-    ctx.check("ORri",
-              MInstr::make(MOpcode::ORri, {gpr(PhysReg::RAX), imm(1)}),
-              "orq $1, %rax");
+    ctx.check("ORri", MInstr::make(MOpcode::ORri, {gpr(PhysReg::RAX), imm(1)}), "orq $1, %rax");
 
     ctx.check("XORrr",
               MInstr::make(MOpcode::XORrr, {gpr(PhysReg::RCX), gpr(PhysReg::RDX)}),
               "xorq %rdx, %rcx");
 
-    ctx.check("XORri",
-              MInstr::make(MOpcode::XORri, {gpr(PhysReg::RAX), imm(-1)}),
-              "xorq $-1, %rax");
+    ctx.check(
+        "XORri", MInstr::make(MOpcode::XORri, {gpr(PhysReg::RAX), imm(-1)}), "xorq $-1, %rax");
 
     ctx.check("SUBrr",
               MInstr::make(MOpcode::SUBrr, {gpr(PhysReg::RAX), gpr(PhysReg::RBX)}),
@@ -394,33 +380,25 @@ static void testShifts(TestContext &ctx)
 {
     ctx.beginCategory("Shifts");
 
-    ctx.check("SHLri_1",
-              MInstr::make(MOpcode::SHLri, {gpr(PhysReg::RAX), imm(1)}),
-              "shlq $1, %rax");
+    ctx.check(
+        "SHLri_1", MInstr::make(MOpcode::SHLri, {gpr(PhysReg::RAX), imm(1)}), "shlq $1, %rax");
 
-    ctx.check("SHLri_63",
-              MInstr::make(MOpcode::SHLri, {gpr(PhysReg::RAX), imm(63)}),
-              "shlq $63, %rax");
+    ctx.check(
+        "SHLri_63", MInstr::make(MOpcode::SHLri, {gpr(PhysReg::RAX), imm(63)}), "shlq $63, %rax");
 
-    ctx.check("SHLri_hi",
-              MInstr::make(MOpcode::SHLri, {gpr(PhysReg::R8), imm(4)}),
-              "shlq $4, %r8");
+    ctx.check("SHLri_hi", MInstr::make(MOpcode::SHLri, {gpr(PhysReg::R8), imm(4)}), "shlq $4, %r8");
 
     ctx.check("SHLrc",
               MInstr::make(MOpcode::SHLrc, {gpr(PhysReg::RAX), gpr(PhysReg::RCX)}),
               "shlq %cl, %rax");
 
-    ctx.check("SHRri",
-              MInstr::make(MOpcode::SHRri, {gpr(PhysReg::RDX), imm(4)}),
-              "shrq $4, %rdx");
+    ctx.check("SHRri", MInstr::make(MOpcode::SHRri, {gpr(PhysReg::RDX), imm(4)}), "shrq $4, %rdx");
 
     ctx.check("SHRrc",
               MInstr::make(MOpcode::SHRrc, {gpr(PhysReg::RSI), gpr(PhysReg::RCX)}),
               "shrq %cl, %rsi");
 
-    ctx.check("SARri",
-              MInstr::make(MOpcode::SARri, {gpr(PhysReg::R8), imm(32)}),
-              "sarq $32, %r8");
+    ctx.check("SARri", MInstr::make(MOpcode::SARri, {gpr(PhysReg::R8), imm(32)}), "sarq $32, %r8");
 
     ctx.check("SARrc",
               MInstr::make(MOpcode::SARrc, {gpr(PhysReg::R15), gpr(PhysReg::RCX)}),
@@ -433,25 +411,16 @@ static void testDivision(TestContext &ctx)
 
     ctx.check("CQO", MInstr::make(MOpcode::CQO), "cqto");
 
-    ctx.check("IDIVrm_reg",
-              MInstr::make(MOpcode::IDIVrm, {gpr(PhysReg::RCX)}),
-              "idivq %rcx");
+    ctx.check("IDIVrm_reg", MInstr::make(MOpcode::IDIVrm, {gpr(PhysReg::RCX)}), "idivq %rcx");
 
-    ctx.check("IDIVrm_hi",
-              MInstr::make(MOpcode::IDIVrm, {gpr(PhysReg::R11)}),
-              "idivq %r11");
+    ctx.check("IDIVrm_hi", MInstr::make(MOpcode::IDIVrm, {gpr(PhysReg::R11)}), "idivq %r11");
 
-    ctx.check("IDIVrm_mem",
-              MInstr::make(MOpcode::IDIVrm, {mem(PhysReg::RBP, -8)}),
-              "idivq -8(%rbp)");
+    ctx.check(
+        "IDIVrm_mem", MInstr::make(MOpcode::IDIVrm, {mem(PhysReg::RBP, -8)}), "idivq -8(%rbp)");
 
-    ctx.check("DIVrm_reg",
-              MInstr::make(MOpcode::DIVrm, {gpr(PhysReg::RSI)}),
-              "divq %rsi");
+    ctx.check("DIVrm_reg", MInstr::make(MOpcode::DIVrm, {gpr(PhysReg::RSI)}), "divq %rsi");
 
-    ctx.check("DIVrm_hi",
-              MInstr::make(MOpcode::DIVrm, {gpr(PhysReg::R11)}),
-              "divq %r11");
+    ctx.check("DIVrm_hi", MInstr::make(MOpcode::DIVrm, {gpr(PhysReg::R11)}), "divq %r11");
 
     ctx.check("XORrr32_lo",
               MInstr::make(MOpcode::XORrr32, {gpr(PhysReg::RAX), gpr(PhysReg::RAX)}),
@@ -470,13 +439,10 @@ static void testCmpTestSet(TestContext &ctx)
               MInstr::make(MOpcode::CMPrr, {gpr(PhysReg::RAX), gpr(PhysReg::RCX)}),
               "cmpq %rcx, %rax");
 
-    ctx.check("CMPri",
-              MInstr::make(MOpcode::CMPri, {gpr(PhysReg::RDI), imm(0)}),
-              "cmpq $0, %rdi");
+    ctx.check("CMPri", MInstr::make(MOpcode::CMPri, {gpr(PhysReg::RDI), imm(0)}), "cmpq $0, %rdi");
 
-    ctx.check("CMPri_neg",
-              MInstr::make(MOpcode::CMPri, {gpr(PhysReg::RAX), imm(-1)}),
-              "cmpq $-1, %rax");
+    ctx.check(
+        "CMPri_neg", MInstr::make(MOpcode::CMPri, {gpr(PhysReg::RAX), imm(-1)}), "cmpq $-1, %rax");
 
     ctx.check("TESTrr",
               MInstr::make(MOpcode::TESTrr, {gpr(PhysReg::RAX), gpr(PhysReg::RAX)}),
@@ -499,6 +465,7 @@ static void testCmpTestSet(TestContext &ctx)
         PhysReg reg;
         const char *reg8;
     };
+
     const SetccCase setccCases[] = {
         {0, "sete", PhysReg::RAX, "%al"},
         {1, "setne", PhysReg::RCX, "%cl"},
@@ -520,9 +487,8 @@ static void testCmpTestSet(TestContext &ctx)
     {
         std::string caseName = std::string{"SETcc_"} + sc.suffix;
         std::string expected = std::string{sc.suffix} + " " + sc.reg8;
-        ctx.check(caseName.c_str(),
-                  MInstr::make(MOpcode::SETcc, {imm(sc.code), gpr(sc.reg)}),
-                  expected);
+        ctx.check(
+            caseName.c_str(), MInstr::make(MOpcode::SETcc, {imm(sc.code), gpr(sc.reg)}), expected);
     }
 }
 
@@ -531,34 +497,22 @@ static void testControlFlow(TestContext &ctx)
     ctx.beginCategory("Control flow");
 
     // JMP — label
-    ctx.check("JMP_label",
-              MInstr::make(MOpcode::JMP, {lab("tgt")}),
-              "jmp tgt");
+    ctx.check("JMP_label", MInstr::make(MOpcode::JMP, {lab("tgt")}), "jmp tgt");
 
     // JMP — register (indirect)
-    ctx.check("JMP_reg",
-              MInstr::make(MOpcode::JMP, {gpr(PhysReg::RAX)}),
-              "jmp *%rax");
+    ctx.check("JMP_reg", MInstr::make(MOpcode::JMP, {gpr(PhysReg::RAX)}), "jmp *%rax");
 
     // JMP — memory (indirect)
-    ctx.check("JMP_mem",
-              MInstr::make(MOpcode::JMP, {mem(PhysReg::RBP, -8)}),
-              "jmp *-8(%rbp)");
+    ctx.check("JMP_mem", MInstr::make(MOpcode::JMP, {mem(PhysReg::RBP, -8)}), "jmp *-8(%rbp)");
 
     // CALL — label
-    ctx.check("CALL_label",
-              MInstr::make(MOpcode::CALL, {lab("func")}),
-              "callq func");
+    ctx.check("CALL_label", MInstr::make(MOpcode::CALL, {lab("func")}), "callq func");
 
     // CALL — register (indirect)
-    ctx.check("CALL_reg",
-              MInstr::make(MOpcode::CALL, {gpr(PhysReg::RAX)}),
-              "callq *%rax");
+    ctx.check("CALL_reg", MInstr::make(MOpcode::CALL, {gpr(PhysReg::RAX)}), "callq *%rax");
 
     // CALL — memory (indirect)
-    ctx.check("CALL_mem",
-              MInstr::make(MOpcode::CALL, {mem(PhysReg::RBP, -8)}),
-              "callq *-8(%rbp)");
+    ctx.check("CALL_mem", MInstr::make(MOpcode::CALL, {mem(PhysReg::RBP, -8)}), "callq *-8(%rbp)");
 
     // UD2
     ctx.check("UD2", MInstr::make(MOpcode::UD2), "ud2");
@@ -572,18 +526,30 @@ static void testControlFlow(TestContext &ctx)
         int code;
         const char *suffix;
     };
+
     const JccCase jccCases[] = {
-        {0, "je"},   {1, "jne"}, {2, "jl"},  {3, "jle"}, {4, "jg"},  {5, "jge"}, {6, "ja"},
-        {7, "jae"},  {8, "jb"},  {9, "jbe"}, {10, "jp"}, {11, "jnp"}, {12, "jo"}, {13, "jno"},
+        {0, "je"},
+        {1, "jne"},
+        {2, "jl"},
+        {3, "jle"},
+        {4, "jg"},
+        {5, "jge"},
+        {6, "ja"},
+        {7, "jae"},
+        {8, "jb"},
+        {9, "jbe"},
+        {10, "jp"},
+        {11, "jnp"},
+        {12, "jo"},
+        {13, "jno"},
     };
 
     for (const auto &jc : jccCases)
     {
         std::string caseName = std::string{"JCC_"} + jc.suffix;
         std::string expected = std::string{jc.suffix} + " tgt";
-        ctx.check(caseName.c_str(),
-                  MInstr::make(MOpcode::JCC, {imm(jc.code), lab("tgt")}),
-                  expected);
+        ctx.check(
+            caseName.c_str(), MInstr::make(MOpcode::JCC, {imm(jc.code), lab("tgt")}), expected);
     }
 }
 
@@ -668,10 +634,9 @@ static void testFpDataMove(TestContext &ctx)
               MInstr::make(MOpcode::MOVUPSmr, {xmm(PhysReg::XMM6), mem(PhysReg::RSP, 0)}),
               "movups (%rsp), %xmm6");
 
-    ctx.check(
-        "MOVUPSrm_disp",
-        MInstr::make(MOpcode::MOVUPSrm, {mem(PhysReg::RSP, 16), xmm(PhysReg::XMM15)}),
-        "movups %xmm15, 16(%rsp)");
+    ctx.check("MOVUPSrm_disp",
+              MInstr::make(MOpcode::MOVUPSrm, {mem(PhysReg::RSP, 16), xmm(PhysReg::XMM15)}),
+              "movups %xmm15, 16(%rsp)");
 }
 
 static void testPseudoOps(TestContext &ctx)
@@ -679,9 +644,7 @@ static void testPseudoOps(TestContext &ctx)
     ctx.beginCategory("Pseudo-ops");
 
     // LABEL
-    ctx.check("LABEL",
-              MInstr::make(MOpcode::LABEL, {lab("my_lbl")}),
-              "my_lbl:");
+    ctx.check("LABEL", MInstr::make(MOpcode::LABEL, {lab("my_lbl")}), "my_lbl:");
 
     // PX_COPY with operands
     ctx.check("PX_COPY",
@@ -689,30 +652,35 @@ static void testPseudoOps(TestContext &ctx)
               "# px_copy");
 
     // PX_COPY empty
-    ctx.check("PX_COPY_empty",
-              MInstr::make(MOpcode::PX_COPY),
-              "# px_copy");
+    ctx.check("PX_COPY_empty", MInstr::make(MOpcode::PX_COPY), "# px_copy");
 
     // Negative tests: pseudo-ops that expand before emission should have no encoding
-    ctx.checkNoEncoding("no_enc_DIVS64rr", MOpcode::DIVS64rr,
+    ctx.checkNoEncoding("no_enc_DIVS64rr",
+                        MOpcode::DIVS64rr,
                         {gpr(PhysReg::RAX), gpr(PhysReg::RCX), gpr(PhysReg::RDX)});
 
-    ctx.checkNoEncoding("no_enc_DIVU64rr", MOpcode::DIVU64rr,
+    ctx.checkNoEncoding("no_enc_DIVU64rr",
+                        MOpcode::DIVU64rr,
                         {gpr(PhysReg::RAX), gpr(PhysReg::RCX), gpr(PhysReg::RDX)});
 
-    ctx.checkNoEncoding("no_enc_REMS64rr", MOpcode::REMS64rr,
+    ctx.checkNoEncoding("no_enc_REMS64rr",
+                        MOpcode::REMS64rr,
                         {gpr(PhysReg::RAX), gpr(PhysReg::RCX), gpr(PhysReg::RDX)});
 
-    ctx.checkNoEncoding("no_enc_REMU64rr", MOpcode::REMU64rr,
+    ctx.checkNoEncoding("no_enc_REMU64rr",
+                        MOpcode::REMU64rr,
                         {gpr(PhysReg::RAX), gpr(PhysReg::RCX), gpr(PhysReg::RDX)});
 
-    ctx.checkNoEncoding("no_enc_ADDOvfrr", MOpcode::ADDOvfrr,
+    ctx.checkNoEncoding("no_enc_ADDOvfrr",
+                        MOpcode::ADDOvfrr,
                         {gpr(PhysReg::RAX), gpr(PhysReg::RCX), gpr(PhysReg::RDX)});
 
-    ctx.checkNoEncoding("no_enc_SUBOvfrr", MOpcode::SUBOvfrr,
+    ctx.checkNoEncoding("no_enc_SUBOvfrr",
+                        MOpcode::SUBOvfrr,
                         {gpr(PhysReg::RAX), gpr(PhysReg::RCX), gpr(PhysReg::RDX)});
 
-    ctx.checkNoEncoding("no_enc_IMULOvfrr", MOpcode::IMULOvfrr,
+    ctx.checkNoEncoding("no_enc_IMULOvfrr",
+                        MOpcode::IMULOvfrr,
                         {gpr(PhysReg::RAX), gpr(PhysReg::RCX), gpr(PhysReg::RDX)});
 }
 
@@ -736,39 +704,34 @@ static void testAddressingModes(TestContext &ctx)
               "32(%rsp)");
 
     // Base + Index*1
-    ctx.check("addr_idx_scale1",
-              MInstr::make(MOpcode::MOVmr,
-                           {gpr(PhysReg::RAX),
-                            idxmem(PhysReg::RDI, PhysReg::RSI, 1, 0)}),
-              "(%rdi,%rsi,1)");
+    ctx.check(
+        "addr_idx_scale1",
+        MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), idxmem(PhysReg::RDI, PhysReg::RSI, 1, 0)}),
+        "(%rdi,%rsi,1)");
 
     // Base + Index*2
-    ctx.check("addr_idx_scale2",
-              MInstr::make(MOpcode::MOVmr,
-                           {gpr(PhysReg::RAX),
-                            idxmem(PhysReg::RDI, PhysReg::RSI, 2, 0)}),
-              "(%rdi,%rsi,2)");
+    ctx.check(
+        "addr_idx_scale2",
+        MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), idxmem(PhysReg::RDI, PhysReg::RSI, 2, 0)}),
+        "(%rdi,%rsi,2)");
 
     // Base + Index*4 + disp
-    ctx.check("addr_idx_scale4_disp",
-              MInstr::make(MOpcode::MOVmr,
-                           {gpr(PhysReg::RAX),
-                            idxmem(PhysReg::RDI, PhysReg::RSI, 4, 8)}),
-              "8(%rdi,%rsi,4)");
+    ctx.check(
+        "addr_idx_scale4_disp",
+        MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), idxmem(PhysReg::RDI, PhysReg::RSI, 4, 8)}),
+        "8(%rdi,%rsi,4)");
 
     // Base + Index*8 + disp
     ctx.check("addr_idx_scale8_disp",
               MInstr::make(MOpcode::MOVmr,
-                           {gpr(PhysReg::RAX),
-                            idxmem(PhysReg::RDI, PhysReg::RSI, 8, 16)}),
+                           {gpr(PhysReg::RAX), idxmem(PhysReg::RDI, PhysReg::RSI, 8, 16)}),
               "16(%rdi,%rsi,8)");
 
     // Hi base + hi index
-    ctx.check("addr_hi_base_hi_idx",
-              MInstr::make(MOpcode::MOVmr,
-                           {gpr(PhysReg::RAX),
-                            idxmem(PhysReg::R12, PhysReg::R13, 4, 0)}),
-              "(%r12,%r13,4)");
+    ctx.check(
+        "addr_hi_base_hi_idx",
+        MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), idxmem(PhysReg::R12, PhysReg::R13, 4, 0)}),
+        "(%r12,%r13,4)");
 
     // RIP-relative
     ctx.check("addr_rip_relative",

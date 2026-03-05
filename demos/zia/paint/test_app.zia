@@ -1,9 +1,0 @@
-module test_app;
-
-bind "./config";
-bind "./app";
-
-func main() {
-    var paint = new app.PaintApp();
-    paint.init();
-}

@@ -36,9 +36,11 @@
 
 namespace fs = std::filesystem;
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
-namespace {
+namespace
+{
 
 /// @brief Read a file into a byte vector.
 std::vector<uint8_t> readFile(const std::string &path)
@@ -60,12 +62,12 @@ std::string exeName(const std::string &name)
 {
     std::string result;
     result.reserve(name.size());
-    for (char c : name) {
+    for (char c : name)
+    {
         if (c == ' ')
             result.push_back('_');
         else
-            result.push_back(
-                static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+            result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
     }
     return result;
 }
@@ -89,9 +91,9 @@ std::string exeName(const std::string &name)
 ///   app/themes/dark.json=themes
 ///   ...
 std::string generateInstallIni(const std::string &displayName,
-                                const std::string &version,
-                                const std::string &executableName,
-                                const PackageConfig &pkg)
+                               const std::string &version,
+                               const std::string &executableName,
+                               const PackageConfig &pkg)
 {
     std::ostringstream ini;
     ini << "[install]\n";
@@ -114,9 +116,11 @@ std::string generateInstallIni(const std::string &displayName,
     ini << "uninstall_exe=uninstall.exe\n";
 
     // File associations
-    if (!pkg.fileAssociations.empty()) {
+    if (!pkg.fileAssociations.empty())
+    {
         ini << "[associations]\n";
-        for (const auto &assoc : pkg.fileAssociations) {
+        for (const auto &assoc : pkg.fileAssociations)
+        {
             ini << assoc.extension << "=" << assoc.description;
             if (!assoc.mimeType.empty())
                 ini << "|" << assoc.mimeType;
@@ -132,9 +136,7 @@ std::string generateInstallIni(const std::string &displayName,
 void buildWindowsPackage(const WindowsBuildParams &params)
 {
     const auto &pkg = params.pkgConfig;
-    std::string displayName = pkg.displayName.empty()
-                                  ? params.projectName
-                                  : pkg.displayName;
+    std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
     std::string exec = exeName(params.projectName);
 
     // ─── Build ZIP payload ─────────────────────────────────────────────
@@ -147,11 +149,11 @@ void buildWindowsPackage(const WindowsBuildParams &params)
 
     // Application executable
     auto execData = readFile(params.executablePath);
-    zip.addFile("app/" + exec + ".exe", execData.data(), execData.size(),
-                0100755);
+    zip.addFile("app/" + exec + ".exe", execData.data(), execData.size(), 0100755);
 
     // Assets
-    for (const auto &asset : pkg.assets) {
+    for (const auto &asset : pkg.assets)
+    {
         fs::path srcPath = fs::path(params.projectRoot) / asset.sourcePath;
         std::string targetDir = asset.targetPath;
         if (targetDir == ".")
@@ -161,28 +163,36 @@ void buildWindowsPackage(const WindowsBuildParams &params)
         if (!targetDir.empty())
             prefix += targetDir + "/";
 
-        if (fs::is_directory(srcPath)) {
-            for (auto &entry : fs::recursive_directory_iterator(srcPath)) {
+        if (fs::is_directory(srcPath))
+        {
+            for (auto &entry : fs::recursive_directory_iterator(srcPath))
+            {
                 auto relPath = fs::relative(entry.path(), srcPath).string();
-                if (entry.is_directory()) {
+                if (entry.is_directory())
+                {
                     zip.addDirectory(prefix + relPath);
-                } else if (entry.is_regular_file()) {
+                }
+                else if (entry.is_regular_file())
+                {
                     auto data = readFile(entry.path().string());
                     zip.addFile(prefix + relPath, data.data(), data.size());
                 }
             }
-        } else if (fs::is_regular_file(srcPath)) {
+        }
+        else if (fs::is_regular_file(srcPath))
+        {
             auto data = readFile(srcPath.string());
-            zip.addFile(prefix + srcPath.filename().string(),
-                        data.data(), data.size());
+            zip.addFile(prefix + srcPath.filename().string(), data.data(), data.size());
         }
     }
 
     // Icon (ICO format) — also embedded as PE resource for Explorer
     std::vector<uint8_t> icoData;
-    if (!pkg.iconPath.empty()) {
+    if (!pkg.iconPath.empty())
+    {
         fs::path iconSrc = fs::path(params.projectRoot) / pkg.iconPath;
-        if (fs::exists(iconSrc)) {
+        if (fs::exists(iconSrc))
+        {
             auto srcImage = pngRead(iconSrc.string());
             icoData = generateIco(srcImage);
             zip.addFile("meta/icon.ico", icoData.data(), icoData.size());
@@ -190,7 +200,8 @@ void buildWindowsPackage(const WindowsBuildParams &params)
     }
 
     // Start Menu shortcut (.lnk)
-    if (pkg.shortcutMenu) {
+    if (pkg.shortcutMenu)
+    {
         LnkParams lnk;
         // Target path will be set by the installer — store template path
         lnk.targetPath = "C:\\Program Files\\" + displayName + "\\" + exec + ".exe";
@@ -204,7 +215,8 @@ void buildWindowsPackage(const WindowsBuildParams &params)
     }
 
     // Desktop shortcut (.lnk)
-    if (pkg.shortcutDesktop) {
+    if (pkg.shortcutDesktop)
+    {
         LnkParams lnk;
         lnk.targetPath = "C:\\Program Files\\" + displayName + "\\" + exec + ".exe";
         lnk.workingDir = "C:\\Program Files\\" + displayName;
@@ -233,20 +245,24 @@ void buildWindowsPackage(const WindowsBuildParams &params)
         //   5. Remove the install directory
         //   6. Schedule self-deletion via MoveFileEx(MOVEFILE_DELAY_UNTIL_REBOOT)
         uninstPe.textSection = {
-            0x48, 0x83, 0xEC, 0x28, // sub rsp, 40
-            0x48, 0x31, 0xC9,       // xor rcx, rcx
-            0xC3                     // ret
+            0x48,
+            0x83,
+            0xEC,
+            0x28, // sub rsp, 40
+            0x48,
+            0x31,
+            0xC9, // xor rcx, rcx
+            0xC3  // ret
         };
         uninstPe.imports.push_back(
-            {"kernel32.dll", {"ExitProcess", "DeleteFileW", "RemoveDirectoryW",
-                              "GetModuleFileNameW"}});
+            {"kernel32.dll",
+             {"ExitProcess", "DeleteFileW", "RemoveDirectoryW", "GetModuleFileNameW"}});
         // asInvoker — uninstaller launched from Add/Remove Programs which
         // already has appropriate privileges if installed per-machine.
         uninstPe.manifest = generateUacManifest();
         uninstPe.iconData = icoData; // Same icon as installer
         auto uninstBytes = buildPE(uninstPe);
-        zip.addFile("app/uninstall.exe", uninstBytes.data(), uninstBytes.size(),
-                    0100755);
+        zip.addFile("app/uninstall.exe", uninstBytes.data(), uninstBytes.size(), 0100755);
     }
 
     auto zipPayload = zip.finishToVector();
@@ -264,9 +280,14 @@ void buildWindowsPackage(const WindowsBuildParams &params)
     // For now, it's a placeholder — the ZIP payload can be extracted
     // with any ZIP tool or a companion installer script.
     pe.textSection = {
-        0x48, 0x83, 0xEC, 0x28,   // sub rsp, 40   (align stack + shadow space)
-        0x48, 0x31, 0xC9,         // xor rcx, rcx   (uType = MB_OK)
-        0xC3                       // ret
+        0x48,
+        0x83,
+        0xEC,
+        0x28, // sub rsp, 40   (align stack + shadow space)
+        0x48,
+        0x31,
+        0xC9, // xor rcx, rcx   (uType = MB_OK)
+        0xC3  // ret
     };
 
     // Import kernel32.dll (minimal)

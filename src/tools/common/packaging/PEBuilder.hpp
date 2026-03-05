@@ -30,16 +30,19 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
 /// @brief Import function entry — a function imported from a DLL.
-struct PEImport {
+struct PEImport
+{
     std::string dllName;
     std::vector<std::string> functions;
 };
 
 /// @brief Parameters for building a PE32+ executable.
-struct PEBuildParams {
+struct PEBuildParams
+{
     /// Machine code for the .text section.
     std::vector<uint8_t> textSection;
 

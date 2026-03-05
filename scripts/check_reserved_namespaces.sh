@@ -18,8 +18,8 @@ echo "Checking for reserved 'Viper' namespace usage in user-facing code..."
 
 # Directories to check for user-facing code
 CHECK_DIRS=(
-  "${REPO_ROOT}/tests/golden/basic"
-  "${REPO_ROOT}/tests/e2e"
+  "${REPO_ROOT}/src/tests/golden/basic"
+  "${REPO_ROOT}/src/tests/e2e"
   "${REPO_ROOT}/examples/basic"
 )
 

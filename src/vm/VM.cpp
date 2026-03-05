@@ -778,14 +778,14 @@ static int sehFilter(unsigned int code)
 {
     switch (code)
     {
-    case EXCEPTION_ACCESS_VIOLATION:
-    case EXCEPTION_INT_DIVIDE_BY_ZERO:
-    case EXCEPTION_STACK_OVERFLOW:
-    case EXCEPTION_INT_OVERFLOW:
-    case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
-        return EXCEPTION_EXECUTE_HANDLER;
-    default:
-        return EXCEPTION_CONTINUE_SEARCH;
+        case EXCEPTION_ACCESS_VIOLATION:
+        case EXCEPTION_INT_DIVIDE_BY_ZERO:
+        case EXCEPTION_STACK_OVERFLOW:
+        case EXCEPTION_INT_OVERFLOW:
+        case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
+            return EXCEPTION_EXECUTE_HANDLER;
+        default:
+            return EXCEPTION_CONTINUE_SEARCH;
     }
 }
 
@@ -939,8 +939,7 @@ Slot VM::execFunction(const Function &fn, std::span<const Slot> args)
     // If the return value is a string, retain it before releasing frame buffers.
     // releaseFrameBuffers will release all regIsStr registers, which would drop
     // the refcount on the return value before the caller can retain it.
-    if (st.fr.func && st.fr.func->retType.kind == il::core::Type::Kind::Str
-        && st.hasPendingResult)
+    if (st.fr.func && st.fr.func->retType.kind == il::core::Type::Kind::Str && st.hasPendingResult)
     {
         rt_str_retain_maybe(result.str);
     }

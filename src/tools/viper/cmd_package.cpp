@@ -57,52 +57,51 @@ enum class PackageTarget
 /// @brief Print usage information for `viper package`.
 void packageUsage()
 {
-    std::cerr
-        << "Usage: viper package [project] [options]\n"
-        << "\n"
-        << "  Compiles a Viper project to a native binary and packages it into a\n"
-        << "  platform-specific installer. Cross-packaging is fully supported.\n"
-        << "\n"
-        << "  [project]  Path to a directory or viper.project file (default: .)\n"
-        << "\n"
-        << "Options:\n"
-        << "  --target <platform>   Target platform (default: host)\n"
-        << "                        macos    .app bundle in .zip\n"
-        << "                        linux    .deb package\n"
-        << "                        windows  Self-extracting .exe installer\n"
-        << "                        tarball  Portable .tar.gz archive\n"
-        << "  --arch <arch>         Target architecture: x64 or arm64 (default: host)\n"
-        << "  -o <path>             Output file path\n"
-        << "  --help, -h            Show this help\n"
-        << "\n"
-        << "Package manifest directives (in viper.project):\n"
-        << "  package-name <name>                 Display name\n"
-        << "  package-author <name>               Author / maintainer\n"
-        << "  package-description <text>          Short description\n"
-        << "  package-homepage <url>              Project homepage URL\n"
-        << "  package-license <spdx>              License identifier (SPDX)\n"
-        << "  package-identifier <id>             Reverse-DNS identifier\n"
-        << "  package-icon <path>                 Source PNG for icons (512x512+)\n"
-        << "  asset <source> <target>             Include asset files\n"
-        << "  file-assoc <ext> <desc> <mime>      Register file type association\n"
-        << "  shortcut-desktop on|off             Create desktop shortcut (Windows/Linux)\n"
-        << "  shortcut-menu on|off                Create menu entry (default: on)\n"
-        << "  min-os-macos <ver>                  Minimum macOS version (default: 10.13)\n"
-        << "  min-os-windows <ver>                Minimum Windows version\n"
-        << "  target-arch x64|arm64               Target architecture\n"
-        << "  post-install <script>               Post-install hook (Linux .deb)\n"
-        << "  pre-uninstall <script>              Pre-uninstall hook (Linux .deb)\n"
-        << "\n"
-        << "Examples:\n"
-        << "  viper package                       Package current dir for host platform\n"
-        << "  viper package myapp/ --target linux  Build .deb for Linux\n"
-        << "  viper package . --target windows -o myapp-setup.exe\n"
-        << "\n"
-        << "Output formats:\n"
-        << "  macOS:    .app bundle in .zip (Finder-native, drag to /Applications)\n"
-        << "  Linux:    .deb package (dpkg -i), includes .desktop + MIME types\n"
-        << "  Windows:  PE32+ .exe with embedded ZIP (assets, shortcuts, uninstaller)\n"
-        << "  Tarball:  .tar.gz portable archive\n";
+    std::cerr << "Usage: viper package [project] [options]\n"
+              << "\n"
+              << "  Compiles a Viper project to a native binary and packages it into a\n"
+              << "  platform-specific installer. Cross-packaging is fully supported.\n"
+              << "\n"
+              << "  [project]  Path to a directory or viper.project file (default: .)\n"
+              << "\n"
+              << "Options:\n"
+              << "  --target <platform>   Target platform (default: host)\n"
+              << "                        macos    .app bundle in .zip\n"
+              << "                        linux    .deb package\n"
+              << "                        windows  Self-extracting .exe installer\n"
+              << "                        tarball  Portable .tar.gz archive\n"
+              << "  --arch <arch>         Target architecture: x64 or arm64 (default: host)\n"
+              << "  -o <path>             Output file path\n"
+              << "  --help, -h            Show this help\n"
+              << "\n"
+              << "Package manifest directives (in viper.project):\n"
+              << "  package-name <name>                 Display name\n"
+              << "  package-author <name>               Author / maintainer\n"
+              << "  package-description <text>          Short description\n"
+              << "  package-homepage <url>              Project homepage URL\n"
+              << "  package-license <spdx>              License identifier (SPDX)\n"
+              << "  package-identifier <id>             Reverse-DNS identifier\n"
+              << "  package-icon <path>                 Source PNG for icons (512x512+)\n"
+              << "  asset <source> <target>             Include asset files\n"
+              << "  file-assoc <ext> <desc> <mime>      Register file type association\n"
+              << "  shortcut-desktop on|off             Create desktop shortcut (Windows/Linux)\n"
+              << "  shortcut-menu on|off                Create menu entry (default: on)\n"
+              << "  min-os-macos <ver>                  Minimum macOS version (default: 10.13)\n"
+              << "  min-os-windows <ver>                Minimum Windows version\n"
+              << "  target-arch x64|arm64               Target architecture\n"
+              << "  post-install <script>               Post-install hook (Linux .deb)\n"
+              << "  pre-uninstall <script>              Pre-uninstall hook (Linux .deb)\n"
+              << "\n"
+              << "Examples:\n"
+              << "  viper package                       Package current dir for host platform\n"
+              << "  viper package myapp/ --target linux  Build .deb for Linux\n"
+              << "  viper package . --target windows -o myapp-setup.exe\n"
+              << "\n"
+              << "Output formats:\n"
+              << "  macOS:    .app bundle in .zip (Finder-native, drag to /Applications)\n"
+              << "  Linux:    .deb package (dpkg -i), includes .desktop + MIME types\n"
+              << "  Windows:  PE32+ .exe with embedded ZIP (assets, shortcuts, uninstaller)\n"
+              << "  Tarball:  .tar.gz portable archive\n";
 }
 
 struct PackageArgs
@@ -130,16 +129,16 @@ std::string platformName(PackageTarget t)
 {
     switch (t)
     {
-    case PackageTarget::MacOS:
-        return "macos";
-    case PackageTarget::Linux:
-        return "linux";
-    case PackageTarget::Windows:
-        return "windows";
-    case PackageTarget::Tarball:
-        return "tarball";
-    default:
-        return "unknown";
+        case PackageTarget::MacOS:
+            return "macos";
+        case PackageTarget::Linux:
+            return "linux";
+        case PackageTarget::Windows:
+            return "windows";
+        case PackageTarget::Tarball:
+            return "tarball";
+        default:
+            return "unknown";
     }
 }
 
@@ -147,16 +146,16 @@ std::string platformExtension(PackageTarget t)
 {
     switch (t)
     {
-    case PackageTarget::MacOS:
-        return ".zip";
-    case PackageTarget::Linux:
-        return ".deb";
-    case PackageTarget::Windows:
-        return ".exe";
-    case PackageTarget::Tarball:
-        return ".tar.gz";
-    default:
-        return ".zip";
+        case PackageTarget::MacOS:
+            return ".zip";
+        case PackageTarget::Linux:
+            return ".deb";
+        case PackageTarget::Windows:
+            return ".exe";
+        case PackageTarget::Tarball:
+            return ".tar.gz";
+        default:
+            return ".zip";
     }
 }
 
@@ -262,9 +261,8 @@ int cmdPackage(int argc, char **argv)
     }
 
     // Determine display name and version
-    std::string displayName = proj.packageConfig.displayName.empty()
-                                  ? proj.name
-                                  : proj.packageConfig.displayName;
+    std::string displayName =
+        proj.packageConfig.displayName.empty() ? proj.name : proj.packageConfig.displayName;
 
     // Determine architecture
     viper::tools::TargetArch arch = viper::tools::detectHostArch();
@@ -332,68 +330,72 @@ int cmdPackage(int argc, char **argv)
     // Step 2: Determine output path
     if (args.outputPath.empty())
     {
-        args.outputPath = proj.name + "-" + proj.version + "-" + platformName(args.platformTarget)
-                          + "-" + archStr + platformExtension(args.platformTarget);
+        args.outputPath = proj.name + "-" + proj.version + "-" + platformName(args.platformTarget) +
+                          "-" + archStr + platformExtension(args.platformTarget);
     }
 
     // Step 3: Package
-    std::cerr << "Packaging " << displayName << " for " << platformName(args.platformTarget)
-              << " (" << archStr << ")...\n";
+    std::cerr << "Packaging " << displayName << " for " << platformName(args.platformTarget) << " ("
+              << archStr << ")...\n";
 
     try
     {
         switch (args.platformTarget)
         {
-        case PackageTarget::MacOS: {
-            viper::pkg::MacOSBuildParams params;
-            params.projectName = proj.name;
-            params.version = proj.version;
-            params.executablePath = tempBinaryPath;
-            params.projectRoot = proj.rootDir;
-            params.pkgConfig = proj.packageConfig;
-            params.outputPath = args.outputPath;
-            viper::pkg::buildMacOSPackage(params);
-            break;
-        }
-        case PackageTarget::Linux: {
-            viper::pkg::LinuxBuildParams lparams;
-            lparams.projectName = proj.name;
-            lparams.version = proj.version;
-            lparams.executablePath = tempBinaryPath;
-            lparams.projectRoot = proj.rootDir;
-            lparams.pkgConfig = proj.packageConfig;
-            lparams.outputPath = args.outputPath;
-            // Map architecture: Debian uses "amd64" not "x64"
-            lparams.archStr = (archStr == "x64") ? "amd64" : archStr;
-            viper::pkg::buildDebPackage(lparams);
-            break;
-        }
-        case PackageTarget::Windows: {
-            viper::pkg::WindowsBuildParams wparams;
-            wparams.projectName = proj.name;
-            wparams.version = proj.version;
-            wparams.executablePath = tempBinaryPath;
-            wparams.projectRoot = proj.rootDir;
-            wparams.pkgConfig = proj.packageConfig;
-            wparams.outputPath = args.outputPath;
-            wparams.archStr = archStr;
-            viper::pkg::buildWindowsPackage(wparams);
-            break;
-        }
-        case PackageTarget::Tarball: {
-            viper::pkg::LinuxBuildParams tparams;
-            tparams.projectName = proj.name;
-            tparams.version = proj.version;
-            tparams.executablePath = tempBinaryPath;
-            tparams.projectRoot = proj.rootDir;
-            tparams.pkgConfig = proj.packageConfig;
-            tparams.outputPath = args.outputPath;
-            tparams.archStr = archStr;
-            viper::pkg::buildTarball(tparams);
-            break;
-        }
-        default:
-            break;
+            case PackageTarget::MacOS:
+            {
+                viper::pkg::MacOSBuildParams params;
+                params.projectName = proj.name;
+                params.version = proj.version;
+                params.executablePath = tempBinaryPath;
+                params.projectRoot = proj.rootDir;
+                params.pkgConfig = proj.packageConfig;
+                params.outputPath = args.outputPath;
+                viper::pkg::buildMacOSPackage(params);
+                break;
+            }
+            case PackageTarget::Linux:
+            {
+                viper::pkg::LinuxBuildParams lparams;
+                lparams.projectName = proj.name;
+                lparams.version = proj.version;
+                lparams.executablePath = tempBinaryPath;
+                lparams.projectRoot = proj.rootDir;
+                lparams.pkgConfig = proj.packageConfig;
+                lparams.outputPath = args.outputPath;
+                // Map architecture: Debian uses "amd64" not "x64"
+                lparams.archStr = (archStr == "x64") ? "amd64" : archStr;
+                viper::pkg::buildDebPackage(lparams);
+                break;
+            }
+            case PackageTarget::Windows:
+            {
+                viper::pkg::WindowsBuildParams wparams;
+                wparams.projectName = proj.name;
+                wparams.version = proj.version;
+                wparams.executablePath = tempBinaryPath;
+                wparams.projectRoot = proj.rootDir;
+                wparams.pkgConfig = proj.packageConfig;
+                wparams.outputPath = args.outputPath;
+                wparams.archStr = archStr;
+                viper::pkg::buildWindowsPackage(wparams);
+                break;
+            }
+            case PackageTarget::Tarball:
+            {
+                viper::pkg::LinuxBuildParams tparams;
+                tparams.projectName = proj.name;
+                tparams.version = proj.version;
+                tparams.executablePath = tempBinaryPath;
+                tparams.projectRoot = proj.rootDir;
+                tparams.pkgConfig = proj.packageConfig;
+                tparams.outputPath = args.outputPath;
+                tparams.archStr = archStr;
+                viper::pkg::buildTarball(tparams);
+                break;
+            }
+            default:
+                break;
         }
     }
     catch (const std::exception &e)

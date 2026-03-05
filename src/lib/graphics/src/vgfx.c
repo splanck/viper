@@ -1078,9 +1078,8 @@ void vgfx_pset(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color)
     window->pixels[offset + 3] = 0xFF;                 /* A (fully opaque) */
 }
 
-
-static void vgfx_pset_alpha_block(vgfx_window_t window, int32_t px, int32_t py, int32_t sz,
-                                   uint32_t color)
+static void vgfx_pset_alpha_block(
+    vgfx_window_t window, int32_t px, int32_t py, int32_t sz, uint32_t color)
 {
     uint8_t src_a = (uint8_t)((color >> 24) & 0xFF);
     if (src_a == 0)
@@ -1263,8 +1262,12 @@ void vgfx_line(
     float cs = window ? window->coord_scale : 1.0f;
     if (cs > 1.0f)
     {
-        vgfx_draw_line(window, (int32_t)(x1 * cs), (int32_t)(y1 * cs), (int32_t)(x2 * cs),
-                        (int32_t)(y2 * cs), color);
+        vgfx_draw_line(window,
+                       (int32_t)(x1 * cs),
+                       (int32_t)(y1 * cs),
+                       (int32_t)(x2 * cs),
+                       (int32_t)(y2 * cs),
+                       color);
         return;
     }
     vgfx_draw_line(window, x1, y1, x2, y2, color);
@@ -1285,8 +1288,12 @@ void vgfx_rect(vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_t h,
     float cs = window ? window->coord_scale : 1.0f;
     if (cs > 1.0f)
     {
-        vgfx_draw_rect(window, (int32_t)(x * cs), (int32_t)(y * cs), (int32_t)(w * cs),
-                        (int32_t)(h * cs), color);
+        vgfx_draw_rect(window,
+                       (int32_t)(x * cs),
+                       (int32_t)(y * cs),
+                       (int32_t)(w * cs),
+                       (int32_t)(h * cs),
+                       color);
         return;
     }
     vgfx_draw_rect(window, x, y, w, h, color);
@@ -1308,8 +1315,12 @@ void vgfx_fill_rect(
     float cs = window ? window->coord_scale : 1.0f;
     if (cs > 1.0f)
     {
-        vgfx_draw_fill_rect(window, (int32_t)(x * cs), (int32_t)(y * cs), (int32_t)(w * cs),
-                             (int32_t)(h * cs), color);
+        vgfx_draw_fill_rect(window,
+                            (int32_t)(x * cs),
+                            (int32_t)(y * cs),
+                            (int32_t)(w * cs),
+                            (int32_t)(h * cs),
+                            color);
         return;
     }
     vgfx_draw_fill_rect(window, x, y, w, h, color);
@@ -1329,8 +1340,8 @@ void vgfx_circle(vgfx_window_t window, int32_t cx, int32_t cy, int32_t radius, v
     float cs = window ? window->coord_scale : 1.0f;
     if (cs > 1.0f)
     {
-        vgfx_draw_circle(window, (int32_t)(cx * cs), (int32_t)(cy * cs), (int32_t)(radius * cs),
-                          color);
+        vgfx_draw_circle(
+            window, (int32_t)(cx * cs), (int32_t)(cy * cs), (int32_t)(radius * cs), color);
         return;
     }
     vgfx_draw_circle(window, cx, cy, radius, color);
@@ -1351,8 +1362,8 @@ void vgfx_fill_circle(
     float cs = window ? window->coord_scale : 1.0f;
     if (cs > 1.0f)
     {
-        vgfx_draw_fill_circle(window, (int32_t)(cx * cs), (int32_t)(cy * cs),
-                               (int32_t)(radius * cs), color);
+        vgfx_draw_fill_circle(
+            window, (int32_t)(cx * cs), (int32_t)(cy * cs), (int32_t)(radius * cs), color);
         return;
     }
     vgfx_draw_fill_circle(window, cx, cy, radius, color);

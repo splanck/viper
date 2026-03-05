@@ -25,30 +25,34 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
 /// @brief A single asset entry: source file/dir -> target relative dir.
-struct AssetEntry {
+struct AssetEntry
+{
     std::string sourcePath; ///< Relative to project root.
     std::string targetPath; ///< Relative to install dir.
 };
 
 /// @brief A file association declaration.
-struct FileAssoc {
+struct FileAssoc
+{
     std::string extension;   ///< e.g. ".zia"
     std::string description; ///< e.g. "Zia Source File"
     std::string mimeType;    ///< e.g. "text/x-zia"
 };
 
 /// @brief All package-related configuration from viper.project.
-struct PackageConfig {
-    std::string displayName;  ///< package-name (defaults to project name)
-    std::string author;       ///< package-author
-    std::string description;  ///< package-description
-    std::string homepage;     ///< package-homepage
-    std::string license;      ///< package-license (SPDX)
-    std::string identifier;   ///< package-identifier (reverse DNS)
-    std::string iconPath;     ///< package-icon (relative path to PNG)
+struct PackageConfig
+{
+    std::string displayName; ///< package-name (defaults to project name)
+    std::string author;      ///< package-author
+    std::string description; ///< package-description
+    std::string homepage;    ///< package-homepage
+    std::string license;     ///< package-license (SPDX)
+    std::string identifier;  ///< package-identifier (reverse DNS)
+    std::string iconPath;    ///< package-icon (relative path to PNG)
 
     std::vector<AssetEntry> assets;
     std::vector<FileAssoc> fileAssociations;
@@ -67,8 +71,8 @@ struct PackageConfig {
     /// @brief Check if any package-* directives were specified.
     bool hasPackageConfig() const
     {
-        return !displayName.empty() || !author.empty() || !description.empty()
-            || !identifier.empty() || !iconPath.empty() || !assets.empty();
+        return !displayName.empty() || !author.empty() || !description.empty() ||
+               !identifier.empty() || !iconPath.empty() || !assets.empty();
     }
 };
 

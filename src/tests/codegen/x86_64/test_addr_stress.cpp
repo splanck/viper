@@ -199,21 +199,28 @@ void testEveryGprBase(TestContext &ctx)
     };
 
     const Case cases[] = {
-        {PhysReg::RAX, "RAX", "(%rax)"},   {PhysReg::RBX, "RBX", "(%rbx)"},
-        {PhysReg::RCX, "RCX", "(%rcx)"},   {PhysReg::RDX, "RDX", "(%rdx)"},
-        {PhysReg::RSI, "RSI", "(%rsi)"},   {PhysReg::RDI, "RDI", "(%rdi)"},
-        {PhysReg::R8, "R8", "(%r8)"},      {PhysReg::R9, "R9", "(%r9)"},
-        {PhysReg::R10, "R10", "(%r10)"},   {PhysReg::R11, "R11", "(%r11)"},
-        {PhysReg::R12, "R12", "(%r12)"},   {PhysReg::R13, "R13", "(%r13)"},
-        {PhysReg::R14, "R14", "(%r14)"},   {PhysReg::R15, "R15", "(%r15)"},
-        {PhysReg::RBP, "RBP", "(%rbp)"},   {PhysReg::RSP, "RSP", "(%rsp)"},
+        {PhysReg::RAX, "RAX", "(%rax)"},
+        {PhysReg::RBX, "RBX", "(%rbx)"},
+        {PhysReg::RCX, "RCX", "(%rcx)"},
+        {PhysReg::RDX, "RDX", "(%rdx)"},
+        {PhysReg::RSI, "RSI", "(%rsi)"},
+        {PhysReg::RDI, "RDI", "(%rdi)"},
+        {PhysReg::R8, "R8", "(%r8)"},
+        {PhysReg::R9, "R9", "(%r9)"},
+        {PhysReg::R10, "R10", "(%r10)"},
+        {PhysReg::R11, "R11", "(%r11)"},
+        {PhysReg::R12, "R12", "(%r12)"},
+        {PhysReg::R13, "R13", "(%r13)"},
+        {PhysReg::R14, "R14", "(%r14)"},
+        {PhysReg::R15, "R15", "(%r15)"},
+        {PhysReg::RBP, "RBP", "(%rbp)"},
+        {PhysReg::RSP, "RSP", "(%rsp)"},
     };
 
     for (const auto &c : cases)
     {
-        ctx.check(c.name,
-                  MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), mem(c.reg, 0)}),
-                  c.expected);
+        ctx.check(
+            c.name, MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), mem(c.reg, 0)}), c.expected);
     }
 }
 
@@ -313,12 +320,10 @@ void testScaleFactors(TestContext &ctx)
 
     for (const auto &c : cases)
     {
-        ctx.check(
-            c.name,
-            MInstr::make(MOpcode::MOVmr,
-                         {gpr(PhysReg::RAX),
-                          idxmem(PhysReg::RDI, PhysReg::RSI, c.scale, 0)}),
-            c.expected);
+        ctx.check(c.name,
+                  MInstr::make(MOpcode::MOVmr,
+                               {gpr(PhysReg::RAX), idxmem(PhysReg::RDI, PhysReg::RSI, c.scale, 0)}),
+                  c.expected);
     }
 }
 
@@ -345,12 +350,10 @@ void testSibDisp(TestContext &ctx)
 
     for (const auto &c : cases)
     {
-        ctx.check(
-            c.name,
-            MInstr::make(MOpcode::MOVmr,
-                         {gpr(PhysReg::RAX),
-                          idxmem(PhysReg::RDI, PhysReg::RSI, 4, c.disp)}),
-            c.expected);
+        ctx.check(c.name,
+                  MInstr::make(MOpcode::MOVmr,
+                               {gpr(PhysReg::RAX), idxmem(PhysReg::RDI, PhysReg::RSI, 4, c.disp)}),
+                  c.expected);
     }
 }
 
@@ -360,18 +363,16 @@ void testHighRegSib(TestContext &ctx)
     ctx.beginCategory("High-reg SIB");
 
     // R12 base + R13 index
-    ctx.check("R12_base_R13_idx",
-              MInstr::make(MOpcode::MOVmr,
-                           {gpr(PhysReg::RAX),
-                            idxmem(PhysReg::R12, PhysReg::R13, 4, 0)}),
-              "(%r12,%r13,4)");
+    ctx.check(
+        "R12_base_R13_idx",
+        MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), idxmem(PhysReg::R12, PhysReg::R13, 4, 0)}),
+        "(%r12,%r13,4)");
 
     // R13 base + R14 index
-    ctx.check("R13_base_R14_idx",
-              MInstr::make(MOpcode::MOVmr,
-                           {gpr(PhysReg::RAX),
-                            idxmem(PhysReg::R13, PhysReg::R14, 8, 0)}),
-              "(%r13,%r14,8)");
+    ctx.check(
+        "R13_base_R14_idx",
+        MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), idxmem(PhysReg::R13, PhysReg::R14, 8, 0)}),
+        "(%r13,%r14,8)");
 
     // R12 base + displacement (SIB required)
     ctx.check("R12_base_disp32",
@@ -384,38 +385,33 @@ void testHighRegSib(TestContext &ctx)
               "(%r13)");
 
     // RSP base + index register (SIB needed)
-    ctx.check("RSP_base_idx",
-              MInstr::make(MOpcode::MOVmr,
-                           {gpr(PhysReg::RAX),
-                            idxmem(PhysReg::RSP, PhysReg::RDI, 2, 0)}),
-              "(%rsp,%rdi,2)");
+    ctx.check(
+        "RSP_base_idx",
+        MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), idxmem(PhysReg::RSP, PhysReg::RDI, 2, 0)}),
+        "(%rsp,%rdi,2)");
 
     // RSP base + index + displacement
     ctx.check("RSP_base_idx_disp",
               MInstr::make(MOpcode::MOVmr,
-                           {gpr(PhysReg::RAX),
-                            idxmem(PhysReg::RSP, PhysReg::RDI, 4, 16)}),
+                           {gpr(PhysReg::RAX), idxmem(PhysReg::RSP, PhysReg::RDI, 4, 16)}),
               "16(%rsp,%rdi,4)");
 
     // R12 base + R8 index + large displacement
     ctx.check("R12_R8_idx_disp512",
               MInstr::make(MOpcode::MOVmr,
-                           {gpr(PhysReg::RAX),
-                            idxmem(PhysReg::R12, PhysReg::R8, 8, 512)}),
+                           {gpr(PhysReg::RAX), idxmem(PhysReg::R12, PhysReg::R8, 8, 512)}),
               "512(%r12,%r8,8)");
 
     // RBP base + index (RBP special encoding + SIB)
-    ctx.check("RBP_base_idx",
-              MInstr::make(MOpcode::MOVmr,
-                           {gpr(PhysReg::RAX),
-                            idxmem(PhysReg::RBP, PhysReg::RCX, 4, 0)}),
-              "(%rbp,%rcx,4)");
+    ctx.check(
+        "RBP_base_idx",
+        MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), idxmem(PhysReg::RBP, PhysReg::RCX, 4, 0)}),
+        "(%rbp,%rcx,4)");
 
     // R13 base + R15 index + displacement
     ctx.check("R13_R15_idx_disp24",
               MInstr::make(MOpcode::MOVmr,
-                           {gpr(PhysReg::RAX),
-                            idxmem(PhysReg::R13, PhysReg::R15, 2, 24)}),
+                           {gpr(PhysReg::RAX), idxmem(PhysReg::R13, PhysReg::R15, 2, 24)}),
               "24(%r13,%r15,2)");
 }
 
@@ -424,9 +420,8 @@ void testRipRelative(TestContext &ctx)
 {
     ctx.beginCategory("RIP-relative");
 
-    ctx.check("rip_simple",
-              MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), rip("data")}),
-              "data(%rip)");
+    ctx.check(
+        "rip_simple", MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), rip("data")}), "data(%rip)");
 
     ctx.check("rip_mangled",
               MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), rip("_ZN5class6methodEv")}),
@@ -437,9 +432,8 @@ void testRipRelative(TestContext &ctx)
               ".LC_f64_0(%rip)");
 
     // LEA with RIP-relative
-    ctx.check("lea_rip",
-              MInstr::make(MOpcode::LEA, {gpr(PhysReg::RDI), rip("symbol")}),
-              "symbol(%rip)");
+    ctx.check(
+        "lea_rip", MInstr::make(MOpcode::LEA, {gpr(PhysReg::RDI), rip("symbol")}), "symbol(%rip)");
 }
 
 /// Category 8: Cross-opcode addressing — same memory operand across different instructions.
@@ -451,39 +445,27 @@ void testCrossOpcode(TestContext &ctx)
     const auto sibm = idxmem(PhysReg::RDI, PhysReg::RSI, 8, 16);
 
     // MOVmr (load from memory)
-    ctx.check("MOVmr_base_disp",
-              MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), m}),
-              "-24(%rbp)");
+    ctx.check("MOVmr_base_disp", MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), m}), "-24(%rbp)");
 
     // MOVrm (store to memory)
-    ctx.check("MOVrm_base_disp",
-              MInstr::make(MOpcode::MOVrm, {m, gpr(PhysReg::RAX)}),
-              "-24(%rbp)");
+    ctx.check("MOVrm_base_disp", MInstr::make(MOpcode::MOVrm, {m, gpr(PhysReg::RAX)}), "-24(%rbp)");
 
     // LEA
-    ctx.check("LEA_sib",
-              MInstr::make(MOpcode::LEA, {gpr(PhysReg::RAX), sibm}),
-              "16(%rdi,%rsi,8)");
+    ctx.check("LEA_sib", MInstr::make(MOpcode::LEA, {gpr(PhysReg::RAX), sibm}), "16(%rdi,%rsi,8)");
 
     // MOVSDmr (FP load from memory)
-    ctx.check("MOVSDmr_base_disp",
-              MInstr::make(MOpcode::MOVSDmr, {xmm(PhysReg::XMM0), m}),
-              "-24(%rbp)");
+    ctx.check(
+        "MOVSDmr_base_disp", MInstr::make(MOpcode::MOVSDmr, {xmm(PhysReg::XMM0), m}), "-24(%rbp)");
 
     // MOVSDrm (FP store to memory)
-    ctx.check("MOVSDrm_base_disp",
-              MInstr::make(MOpcode::MOVSDrm, {m, xmm(PhysReg::XMM0)}),
-              "-24(%rbp)");
+    ctx.check(
+        "MOVSDrm_base_disp", MInstr::make(MOpcode::MOVSDrm, {m, xmm(PhysReg::XMM0)}), "-24(%rbp)");
 
     // CALL memory indirect
-    ctx.check("CALL_mem_sib",
-              MInstr::make(MOpcode::CALL, {sibm}),
-              "16(%rdi,%rsi,8)");
+    ctx.check("CALL_mem_sib", MInstr::make(MOpcode::CALL, {sibm}), "16(%rdi,%rsi,8)");
 
     // JMP memory indirect
-    ctx.check("JMP_mem_base_disp",
-              MInstr::make(MOpcode::JMP, {m}),
-              "-24(%rbp)");
+    ctx.check("JMP_mem_base_disp", MInstr::make(MOpcode::JMP, {m}), "-24(%rbp)");
 
     // MOVUPSrm (128-bit store)
     ctx.check("MOVUPSrm_RSP",
@@ -496,9 +478,7 @@ void testCrossOpcode(TestContext &ctx)
               "32(%rsp)");
 
     // IDIVrm with memory operand
-    ctx.check("IDIVrm_mem",
-              MInstr::make(MOpcode::IDIVrm, {mem(PhysReg::RBP, -8)}),
-              "-8(%rbp)");
+    ctx.check("IDIVrm_mem", MInstr::make(MOpcode::IDIVrm, {mem(PhysReg::RBP, -8)}), "-8(%rbp)");
 }
 
 // ===----------------------------------------------------------------------===

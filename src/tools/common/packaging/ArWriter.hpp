@@ -26,27 +26,36 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
 /// @brief Writes ar archives (used as .deb outer container).
-class ArWriter {
-public:
+class ArWriter
+{
+  public:
     /// @brief Add a member to the archive.
     /// @param name Member name (max 15 chars, will be "/" terminated).
     /// @param data Member data.
     /// @param size Member data size.
     /// @param mtime Modification time (Unix timestamp), default 0.
     /// @param mode File mode in octal, default 100644.
-    void addMember(const std::string &name, const uint8_t *data, size_t size,
-                   uint32_t mtime = 0, uint32_t mode = 0100644);
+    void addMember(const std::string &name,
+                   const uint8_t *data,
+                   size_t size,
+                   uint32_t mtime = 0,
+                   uint32_t mode = 0100644);
 
     /// @brief Convenience: add a member from a string.
-    void addMemberString(const std::string &name, const std::string &content,
-                         uint32_t mtime = 0, uint32_t mode = 0100644);
+    void addMemberString(const std::string &name,
+                         const std::string &content,
+                         uint32_t mtime = 0,
+                         uint32_t mode = 0100644);
 
     /// @brief Convenience: add a member from a vector.
-    void addMemberVec(const std::string &name, const std::vector<uint8_t> &data,
-                      uint32_t mtime = 0, uint32_t mode = 0100644);
+    void addMemberVec(const std::string &name,
+                      const std::vector<uint8_t> &data,
+                      uint32_t mtime = 0,
+                      uint32_t mode = 0100644);
 
     /// @brief Finalize and return the complete ar archive.
     std::vector<uint8_t> finish() const;
@@ -54,13 +63,15 @@ public:
     /// @brief Finalize and write to a file.
     void finishToFile(const std::string &path) const;
 
-private:
-    struct Member {
+  private:
+    struct Member
+    {
         std::string name;
         std::vector<uint8_t> data;
         uint32_t mtime;
         uint32_t mode;
     };
+
     std::vector<Member> members_;
 };
 

@@ -285,8 +285,7 @@ void printFirstDifference(const std::string &a, const std::string &b)
 
     if (a.size() != b.size())
     {
-        std::cerr << "  strings have different lengths: " << a.size() << " vs " << b.size()
-                  << "\n";
+        std::cerr << "  strings have different lengths: " << a.size() << " vs " << b.size() << "\n";
     }
 }
 
@@ -474,8 +473,8 @@ struct TestContext
     ILBlock mainEntry{};
     mainEntry.name = "entry";
     mainEntry.paramIds = {0, 1, 2, 3};
-    mainEntry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64,
-                            ILValue::Kind::I64};
+    mainEntry.paramKinds = {
+        ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64};
 
     ILInstr callHelper{};
     callHelper.opcode = "call";
@@ -496,7 +495,8 @@ struct TestContext
         makeSwitch(3, {{1, "case1"}, {2, "case2"}, {3, "case3"}}, "default_blk"),
     };
 
-    auto makeRetBlock = [](const char *name, int baseId, int64_t addend) {
+    auto makeRetBlock = [](const char *name, int baseId, int64_t addend)
+    {
         ILBlock blk{};
         blk.name = name;
         blk.instrs = {
@@ -508,8 +508,11 @@ struct TestContext
 
     ILFunction fnMain{};
     fnMain.name = "canonical_main";
-    fnMain.blocks = {mainEntry, makeRetBlock("case1", 12, 100), makeRetBlock("case2", 12, 200),
-                     makeRetBlock("case3", 12, 300), makeRetBlock("default_blk", 12, 0)};
+    fnMain.blocks = {mainEntry,
+                     makeRetBlock("case1", 12, 100),
+                     makeRetBlock("case2", 12, 200),
+                     makeRetBlock("case3", 12, 300),
+                     makeRetBlock("default_blk", 12, 0)};
 
     ILModule mod{};
     mod.funcs = {fnArith, fnHelper, fnMain};
@@ -546,8 +549,12 @@ void testRegAllocPressure(TestContext &ctx)
     ILBlock entry{};
     entry.name = "entry";
     entry.paramIds = {0, 1, 2, 3, 4, 5};
-    entry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64,
-                        ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64};
+    entry.paramKinds = {ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64};
 
     // 10 computed values from different param combinations
     entry.instrs = {
@@ -819,8 +826,8 @@ void testComplexCfg(TestContext &ctx)
 
     ILFunction fn{};
     fn.name = "complex_cfg";
-    fn.blocks = {entry, case1, case2, l2t, l2f, case3, loopHdr, loopBody, loopExit, case4,
-                 defaultBlk};
+    fn.blocks = {
+        entry, case1, case2, l2t, l2f, case3, loopHdr, loopBody, loopExit, case4, defaultBlk};
 
     ILModule mod{};
     mod.funcs = {fn};
@@ -871,8 +878,8 @@ void testISelPatterns(TestContext &ctx)
     ILBlock entry{};
     entry.name = "entry";
     entry.paramIds = {0, 1, 2, 3};
-    entry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64,
-                        ILValue::Kind::I64};
+    entry.paramKinds = {
+        ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64};
     entry.instrs = {
         // Multiply by various powers of 2 — triggers shlDefs map
         makeOp("mul", {val(0), imm(8)}, 10),
@@ -966,13 +973,13 @@ int main()
 {
     TestContext ctx;
 
-    testRepeatedCompilation(ctx);    // Test 1: N=100
-    testRegAllocPressure(ctx);       // Test 2: N=50
-    testRodataPool(ctx);             // Test 3: N=50
-    testMultiFunctionOrdering(ctx);  // Test 4: N=50
-    testComplexCfg(ctx);             // Test 5: N=50
-    testSeparateConstruction(ctx);   // Test 6: pointer independence
-    testISelPatterns(ctx);           // Test 7: N=50
+    testRepeatedCompilation(ctx);      // Test 1: N=100
+    testRegAllocPressure(ctx);         // Test 2: N=50
+    testRodataPool(ctx);               // Test 3: N=50
+    testMultiFunctionOrdering(ctx);    // Test 4: N=50
+    testComplexCfg(ctx);               // Test 5: N=50
+    testSeparateConstruction(ctx);     // Test 6: pointer independence
+    testISelPatterns(ctx);             // Test 7: N=50
     testPerFunctionLabelCounters(ctx); // Test 8: per-function label ids
 
     ctx.printSummary();

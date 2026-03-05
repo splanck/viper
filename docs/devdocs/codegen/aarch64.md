@@ -18,7 +18,7 @@ programs, and the development roadmap. It is kept developer-focused with concret
 
 ### Test Case: Frogger Demo
 
-The frogger demo (`demos/basic/frogger/frogger.bas`) serves as a benchmark for backend completeness:
+The frogger demo (`examples/games/frogger-basic/frogger.bas`) serves as a benchmark for backend completeness:
 
 - **Compiles and links successfully**: 12,771 lines of IL → 56KB assembly → 121KB native binary
 - **Runs successfully**: Verified end-to-end on Apple Silicon
@@ -310,7 +310,7 @@ echo "Exit code: $?"  # Should print 15
 ### Test Frogger Compilation
 
 ```bash
-./build/src/tools/viper/viper front basic -emit-il demos/basic/frogger/frogger.bas > /tmp/frogger.il
+./build/src/tools/viper/viper front basic -emit-il examples/games/frogger-basic/frogger.bas > /tmp/frogger.il
 ./build/src/tools/viper/viper codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
 as /tmp/frogger.s -o /tmp/frogger.o
 clang++ /tmp/frogger.o build/src/runtime/libviper_runtime.a -o /tmp/frogger_native

@@ -44,7 +44,8 @@ enum class ReadResult
 /// @param input Current line buffer content.
 /// @param cursor Current cursor position in the buffer.
 /// @return Vector of completion strings to offer.
-using CompletionCallback = std::function<std::vector<std::string>(const std::string &input, size_t cursor)>;
+using CompletionCallback =
+    std::function<std::vector<std::string>(const std::string &input, size_t cursor)>;
 
 /// @brief Custom line editor built on the Viper TUI framework.
 /// @details Provides interactive line editing with cursor movement (left/right,

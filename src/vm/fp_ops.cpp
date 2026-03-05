@@ -69,7 +69,9 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
 
     auto trap = [&](TrapKind kind, const char *message)
     {
-        RuntimeBridge::trap(kind, message, in.loc,
+        RuntimeBridge::trap(kind,
+                            message,
+                            in.loc,
                             fr.func ? fr.func->name : std::string(),
                             bb ? bb->label : std::string());
     };

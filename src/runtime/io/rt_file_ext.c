@@ -87,12 +87,13 @@ static inline ssize_t rt_posix_read(int fd, void *buf, size_t count)
 {
     return read(fd, buf, (unsigned int)count);
 }
+
 static inline ssize_t rt_posix_write(int fd, const void *buf, size_t count)
 {
     return write(fd, buf, (unsigned int)count);
 }
 #else
-#define rt_posix_read  read
+#define rt_posix_read read
 #define rt_posix_write write
 #endif
 

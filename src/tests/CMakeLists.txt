@@ -509,57 +509,7 @@ if (TEST basic_select_case_string)
     set_tests_properties(basic_select_case_string PROPERTIES LABELS golden)
 endif ()
 
-# =============================================================================
-# Demo compilation tests (ARM64 only)
-# These tests verify that the full compilation pipeline works for each demo.
-# They compile through: source -> IL -> ARM64 assembly -> object -> executable
-# =============================================================================
-if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-    set(DEMO_TEST_SCRIPT "${CMAKE_SOURCE_DIR}/scripts/test_demo_compile.sh")
-    set(DEMOS_DIR "${CMAKE_SOURCE_DIR}/demos")
-
-    # BASIC demos
-    set(BASIC_DEMOS
-            "chess:${DEMOS_DIR}/basic/chess/chess.bas"
-            "vtris:${DEMOS_DIR}/basic/vtris/vtris.bas"
-            "frogger:${DEMOS_DIR}/basic/frogger/frogger.bas"
-            "centipede:${DEMOS_DIR}/basic/centipede/centipede.bas"
-            "pacman:${DEMOS_DIR}/basic/pacman/pacman.bas"
-    )
-
-    foreach (demo IN LISTS BASIC_DEMOS)
-        string(REPLACE ":" ";" demo_parts "${demo}")
-        list(GET demo_parts 0 demo_name)
-        list(GET demo_parts 1 demo_source)
-        if (EXISTS "${demo_source}")
-            add_test(NAME demo_basic_${demo_name}
-                    COMMAND "${DEMO_TEST_SCRIPT}" "basic" "${demo_source}"
-                    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-            set_tests_properties(demo_basic_${demo_name} PROPERTIES
-                    LABELS "demos;ARM64;NativeLink"
-                    TIMEOUT 60)
-        endif ()
-    endforeach ()
-
-    # Zia demos
-    set(ZIA_DEMOS
-            "paint:${DEMOS_DIR}/zia/paint/main.zia"
-    )
-
-    foreach (demo IN LISTS ZIA_DEMOS)
-        string(REPLACE ":" ";" demo_parts "${demo}")
-        list(GET demo_parts 0 demo_name)
-        list(GET demo_parts 1 demo_source)
-        if (EXISTS "${demo_source}")
-            add_test(NAME demo_zia_${demo_name}
-                    COMMAND "${DEMO_TEST_SCRIPT}" "zia" "${demo_source}"
-                    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-            set_tests_properties(demo_zia_${demo_name} PROPERTIES
-                    LABELS "demos;ARM64;NativeLink"
-                    TIMEOUT 60)
-        endif ()
-    endforeach ()
-endif ()
+# Demo compilation tests removed — covered by ARM64 native link tests in e2e/CMakeLists.txt
 
 # =============================================================================
 # Zia Runtime Tests

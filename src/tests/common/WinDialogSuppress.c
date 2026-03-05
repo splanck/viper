@@ -15,8 +15,8 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <windows.h>
 #include <stdlib.h>
+#include <windows.h>
 
 #ifdef _DEBUG
 #include <crtdbg.h>
@@ -47,7 +47,7 @@ static int viper_suppress_win_dialogs(void)
 // before main() and before C++ static constructors.
 typedef int (*_viper_crt_init_fn)(void);
 #pragma section(".CRT$XIB", long, read)
-__declspec(allocate(".CRT$XIB"))
-    static _viper_crt_init_fn viper_suppress_init_ = viper_suppress_win_dialogs;
+__declspec(allocate(".CRT$XIB")) static _viper_crt_init_fn viper_suppress_init_ =
+    viper_suppress_win_dialogs;
 
 #endif // _WIN32

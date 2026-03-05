@@ -26,16 +26,18 @@
 
 #include <string>
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
 /// @brief Parameters for building a macOS .app-in-.zip package.
-struct MacOSBuildParams {
-    std::string projectName;   ///< Project name (used for .app name)
-    std::string version;       ///< Version string
+struct MacOSBuildParams
+{
+    std::string projectName;    ///< Project name (used for .app name)
+    std::string version;        ///< Version string
     std::string executablePath; ///< Path to the compiled native binary
-    std::string projectRoot;   ///< Absolute path to project root directory
-    PackageConfig pkgConfig;   ///< Package configuration from manifest
-    std::string outputPath;    ///< Output .zip file path
+    std::string projectRoot;    ///< Absolute path to project root directory
+    PackageConfig pkgConfig;    ///< Package configuration from manifest
+    std::string outputPath;     ///< Output .zip file path
 };
 
 /// @brief Build a macOS .app bundle inside a ZIP archive.

@@ -204,8 +204,9 @@ Expected<void> checkShift(const VerifyCtx &ctx)
             {
                 il::support::Diagnostic warning{};
                 warning.severity = il::support::Severity::Warning;
-                warning.message = formatDiag(ctx, "shift amount " + std::to_string(shiftAmt.i64) +
-                                                      " is outside valid range [0, 63]");
+                warning.message = formatDiag(ctx,
+                                             "shift amount " + std::to_string(shiftAmt.i64) +
+                                                 " is outside valid range [0, 63]");
                 warning.loc = ctx.instr.loc;
                 ctx.diags.report(std::move(warning));
             }

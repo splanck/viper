@@ -93,7 +93,7 @@ This document maps existing Viper documentation and code examples to the Bible's
 |---------|-----------------|---------------|
 | 19. Graphics and Games | `/docs/graphics-library.md`, demos | Canvas, drawing, animation |
 | 20. User Input | `rt_input.h`, demo games | Keyboard, mouse, gamepad |
-| 21. Building a Game | `/demos/basic/frogger/` | Complete project walkthrough |
+| 21. Building a Game | `/examples/games/frogger-basic/` | Complete project walkthrough |
 | 22. Networking | `/docs/viperlib/network.md`, Chess demo | TCP, UDP, protocols |
 | 23. Data Formats | `/docs/viperlib/text.md` | CSV, serialization |
 | 24. Concurrency | `/docs/viperlib/threads.md` | Threading basics |
@@ -108,7 +108,7 @@ Chapter 21 will walk through building Frogger from scratch, teaching:
 - Score and lives
 - Progressive difficulty
 
-Source: `/demos/basic/frogger/` (1,200+ LOC) and `/demos/zia/frogger/` (16 modules)
+Source: `/examples/games/frogger-basic/` (1,200+ LOC) and `/examples/games/frogger/` (16 modules)
 
 ---
 

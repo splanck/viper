@@ -474,9 +474,9 @@ void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block)
                     // Integer/pointer/bool constant: MOVri into GPR vreg.
                     const VReg tmp = makeTempVReg(RegClass::GPR);
                     srcOp = makeVRegOperand(tmp.cls, tmp.id);
-                    block.append(MInstr::make(MOpcode::MOVri,
-                                              std::vector<Operand>{cloneOperand(srcOp),
-                                                                   makeImmOperand(val.i64)}));
+                    block.append(MInstr::make(
+                        MOpcode::MOVri,
+                        std::vector<Operand>{cloneOperand(srcOp), makeImmOperand(val.i64)}));
                 }
             }
             px.operands.push_back(makeVRegOperand(params[idx].cls, params[idx].id));
@@ -629,9 +629,8 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
             if (it == entryParamToPhysReg.end())
                 continue; // stack-passed param, handled separately
 
-            ILValue::Kind kind = (p < entryParams.paramKinds.size())
-                                     ? entryParams.paramKinds[p]
-                                     : ILValue::Kind::I64;
+            ILValue::Kind kind = (p < entryParams.paramKinds.size()) ? entryParams.paramKinds[p]
+                                                                     : ILValue::Kind::I64;
 
             const VReg vreg = ensureVReg(paramId, kind);
             const Operand dest = makeVRegOperand(vreg.cls, vreg.id);
@@ -641,8 +640,7 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
 
         if (!px.operands.empty())
         {
-            entryBlock.instructions.insert(
-                entryBlock.instructions.begin(), std::move(px));
+            entryBlock.instructions.insert(entryBlock.instructions.begin(), std::move(px));
         }
     }
 

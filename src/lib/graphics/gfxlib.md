@@ -133,12 +133,12 @@ version: 1.0.0
 
 ### 1.2 Target Platforms
 
-| Platform | API       | Backend File                        | Status                  |
-|----------|-----------|-------------------------------------|-------------------------|
-| macOS    | Cocoa     | `vgfx_platform_macos.m` (760 lines) | ✅ **Complete & Tested** |
+| Platform | API       | Backend File                         | Status                  |
+|----------|-----------|--------------------------------------|-------------------------|
+| macOS    | Cocoa     | `vgfx_platform_macos.m` (760 lines)  | ✅ **Complete & Tested** |
 | Linux    | X11       | `vgfx_platform_linux.c` (1157 lines) | ✅ **Complete**          |
 | Windows  | Win32 GDI | `vgfx_platform_win32.c` (1226 lines) | ✅ **Complete**          |
-| Testing  | Mock      | `vgfx_platform_mock.c` (430 lines)  | ✅ **Complete**          |
+| Testing  | Mock      | `vgfx_platform_mock.c` (430 lines)   | ✅ **Complete**          |
 
 ### 1.3 Integration Path
 

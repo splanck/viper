@@ -22,9 +22,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "repl/ZiaReplAdapter.hpp"
 #include "repl/ReplInputClassifier.hpp"
 #include "repl/ReplLineEditor.hpp"
+#include "repl/ZiaReplAdapter.hpp"
 #include "tests/TestHarness.hpp"
 
 #include <filesystem>
@@ -453,8 +453,7 @@ TEST(ReplMultiLine, ClassifierDetectsIncomplete)
 TEST(ReplMultiLine, ClassifierDetectsComplete)
 {
     // Closed brace after multi-line accumulation
-    EXPECT_EQ(ReplInputClassifier::classify("func foo() {\n    return 1;\n}"),
-              InputKind::Complete);
+    EXPECT_EQ(ReplInputClassifier::classify("func foo() {\n    return 1;\n}"), InputKind::Complete);
     // Complete expression
     EXPECT_EQ(ReplInputClassifier::classify("add(1, 2)"), InputKind::Complete);
 }
@@ -491,7 +490,8 @@ TEST(ReplAutoPrint, EntityAutoprint)
 {
     ZiaReplAdapter adapter;
     // Define a simple entity
-    auto r1 = adapter.eval("entity Dog {\n    String name;\n    func init(n: String) { name = n; }\n}");
+    auto r1 =
+        adapter.eval("entity Dog {\n    String name;\n    func init(n: String) { name = n; }\n}");
     EXPECT_TRUE(r1.success);
 
     // Evaluating a new entity expression should auto-print.

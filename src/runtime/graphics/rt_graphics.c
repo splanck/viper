@@ -741,20 +741,46 @@ void rt_canvas_blit_region(void *canvas_ptr,
     int32_t isf = (cs > 1.0f) ? (int32_t)cs : 1;
 
     // Clip source to pixels bounds (source coords are not scaled)
-    if (sx < 0) { w += sx; dx -= sx; sx = 0; }
-    if (sy < 0) { h += sy; dy -= sy; sy = 0; }
-    if (sx + w > pixels->width)  w = pixels->width - sx;
-    if (sy + h > pixels->height) h = pixels->height - sy;
+    if (sx < 0)
+    {
+        w += sx;
+        dx -= sx;
+        sx = 0;
+    }
+    if (sy < 0)
+    {
+        h += sy;
+        dy -= sy;
+        sy = 0;
+    }
+    if (sx + w > pixels->width)
+        w = pixels->width - sx;
+    if (sy + h > pixels->height)
+        h = pixels->height - sy;
 
     // Scale destination to physical
     int64_t pdx = dx * isf;
     int64_t pdy = dy * isf;
 
     // Clip destination to framebuffer bounds (in logical, then convert)
-    if (pdx < 0) { int64_t skip = (-pdx + isf - 1) / isf; w -= skip; sx += skip; pdx += skip * isf; }
-    if (pdy < 0) { int64_t skip = (-pdy + isf - 1) / isf; h -= skip; sy += skip; pdy += skip * isf; }
-    if (pdx + w * isf > fb.width)  w = (fb.width - pdx) / isf;
-    if (pdy + h * isf > fb.height) h = (fb.height - pdy) / isf;
+    if (pdx < 0)
+    {
+        int64_t skip = (-pdx + isf - 1) / isf;
+        w -= skip;
+        sx += skip;
+        pdx += skip * isf;
+    }
+    if (pdy < 0)
+    {
+        int64_t skip = (-pdy + isf - 1) / isf;
+        h -= skip;
+        sy += skip;
+        pdy += skip * isf;
+    }
+    if (pdx + w * isf > fb.width)
+        w = (fb.width - pdx) / isf;
+    if (pdy + h * isf > fb.height)
+        h = (fb.height - pdy) / isf;
 
     if (w <= 0 || h <= 0)
         return;
@@ -774,7 +800,8 @@ void rt_canvas_blit_region(void *canvas_ptr,
             for (int32_t ys = 0; ys < isf; ys++)
             {
                 int64_t py = pdy + row * isf + ys;
-                if (py >= fb.height) break;
+                if (py >= fb.height)
+                    break;
                 uint8_t *dst = &fb.pixels[py * fb.stride + (pdx + col * isf) * 4];
                 for (int32_t xs = 0; xs < isf; xs++)
                 {
@@ -816,10 +843,24 @@ void rt_canvas_blit_alpha(void *canvas_ptr, int64_t x, int64_t y, void *pixels_p
     int64_t src_y = 0;
 
     // Clip to destination bounds
-    if (dst_x < 0) { int64_t skip = (-dst_x + isf - 1) / isf; src_x += skip; src_w -= skip; dst_x += skip * isf; }
-    if (dst_y < 0) { int64_t skip = (-dst_y + isf - 1) / isf; src_y += skip; src_h -= skip; dst_y += skip * isf; }
-    if (dst_x + src_w * isf > fb.width)  src_w = (fb.width - dst_x) / isf;
-    if (dst_y + src_h * isf > fb.height) src_h = (fb.height - dst_y) / isf;
+    if (dst_x < 0)
+    {
+        int64_t skip = (-dst_x + isf - 1) / isf;
+        src_x += skip;
+        src_w -= skip;
+        dst_x += skip * isf;
+    }
+    if (dst_y < 0)
+    {
+        int64_t skip = (-dst_y + isf - 1) / isf;
+        src_y += skip;
+        src_h -= skip;
+        dst_y += skip * isf;
+    }
+    if (dst_x + src_w * isf > fb.width)
+        src_w = (fb.width - dst_x) / isf;
+    if (dst_y + src_h * isf > fb.height)
+        src_h = (fb.height - dst_y) / isf;
 
     if (src_w <= 0 || src_h <= 0)
         return;
@@ -837,12 +878,14 @@ void rt_canvas_blit_alpha(void *canvas_ptr, int64_t x, int64_t y, void *pixels_p
             uint8_t sb = (rgba >> 8) & 0xFF;
             uint8_t sa = rgba & 0xFF;
 
-            if (sa == 0) continue;
+            if (sa == 0)
+                continue;
 
             for (int32_t ys = 0; ys < isf; ys++)
             {
                 int64_t py = dst_y + row * isf + ys;
-                if (py >= fb.height) break;
+                if (py >= fb.height)
+                    break;
                 uint8_t *dst = &fb.pixels[py * fb.stride + (dst_x + col * isf) * 4];
 
                 for (int32_t xs = 0; xs < isf; xs++)

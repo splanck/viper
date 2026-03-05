@@ -32,7 +32,8 @@
 #include <map>
 #include <vector>
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
 /// @brief Generate macOS ICNS icon data from a source image.
 ///
@@ -64,7 +65,6 @@ std::vector<uint8_t> generateIco(const PkgImage &srcImage);
 ///
 /// @param srcImage Source RGBA image.
 /// @return Map of pixel size to PNG file data.
-std::map<uint32_t, std::vector<uint8_t>> generateMultiSizePngs(
-    const PkgImage &srcImage);
+std::map<uint32_t, std::vector<uint8_t>> generateMultiSizePngs(const PkgImage &srcImage);
 
 } // namespace viper::pkg

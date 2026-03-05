@@ -89,7 +89,10 @@ static bool startsWithKW(const std::string &s, size_t offset, const char *kw)
 
 BasicReplAdapter::BasicReplAdapter() = default;
 
-std::string_view BasicReplAdapter::languageName() const { return "basic"; }
+std::string_view BasicReplAdapter::languageName() const
+{
+    return "basic";
+}
 
 void BasicReplAdapter::reset()
 {
@@ -203,12 +206,10 @@ bool BasicReplAdapter::isLikelyExpression(const std::string &input) const
         return false;
 
     // Statement keywords that are never expressions
-    static const char *stmtKeywords[] = {"DIM",    "IF",     "FOR",    "WHILE", "DO",
-                                          "SUB",    "FUNCTION", "SELECT", "CLASS", "TYPE",
-                                          "PRINT",  "INPUT",  "RETURN", "EXIT",  "END",
-                                          "NEXT",   "WEND",   "LOOP",   "GOTO",  "GOSUB",
-                                          "ON",     "CALL",   "LET",    "REM",   "TRY",
-                                          "THROW",  "NAMESPACE"};
+    static const char *stmtKeywords[] = {
+        "DIM",  "IF",    "FOR",   "WHILE",  "DO",   "SUB", "FUNCTION", "SELECT", "CLASS",
+        "TYPE", "PRINT", "INPUT", "RETURN", "EXIT", "END", "NEXT",     "WEND",   "LOOP",
+        "GOTO", "GOSUB", "ON",    "CALL",   "LET",  "REM", "TRY",      "THROW",  "NAMESPACE"};
     for (const char *kw : stmtKeywords)
     {
         if (startsWithKW(input, start, kw))
@@ -273,8 +274,7 @@ std::pair<std::string, std::string> BasicReplAdapter::extractDimInfo(const std::
         pos += 2;
         pos = skipWS(input, pos);
         size_t typeStart = pos;
-        while (pos < input.size() &&
-               !std::isspace(static_cast<unsigned char>(input[pos])) &&
+        while (pos < input.size() && !std::isspace(static_cast<unsigned char>(input[pos])) &&
                input[pos] != '=' && input[pos] != '\n')
             ++pos;
         type = input.substr(typeStart, pos - typeStart);
@@ -538,7 +538,8 @@ EvalResult BasicReplAdapter::eval(const std::string &input)
         {
             std::string oldAssign = pv->lastAssign;
             std::string cleanInput = input;
-            while (!cleanInput.empty() && std::isspace(static_cast<unsigned char>(cleanInput.back())))
+            while (!cleanInput.empty() &&
+                   std::isspace(static_cast<unsigned char>(cleanInput.back())))
                 cleanInput.pop_back();
             pv->lastAssign = cleanInput;
 
@@ -600,9 +601,8 @@ std::vector<std::string> BasicReplAdapter::complete(const std::string &input, si
 
     // Find the prefix being completed
     size_t tokenStart = cursor;
-    while (tokenStart > 0 &&
-           (std::isalnum(static_cast<unsigned char>(input[tokenStart - 1])) ||
-            input[tokenStart - 1] == '_'))
+    while (tokenStart > 0 && (std::isalnum(static_cast<unsigned char>(input[tokenStart - 1])) ||
+                              input[tokenStart - 1] == '_'))
         --tokenStart;
 
     std::string prefix = input.substr(tokenStart, cursor - tokenStart);
@@ -619,15 +619,13 @@ std::vector<std::string> BasicReplAdapter::complete(const std::string &input, si
 
     // BASIC keywords
     static const char *keywords[] = {
-        "DIM",    "AS",       "INTEGER", "STRING",  "DOUBLE",  "BOOLEAN",
-        "IF",     "THEN",     "ELSE",    "ELSEIF",  "END",     "FOR",
-        "TO",     "STEP",     "NEXT",    "WHILE",   "WEND",    "DO",
-        "LOOP",   "UNTIL",    "SUB",     "FUNCTION", "RETURN",  "CALL",
-        "SELECT", "CASE",     "PRINT",   "INPUT",   "AND",     "OR",
-        "NOT",    "TRUE",     "FALSE",   "MOD",     "EXIT",    "GOTO",
-        "GOSUB",  "ON",       "CLASS",   "TYPE",    "PROPERTY", "GET",
-        "SET",    "NEW",      "NOTHING", "NULL",    "TRY",     "CATCH",
-        "FINALLY", "THROW",   "NAMESPACE"};
+        "DIM",      "AS",     "INTEGER",  "STRING", "DOUBLE",  "BOOLEAN",  "IF",     "THEN",
+        "ELSE",     "ELSEIF", "END",      "FOR",    "TO",      "STEP",     "NEXT",   "WHILE",
+        "WEND",     "DO",     "LOOP",     "UNTIL",  "SUB",     "FUNCTION", "RETURN", "CALL",
+        "SELECT",   "CASE",   "PRINT",    "INPUT",  "AND",     "OR",       "NOT",    "TRUE",
+        "FALSE",    "MOD",    "EXIT",     "GOTO",   "GOSUB",   "ON",       "CLASS",  "TYPE",
+        "PROPERTY", "GET",    "SET",      "NEW",    "NOTHING", "NULL",     "TRY",    "CATCH",
+        "FINALLY",  "THROW",  "NAMESPACE"};
 
     for (const char *kw : keywords)
     {

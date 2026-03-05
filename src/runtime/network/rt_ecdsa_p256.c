@@ -42,33 +42,27 @@ typedef uint64_t u512[8];
 
 // Field prime p = 2^256 - 2^224 + 2^192 + 2^96 - 1
 static const u256 P256_P = {
-    0xFFFFFFFF00000001ULL, 0x0000000000000000ULL,
-    0x00000000FFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL};
+    0xFFFFFFFF00000001ULL, 0x0000000000000000ULL, 0x00000000FFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL};
 
 // Curve order n
 static const u256 P256_N = {
-    0xFFFFFFFF00000000ULL, 0xFFFFFFFFFFFFFFFFULL,
-    0xBCE6FAADA7179E84ULL, 0xF3B9CAC2FC632551ULL};
+    0xFFFFFFFF00000000ULL, 0xFFFFFFFFFFFFFFFFULL, 0xBCE6FAADA7179E84ULL, 0xF3B9CAC2FC632551ULL};
 
 // Curve parameter a = -3 mod p = p - 3
 static const u256 P256_A = {
-    0xFFFFFFFF00000001ULL, 0x0000000000000000ULL,
-    0x00000000FFFFFFFFULL, 0xFFFFFFFFFFFFFFFCULL};
+    0xFFFFFFFF00000001ULL, 0x0000000000000000ULL, 0x00000000FFFFFFFFULL, 0xFFFFFFFFFFFFFFFCULL};
 
 // Curve parameter b
 static const u256 P256_B = {
-    0x5AC635D8AA3A93E7ULL, 0xB3EBBD55769886BCULL,
-    0x651D06B0CC53B0F6ULL, 0x3BCE3C3E27D2604BULL};
+    0x5AC635D8AA3A93E7ULL, 0xB3EBBD55769886BCULL, 0x651D06B0CC53B0F6ULL, 0x3BCE3C3E27D2604BULL};
 
 // Generator point G (affine x coordinate)
 static const u256 P256_GX = {
-    0x6B17D1F2E12C4247ULL, 0xF8BCE6E563A440F2ULL,
-    0x77037D812DEB33A0ULL, 0xF4A13945D898C296ULL};
+    0x6B17D1F2E12C4247ULL, 0xF8BCE6E563A440F2ULL, 0x77037D812DEB33A0ULL, 0xF4A13945D898C296ULL};
 
 // Generator point G (affine y coordinate)
 static const u256 P256_GY = {
-    0x4FE342E2FE1A7F9BULL, 0x8EE7EB4A7C0F9E16ULL,
-    0x2BCE33576B315ECEULL, 0xCBB6406837BF51F5ULL};
+    0x4FE342E2FE1A7F9BULL, 0x8EE7EB4A7C0F9E16ULL, 0x2BCE33576B315ECEULL, 0xCBB6406837BF51F5ULL};
 
 //=============================================================================
 // 256-bit arithmetic helpers
@@ -533,8 +527,8 @@ static void sn_mul(u256 r, const u256 a, const u256 b)
     // Compute hi * 2^256 mod n + lo mod n
     // 2^256 mod n = 2^256 - n (since n < 2^256)
     // = 0x00000000FFFFFFFF00000000000000004319055258E8617B0C46353D039CDAAFULL
-    static const u256 R_MOD_N = {0x00000000FFFFFFFFULL, 0x0000000000000000ULL,
-                                 0x4319055258E8617BULL, 0x0C46353D039CDAAFULL};
+    static const u256 R_MOD_N = {
+        0x00000000FFFFFFFFULL, 0x0000000000000000ULL, 0x4319055258E8617BULL, 0x0C46353D039CDAAFULL};
 
     // result = hi * R_MOD_N + lo (mod n)
     // Since hi < 2^256 and R_MOD_N < n, the product hi * R_MOD_N < 2^512
@@ -692,10 +686,10 @@ static void jpoint_double(jpoint *R, const jpoint *P)
     // Y' = M*(S - X') - 8*Y^4
     fp_sub(tmp, s, R->X);
     fp_mul(R->Y, m, tmp);
-    fp_sqr(t, y2);       // Y^4
-    fp_add(t, t, t);     // 2*Y^4
-    fp_add(t, t, t);     // 4*Y^4
-    fp_add(t, t, t);     // 8*Y^4
+    fp_sqr(t, y2);   // Y^4
+    fp_add(t, t, t); // 2*Y^4
+    fp_add(t, t, t); // 4*Y^4
+    fp_add(t, t, t); // 8*Y^4
     fp_sub(R->Y, R->Y, t);
 
     // Z' = 2*Y*Z
@@ -853,12 +847,12 @@ int ecdsa_p256_verify(const uint8_t pubkey_x[32],
     // Check y^2 = x^3 + ax + b (mod p)
     {
         u256 lhs, rhs, x2, x3, ax, tmp;
-        fp_sqr(lhs, qy);               // y^2
-        fp_sqr(x2, qx);                // x^2
-        fp_mul(x3, x2, qx);            // x^3
-        fp_mul(ax, P256_A, qx);        // a*x
-        fp_add(rhs, x3, ax);           // x^3 + a*x
-        fp_add(rhs, rhs, P256_B);      // x^3 + a*x + b
+        fp_sqr(lhs, qy);          // y^2
+        fp_sqr(x2, qx);           // x^2
+        fp_mul(x3, x2, qx);       // x^3
+        fp_mul(ax, P256_A, qx);   // a*x
+        fp_add(rhs, x3, ax);      // x^3 + a*x
+        fp_add(rhs, rhs, P256_B); // x^3 + a*x + b
         (void)tmp;
         if (u256_cmp(lhs, rhs) != 0)
             return 0;

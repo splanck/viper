@@ -387,8 +387,8 @@ int invokeLinker(const std::filesystem::path &asmPath,
     cmd.push_back("-lgdi32");
     cmd.push_back("-luser32");
     cmd.push_back("-lxinput");
-    cmd.push_back("-lole32");     // Required by viperaud (WASAPI/COM)
-    cmd.push_back("-liphlpapi");  // Required by rt_network (GetAdaptersAddresses)
+    cmd.push_back("-lole32");    // Required by viperaud (WASAPI/COM)
+    cmd.push_back("-liphlpapi"); // Required by rt_network (GetAdaptersAddresses)
 
     // Set stack size (default 8MB for better recursion support)
     const std::size_t effectiveStackSize = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);

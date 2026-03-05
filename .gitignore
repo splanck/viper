@@ -127,14 +127,18 @@ __pycache__/
 *.bin
 *.sys
 
-# --- Benchmark binaries ---
+# --- Benchmark build artifacts ---
 benchmarks/bench_c
 benchmarks/bench_c_O0
 benchmarks/bench_native
 benchmarks/bench_new
+benchmarks/*.o
+benchmarks/*.s
+benchmarks/*.il
+benchmarks/bench_pure.*
 
 # --- Demo binaries ---
-demos/bin/
+examples/bin/
 
 # --- Root-level scratch/analysis files ---
 viper_issues*.txt

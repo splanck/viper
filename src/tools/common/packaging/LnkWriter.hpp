@@ -28,15 +28,17 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
 /// @brief Parameters for generating a .lnk shortcut file.
-struct LnkParams {
-    std::string targetPath;   ///< Target executable path (e.g. "C:\\Program Files\\App\\app.exe")
-    std::string workingDir;   ///< Working directory for the target.
-    std::string description;  ///< Shortcut description/comment.
-    std::string iconPath;     ///< Icon file path (empty = use target).
-    int32_t iconIndex{0};     ///< Icon index within icon file.
+struct LnkParams
+{
+    std::string targetPath;  ///< Target executable path (e.g. "C:\\Program Files\\App\\app.exe")
+    std::string workingDir;  ///< Working directory for the target.
+    std::string description; ///< Shortcut description/comment.
+    std::string iconPath;    ///< Icon file path (empty = use target).
+    int32_t iconIndex{0};    ///< Icon index within icon file.
 };
 
 /// @brief Generate a Windows .lnk shortcut file.

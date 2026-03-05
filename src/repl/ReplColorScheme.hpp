@@ -53,27 +53,83 @@ inline bool isColorEnabled()
 }
 
 // --- Reset ---
-inline const char *reset() { return isColorEnabled() ? "\033[0m" : ""; }
-inline const char *bold() { return isColorEnabled() ? "\033[1m" : ""; }
-inline const char *dim() { return isColorEnabled() ? "\033[2m" : ""; }
+inline const char *reset()
+{
+    return isColorEnabled() ? "\033[0m" : "";
+}
+
+inline const char *bold()
+{
+    return isColorEnabled() ? "\033[1m" : "";
+}
+
+inline const char *dim()
+{
+    return isColorEnabled() ? "\033[2m" : "";
+}
 
 // --- Prompt ---
-inline const char *prompt() { return isColorEnabled() ? "\033[1;36m" : ""; }
-inline const char *contPrompt() { return isColorEnabled() ? "\033[36m" : ""; }
+inline const char *prompt()
+{
+    return isColorEnabled() ? "\033[1;36m" : "";
+}
+
+inline const char *contPrompt()
+{
+    return isColorEnabled() ? "\033[36m" : "";
+}
 
 // --- Output types ---
-inline const char *result() { return isColorEnabled() ? "\033[1;32m" : ""; }
-inline const char *string() { return isColorEnabled() ? "\033[33m" : ""; }
-inline const char *number() { return isColorEnabled() ? "\033[34m" : ""; }
-inline const char *boolean() { return isColorEnabled() ? "\033[35m" : ""; }
-inline const char *null() { return isColorEnabled() ? "\033[2;37m" : ""; }
-inline const char *type() { return isColorEnabled() ? "\033[36m" : ""; }
+inline const char *result()
+{
+    return isColorEnabled() ? "\033[1;32m" : "";
+}
+
+inline const char *string()
+{
+    return isColorEnabled() ? "\033[33m" : "";
+}
+
+inline const char *number()
+{
+    return isColorEnabled() ? "\033[34m" : "";
+}
+
+inline const char *boolean()
+{
+    return isColorEnabled() ? "\033[35m" : "";
+}
+
+inline const char *null()
+{
+    return isColorEnabled() ? "\033[2;37m" : "";
+}
+
+inline const char *type()
+{
+    return isColorEnabled() ? "\033[36m" : "";
+}
 
 // --- Diagnostics ---
-inline const char *error() { return isColorEnabled() ? "\033[1;31m" : ""; }
-inline const char *warning() { return isColorEnabled() ? "\033[1;33m" : ""; }
-inline const char *note() { return isColorEnabled() ? "\033[1;34m" : ""; }
-inline const char *success() { return isColorEnabled() ? "\033[1;32m" : ""; }
+inline const char *error()
+{
+    return isColorEnabled() ? "\033[1;31m" : "";
+}
+
+inline const char *warning()
+{
+    return isColorEnabled() ? "\033[1;33m" : "";
+}
+
+inline const char *note()
+{
+    return isColorEnabled() ? "\033[1;34m" : "";
+}
+
+inline const char *success()
+{
+    return isColorEnabled() ? "\033[1;32m" : "";
+}
 
 } // namespace colors
 

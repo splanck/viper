@@ -111,7 +111,8 @@ TEST(BasicClassifier, SubIncomplete)
 
 TEST(BasicClassifier, FunctionEndFunctionComplete)
 {
-    std::string input = "FUNCTION Add(a AS Integer, b AS Integer) AS Integer\n  RETURN a + b\nEND FUNCTION";
+    std::string input =
+        "FUNCTION Add(a AS Integer, b AS Integer) AS Integer\n  RETURN a + b\nEND FUNCTION";
     EXPECT_EQ(ReplInputClassifier::classifyBasic(input), InputKind::Complete);
 }
 
@@ -216,8 +217,8 @@ TEST(BasicRepl, FunctionDefinitionAndCall)
 {
     BasicReplAdapter adapter;
 
-    auto r1 = adapter.eval(
-        "FUNCTION Double(n AS Integer) AS Integer\n  RETURN n * 2\nEND FUNCTION");
+    auto r1 =
+        adapter.eval("FUNCTION Double(n AS Integer) AS Integer\n  RETURN n * 2\nEND FUNCTION");
     EXPECT_TRUE(r1.success);
 
     auto r2 = adapter.eval("Double(21)");

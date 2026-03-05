@@ -85,7 +85,10 @@ struct ReplLineEditor::Impl
 #endif
     }
 
-    void rawWrite(const std::string &s) { rawWrite(s.data(), s.size()); }
+    void rawWrite(const std::string &s)
+    {
+        rawWrite(s.data(), s.size());
+    }
 
     /// @brief Read raw bytes from stdin (blocking with timeout).
     /// @param outBuf Buffer to fill.
@@ -194,13 +197,25 @@ ReplLineEditor::ReplLineEditor(size_t maxHistory) : impl_(new Impl)
     impl_->maxHistory = maxHistory;
 }
 
-ReplLineEditor::~ReplLineEditor() { delete impl_; }
+ReplLineEditor::~ReplLineEditor()
+{
+    delete impl_;
+}
 
-bool ReplLineEditor::isActive() const { return impl_->session.active(); }
+bool ReplLineEditor::isActive() const
+{
+    return impl_->session.active();
+}
 
-std::vector<std::string> ReplLineEditor::getHistory() const { return impl_->history; }
+std::vector<std::string> ReplLineEditor::getHistory() const
+{
+    return impl_->history;
+}
 
-void ReplLineEditor::setCompletionCallback(CompletionCallback cb) { impl_->completionCb = std::move(cb); }
+void ReplLineEditor::setCompletionCallback(CompletionCallback cb)
+{
+    impl_->completionCb = std::move(cb);
+}
 
 void ReplLineEditor::addHistory(const std::string &entry)
 {

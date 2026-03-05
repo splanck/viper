@@ -26,8 +26,10 @@
 namespace viper::repl
 {
 
-void ReplMetaCommands::registerCommand(const std::string &name, const std::string &help,
-                                       std::function<void(ReplSession &, const std::string &)> handler)
+void ReplMetaCommands::registerCommand(
+    const std::string &name,
+    const std::string &help,
+    std::function<void(ReplSession &, const std::string &)> handler)
 {
     commands_.push_back({name, help, std::move(handler)});
 }
@@ -46,7 +48,9 @@ bool ReplMetaCommands::tryHandle(const std::string &input, ReplSession &session)
     std::string cmdName = input.substr(cmdStart, cmdEnd - cmdStart);
 
     // Convert to lowercase for case-insensitive matching
-    std::transform(cmdName.begin(), cmdName.end(), cmdName.begin(),
+    std::transform(cmdName.begin(),
+                   cmdName.end(),
+                   cmdName.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
     // Extract args (trim leading whitespace)
@@ -69,7 +73,8 @@ bool ReplMetaCommands::tryHandle(const std::string &input, ReplSession &session)
 
     // Unknown meta-command
     std::cout << colors::error() << "Unknown command: ." << cmdName << colors::reset() << "\n";
-    std::cout << "Type " << colors::bold() << ".help" << colors::reset() << " for available commands.\n";
+    std::cout << "Type " << colors::bold() << ".help" << colors::reset()
+              << " for available commands.\n";
     return true;
 }
 

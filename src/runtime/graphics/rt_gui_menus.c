@@ -1192,133 +1192,605 @@ int64_t rt_toolbaritem_was_clicked(void *item)
 
 #else /* !VIPER_ENABLE_GRAPHICS */
 
-void *rt_menubar_new(void *parent) { (void)parent; return NULL; }
-void rt_menubar_destroy(void *menubar) { (void)menubar; }
-void *rt_menubar_add_menu(void *menubar, rt_string title) { (void)menubar; (void)title; return NULL; }
-void rt_menubar_remove_menu(void *menubar, void *menu) { (void)menubar; (void)menu; }
-int64_t rt_menubar_get_menu_count(void *menubar) { (void)menubar; return 0; }
-void *rt_menubar_get_menu(void *menubar, int64_t index) { (void)menubar; (void)index; return NULL; }
-void rt_menubar_set_visible(void *menubar, int64_t visible) { (void)menubar; (void)visible; }
-int64_t rt_menubar_is_visible(void *menubar) { (void)menubar; return 0; }
+void *rt_menubar_new(void *parent)
+{
+    (void)parent;
+    return NULL;
+}
 
-void *rt_menu_add_item(void *menu, rt_string text) { (void)menu; (void)text; return NULL; }
+void rt_menubar_destroy(void *menubar)
+{
+    (void)menubar;
+}
+
+void *rt_menubar_add_menu(void *menubar, rt_string title)
+{
+    (void)menubar;
+    (void)title;
+    return NULL;
+}
+
+void rt_menubar_remove_menu(void *menubar, void *menu)
+{
+    (void)menubar;
+    (void)menu;
+}
+
+int64_t rt_menubar_get_menu_count(void *menubar)
+{
+    (void)menubar;
+    return 0;
+}
+
+void *rt_menubar_get_menu(void *menubar, int64_t index)
+{
+    (void)menubar;
+    (void)index;
+    return NULL;
+}
+
+void rt_menubar_set_visible(void *menubar, int64_t visible)
+{
+    (void)menubar;
+    (void)visible;
+}
+
+int64_t rt_menubar_is_visible(void *menubar)
+{
+    (void)menubar;
+    return 0;
+}
+
+void *rt_menu_add_item(void *menu, rt_string text)
+{
+    (void)menu;
+    (void)text;
+    return NULL;
+}
+
 void *rt_menu_add_item_with_shortcut(void *menu, rt_string text, rt_string shortcut)
 {
-    (void)menu; (void)text; (void)shortcut; return NULL;
+    (void)menu;
+    (void)text;
+    (void)shortcut;
+    return NULL;
 }
-void *rt_menu_add_separator(void *menu) { (void)menu; return NULL; }
-void *rt_menu_add_submenu(void *menu, rt_string title) { (void)menu; (void)title; return NULL; }
-void rt_menu_remove_item(void *menu, void *item) { (void)menu; (void)item; }
-void rt_menu_clear(void *menu) { (void)menu; }
-void rt_menu_set_title(void *menu, rt_string title) { (void)menu; (void)title; }
-rt_string rt_menu_get_title(void *menu) { (void)menu; return rt_str_empty(); }
-int64_t rt_menu_get_item_count(void *menu) { (void)menu; return 0; }
-void *rt_menu_get_item(void *menu, int64_t index) { (void)menu; (void)index; return NULL; }
-void rt_menu_set_enabled(void *menu, int64_t enabled) { (void)menu; (void)enabled; }
-int64_t rt_menu_is_enabled(void *menu) { (void)menu; return 0; }
 
-void rt_menuitem_set_text(void *item, rt_string text) { (void)item; (void)text; }
-rt_string rt_menuitem_get_text(void *item) { (void)item; return rt_str_empty(); }
-void rt_menuitem_set_shortcut(void *item, rt_string shortcut) { (void)item; (void)shortcut; }
-rt_string rt_menuitem_get_shortcut(void *item) { (void)item; return rt_str_empty(); }
-void rt_menuitem_set_icon(void *item, void *pixels) { (void)item; (void)pixels; }
-void rt_menuitem_set_checkable(void *item, int64_t checkable) { (void)item; (void)checkable; }
-int64_t rt_menuitem_is_checkable(void *item) { (void)item; return 0; }
-void rt_menuitem_set_checked(void *item, int64_t checked) { (void)item; (void)checked; }
-int64_t rt_menuitem_is_checked(void *item) { (void)item; return 0; }
-void rt_menuitem_set_enabled(void *item, int64_t enabled) { (void)item; (void)enabled; }
-int64_t rt_menuitem_is_enabled(void *item) { (void)item; return 0; }
-int64_t rt_menuitem_is_separator(void *item) { (void)item; return 0; }
-void rt_gui_set_clicked_menuitem(void *item) { (void)item; }
-int64_t rt_menuitem_was_clicked(void *item) { (void)item; return 0; }
+void *rt_menu_add_separator(void *menu)
+{
+    (void)menu;
+    return NULL;
+}
 
-void *rt_contextmenu_new(void) { return NULL; }
-void rt_contextmenu_destroy(void *menu) { (void)menu; }
-void *rt_contextmenu_add_item(void *menu, rt_string text) { (void)menu; (void)text; return NULL; }
+void *rt_menu_add_submenu(void *menu, rt_string title)
+{
+    (void)menu;
+    (void)title;
+    return NULL;
+}
+
+void rt_menu_remove_item(void *menu, void *item)
+{
+    (void)menu;
+    (void)item;
+}
+
+void rt_menu_clear(void *menu)
+{
+    (void)menu;
+}
+
+void rt_menu_set_title(void *menu, rt_string title)
+{
+    (void)menu;
+    (void)title;
+}
+
+rt_string rt_menu_get_title(void *menu)
+{
+    (void)menu;
+    return rt_str_empty();
+}
+
+int64_t rt_menu_get_item_count(void *menu)
+{
+    (void)menu;
+    return 0;
+}
+
+void *rt_menu_get_item(void *menu, int64_t index)
+{
+    (void)menu;
+    (void)index;
+    return NULL;
+}
+
+void rt_menu_set_enabled(void *menu, int64_t enabled)
+{
+    (void)menu;
+    (void)enabled;
+}
+
+int64_t rt_menu_is_enabled(void *menu)
+{
+    (void)menu;
+    return 0;
+}
+
+void rt_menuitem_set_text(void *item, rt_string text)
+{
+    (void)item;
+    (void)text;
+}
+
+rt_string rt_menuitem_get_text(void *item)
+{
+    (void)item;
+    return rt_str_empty();
+}
+
+void rt_menuitem_set_shortcut(void *item, rt_string shortcut)
+{
+    (void)item;
+    (void)shortcut;
+}
+
+rt_string rt_menuitem_get_shortcut(void *item)
+{
+    (void)item;
+    return rt_str_empty();
+}
+
+void rt_menuitem_set_icon(void *item, void *pixels)
+{
+    (void)item;
+    (void)pixels;
+}
+
+void rt_menuitem_set_checkable(void *item, int64_t checkable)
+{
+    (void)item;
+    (void)checkable;
+}
+
+int64_t rt_menuitem_is_checkable(void *item)
+{
+    (void)item;
+    return 0;
+}
+
+void rt_menuitem_set_checked(void *item, int64_t checked)
+{
+    (void)item;
+    (void)checked;
+}
+
+int64_t rt_menuitem_is_checked(void *item)
+{
+    (void)item;
+    return 0;
+}
+
+void rt_menuitem_set_enabled(void *item, int64_t enabled)
+{
+    (void)item;
+    (void)enabled;
+}
+
+int64_t rt_menuitem_is_enabled(void *item)
+{
+    (void)item;
+    return 0;
+}
+
+int64_t rt_menuitem_is_separator(void *item)
+{
+    (void)item;
+    return 0;
+}
+
+void rt_gui_set_clicked_menuitem(void *item)
+{
+    (void)item;
+}
+
+int64_t rt_menuitem_was_clicked(void *item)
+{
+    (void)item;
+    return 0;
+}
+
+void *rt_contextmenu_new(void)
+{
+    return NULL;
+}
+
+void rt_contextmenu_destroy(void *menu)
+{
+    (void)menu;
+}
+
+void *rt_contextmenu_add_item(void *menu, rt_string text)
+{
+    (void)menu;
+    (void)text;
+    return NULL;
+}
+
 void *rt_contextmenu_add_item_with_shortcut(void *menu, rt_string text, rt_string shortcut)
 {
-    (void)menu; (void)text; (void)shortcut; return NULL;
+    (void)menu;
+    (void)text;
+    (void)shortcut;
+    return NULL;
 }
-void *rt_contextmenu_add_separator(void *menu) { (void)menu; return NULL; }
-void *rt_contextmenu_add_submenu(void *menu, rt_string title) { (void)menu; (void)title; return NULL; }
-void rt_contextmenu_clear(void *menu) { (void)menu; }
-void rt_contextmenu_show(void *menu, int64_t x, int64_t y) { (void)menu; (void)x; (void)y; }
-void rt_contextmenu_hide(void *menu) { (void)menu; }
-int64_t rt_contextmenu_is_visible(void *menu) { (void)menu; return 0; }
-void *rt_contextmenu_get_clicked_item(void *menu) { (void)menu; return NULL; }
 
-void *rt_statusbar_new(void *parent) { (void)parent; return NULL; }
-void rt_statusbar_destroy(void *bar) { (void)bar; }
-void rt_statusbar_set_left_text(void *bar, rt_string text) { (void)bar; (void)text; }
-void rt_statusbar_set_center_text(void *bar, rt_string text) { (void)bar; (void)text; }
-void rt_statusbar_set_right_text(void *bar, rt_string text) { (void)bar; (void)text; }
-rt_string rt_statusbar_get_left_text(void *bar) { (void)bar; return rt_str_empty(); }
-rt_string rt_statusbar_get_center_text(void *bar) { (void)bar; return rt_str_empty(); }
-rt_string rt_statusbar_get_right_text(void *bar) { (void)bar; return rt_str_empty(); }
+void *rt_contextmenu_add_separator(void *menu)
+{
+    (void)menu;
+    return NULL;
+}
+
+void *rt_contextmenu_add_submenu(void *menu, rt_string title)
+{
+    (void)menu;
+    (void)title;
+    return NULL;
+}
+
+void rt_contextmenu_clear(void *menu)
+{
+    (void)menu;
+}
+
+void rt_contextmenu_show(void *menu, int64_t x, int64_t y)
+{
+    (void)menu;
+    (void)x;
+    (void)y;
+}
+
+void rt_contextmenu_hide(void *menu)
+{
+    (void)menu;
+}
+
+int64_t rt_contextmenu_is_visible(void *menu)
+{
+    (void)menu;
+    return 0;
+}
+
+void *rt_contextmenu_get_clicked_item(void *menu)
+{
+    (void)menu;
+    return NULL;
+}
+
+void *rt_statusbar_new(void *parent)
+{
+    (void)parent;
+    return NULL;
+}
+
+void rt_statusbar_destroy(void *bar)
+{
+    (void)bar;
+}
+
+void rt_statusbar_set_left_text(void *bar, rt_string text)
+{
+    (void)bar;
+    (void)text;
+}
+
+void rt_statusbar_set_center_text(void *bar, rt_string text)
+{
+    (void)bar;
+    (void)text;
+}
+
+void rt_statusbar_set_right_text(void *bar, rt_string text)
+{
+    (void)bar;
+    (void)text;
+}
+
+rt_string rt_statusbar_get_left_text(void *bar)
+{
+    (void)bar;
+    return rt_str_empty();
+}
+
+rt_string rt_statusbar_get_center_text(void *bar)
+{
+    (void)bar;
+    return rt_str_empty();
+}
+
+rt_string rt_statusbar_get_right_text(void *bar)
+{
+    (void)bar;
+    return rt_str_empty();
+}
+
 void *rt_statusbar_add_text(void *bar, rt_string text, int64_t zone)
 {
-    (void)bar; (void)text; (void)zone; return NULL;
+    (void)bar;
+    (void)text;
+    (void)zone;
+    return NULL;
 }
+
 void *rt_statusbar_add_button(void *bar, rt_string text, int64_t zone)
 {
-    (void)bar; (void)text; (void)zone; return NULL;
+    (void)bar;
+    (void)text;
+    (void)zone;
+    return NULL;
 }
-void *rt_statusbar_add_progress(void *bar, int64_t zone) { (void)bar; (void)zone; return NULL; }
-void *rt_statusbar_add_separator(void *bar, int64_t zone) { (void)bar; (void)zone; return NULL; }
-void *rt_statusbar_add_spacer(void *bar, int64_t zone) { (void)bar; (void)zone; return NULL; }
-void rt_statusbar_remove_item(void *bar, void *item) { (void)bar; (void)item; }
-void rt_statusbar_clear(void *bar) { (void)bar; }
-void rt_statusbar_set_visible(void *bar, int64_t visible) { (void)bar; (void)visible; }
-int64_t rt_statusbar_is_visible(void *bar) { (void)bar; return 0; }
 
-void rt_statusbaritem_set_text(void *item, rt_string text) { (void)item; (void)text; }
-rt_string rt_statusbaritem_get_text(void *item) { (void)item; return rt_str_empty(); }
-void rt_statusbaritem_set_tooltip(void *item, rt_string tooltip) { (void)item; (void)tooltip; }
-void rt_statusbaritem_set_progress(void *item, double value) { (void)item; (void)value; }
-double rt_statusbaritem_get_progress(void *item) { (void)item; return 0.0; }
-void rt_statusbaritem_set_visible(void *item, int64_t visible) { (void)item; (void)visible; }
-void rt_gui_set_clicked_statusbar_item(void *item) { (void)item; }
-int64_t rt_statusbaritem_was_clicked(void *item) { (void)item; return 0; }
+void *rt_statusbar_add_progress(void *bar, int64_t zone)
+{
+    (void)bar;
+    (void)zone;
+    return NULL;
+}
 
-void *rt_toolbar_new(void *parent) { (void)parent; return NULL; }
-void *rt_toolbar_new_vertical(void *parent) { (void)parent; return NULL; }
-void rt_toolbar_destroy(void *toolbar) { (void)toolbar; }
+void *rt_statusbar_add_separator(void *bar, int64_t zone)
+{
+    (void)bar;
+    (void)zone;
+    return NULL;
+}
+
+void *rt_statusbar_add_spacer(void *bar, int64_t zone)
+{
+    (void)bar;
+    (void)zone;
+    return NULL;
+}
+
+void rt_statusbar_remove_item(void *bar, void *item)
+{
+    (void)bar;
+    (void)item;
+}
+
+void rt_statusbar_clear(void *bar)
+{
+    (void)bar;
+}
+
+void rt_statusbar_set_visible(void *bar, int64_t visible)
+{
+    (void)bar;
+    (void)visible;
+}
+
+int64_t rt_statusbar_is_visible(void *bar)
+{
+    (void)bar;
+    return 0;
+}
+
+void rt_statusbaritem_set_text(void *item, rt_string text)
+{
+    (void)item;
+    (void)text;
+}
+
+rt_string rt_statusbaritem_get_text(void *item)
+{
+    (void)item;
+    return rt_str_empty();
+}
+
+void rt_statusbaritem_set_tooltip(void *item, rt_string tooltip)
+{
+    (void)item;
+    (void)tooltip;
+}
+
+void rt_statusbaritem_set_progress(void *item, double value)
+{
+    (void)item;
+    (void)value;
+}
+
+double rt_statusbaritem_get_progress(void *item)
+{
+    (void)item;
+    return 0.0;
+}
+
+void rt_statusbaritem_set_visible(void *item, int64_t visible)
+{
+    (void)item;
+    (void)visible;
+}
+
+void rt_gui_set_clicked_statusbar_item(void *item)
+{
+    (void)item;
+}
+
+int64_t rt_statusbaritem_was_clicked(void *item)
+{
+    (void)item;
+    return 0;
+}
+
+void *rt_toolbar_new(void *parent)
+{
+    (void)parent;
+    return NULL;
+}
+
+void *rt_toolbar_new_vertical(void *parent)
+{
+    (void)parent;
+    return NULL;
+}
+
+void rt_toolbar_destroy(void *toolbar)
+{
+    (void)toolbar;
+}
+
 void *rt_toolbar_add_button(void *toolbar, rt_string icon_path, rt_string tooltip)
 {
-    (void)toolbar; (void)icon_path; (void)tooltip; return NULL;
+    (void)toolbar;
+    (void)icon_path;
+    (void)tooltip;
+    return NULL;
 }
-void *rt_toolbar_add_button_with_text(void *toolbar, rt_string icon_path, rt_string text, rt_string tooltip)
+
+void *rt_toolbar_add_button_with_text(void *toolbar,
+                                      rt_string icon_path,
+                                      rt_string text,
+                                      rt_string tooltip)
 {
-    (void)toolbar; (void)icon_path; (void)text; (void)tooltip; return NULL;
+    (void)toolbar;
+    (void)icon_path;
+    (void)text;
+    (void)tooltip;
+    return NULL;
 }
+
 void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string tooltip)
 {
-    (void)toolbar; (void)icon_path; (void)tooltip; return NULL;
+    (void)toolbar;
+    (void)icon_path;
+    (void)tooltip;
+    return NULL;
 }
-void *rt_toolbar_add_separator(void *toolbar) { (void)toolbar; return NULL; }
-void *rt_toolbar_add_spacer(void *toolbar) { (void)toolbar; return NULL; }
+
+void *rt_toolbar_add_separator(void *toolbar)
+{
+    (void)toolbar;
+    return NULL;
+}
+
+void *rt_toolbar_add_spacer(void *toolbar)
+{
+    (void)toolbar;
+    return NULL;
+}
+
 void *rt_toolbar_add_dropdown(void *toolbar, rt_string tooltip)
 {
-    (void)toolbar; (void)tooltip; return NULL;
+    (void)toolbar;
+    (void)tooltip;
+    return NULL;
 }
-void rt_toolbar_remove_item(void *toolbar, void *item) { (void)toolbar; (void)item; }
-void rt_toolbar_set_icon_size(void *toolbar, int64_t size) { (void)toolbar; (void)size; }
-int64_t rt_toolbar_get_icon_size(void *toolbar) { (void)toolbar; return 0; }
-void rt_toolbar_set_style(void *toolbar, int64_t style) { (void)toolbar; (void)style; }
-int64_t rt_toolbar_get_item_count(void *toolbar) { (void)toolbar; return 0; }
-void *rt_toolbar_get_item(void *toolbar, int64_t index) { (void)toolbar; (void)index; return NULL; }
-void rt_toolbar_set_visible(void *toolbar, int64_t visible) { (void)toolbar; (void)visible; }
-int64_t rt_toolbar_is_visible(void *toolbar) { (void)toolbar; return 0; }
 
-void rt_toolbaritem_set_icon(void *item, rt_string icon_path) { (void)item; (void)icon_path; }
-void rt_toolbaritem_set_icon_pixels(void *item, void *pixels) { (void)item; (void)pixels; }
-void rt_toolbaritem_set_text(void *item, rt_string text) { (void)item; (void)text; }
-void rt_toolbaritem_set_tooltip(void *item, rt_string tooltip) { (void)item; (void)tooltip; }
-void rt_toolbaritem_set_enabled(void *item, int64_t enabled) { (void)item; (void)enabled; }
-int64_t rt_toolbaritem_is_enabled(void *item) { (void)item; return 0; }
-void rt_toolbaritem_set_toggled(void *item, int64_t toggled) { (void)item; (void)toggled; }
-int64_t rt_toolbaritem_is_toggled(void *item) { (void)item; return 0; }
-void rt_gui_set_clicked_toolbar_item(void *item) { (void)item; }
-int64_t rt_toolbaritem_was_clicked(void *item) { (void)item; return 0; }
+void rt_toolbar_remove_item(void *toolbar, void *item)
+{
+    (void)toolbar;
+    (void)item;
+}
+
+void rt_toolbar_set_icon_size(void *toolbar, int64_t size)
+{
+    (void)toolbar;
+    (void)size;
+}
+
+int64_t rt_toolbar_get_icon_size(void *toolbar)
+{
+    (void)toolbar;
+    return 0;
+}
+
+void rt_toolbar_set_style(void *toolbar, int64_t style)
+{
+    (void)toolbar;
+    (void)style;
+}
+
+int64_t rt_toolbar_get_item_count(void *toolbar)
+{
+    (void)toolbar;
+    return 0;
+}
+
+void *rt_toolbar_get_item(void *toolbar, int64_t index)
+{
+    (void)toolbar;
+    (void)index;
+    return NULL;
+}
+
+void rt_toolbar_set_visible(void *toolbar, int64_t visible)
+{
+    (void)toolbar;
+    (void)visible;
+}
+
+int64_t rt_toolbar_is_visible(void *toolbar)
+{
+    (void)toolbar;
+    return 0;
+}
+
+void rt_toolbaritem_set_icon(void *item, rt_string icon_path)
+{
+    (void)item;
+    (void)icon_path;
+}
+
+void rt_toolbaritem_set_icon_pixels(void *item, void *pixels)
+{
+    (void)item;
+    (void)pixels;
+}
+
+void rt_toolbaritem_set_text(void *item, rt_string text)
+{
+    (void)item;
+    (void)text;
+}
+
+void rt_toolbaritem_set_tooltip(void *item, rt_string tooltip)
+{
+    (void)item;
+    (void)tooltip;
+}
+
+void rt_toolbaritem_set_enabled(void *item, int64_t enabled)
+{
+    (void)item;
+    (void)enabled;
+}
+
+int64_t rt_toolbaritem_is_enabled(void *item)
+{
+    (void)item;
+    return 0;
+}
+
+void rt_toolbaritem_set_toggled(void *item, int64_t toggled)
+{
+    (void)item;
+    (void)toggled;
+}
+
+int64_t rt_toolbaritem_is_toggled(void *item)
+{
+    (void)item;
+    return 0;
+}
+
+void rt_gui_set_clicked_toolbar_item(void *item)
+{
+    (void)item;
+}
+
+int64_t rt_toolbaritem_was_clicked(void *item)
+{
+    (void)item;
+    return 0;
+}
 
 #endif /* VIPER_ENABLE_GRAPHICS */

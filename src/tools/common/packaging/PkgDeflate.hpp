@@ -30,11 +30,13 @@
 #include <stdexcept>
 #include <vector>
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
 /// @brief Error thrown when compression or decompression fails.
-class DeflateError : public std::runtime_error {
-public:
+class DeflateError : public std::runtime_error
+{
+  public:
     using std::runtime_error::runtime_error;
 };
 

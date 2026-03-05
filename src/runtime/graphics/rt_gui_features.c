@@ -1077,100 +1077,386 @@ rt_string rt_app_get_dropped_file(void *app, int64_t index)
 
 #else /* !VIPER_ENABLE_GRAPHICS */
 
-void *rt_commandpalette_new(void *parent) { (void)parent; return NULL; }
-void rt_commandpalette_destroy(void *palette) { (void)palette; }
+void *rt_commandpalette_new(void *parent)
+{
+    (void)parent;
+    return NULL;
+}
+
+void rt_commandpalette_destroy(void *palette)
+{
+    (void)palette;
+}
+
 void rt_commandpalette_add_command(void *palette, rt_string id, rt_string label, rt_string category)
 {
-    (void)palette; (void)id; (void)label; (void)category;
+    (void)palette;
+    (void)id;
+    (void)label;
+    (void)category;
 }
-void rt_commandpalette_add_command_with_shortcut(void *palette, rt_string id, rt_string label, rt_string category, rt_string shortcut)
+
+void rt_commandpalette_add_command_with_shortcut(
+    void *palette, rt_string id, rt_string label, rt_string category, rt_string shortcut)
 {
-    (void)palette; (void)id; (void)label; (void)category; (void)shortcut;
+    (void)palette;
+    (void)id;
+    (void)label;
+    (void)category;
+    (void)shortcut;
 }
-void rt_commandpalette_remove_command(void *palette, rt_string id) { (void)palette; (void)id; }
-void rt_commandpalette_clear(void *palette) { (void)palette; }
-void rt_commandpalette_show(void *palette) { (void)palette; }
-void rt_commandpalette_hide(void *palette) { (void)palette; }
-int64_t rt_commandpalette_is_visible(void *palette) { (void)palette; return 0; }
-void rt_commandpalette_set_placeholder(void *palette, rt_string text) { (void)palette; (void)text; }
-rt_string rt_commandpalette_get_selected_command(void *palette) { (void)palette; return rt_string_from_bytes("", 0); }
-int64_t rt_commandpalette_was_command_selected(void *palette) { (void)palette; return 0; }
 
-void rt_tooltip_show(rt_string text, int64_t x, int64_t y) { (void)text; (void)x; (void)y; }
-void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y) { (void)title; (void)body; (void)x; (void)y; }
+void rt_commandpalette_remove_command(void *palette, rt_string id)
+{
+    (void)palette;
+    (void)id;
+}
+
+void rt_commandpalette_clear(void *palette)
+{
+    (void)palette;
+}
+
+void rt_commandpalette_show(void *palette)
+{
+    (void)palette;
+}
+
+void rt_commandpalette_hide(void *palette)
+{
+    (void)palette;
+}
+
+int64_t rt_commandpalette_is_visible(void *palette)
+{
+    (void)palette;
+    return 0;
+}
+
+void rt_commandpalette_set_placeholder(void *palette, rt_string text)
+{
+    (void)palette;
+    (void)text;
+}
+
+rt_string rt_commandpalette_get_selected_command(void *palette)
+{
+    (void)palette;
+    return rt_string_from_bytes("", 0);
+}
+
+int64_t rt_commandpalette_was_command_selected(void *palette)
+{
+    (void)palette;
+    return 0;
+}
+
+void rt_tooltip_show(rt_string text, int64_t x, int64_t y)
+{
+    (void)text;
+    (void)x;
+    (void)y;
+}
+
+void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y)
+{
+    (void)title;
+    (void)body;
+    (void)x;
+    (void)y;
+}
+
 void rt_tooltip_hide(void) {}
-void rt_tooltip_set_delay(int64_t delay_ms) { (void)delay_ms; }
-void rt_widget_set_tooltip(void *widget, rt_string text) { (void)widget; (void)text; }
-void rt_widget_set_tooltip_rich(void *widget, rt_string title, rt_string body) { (void)widget; (void)title; (void)body; }
-void rt_widget_clear_tooltip(void *widget) { (void)widget; }
 
-void rt_toast_info(rt_string message) { (void)message; }
-void rt_toast_success(rt_string message) { (void)message; }
-void rt_toast_warning(rt_string message) { (void)message; }
-void rt_toast_error(rt_string message) { (void)message; }
+void rt_tooltip_set_delay(int64_t delay_ms)
+{
+    (void)delay_ms;
+}
+
+void rt_widget_set_tooltip(void *widget, rt_string text)
+{
+    (void)widget;
+    (void)text;
+}
+
+void rt_widget_set_tooltip_rich(void *widget, rt_string title, rt_string body)
+{
+    (void)widget;
+    (void)title;
+    (void)body;
+}
+
+void rt_widget_clear_tooltip(void *widget)
+{
+    (void)widget;
+}
+
+void rt_toast_info(rt_string message)
+{
+    (void)message;
+}
+
+void rt_toast_success(rt_string message)
+{
+    (void)message;
+}
+
+void rt_toast_warning(rt_string message)
+{
+    (void)message;
+}
+
+void rt_toast_error(rt_string message)
+{
+    (void)message;
+}
+
 void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms)
 {
-    (void)message; (void)type; (void)duration_ms; return NULL;
+    (void)message;
+    (void)type;
+    (void)duration_ms;
+    return NULL;
 }
-void rt_toast_set_action(void *toast, rt_string label) { (void)toast; (void)label; }
-int64_t rt_toast_was_action_clicked(void *toast) { (void)toast; return 0; }
-int64_t rt_toast_was_dismissed(void *toast) { (void)toast; return 0; }
-void rt_toast_dismiss(void *toast) { (void)toast; }
-void rt_toast_set_position(int64_t position) { (void)position; }
-void rt_toast_set_max_visible(int64_t count) { (void)count; }
+
+void rt_toast_set_action(void *toast, rt_string label)
+{
+    (void)toast;
+    (void)label;
+}
+
+int64_t rt_toast_was_action_clicked(void *toast)
+{
+    (void)toast;
+    return 0;
+}
+
+int64_t rt_toast_was_dismissed(void *toast)
+{
+    (void)toast;
+    return 0;
+}
+
+void rt_toast_dismiss(void *toast)
+{
+    (void)toast;
+}
+
+void rt_toast_set_position(int64_t position)
+{
+    (void)position;
+}
+
+void rt_toast_set_max_visible(int64_t count)
+{
+    (void)count;
+}
+
 void rt_toast_dismiss_all(void) {}
 
-void *rt_breadcrumb_new(void *parent) { (void)parent; return NULL; }
-void rt_breadcrumb_destroy(void *crumb) { (void)crumb; }
+void *rt_breadcrumb_new(void *parent)
+{
+    (void)parent;
+    return NULL;
+}
+
+void rt_breadcrumb_destroy(void *crumb)
+{
+    (void)crumb;
+}
+
 void rt_breadcrumb_set_path(void *crumb, rt_string path, rt_string separator)
 {
-    (void)crumb; (void)path; (void)separator;
+    (void)crumb;
+    (void)path;
+    (void)separator;
 }
-void rt_breadcrumb_set_items(void *crumb, rt_string items) { (void)crumb; (void)items; }
+
+void rt_breadcrumb_set_items(void *crumb, rt_string items)
+{
+    (void)crumb;
+    (void)items;
+}
+
 void rt_breadcrumb_add_item(void *crumb, rt_string text, rt_string item_data)
 {
-    (void)crumb; (void)text; (void)item_data;
+    (void)crumb;
+    (void)text;
+    (void)item_data;
 }
-void rt_breadcrumb_clear(void *crumb) { (void)crumb; }
-int64_t rt_breadcrumb_was_item_clicked(void *crumb) { (void)crumb; return 0; }
-int64_t rt_breadcrumb_get_clicked_index(void *crumb) { (void)crumb; return -1; }
-rt_string rt_breadcrumb_get_clicked_data(void *crumb) { (void)crumb; return rt_string_from_bytes("", 0); }
-void rt_breadcrumb_set_separator(void *crumb, rt_string sep) { (void)crumb; (void)sep; }
-void rt_breadcrumb_set_max_items(void *crumb, int64_t max) { (void)crumb; (void)max; }
 
-void *rt_minimap_new(void *parent) { (void)parent; return NULL; }
-void rt_minimap_destroy(void *minimap) { (void)minimap; }
-void rt_minimap_bind_editor(void *minimap, void *editor) { (void)minimap; (void)editor; }
-void rt_minimap_unbind_editor(void *minimap) { (void)minimap; }
-void rt_minimap_set_width(void *minimap, int64_t width) { (void)minimap; (void)width; }
-int64_t rt_minimap_get_width(void *minimap) { (void)minimap; return 0; }
-void rt_minimap_set_scale(void *minimap, double scale) { (void)minimap; (void)scale; }
-void rt_minimap_set_show_slider(void *minimap, int64_t show) { (void)minimap; (void)show; }
+void rt_breadcrumb_clear(void *crumb)
+{
+    (void)crumb;
+}
+
+int64_t rt_breadcrumb_was_item_clicked(void *crumb)
+{
+    (void)crumb;
+    return 0;
+}
+
+int64_t rt_breadcrumb_get_clicked_index(void *crumb)
+{
+    (void)crumb;
+    return -1;
+}
+
+rt_string rt_breadcrumb_get_clicked_data(void *crumb)
+{
+    (void)crumb;
+    return rt_string_from_bytes("", 0);
+}
+
+void rt_breadcrumb_set_separator(void *crumb, rt_string sep)
+{
+    (void)crumb;
+    (void)sep;
+}
+
+void rt_breadcrumb_set_max_items(void *crumb, int64_t max)
+{
+    (void)crumb;
+    (void)max;
+}
+
+void *rt_minimap_new(void *parent)
+{
+    (void)parent;
+    return NULL;
+}
+
+void rt_minimap_destroy(void *minimap)
+{
+    (void)minimap;
+}
+
+void rt_minimap_bind_editor(void *minimap, void *editor)
+{
+    (void)minimap;
+    (void)editor;
+}
+
+void rt_minimap_unbind_editor(void *minimap)
+{
+    (void)minimap;
+}
+
+void rt_minimap_set_width(void *minimap, int64_t width)
+{
+    (void)minimap;
+    (void)width;
+}
+
+int64_t rt_minimap_get_width(void *minimap)
+{
+    (void)minimap;
+    return 0;
+}
+
+void rt_minimap_set_scale(void *minimap, double scale)
+{
+    (void)minimap;
+    (void)scale;
+}
+
+void rt_minimap_set_show_slider(void *minimap, int64_t show)
+{
+    (void)minimap;
+    (void)show;
+}
+
 void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t type)
 {
-    (void)minimap; (void)line; (void)color; (void)type;
+    (void)minimap;
+    (void)line;
+    (void)color;
+    (void)type;
 }
-void rt_minimap_remove_markers(void *minimap, int64_t line) { (void)minimap; (void)line; }
-void rt_minimap_clear_markers(void *minimap) { (void)minimap; }
 
-void rt_widget_set_draggable(void *widget, int64_t draggable) { (void)widget; (void)draggable; }
+void rt_minimap_remove_markers(void *minimap, int64_t line)
+{
+    (void)minimap;
+    (void)line;
+}
+
+void rt_minimap_clear_markers(void *minimap)
+{
+    (void)minimap;
+}
+
+void rt_widget_set_draggable(void *widget, int64_t draggable)
+{
+    (void)widget;
+    (void)draggable;
+}
+
 void rt_widget_set_drag_data(void *widget, rt_string type, rt_string data)
 {
-    (void)widget; (void)type; (void)data;
+    (void)widget;
+    (void)type;
+    (void)data;
 }
-int64_t rt_widget_is_being_dragged(void *widget) { (void)widget; return 0; }
-void rt_widget_set_drop_target(void *widget, int64_t target) { (void)widget; (void)target; }
-void rt_widget_set_accepted_drop_types(void *widget, rt_string types) { (void)widget; (void)types; }
-int64_t rt_widget_is_drag_over(void *widget) { (void)widget; return 0; }
-int64_t rt_widget_was_dropped(void *widget) { (void)widget; return 0; }
-rt_string rt_widget_get_drop_type(void *widget) { (void)widget; return rt_string_from_bytes("", 0); }
-rt_string rt_widget_get_drop_data(void *widget) { (void)widget; return rt_string_from_bytes("", 0); }
 
-int64_t rt_app_was_file_dropped(void *app) { (void)app; return 0; }
-int64_t rt_app_get_dropped_file_count(void *app) { (void)app; return 0; }
+int64_t rt_widget_is_being_dragged(void *widget)
+{
+    (void)widget;
+    return 0;
+}
+
+void rt_widget_set_drop_target(void *widget, int64_t target)
+{
+    (void)widget;
+    (void)target;
+}
+
+void rt_widget_set_accepted_drop_types(void *widget, rt_string types)
+{
+    (void)widget;
+    (void)types;
+}
+
+int64_t rt_widget_is_drag_over(void *widget)
+{
+    (void)widget;
+    return 0;
+}
+
+int64_t rt_widget_was_dropped(void *widget)
+{
+    (void)widget;
+    return 0;
+}
+
+rt_string rt_widget_get_drop_type(void *widget)
+{
+    (void)widget;
+    return rt_string_from_bytes("", 0);
+}
+
+rt_string rt_widget_get_drop_data(void *widget)
+{
+    (void)widget;
+    return rt_string_from_bytes("", 0);
+}
+
+int64_t rt_app_was_file_dropped(void *app)
+{
+    (void)app;
+    return 0;
+}
+
+int64_t rt_app_get_dropped_file_count(void *app)
+{
+    (void)app;
+    return 0;
+}
+
 rt_string rt_app_get_dropped_file(void *app, int64_t index)
 {
-    (void)app; (void)index; return rt_string_from_bytes("", 0);
+    (void)app;
+    (void)index;
+    return rt_string_from_bytes("", 0);
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

@@ -121,13 +121,26 @@ InputKind ReplInputClassifier::classify(const std::string &input)
 
         switch (c)
         {
-            case '{': ++braceDepth; break;
-            case '}': --braceDepth; break;
-            case '(': ++parenDepth; break;
-            case ')': --parenDepth; break;
-            case '[': ++bracketDepth; break;
-            case ']': --bracketDepth; break;
-            default: break;
+            case '{':
+                ++braceDepth;
+                break;
+            case '}':
+                --braceDepth;
+                break;
+            case '(':
+                ++parenDepth;
+                break;
+            case ')':
+                --parenDepth;
+                break;
+            case '[':
+                ++bracketDepth;
+                break;
+            case ']':
+                --bracketDepth;
+                break;
+            default:
+                break;
         }
     }
 
@@ -197,20 +210,17 @@ InputKind ReplInputClassifier::classifyBasic(const std::string &input)
         if (matchKeywordCI(line, pos, "END"))
         {
             size_t afterEnd = pos + 3;
-            while (afterEnd < line.size() && std::isspace(static_cast<unsigned char>(line[afterEnd])))
+            while (afterEnd < line.size() &&
+                   std::isspace(static_cast<unsigned char>(line[afterEnd])))
                 ++afterEnd;
 
-            if (matchKeywordCI(line, afterEnd, "IF") ||
-                matchKeywordCI(line, afterEnd, "SUB") ||
+            if (matchKeywordCI(line, afterEnd, "IF") || matchKeywordCI(line, afterEnd, "SUB") ||
                 matchKeywordCI(line, afterEnd, "FUNCTION") ||
-                matchKeywordCI(line, afterEnd, "CLASS") ||
-                matchKeywordCI(line, afterEnd, "TYPE") ||
-                matchKeywordCI(line, afterEnd, "SELECT") ||
-                matchKeywordCI(line, afterEnd, "TRY") ||
+                matchKeywordCI(line, afterEnd, "CLASS") || matchKeywordCI(line, afterEnd, "TYPE") ||
+                matchKeywordCI(line, afterEnd, "SELECT") || matchKeywordCI(line, afterEnd, "TRY") ||
                 matchKeywordCI(line, afterEnd, "PROPERTY") ||
                 matchKeywordCI(line, afterEnd, "NAMESPACE") ||
-                matchKeywordCI(line, afterEnd, "GET") ||
-                matchKeywordCI(line, afterEnd, "SET"))
+                matchKeywordCI(line, afterEnd, "GET") || matchKeywordCI(line, afterEnd, "SET"))
             {
                 --blockDepth;
                 lineStart = lineEnd + 1;
@@ -318,10 +328,8 @@ InputKind ReplInputClassifier::classifyBasic(const std::string &input)
         }
 
         // CLASS / TYPE / TRY / PROPERTY / NAMESPACE
-        if (matchKeywordCI(line, pos, "CLASS") ||
-            matchKeywordCI(line, pos, "TYPE") ||
-            matchKeywordCI(line, pos, "TRY") ||
-            matchKeywordCI(line, pos, "PROPERTY") ||
+        if (matchKeywordCI(line, pos, "CLASS") || matchKeywordCI(line, pos, "TYPE") ||
+            matchKeywordCI(line, pos, "TRY") || matchKeywordCI(line, pos, "PROPERTY") ||
             matchKeywordCI(line, pos, "NAMESPACE"))
         {
             ++blockDepth;

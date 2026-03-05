@@ -353,7 +353,14 @@ void testFpCmpCodes(TestContext &ctx)
     ctx.beginCategory("FP cmp codes (8)");
 
     const char *fcmpOps[] = {
-        "fcmp_eq", "fcmp_ne", "fcmp_lt", "fcmp_le", "fcmp_gt", "fcmp_ge", "fcmp_ord", "fcmp_uno",
+        "fcmp_eq",
+        "fcmp_ne",
+        "fcmp_lt",
+        "fcmp_le",
+        "fcmp_gt",
+        "fcmp_ge",
+        "fcmp_ord",
+        "fcmp_uno",
     };
 
     std::vector<ILInstr> instrs;
@@ -588,10 +595,11 @@ void testSwitchI32(TestContext &ctx)
     entry.name = "entry";
     entry.paramIds = {0};
     entry.paramKinds = {ILValue::Kind::I64};
-    entry.instrs = {makeSwitch(0, {{1, "case1"}, {2, "case2"}, {3, "case3"}, {5, "case5"}},
-                               "default_blk")};
+    entry.instrs = {
+        makeSwitch(0, {{1, "case1"}, {2, "case2"}, {3, "case3"}, {5, "case5"}}, "default_blk")};
 
-    auto makeRetBlock = [](const char *name, int64_t retVal) {
+    auto makeRetBlock = [](const char *name, int64_t retVal)
+    {
         ILBlock blk{};
         blk.name = name;
         ILInstr ret{};
@@ -667,7 +675,8 @@ void testNestedIfElse(TestContext &ctx)
         makeCbr(12, "l2_ft", "l2_ff"),
     };
 
-    auto makeLeaf = [](const char *name, int64_t retVal) {
+    auto makeLeaf = [](const char *name, int64_t retVal)
+    {
         ILBlock blk{};
         blk.name = name;
         ILInstr ret{};
@@ -683,8 +692,13 @@ void testNestedIfElse(TestContext &ctx)
 
     ILFunction fn{};
     fn.name = "nested_ifelse";
-    fn.blocks = {entry, l1t, l1f, makeLeaf("l2_tt", 1), makeLeaf("l2_tf", 2),
-                 makeLeaf("l2_ft", 3), makeLeaf("l2_ff", 4)};
+    fn.blocks = {entry,
+                 l1t,
+                 l1f,
+                 makeLeaf("l2_tt", 1),
+                 makeLeaf("l2_tf", 2),
+                 makeLeaf("l2_ft", 3),
+                 makeLeaf("l2_ff", 4)};
 
     ILModule m{};
     m.funcs = {fn};

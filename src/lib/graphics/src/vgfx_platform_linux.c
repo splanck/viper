@@ -1174,8 +1174,6 @@ void vgfx_clipboard_set_text(const char *text)
     (void)text;
 }
 
-void vgfx_clipboard_clear(void)
-{
-}
+void vgfx_clipboard_clear(void) {}
 
 #endif /* __linux__ || __unix__ */

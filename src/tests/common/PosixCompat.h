@@ -45,6 +45,7 @@ static inline void viper_disable_abort_dialog_(void)
     _CrtSetReportFile(_CRT_WARN, _CRTDBG_FILE_STDERR);
 #endif
 }
+
 #define VIPER_DISABLE_ABORT_DIALOG() viper_disable_abort_dialog_()
 
 // Standard file descriptors

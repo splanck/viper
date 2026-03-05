@@ -882,8 +882,7 @@ void EmitCommon::emitFCmpNanSafe(const ILInstr &instr, std::string_view suffix)
     {
         // Swap operands: UCOMISD(rhs, lhs) so that a<b → SETA, a<=b → SETAE.
         // NaN gives CF=1,ZF=1 regardless of order → SETA/SETAE → false.
-        builder().append(
-            MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{clone(rhs), lhs}));
+        builder().append(MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{clone(rhs), lhs}));
         const int code = (suffix == "lt") ? 6 : 7; // SETA / SETAE
         builder().append(
             MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(code), dest}));
@@ -891,8 +890,7 @@ void EmitCommon::emitFCmpNanSafe(const ILInstr &instr, std::string_view suffix)
     }
 
     // eq / ne: emit UCOMISD(lhs, rhs) then two SETcc + logical combine.
-    builder().append(
-        MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{clone(lhs), rhs}));
+    builder().append(MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{clone(lhs), rhs}));
 
     if (suffix == "eq")
     {
@@ -903,8 +901,7 @@ void EmitCommon::emitFCmpNanSafe(const ILInstr &instr, std::string_view suffix)
             MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(11), tmpOp})); // SETNP
         builder().append(
             MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(0), dest})); // SETE
-        builder().append(
-            MInstr::make(MOpcode::ANDrr, std::vector<Operand>{dest, tmpOp}));
+        builder().append(MInstr::make(MOpcode::ANDrr, std::vector<Operand>{dest, tmpOp}));
     }
     else // "ne"
     {
@@ -915,8 +912,7 @@ void EmitCommon::emitFCmpNanSafe(const ILInstr &instr, std::string_view suffix)
             MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(10), tmpOp})); // SETP
         builder().append(
             MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(1), dest})); // SETNE
-        builder().append(
-            MInstr::make(MOpcode::ORrr, std::vector<Operand>{dest, tmpOp}));
+        builder().append(MInstr::make(MOpcode::ORrr, std::vector<Operand>{dest, tmpOp}));
     }
 }
 

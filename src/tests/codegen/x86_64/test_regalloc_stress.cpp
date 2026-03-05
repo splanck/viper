@@ -206,8 +206,12 @@ void printSummary(const std::vector<TestResult> &results)
     ILBlock entry{};
     entry.name = "entry";
     entry.paramIds = {0, 1, 2, 3, 4, 5};
-    entry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64,
-                        ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64};
+    entry.paramKinds = {ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64};
 
     // 10 computed values, each depending on different params
     entry.instrs.push_back(makeOp("add", {val(0), val(1)}, 6));
@@ -299,8 +303,12 @@ void printSummary(const std::vector<TestResult> &results)
     ILBlock mainEntry{};
     mainEntry.name = "entry";
     mainEntry.paramIds = {0, 1, 2, 3, 4, 5};
-    mainEntry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64,
-                            ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64};
+    mainEntry.paramKinds = {ILValue::Kind::I64,
+                            ILValue::Kind::I64,
+                            ILValue::Kind::I64,
+                            ILValue::Kind::I64,
+                            ILValue::Kind::I64,
+                            ILValue::Kind::I64};
 
     // call @helper(p0) — clobbers all caller-saved; p1-p5 must survive
     ILInstr callInstr{};
@@ -609,8 +617,8 @@ void printSummary(const std::vector<TestResult> &results)
     ILBlock mainEntry{};
     mainEntry.name = "entry";
     mainEntry.paramIds = {0, 1, 2, 3};
-    mainEntry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64,
-                            ILValue::Kind::I64};
+    mainEntry.paramKinds = {
+        ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64};
 
     // 4 calls — each successive call forces more values to be spilled
     ILInstr call0{};
@@ -676,8 +684,7 @@ void printSummary(const std::vector<TestResult> &results)
     const std::size_t callCount = countOccurrences(funcAsm, "callq");
     if (callCount < 4)
     {
-        result.failReason =
-            "Expected 4 callq but found " + std::to_string(callCount);
+        result.failReason = "Expected 4 callq but found " + std::to_string(callCount);
         return result;
     }
 

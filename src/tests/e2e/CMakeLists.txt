@@ -545,7 +545,7 @@ if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" AND APPLE)
             ${CMAKE_COMMAND}
             -DILC=$<TARGET_FILE:viper>
             -DRUNTIME_LIB=${CMAKE_BINARY_DIR}/src/runtime/libviper_runtime.a
-            -DBAS_FILE=${CMAKE_SOURCE_DIR}/demos/basic/chess/chess.bas
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/games/chess-basic/chess.bas
             -DDEMO_NAME=chess
             -P ${_VIPER_E2E_DIR}/test_arm64_native_link.cmake)
     set_tests_properties(arm64_native_chess PROPERTIES LABELS "ARM64;NativeLink")
@@ -555,7 +555,7 @@ if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" AND APPLE)
             ${CMAKE_COMMAND}
             -DILC=$<TARGET_FILE:viper>
             -DRUNTIME_LIB=${CMAKE_BINARY_DIR}/src/runtime/libviper_runtime.a
-            -DBAS_FILE=${CMAKE_SOURCE_DIR}/demos/basic/vtris/vtris.bas
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/games/vtris/vtris.bas
             -DDEMO_NAME=vtris
             -P ${_VIPER_E2E_DIR}/test_arm64_native_link.cmake)
     set_tests_properties(arm64_native_vtris PROPERTIES LABELS "ARM64;NativeLink")
@@ -565,7 +565,7 @@ if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" AND APPLE)
             ${CMAKE_COMMAND}
             -DILC=$<TARGET_FILE:viper>
             -DRUNTIME_LIB=${CMAKE_BINARY_DIR}/src/runtime/libviper_runtime.a
-            -DBAS_FILE=${CMAKE_SOURCE_DIR}/demos/basic/frogger/frogger.bas
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/games/frogger-basic/frogger.bas
             -DDEMO_NAME=frogger
             -P ${_VIPER_E2E_DIR}/test_arm64_native_link.cmake)
     set_tests_properties(arm64_native_frogger PROPERTIES LABELS "ARM64;NativeLink")
@@ -575,7 +575,7 @@ if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" AND APPLE)
             ${CMAKE_COMMAND}
             -DILC=$<TARGET_FILE:viper>
             -DRUNTIME_LIB=${CMAKE_BINARY_DIR}/src/runtime/libviper_runtime.a
-            -DBAS_FILE=${CMAKE_SOURCE_DIR}/demos/basic/centipede/centipede.bas
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/games/centipede-basic/centipede.bas
             -DDEMO_NAME=centipede
             -P ${_VIPER_E2E_DIR}/test_arm64_native_link.cmake)
     set_tests_properties(arm64_native_centipede PROPERTIES LABELS "ARM64;NativeLink")

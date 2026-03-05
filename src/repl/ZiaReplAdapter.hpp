@@ -117,8 +117,10 @@ class ZiaReplAdapter : public ReplAdapter
     /// @param[out] line 1-based line number in synthetic source.
     /// @param[out] col 0-based column in synthetic source.
     /// @return The synthetic source text.
-    std::string buildSourceForCompletion(const std::string &input, size_t cursor,
-                                         int &line, int &col) const;
+    std::string buildSourceForCompletion(const std::string &input,
+                                         size_t cursor,
+                                         int &line,
+                                         int &col) const;
 
     // --- Session state ---
     std::vector<std::string> bindStatements_;

@@ -412,7 +412,8 @@ class ScopedWorkingDirectory
         }
 
         previous_ = std::wstring(previous.get());
-        const std::wstring newDirectory = std::filesystem::path(std::u8string(target->begin(), target->end())).wstring();
+        const std::wstring newDirectory =
+            std::filesystem::path(std::u8string(target->begin(), target->end())).wstring();
         if (_wchdir(newDirectory.c_str()) != 0)
         {
             error_.emplace("failed to change working directory to '" + *target + "'");

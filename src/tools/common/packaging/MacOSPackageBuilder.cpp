@@ -34,7 +34,8 @@
 
 namespace fs = std::filesystem;
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
 //=============================================================================
 // File Reading Helper
@@ -61,14 +62,14 @@ static std::vector<uint8_t> readFile(const std::string &path)
 void buildMacOSPackage(const MacOSBuildParams &params)
 {
     const auto &pkg = params.pkgConfig;
-    std::string displayName = pkg.displayName.empty()
-                                  ? params.projectName
-                                  : pkg.displayName;
+    std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
 
     // Determine executable name (lowercase, no spaces)
     std::string execName = params.projectName;
-    for (auto &c : execName) {
-        if (c == ' ') c = '_';
+    for (auto &c : execName)
+    {
+        if (c == ' ')
+            c = '_';
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
 
@@ -90,28 +91,26 @@ void buildMacOSPackage(const MacOSBuildParams &params)
 
     // Executable (with 0755 permission!)
     auto execData = readFile(params.executablePath);
-    zip.addFile(macosPrefix + execName, execData.data(), execData.size(),
-                0100755);
+    zip.addFile(macosPrefix + execName, execData.data(), execData.size(), 0100755);
 
     // Icon (ICNS from source PNG)
     std::string iconFileName;
-    if (!pkg.iconPath.empty()) {
+    if (!pkg.iconPath.empty())
+    {
         fs::path iconSrc = fs::path(params.projectRoot) / pkg.iconPath;
-        if (fs::exists(iconSrc)) {
+        if (fs::exists(iconSrc))
+        {
             auto srcImage = pngRead(iconSrc.string());
             auto icnsData = generateIcns(srcImage);
             iconFileName = execName;
-            zip.addFile(resourcesPrefix + execName + ".icns",
-                        icnsData.data(), icnsData.size());
+            zip.addFile(resourcesPrefix + execName + ".icns", icnsData.data(), icnsData.size());
         }
     }
 
     // Info.plist
     PlistParams plistParams;
     plistParams.executableName = execName;
-    plistParams.bundleId = pkg.identifier.empty()
-                               ? ("com.viper." + execName)
-                               : pkg.identifier;
+    plistParams.bundleId = pkg.identifier.empty() ? ("com.viper." + execName) : pkg.identifier;
     plistParams.bundleName = displayName;
     plistParams.version = params.version;
     plistParams.iconFile = iconFileName;
@@ -120,29 +119,37 @@ void buildMacOSPackage(const MacOSBuildParams &params)
     zip.addFileString(contentsPrefix + "Info.plist", generatePlist(plistParams));
 
     // Assets
-    for (const auto &asset : pkg.assets) {
+    for (const auto &asset : pkg.assets)
+    {
         fs::path srcPath = fs::path(params.projectRoot) / asset.sourcePath;
         std::string targetDir = asset.targetPath;
         if (targetDir == ".")
             targetDir = "";
 
-        if (fs::is_directory(srcPath)) {
+        if (fs::is_directory(srcPath))
+        {
             // Recurse directory
-            for (auto &entry : fs::recursive_directory_iterator(srcPath)) {
+            for (auto &entry : fs::recursive_directory_iterator(srcPath))
+            {
                 auto relPath = fs::relative(entry.path(), srcPath).string();
                 std::string zipPath = resourcesPrefix;
                 if (!targetDir.empty())
                     zipPath += targetDir + "/";
                 zipPath += relPath;
 
-                if (entry.is_directory()) {
+                if (entry.is_directory())
+                {
                     zip.addDirectory(zipPath);
-                } else if (entry.is_regular_file()) {
+                }
+                else if (entry.is_regular_file())
+                {
                     auto data = readFile(entry.path().string());
                     zip.addFile(zipPath, data.data(), data.size());
                 }
             }
-        } else if (fs::is_regular_file(srcPath)) {
+        }
+        else if (fs::is_regular_file(srcPath))
+        {
             auto data = readFile(srcPath.string());
             std::string zipPath = resourcesPrefix;
             if (!targetDir.empty())

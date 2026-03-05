@@ -27,10 +27,11 @@
 #include <fstream>
 #include <stdexcept>
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
-void ArWriter::addMember(const std::string &name, const uint8_t *data,
-                         size_t size, uint32_t mtime, uint32_t mode)
+void ArWriter::addMember(
+    const std::string &name, const uint8_t *data, size_t size, uint32_t mtime, uint32_t mode)
 {
     Member m;
     m.name = name;
@@ -42,20 +43,22 @@ void ArWriter::addMember(const std::string &name, const uint8_t *data,
 
 void ArWriter::addMemberString(const std::string &name,
                                const std::string &content,
-                               uint32_t mtime, uint32_t mode)
+                               uint32_t mtime,
+                               uint32_t mode)
 {
-    addMember(name, reinterpret_cast<const uint8_t *>(content.data()),
-              content.size(), mtime, mode);
+    addMember(name, reinterpret_cast<const uint8_t *>(content.data()), content.size(), mtime, mode);
 }
 
 void ArWriter::addMemberVec(const std::string &name,
                             const std::vector<uint8_t> &data,
-                            uint32_t mtime, uint32_t mode)
+                            uint32_t mtime,
+                            uint32_t mode)
 {
     addMember(name, data.data(), data.size(), mtime, mode);
 }
 
-namespace {
+namespace
+{
 
 // Write a right-padded field to buf. Field is exactly `width` bytes, padded
 // with spaces.
@@ -82,7 +85,8 @@ std::vector<uint8_t> ArWriter::finish() const
     const char *magic = "!<arch>\n";
     out.insert(out.end(), magic, magic + 8);
 
-    for (const auto &m : members_) {
+    for (const auto &m : members_)
+    {
         uint8_t hdr[60];
         std::memset(hdr, ' ', 60);
 
@@ -128,8 +132,7 @@ void ArWriter::finishToFile(const std::string &path) const
     std::ofstream f(path, std::ios::binary);
     if (!f)
         throw std::runtime_error("cannot write ar archive: " + path);
-    f.write(reinterpret_cast<const char *>(data.data()),
-            static_cast<std::streamsize>(data.size()));
+    f.write(reinterpret_cast<const char *>(data.data()), static_cast<std::streamsize>(data.size()));
     if (!f)
         throw std::runtime_error("failed to write ar archive: " + path);
 }

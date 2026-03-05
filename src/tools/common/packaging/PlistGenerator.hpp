@@ -26,16 +26,18 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
 /// @brief Parameters for Info.plist generation.
-struct PlistParams {
-    std::string executableName; ///< Binary filename in Contents/MacOS/
-    std::string bundleId;       ///< CFBundleIdentifier (reverse DNS)
-    std::string bundleName;     ///< CFBundleName (display name)
-    std::string version;        ///< CFBundleVersion
-    std::string iconFile;       ///< CFBundleIconFile (without .icns extension)
-    std::string minOsVersion;   ///< LSMinimumSystemVersion (default "10.13")
+struct PlistParams
+{
+    std::string executableName;              ///< Binary filename in Contents/MacOS/
+    std::string bundleId;                    ///< CFBundleIdentifier (reverse DNS)
+    std::string bundleName;                  ///< CFBundleName (display name)
+    std::string version;                     ///< CFBundleVersion
+    std::string iconFile;                    ///< CFBundleIconFile (without .icns extension)
+    std::string minOsVersion;                ///< LSMinimumSystemVersion (default "10.13")
     std::vector<FileAssoc> fileAssociations; ///< CFBundleDocumentTypes
 };
 

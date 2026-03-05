@@ -78,7 +78,7 @@ TEST(ARM64E2E, Frogger_RunNative_OptIn)
     const std::string buildDir = ".";
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
     const std::string ilc = buildDir + "/src/tools/viper/viper";
-    const std::string froggerBas = "../demos/basic/frogger/frogger.bas";
+    const std::string froggerBas = "../examples/games/frogger-basic/frogger.bas";
     if (!exists(vbasic) || !exists(ilc) || !exists(froggerBas))
         return;
     const std::string ilFile = "/tmp/frogger_run.il";
@@ -96,7 +96,7 @@ TEST(ARM64E2E, Vtris_RunNative_OptIn)
     const std::string buildDir = ".";
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
     const std::string ilc = buildDir + "/src/tools/viper/viper";
-    const std::string vtrisBas = "../demos/basic/vtris/vtris.bas";
+    const std::string vtrisBas = "../examples/games/vtris/vtris.bas";
     if (!exists(vbasic) || !exists(ilc) || !exists(vtrisBas))
         return;
     const std::string ilFile = "/tmp/vtris_run.il";

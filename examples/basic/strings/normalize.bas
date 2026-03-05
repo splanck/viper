@@ -1,3 +1,0 @@
-10 LET S$ = "MiXeD"
-20 PRINT UCASE$(S$)
-30 PRINT LCASE$(S$)

@@ -23,7 +23,8 @@
 
 #include <sstream>
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
 std::string generateDesktopEntry(const DesktopEntryParams &params)
 {
@@ -41,9 +42,11 @@ std::string generateDesktopEntry(const DesktopEntryParams &params)
     os << "Terminal=" << (params.terminal ? "true" : "false") << "\n";
 
     // MimeType field for file associations
-    if (!params.fileAssociations.empty()) {
+    if (!params.fileAssociations.empty())
+    {
         os << "MimeType=";
-        for (size_t i = 0; i < params.fileAssociations.size(); i++) {
+        for (size_t i = 0; i < params.fileAssociations.size(); i++)
+        {
             os << params.fileAssociations[i].mimeType << ";";
         }
         os << "\n";
@@ -62,7 +65,8 @@ std::string generateMimeTypeXml(const std::string &packageName,
     os << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
     os << "<mime-info xmlns=\"http://www.freedesktop.org/standards/shared-mime-info\">\n";
 
-    for (const auto &a : assocs) {
+    for (const auto &a : assocs)
+    {
         os << "  <mime-type type=\"" << a.mimeType << "\">\n";
         os << "    <comment>" << a.description << "</comment>\n";
 

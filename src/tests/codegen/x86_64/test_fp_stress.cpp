@@ -182,12 +182,14 @@ namespace
 struct TestResult
 {
     const char *name{};
+
     enum Status
     {
         PASS,
         FAIL,
         BUG
     } status{FAIL};
+
     std::string notes{};
     std::string failReason{};
     std::vector<std::string> bugs{};
@@ -648,8 +650,12 @@ TestResult testFpRegisterPressure()
     ILBlock entry{};
     entry.name = "entry";
     entry.paramIds = {0, 1, 2, 3, 4, 5};
-    entry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64,
-                        ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64};
+    entry.paramKinds = {ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64};
 
     // Convert 6 I64 params to F64
     for (int i = 0; i < 6; ++i)

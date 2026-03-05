@@ -1,9 +1,0 @@
-module test_colors;
-
-bind "./config";
-bind "./colors";
-
-func main() {
-    var colorMgr = new colors.ColorManager();
-    colorMgr.init();
-}

@@ -85,31 +85,33 @@ static __forceinline long long rt__atomic_fetch_add_64(volatile long long *p, lo
 
 /* -- Type-generic macros via C11 _Generic -------------------------------- */
 
-#define __atomic_load_n(ptr, order)                          \
-    _Generic(*(ptr),                                         \
-        int:       (int)rt__atomic_load_32((volatile long *)(ptr)),       \
-        long:      (long)rt__atomic_load_32((volatile long *)(ptr)),      \
+#define __atomic_load_n(ptr, order)                                                                \
+    _Generic(*(ptr),                                                                               \
+        int: (int)rt__atomic_load_32((volatile long *)(ptr)),                                      \
+        long: (long)rt__atomic_load_32((volatile long *)(ptr)),                                    \
         long long: (long long)rt__atomic_load_64((volatile long long *)(ptr)))
 
-#define __atomic_store_n(ptr, val, order)                    \
-    _Generic(*(ptr),                                         \
-        int:       rt__atomic_store_32((volatile long *)(ptr), (long)(val)),       \
-        long:      rt__atomic_store_32((volatile long *)(ptr), (long)(val)),      \
+#define __atomic_store_n(ptr, val, order)                                                          \
+    _Generic(*(ptr),                                                                               \
+        int: rt__atomic_store_32((volatile long *)(ptr), (long)(val)),                             \
+        long: rt__atomic_store_32((volatile long *)(ptr), (long)(val)),                            \
         long long: rt__atomic_store_64((volatile long long *)(ptr), (long long)(val)))
 
-#define __atomic_fetch_add(ptr, val, order)                  \
-    _Generic(*(ptr),                                         \
-        int:       (int)rt__atomic_fetch_add_32((volatile long *)(ptr), (long)(val)),       \
-        long:      (long)rt__atomic_fetch_add_32((volatile long *)(ptr), (long)(val)),      \
-        long long: (long long)rt__atomic_fetch_add_64((volatile long long *)(ptr), (long long)(val)))
+#define __atomic_fetch_add(ptr, val, order)                                                        \
+    _Generic(*(ptr),                                                                               \
+        int: (int)rt__atomic_fetch_add_32((volatile long *)(ptr), (long)(val)),                    \
+        long: (long)rt__atomic_fetch_add_32((volatile long *)(ptr), (long)(val)),                  \
+        long long: (long long)rt__atomic_fetch_add_64((volatile long long *)(ptr),                 \
+                                                      (long long)(val)))
 
-#define __atomic_fetch_sub(ptr, val, order)                  \
-    _Generic(*(ptr),                                         \
-        int:       (int)rt__atomic_fetch_add_32((volatile long *)(ptr), -(long)(val)),       \
-        long:      (long)rt__atomic_fetch_add_32((volatile long *)(ptr), -(long)(val)),      \
-        long long: (long long)rt__atomic_fetch_add_64((volatile long long *)(ptr), -(long long)(val)))
+#define __atomic_fetch_sub(ptr, val, order)                                                        \
+    _Generic(*(ptr),                                                                               \
+        int: (int)rt__atomic_fetch_add_32((volatile long *)(ptr), -(long)(val)),                   \
+        long: (long)rt__atomic_fetch_add_32((volatile long *)(ptr), -(long)(val)),                 \
+        long long: (long long)rt__atomic_fetch_add_64((volatile long long *)(ptr),                 \
+                                                      -(long long)(val)))
 
-#define __atomic_compare_exchange_n(ptr, expected, desired, weak, success_order, fail_order) \
+#define __atomic_compare_exchange_n(ptr, expected, desired, weak, success_order, fail_order)       \
     rt__atomic_cas_32((volatile long *)(ptr), (long *)(expected), (long)(desired))
 
 #endif /* _MSC_VER */

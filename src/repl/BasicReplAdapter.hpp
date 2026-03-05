@@ -100,7 +100,7 @@ class BasicReplAdapter : public ReplAdapter
 
     // --- Session state ---
     std::map<std::string, std::string> definedProcs_; ///< name -> full source (SUB/FUNCTION)
-    std::vector<BasicPersistentVar> persistentVars_;   ///< ordered persistent variables
+    std::vector<BasicPersistentVar> persistentVars_;  ///< ordered persistent variables
 };
 
 } // namespace viper::repl

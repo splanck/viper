@@ -61,8 +61,8 @@ extern void rt_net_init_wsa(void);
 #include <wincrypt.h>
 #pragma comment(lib, "crypt32.lib")
 #else
-#include <dlfcn.h>
 #include "rt_ecdsa_p256.h"
+#include <dlfcn.h>
 #endif
 
 // SIGPIPE suppression.
@@ -1904,14 +1904,18 @@ static int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data
 #else // Linux — native ECDSA P-256 + dlopen(libcrypto) fallback for RSA-PSS
 
 // EC public key OIDs
-static const uint8_t OID_EC_PUBLIC_KEY[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01}; // 1.2.840.10045.2.1
-static const uint8_t OID_PRIME256V1[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07}; // 1.2.840.10045.3.1.7
+static const uint8_t OID_EC_PUBLIC_KEY[] = {
+    0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01}; // 1.2.840.10045.2.1
+static const uint8_t OID_PRIME256V1[] = {
+    0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07}; // 1.2.840.10045.3.1.7
 
 /// @brief Extract the P-256 public key (X, Y) from a DER-encoded certificate.
 /// Navigates: Certificate → TBSCertificate → SubjectPublicKeyInfo → BIT STRING.
 /// @return 0 on success, -1 on error (not an EC key, wrong curve, parse failure).
-static int cert_get_ec_pubkey(const uint8_t *cert_der, size_t cert_len,
-                              uint8_t x_out[32], uint8_t y_out[32])
+static int cert_get_ec_pubkey(const uint8_t *cert_der,
+                              size_t cert_len,
+                              uint8_t x_out[32],
+                              uint8_t y_out[32])
 {
     uint8_t tag;
     size_t vl, hl;
@@ -2019,8 +2023,10 @@ static int cert_get_ec_pubkey(const uint8_t *cert_der, size_t cert_len,
 /// @brief Parse a DER-encoded ECDSA signature: SEQUENCE { INTEGER r, INTEGER s }.
 /// Strips leading zero padding from DER integers and right-aligns into 32-byte buffers.
 /// @return 0 on success, -1 on error (malformed signature).
-static int parse_ecdsa_sig_der(const uint8_t *sig, size_t sig_len,
-                               uint8_t r_out[32], uint8_t s_out[32])
+static int parse_ecdsa_sig_der(const uint8_t *sig,
+                               size_t sig_len,
+                               uint8_t r_out[32],
+                               uint8_t s_out[32])
 {
     uint8_t tag;
     size_t vl, hl;
@@ -2102,7 +2108,8 @@ typedef int (*EVP_PKEY_CTX_set_rsa_pss_saltlen_fn)(EVP_PKEY_CTX *, int);
 /// Used only when the server selects an RSA-PSS scheme (0x0804/0x0805/0x0806).
 static int tls_verify_rsa_pss_dlopen(rt_tls_session_t *session,
                                      uint16_t sig_scheme,
-                                     const uint8_t *sig_bytes, uint16_t sig_len,
+                                     const uint8_t *sig_bytes,
+                                     uint16_t sig_len,
                                      const uint8_t *content_hash)
 {
     void *ssl_lib = dlopen("libssl.so.3", RTLD_LAZY | RTLD_LOCAL);

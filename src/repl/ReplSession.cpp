@@ -64,64 +64,76 @@ std::filesystem::path ReplSession::historyFilePath() const
 
 void ReplSession::registerDefaultCommands()
 {
-    metaCmds_.registerCommand("help", "Show this help message",
+    metaCmds_.registerCommand("help",
+                              "Show this help message",
                               [this](ReplSession & /*session*/, const std::string & /*args*/)
                               { metaCmds_.printHelp(); });
 
-    metaCmds_.registerCommand(
-        "quit", "Exit the REPL",
-        [](ReplSession &session, const std::string & /*args*/) { session.requestExit(); });
+    metaCmds_.registerCommand("quit",
+                              "Exit the REPL",
+                              [](ReplSession &session, const std::string & /*args*/)
+                              { session.requestExit(); });
 
-    metaCmds_.registerCommand(
-        "exit", "Exit the REPL",
-        [](ReplSession &session, const std::string & /*args*/) { session.requestExit(); });
+    metaCmds_.registerCommand("exit",
+                              "Exit the REPL",
+                              [](ReplSession &session, const std::string & /*args*/)
+                              { session.requestExit(); });
 
-    metaCmds_.registerCommand("clear", "Reset session state",
+    metaCmds_.registerCommand("clear",
+                              "Reset session state",
                               [](ReplSession &session, const std::string & /*args*/)
                               {
                                   session.adapter().reset();
                                   std::cout << "Session state cleared.\n";
                               });
 
-    metaCmds_.registerCommand("vars", "List session variables",
+    metaCmds_.registerCommand("vars",
+                              "List session variables",
                               [](ReplSession &session, const std::string & /*args*/)
                               {
                                   auto vars = session.adapter().listVariables();
                                   if (vars.empty())
                                   {
-                                      std::cout << colors::dim() << "(no variables)" << colors::reset() << "\n";
+                                      std::cout << colors::dim() << "(no variables)"
+                                                << colors::reset() << "\n";
                                       return;
                                   }
                                   for (const auto &v : vars)
                                   {
-                                      std::cout << "  " << colors::bold() << v.name << colors::reset() << " : "
-                                                << colors::type() << v.type << colors::reset() << "\n";
+                                      std::cout << "  " << colors::bold() << v.name
+                                                << colors::reset() << " : " << colors::type()
+                                                << v.type << colors::reset() << "\n";
                                   }
                               });
 
-    metaCmds_.registerCommand("funcs", "List defined functions",
+    metaCmds_.registerCommand("funcs",
+                              "List defined functions",
                               [](ReplSession &session, const std::string & /*args*/)
                               {
                                   auto funcs = session.adapter().listFunctions();
                                   if (funcs.empty())
                                   {
-                                      std::cout << colors::dim() << "(no functions)" << colors::reset() << "\n";
+                                      std::cout << colors::dim() << "(no functions)"
+                                                << colors::reset() << "\n";
                                       return;
                                   }
                                   for (const auto &f : funcs)
                                   {
-                                      std::cout << "  " << colors::bold() << f.name << colors::reset() << " "
-                                                << colors::dim() << f.signature << colors::reset() << "\n";
+                                      std::cout << "  " << colors::bold() << f.name
+                                                << colors::reset() << " " << colors::dim()
+                                                << f.signature << colors::reset() << "\n";
                                   }
                               });
 
-    metaCmds_.registerCommand("binds", "List active bind statements",
+    metaCmds_.registerCommand("binds",
+                              "List active bind statements",
                               [](ReplSession &session, const std::string & /*args*/)
                               {
                                   auto binds = session.adapter().listBinds();
                                   if (binds.empty())
                                   {
-                                      std::cout << colors::dim() << "(no binds)" << colors::reset() << "\n";
+                                      std::cout << colors::dim() << "(no binds)" << colors::reset()
+                                                << "\n";
                                       return;
                                   }
                                   for (const auto &b : binds)
@@ -130,7 +142,8 @@ void ReplSession::registerDefaultCommands()
                                   }
                               });
 
-    metaCmds_.registerCommand("type", "Show type of expression",
+    metaCmds_.registerCommand("type",
+                              "Show type of expression",
                               [](ReplSession &session, const std::string &args)
                               {
                                   if (args.empty())
@@ -143,7 +156,8 @@ void ReplSession::registerDefaultCommands()
                                   std::cout << colors::type() << typeStr << colors::reset() << "\n";
                               });
 
-    metaCmds_.registerCommand("il", "Show generated IL for expression",
+    metaCmds_.registerCommand("il",
+                              "Show generated IL for expression",
                               [](ReplSession &session, const std::string &args)
                               {
                                   if (args.empty())
@@ -158,102 +172,97 @@ void ReplSession::registerDefaultCommands()
                                       std::cout << "\n";
                               });
 
-    metaCmds_.registerCommand("time", "Evaluate and show execution time",
-                              [](ReplSession &session, const std::string &args)
-                              {
-                                  if (args.empty())
-                                  {
-                                      std::cout << colors::warning() << "Usage: .time <expression>"
-                                                << colors::reset() << "\n";
-                                      return;
-                                  }
-                                  auto start = std::chrono::high_resolution_clock::now();
-                                  auto result = session.adapter().eval(args);
-                                  auto end = std::chrono::high_resolution_clock::now();
-                                  auto elapsed =
-                                      std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    metaCmds_.registerCommand(
+        "time",
+        "Evaluate and show execution time",
+        [](ReplSession &session, const std::string &args)
+        {
+            if (args.empty())
+            {
+                std::cout << colors::warning() << "Usage: .time <expression>" << colors::reset()
+                          << "\n";
+                return;
+            }
+            auto start = std::chrono::high_resolution_clock::now();
+            auto result = session.adapter().eval(args);
+            auto end = std::chrono::high_resolution_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 
-                                  if (result.success && !result.output.empty())
-                                  {
-                                      std::cout << colors::result() << result.output << colors::reset();
-                                      if (result.output.back() != '\n')
-                                          std::cout << "\n";
-                                  }
-                                  else if (!result.success)
-                                  {
-                                      std::cout << colors::error() << result.errorMessage
-                                                << colors::reset();
-                                      if (!result.errorMessage.empty() &&
-                                          result.errorMessage.back() != '\n')
-                                          std::cout << "\n";
-                                  }
+            if (result.success && !result.output.empty())
+            {
+                std::cout << colors::result() << result.output << colors::reset();
+                if (result.output.back() != '\n')
+                    std::cout << "\n";
+            }
+            else if (!result.success)
+            {
+                std::cout << colors::error() << result.errorMessage << colors::reset();
+                if (!result.errorMessage.empty() && result.errorMessage.back() != '\n')
+                    std::cout << "\n";
+            }
 
-                                  // Format elapsed time
-                                  if (elapsed.count() >= 1000000)
-                                  {
-                                      double secs =
-                                          static_cast<double>(elapsed.count()) / 1000000.0;
-                                      std::cout << colors::dim() << "Elapsed: " << secs << "s"
-                                                << colors::reset() << "\n";
-                                  }
-                                  else if (elapsed.count() >= 1000)
-                                  {
-                                      double ms = static_cast<double>(elapsed.count()) / 1000.0;
-                                      std::cout << colors::dim() << "Elapsed: " << ms << "ms"
-                                                << colors::reset() << "\n";
-                                  }
-                                  else
-                                  {
-                                      std::cout << colors::dim() << "Elapsed: " << elapsed.count()
-                                                << "us" << colors::reset() << "\n";
-                                  }
-                              });
+            // Format elapsed time
+            if (elapsed.count() >= 1000000)
+            {
+                double secs = static_cast<double>(elapsed.count()) / 1000000.0;
+                std::cout << colors::dim() << "Elapsed: " << secs << "s" << colors::reset() << "\n";
+            }
+            else if (elapsed.count() >= 1000)
+            {
+                double ms = static_cast<double>(elapsed.count()) / 1000.0;
+                std::cout << colors::dim() << "Elapsed: " << ms << "ms" << colors::reset() << "\n";
+            }
+            else
+            {
+                std::cout << colors::dim() << "Elapsed: " << elapsed.count() << "us"
+                          << colors::reset() << "\n";
+            }
+        });
 
-    metaCmds_.registerCommand("load", "Load and execute a source file",
-                              [](ReplSession &session, const std::string &args)
-                              {
-                                  if (args.empty())
-                                  {
-                                      std::cout << colors::warning() << "Usage: .load <filepath>"
-                                                << colors::reset() << "\n";
-                                      return;
-                                  }
-                                  std::ifstream file(args);
-                                  if (!file.is_open())
-                                  {
-                                      std::cout << colors::error() << "Could not open: " << args
-                                                << colors::reset() << "\n";
-                                      return;
-                                  }
-                                  std::string content((std::istreambuf_iterator<char>(file)),
-                                                      std::istreambuf_iterator<char>());
-                                  file.close();
+    metaCmds_.registerCommand(
+        "load",
+        "Load and execute a source file",
+        [](ReplSession &session, const std::string &args)
+        {
+            if (args.empty())
+            {
+                std::cout << colors::warning() << "Usage: .load <filepath>" << colors::reset()
+                          << "\n";
+                return;
+            }
+            std::ifstream file(args);
+            if (!file.is_open())
+            {
+                std::cout << colors::error() << "Could not open: " << args << colors::reset()
+                          << "\n";
+                return;
+            }
+            std::string content((std::istreambuf_iterator<char>(file)),
+                                std::istreambuf_iterator<char>());
+            file.close();
 
-                                  // Execute the file content as a single input
-                                  auto result = session.adapter().eval(content);
-                                  if (result.success)
-                                  {
-                                      if (!result.output.empty())
-                                      {
-                                          std::cout << colors::result() << result.output
-                                                    << colors::reset();
-                                          if (result.output.back() != '\n')
-                                              std::cout << "\n";
-                                      }
-                                      std::cout << colors::success() << "Loaded: " << args
-                                                << colors::reset() << "\n";
-                                  }
-                                  else
-                                  {
-                                      std::cout << colors::error() << result.errorMessage
-                                                << colors::reset();
-                                      if (!result.errorMessage.empty() &&
-                                          result.errorMessage.back() != '\n')
-                                          std::cout << "\n";
-                                  }
-                              });
+            // Execute the file content as a single input
+            auto result = session.adapter().eval(content);
+            if (result.success)
+            {
+                if (!result.output.empty())
+                {
+                    std::cout << colors::result() << result.output << colors::reset();
+                    if (result.output.back() != '\n')
+                        std::cout << "\n";
+                }
+                std::cout << colors::success() << "Loaded: " << args << colors::reset() << "\n";
+            }
+            else
+            {
+                std::cout << colors::error() << result.errorMessage << colors::reset();
+                if (!result.errorMessage.empty() && result.errorMessage.back() != '\n')
+                    std::cout << "\n";
+            }
+        });
 
-    metaCmds_.registerCommand("save", "Save session history to a file",
+    metaCmds_.registerCommand("save",
+                              "Save session history to a file",
                               [this](ReplSession & /*session*/, const std::string &args)
                               {
                                   if (args.empty())
@@ -282,8 +291,8 @@ void ReplSession::registerDefaultCommands()
 
 void ReplSession::printBanner()
 {
-    std::cout << colors::bold() << "Viper " << adapter_->languageName() << " REPL" << colors::reset() << " v"
-              << VIPER_VERSION_STR << "\n";
+    std::cout << colors::bold() << "Viper " << adapter_->languageName() << " REPL"
+              << colors::reset() << " v" << VIPER_VERSION_STR << "\n";
     std::cout << "Type " << colors::prompt() << ".help" << colors::reset() << " for commands, "
               << colors::prompt() << ".quit" << colors::reset() << " to exit.\n\n";
 }
@@ -307,7 +316,10 @@ std::string ReplSession::makeContinuationPrompt() const
     return p;
 }
 
-void ReplSession::requestExit() { running_ = false; }
+void ReplSession::requestExit()
+{
+    running_ = false;
+}
 
 int ReplSession::run()
 {
@@ -323,7 +335,8 @@ int ReplSession::run()
         if (interactive)
         {
             // Interactive mode with line editing
-            std::string prompt = accumulatedInput_.empty() ? makePrompt() : makeContinuationPrompt();
+            std::string prompt =
+                accumulatedInput_.empty() ? makePrompt() : makeContinuationPrompt();
             ReadResult readResult = editor_.readLine(prompt, line);
 
             switch (readResult)
@@ -337,7 +350,8 @@ int ReplSession::run()
                     {
                         accumulatedInput_.clear();
                         consecutiveInterrupts_ = 0;
-                        std::cout << colors::note() << "(input cancelled)" << colors::reset() << "\n";
+                        std::cout << colors::note() << "(input cancelled)" << colors::reset()
+                                  << "\n";
                     }
                     else
                     {

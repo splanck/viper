@@ -23,17 +23,20 @@
 
 #include "IconGenerator.hpp"
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
 //=============================================================================
 // ICNS Generation
 //=============================================================================
 
-namespace {
+namespace
+{
 
 /// @brief ICNS icon type codes and their target pixel sizes.
-struct IcnsTypeEntry {
-    char type[5]; ///< 4-char ICNS type code (NUL-terminated for convenience)
+struct IcnsTypeEntry
+{
+    char type[5];  ///< 4-char ICNS type code (NUL-terminated for convenience)
     uint32_t size; ///< Target pixel dimension (square)
 };
 
@@ -92,7 +95,8 @@ std::vector<uint8_t> generateIcns(const PkgImage &srcImage)
     // Reserve 4 bytes for total size — fill in at the end
     result.resize(8, 0);
 
-    for (const auto &entry : kIcnsTypes) {
+    for (const auto &entry : kIcnsTypes)
+    {
         // Skip sizes larger than source
         if (entry.size > srcImage.width && entry.size > srcImage.height)
             continue;
@@ -134,13 +138,16 @@ std::vector<uint8_t> generateIcns(const PkgImage &srcImage)
 std::vector<uint8_t> generateIco(const PkgImage &srcImage)
 {
     // First, generate all the PNG blobs for sizes that fit
-    struct IcoEntry {
+    struct IcoEntry
+    {
         uint32_t size;
         std::vector<uint8_t> pngData;
     };
+
     std::vector<IcoEntry> entries;
 
-    for (uint32_t sz : kIcoSizes) {
+    for (uint32_t sz : kIcoSizes)
+    {
         if (sz > srcImage.width && sz > srcImage.height)
             continue;
 
@@ -158,9 +165,9 @@ std::vector<uint8_t> generateIco(const PkgImage &srcImage)
     //   Reserved (2) = 0
     //   Type     (2) = 1 (ICO)
     //   Count    (2) = number of entries
-    writeLE16(result, 0);                                      // Reserved
-    writeLE16(result, 1);                                      // Type = ICO
-    writeLE16(result, static_cast<uint16_t>(entries.size()));  // Count
+    writeLE16(result, 0);                                     // Reserved
+    writeLE16(result, 1);                                     // Type = ICO
+    writeLE16(result, static_cast<uint16_t>(entries.size())); // Count
 
     // Calculate data offset: after ICONDIR (6) + all ICONDIRENTRYs (16 each)
     uint32_t dataOffset = 6 + static_cast<uint32_t>(entries.size()) * 16;
@@ -175,24 +182,26 @@ std::vector<uint8_t> generateIco(const PkgImage &srcImage)
     //   SizeInBytes(4) = PNG data size
     //   FileOffset (4) = offset from file start to PNG data
     uint32_t currentOffset = dataOffset;
-    for (const auto &e : entries) {
+    for (const auto &e : entries)
+    {
         // Width/Height: 0 encodes 256
         uint8_t w = (e.size >= 256) ? 0 : static_cast<uint8_t>(e.size);
         uint8_t h = w;
-        result.push_back(w);         // Width
-        result.push_back(h);         // Height
-        result.push_back(0);         // ColorCount
-        result.push_back(0);         // Reserved
-        writeLE16(result, 1);        // Planes
-        writeLE16(result, 32);       // BitCount (32bpp RGBA)
+        result.push_back(w);                                        // Width
+        result.push_back(h);                                        // Height
+        result.push_back(0);                                        // ColorCount
+        result.push_back(0);                                        // Reserved
+        writeLE16(result, 1);                                       // Planes
+        writeLE16(result, 32);                                      // BitCount (32bpp RGBA)
         writeLE32(result, static_cast<uint32_t>(e.pngData.size())); // Size
-        writeLE32(result, currentOffset);  // FileOffset
+        writeLE32(result, currentOffset);                           // FileOffset
 
         currentOffset += static_cast<uint32_t>(e.pngData.size());
     }
 
     // PNG data blocks
-    for (const auto &e : entries) {
+    for (const auto &e : entries)
+    {
         result.insert(result.end(), e.pngData.begin(), e.pngData.end());
     }
 
@@ -203,12 +212,12 @@ std::vector<uint8_t> generateIco(const PkgImage &srcImage)
 // Multi-Size PNG Generation
 //=============================================================================
 
-std::map<uint32_t, std::vector<uint8_t>> generateMultiSizePngs(
-    const PkgImage &srcImage)
+std::map<uint32_t, std::vector<uint8_t>> generateMultiSizePngs(const PkgImage &srcImage)
 {
     std::map<uint32_t, std::vector<uint8_t>> result;
 
-    for (uint32_t sz : kLinuxIconSizes) {
+    for (uint32_t sz : kLinuxIconSizes)
+    {
         if (sz > srcImage.width && sz > srcImage.height)
             continue;
 

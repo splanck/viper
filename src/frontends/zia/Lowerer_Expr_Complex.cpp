@@ -1245,8 +1245,7 @@ LowerResult Lowerer::lowerAs(AsExpr *expr)
     // raw bit reinterpretation (e.g., f64 bits read as i64 → garbage).
     if (sourceType && targetType)
     {
-        if (sourceType->kind == TypeKindSem::Number &&
-            targetType->kind == TypeKindSem::Integer)
+        if (sourceType->kind == TypeKindSem::Number && targetType->kind == TypeKindSem::Integer)
         {
             // f64 → i64: checked truncation (traps on NaN/overflow)
             unsigned convId = nextTempId();
@@ -1259,8 +1258,7 @@ LowerResult Lowerer::lowerAs(AsExpr *expr)
             blockMgr_.currentBlock()->instructions.push_back(conv);
             return {Value::temp(convId), conv.type};
         }
-        if (sourceType->kind == TypeKindSem::Integer &&
-            targetType->kind == TypeKindSem::Number)
+        if (sourceType->kind == TypeKindSem::Integer && targetType->kind == TypeKindSem::Number)
         {
             // i64 → f64: widening (may lose precision for values > 2^53)
             unsigned convId = nextTempId();
@@ -1273,8 +1271,7 @@ LowerResult Lowerer::lowerAs(AsExpr *expr)
             blockMgr_.currentBlock()->instructions.push_back(conv);
             return {Value::temp(convId), conv.type};
         }
-        if (sourceType->kind == TypeKindSem::Integer &&
-            targetType->kind == TypeKindSem::Byte)
+        if (sourceType->kind == TypeKindSem::Integer && targetType->kind == TypeKindSem::Byte)
         {
             // i64 → i32 (byte): checked narrowing (traps on overflow)
             unsigned convId = nextTempId();
@@ -1287,8 +1284,7 @@ LowerResult Lowerer::lowerAs(AsExpr *expr)
             blockMgr_.currentBlock()->instructions.push_back(conv);
             return {Value::temp(convId), conv.type};
         }
-        if (sourceType->kind == TypeKindSem::Byte &&
-            targetType->kind == TypeKindSem::Integer)
+        if (sourceType->kind == TypeKindSem::Byte && targetType->kind == TypeKindSem::Integer)
         {
             // i32 → i64: zero-extend widening
             Value widened = widenByteToInteger(source.value);

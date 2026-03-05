@@ -23,9 +23,9 @@
 #include "LoweringRuleTable.hpp"
 
 #include "LowerILToMIR.hpp"
-#include "Unsupported.hpp"
 #include "Lowering.EmitCommon.hpp"
 #include "MachineIR.hpp"
+#include "Unsupported.hpp"
 
 #include <string>
 

@@ -432,15 +432,15 @@ endif()
 # ---- Examples ----
 option(BUILD_EXAMPLES "Build C++ examples" ON)
 if(BUILD_EXAMPLES)
-  add_executable(example_vm_stepping examples/stepping/stepping_example.cpp)
+  add_executable(example_vm_stepping examples/embedding/stepping_example.cpp)
   target_link_libraries(example_vm_stepping PRIVATE viper_common_opts il_build il_vm viper_support)
   target_include_directories(example_vm_stepping PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/generated)
 
-  add_executable(example_vm_register_times2 examples/externs/register_times2.cpp)
+  add_executable(example_vm_register_times2 examples/embedding/register_times2.cpp)
   target_link_libraries(example_vm_register_times2 PRIVATE viper_common_opts il_build il_vm viper_support)
   target_include_directories(example_vm_register_times2 PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/generated)
 
-  add_executable(example_vm_smoke_combined examples/smoke/combined.cpp)
+  add_executable(example_vm_smoke_combined examples/embedding/combined.cpp)
   target_link_libraries(example_vm_smoke_combined PRIVATE viper_common_opts il_build il_vm viper_support)
   target_include_directories(example_vm_smoke_combined PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/generated)
 endif()

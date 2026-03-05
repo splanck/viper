@@ -51,22 +51,22 @@ struct FuncInfo
 /// @brief The detected type of a REPL expression result.
 enum class ResultType
 {
-    None,    ///< No printable result (declaration, void call, etc.).
+    None,      ///< No printable result (declaration, void call, etc.).
     Statement, ///< Statement that produced output via explicit Say/Print.
-    Integer, ///< Expression auto-printed as Integer.
-    Number,  ///< Expression auto-printed as Number.
-    String,  ///< Expression auto-printed as String.
-    Boolean, ///< Expression auto-printed as Boolean.
-    Object,  ///< Expression auto-printed as Object (entity/value type).
+    Integer,   ///< Expression auto-printed as Integer.
+    Number,    ///< Expression auto-printed as Number.
+    String,    ///< Expression auto-printed as String.
+    Boolean,   ///< Expression auto-printed as Boolean.
+    Object,    ///< Expression auto-printed as Object (entity/value type).
 };
 
 /// @brief Result of evaluating a REPL input.
 struct EvalResult
 {
-    bool success{false};      ///< True if compilation and execution succeeded.
-    std::string output;       ///< Captured stdout from execution.
-    std::string errorMessage; ///< Error message on failure.
-    bool trapped{false};      ///< True if the VM trapped during execution.
+    bool success{false};                     ///< True if compilation and execution succeeded.
+    std::string output;                      ///< Captured stdout from execution.
+    std::string errorMessage;                ///< Error message on failure.
+    bool trapped{false};                     ///< True if the VM trapped during execution.
     ResultType resultType{ResultType::None}; ///< Type of auto-printed result.
 };
 
@@ -104,19 +104,30 @@ class ReplAdapter
     /// @brief Get the inferred type of an expression (for .type command).
     /// @param expr The expression to analyze.
     /// @return Human-readable type string, or error message.
-    virtual std::string getExprType(const std::string &expr) { (void)expr; return "not supported"; }
+    virtual std::string getExprType(const std::string &expr)
+    {
+        (void)expr;
+        return "not supported";
+    }
 
     /// @brief Get the generated IL for an expression or statement (for .il command).
     /// @param input The code to compile.
     /// @return IL text or error message.
-    virtual std::string getIL(const std::string &input) { (void)input; return "not supported"; }
+    virtual std::string getIL(const std::string &input)
+    {
+        (void)input;
+        return "not supported";
+    }
 
     /// @brief Classify accumulated input for multi-line detection.
     /// @details Override to use language-specific classification (e.g., BASIC block keywords).
     ///          Default uses Zia-style bracket depth tracking.
     /// @param input The accumulated REPL input.
     /// @return Classification of the input.
-    virtual InputKind classifyInput(const std::string &input) { return ReplInputClassifier::classify(input); }
+    virtual InputKind classifyInput(const std::string &input)
+    {
+        return ReplInputClassifier::classify(input);
+    }
 
     /// @brief Reset all session state.
     virtual void reset() = 0;
@@ -140,7 +151,10 @@ class ReplSession
     void requestExit();
 
     /// @brief Get the language adapter.
-    ReplAdapter &adapter() { return *adapter_; }
+    ReplAdapter &adapter()
+    {
+        return *adapter_;
+    }
 
   private:
     void registerDefaultCommands();

@@ -25,7 +25,8 @@
 #include <cstdint>
 #include <vector>
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
 /// @brief Compress data with GZIP wrapper (RFC 1952).
 /// @param data Input bytes to compress.

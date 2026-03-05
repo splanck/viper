@@ -362,7 +362,8 @@ void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix)
             if (stateIt == states_.end() || !stateIt->second.hasPhys)
                 continue;
             const auto *interval = intervals_.lookup(vreg);
-            const std::size_t end = interval ? interval->end : std::numeric_limits<std::size_t>::max();
+            const std::size_t end =
+                interval ? interval->end : std::numeric_limits<std::size_t>::max();
             if (!found || end > furthestEnd || (end == furthestEnd && vreg > victimId))
             {
                 furthestEnd = end;
@@ -641,8 +642,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
             auto findFreeCalleeSaved = [this](RegClass cls) -> std::pair<bool, PhysReg>
             {
                 auto &pool = poolFor(cls);
-                const auto &bits =
-                    cls == RegClass::GPR ? callerSavedGPRBits_ : callerSavedFPRBits_;
+                const auto &bits = cls == RegClass::GPR ? callerSavedGPRBits_ : callerSavedFPRBits_;
                 for (auto it = pool.begin(); it != pool.end(); ++it)
                 {
                     // NOT caller-saved = callee-saved

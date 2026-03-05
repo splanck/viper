@@ -27,10 +27,12 @@
 
 #include <string>
 
-namespace viper::pkg {
+namespace viper::pkg
+{
 
 /// @brief Parameters for building a Linux .deb or .tar.gz package.
-struct LinuxBuildParams {
+struct LinuxBuildParams
+{
     std::string projectName;    ///< Project name (lowercase, no spaces)
     std::string version;        ///< Version string (e.g. "1.2.0")
     std::string executablePath; ///< Path to the compiled native binary

@@ -215,8 +215,8 @@ void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder)
         return;
 
     EmitCommon emit(builder);
-    const Operand src = emit.materialise(
-        builder.makeOperandForValue(instr.ops[0], RegClass::XMM), RegClass::XMM);
+    const Operand src =
+        emit.materialise(builder.makeOperandForValue(instr.ops[0], RegClass::XMM), RegClass::XMM);
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
@@ -228,9 +228,8 @@ void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder)
     builder.append(
         MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(src), emit.clone(src)}));
     // JP → trap (condition code 10 = "p" / parity)
-    builder.append(
-        MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(10),
-                                                         makeLabelOperand(trapLabel)}));
+    builder.append(MInstr::make(
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(10), makeLabelOperand(trapLabel)}));
 
     // Convert: CVTTSD2SI. On out-of-range, produces 0x8000000000000000.
     builder.append(
@@ -239,16 +238,15 @@ void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder)
     // Check for the overflow sentinel 0x8000000000000000 (INT64_MIN).
     const VReg sentinelReg = builder.makeTempVReg(RegClass::GPR);
     const Operand sentinelOp = makeVRegOperand(sentinelReg.cls, sentinelReg.id);
-    builder.append(MInstr::make(MOpcode::MOVri,
-                                std::vector<Operand>{sentinelOp,
-                                                     makeImmOperand(
-                                                         static_cast<int64_t>(0x8000000000000000ULL))}));
     builder.append(
-        MInstr::make(MOpcode::CMPrr, std::vector<Operand>{emit.clone(dest), emit.clone(sentinelOp)}));
+        MInstr::make(MOpcode::MOVri,
+                     std::vector<Operand>{
+                         sentinelOp, makeImmOperand(static_cast<int64_t>(0x8000000000000000ULL))}));
+    builder.append(MInstr::make(MOpcode::CMPrr,
+                                std::vector<Operand>{emit.clone(dest), emit.clone(sentinelOp)}));
     // JNE → done (result is not the sentinel, conversion was valid)
-    builder.append(
-        MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(5),
-                                                         makeLabelOperand(doneLabel)}));
+    builder.append(MInstr::make(
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(5), makeLabelOperand(doneLabel)}));
 
     // Result is INT64_MIN — this is valid ONLY if src was exactly -2^63.0.
     // -2^63 as double = 0xC3E0000000000000 = -9223372036854775808.0
@@ -256,35 +254,30 @@ void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder)
     const Operand limitGprOp = makeVRegOperand(limitGpr.cls, limitGpr.id);
     const VReg limitXmm = builder.makeTempVReg(RegClass::XMM);
     const Operand limitXmmOp = makeVRegOperand(limitXmm.cls, limitXmm.id);
-    builder.append(MInstr::make(MOpcode::MOVri,
-                                std::vector<Operand>{limitGprOp,
-                                                     makeImmOperand(
-                                                         static_cast<int64_t>(0xC3E0000000000000ULL))}));
-    builder.append(MInstr::make(MOpcode::MOVQrx,
-                                std::vector<Operand>{emit.clone(limitXmmOp), emit.clone(limitGprOp)}));
     builder.append(
-        MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(src), emit.clone(limitXmmOp)}));
+        MInstr::make(MOpcode::MOVri,
+                     std::vector<Operand>{
+                         limitGprOp, makeImmOperand(static_cast<int64_t>(0xC3E0000000000000ULL))}));
+    builder.append(MInstr::make(
+        MOpcode::MOVQrx, std::vector<Operand>{emit.clone(limitXmmOp), emit.clone(limitGprOp)}));
+    builder.append(MInstr::make(MOpcode::UCOMIS,
+                                std::vector<Operand>{emit.clone(src), emit.clone(limitXmmOp)}));
     // JNE → trap (src was not exactly -2^63, so overflow)
-    builder.append(
-        MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(5),
-                                                         makeLabelOperand(trapLabel)}));
+    builder.append(MInstr::make(
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(5), makeLabelOperand(trapLabel)}));
     // JP → trap (parity means unordered, i.e. NaN — shouldn't reach here, but be safe)
-    builder.append(
-        MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(10),
-                                                         makeLabelOperand(trapLabel)}));
+    builder.append(MInstr::make(
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(10), makeLabelOperand(trapLabel)}));
 
     // Fall through: src was exactly -2^63.0, result INT64_MIN is correct.
-    builder.append(
-        MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(doneLabel)}));
+    builder.append(MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(doneLabel)}));
 
     // Trap block: UD2.
-    builder.append(
-        MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(trapLabel)}));
+    builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(trapLabel)}));
     builder.append(MInstr::make(MOpcode::UD2));
 
     // Done.
-    builder.append(
-        MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(doneLabel)}));
+    builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(doneLabel)}));
 }
 
 /// @brief Lower an IL `fptoui` instruction (floating-point to unsigned int, checked).
@@ -322,8 +315,8 @@ void emitFpToUi(const ILInstr &instr, MIRBuilder &builder)
     }
 
     EmitCommon emit(builder);
-    const Operand src = emit.materialise(
-        builder.makeOperandForValue(instr.ops[0], RegClass::XMM), RegClass::XMM);
+    const Operand src =
+        emit.materialise(builder.makeOperandForValue(instr.ops[0], RegClass::XMM), RegClass::XMM);
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
@@ -336,9 +329,8 @@ void emitFpToUi(const ILInstr &instr, MIRBuilder &builder)
     builder.append(
         MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(src), emit.clone(src)}));
     // JP → trap (condition code 10 = "p" / parity)
-    builder.append(
-        MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(10),
-                                                         makeLabelOperand(trapLabel)}));
+    builder.append(MInstr::make(
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(10), makeLabelOperand(trapLabel)}));
 
     // Negative check: compare with 0.0.
     // Materialise 0.0 by zeroing a GPR and transferring to XMM.
@@ -353,9 +345,8 @@ void emitFpToUi(const ILInstr &instr, MIRBuilder &builder)
     builder.append(
         MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(src), emit.clone(zeroOp)}));
     // JB → trap (condition code 8 = "b" / below: src < 0.0)
-    builder.append(
-        MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(8),
-                                                         makeLabelOperand(trapLabel)}));
+    builder.append(MInstr::make(
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(8), makeLabelOperand(trapLabel)}));
 
     // Load 2^63 as double constant (9223372036854775808.0 = 0x43E0000000000000).
     const VReg limitReg = builder.makeTempVReg(RegClass::XMM);
@@ -363,9 +354,9 @@ void emitFpToUi(const ILInstr &instr, MIRBuilder &builder)
     const VReg gprTmp = builder.makeTempVReg(RegClass::GPR);
     const Operand gprOp = makeVRegOperand(gprTmp.cls, gprTmp.id);
     // Move 0x43E0000000000000 to GPR then to XMM via bit transfer.
-    builder.append(MInstr::make(MOpcode::MOVri,
-                                std::vector<Operand>{emit.clone(gprOp),
-                                                     makeImmOperand(0x43E0000000000000LL)}));
+    builder.append(MInstr::make(
+        MOpcode::MOVri,
+        std::vector<Operand>{emit.clone(gprOp), makeImmOperand(0x43E0000000000000LL)}));
     builder.append(MInstr::make(MOpcode::MOVQrx,
                                 std::vector<Operand>{emit.clone(limitOp), emit.clone(gprOp)}));
 
@@ -373,45 +364,39 @@ void emitFpToUi(const ILInstr &instr, MIRBuilder &builder)
     builder.append(
         MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(src), emit.clone(limitOp)}));
     // JB → small path (src < 2^63, direct conversion is safe)
-    builder.append(
-        MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(8),
-                                                         makeLabelOperand(smallLabel)}));
+    builder.append(MInstr::make(
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(8), makeLabelOperand(smallLabel)}));
 
     // Large path: src >= 2^63.  Subtract 2^63, convert, then set bit 63.
     // adj = src; adj -= limit  (2-operand FSUB: dest -= src)
     const VReg adjReg = builder.makeTempVReg(RegClass::XMM);
     const Operand adjOp = makeVRegOperand(adjReg.cls, adjReg.id);
-    builder.append(MInstr::make(MOpcode::MOVSDrr,
-                                std::vector<Operand>{emit.clone(adjOp), emit.clone(src)}));
-    builder.append(MInstr::make(MOpcode::FSUB,
-                                std::vector<Operand>{adjOp, emit.clone(limitOp)}));
     builder.append(
-        MInstr::make(MOpcode::CVTTSD2SI, std::vector<Operand>{emit.clone(dest), emit.clone(adjOp)}));
+        MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{emit.clone(adjOp), emit.clone(src)}));
+    builder.append(MInstr::make(MOpcode::FSUB, std::vector<Operand>{adjOp, emit.clone(limitOp)}));
+    builder.append(MInstr::make(MOpcode::CVTTSD2SI,
+                                std::vector<Operand>{emit.clone(dest), emit.clone(adjOp)}));
     // Set bit 63: OR with 0x8000000000000000.
     const VReg highBitReg = builder.makeTempVReg(RegClass::GPR);
     const Operand highBitOp = makeVRegOperand(highBitReg.cls, highBitReg.id);
-    builder.append(MInstr::make(MOpcode::MOVri,
-                                std::vector<Operand>{highBitOp,
-                                                     makeImmOperand(
-                                                         static_cast<int64_t>(0x8000000000000000ULL))}));
-    builder.append(MInstr::make(MOpcode::ORrr, std::vector<Operand>{dest, highBitOp}));
     builder.append(
-        MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(doneLabel)}));
+        MInstr::make(MOpcode::MOVri,
+                     std::vector<Operand>{
+                         highBitOp, makeImmOperand(static_cast<int64_t>(0x8000000000000000ULL))}));
+    builder.append(MInstr::make(MOpcode::ORrr, std::vector<Operand>{dest, highBitOp}));
+    builder.append(MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(doneLabel)}));
 
     // Trap block: UD2.
-    builder.append(
-        MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(trapLabel)}));
+    builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(trapLabel)}));
     builder.append(MInstr::make(MOpcode::UD2));
 
     // Small path: src in [0, 2^63), direct CVTTSD2SI.
     builder.append(
         MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(smallLabel)}));
-    builder.append(
-        MInstr::make(MOpcode::CVTTSD2SI, std::vector<Operand>{dest, emit.clone(src)}));
+    builder.append(MInstr::make(MOpcode::CVTTSD2SI, std::vector<Operand>{dest, emit.clone(src)}));
 
     // Done.
-    builder.append(
-        MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(doneLabel)}));
+    builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(doneLabel)}));
 }
 
 /// @brief Lower an IL `uitofp` instruction (unsigned int to floating-point).
@@ -443,8 +428,8 @@ void emitUiToFp(const ILInstr &instr, MIRBuilder &builder)
     }
 
     EmitCommon emit(builder);
-    const Operand src = emit.materialiseGpr(
-        builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
+    const Operand src =
+        emit.materialiseGpr(builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
@@ -461,51 +446,43 @@ void emitUiToFp(const ILInstr &instr, MIRBuilder &builder)
     // Looking at conditionSuffix: code 2 = "l" (signed less), code 8 = "b" (unsigned below).
     // After TEST %r,%r: ZF and SF are set, CF=OF=0.
     // "l" (SF!=OF) → SF=1,OF=0 → true when bit 63 set. This is equivalent to JS.
-    builder.append(
-        MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(2),
-                                                         makeLabelOperand(highLabel)}));
+    builder.append(MInstr::make(
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(2), makeLabelOperand(highLabel)}));
 
     // Small path: src in [0, 2^63), direct CVTSI2SD.
     builder.append(
         MInstr::make(MOpcode::CVTSI2SD, std::vector<Operand>{emit.clone(dest), emit.clone(src)}));
-    builder.append(
-        MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(doneLabel)}));
+    builder.append(MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(doneLabel)}));
 
     // High path: src >= 2^63 (bit 63 set).
-    builder.append(
-        MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(highLabel)}));
+    builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(highLabel)}));
 
     // tmp = src >> 1 (logical shift right, halves the value)
     const VReg tmpReg = builder.makeTempVReg(RegClass::GPR);
     const Operand tmpOp = makeVRegOperand(tmpReg.cls, tmpReg.id);
     builder.append(
         MInstr::make(MOpcode::MOVrr, std::vector<Operand>{emit.clone(tmpOp), emit.clone(src)}));
-    builder.append(
-        MInstr::make(MOpcode::SHRri, std::vector<Operand>{tmpOp, makeImmOperand(1)}));
+    builder.append(MInstr::make(MOpcode::SHRri, std::vector<Operand>{tmpOp, makeImmOperand(1)}));
 
     // lsb = src & 1 (preserve LSB for correct rounding)
     const VReg lsbReg = builder.makeTempVReg(RegClass::GPR);
     const Operand lsbOp = makeVRegOperand(lsbReg.cls, lsbReg.id);
     builder.append(
         MInstr::make(MOpcode::MOVrr, std::vector<Operand>{emit.clone(lsbOp), emit.clone(src)}));
-    builder.append(
-        MInstr::make(MOpcode::ANDri, std::vector<Operand>{lsbOp, makeImmOperand(1)}));
+    builder.append(MInstr::make(MOpcode::ANDri, std::vector<Operand>{lsbOp, makeImmOperand(1)}));
 
     // tmp |= lsb (OR back the rounding bit)
-    builder.append(
-        MInstr::make(MOpcode::ORrr, std::vector<Operand>{tmpOp, emit.clone(lsbOp)}));
+    builder.append(MInstr::make(MOpcode::ORrr, std::vector<Operand>{tmpOp, emit.clone(lsbOp)}));
 
     // Convert halved value to double.
     builder.append(
         MInstr::make(MOpcode::CVTSI2SD, std::vector<Operand>{emit.clone(dest), emit.clone(tmpOp)}));
 
     // Double the result: dst += dst  (2-operand FADD: dest += src).
-    builder.append(
-        MInstr::make(MOpcode::FADD, std::vector<Operand>{dest, emit.clone(dest)}));
+    builder.append(MInstr::make(MOpcode::FADD, std::vector<Operand>{dest, emit.clone(dest)}));
 
     // Done.
-    builder.append(
-        MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(doneLabel)}));
+    builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(doneLabel)}));
 }
 
 } // namespace viper::codegen::x64::lowering

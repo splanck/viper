@@ -44,7 +44,8 @@ struct VirtualAllocation
     bool hasPhys{false};
     PhysReg phys{PhysReg::RAX};
     SpillPlan spill{};
-    bool cachedInBlock{false}; ///< True when a cross-block vreg has been loaded into a register this block.
+    bool cachedInBlock{
+        false}; ///< True when a cross-block vreg has been loaded into a register this block.
 };
 
 /// @brief Core linear-scan allocator working over Machine IR.

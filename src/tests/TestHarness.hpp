@@ -115,8 +115,8 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <windows.h>
 #include <cstdlib>
+#include <windows.h>
 #ifdef _DEBUG
 #include <crtdbg.h>
 #endif

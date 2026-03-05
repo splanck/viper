@@ -497,8 +497,7 @@ static FoldResult foldIntegerArithmetic(Opcode op, const FoldContext &ctx)
         case Opcode::Xor:
             return FoldResult::constant(Value::constInt(lhs ^ rhs));
         case Opcode::SDiv:
-            if (rhs == 0 ||
-                (lhs == std::numeric_limits<long long>::min() && rhs == -1))
+            if (rhs == 0 || (lhs == std::numeric_limits<long long>::min() && rhs == -1))
                 return FoldResult::trap();
             return FoldResult::constant(Value::constInt(lhs / rhs));
         case Opcode::UDiv:
@@ -507,12 +506,10 @@ static FoldResult foldIntegerArithmetic(Opcode op, const FoldContext &ctx)
             auto urhs = static_cast<unsigned long long>(rhs);
             if (urhs == 0)
                 return FoldResult::trap();
-            return FoldResult::constant(
-                Value::constInt(static_cast<long long>(ulhs / urhs)));
+            return FoldResult::constant(Value::constInt(static_cast<long long>(ulhs / urhs)));
         }
         case Opcode::SRem:
-            if (rhs == 0 ||
-                (lhs == std::numeric_limits<long long>::min() && rhs == -1))
+            if (rhs == 0 || (lhs == std::numeric_limits<long long>::min() && rhs == -1))
                 return FoldResult::trap();
             return FoldResult::constant(Value::constInt(lhs % rhs));
         case Opcode::URem:
@@ -521,8 +518,7 @@ static FoldResult foldIntegerArithmetic(Opcode op, const FoldContext &ctx)
             auto urhs = static_cast<unsigned long long>(rhs);
             if (urhs == 0)
                 return FoldResult::trap();
-            return FoldResult::constant(
-                Value::constInt(static_cast<long long>(ulhs % urhs)));
+            return FoldResult::constant(Value::constInt(static_cast<long long>(ulhs % urhs)));
         }
         case Opcode::Shl:
             if (rhs < 0 || rhs >= 64)
@@ -531,9 +527,8 @@ static FoldResult foldIntegerArithmetic(Opcode op, const FoldContext &ctx)
         case Opcode::LShr:
             if (rhs < 0 || rhs >= 64)
                 return FoldResult::unknown();
-            return FoldResult::constant(
-                Value::constInt(static_cast<long long>(
-                    static_cast<unsigned long long>(lhs) >> rhs)));
+            return FoldResult::constant(Value::constInt(
+                static_cast<long long>(static_cast<unsigned long long>(lhs) >> rhs)));
         case Opcode::AShr:
             if (rhs < 0 || rhs >= 64)
                 return FoldResult::unknown();
@@ -900,8 +895,7 @@ static FoldResult foldConstantMaterialization(const Instr &instr)
                 return FoldResult::constant(instr.operands[0]);
             return FoldResult::unknown();
         case Opcode::ConstF64:
-            if (!instr.operands.empty() &&
-                instr.operands[0].kind == Value::Kind::ConstFloat)
+            if (!instr.operands.empty() && instr.operands[0].kind == Value::Kind::ConstFloat)
                 return FoldResult::constant(instr.operands[0]);
             return FoldResult::unknown();
         default:

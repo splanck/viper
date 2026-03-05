@@ -49,7 +49,9 @@ inline void emitTrap(TrapKind kind,
                      Frame &fr,
                      const il::core::BasicBlock *bb)
 {
-    RuntimeBridge::trap(kind, message, in.loc,
+    RuntimeBridge::trap(kind,
+                        message,
+                        in.loc,
                         fr.func ? fr.func->name : std::string(),
                         bb ? bb->label : std::string());
 }

@@ -7,9 +7,9 @@ REM Usage: scripts\build_demos.cmd [--clean]
 set "SCRIPT_DIR=%~dp0"
 set "ROOT_DIR=%SCRIPT_DIR%.."
 set "BUILD_DIR=%ROOT_DIR%\build"
-set "BIN_DIR=%ROOT_DIR%\demos\bin"
-set "BASIC_DIR=%ROOT_DIR%\demos\basic"
-set "ZIA_DIR=%ROOT_DIR%\demos\zia"
+set "BIN_DIR=%ROOT_DIR%\examples\bin"
+set "GAMES_DIR=%ROOT_DIR%\examples\games"
+set "APPS_DIR=%ROOT_DIR%\examples\apps"
 
 set "VIPER=%BUILD_DIR%\src\tools\viper\Debug\viper.exe"
 
@@ -76,21 +76,21 @@ echo === BASIC Demos ===
 echo.
 
 REM Build BASIC demos
-call :build_demo chess "%BASIC_DIR%\chess"
-call :build_demo vtris "%BASIC_DIR%\vtris"
-call :build_demo frogger "%BASIC_DIR%\frogger"
-call :build_demo centipede "%BASIC_DIR%\centipede"
-call :build_demo pacman "%BASIC_DIR%\pacman"
+call :build_demo chess "%GAMES_DIR%\chess-basic"
+call :build_demo vtris "%GAMES_DIR%\vtris"
+call :build_demo frogger "%GAMES_DIR%\frogger-basic"
+call :build_demo centipede "%GAMES_DIR%\centipede-basic"
+call :build_demo pacman "%GAMES_DIR%\pacman-basic"
 
 echo === Zia Demos ===
 echo.
 
 REM Build Zia demos
-call :build_demo paint "%ZIA_DIR%\paint"
-call :build_demo viperide "%ZIA_DIR%\viperide"
-call :build_demo pacman-zia "%ZIA_DIR%\pacman"
-call :build_demo sqldb "%ZIA_DIR%\sqldb"
-call :build_demo chess-zia "%ZIA_DIR%\chess"
+call :build_demo paint "%APPS_DIR%\paint"
+call :build_demo viperide "%APPS_DIR%\viperide"
+call :build_demo pacman-zia "%GAMES_DIR%\pacman"
+call :build_demo sqldb "%APPS_DIR%\sqldb"
+call :build_demo chess-zia "%GAMES_DIR%\chess"
 
 echo ==============================================
 if %FAILED%==0 (
