@@ -372,8 +372,8 @@ The current IL v0.2.0 specification builds on the design principles established 
 between front ends and execution engines, enforces explicit control flow with one terminator per block, and keeps the
 type system intentionally small (`i1`, `i64`, `f64`, `ptr`, `str`, `void`). The material below supersedes earlier
 drafts (including v0.1.x) while remaining source-compatible with modules written for those versions. Numeric promotion
-semantics are specified in [devdocs/specs/numerics.md](devdocs/specs/numerics.md) and the unified trap/handler model is
-defined in [devdocs/specs/errors.md](devdocs/specs/errors.md); both documents are normative for all front ends and the
+semantics are specified in [specs/numerics.md](specs/numerics.md) and the unified trap/handler model is
+defined in [specs/errors.md](specs/errors.md); both documents are normative for all front ends and the
 VM.
 
 ### IL Reference (v0.2.0)

@@ -213,6 +213,26 @@ When creating a new generated artifact:
 
 ---
 
+## Adding a New Opcode
+
+When introducing a new opcode, update these files so the verifier's table-driven checks remain accurate:
+
+1. **`src/il/core/Opcode.def`** — add the new entry with `OpcodeInfo` fields:
+   - Operand `TypeCategory` values (up to 3)
+   - Result `TypeCategory` (use `None` for opcodes without a result)
+   - `hasSideEffects`, `numSuccessors`, `isTerminator` flags
+   - `VMDispatch` category
+
+2. **`src/il/verify/generated/SpecTables.cpp`** — add a corresponding `InstructionSpec` entry in declaration order:
+   - Mirror the operand/result categories from `Opcode.def`
+   - Set `ResultArity` to `One`, `None`, or `Optional`
+   - Choose the `VerifyStrategy` (use `Default` when table-driven checks suffice)
+
+Only add specialized verifier code in `InstructionChecker` when semantic requirements cannot be expressed via the static
+metadata (e.g., operands must reference the same block).
+
+---
+
 ## Related Documentation
 
 - [Architecture](architecture.md) — System design and layering

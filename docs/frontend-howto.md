@@ -83,7 +83,7 @@ runtime library.
 
 - **[IL Guide](il-guide.md)** — Viper IL specification and examples
 - **[Getting Started](getting-started.md)** — Build and run Viper
-- `/devdocs/architecture.md` — System architecture overview
+- **[Architecture](architecture.md)** — System architecture overview
 
 ---
 
@@ -3726,7 +3726,7 @@ Study the BASIC frontend for patterns:
 22. **docs/il-guide.md** — IL specification
 23. **docs/il-reference.md** — IL instruction reference
 24. **docs/architecture.md** — Viper architecture
-25. **docs/devdocs/namespaces.md** — Namespace implementation
+25. **docs/basic-namespaces.md** — Namespace implementation
 
 ### Example Programs
 

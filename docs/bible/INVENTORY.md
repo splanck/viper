@@ -64,7 +64,7 @@ This document maps existing Viper documentation and code examples to the Bible's
 |---------|-----------------|---------------|
 | 8. Text and Strings | String examples (12 files), `rt_string.h` | String operations, formatting |
 | 9. Files and Persistence | File examples, `rt_file.h` | Reading/writing files |
-| 10. Errors and Recovery | `/docs/devdocs/specs/errors.md` | Try/catch, error handling |
+| 10. Errors and Recovery | `/docs/specs/errors.md` | Try/catch, error handling |
 | 11. Structures | OOP examples | Records, grouping data |
 | 12. Modules | Zia Frogger demo | Import, export, organization |
 | 13. The Standard Library | `/docs/viperlib/` | Survey of available APIs |
@@ -119,7 +119,7 @@ Source: `/examples/games/frogger-basic/` (1,200+ LOC) and `/examples/games/frogg
 | Chapter | Source Material | Content Needs |
 |---------|-----------------|---------------|
 | 25. How Viper Works | `/docs/il-guide.md`, `/docs/vm.md` | Compilation, IL, runtime |
-| 26. Performance | `/docs/devdocs/vm-optimizations.md` | Profiling, optimization |
+| 26. Performance | `/docs/vm.md` | Profiling, optimization |
 | 27. Testing | `/docs/testing.md` | Test strategies |
 | 28. Architecture | `/docs/frontend-howto.md` | Large system design |
 
@@ -134,7 +134,7 @@ Source: `/examples/games/frogger-basic/` (1,200+ LOC) and `/examples/games/frogg
 | A. Zia Reference | `/docs/zia-reference.md` | Reformatted |
 | B. BASIC Reference | `/docs/basic-reference.md` | Reformatted |
 | D. Runtime Library | `/docs/viperlib/*.md` | Consolidated |
-| E. Error Messages | `/docs/devdocs/specs/errors.md` | Expanded with solutions |
+| E. Error Messages | `/docs/specs/errors.md` | Expanded with solutions |
 | F. Glossary | New | Terms from all chapters |
 
 ---

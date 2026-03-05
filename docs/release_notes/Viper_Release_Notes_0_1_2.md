@@ -619,7 +619,7 @@ Compile to native:
 ## Resources
 
 - **Repository**: [GitHub](https://github.com/your-org/viper)
-- **Documentation**: See `docs/` and `devdocs/` directories
+- **Documentation**: See `docs/` directory
 - **Examples**: Browse `examples/` for sample programs
 - **License**: See LICENSE file
 

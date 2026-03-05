@@ -1088,3 +1088,92 @@ host thread per VM instance” invariant while allowing a Viper program to share
 The active VM is tracked via a thread‑local guard (see `ActiveVMGuard` in `src/vm/VMContext.*`), which binds the VM and
 its runtime context for the duration of execution. In debug builds, attempting to activate a different VM while one is
 already active on the same thread triggers an assertion.
+
+---
+
+## Runtime ABI Reference
+
+Extern symbols in IL map to C functions declared in `src/runtime/rt.hpp`. This section documents the core ABI surface
+available to both the VM and native backends. For the complete list see [runtime-api-complete.md](runtime-api-complete.md).
+
+### Runtime symbol naming
+
+- Canonical entry points use dotted `Viper.*` names emitted by frontends (catalogued in `src/il/runtime/RuntimeSignatures.hpp`).
+- Native backends rewrite these to C symbols via `il::runtime::mapCanonicalRuntimeName` and the alias table in `src/il/runtime/RuntimeNameMap.hpp`.
+- When built with `-DVIPER_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Viper.*`.
+
+### Math
+
+| Symbol               | Signature         | Semantics                                   |
+|----------------------|-------------------|---------------------------------------------|
+| `@rt_sqrt`           | `f64 -> f64`      | square root                                 |
+| `@rt_floor`          | `f64 -> f64`      | floor                                       |
+| `@rt_ceil`           | `f64 -> f64`      | ceiling                                     |
+| `@rt_sin`            | `f64 -> f64`      | sine                                        |
+| `@rt_cos`            | `f64 -> f64`      | cosine                                      |
+| `@rt_pow_f64_chkdom` | `f64, f64 -> f64` | power                                       |
+| `@rt_abs_i64`        | `i64 -> i64`      | absolute value (integer, traps on overflow) |
+| `@rt_abs_f64`        | `f64 -> f64`      | absolute value (float)                      |
+
+### String operations
+
+| Symbol              | Signature              | Semantics                                            |
+|---------------------|------------------------|------------------------------------------------------|
+| `@rt_str_len`       | `str -> i64`           | Return length of string in bytes                     |
+| `@rt_str_concat`    | `str, str -> str`      | Concatenate two strings; consumes both operands      |
+| `@rt_str_substr`    | `str, i64, i64 -> str` | Extract substring (0-based start, length)            |
+| `@rt_str_left`      | `str, i64 -> str`      | Leftmost n characters                                |
+| `@rt_str_right`     | `str, i64 -> str`      | Rightmost n characters                               |
+| `@rt_str_mid`       | `str, i64 -> str`      | Substring from start (1-based) to end                |
+| `@rt_str_mid_len`   | `str, i64, i64 -> str` | Substring from start (1-based) with length           |
+| `@rt_str_index_of`  | `str, str -> i64`      | Find needle; returns 1-based index or 0              |
+| `@rt_str_trim`      | `str -> str`           | Remove leading and trailing whitespace               |
+| `@rt_str_ucase`     | `str -> str`           | Convert ASCII to uppercase                           |
+| `@rt_str_lcase`     | `str -> str`           | Convert ASCII to lowercase                           |
+| `@rt_str_chr`       | `i64 -> str`           | Single-character string from ASCII code              |
+| `@rt_str_asc`       | `str -> i64`           | ASCII code of first character                        |
+| `@rt_str_eq`        | `str, str -> i1`       | Compare two strings for equality                     |
+
+### Console I/O
+
+| Symbol           | Signature     | Semantics                        |
+|------------------|---------------|----------------------------------|
+| `@rt_print_str`  | `str -> void` | Print string to stdout           |
+| `@rt_print_i64`  | `i64 -> void` | Print 64-bit integer to stdout   |
+| `@rt_print_f64`  | `f64 -> void` | Print float to stdout            |
+| `@rt_input_line` | `void -> str` | Read a line from stdin           |
+
+### Conversion
+
+| Symbol           | Signature    | Semantics                           |
+|------------------|--------------|-------------------------------------|
+| `@rt_to_int`     | `str -> i64` | Parse decimal integer from string   |
+| `@rt_to_double`  | `str -> f64` | Parse floating-point from string    |
+| `@rt_int_to_str` | `i64 -> str` | Convert integer to decimal string   |
+| `@rt_f64_to_str` | `f64 -> str` | Convert float to decimal string     |
+| `@rt_val`        | `str -> f64` | Parse leading numeric prefix        |
+
+### Terminal control
+
+| Symbol                        | Signature          | Semantics                      |
+|-------------------------------|--------------------|--------------------------------|
+| `@rt_term_cls`                | `void -> void`     | Clear screen and home cursor   |
+| `@rt_term_color_i32`          | `i32, i32 -> void` | Set foreground/background      |
+| `@rt_term_locate_i32`         | `i32, i32 -> void` | Move cursor (1-based row, col) |
+| `@rt_term_cursor_visible_i32` | `i32 -> void`      | Show/hide cursor               |
+
+### Time & random
+
+| Symbol              | Signature     | Semantics                           |
+|---------------------|---------------|-------------------------------------|
+| `@rt_timer_ms`      | `void -> i64` | Monotonic millisecond timestamp     |
+| `@rt_rnd`           | `void -> f64` | Random f64 in [0,1)                 |
+| `@rt_randomize_i64` | `i64 -> void` | Seed RNG                            |
+
+### Environment
+
+| Symbol              | Signature     | Semantics                          |
+|---------------------|---------------|------------------------------------|
+| `@rt_args_count`    | `void -> i64` | Number of command-line arguments   |
+| `@rt_args_get`      | `i64 -> str`  | Argument at zero-based index       |
+| `@rt_env_is_native` | `void -> i1`  | 1 for native binary, 0 for VM     |

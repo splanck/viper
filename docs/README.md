@@ -1,75 +1,114 @@
 # Viper Documentation
 
-Welcome to the Viper compiler toolchain documentation. This directory contains language references, tutorials, and
-implementation guides.
+Documentation for the Viper compiler toolchain: two language frontends (Zia and BASIC), a shared intermediate language (IL), a VM interpreter, native code generation backends, and a comprehensive runtime library.
 
-> **Developer resources**: Architecture docs, code maps, and contributor guides are in `/devdocs`.
+## Start Here
 
----
-
-## Quick Links
-
-| Document                                    | Description                                |
-|---------------------------------------------|--------------------------------------------|
-| [Getting Started](getting-started.md)       | Build, install, and run your first program |
-| [Zia Tutorial](zia-getting-started.md)      | Learn Zia by example                       |
-| [Zia Reference](zia-reference.md)           | Complete Zia language specification        |
-| [BASIC Tutorial](basic-language.md)         | Learn Viper BASIC by example               |
-| [Runtime Library](viperlib.md)              | Viper.* classes and methods reference      |
-| [IL Guide](il-guide.md)                     | Comprehensive IL specification             |
+| Document | Description |
+|----------|-------------|
+| [Getting Started](getting-started.md) | Build, install, and run your first program |
+| [Zia Tutorial](zia-getting-started.md) | Learn Zia by example |
+| [BASIC Tutorial](basic-language.md) | Learn Viper BASIC by example |
+| [FAQ](faq.md) | Common questions answered |
 
 ---
 
-## Language Documentation
+## Languages
 
 ### Zia
 
-- **[Zia Tutorial](zia-getting-started.md)** — Learn Zia with hands-on examples
-- **[Zia Reference](zia-reference.md)** — Complete language specification
+- [Zia Tutorial](zia-getting-started.md) — Learn Zia with hands-on examples
+- [Zia Reference](zia-reference.md) — Complete language specification
+- [Feature Parity Matrix](feature-parity.md) — Zia vs BASIC feature comparison
+- [Generics Plan](GENERICS_IMPLEMENTATION_PLAN.md) — Zia generics design (in progress)
 
 ### Viper BASIC
 
-- **[BASIC Tutorial](basic-language.md)** — Learn Viper BASIC with hands-on examples
-- **[BASIC Reference](basic-reference.md)** — Complete language specification
+- [BASIC Tutorial](basic-language.md) — Learn Viper BASIC by example
+- [BASIC Reference](basic-reference.md) — Complete language specification
+- [Namespace Reference](basic-namespaces.md) — BASIC namespace system
+- [Grammar Notes](basic-grammar.md) — BASIC grammar extensions
+- [Lifetime Model](lifetime.md) — Reference counting and disposal
 
-### Intermediate Language (IL)
+### Cross-Language
 
-- **[IL Guide](il-guide.md)** — Comprehensive guide to Viper IL
-- **[IL Quickstart](il-quickstart.md)** — Fast introduction for developers
-- **[IL Reference](il-reference.md)** — Complete opcode and type reference
+- [Cross-Language Interop](interop.md) — Zia + BASIC IL linking, type compatibility
+- [Arithmetic Semantics](arithmetic-semantics.md) — Overflow, rounding, and numeric guarantees
 
 ---
 
-## Implementation Guides
+## Intermediate Language (IL)
 
-### Frontends
-
-- **[Frontend How-To](frontend-howto.md)** — Build your own language frontend
-
-### Runtime
-
-- **[Runtime Extension How-To](runtime_extend_howto.md)** — Add new classes and functions to the runtime
-
-### Virtual Machine
-
-- **[VM Architecture](vm.md)** — VM design, dispatch strategies, and internals
-- **[Threading and Globals](threading-and-globals.md)** — VM threading model and process-global state
-
-### Native Code Generation
-
-- **[Backend Guide](backend.md)** — x86-64 and ARM64 code generation (experimental)
+- [IL Guide](il-guide.md) — Comprehensive specification (normative)
+- [IL Quickstart](il-quickstart.md) — Fast introduction for developers
+- [IL Reference](il-reference.md) — Opcode and type reference
+- [IL Passes](il-passes.md) — Optimization pass infrastructure
 
 ---
 
 ## Runtime Library
 
-- **[Runtime Library Reference](viperlib.md)** — Complete reference for all `Viper.*` classes, methods, and properties
+- [Runtime Library Index](viperlib.md) — All `Viper.*` classes and methods
+- [Runtime API Reference](runtime-api-complete.md) — Complete runtime API
+- [Runtime Extension How-To](runtime_extend_howto.md) — Add new classes and functions
+- [Graphics Library](graphics-library.md) — ViperGFX 2D graphics API
+- [Memory Management](memory-management.md) — GC, allocation, and object lifetime
 
 ---
 
-## Additional Resources
+## Tools & CLI
 
-- **Examples**: See `/examples` for runnable BASIC programs and IL modules
-- **Graphics Library**: See [graphics-library.md](graphics-library.md) for the ViperGFX 2D graphics API
-- **FAQ**: See [faq.md](faq.md) for frequently asked questions
-- **Developer Docs**: See `/devdocs` for architecture and contributor guides
+- [CLI Tools Reference](tools.md) — `viper`, `zia`, `vbasic`, `ilrun`, `il-verify`, `il-dis`
+- [REPL](repl.md) — Interactive Zia/BASIC environment
+- [Debugging Guide](debugging.md) — VM tracing, breakpoints, and diagnostics
+- [Testing Guide](testing.md) — Unit, golden, e2e, and performance tests
+
+---
+
+## Internals
+
+- [Architecture](architecture.md) — System design: frontends, IL, VM, codegen
+- [Code Map](codemap.md) — Source directory layout and subsystem deep-dives
+- [VM Guide](vm.md) — VM design, dispatch, profiling, and runtime ABI
+- [Threading and Globals](threading-and-globals.md) — VM threading model
+- [Backend Guide](backend.md) — x86-64 and ARM64 native code generation
+- [Generated Files](generated-files.md) — Auto-generated C++ sources
+- [Contributor Guide](contributor-guide.md) — Style guide and contribution process
+
+---
+
+## Specifications
+
+- [specs/errors.md](specs/errors.md) — Trap kinds, handler semantics, error model
+- [specs/numerics.md](specs/numerics.md) — Numeric types, ranges, IEEE semantics
+- [abi/object-layout.md](abi/object-layout.md) — Object layout, vtable, call ABI
+- [codegen/aarch64.md](codegen/aarch64.md) — AArch64 backend status
+- [codegen/x86_64.md](codegen/x86_64.md) — x86-64 SysV ABI reference
+
+---
+
+## The Viper Bible
+
+A comprehensive learning resource organized as a book.
+
+- [Bible Index](bible/README.md) — Table of contents and chapter list
+- [Writing Guide](bible/WRITING-GUIDE.md) — Style guide for Bible chapters
+- [Content Inventory](bible/INVENTORY.md) — Chapter-to-source mapping
+
+---
+
+## Release Notes
+
+- [v0.2.2](release_notes/Viper_Release_Notes_0_2_2.md)
+- [v0.2.1](release_notes/Viper_Release_Notes_0_2_1.md)
+- [v0.2.0](release_notes/Viper_Release_Notes_0_2_0.md)
+- [v0.1.3](release_notes/Viper_Release_Notes_0_1_3.md)
+- [v0.1.2](release_notes/Viper_Release_Notes_0_1_2.md)
+
+---
+
+## Architecture Decision Records
+
+- [ADR-0001](adr/0001-builtin-signatures-from-registry.md) — Runtime signatures from centralized registry
+- [ADR-0002](adr/0002-threads-monitor-safe.md) — Thread-safety for Monitor
+- [ADR-0003](adr/0003-il-linkage-and-module-linking.md) — IL module linking

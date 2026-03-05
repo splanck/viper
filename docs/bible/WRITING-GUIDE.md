@@ -190,11 +190,11 @@ Use these recurring analogies for consistency:
 
 Link to other chapters when referencing concepts:
 
-> We learned about functions in [Chapter 7](../part1-foundations/07-functions.md). Now we'll see how to group functions into modules.
+> We learned about functions in [Chapter 7](part1-foundations/07-functions.md). Now we'll see how to group functions into modules.
 
 Link to appendices for reference details:
 
-> For a complete list of string functions, see [Appendix D: Runtime Library](../appendices/runtime-library.md#strings).
+> For a complete list of string functions, see [Appendix D: Runtime Library](appendices/d-runtime-reference.md#strings).
 
 ---
 

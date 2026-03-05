@@ -72,36 +72,36 @@ implemented in C and exposed through the IL runtime system.
 
 | Class                                                         | Type     | Description                                |
 |---------------------------------------------------------------|----------|--------------------------------------------|
-| [`Bag`](collections.md#vipercollectionsbag)                   | Instance | String set with set operations             |
-| [`BiMap`](collections.md#vipercollectionsbimap)               | Instance | Bidirectional key-value map                |
-| [`BitSet`](collections.md#vipercollectionsbitset)             | Instance | Compact fixed-size set of bits             |
-| [`BloomFilter`](collections.md#vipercollectionsbloomfilter)   | Instance | Probabilistic membership test              |
-| [`Bytes`](collections.md#vipercollectionsbytes)               | Instance | Byte array for binary data                 |
-| [`CountMap`](collections.md#vipercollectionscountmap)         | Instance | Frequency counter map                      |
-| [`DefaultMap`](collections.md#vipercollectionsdefaultmap)     | Instance | Map with auto-initialized default values   |
-| [`Deque`](collections.md#vipercollectionsdeque)               | Instance | Double-ended queue                         |
-| [`FrozenMap`](collections.md#vipercollectionsfrozenmap)       | Instance | Immutable key-value map                    |
-| [`FrozenSet`](collections.md#vipercollectionsfrozenset)       | Instance | Immutable string set                       |
-| [`Heap`](collections.md#vipercollectionsheap)                 | Instance | Priority queue (min/max heap)              |
-| [`IntMap`](collections.md#vipercollectionsintmap)             | Instance | Integer-keyed hash map                     |
-| [`Iterator`](collections.md#vipercollectionsiterator)         | Instance | Generic forward iterator                   |
-| [`LazySeq`](collections.md#viperlazyseq)                      | Instance | Lazy on-demand sequence (`Viper.LazySeq`)  |
-| [`List`](collections.md#vipercollectionslist)                 | Instance | Dynamic array of objects                   |
-| [`LruCache`](collections.md#vipercollectionslrucache)         | Instance | Least-recently-used cache                  |
-| [`Map`](collections.md#vipercollectionsmap)                   | Instance | String-keyed hash map                      |
-| [`MultiMap`](collections.md#vipercollectionsmultimap)         | Instance | Map allowing multiple values per key       |
-| [`OrderedMap`](collections.md#vipercollectionsorderedmap)     | Instance | Insertion-ordered key-value map            |
-| [`Queue`](collections.md#vipercollectionsqueue)               | Instance | FIFO collection                            |
-| [`Ring`](collections.md#vipercollectionsring)                 | Instance | Fixed-size circular buffer                 |
-| [`Seq`](collections.md#vipercollectionsseq)                   | Instance | Growable array with stack/queue ops        |
-| [`Set`](collections.md#vipercollectionsset)                   | Instance | Generic object set with set ops            |
-| [`SortedSet`](collections.md#vipercollectionssortedset)       | Instance | Sorted string set with range ops           |
-| [`SparseArray`](collections.md#vipercollectionssparsearray)   | Instance | Sparse integer-indexed array               |
-| [`Stack`](collections.md#vipercollectionsstack)               | Instance | LIFO collection                            |
-| [`TreeMap`](collections.md#vipercollectionstreemap)           | Instance | Sorted key-value map                       |
-| [`Trie`](collections.md#vipercollectionstrie)                 | Instance | Prefix-tree for string lookups             |
-| [`UnionFind`](collections.md#vipercollectionsunionfind)       | Instance | Disjoint-set union-find structure          |
-| [`WeakMap`](collections.md#vipercollectionsweakmap)           | Instance | Weak-reference key-value map               |
+| [`Bag`](collections/README.md#vipercollectionsbag)                   | Instance | String set with set operations             |
+| [`BiMap`](collections/README.md#vipercollectionsbimap)               | Instance | Bidirectional key-value map                |
+| [`BitSet`](collections/README.md#vipercollectionsbitset)             | Instance | Compact fixed-size set of bits             |
+| [`BloomFilter`](collections/README.md#vipercollectionsbloomfilter)   | Instance | Probabilistic membership test              |
+| [`Bytes`](collections/README.md#vipercollectionsbytes)               | Instance | Byte array for binary data                 |
+| [`CountMap`](collections/README.md#vipercollectionscountmap)         | Instance | Frequency counter map                      |
+| [`DefaultMap`](collections/README.md#vipercollectionsdefaultmap)     | Instance | Map with auto-initialized default values   |
+| [`Deque`](collections/README.md#vipercollectionsdeque)               | Instance | Double-ended queue                         |
+| [`FrozenMap`](collections/README.md#vipercollectionsfrozenmap)       | Instance | Immutable key-value map                    |
+| [`FrozenSet`](collections/README.md#vipercollectionsfrozenset)       | Instance | Immutable string set                       |
+| [`Heap`](collections/README.md#vipercollectionsheap)                 | Instance | Priority queue (min/max heap)              |
+| [`IntMap`](collections/README.md#vipercollectionsintmap)             | Instance | Integer-keyed hash map                     |
+| [`Iterator`](collections/README.md#vipercollectionsiterator)         | Instance | Generic forward iterator                   |
+| [`LazySeq`](collections/README.md#viperlazyseq)                      | Instance | Lazy on-demand sequence (`Viper.LazySeq`)  |
+| [`List`](collections/README.md#vipercollectionslist)                 | Instance | Dynamic array of objects                   |
+| [`LruCache`](collections/README.md#vipercollectionslrucache)         | Instance | Least-recently-used cache                  |
+| [`Map`](collections/README.md#vipercollectionsmap)                   | Instance | String-keyed hash map                      |
+| [`MultiMap`](collections/README.md#vipercollectionsmultimap)         | Instance | Map allowing multiple values per key       |
+| [`OrderedMap`](collections/README.md#vipercollectionsorderedmap)     | Instance | Insertion-ordered key-value map            |
+| [`Queue`](collections/README.md#vipercollectionsqueue)               | Instance | FIFO collection                            |
+| [`Ring`](collections/README.md#vipercollectionsring)                 | Instance | Fixed-size circular buffer                 |
+| [`Seq`](collections/README.md#vipercollectionsseq)                   | Instance | Growable array with stack/queue ops        |
+| [`Set`](collections/README.md#vipercollectionsset)                   | Instance | Generic object set with set ops            |
+| [`SortedSet`](collections/README.md#vipercollectionssortedset)       | Instance | Sorted string set with range ops           |
+| [`SparseArray`](collections/README.md#vipercollectionssparsearray)   | Instance | Sparse integer-indexed array               |
+| [`Stack`](collections/README.md#vipercollectionsstack)               | Instance | LIFO collection                            |
+| [`TreeMap`](collections/README.md#vipercollectionstreemap)           | Instance | Sorted key-value map                       |
+| [`Trie`](collections/README.md#vipercollectionstrie)                 | Instance | Prefix-tree for string lookups             |
+| [`UnionFind`](collections/README.md#vipercollectionsunionfind)       | Instance | Disjoint-set union-find structure          |
+| [`WeakMap`](collections/README.md#vipercollectionsweakmap)           | Instance | Weak-reference key-value map               |
 
 ### Viper.Crypto
 
@@ -119,9 +119,9 @@ implemented in C and exposed through the IL runtime system.
 
 | Class                                               | Type   | Description                                           |
 |-----------------------------------------------------|--------|-------------------------------------------------------|
-| [`Serialize`](text.md#viperdataserialize)           | Static | Unified multi-format serializer (JSON/XML/YAML/TOML/CSV) |
-| [`Xml`](text.md#viperdataxml)                       | Static | XML document model — parse, navigate, mutate          |
-| [`Yaml`](text.md#viperdatayaml)                     | Static | YAML parse and format                                 |
+| [`Serialize`](text/README.md#viperdataserialize)           | Static | Unified multi-format serializer (JSON/XML/YAML/TOML/CSV) |
+| [`Xml`](text/README.md#viperdataxml)                       | Static | XML document model — parse, navigate, mutate          |
+| [`Yaml`](text/README.md#viperdatayaml)                     | Static | YAML parse and format                                 |
 
 ### Viper.Diagnostics
 
@@ -163,49 +163,49 @@ implemented in C and exposed through the IL runtime system.
 
 | Class                                         | Type     | Description                      |
 |-----------------------------------------------|----------|----------------------------------|
-| [`Camera`](graphics.md#vipergraphicscamera)         | Instance | 2D camera for scrolling/zoom     |
-| [`Canvas`](graphics.md#vipergraphicscanvas)         | Instance | 2D graphics canvas               |
-| [`Color`](graphics.md#vipergraphicscolor)           | Static   | Color creation                   |
-| [`Pixels`](graphics.md#vipergraphicspixels)         | Instance | Software image buffer            |
-| [`Scene`](graphics.md#vipergraphicsscene)           | Instance | Scene graph container            |
-| [`SceneNode`](graphics.md#vipergraphicsscenenode)   | Instance | Hierarchical scene graph node    |
-| [`Sprite`](graphics.md#vipergraphicssprite)         | Instance | 2D sprite with flip/animation    |
-| [`SpriteBatch`](graphics.md#vipergraphicsspritebatch)| Instance | Batched sprite rendering        |
-| [`SpriteSheet`](graphics.md#vipergraphicsspritesheet)| Instance | Sprite sheet/atlas with named region extraction |
-| [`Tilemap`](graphics.md#vipergraphicstilemap)       | Instance | Tile-based game maps             |
+| [`Camera`](graphics/README.md#vipergraphicscamera)         | Instance | 2D camera for scrolling/zoom     |
+| [`Canvas`](graphics/README.md#vipergraphicscanvas)         | Instance | 2D graphics canvas               |
+| [`Color`](graphics/README.md#vipergraphicscolor)           | Static   | Color creation                   |
+| [`Pixels`](graphics/README.md#vipergraphicspixels)         | Instance | Software image buffer            |
+| [`Scene`](graphics/README.md#vipergraphicsscene)           | Instance | Scene graph container            |
+| [`SceneNode`](graphics/README.md#vipergraphicsscenenode)   | Instance | Hierarchical scene graph node    |
+| [`Sprite`](graphics/README.md#vipergraphicssprite)         | Instance | 2D sprite with flip/animation    |
+| [`SpriteBatch`](graphics/README.md#vipergraphicsspritebatch)| Instance | Batched sprite rendering        |
+| [`SpriteSheet`](graphics/README.md#vipergraphicsspritesheet)| Instance | Sprite sheet/atlas with named region extraction |
+| [`Tilemap`](graphics/README.md#vipergraphicstilemap)       | Instance | Tile-based game maps             |
 
 ### Viper.GUI
 
 | Class                                               | Type     | Description                                      |
 |-----------------------------------------------------|----------|--------------------------------------------------|
-| [`App`](gui.md#vipergui-app)                        | Instance | Main application window                          |
-| [`Breadcrumb`](gui.md#breadcrumb)                   | Instance | Breadcrumb navigation widget                     |
-| [`Button`](gui.md#vipergui-button)                  | Instance | Clickable button widget                          |
-| [`Container`](gui.md#vipergui-container)            | Instance | Generic layout container widget                  |
-| [`Checkbox`](gui.md#vipergui-checkbox)              | Instance | Boolean toggle widget                            |
-| [`Clipboard`](gui.md#clipboard)                     | Static   | System clipboard access                          |
-| [`CodeEditor`](gui.md#vipergui-codeeditor)          | Instance | Code editing with syntax coloring                |
-| [`CommandPalette`](gui.md#commandpalette)           | Instance | Searchable command palette overlay               |
-| [`Cursor`](gui.md#cursor)                           | Static   | System cursor type and visibility                |
-| [`Dropdown`](gui.md#vipergui-dropdown)              | Instance | Drop-down selection                              |
-| [`FileDialog`](gui.md#filedialog)                   | Static   | Native open/save file dialogs                    |
-| [`Font`](gui.md#vipergui-font)                      | Instance | Font for text rendering                          |
-| [`Label`](gui.md#vipergui-label)                    | Instance | Text display widget                              |
-| [`ListBox`](gui.md#vipergui-listbox)                | Instance | Scrollable list selection                        |
-| [`MessageBox`](gui.md#messagebox)                   | Static   | Native info/warning/error/question dialogs       |
-| [`Minimap`](gui.md#minimap)                         | Instance | Code minimap sidebar bound to a CodeEditor       |
-| [`ProgressBar`](gui.md#vipergui-progressbar)        | Instance | Progress indicator                               |
-| [`RadioButton`](gui.md#vipergui-radiobutton)        | Instance | Single-select option widget                      |
-| [`ScrollView`](gui.md#vipergui-scrollview)          | Instance | Scrollable container                             |
-| [`Shortcuts`](gui.md#shortcuts)                     | Static   | Global keyboard shortcut registration            |
-| [`Slider`](gui.md#vipergui-slider)                  | Instance | Numeric range slider                             |
-| [`Spinner`](gui.md#vipergui-spinner)                | Instance | Numeric spinner control                          |
-| [`SplitPane`](gui.md#vipergui-splitpane)            | Instance | Resizable split container                        |
-| [`TabBar`](gui.md#vipergui-tabbar)                  | Instance | Tabbed container                                 |
-| [`TextInput`](gui.md#vipergui-textinput)            | Instance | Single-line text entry                           |
-| [`Toast`](gui.md#toast)                             | Instance | Transient notification toasts                    |
-| [`Tooltip`](gui.md#tooltip)                         | Static   | Floating tooltip display                         |
-| [`TreeView`](gui.md#vipergui-treeview)              | Instance | Hierarchical tree widget                         |
+| [`App`](gui/README.md#vipergui-app)                        | Instance | Main application window                          |
+| [`Breadcrumb`](gui/README.md#breadcrumb)                   | Instance | Breadcrumb navigation widget                     |
+| [`Button`](gui/README.md#vipergui-button)                  | Instance | Clickable button widget                          |
+| [`Container`](gui/README.md#vipergui-container)            | Instance | Generic layout container widget                  |
+| [`Checkbox`](gui/README.md#vipergui-checkbox)              | Instance | Boolean toggle widget                            |
+| [`Clipboard`](gui/README.md#clipboard)                     | Static   | System clipboard access                          |
+| [`CodeEditor`](gui/README.md#vipergui-codeeditor)          | Instance | Code editing with syntax coloring                |
+| [`CommandPalette`](gui/README.md#commandpalette)           | Instance | Searchable command palette overlay               |
+| [`Cursor`](gui/README.md#cursor)                           | Static   | System cursor type and visibility                |
+| [`Dropdown`](gui/README.md#vipergui-dropdown)              | Instance | Drop-down selection                              |
+| [`FileDialog`](gui/README.md#filedialog)                   | Static   | Native open/save file dialogs                    |
+| [`Font`](gui/README.md#vipergui-font)                      | Instance | Font for text rendering                          |
+| [`Label`](gui/README.md#vipergui-label)                    | Instance | Text display widget                              |
+| [`ListBox`](gui/README.md#vipergui-listbox)                | Instance | Scrollable list selection                        |
+| [`MessageBox`](gui/README.md#messagebox)                   | Static   | Native info/warning/error/question dialogs       |
+| [`Minimap`](gui/README.md#minimap)                         | Instance | Code minimap sidebar bound to a CodeEditor       |
+| [`ProgressBar`](gui/README.md#vipergui-progressbar)        | Instance | Progress indicator                               |
+| [`RadioButton`](gui/README.md#vipergui-radiobutton)        | Instance | Single-select option widget                      |
+| [`ScrollView`](gui/README.md#vipergui-scrollview)          | Instance | Scrollable container                             |
+| [`Shortcuts`](gui/README.md#shortcuts)                     | Static   | Global keyboard shortcut registration            |
+| [`Slider`](gui/README.md#vipergui-slider)                  | Instance | Numeric range slider                             |
+| [`Spinner`](gui/README.md#vipergui-spinner)                | Instance | Numeric spinner control                          |
+| [`SplitPane`](gui/README.md#vipergui-splitpane)            | Instance | Resizable split container                        |
+| [`TabBar`](gui/README.md#vipergui-tabbar)                  | Instance | Tabbed container                                 |
+| [`TextInput`](gui/README.md#vipergui-textinput)            | Instance | Single-line text entry                           |
+| [`Toast`](gui/README.md#toast)                             | Instance | Transient notification toasts                    |
+| [`Tooltip`](gui/README.md#tooltip)                         | Static   | Floating tooltip display                         |
+| [`TreeView`](gui/README.md#vipergui-treeview)              | Instance | Hierarchical tree widget                         |
 
 ### Viper.Input
 
@@ -222,20 +222,20 @@ implemented in C and exposed through the IL runtime system.
 
 | Class                                           | Type     | Description                         |
 |-------------------------------------------------|----------|-------------------------------------|
-| [`Archive`](io.md#viperioarchive)               | Instance | ZIP archive read/write              |
-| [`BinaryBuffer`](io.md#viperiobinarybuffer)     | Instance | Positioned binary read/write buffer |
-| [`BinFile`](io.md#viperiobinfile)               | Instance | Binary file stream                  |
-| [`Compress`](io.md#viperiocompress)             | Static   | DEFLATE/GZIP compression            |
-| [`Dir`](io.md#viperiodir)                       | Static   | Directory operations                |
-| [`File`](io.md#viperiofile)                     | Static   | File read/write/delete              |
-| [`Glob`](io.md#viperioglob)                     | Static   | File globbing and matching          |
-| [`LineReader`](io.md#viperiolinereader)         | Instance | Line-by-line text reading           |
-| [`LineWriter`](io.md#viperiolinewriter)         | Instance | Buffered text writing               |
-| [`MemStream`](io.md#viperiomemstream)           | Instance | In-memory binary stream             |
-| [`Path`](io.md#viperiopath)                     | Static   | Path manipulation                   |
-| [`Stream`](io.md#viperiostream)                 | Instance | Unified stream interface            |
-| [`TempFile`](io.md#viperiotempfile)             | Static   | Temporary file/dir creation         |
-| [`Watcher`](io.md#viperiowatcher)               | Instance | File system event monitoring        |
+| [`Archive`](io/README.md#viperioarchive)               | Instance | ZIP archive read/write              |
+| [`BinaryBuffer`](io/README.md#viperiobinarybuffer)     | Instance | Positioned binary read/write buffer |
+| [`BinFile`](io/README.md#viperiobinfile)               | Instance | Binary file stream                  |
+| [`Compress`](io/README.md#viperiocompress)             | Static   | DEFLATE/GZIP compression            |
+| [`Dir`](io/README.md#viperiodir)                       | Static   | Directory operations                |
+| [`File`](io/README.md#viperiofile)                     | Static   | File read/write/delete              |
+| [`Glob`](io/README.md#viperioglob)                     | Static   | File globbing and matching          |
+| [`LineReader`](io/README.md#viperiolinereader)         | Instance | Line-by-line text reading           |
+| [`LineWriter`](io/README.md#viperiolinewriter)         | Instance | Buffered text writing               |
+| [`MemStream`](io/README.md#viperiomemstream)           | Instance | In-memory binary stream             |
+| [`Path`](io/README.md#viperiopath)                     | Static   | Path manipulation                   |
+| [`Stream`](io/README.md#viperiostream)                 | Instance | Unified stream interface            |
+| [`TempFile`](io/README.md#viperiotempfile)             | Static   | Temporary file/dir creation         |
+| [`Watcher`](io/README.md#viperiowatcher)               | Instance | File system event monitoring        |
 
 ### Viper.Network
 
@@ -258,27 +258,27 @@ implemented in C and exposed through the IL runtime system.
 
 | Class                                                     | Type     | Description                        |
 |-----------------------------------------------------------|----------|------------------------------------|
-| [`Codec`](text.md#vipertextcodec)                         | Static   | Base64, Hex, URL encoding          |
-| [`CompiledPattern`](text.md#vipertextcompiledpattern)     | Instance | Pre-compiled regex pattern         |
-| [`Csv`](text.md#vipertextcsv)                             | Static   | CSV parsing and formatting         |
-| [`Diff`](text.md#vipertextdiff)                           | Static   | Text diff and patch                |
-| [`Html`](text.md#vipertexthtml)                           | Static   | HTML stripping and entity decode   |
-| [`Ini`](text.md#vipertextini)                             | Static   | INI file parsing and formatting    |
-| [`Json`](text.md#vipertextjson)                           | Static   | JSON parsing and formatting        |
-| [`JsonPath`](text.md#vipertextjsonpath)                   | Static   | JSONPath query evaluation          |
-| [`JsonStream`](text.md#vipertextjsonstream)               | Instance | Streaming JSON reader/writer       |
-| [`Markdown`](text.md#vipertextmarkdown)                   | Static   | Markdown to HTML/text conversion   |
-| [`NumberFormat`](text.md#vipertextnumberformat)           | Static   | Locale-aware number formatting     |
-| [`Pattern`](text.md#vipertextpattern)                     | Static   | Regex pattern matching             |
-| [`Pluralize`](text.md#vipertextpluralize)                 | Static   | English pluralization utilities    |
-| [`Scanner`](text.md#vipertextscanner)                     | Instance | Token-based string scanner         |
-| [`Serialize`](text.md#vipertextserialize)                 | Static   | Unified multi-format serializer    |
-| [`StringBuilder`](text.md#vipertextstringbuilder)         | Instance | Mutable string builder             |
-| [`Template`](text.md#vipertexttemplate)                   | Static   | Template rendering                 |
-| [`TextWrapper`](text.md#vipertexttextwrapper)             | Static   | Word-wrap and text formatting      |
-| [`Toml`](text.md#vipertexttoml)                           | Static   | TOML parsing and formatting        |
-| [`Uuid`](text.md#vipertextuuid)                           | Static   | UUID v4 generation                 |
-| [`Version`](text.md#vipertextversion)                     | Static   | Semantic version parsing/comparison|
+| [`Codec`](text/README.md#vipertextcodec)                         | Static   | Base64, Hex, URL encoding          |
+| [`CompiledPattern`](text/README.md#vipertextcompiledpattern)     | Instance | Pre-compiled regex pattern         |
+| [`Csv`](text/README.md#vipertextcsv)                             | Static   | CSV parsing and formatting         |
+| [`Diff`](text/README.md#vipertextdiff)                           | Static   | Text diff and patch                |
+| [`Html`](text/README.md#vipertexthtml)                           | Static   | HTML stripping and entity decode   |
+| [`Ini`](text/README.md#vipertextini)                             | Static   | INI file parsing and formatting    |
+| [`Json`](text/README.md#vipertextjson)                           | Static   | JSON parsing and formatting        |
+| [`JsonPath`](text/README.md#vipertextjsonpath)                   | Static   | JSONPath query evaluation          |
+| [`JsonStream`](text/README.md#vipertextjsonstream)               | Instance | Streaming JSON reader/writer       |
+| [`Markdown`](text/README.md#vipertextmarkdown)                   | Static   | Markdown to HTML/text conversion   |
+| [`NumberFormat`](text/README.md#vipertextnumberformat)           | Static   | Locale-aware number formatting     |
+| [`Pattern`](text/README.md#vipertextpattern)                     | Static   | Regex pattern matching             |
+| [`Pluralize`](text/README.md#vipertextpluralize)                 | Static   | English pluralization utilities    |
+| [`Scanner`](text/README.md#vipertextscanner)                     | Instance | Token-based string scanner         |
+| [`Serialize`](text/README.md#vipertextserialize)                 | Static   | Unified multi-format serializer    |
+| [`StringBuilder`](text/README.md#vipertextstringbuilder)         | Instance | Mutable string builder             |
+| [`Template`](text/README.md#vipertexttemplate)                   | Static   | Template rendering                 |
+| [`TextWrapper`](text/README.md#vipertexttextwrapper)             | Static   | Word-wrap and text formatting      |
+| [`Toml`](text/README.md#vipertexttoml)                           | Static   | TOML parsing and formatting        |
+| [`Uuid`](text/README.md#vipertextuuid)                           | Static   | UUID v4 generation                 |
+| [`Version`](text/README.md#vipertextversion)                     | Static   | Semantic version parsing/comparison|
 
 ### Viper.Threads
 

@@ -897,7 +897,7 @@ END NAMESPACE
     - Simple: `USING Viper.Terminal` (imports all from namespace)
     - Aliased: `USING VC = Viper.Terminal` (creates shorthand alias)
 
-For complete namespace documentation, see [Namespace Reference](devdocs/namespaces.md).
+For complete namespace documentation, see [Namespace Reference](basic-namespaces.md).
 
 ## Keyword index
 
@@ -1141,3 +1141,85 @@ Conventions and semantics:
 
 Cross-reference: See [Standard Library & Namespaces](#standard-library--namespaces) for procedural helpers under
 Viper.String.* and Viper.Text.*.
+
+---
+
+## OOP Semantics
+
+### Inheritance
+
+Single inheritance only (`CLASS B : A`). Namespaces may qualify base names, e.g. `CLASS B : Foo.Bar.A`.
+
+### Method modifiers
+
+- `VIRTUAL`: Declares a new virtual method. A vtable slot is introduced if the name does not already exist in a base.
+- `OVERRIDE`: Reuses the slot of the closest base virtual with the same name. Signature must match exactly.
+- `ABSTRACT`: Method has no body; must be implemented in a non-abstract descendant.
+- `FINAL`: Prevents further overrides in descendants.
+- `PUBLIC|PRIVATE`: Access control enforced at call/field-access sites.
+
+Constructors (`SUB NEW`) may not be marked `VIRTUAL`, `OVERRIDE`, `ABSTRACT`, or `FINAL`.
+
+### Slot assignment
+
+Slot numbering is base-first, stable, and append-only: a class inherits its base's vtable verbatim, each new `VIRTUAL`
+appends one entry, and `OVERRIDE` keeps the base slot number. This guarantees deterministic ABI layout.
+
+### Virtual dispatch
+
+- Virtual calls dispatch through the vtable using the receiver's dynamic type.
+- Non-virtual methods use direct calls.
+- `BASE.M(...)` is a direct call to the immediate base class implementation.
+
+### Interfaces and RTTI
+
+Interfaces are nominal: the name identifies the contract. A class lists one or more interface names on its declaration.
+
+```basic
+INTERFACE I
+  SUB Speak()
+  FUNCTION F() AS I64
+END INTERFACE
+
+CLASS A IMPLEMENTS I
+  OVERRIDE SUB Speak(): END SUB
+  OVERRIDE FUNCTION F() AS I64: RETURN 0: END FUNCTION
+END CLASS
+```
+
+Each interface assigns slot indices to members in declaration order. A class that implements multiple interfaces has one
+itable per interface. Dispatch materializes the callee pointer from the itable and emits `call.indirect`.
+
+RTTI operators:
+- `expr IS Class` — true iff the dynamic type equals or derives from the class.
+- `expr IS Interface` — true iff the dynamic type implements the interface.
+- `expr AS Class` — returns the object when IS succeeds; otherwise NULL.
+- `expr AS Interface` — returns the object when IS succeeds; otherwise NULL.
+
+### Static members
+
+- `STATIC SUB NEW()` runs once per class during module initialization before user code.
+- Static fields lower to module-scope globals; reads/writes are independent of any instance.
+- Static methods do not receive `ME`; referencing `ME` in a static method is a semantic error.
+
+### Properties
+
+A `PROPERTY` defines up to two accessors (`GET` and `SET`). Accessor-level access modifiers are supported.
+
+Property sugar:
+- `x.Name` → `get_Name(x)` ; `x.Name = v` → `set_Name(x, v)` (instance)
+- `C.Name` → `get_Name()` ; `C.Name = v` → `set_Name(v)` (static)
+
+### Destructors and disposal
+
+- Chaining order: derived body runs first, then base, continuing up the chain.
+- One instance destructor per class; no parameters or return value.
+- `STATIC DESTRUCTOR` runs at program shutdown in class declaration order.
+- `DISPOSE expr` invokes the derived→base destructor chain and releases storage when retain count drops to zero.
+- Disposing `NULL` is a no-op; double dispose traps in debug builds.
+
+### Overload resolution
+
+Conversions: only widening numeric (INTEGER→DOUBLE) are permitted implicitly. For each viable candidate, parameters are
+scored positionally: exact match (+2), widening numeric (+1), otherwise not viable. The best total score wins; ties are
+ambiguous. Property accessors (`get_*/set_*`) participate as ordinary candidates.

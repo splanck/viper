@@ -1241,6 +1241,6 @@ var section2 = timer.get_ElapsedUs;
 
 ## See Also
 
-- [IL Runtime Specification](devdocs/runtime-vm.md) - Low-level VM runtime details
+- [VM Documentation](vm.md) - VM architecture and runtime details
 - [Zia Language Reference](zia-reference.md) - Zia programming language reference
 - [Zia Getting Started](zia-getting-started.md) - Zia quick-start guide

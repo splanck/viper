@@ -203,7 +203,7 @@ and can run entire project directories.
 All frontends, IL, and the VM share a consistent error and trap model. Diagnostics remain uniform regardless of entry
 point.
 
-> **Learn more:** See `devdocs/specs/errors.md` for trap kinds, handler semantics, and BASIC `ON ERROR` lowering rules.
+> **Learn more:** See [specs/errors.md](specs/errors.md) for trap kinds, handler semantics, and BASIC `ON ERROR` lowering rules.
 
 ### Deterministic Numerics
 
@@ -216,7 +216,7 @@ Viper guarantees consistent numeric behavior across all platforms and execution 
 - **Conversions**: Casts use checked variants that trap when values are out of range
 - **String conversions**: `VAL` and `STR$` guarantee round-trip consistency
 
-> **Learn more:** See `devdocs/specs/numerics.md` for complete numeric semantics.
+> **Learn more:** See [specs/numerics.md](specs/numerics.md) for complete numeric semantics.
 
 ---
 
@@ -234,9 +234,8 @@ Viper guarantees consistent numeric behavior across all platforms and execution 
 
 - **[Frontend How-To](frontend-howto.md)** — Build your own language frontend
 
-**Developer Documentation** (in `docs/devdocs/`):
+**Developer Documentation:**
 
-- `architecture.md` — System architecture overview
-- `runtime-vm.md` — VM and runtime internals
-- `contributor-guide.md` — Contribution guidelines
-- `tools.md` — CLI tools reference
+- [architecture.md](architecture.md) — System architecture overview
+- [vm.md](vm.md) — VM and runtime internals
+- [contributor-guide.md](contributor-guide.md) — Contribution guidelines
