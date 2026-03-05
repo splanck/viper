@@ -319,7 +319,7 @@ endif ()
 # Extern registry tests
 if (NOT TARGET test_vm_extern_registry)
     viper_add_test(test_vm_extern_registry ${VIPER_TESTS_DIR}/unit/VM_ExternRegistryTests.cpp)
-    target_link_libraries(test_vm_extern_registry PRIVATE il_build il_vm viper_support)
+    target_link_libraries(test_vm_extern_registry PRIVATE il_build il_vm viper_support viper_test_common)
     viper_add_ctest(test_vm_extern_registry test_vm_extern_registry)
 endif ()
 
@@ -865,7 +865,7 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_chr_asc test_rt_chr_asc)
 
     viper_add_test(test_rt_chr_invalid ${VIPER_TESTS_DIR}/runtime/RTChrInvalidTests.cpp)
-    target_link_libraries(test_rt_chr_invalid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_link_libraries(test_rt_chr_invalid PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_test_common)
     viper_add_ctest(test_rt_chr_invalid test_rt_chr_invalid)
 
     # rt_args tests
@@ -889,11 +889,11 @@ function(viper_add_runtime_tests)
 
     # Threading runtime tests (Monitor/Thread/SafeI64)
     viper_add_test(test_rt_threads_monitor ${VIPER_TESTS_DIR}/runtime/RTThreadsMonitorTests.cpp)
-    target_link_libraries(test_rt_threads_monitor PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    target_link_libraries(test_rt_threads_monitor PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads viper_test_common)
     viper_add_ctest(test_rt_threads_monitor test_rt_threads_monitor)
 
     viper_add_test(test_rt_threads_thread ${VIPER_TESTS_DIR}/runtime/RTThreadsThreadTests.cpp)
-    target_link_libraries(test_rt_threads_thread PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    target_link_libraries(test_rt_threads_thread PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads viper_test_common)
     viper_add_ctest(test_rt_threads_thread test_rt_threads_thread)
 
     viper_add_test(test_rt_threads_primitives ${VIPER_TESTS_DIR}/runtime/RTThreadsPrimitivesTests.cpp)
@@ -924,6 +924,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_threadpool PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
     viper_add_ctest(test_rt_threadpool test_rt_threadpool)
 
+    viper_add_test(test_rt_concurrency ${VIPER_TESTS_DIR}/runtime/RTConcurrencyTests.cpp)
+    target_link_libraries(test_rt_concurrency PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    viper_add_ctest(test_rt_concurrency test_rt_concurrency)
+
     viper_add_test(test_rt_async ${VIPER_TESTS_DIR}/runtime/RTAsyncTests.cpp)
     target_link_libraries(test_rt_async PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
     viper_add_ctest(test_rt_async test_rt_async)
@@ -949,21 +953,25 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_string_size_clamp test_rt_string_size_clamp)
 
     viper_add_test(test_rt_string_ranges ${VIPER_TESTS_DIR}/runtime/RTStringRangeTests.cpp)
-    target_link_libraries(test_rt_string_ranges PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_link_libraries(test_rt_string_ranges PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_test_common)
     viper_add_ctest(test_rt_string_ranges test_rt_string_ranges)
 
     viper_add_test(test_rt_alloc ${VIPER_TESTS_DIR}/runtime/RTAllocTests.cpp)
-    target_link_libraries(test_rt_alloc PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_link_libraries(test_rt_alloc PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_test_common)
     viper_add_ctest(test_rt_alloc test_rt_alloc)
 
     viper_add_test(test_rt_alloc_oom ${VIPER_TESTS_DIR}/runtime/RTAllocOOMTests.cpp)
     target_link_libraries(test_rt_alloc_oom PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_alloc_oom test_rt_alloc_oom)
 
+    viper_add_test(test_rt_alloc_too_large ${VIPER_TESTS_DIR}/runtime/RTAllocTooLargeTests.cpp)
+    target_link_libraries(test_rt_alloc_too_large PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_test_common)
+    viper_add_ctest(test_rt_alloc_too_large test_rt_alloc_too_large)
+
     viper_add_test(
             test_rt_string_alloc_overflow
             ${VIPER_TESTS_DIR}/runtime/RTStringAllocOverflowTests.cpp)
-    target_link_libraries(test_rt_string_alloc_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_link_libraries(test_rt_string_alloc_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_test_common)
     viper_add_ctest(test_rt_string_alloc_overflow test_rt_string_alloc_overflow)
 
     viper_add_test(
@@ -1005,7 +1013,7 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_type_registry_context_isolation test_rt_type_registry_context_isolation)
 
     viper_add_test(test_rt_array_i32 ${VIPER_TESTS_DIR}/runtime/RTArrayI32Tests.cpp)
-    target_link_libraries(test_rt_array_i32 PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_link_libraries(test_rt_array_i32 PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_test_common)
     viper_add_ctest(test_rt_array_i32 test_rt_array_i32)
 
     viper_add_test(test_rt_array_i32_refcount ${VIPER_TESTS_DIR}/runtime/RTArrayI32RefcountTests.cpp)
@@ -1055,7 +1063,7 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_input_line_fail test_rt_input_line_fail)
 
     viper_add_test(test_rt_input_numeric_fail ${VIPER_TESTS_DIR}/runtime/RTInputNumericFailTests.cpp)
-    target_link_libraries(test_rt_input_numeric_fail PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_link_libraries(test_rt_input_numeric_fail PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_test_common)
     viper_add_ctest(test_rt_input_numeric_fail test_rt_input_numeric_fail)
 
     # Basic SLEEP lowering test

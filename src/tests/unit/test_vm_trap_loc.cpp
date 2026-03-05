@@ -13,16 +13,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/ProcessIsolation.hpp"
 #include "il/build/IRBuilder.hpp"
-#include "tests/common/PosixCompat.h"
-#include "tests/common/WaitCompat.hpp"
 #include "vm/VM.hpp"
 #include <cassert>
 #include <string>
 
-int main()
+static void buildAndRun()
 {
-    SKIP_TEST_NO_FORK();
     il::core::Module m;
     il::build::IRBuilder b(m);
     auto &fn = b.startFunction("main", il::core::Type(il::core::Type::Kind::I64), {});
@@ -33,30 +31,21 @@ int main()
     in.type = il::core::Type(il::core::Type::Kind::Void);
     in.loc = {1, 1, 1};
     bb.instructions.push_back(in);
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], 2);
-        il::vm::VM vm(m);
-        vm.run();
-        _exit(0);
-    }
-    close(fds[1]);
-    char buf[256];
-    ssize_t n = read(fds[0], buf, sizeof(buf) - 1);
-    if (n > 0)
-        buf[n] = '\0';
-    else
-        buf[0] = '\0';
-    int status = 0;
-    waitpid(pid, &status, 0);
-    std::string out(buf);
+
+    il::vm::VM vm(m);
+    vm.run();
+}
+
+int main(int argc, char *argv[])
+{
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
+    auto result = viper::tests::runIsolated(buildAndRun);
+    assert(result.trapped());
     // Format: "Trap @function:block#ip line N: Kind (code=C)"
-    bool ok = out.find("Trap @main:entry#0 line 1: DomainError (code=0)") != std::string::npos;
+    bool ok = result.stderrText.find("Trap @main:entry#0 line 1: DomainError (code=0)") !=
+              std::string::npos;
     assert(ok);
     return 0;
 }

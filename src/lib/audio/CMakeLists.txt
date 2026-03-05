@@ -51,7 +51,7 @@ elseif (UNIX)
     if (NOT ALSA_FOUND)
         message(WARNING "ViperAUD: ALSA not found — audio library will not be built.\n"
                 "  Install libasound2-dev (Debian/Ubuntu) or alsa-lib-devel (Fedora/RHEL) to enable.\n"
-                "  Targets that link vipergfx will fail if this library is needed.")
+                "  Targets that link viperaud will fail if this library is needed.")
         return()
     endif ()
     message(STATUS "ViperAUD: Building for Linux (ALSA backend)")

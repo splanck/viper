@@ -64,6 +64,8 @@
 struct RtContext;
 
 #include <array>
+#include <atomic>
+#include <cassert>
 #include <cstdint>
 #include <exception>
 #include <functional>
@@ -536,12 +538,18 @@ class VM
     /// @brief Shared "program instance" state used by multi-threaded VM execution.
     /// @details Owns the shared runtime context and shared module globals storage so VM threads
     ///          have a consistent shared-memory view.
+    /// @invariant Maps (strMap, mutableGlobalMap) are populated during VM::init() BEFORE any
+    ///            worker threads start. After initComplete is set, maps are read-only.
+    ///            Concurrent writes to the maps are not thread-safe (CONC-009).
     struct ProgramState
     {
         const il::core::Module *module = nullptr; ///< Borrowed; must outlive this state.
         std::shared_ptr<RtContext> rtContext;     ///< Shared runtime context for VM threads.
         StrMap strMap;                            ///< Shared global string handles.
         MutableGlobalMap mutableGlobalMap;        ///< Shared mutable module globals storage.
+
+        /// CONC-009 fix: flag set after init completes; debug-asserted on map access.
+        std::atomic<bool> initComplete{false};
 
         ~ProgramState();
     };

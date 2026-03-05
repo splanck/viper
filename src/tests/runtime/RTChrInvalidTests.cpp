@@ -14,37 +14,22 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
-#include "tests/common/PosixCompat.h"
-#include "tests/common/WaitCompat.hpp"
+#include "common/ProcessIsolation.hpp"
 #include <cassert>
-#include <cstdio>
 #include <string>
 
-int main()
+static void call_chr_negative()
 {
-    SKIP_TEST_NO_FORK();
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], 2);
-        rt_str_chr(-1);
-        _exit(0);
-    }
-    close(fds[1]);
-    char buf[256];
-    ssize_t n = read(fds[0], buf, sizeof(buf) - 1);
-    if (n > 0)
-        buf[n] = '\0';
-    else
-        buf[0] = '\0';
-    int status = 0;
-    waitpid(pid, &status, 0);
-    std::string out(buf);
-    bool ok = out.find("CHR$: code must be 0-255") != std::string::npos;
+    rt_str_chr(-1);
+}
+
+int main(int argc, char *argv[])
+{
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
+    auto result = viper::tests::runIsolated(call_chr_negative);
+    bool ok = result.stderrText.find("CHR$: code must be 0-255") != std::string::npos;
     assert(ok);
     return 0;
 }

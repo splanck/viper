@@ -14,8 +14,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tests/common/PosixCompat.h"
-
 #include "rt_bytes.h"
 #include "rt_internal.h"
 #include "rt_network.h"
@@ -33,7 +31,7 @@
 #include <unistd.h>
 #endif
 
-// ── vm_trap override ────────────────────────────────────────────────────────
+// -- vm_trap override ---------------------------------------------------------
 namespace
 {
 int g_trap_count = 0;
@@ -46,10 +44,10 @@ extern "C" void vm_trap(const char *msg)
     g_last_trap = msg ? msg : "";
 }
 
-// ── Test: TCP recv times out cleanly ────────────────────────────────────────
+// -- Test: TCP recv times out cleanly -----------------------------------------
 // Strategy: Create a localhost TCP server that accepts connections but never
 // sends data. Connect via rt_tcp_connect, set a 100ms recv timeout, call
-// rt_tcp_recv → should return empty bytes (length 0) without trap.
+// rt_tcp_recv -> should return empty bytes (length 0) without trap.
 static void test_tcp_recv_timeout()
 {
 #if !defined(_WIN32)
@@ -93,7 +91,7 @@ static void test_tcp_recv_timeout()
 
     void *result = rt_tcp_recv(conn, 1024);
     assert(result != NULL);
-    assert(rt_bytes_len(result) == 0); // Timeout → empty bytes
+    assert(rt_bytes_len(result) == 0); // Timeout -> empty bytes
     assert(g_trap_count == 0);         // No trap
 
     // Clean up
@@ -107,10 +105,8 @@ static void test_tcp_recv_timeout()
 
 int main()
 {
-    SKIP_TEST_NO_FORK();
-
     test_tcp_recv_timeout();
-    printf("  PASS: TCP recv with 100ms timeout → empty bytes, no crash\n");
+    printf("  PASS: TCP recv with 100ms timeout -> empty bytes, no crash\n");
 
     printf("All network-timeout tests passed.\n");
     return 0;

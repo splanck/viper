@@ -248,38 +248,11 @@ static inline int mkstemp(char *tpl)
     return fd;
 }
 
-// pid_t type for Windows (needed for fork-based tests)
+// pid_t type for Windows
 #ifndef _PID_T_DEFINED
 #define _PID_T_DEFINED
 typedef int pid_t;
 #endif
-
-// fork() doesn't exist on Windows - tests using fork should skip
-// Use SKIP_TEST_NO_FORK() at the start of main() for fork-based tests
-#define VIPER_NO_FORK 1
-// SKIP_TEST_NO_FORK returns early and prints skip message
-// The rest of main() won't execute on Windows, which may cause unreachable code warnings
-#define SKIP_TEST_NO_FORK()                                                                        \
-    do                                                                                             \
-    {                                                                                              \
-        printf("Test skipped: fork() not available on Windows\n");                                 \
-        return 0;                                                                                  \
-    } while (0)
-
-// Stub for fork (always returns error to force skip path)
-static inline pid_t fork(void)
-{
-    return -1;
-}
-
-// Stub for waitpid (no-op on Windows)
-static inline pid_t waitpid(pid_t pid, int *status, int options)
-{
-    (void)pid;
-    (void)status;
-    (void)options;
-    return -1;
-}
 
 // _exit mapping
 #define _exit(code) exit(code)
@@ -287,11 +260,6 @@ static inline pid_t waitpid(pid_t pid, int *status, int options)
 #else
 // POSIX systems
 #include <unistd.h>
-#define VIPER_NO_FORK 0
-#define SKIP_TEST_NO_FORK()                                                                        \
-    do                                                                                             \
-    {                                                                                              \
-    } while (0)
 #define VIPER_DISABLE_ABORT_DIALOG() (void)0
 #endif
 

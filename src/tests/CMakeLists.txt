@@ -29,6 +29,7 @@ target_link_libraries(viper_testing INTERFACE viper_common_opts viper::il_full)
 add_library(viper_test_common STATIC
         ${CMAKE_CURRENT_LIST_DIR}/common/CodegenFixture.cpp
         ${CMAKE_CURRENT_LIST_DIR}/common/ILGenerator.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/common/ProcessIsolation.cpp
         ${CMAKE_CURRENT_LIST_DIR}/common/TestIRBuilder.cpp
         ${CMAKE_CURRENT_LIST_DIR}/common/VmFixture.cpp)
 # Limit include paths to avoid clashing with the C++ <version> header on

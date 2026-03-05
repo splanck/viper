@@ -290,6 +290,9 @@ void VM::init(std::shared_ptr<ProgramState> program)
     if (program)
     {
         programState_ = std::move(program);
+        // CONC-009: verify maps were fully populated before sharing across threads.
+        assert(programState_->initComplete.load(std::memory_order_acquire) &&
+               "ProgramState shared to worker thread before init completed");
         if (!programState_->module)
         {
             programState_->module = &mod;
@@ -330,6 +333,7 @@ void VM::init(std::shared_ptr<ProgramState> program)
             }
             programState_->mutableGlobalMap[g.name] = storage;
         }
+        programState_->initComplete.store(true, std::memory_order_release);
     }
 
     // Reserve map capacities based on module sizes to reduce rehashing.

@@ -169,31 +169,31 @@ function(viper_add_vm_unit_tests)
     viper_add_ctest(test_vm_branch_arg_mismatch test_vm_branch_arg_mismatch)
 
     viper_add_test(test_vm_trap_loc ${VIPER_TESTS_DIR}/unit/test_vm_trap_loc.cpp)
-    target_link_libraries(test_vm_trap_loc PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_trap_loc PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_trap_loc test_vm_trap_loc)
 
     viper_add_test(test_vm_rt_trap_loc ${VIPER_TESTS_DIR}/unit/test_vm_rt_trap_loc.cpp)
-    target_link_libraries(test_vm_rt_trap_loc PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_rt_trap_loc PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_rt_trap_loc test_vm_rt_trap_loc)
 
     viper_add_test(test_vm_rt_missing_arg ${VIPER_TESTS_DIR}/unit/test_vm_rt_missing_arg.cpp)
-    target_link_libraries(test_vm_rt_missing_arg PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_rt_missing_arg PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_rt_missing_arg test_vm_rt_missing_arg)
 
     viper_add_test(test_vm_rt_extra_arg ${VIPER_TESTS_DIR}/unit/test_vm_rt_extra_arg.cpp)
-    target_link_libraries(test_vm_rt_extra_arg PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_rt_extra_arg PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_rt_extra_arg test_vm_rt_extra_arg)
 
     viper_add_test(test_vm_entry_arg_mismatch ${VIPER_TESTS_DIR}/unit/test_vm_entry_arg_mismatch.cpp)
-    target_link_libraries(test_vm_entry_arg_mismatch PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_entry_arg_mismatch PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_entry_arg_mismatch test_vm_entry_arg_mismatch)
 
     viper_add_test(test_vm_rt_concat_missing_args ${VIPER_TESTS_DIR}/unit/test_vm_rt_concat_missing_args.cpp)
-    target_link_libraries(test_vm_rt_concat_missing_args PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_rt_concat_missing_args PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_rt_concat_missing_args test_vm_rt_concat_missing_args)
 
     viper_add_test(test_vm_rt_unknown_helper ${VIPER_TESTS_DIR}/unit/test_vm_rt_unknown_helper.cpp)
-    target_link_libraries(test_vm_rt_unknown_helper PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_rt_unknown_helper PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_rt_unknown_helper test_vm_rt_unknown_helper)
 
     # Multi-VM isolation tests (per-VM RtContext state)
@@ -226,10 +226,10 @@ function(viper_add_vm_unit_tests)
 
     # Flaky test - excluded from CTest, run manually: ./build/src/tests/vm/test_vm_runtime_trap_metadata
     viper_add_test(test_vm_runtime_trap_metadata ${VIPER_TESTS_DIR}/unit/test_vm_runtime_trap_metadata.cpp NO_CTEST)
-    target_link_libraries(test_vm_runtime_trap_metadata PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_runtime_trap_metadata PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
 
     viper_add_test(test_vm_switch_block_label ${VIPER_TESTS_DIR}/unit/test_vm_switch_block_label.cpp)
-    target_link_libraries(test_vm_switch_block_label PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_switch_block_label PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_switch_block_label test_vm_switch_block_label)
 
     viper_add_test(test_vm_runtime_bridge_marshalling ${VIPER_TESTS_DIR}/unit/test_vm_runtime_bridge_marshalling.cpp)
@@ -245,23 +245,23 @@ function(viper_add_vm_unit_tests)
     viper_add_ctest(test_vm_runtime_stack_sync test_vm_runtime_stack_sync)
 
     viper_add_test(test_vm_alloca_negative ${VIPER_TESTS_DIR}/unit/test_vm_alloca_negative.cpp)
-    target_link_libraries(test_vm_alloca_negative PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_alloca_negative PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_alloca_negative test_vm_alloca_negative)
 
     viper_add_test(test_vm_alloca_missing_size ${VIPER_TESTS_DIR}/unit/test_vm_alloca_missing_size.cpp)
-    target_link_libraries(test_vm_alloca_missing_size PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_alloca_missing_size PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_alloca_missing_size test_vm_alloca_missing_size)
 
     viper_add_test(test_vm_alloca_overflow ${VIPER_TESTS_DIR}/unit/test_vm_alloca_overflow.cpp)
-    target_link_libraries(test_vm_alloca_overflow PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_alloca_overflow PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_alloca_overflow test_vm_alloca_overflow)
 
     viper_add_test(test_vm_stack_size_config ${VIPER_TESTS_DIR}/unit/test_vm_stack_size_config.cpp)
-    target_link_libraries(test_vm_stack_size_config PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_stack_size_config PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_stack_size_config test_vm_stack_size_config)
 
     viper_add_test(test_vm_unknown_global ${VIPER_TESTS_DIR}/unit/test_vm_unknown_global.cpp)
-    target_link_libraries(test_vm_unknown_global PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_unknown_global PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_unknown_global test_vm_unknown_global)
 
     viper_add_test(test_vm_error_resume_load_store ${VIPER_TESTS_DIR}/unit/test_vm_error_resume_load_store.cpp)
@@ -269,7 +269,7 @@ function(viper_add_vm_unit_tests)
     viper_add_ctest(test_vm_error_resume_load_store test_vm_error_resume_load_store)
 
     viper_add_test(test_vm_null_mem_ops ${VIPER_TESTS_DIR}/unit/test_vm_null_mem_ops.cpp)
-    target_link_libraries(test_vm_null_mem_ops PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_null_mem_ops PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_null_mem_ops test_vm_null_mem_ops)
 
     viper_add_test(test_vm_gep_nullptr ${VIPER_TESTS_DIR}/unit/test_vm_gep_nullptr.cpp)

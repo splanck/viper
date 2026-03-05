@@ -13,11 +13,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/ProcessIsolation.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"
 
-#include "tests/common/PosixCompat.h"
-#include "tests/common/WaitCompat.hpp"
 #include <array>
 #include <cassert>
 #include <cmath>
@@ -122,37 +121,18 @@ std::string captureCastFpToUiTrap(double input)
     Module module;
     buildCastFpToUi(module, input);
 
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], 2);
-        il::vm::VM vm(module);
-        vm.run();
-        _exit(0);
-    }
-
-    close(fds[1]);
-    char buffer[512];
-    ssize_t n = read(fds[0], buffer, sizeof(buffer) - 1);
-    if (n < 0)
-        n = 0;
-    buffer[n] = '\0';
-    close(fds[0]);
-
-    int status = 0;
-    waitpid(pid, &status, 0);
-    assert(WIFEXITED(status) && WEXITSTATUS(status) == 1);
-    return std::string(buffer);
+    auto result = viper::tests::runModuleIsolated(module);
+    assert(result.trapped());
+    return result.stderrText;
 }
 
 } // namespace
 
-int main()
+int main(int argc, char *argv[])
 {
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
     const std::array<std::pair<int64_t, int64_t>, 5> truncCases = {
         {{0, 0},
          {1, 1},
@@ -198,8 +178,6 @@ int main()
         const char *expectedKind;
     };
 
-    // Fork-based trap tests - skip on Windows
-#if !VIPER_NO_FORK
     const std::array<TrapCase, 4> fpCastTrapInputs = {
         {{std::numeric_limits<double>::quiet_NaN(), "InvalidCast"},
          {-0.0, "InvalidCast"},
@@ -215,7 +193,6 @@ int main()
         const bool matches = diag.find(expected) != std::string::npos;
         assert(matches && "unexpected trap kind for cast.fp_to_ui.rte.chk operand");
     }
-#endif
 
     return 0;
 }

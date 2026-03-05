@@ -13,13 +13,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/ProcessIsolation.hpp"
 #include "il/runtime/signatures/Registry.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
 
-#include "tests/common/PosixCompat.h"
-#include "tests/common/WaitCompat.hpp"
 #include <cassert>
+#include <cstdio>
 #include <cstring>
 #include <string>
 
@@ -40,26 +40,11 @@ static void times2_handler(void **args, void *result)
         *reinterpret_cast<int64_t *>(result) = y;
 }
 
-static std::string read_child_stderr_and_wait(pid_t pid, int fd)
+int main(int argc, char *argv[])
 {
-    std::string out;
-    char buf[512];
-    for (;;)
-    {
-        ssize_t n = read(fd, buf, sizeof(buf));
-        if (n > 0)
-            out.append(buf, buf + n);
-        else
-            break;
-    }
-    int status = 0;
-    (void)waitpid(pid, &status, 0);
-    return out;
-}
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
 
-int main()
-{
-    SKIP_TEST_NO_FORK();
     // Case 1: Register extern and invoke successfully.
     {
         il::vm::ExternDesc ext;
@@ -75,8 +60,7 @@ int main()
         // Debug: ensure we see failures clearly if any
         if (res.i64 != 42)
         {
-            const char *msg = "VM_ExternRegistryTests: case1 got unexpected result\n";
-            (void)!write(2, msg, strlen(msg));
+            std::fprintf(stderr, "VM_ExternRegistryTests: case1 got unexpected result\n");
         }
         assert(res.i64 == 42);
 
@@ -86,23 +70,16 @@ int main()
 
     // Case 2: Unknown extern -> trap (capture in child).
     {
-        int fds[2];
-        assert(pipe(fds) == 0);
-        pid_t pid = fork();
-        assert(pid >= 0);
-        if (pid == 0)
-        {
-            close(fds[0]);
-            dup2(fds[1], 2);
-            il::vm::RuntimeCallContext ctx{};
-            il::vm::Slot arg{};
-            arg.i64 = 7;
-            (void)il::vm::RuntimeBridge::call(ctx, "times2", {arg}, {}, "", "");
-            _exit(0);
-        }
-        close(fds[1]);
-        std::string out = read_child_stderr_and_wait(pid, fds[0]);
-        assert(out.find("unknown runtime helper 'times2'") != std::string::npos);
+        auto result = viper::tests::runIsolated(
+            []()
+            {
+                il::vm::RuntimeCallContext ctx{};
+                il::vm::Slot arg{};
+                arg.i64 = 7;
+                (void)il::vm::RuntimeBridge::call(ctx, "times2", {arg}, {}, "", "");
+            });
+        assert(result.trapped());
+        assert(result.stderrText.find("unknown runtime helper 'times2'") != std::string::npos);
     }
 
     // Case 3: Signature mismatch -> trap (capture in child).
@@ -113,22 +90,15 @@ int main()
         ext.fn = reinterpret_cast<void *>(&times2_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
 
-        int fds[2];
-        assert(pipe(fds) == 0);
-        pid_t pid = fork();
-        assert(pid >= 0);
-        if (pid == 0)
-        {
-            close(fds[0]);
-            dup2(fds[1], 2);
-            il::vm::RuntimeCallContext ctx{};
-            // Provide wrong number of args (0 instead of 1)
-            (void)il::vm::RuntimeBridge::call(ctx, "times2", {}, {}, "", "");
-            _exit(0);
-        }
-        close(fds[1]);
-        std::string out = read_child_stderr_and_wait(pid, fds[0]);
-        assert(out.find("expected 1 argument(s), got 0") != std::string::npos);
+        auto result = viper::tests::runIsolated(
+            []()
+            {
+                il::vm::RuntimeCallContext ctx{};
+                // Provide wrong number of args (0 instead of 1)
+                (void)il::vm::RuntimeBridge::call(ctx, "times2", {}, {}, "", "");
+            });
+        assert(result.trapped());
+        assert(result.stderrText.find("expected 1 argument(s), got 0") != std::string::npos);
 
         (void)il::vm::RuntimeBridge::unregisterExtern("times2");
     }

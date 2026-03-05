@@ -13,10 +13,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/ProcessIsolation.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "support/source_location.hpp"
-#include "tests/common/PosixCompat.h"
-#include "tests/common/WaitCompat.hpp"
 #include "vm/VM.hpp"
 #include <cassert>
 #include <string>
@@ -24,7 +23,7 @@
 namespace
 {
 
-std::string captureRuntimeTrap(bool attachLoc)
+il::core::Module buildRuntimeTrapModule(bool attachLoc)
 {
     using namespace il::core;
     Module m;
@@ -39,48 +38,39 @@ std::string captureRuntimeTrap(bool attachLoc)
         attachLoc ? il::support::SourceLoc{1, 1, 1} : il::support::SourceLoc{};
     b.emitCall("rt_to_int", {s}, std::optional<Value>{}, callLoc);
     b.emitRet(std::optional<Value>{}, {1, 1, 1});
-
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], 2);
-        il::vm::VM vm(m);
-        vm.run();
-        _exit(0);
-    }
-    close(fds[1]);
-    char buf[256];
-    ssize_t n = read(fds[0], buf, sizeof(buf) - 1);
-    if (n > 0)
-        buf[n] = '\0';
-    else
-        buf[0] = '\0';
-    int status = 0;
-    waitpid(pid, &status, 0);
-    return std::string(buf);
+    return m;
 }
 
 } // namespace
 
-int main()
+int main(int argc, char *argv[])
 {
-    SKIP_TEST_NO_FORK();
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
     // Format: "Trap @function:block#ip line N: Kind (code=C)"
     // Line is omitted when unknown (instead of showing "line -1")
-    const std::string withLoc = captureRuntimeTrap(true);
-    const bool precise =
-        withLoc.find("Trap @main:entry#1 line 1: DomainError (code=0)") != std::string::npos;
-    assert(precise);
+    {
+        auto m = buildRuntimeTrapModule(true);
+        auto result = viper::tests::runModuleIsolated(m);
+        assert(result.trapped());
+        const bool precise =
+            result.stderrText.find("Trap @main:entry#1 line 1: DomainError (code=0)") !=
+            std::string::npos;
+        assert(precise);
+    }
 
-    const std::string withoutLoc = captureRuntimeTrap(false);
-    // When line is unknown, it should be omitted entirely (not "line -1")
-    const bool omittedLine = withoutLoc.find("line") == std::string::npos;
-    const bool hasTrap =
-        withoutLoc.find("Trap @main:entry#1: DomainError (code=0)") != std::string::npos;
-    assert(omittedLine && hasTrap);
+    {
+        auto m = buildRuntimeTrapModule(false);
+        auto result = viper::tests::runModuleIsolated(m);
+        assert(result.trapped());
+        // When line is unknown, it should be omitted entirely (not "line -1")
+        const bool omittedLine = result.stderrText.find("line") == std::string::npos;
+        const bool hasTrap =
+            result.stderrText.find("Trap @main:entry#1: DomainError (code=0)") !=
+            std::string::npos;
+        assert(omittedLine && hasTrap);
+    }
+
     return 0;
 }

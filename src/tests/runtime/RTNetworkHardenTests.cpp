@@ -379,8 +379,6 @@ static void test_dns_reverse_invalid()
 // ── Main ───────────────────────────────────────────────────────────────────
 int main()
 {
-    SKIP_TEST_NO_FORK();
-
     test_connect_nonexistent_host();
     test_connect_refused_port();
     test_send_after_remote_close();

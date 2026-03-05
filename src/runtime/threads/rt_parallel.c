@@ -71,10 +71,10 @@ typedef struct
     void *item;
     void (*func)(void *);
 #ifdef _WIN32
-    volatile LONG *remaining;
+    LONG *remaining;
     HANDLE event;
 #else
-    volatile int *remaining;
+    int *remaining;
     pthread_mutex_t *mutex;
     pthread_cond_t *cond;
 #endif
@@ -88,10 +88,10 @@ typedef struct
     void *result;
     int64_t index;
 #ifdef _WIN32
-    volatile LONG *remaining;
+    LONG *remaining;
     HANDLE event;
 #else
-    volatile int *remaining;
+    int *remaining;
     pthread_mutex_t *mutex;
     pthread_cond_t *cond;
 #endif
@@ -102,10 +102,10 @@ typedef struct
 {
     void (*func)(void);
 #ifdef _WIN32
-    volatile LONG *remaining;
+    LONG *remaining;
     HANDLE event;
 #else
-    volatile int *remaining;
+    int *remaining;
     pthread_mutex_t *mutex;
     pthread_cond_t *cond;
 #endif
@@ -121,10 +121,10 @@ typedef struct
     void *identity;
     void *result;
 #ifdef _WIN32
-    volatile LONG *remaining;
+    LONG *remaining;
     HANDLE event;
 #else
-    volatile int *remaining;
+    int *remaining;
     pthread_mutex_t *mutex;
     pthread_cond_t *cond;
 #endif
@@ -136,10 +136,10 @@ typedef struct
     int64_t index;
     void (*func)(int64_t);
 #ifdef _WIN32
-    volatile LONG *remaining;
+    LONG *remaining;
     HANDLE event;
 #else
-    volatile int *remaining;
+    int *remaining;
     pthread_mutex_t *mutex;
     pthread_cond_t *cond;
 #endif
@@ -148,10 +148,11 @@ typedef struct
 #ifndef _WIN32
 /* Heap-allocated synchronisation state shared across all tasks in one batch.
    Using heap allocation (rather than stack) eliminates any risk of
-   use-after-stack-free if a future code path ever returns early. */
+   use-after-stack-free if a future code path ever returns early.
+   CONC-006 fix: volatile removed — mutex provides ordering guarantees. */
 typedef struct
 {
-    volatile int remaining;
+    int remaining;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
 } parallel_sync;
@@ -185,8 +186,17 @@ static void parallel_sync_wait_and_free(parallel_sync *s)
 
 static void *g_default_pool = NULL;
 #ifdef _WIN32
+static INIT_ONCE g_pool_lock_once = INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION g_pool_lock;
-static int g_pool_lock_init = 0;
+
+static BOOL CALLBACK pool_lock_init_callback(PINIT_ONCE InitOnce, PVOID Param, PVOID *Ctx)
+{
+    (void)InitOnce;
+    (void)Param;
+    (void)Ctx;
+    InitializeCriticalSection(&g_pool_lock);
+    return TRUE;
+}
 #else
 static pthread_mutex_t g_pool_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif
@@ -211,11 +221,7 @@ int64_t rt_parallel_default_workers(void)
 void *rt_parallel_default_pool(void)
 {
 #ifdef _WIN32
-    if (!g_pool_lock_init)
-    {
-        InitializeCriticalSection(&g_pool_lock);
-        g_pool_lock_init = 1;
-    }
+    InitOnceExecuteOnce(&g_pool_lock_once, pool_lock_init_callback, NULL, NULL);
     EnterCriticalSection(&g_pool_lock);
 #else
     pthread_mutex_lock(&g_pool_lock);
@@ -365,7 +371,7 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool)
     void *actual_pool = pool ? pool : rt_parallel_default_pool();
 
 #ifdef _WIN32
-    volatile LONG remaining = (LONG)count;
+    LONG remaining = (LONG)count;
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
     parallel_sync *sync = parallel_sync_new((int)count);
@@ -433,7 +439,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool)
     void *actual_pool = pool ? pool : rt_parallel_default_pool();
 
 #ifdef _WIN32
-    volatile LONG remaining = (LONG)count;
+    LONG remaining = (LONG)count;
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
     parallel_sync *sync = parallel_sync_new((int)count);
@@ -511,7 +517,7 @@ void rt_parallel_invoke_pool(void *funcs, void *pool)
     void *actual_pool = pool ? pool : rt_parallel_default_pool();
 
 #ifdef _WIN32
-    volatile LONG remaining = (LONG)count;
+    LONG remaining = (LONG)count;
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
     parallel_sync *sync = parallel_sync_new((int)count);
@@ -602,7 +608,7 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
     }
 
 #ifdef _WIN32
-    volatile LONG remaining = (LONG)nworkers;
+    LONG remaining = (LONG)nworkers;
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
     parallel_sync *sync = parallel_sync_new((int)nworkers);
@@ -688,7 +694,7 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool)
     void *actual_pool = pool ? pool : rt_parallel_default_pool();
 
 #ifdef _WIN32
-    volatile LONG remaining = (LONG)count;
+    LONG remaining = (LONG)count;
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
     parallel_sync *sync = parallel_sync_new((int)count);

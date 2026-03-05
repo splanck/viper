@@ -17,8 +17,8 @@
 //   The test uses a short-running infinite loop program and fires the interrupt
 //   flag programmatically (via the poll callback).  Because an unhandled
 //   TrapKind::Interrupt causes rt_abort (terminating the process), the
-//   testInterruptFires case runs the VM in a forked child process and captures
-//   stderr — the same technique used by VmFixture::captureTrap.
+//   testInterruptFires case runs the VM in an isolated child process and
+//   captures stderr using the ProcessIsolation API.
 //
 //===----------------------------------------------------------------------===//
 
@@ -29,14 +29,10 @@
 #include "unit/VMTestHook.hpp"
 #include "vm/VM.hpp"
 
+#include "common/ProcessIsolation.hpp"
 #include <array>
 #include <cstdio>
 #include <string>
-
-#if !defined(_WIN32)
-#include <sys/wait.h>
-#include <unistd.h>
-#endif
 
 using namespace il::core;
 using namespace il::vm;
@@ -44,22 +40,22 @@ using namespace il::vm;
 static constexpr il::support::SourceLoc kLoc{1, 1, 0};
 
 /// @brief Build a module containing a tight loop: while(true) {}
-/// @details Creates entry → loop → loop (back-edge).  The dispatch driver will
+/// @details Creates entry -> loop -> loop (back-edge).  The dispatch driver will
 ///          spin indefinitely unless interrupted via poll or an external signal.
 static void buildInfiniteLoopModule(Module &mod)
 {
     il::build::IRBuilder b(mod);
     auto &fn = b.startFunction("main", Type(Type::Kind::Void), {});
 
-    // Create all blocks first — push_back invalidates existing references.
+    // Create all blocks first -- push_back invalidates existing references.
     b.createBlock(fn, "entry", {});
     b.createBlock(fn, "loop", {});
 
-    // entry → loop
+    // entry -> loop
     b.setInsertPoint(fn.blocks[0]);
     b.br(fn.blocks[1]);
 
-    // loop → loop (back edge = infinite loop)
+    // loop -> loop (back edge = infinite loop)
     b.setInsertPoint(fn.blocks[1]);
     b.br(fn.blocks[1]);
 }
@@ -97,109 +93,59 @@ static int testInterruptApi()
 // Test: Interrupt fires and produces a trapped VM state
 // =============================================================================
 
-static int testInterruptFires()
+static void runInterruptChild()
 {
-    // An unhandled TrapKind::Interrupt calls rt_abort which terminates the
-    // process.  Run the VM in a forked child so the parent can capture the
-    // trap diagnostic from stderr and verify the trap fired correctly.
-#if defined(_WIN32)
-    std::fprintf(stdout,
-                 "[SKIP] testInterruptFires: subprocess capture not available on Windows\n");
-    return 0;
-#else
     Module mod;
     buildInfiniteLoopModule(mod);
 
-    // Flush parent stdio before forking so the child inherits an empty buffer.
-    std::fflush(stdout);
-    std::fflush(stderr);
+    VM::clearInterrupt();
+    VM vm(mod);
 
-    // Pipe to capture the child's stderr output.
-    std::array<int, 2> fds{};
-    if (::pipe(fds.data()) != 0)
-    {
-        std::fprintf(stderr, "[FAIL] testInterruptFires: pipe() failed\n");
-        return 1;
-    }
+    // After 500 instructions, request an interrupt and stop the driver by
+    // returning false.  runFunctionLoop checks s_interruptRequested after
+    // dispatchDriver->run() returns and raises TrapKind::Interrupt.
+    int callCount = 0;
+    VMTestHook::setPoll(vm,
+                        500,
+                        [&callCount](VM &) -> bool
+                        {
+                            if (++callCount == 1)
+                                VM::requestInterrupt();
+                            return false; // Stop the driver so the post-dispatch check fires.
+                        });
 
-    const pid_t pid = ::fork();
-    if (pid < 0)
-    {
-        ::close(fds[0]);
-        ::close(fds[1]);
-        std::fprintf(stderr, "[FAIL] testInterruptFires: fork() failed\n");
-        return 1;
-    }
+    vm.run();
+    // Unreachable: rt_abort terminates the child first.
+}
 
-    if (pid == 0)
-    {
-        // Child: redirect stderr into the write end of the pipe, then run the VM.
-        ::close(fds[0]);
-        ::dup2(fds[1], STDERR_FILENO);
-        ::close(fds[1]);
-
-        VM::clearInterrupt();
-        VM vm(mod);
-
-        // After 500 instructions, request an interrupt and stop the driver by
-        // returning false.  runFunctionLoop checks s_interruptRequested after
-        // dispatchDriver->run() returns and raises TrapKind::Interrupt.
-        int callCount = 0;
-        VMTestHook::setPoll(vm,
-                            500,
-                            [&callCount](VM &) -> bool
-                            {
-                                if (++callCount == 1)
-                                    VM::requestInterrupt();
-                                return false; // Stop the driver so the post-dispatch check fires.
-                            });
-
-        vm.run();
-        ::_exit(0); // Unreachable: rt_abort terminates the child first.
-    }
-
-    // Parent: read stderr captured from the child.
-    ::close(fds[1]);
-    std::string buffer;
-    std::array<char, 512> tmp{};
-    while (true)
-    {
-        const ssize_t n = ::read(fds[0], tmp.data(), tmp.size());
-        if (n <= 0)
-            break;
-        buffer.append(tmp.data(), static_cast<std::size_t>(n));
-    }
-    ::close(fds[0]);
-
-    int status = 0;
-    ::waitpid(pid, &status, 0);
+static int testInterruptFires()
+{
+    auto result = viper::tests::runIsolated(runInterruptChild);
 
     // The child must have terminated with a non-zero exit code (rt_abort).
-    const bool exitedNonZero = WIFEXITED(status) && WEXITSTATUS(status) != 0;
-    const bool signaled = WIFSIGNALED(status);
-    if (!exitedNonZero && !signaled)
+    if (!result.trapped())
     {
         std::fprintf(stderr, "[FAIL] testInterruptFires: child exited cleanly (expected trap)\n");
         return 1;
     }
 
     // stderr must mention 'Interrupt'.
-    if (buffer.find("Interrupt") == std::string::npos &&
-        buffer.find("interrupt") == std::string::npos)
+    if (result.stderrText.find("Interrupt") == std::string::npos &&
+        result.stderrText.find("interrupt") == std::string::npos)
     {
         std::fprintf(stderr,
                      "[FAIL] testInterruptFires: trap output does not mention 'interrupt': %s\n",
-                     buffer.c_str());
+                     result.stderrText.c_str());
         return 1;
     }
 
     // Strip trailing newline for the pass message.
+    std::string buffer = result.stderrText;
     while (!buffer.empty() && (buffer.back() == '\n' || buffer.back() == '\r'))
         buffer.pop_back();
 
     std::fprintf(stdout, "[PASS] interrupt fires cleanly (trap: %s)\n", buffer.c_str());
     return 0;
-#endif
 }
 
 // =============================================================================
@@ -227,8 +173,11 @@ static int testNormalProgramAfterClear()
     return 0;
 }
 
-int main()
+int main(int argc, char *argv[])
 {
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
     int failures = 0;
     failures += testInterruptApi();
     failures += testInterruptFires();

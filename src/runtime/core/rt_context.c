@@ -55,6 +55,7 @@
 // GetCurrentThreadId() is available via windows.h (included from rt_platform.h)
 #elif !RT_PLATFORM_VIPERDOS
 #include <pthread.h>
+#include <sched.h>
 #endif
 
 /* Cross-component forward declarations — weak defaults so programs that
@@ -109,21 +110,26 @@ static int g_legacy_state = 0;
 /// during context bind/unbind to prevent data races.
 static int g_legacy_handoff_lock = 0;
 
-/// @brief Acquire a simple spinlock.
+/// @brief Acquire a simple spinlock with yield-on-contention.
 ///
-/// Uses atomic test-and-set with acquire semantics. Spins without yielding
-/// since this lock protects very short critical sections during context
-/// handoff only.
+/// Uses atomic test-and-set with acquire semantics. Yields after the first
+/// failed attempt to reduce CPU waste under contention (CONC-010 fix).
 ///
 /// @param lock Pointer to the lock variable (0 = unlocked, 1 = locked).
 ///
 /// @note Only used for init/handoff paths where contention is rare.
-/// @warning Do not use for long-held locks or high-contention scenarios.
 static void rt_spin_lock(int *lock)
 {
-    while (__atomic_test_and_set(lock, __ATOMIC_ACQUIRE))
+    if (__atomic_test_and_set(lock, __ATOMIC_ACQUIRE))
     {
-        // spin (init/handoff paths only)
+        do
+        {
+#if RT_PLATFORM_WINDOWS
+            SwitchToThread();
+#elif !RT_PLATFORM_VIPERDOS
+            sched_yield();
+#endif
+        } while (__atomic_test_and_set(lock, __ATOMIC_ACQUIRE));
     }
 }
 
@@ -223,10 +229,14 @@ static void rt_legacy_ensure_init(void)
         return;
     }
 
-    // Another thread is initializing; wait.
+    // Another thread is initializing; yield while waiting.
     while (__atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE) != 2)
     {
-        // spin
+#if RT_PLATFORM_WINDOWS
+        SwitchToThread();
+#elif !RT_PLATFORM_VIPERDOS
+        sched_yield();
+#endif
     }
 }
 

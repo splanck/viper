@@ -14,48 +14,25 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
-#include "tests/common/PosixCompat.h"
-#include "tests/common/WaitCompat.hpp"
+#include "common/ProcessIsolation.hpp"
 #include <cassert>
 #include <stdint.h>
 #include <string>
 
 #if SIZE_MAX < INT64_MAX
 
-static std::string capture(void (*fn)())
-{
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], 2);
-        fn();
-        _exit(0);
-    }
-    close(fds[1]);
-    char buf[256];
-    ssize_t n = read(fds[0], buf, sizeof(buf) - 1);
-    if (n > 0)
-        buf[n] = '\0';
-    else
-        buf[0] = '\0';
-    int status = 0;
-    waitpid(pid, &status, 0);
-    return std::string(buf);
-}
-
 static void call_alloc_too_large()
 {
     rt_alloc((int64_t)SIZE_MAX + 1);
 }
 
-int main()
+int main(int argc, char *argv[])
 {
-    std::string out = capture(call_alloc_too_large);
-    bool ok = out.find("allocation too large") != std::string::npos;
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
+    auto result = viper::tests::runIsolated(call_alloc_too_large);
+    bool ok = result.stderrText.find("allocation too large") != std::string::npos;
     assert(ok);
     return 0;
 }

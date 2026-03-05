@@ -112,11 +112,16 @@
 #define __ATOMIC_SEQ_CST 5
 
 // Atomic load (32-bit)
+// CONC-004 fix: ARM64 needs CPU fence, not just compiler barrier.
 static inline int rt_atomic_load_i32(const volatile int *ptr, int order)
 {
     (void)order;
     int value = *ptr;
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
     _ReadWriteBarrier();
+#endif
     return value;
 }
 
@@ -124,9 +129,17 @@ static inline int rt_atomic_load_i32(const volatile int *ptr, int order)
 static inline void rt_atomic_store_i32(volatile int *ptr, int value, int order)
 {
     (void)order;
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
     _ReadWriteBarrier();
+#endif
     *ptr = value;
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
     _ReadWriteBarrier();
+#endif
 }
 
 // Atomic exchange (32-bit)
@@ -169,7 +182,11 @@ static inline int rt_atomic_fetch_sub_i32(volatile int *ptr, int value, int orde
 static inline int64_t rt_atomic_load_i64(const volatile int64_t *ptr, int order)
 {
     (void)order;
-#if defined(_M_X64) || defined(_M_ARM64)
+#if defined(_M_ARM64)
+    int64_t value = *ptr;
+    __dmb(_ARM64_BARRIER_ISH);
+    return value;
+#elif defined(_M_X64)
     int64_t value = *ptr;
     _ReadWriteBarrier();
     return value;
@@ -183,7 +200,11 @@ static inline int64_t rt_atomic_load_i64(const volatile int64_t *ptr, int order)
 static inline void rt_atomic_store_i64(volatile int64_t *ptr, int64_t value, int order)
 {
     (void)order;
-#if defined(_M_X64) || defined(_M_ARM64)
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+    *ptr = value;
+    __dmb(_ARM64_BARRIER_ISH);
+#elif defined(_M_X64)
     _ReadWriteBarrier();
     *ptr = value;
     _ReadWriteBarrier();
@@ -210,7 +231,11 @@ static inline int64_t rt_atomic_fetch_sub_i64(volatile int64_t *ptr, int64_t val
 static inline size_t rt_atomic_load_size(const volatile size_t *ptr, int order)
 {
     (void)order;
-#if defined(_M_X64) || defined(_M_ARM64)
+#if defined(_M_ARM64)
+    size_t value = *ptr;
+    __dmb(_ARM64_BARRIER_ISH);
+    return value;
+#elif defined(_M_X64)
     size_t value = *ptr;
     _ReadWriteBarrier();
     return value;
@@ -223,7 +248,11 @@ static inline size_t rt_atomic_load_size(const volatile size_t *ptr, int order)
 static inline void rt_atomic_store_size(volatile size_t *ptr, size_t value, int order)
 {
     (void)order;
-#if defined(_M_X64) || defined(_M_ARM64)
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+    *ptr = value;
+    __dmb(_ARM64_BARRIER_ISH);
+#elif defined(_M_X64)
     _ReadWriteBarrier();
     *ptr = value;
     _ReadWriteBarrier();
@@ -251,7 +280,11 @@ static inline void *rt_atomic_load_ptr(void *const volatile *ptr, int order)
 {
     (void)order;
     void *value = *ptr;
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
     _ReadWriteBarrier();
+#endif
     return value;
 }
 
@@ -259,9 +292,17 @@ static inline void *rt_atomic_load_ptr(void *const volatile *ptr, int order)
 static inline void rt_atomic_store_ptr(void *volatile *ptr, void *value, int order)
 {
     (void)order;
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
     _ReadWriteBarrier();
+#endif
     *ptr = value;
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
     _ReadWriteBarrier();
+#endif
 }
 
 // Atomic exchange (pointer)
@@ -355,9 +396,17 @@ static inline int rt_atomic_test_and_set(volatile int *ptr, int order)
 static inline void rt_atomic_clear(volatile int *ptr, int order)
 {
     (void)order;
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
     _ReadWriteBarrier();
+#endif
     *ptr = 0;
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
     _ReadWriteBarrier();
+#endif
 }
 
 #define __atomic_test_and_set(ptr, order) rt_atomic_test_and_set((volatile int *)(ptr), (order))

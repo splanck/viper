@@ -104,15 +104,15 @@ static struct
 
     int64_t total_collected;
     int64_t pass_count;
-
-#ifdef _WIN32
-    CRITICAL_SECTION lock;
-    int lock_init;
-#else
-    pthread_mutex_t lock;
-    int lock_init;
-#endif
 } g_gc;
+
+/// GC lock — initialized statically to avoid init races (CONC-001 fix).
+#ifdef _WIN32
+static INIT_ONCE g_gc_lock_once = INIT_ONCE_STATIC_INIT;
+static CRITICAL_SECTION g_gc_lock_cs;
+#else
+static pthread_mutex_t g_gc_lock_mtx = PTHREAD_MUTEX_INITIALIZER;
+#endif
 
 /// Auto-trigger: allocation counter and threshold.
 /// When g_gc_threshold > 0, every rt_gc_notify_alloc() call increments
@@ -121,40 +121,57 @@ static struct
 static int64_t g_gc_threshold = 0;
 static int64_t g_gc_alloc_counter = 0;
 
+/// @brief Atomic CAS for int64_t (portable across GCC/Clang and MSVC).
+static int gc_atomic_cas_i64(int64_t *ptr, int64_t *expected, int64_t desired)
+{
+#if defined(_MSC_VER) && !defined(__clang__)
+    long long old = _InterlockedCompareExchange64(
+        (volatile long long *)ptr, (long long)desired, (long long)*expected);
+    if (old == (long long)*expected)
+        return 1;
+    *expected = (int64_t)old;
+    return 0;
+#else
+    return __atomic_compare_exchange_n(
+        ptr, expected, desired, /*weak=*/1, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+#endif
+}
+
 //=============================================================================
-// Lock helpers
+// Lock helpers (CONC-001 fix: race-free initialization)
 //=============================================================================
 
-static void gc_lock_init(void)
-{
-    if (g_gc.lock_init)
-        return;
 #ifdef _WIN32
-    InitializeCriticalSection(&g_gc.lock);
-#else
-    pthread_mutex_init(&g_gc.lock, NULL);
-#endif
-    g_gc.lock_init = 1;
+static BOOL CALLBACK gc_lock_init_callback(PINIT_ONCE InitOnce, PVOID Parameter, PVOID *Context)
+{
+    (void)InitOnce;
+    (void)Parameter;
+    (void)Context;
+    InitializeCriticalSection(&g_gc_lock_cs);
+    return TRUE;
 }
 
 static void gc_lock(void)
 {
-    gc_lock_init();
-#ifdef _WIN32
-    EnterCriticalSection(&g_gc.lock);
-#else
-    pthread_mutex_lock(&g_gc.lock);
-#endif
+    InitOnceExecuteOnce(&g_gc_lock_once, gc_lock_init_callback, NULL, NULL);
+    EnterCriticalSection(&g_gc_lock_cs);
 }
 
 static void gc_unlock(void)
 {
-#ifdef _WIN32
-    LeaveCriticalSection(&g_gc.lock);
-#else
-    pthread_mutex_unlock(&g_gc.lock);
-#endif
+    LeaveCriticalSection(&g_gc_lock_cs);
 }
+#else
+static void gc_lock(void)
+{
+    pthread_mutex_lock(&g_gc_lock_mtx);
+}
+
+static void gc_unlock(void)
+{
+    pthread_mutex_unlock(&g_gc_lock_mtx);
+}
+#endif
 
 //=============================================================================
 // Hash Utility
@@ -655,8 +672,14 @@ void rt_gc_notify_alloc(void)
     int64_t count = __atomic_fetch_add(&g_gc_alloc_counter, 1, __ATOMIC_RELAXED) + 1;
     if (count >= threshold)
     {
-        __atomic_store_n(&g_gc_alloc_counter, 0, __ATOMIC_RELAXED);
-        rt_gc_collect();
+        /* CONC-003 fix: use CAS to atomically claim the counter reset.
+           Only the thread that successfully resets the counter triggers
+           collection, preventing redundant double-collects. */
+        int64_t expected = count;
+        if (gc_atomic_cas_i64(&g_gc_alloc_counter, &expected, 0))
+        {
+            rt_gc_collect();
+        }
     }
 }
 
@@ -766,14 +789,12 @@ void rt_gc_shutdown(void)
 
     gc_unlock();
 
-    /* Destroy lock primitive. */
-    if (g_gc.lock_init)
-    {
+    /* Destroy and reinitialize lock primitive so it can be reused. */
 #ifdef _WIN32
-        DeleteCriticalSection(&g_gc.lock);
+    DeleteCriticalSection(&g_gc_lock_cs);
+    g_gc_lock_once = (INIT_ONCE)INIT_ONCE_STATIC_INIT;
 #else
-        pthread_mutex_destroy(&g_gc.lock);
+    pthread_mutex_destroy(&g_gc_lock_mtx);
+    g_gc_lock_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
 #endif
-        g_gc.lock_init = 0;
-    }
 }

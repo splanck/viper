@@ -15,48 +15,32 @@
 
 #include "viper/runtime/rt.h"
 
-#include "tests/common/PosixCompat.h"
-#include "tests/common/WaitCompat.hpp"
+#include "common/ProcessIsolation.hpp"
 #include <cassert>
 #include <string>
 
-namespace
+static void call_input_12abc()
 {
-void expect_input_failure(const char *literal)
-{
-    int pipes[2];
-    assert(pipe(pipes) == 0);
-
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0)
-    {
-        close(pipes[0]);
-        dup2(pipes[1], 2);
-        rt_to_double(rt_const_cstr(literal));
-        _exit(0);
-    }
-
-    close(pipes[1]);
-    char buffer[256];
-    ssize_t n = read(pipes[0], buffer, sizeof(buffer) - 1);
-    if (n < 0)
-        n = 0;
-    buffer[n] = '\0';
-    close(pipes[0]);
-
-    int status = 0;
-    waitpid(pid, &status, 0);
-    std::string stderrOutput(buffer);
-    bool trapped = stderrOutput.find("INPUT: expected numeric value") != std::string::npos;
-    assert(trapped);
+    rt_to_double(rt_const_cstr("12abc"));
 }
-} // namespace
 
-int main()
+static void call_input_7_5foo()
 {
-    SKIP_TEST_NO_FORK();
-    expect_input_failure("12abc");
-    expect_input_failure("7.5foo");
+    rt_to_double(rt_const_cstr("7.5foo"));
+}
+
+int main(int argc, char *argv[])
+{
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
+    auto result = viper::tests::runIsolated(call_input_12abc);
+    bool trapped = result.stderrText.find("INPUT: expected numeric value") != std::string::npos;
+    assert(trapped);
+
+    result = viper::tests::runIsolated(call_input_7_5foo);
+    trapped = result.stderrText.find("INPUT: expected numeric value") != std::string::npos;
+    assert(trapped);
+
     return 0;
 }

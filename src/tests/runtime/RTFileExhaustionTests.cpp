@@ -14,8 +14,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tests/common/PosixCompat.h"
-
 #include "rt_binfile.h"
 #include "rt_internal.h"
 #include "rt_string.h"
@@ -32,7 +30,7 @@
 #include <unistd.h>
 #endif
 
-// ── vm_trap override ────────────────────────────────────────────────────────
+// -- vm_trap override ---------------------------------------------------------
 namespace
 {
 int g_trap_count = 0;
@@ -50,9 +48,9 @@ static rt_string make_string(const char *s)
     return rt_string_from_bytes(s, strlen(s));
 }
 
-// ── Test: BinFile.Open traps with path and strerror on fd exhaustion ────────
+// -- Test: BinFile.Open traps with path and strerror on fd exhaustion ----------
 // Strategy: Lower RLIMIT_NOFILE to a very small value, open files until
-// exhausted, then try rt_binfile_open → should trap with descriptive message.
+// exhausted, then try rt_binfile_open -> should trap with descriptive message.
 static void test_binfile_open_fd_exhaustion()
 {
 #if !defined(_WIN32)
@@ -77,7 +75,7 @@ static void test_binfile_open_fd_exhaustion()
         files.push_back(f);
     }
 
-    // Now try to open via BinFile — should fail with EMFILE
+    // Now try to open via BinFile -- should fail with EMFILE
     g_trap_count = 0;
     g_last_trap.clear();
     void *bf = rt_binfile_open(make_string("/tmp/viper_fdtest.txt"), make_string("w"));
@@ -100,8 +98,6 @@ static void test_binfile_open_fd_exhaustion()
 
 int main()
 {
-    SKIP_TEST_NO_FORK();
-
     test_binfile_open_fd_exhaustion();
     printf("  PASS: BinFile.Open traps with path on fd exhaustion\n");
 

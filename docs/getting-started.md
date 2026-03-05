@@ -10,6 +10,16 @@ Welcome to Viper! This guide will help you build and run the Viper compiler tool
 
 ---
 
+## Platform Guides
+
+For detailed, platform-specific installation instructions (prerequisites, exact install commands, and troubleshooting):
+
+- **[macOS](getting-started/macos.md)**
+- **[Linux](getting-started/linux.md)**
+- **[Windows](getting-started/windows.md)**
+
+---
+
 ## Prerequisites
 
 Before you begin, ensure you have:

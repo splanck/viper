@@ -14,11 +14,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "VMTestHook.hpp"
+#include "common/ProcessIsolation.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"
 
-#include "tests/common/PosixCompat.h"
-#include "tests/common/WaitCompat.hpp"
 #include <cassert>
 #include <optional>
 #include <string>
@@ -29,35 +28,6 @@ using namespace il::core;
 
 namespace
 {
-std::string captureTrap(Module &module, const Function &fn, const std::vector<il::vm::Slot> &args)
-{
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], 2);
-        close(fds[1]);
-        il::vm::VM vm(module);
-        il::vm::VMTestHook::run(vm, fn, args);
-        _exit(0);
-    }
-
-    close(fds[1]);
-    char buffer[512];
-    ssize_t n = read(fds[0], buffer, sizeof(buffer) - 1);
-    if (n < 0)
-        n = 0;
-    buffer[n] = '\0';
-    close(fds[0]);
-
-    int status = 0;
-    waitpid(pid, &status, 0);
-    return std::string(buffer);
-}
-
 bool trapHeaderMatches(const std::string &diag, std::string_view function, std::string_view kind)
 {
     std::string_view view(diag);
@@ -109,9 +79,11 @@ bool trapHeaderMatches(const std::string &diag, std::string_view function, std::
 }
 } // namespace
 
-int main()
+int main(int argc, char *argv[])
 {
-    SKIP_TEST_NO_FORK();
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -132,13 +104,31 @@ int main()
     il::vm::Slot slot{};
     slot.i64 = 42;
 
-    const std::string extraDiag = captureTrap(module, tooManyFn, {slot});
-    assert(trapHeaderMatches(extraDiag, "too_many_args", "InvalidOperation"));
-    assert(extraDiag.find("argument count mismatch") != std::string::npos);
+    // Capture: too many args
+    {
+        auto result = viper::tests::runIsolated(
+            [&]()
+            {
+                il::vm::VM vm(module);
+                il::vm::VMTestHook::run(vm, tooManyFn, {slot});
+            });
+        assert(result.trapped());
+        assert(trapHeaderMatches(result.stderrText, "too_many_args", "InvalidOperation"));
+        assert(result.stderrText.find("argument count mismatch") != std::string::npos);
+    }
 
-    const std::string missingDiag = captureTrap(module, tooFewFn, {});
-    assert(trapHeaderMatches(missingDiag, "too_few_args", "InvalidOperation"));
-    assert(missingDiag.find("argument count mismatch") != std::string::npos);
+    // Capture: too few args
+    {
+        auto result = viper::tests::runIsolated(
+            [&]()
+            {
+                il::vm::VM vm(module);
+                il::vm::VMTestHook::run(vm, tooFewFn, {});
+            });
+        assert(result.trapped());
+        assert(trapHeaderMatches(result.stderrText, "too_few_args", "InvalidOperation"));
+        assert(result.stderrText.find("argument count mismatch") != std::string::npos);
+    }
 
     return 0;
 }

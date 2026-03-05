@@ -84,16 +84,21 @@ static size_t g_cap_ = 0;
 static size_t g_count_ = 0;
 
 #ifdef _WIN32
+static INIT_ONCE g_lock_once_ = INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION g_lock_;
-static int g_lock_init_ = 0;
+
+static BOOL CALLBACK intern_lock_init_callback(PINIT_ONCE InitOnce, PVOID Param, PVOID *Ctx)
+{
+    (void)InitOnce;
+    (void)Param;
+    (void)Ctx;
+    InitializeCriticalSection(&g_lock_);
+    return TRUE;
+}
 
 static void intern_lock(void)
 {
-    if (!g_lock_init_)
-    {
-        InitializeCriticalSection(&g_lock_);
-        g_lock_init_ = 1;
-    }
+    InitOnceExecuteOnce(&g_lock_once_, intern_lock_init_callback, NULL, NULL);
     EnterCriticalSection(&g_lock_);
 }
 
@@ -220,10 +225,7 @@ void rt_string_intern_drain(void)
     intern_unlock();
 
 #ifdef _WIN32
-    if (g_lock_init_)
-    {
-        DeleteCriticalSection(&g_lock_);
-        g_lock_init_ = 0;
-    }
+    DeleteCriticalSection(&g_lock_);
+    g_lock_once_ = (INIT_ONCE)INIT_ONCE_STATIC_INIT;
 #endif
 }

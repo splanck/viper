@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/ProcessIsolation.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -22,8 +23,6 @@
 #include "il/core/Value.hpp"
 #include "vm/VM.hpp"
 
-#include "tests/common/PosixCompat.h"
-#include "tests/common/WaitCompat.hpp"
 #include <cassert>
 #include <string>
 
@@ -204,51 +203,34 @@ il::core::Module makeMisalignedStoreModule(il::core::Type::Kind kind)
     return m;
 }
 
-std::string runModuleAndCapture(il::core::Module module)
-{
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], 2);
-        il::vm::VM vm(module);
-        vm.run();
-        _exit(0);
-    }
-
-    close(fds[1]);
-    char buf[512];
-    ssize_t n = read(fds[0], buf, sizeof(buf) - 1);
-    if (n > 0)
-        buf[n] = '\0';
-    else
-        buf[0] = '\0';
-    close(fds[0]);
-
-    int status = 0;
-    waitpid(pid, &status, 0);
-    return std::string(buf);
-}
-
 } // namespace
 
-int main()
+int main(int argc, char *argv[])
 {
-    SKIP_TEST_NO_FORK();
-    std::string loadTrap = runModuleAndCapture(makeLoadModule());
-    bool loadOk =
-        loadTrap.find("Trap @main:entry#0 line 1: InvalidOperation (code=0): null load") !=
-        std::string::npos;
-    assert(loadOk);
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
 
-    std::string storeTrap = runModuleAndCapture(makeStoreModule());
-    bool storeOk =
-        storeTrap.find("Trap @main:entry#0 line 2: InvalidOperation (code=0): null store") !=
-        std::string::npos;
-    assert(storeOk);
+    {
+        auto m = makeLoadModule();
+        auto result = viper::tests::runModuleIsolated(m);
+        assert(result.trapped());
+        bool loadOk =
+            result.stderrText.find(
+                "Trap @main:entry#0 line 1: InvalidOperation (code=0): null load") !=
+            std::string::npos;
+        assert(loadOk);
+    }
+
+    {
+        auto m = makeStoreModule();
+        auto result = viper::tests::runModuleIsolated(m);
+        assert(result.trapped());
+        bool storeOk =
+            result.stderrText.find(
+                "Trap @main:entry#0 line 2: InvalidOperation (code=0): null store") !=
+            std::string::npos;
+        assert(storeOk);
+    }
 
     const il::core::Type::Kind misalignedKinds[] = {il::core::Type::Kind::I16,
                                                     il::core::Type::Kind::I32,
@@ -261,16 +243,23 @@ int main()
 
     for (il::core::Type::Kind kind : misalignedKinds)
     {
-        std::string diag = runModuleAndCapture(makeMisalignedLoadModule(kind));
-        bool trapped = diag.find("InvalidOperation (code=0): misaligned load") != std::string::npos;
+        auto m = makeMisalignedLoadModule(kind);
+        auto result = viper::tests::runModuleIsolated(m);
+        assert(result.trapped());
+        bool trapped =
+            result.stderrText.find("InvalidOperation (code=0): misaligned load") !=
+            std::string::npos;
         assert(trapped);
     }
 
     for (il::core::Type::Kind kind : misalignedKinds)
     {
-        std::string diag = runModuleAndCapture(makeMisalignedStoreModule(kind));
+        auto m = makeMisalignedStoreModule(kind);
+        auto result = viper::tests::runModuleIsolated(m);
+        assert(result.trapped());
         bool trapped =
-            diag.find("InvalidOperation (code=0): misaligned store") != std::string::npos;
+            result.stderrText.find("InvalidOperation (code=0): misaligned store") !=
+            std::string::npos;
         assert(trapped);
     }
 

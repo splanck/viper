@@ -91,6 +91,7 @@ call :build_demo viperide "%APPS_DIR%\viperide"
 call :build_demo pacman-zia "%GAMES_DIR%\pacman"
 call :build_demo sqldb "%APPS_DIR%\sqldb"
 call :build_demo chess-zia "%GAMES_DIR%\chess"
+call :build_demo sidescroller "%GAMES_DIR%\sidescroller"
 
 echo ==============================================
 if %FAILED%==0 (

@@ -14,8 +14,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tests/common/PosixCompat.h"
-
 #include "support/source_manager.hpp"
 #include "tools/common/source_loader.hpp"
 
@@ -72,8 +70,6 @@ static void test_source_too_large()
 
 int main()
 {
-    SKIP_TEST_NO_FORK();
-
     test_source_too_large();
     printf("  PASS: loadSourceBuffer rejects file > 256 MB\n");
 

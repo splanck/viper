@@ -9,12 +9,10 @@
 // Purpose: Verify that LineWriter and BinFile trap cleanly on write/flush
 //          failures (disk full, I/O error) instead of silently losing data.
 // Key invariants: fputc, fwrite, and fflush return values must be checked.
-// Ownership/Lifetime: Uses fork-based isolation for trap verification.
+// Ownership/Lifetime: Uses vm_trap override for trap verification.
 // Links: src/runtime/io/rt_linewriter.c, src/runtime/io/rt_binfile.c
 //
 //===----------------------------------------------------------------------===//
-
-#include "tests/common/PosixCompat.h"
 
 #include "rt_binfile.h"
 #include "rt_internal.h"
@@ -31,7 +29,7 @@
 #include <unistd.h>
 #endif
 
-// ── vm_trap override ────────────────────────────────────────────────────────
+// -- vm_trap override ---------------------------------------------------------
 namespace
 {
 int g_trap_count = 0;
@@ -49,7 +47,7 @@ static rt_string make_string(const char *s)
     return rt_string_from_bytes(s, strlen(s));
 }
 
-// ── Test: LineWriter.WriteChar traps on fputc failure ───────────────────────
+// -- Test: LineWriter.WriteChar traps on fputc failure ------------------------
 // Strategy: Open a LineWriter to a real file, then replace its internal FILE*
 // with a read-only stream so fputc returns EOF.
 static void test_linewriter_write_char_traps()
@@ -61,7 +59,7 @@ static void test_linewriter_write_char_traps()
 
     // Now replace the FILE* with a read-only stream to force fputc to fail.
     // The struct layout is: { FILE *fp; int8_t closed; rt_string newline; }
-    // We open /dev/null in read-only mode — fputc to a read-only stream = EOF.
+    // We open /dev/null in read-only mode -- fputc to a read-only stream = EOF.
     FILE **fp_ptr = (FILE **)lw;
     FILE *orig_fp = *fp_ptr;
     fclose(orig_fp);
@@ -83,15 +81,15 @@ static void test_linewriter_write_char_traps()
     remove(path);
 }
 
-// ── Test: LineWriter.Flush traps on fflush failure ──────────────────────────
-// Strategy: Same approach — replace FILE* with a broken stream.
+// -- Test: LineWriter.Flush traps on fflush failure ---------------------------
+// Strategy: Same approach -- replace FILE* with a broken stream.
 static void test_linewriter_flush_traps()
 {
     const char *path = "/tmp/viper_diskfull_test_fl.txt";
     void *lw = rt_linewriter_open(make_string(path));
     assert(lw != nullptr);
 
-    // Replace FILE* with a read-only stream — fflush on a read-only
+    // Replace FILE* with a read-only stream -- fflush on a read-only
     // stream that hasn't been read returns 0 on most platforms, so we
     // need a different approach. Write some data first, then close the
     // underlying fd to make fflush fail.
@@ -101,7 +99,7 @@ static void test_linewriter_flush_traps()
     // Write something to dirty the buffer
     fputc('X', fp);
 
-    // Close the underlying fd — next fflush will fail with EBADF
+    // Close the underlying fd -- next fflush will fail with EBADF
     int fd = fileno(fp);
     close(fd);
 
@@ -112,12 +110,12 @@ static void test_linewriter_flush_traps()
     assert(g_last_trap.find("Flush") != std::string::npos);
     assert(g_last_trap.find("flush failed") != std::string::npos);
 
-    // The FILE* is now broken — set to NULL so finalizer doesn't double-close
+    // The FILE* is now broken -- set to NULL so finalizer doesn't double-close
     *fp_ptr = nullptr;
     remove(path);
 }
 
-// ── Test: BinFile.Flush traps on fflush failure ─────────────────────────────
+// -- Test: BinFile.Flush traps on fflush failure ------------------------------
 static void test_binfile_flush_traps()
 {
     const char *path = "/tmp/viper_diskfull_test_bf.txt";
@@ -146,8 +144,6 @@ static void test_binfile_flush_traps()
 
 int main()
 {
-    SKIP_TEST_NO_FORK();
-
     test_linewriter_write_char_traps();
     printf("  PASS: LineWriter.WriteChar traps on fputc failure\n");
 

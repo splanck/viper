@@ -110,12 +110,18 @@ static inline int atomic_cas_u64(volatile uint64_t *ptr, uint64_t *expected, uin
 }
 
 /// @brief Atomic load for 64-bit values.
+/// CONC-004 fix: ARM64 Windows uses __dmb for CPU barrier instead of
+/// compiler-only _ReadWriteBarrier() which is insufficient on weak memory models.
 static inline uint64_t atomic_load_u64(volatile uint64_t *ptr)
 {
 #if RT_COMPILER_MSVC
-#if defined(_M_X64) || defined(_M_ARM64)
+#if defined(_M_ARM64)
     uint64_t value = *ptr;
-    _ReadWriteBarrier();
+    __dmb(_ARM64_BARRIER_ISH); /* acquire: CPU load fence */
+    return value;
+#elif defined(_M_X64)
+    uint64_t value = *ptr;
+    _ReadWriteBarrier(); /* x86-64 TSO: compiler fence suffices */
     return value;
 #else
     return (uint64_t)_InterlockedCompareExchange64((volatile long long *)ptr, 0, 0);
@@ -126,10 +132,15 @@ static inline uint64_t atomic_load_u64(volatile uint64_t *ptr)
 }
 
 /// @brief Atomic store for 64-bit values.
+/// CONC-004 fix: ARM64 Windows uses __dmb for CPU barrier.
 static inline void atomic_store_u64(volatile uint64_t *ptr, uint64_t value)
 {
 #if RT_COMPILER_MSVC
-#if defined(_M_X64) || defined(_M_ARM64)
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH); /* release: CPU store fence */
+    *ptr = value;
+    __dmb(_ARM64_BARRIER_ISH);
+#elif defined(_M_X64)
     _ReadWriteBarrier();
     *ptr = value;
     _ReadWriteBarrier();
@@ -142,12 +153,14 @@ static inline void atomic_store_u64(volatile uint64_t *ptr, uint64_t value)
 }
 
 /// @brief Per-size-class pool state.
+/// CONC-005 fix: volatile qualifiers removed — all accesses use __atomic_*
+/// builtins or CAS operations which provide their own compiler+CPU barriers.
 typedef struct rt_pool_state
 {
-    volatile uint64_t freelist_tagged; ///< Lock-free freelist head (tagged pointer)
-    rt_pool_slab_t *volatile slabs;    ///< List of slabs (atomic for thread-safe insertion)
-    volatile size_t allocated;         ///< Count of blocks currently allocated
-    volatile size_t free_count;        ///< Count of blocks on freelist
+    uint64_t freelist_tagged;     ///< Lock-free freelist head (tagged pointer, via atomic CAS)
+    rt_pool_slab_t *slabs;        ///< List of slabs (via atomic CAS for thread-safe insertion)
+    size_t allocated;             ///< Count of blocks currently allocated (via __atomic_*)
+    size_t free_count;            ///< Count of blocks on freelist (via __atomic_*)
 } rt_pool_state_t;
 
 /// @brief Global pool state for each size class.

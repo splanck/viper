@@ -55,7 +55,13 @@ static vaud_context_t g_audio_ctx = NULL;
 static volatile int g_audio_initialized = 0;
 
 /// @brief Spinlock for thread-safe initialization (RACE-009 fix).
+/// CONC-008: kept as spinlock (pthread_once doesn't support retry-on-failure);
+/// yield hint added to reduce CPU waste under contention.
 static volatile int g_audio_init_lock = 0;
+
+#if !defined(_WIN32)
+#include <sched.h>
+#endif
 
 //===----------------------------------------------------------------------===//
 // Sound Wrapper Structure
@@ -132,7 +138,11 @@ static int ensure_audio_init(void)
     // Slow path: acquire spinlock and double-check
     while (__atomic_test_and_set(&g_audio_init_lock, __ATOMIC_ACQUIRE))
     {
-        // Spin until we acquire the lock
+#ifdef _WIN32
+        SwitchToThread();
+#else
+        sched_yield();
+#endif
     }
 
     // Double-check under lock
@@ -172,7 +182,11 @@ void rt_audio_shutdown(void)
     // Acquire lock to ensure exclusive access during shutdown
     while (__atomic_test_and_set(&g_audio_init_lock, __ATOMIC_ACQUIRE))
     {
-        // Spin until we acquire the lock
+#ifdef _WIN32
+        SwitchToThread();
+#else
+        sched_yield();
+#endif
     }
 
     if (g_audio_ctx)

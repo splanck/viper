@@ -14,49 +14,13 @@
 
 #include "rt_threads.h"
 
-#include <cassert>
-#include <string>
-
-#if defined(_WIN32)
-
-int main()
-{
-    return 0;
-}
-
-#else
-
-#include "tests/common/PosixCompat.h"
-#include "tests/common/WaitCompat.hpp"
+#include "common/ProcessIsolation.hpp"
 #include <atomic>
+#include <cassert>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
-
-static std::string capture(void (*fn)())
-{
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], 2);
-        fn();
-        _exit(0);
-    }
-    close(fds[1]);
-    char buf[256];
-    ssize_t n = read(fds[0], buf, sizeof(buf) - 1);
-    if (n > 0)
-        buf[n] = '\0';
-    else
-        buf[0] = '\0';
-    int status = 0;
-    waitpid(pid, &status, 0);
-    return std::string(buf);
-}
 
 static void call_enter_null()
 {
@@ -129,15 +93,16 @@ static void test_wait_for_timeout()
     rt_monitor_exit(obj);
 }
 
-int main()
+int main(int argc, char *argv[])
 {
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
     // Trap messages should be stable.
-    std::string out = capture(call_enter_null);
-    assert(out.find("Monitor.Enter: null object") != std::string::npos);
+    auto result = viper::tests::runIsolated(call_enter_null);
+    assert(result.stderrText.find("Monitor.Enter: null object") != std::string::npos);
 
     test_wait_for_timeout();
     test_pause_all_fifo();
     return 0;
 }
-
-#endif

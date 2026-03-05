@@ -15,9 +15,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/ProcessIsolation.hpp"
 #include "il/build/IRBuilder.hpp"
-#include "tests/common/PosixCompat.h"
-#include "tests/common/WaitCompat.hpp"
 #include "viper/vm/VM.hpp"
 #include <cassert>
 #include <cstdlib>
@@ -77,37 +76,15 @@ static void testSmallStackOverflow()
 
     auto m = buildAllocaModule(allocSize);
 
-    // Fork to capture trap output
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], STDERR_FILENO);
-
-        il::vm::RunConfig config;
-        config.stackBytes = stackSize;
-        (void)il::vm::runModule(m, config);
-        _exit(0);
-    }
-
-    close(fds[1]);
-    char buf[512];
-    ssize_t n = read(fds[0], buf, sizeof(buf) - 1);
-    close(fds[0]);
-    if (n > 0)
-        buf[n] = '\0';
-    else
-        buf[0] = '\0';
-
-    int status = 0;
-    waitpid(pid, &status, 0);
-
-    std::string out(buf);
-    bool hasOverflow = out.find("stack overflow in alloca") != std::string::npos;
+    auto result = viper::tests::runIsolated(
+        [&]()
+        {
+            il::vm::RunConfig config;
+            config.stackBytes = stackSize;
+            (void)il::vm::runModule(m, config);
+        });
+    assert(result.trapped());
+    bool hasOverflow = result.stderrText.find("stack overflow in alloca") != std::string::npos;
     assert(hasOverflow && "Small stack should trap on large allocation");
 }
 
@@ -134,42 +111,23 @@ static void testVerySmallStack()
 
     auto m = buildAllocaModule(allocSize);
 
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], STDERR_FILENO);
-
-        il::vm::RunConfig config;
-        config.stackBytes = stackSize;
-        (void)il::vm::runModule(m, config);
-        _exit(0);
-    }
-
-    close(fds[1]);
-    char buf[512];
-    ssize_t n = read(fds[0], buf, sizeof(buf) - 1);
-    close(fds[0]);
-    if (n > 0)
-        buf[n] = '\0';
-    else
-        buf[0] = '\0';
-
-    int status = 0;
-    waitpid(pid, &status, 0);
-
-    std::string out(buf);
-    bool hasOverflow = out.find("stack overflow in alloca") != std::string::npos;
+    auto result = viper::tests::runIsolated(
+        [&]()
+        {
+            il::vm::RunConfig config;
+            config.stackBytes = stackSize;
+            (void)il::vm::runModule(m, config);
+        });
+    assert(result.trapped());
+    bool hasOverflow = result.stderrText.find("stack overflow in alloca") != std::string::npos;
     assert(hasOverflow && "Very small stack should trap on 512-byte allocation");
 }
 
-int main()
+int main(int argc, char *argv[])
 {
-    SKIP_TEST_NO_FORK();
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
     testLargeStackAllocation();
     testSmallStackOverflow();
     testDefaultStackSize();

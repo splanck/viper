@@ -37,6 +37,8 @@
 
 #include "rt_stack_safety.h"
 
+#include "rt_platform.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,8 +47,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-/// @brief Alternate stack for signal handling (not used on Windows).
-static volatile int g_stack_safety_initialized = 0;
+/// @brief Initialization flag (CONC-007 fix: uses atomics for correctness).
+static int g_stack_safety_initialized = 0;
 
 /// @brief Vectored exception handler for stack overflow detection.
 static LONG WINAPI stack_overflow_handler(EXCEPTION_POINTERS *ep)
@@ -70,13 +72,13 @@ static LONG WINAPI stack_overflow_handler(EXCEPTION_POINTERS *ep)
 
 void rt_init_stack_safety(void)
 {
-    if (g_stack_safety_initialized)
+    if (__atomic_load_n(&g_stack_safety_initialized, __ATOMIC_ACQUIRE))
         return;
 
     // Add vectored exception handler (called before structured handlers)
     // Use 1 to make it first in the handler chain
     AddVectoredExceptionHandler(1, stack_overflow_handler);
-    g_stack_safety_initialized = 1;
+    __atomic_store_n(&g_stack_safety_initialized, 1, __ATOMIC_RELEASE);
 }
 
 void rt_trap_stack_overflow(void)
@@ -96,7 +98,7 @@ void rt_trap_stack_overflow(void)
 
 /// @brief Alternate signal stack for handling SIGSEGV.
 static char g_alt_stack[SIGSTKSZ];
-static volatile int g_stack_safety_initialized = 0;
+static int g_stack_safety_initialized = 0;
 
 /// @brief Signal handler for SIGSEGV (stack overflow detection).
 static void sigsegv_handler(int sig, siginfo_t *info, void *context)
@@ -118,7 +120,7 @@ static void sigsegv_handler(int sig, siginfo_t *info, void *context)
 
 void rt_init_stack_safety(void)
 {
-    if (g_stack_safety_initialized)
+    if (__atomic_load_n(&g_stack_safety_initialized, __ATOMIC_ACQUIRE))
         return;
 
     // Set up alternate signal stack
@@ -143,7 +145,7 @@ void rt_init_stack_safety(void)
     sigaction(SIGSEGV, &sa, NULL);
     sigaction(SIGBUS, &sa, NULL);
 
-    g_stack_safety_initialized = 1;
+    __atomic_store_n(&g_stack_safety_initialized, 1, __ATOMIC_RELEASE);
 }
 
 void rt_trap_stack_overflow(void)

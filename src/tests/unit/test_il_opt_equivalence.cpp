@@ -14,6 +14,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/ProcessIsolation.hpp"
 #include "common/VmFixture.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Instr.hpp"
@@ -25,11 +26,11 @@
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 #include "tests/TestHarness.hpp"
-#include "tests/common/PosixCompat.h"
-#include "tests/common/WaitCompat.hpp"
 #include <algorithm>
 #include <array>
+#include <cinttypes>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <random>
@@ -363,90 +364,50 @@ std::string describeFailure(std::string_view pipeline, const GeneratedProgram &p
     return oss.str();
 }
 
-#ifdef _WIN32
-// Windows version: run directly without process isolation
+/// Marker prefix written by the child to encode the return value in stderr.
+static constexpr const char *kValuePrefix = "VIPER_OPT_EQ_VALUE=";
+
 ExecResult runModuleIsolated(const il::core::Module &module)
 {
     ExecResult result{};
-    try
+
+    auto childResult = viper::tests::runIsolated(
+        [&]()
+        {
+            viper::tests::VmFixture fixture;
+            il::core::Module copy = module;
+            const std::int64_t value = fixture.run(copy);
+            // Encode the return value in stderr so the parent can parse it.
+            fprintf(stderr, "%s%" PRId64 "\n", kValuePrefix, value);
+        });
+
+    result.stderrText = childResult.stderrText;
+    result.exitCode = childResult.exitCode;
+
+    if (childResult.trapped())
     {
-        viper::tests::VmFixture fixture;
-        il::core::Module copy = module;
-        result.value = fixture.run(copy);
-        result.exitCode = 0;
-        result.trapped = false;
-    }
-    catch (...)
-    {
-        result.exitCode = 1;
         result.trapped = true;
     }
+    else
+    {
+        // Parse the value from stderr
+        auto pos = result.stderrText.find(kValuePrefix);
+        if (pos != std::string::npos)
+        {
+            pos += std::strlen(kValuePrefix);
+            char *end = nullptr;
+            result.value = std::strtoll(result.stderrText.c_str() + pos, &end, 10);
+            result.trapped = false;
+        }
+        else
+        {
+            // No value found - treat as trapped
+            result.trapped = true;
+        }
+    }
+
     return result;
 }
-#else
-// POSIX version: run in isolated subprocess to catch crashes
-ExecResult runModuleIsolated(const il::core::Module &module)
-{
-    ExecResult result{};
-
-    std::array<int, 2> dataPipe{};
-    std::array<int, 2> errPipe{};
-    [[maybe_unused]] int okData = ::pipe(dataPipe.data());
-    [[maybe_unused]] int okErr = ::pipe(errPipe.data());
-
-    const pid_t pid = ::fork();
-    if (pid == 0)
-    {
-        ::close(dataPipe[0]);
-        ::close(errPipe[0]);
-        ::dup2(errPipe[1], STDERR_FILENO);
-
-        viper::tests::VmFixture fixture;
-        il::core::Module copy = module;
-        const std::int64_t value = fixture.run(copy);
-        [[maybe_unused]] ssize_t wrote = ::write(dataPipe[1], &value, sizeof(value));
-        _exit(0);
-    }
-
-    ::close(dataPipe[1]);
-    ::close(errPipe[1]);
-
-    std::int64_t value = 0;
-    const ssize_t bytes = ::read(dataPipe[0], &value, sizeof(value));
-    ::close(dataPipe[0]);
-
-    std::string stderrText;
-    std::array<char, 512> buffer{};
-    while (true)
-    {
-        const ssize_t count = ::read(errPipe[0], buffer.data(), buffer.size());
-        if (count <= 0)
-            break;
-        stderrText.append(buffer.data(), static_cast<std::size_t>(count));
-    }
-    ::close(errPipe[0]);
-
-    int status = 0;
-    [[maybe_unused]] const pid_t waited = ::waitpid(pid, &status, 0);
-
-    result.stderrText = std::move(stderrText);
-    if (WIFEXITED(status))
-    {
-        result.exitCode = WEXITSTATUS(status);
-    }
-    else if (WIFSIGNALED(status))
-    {
-        result.exitCode = 128 + WTERMSIG(status);
-    }
-
-    result.trapped = (bytes != sizeof(value)) || result.exitCode != 0;
-    if (!result.trapped)
-    {
-        result.value = value;
-    }
-    return result;
-}
-#endif
 
 bool verifyModule(il::core::Module &module, std::string &diagOut)
 {
@@ -617,7 +578,8 @@ TEST(OptimizerDifferential, PipelinesPreserveVmSemantics)
 
 int main(int argc, char **argv)
 {
-    SKIP_TEST_NO_FORK();
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }
