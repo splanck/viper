@@ -166,6 +166,7 @@ enum class OperandParseKind : uint8_t
     TypeImmediate, ///< Parse a type literal influencing the instruction type.
     BranchTarget,  ///< Parse a successor label with optional arguments.
     Call,          ///< Parse call-style callee and argument list syntax.
+    CallIndirect,  ///< Parse call.indirect %fnPtr(%arg1, ...) syntax.
     Switch         ///< Parse switch scrutinee/default/case syntax.
 };
 

@@ -51,7 +51,7 @@ L10:
   .loc 1 1 11
   %t1 = const_str @.L0
   .loc 1 1 19
-  %t2 = call @Viper.String.Substring(%t1, 2, 2)
+  %t2:str = call @Viper.String.Substring(%t1, 2, 2)
   .loc 1 1 19
   call @Viper.Terminal.PrintStr(%t2)
   .loc 1 1 19

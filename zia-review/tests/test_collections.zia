@@ -1,0 +1,102 @@
+module TestCollections;
+bind "./_support";
+
+func start() {
+    testListBasic();
+    testListOperations();
+    testMapBasic();
+    testMapOperations();
+    report();
+}
+
+func testListBasic() {
+    setTest("list-basic");
+
+    // 1. Create list literal and check count
+    var list = [10, 20, 30];
+    assertEqInt(list.count(), 3, "list literal count");
+
+    // 2. Get element by index
+    assertEqInt(list[0], 10, "list index 0");
+    assertEqInt(list[1], 20, "list index 1");
+    assertEqInt(list[2], 30, "list index 2");
+
+    // 3. Add element
+    list.add(40);
+    assertEqInt(list.count(), 4, "list count after add");
+    assertEqInt(list[3], 40, "list added element");
+
+    // 4. Set element at index
+    list.set(1, 99);
+    assertEqInt(list[1], 99, "list set overwrites");
+
+    // 5. Remove element at index
+    list.removeAt(0);
+    assertEqInt(list.count(), 3, "list count after removeAt");
+    assertEqInt(list[0], 99, "elements shift after removeAt");
+}
+
+func testListOperations() {
+    setTest("list-ops");
+
+    // 6. List iteration with for-in
+    var list = [1, 2, 3, 4, 5];
+    var sum = 0;
+    for item in list {
+        sum += item;
+    }
+    assertEqInt(sum, 15, "list for-in sum");
+
+    // 7. List with negative values
+    var negList = [-5, -10, -15];
+    assertEqInt(negList[0], -5, "list negative value");
+
+    // 8. List clear
+    var cl = [1, 2, 3];
+    cl.clear();
+    assertEqInt(cl.count(), 0, "list clear");
+
+    // 9. Large list
+    var big = [0];
+    big.clear();
+    for (var i = 0; i < 100; i += 1) {
+        big.add(i);
+    }
+    assertEqInt(big.count(), 100, "large list count");
+    assertEqInt(big[99], 99, "large list last element");
+}
+
+func testMapBasic() {
+    setTest("map-basic");
+
+    // 10. Create map literal
+    var m = {"key1": 100, "key2": 200};
+    assertEqInt(m.count(), 2, "map literal count");
+
+    // 11. Get by key
+    assertEqInt(m.get("key1"), 100, "map get");
+
+    // 12. Set new key
+    m.set("key3", 300);
+    assertEqInt(m.count(), 3, "map count after set");
+    assertEqInt(m.get("key3"), 300, "map get new key");
+}
+
+func testMapOperations() {
+    setTest("map-ops");
+
+    var m = {"a": 1, "b": 2, "c": 3};
+
+    // 13. Has key
+    assertTrue(m.has("a"), "map has existing key");
+    assertFalse(m.has("z"), "map has missing key");
+
+    // 14. Remove key
+    m.remove("b");
+    assertEqInt(m.count(), 2, "map count after remove");
+    assertFalse(m.has("b"), "map removed key gone");
+
+    // 15. Overwrite existing key
+    m.set("a", 999);
+    assertEqInt(m.get("a"), 999, "map overwrite value");
+}

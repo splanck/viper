@@ -6,15 +6,15 @@ func @main() -> i64 {
 entry:
   %t0 = srem.chk0 -3, 2
   call @rt_print_i64(%t0)
-  %nl0 = call @rt_str_chr(10)
+  %nl0:str = call @rt_str_chr(10)
   call @rt_print_str(%nl0)
   %t1 = srem.chk0 3, -2
   call @rt_print_i64(%t1)
-  %nl1 = call @rt_str_chr(10)
+  %nl1:str = call @rt_str_chr(10)
   call @rt_print_str(%nl1)
   %t2 = srem.chk0 -3, -2
   call @rt_print_i64(%t2)
-  %nl2 = call @rt_str_chr(10)
+  %nl2:str = call @rt_str_chr(10)
   call @rt_print_str(%nl2)
   ret 0
 }

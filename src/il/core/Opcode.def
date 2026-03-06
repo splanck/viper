@@ -1105,7 +1105,7 @@ IL_OPCODE(CallIndirect,
           0,
           false,
           VM_DISPATCH(CallIndirect),
-          makeParseSpec(OperandParseKind::Value, "callee"),
+          makeParseSpec(OperandParseKind::CallIndirect),
           makeParseSpec(),
           makeParseSpec(),
           makeParseSpec())

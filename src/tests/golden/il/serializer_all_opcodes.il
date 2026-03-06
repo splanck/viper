@@ -48,7 +48,7 @@ entry:
   %t41 = addr_of @.Lstr
   %t42 = const_str @.Lstr
   %t43 = const_null
-  %t44 = call @do_work(%t41, 5)
+  %t44:i64 = call @do_work(%t41, 5)
   cbr %t18, compute(%t36, %t40), abort(%t43)
 compute(%wide:i64, %loaded:i64):
   br join(%t44, %t36)

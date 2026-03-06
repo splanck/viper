@@ -52,7 +52,7 @@ entry:
   br L10
 L10:
   .loc 1 1 4
-  %t2 = call @rt_arr_i64_new(3)
+  %t2:ptr = call @rt_arr_i64_new(3)
   .loc 1 1 4
   call @rt_arr_i64_retain(%t2)
   .loc 1 1 4
@@ -69,7 +69,7 @@ L20:
   .loc 1 2 10
   %t4 = load ptr, %t0
   .loc 1 2 10
-  %t5 = call @rt_arr_i64_len(%t4)
+  %t5:i64 = call @rt_arr_i64_len(%t4)
   .loc 1 2 10
   %t6 = scmp_lt 1, 0
   .loc 1 2 10
@@ -91,7 +91,7 @@ exit:
   ret 0
 bc_ok0:
   .loc 1 2 10
-  %t12 = call @rt_arr_i64_get(%t4, 1)
+  %t12:i64 = call @rt_arr_i64_get(%t4, 1)
   .loc 1 2 10
   call @Viper.Terminal.PrintI64(%t12)
   .loc 1 2 10

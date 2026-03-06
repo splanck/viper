@@ -46,7 +46,7 @@ func @main() -> i64 {
 entry:
   call @__mod_init$oop()
   %t0 = alloca 8
-  %t1 = call @rt_str_empty()
+  %t1:str = call @rt_str_empty()
   store str, %t0, %t1
   br L10
 L10:
@@ -79,7 +79,7 @@ if_test_0:
   .loc 1 2 12
   %t5 = const_str @.L0
   .loc 1 2 10
-  %t6 = call @rt_str_eq(%t4, %t5)
+  %t6:i1 = call @rt_str_eq(%t4, %t5)
   .loc 1 2 10
   %t7 = zext1 %t6
   .loc 1 2 10
@@ -109,7 +109,7 @@ if_test_01:
   .loc 1 3 13
   %t12 = const_str @.L2
   .loc 1 3 10
-  %t13 = call @rt_str_eq(%t11, %t12)
+  %t13:i1 = call @rt_str_eq(%t11, %t12)
   .loc 1 3 10
   %t14 = zext1 %t13
   .loc 1 3 10

@@ -45,7 +45,7 @@ entry:
   br L10
 L10:
   .loc 1 1 10
-  %t0 = call @rt_abs_i64(-1)
+  %t0:i64 = call @rt_abs_i64(-1)
   .loc 1 1 10
   call @Viper.Terminal.PrintI64(%t0)
   .loc 1 1 10
@@ -56,7 +56,7 @@ L10:
   br L20
 L20:
   .loc 1 2 10
-  %t2 = call @rt_abs_f64(-1.5)
+  %t2:f64 = call @rt_abs_f64(-1.5)
   .loc 1 2 10
   call @Viper.Terminal.PrintF64(%t2)
   .loc 1 2 10

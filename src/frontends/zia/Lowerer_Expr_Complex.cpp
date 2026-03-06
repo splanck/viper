@@ -512,7 +512,10 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
     Type ilResultType = mapType(resultType);
     bool expectsOptional = resultType && resultType->kind == TypeKindSem::Optional;
     TypeRef optionalInner = expectsOptional ? resultType->innerType() : nullptr;
-    TypeRef innerType = resultType;
+    // Unwrap type comes from the left operand's optional inner type, not the result.
+    // For nested coalescing (a ?? b) ?? c, the left may already be non-optional.
+    bool leftIsOptional = leftType && leftType->kind == TypeKindSem::Optional;
+    TypeRef innerType = leftIsOptional ? leftType->innerType() : nullptr;
 
     // For reference types (entities, etc.), check if the pointer is null
     // For value-type optionals, we would need to check the flag field
@@ -1017,6 +1020,7 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
 
     // Save current function context (use index instead of pointer to handle vector reallocation)
     TypeRef savedReturnType = currentReturnType_;
+    unsigned savedNextTemp = builder_->saveTempId();
     size_t savedFuncIdx = static_cast<size_t>(-1);
     if (currentFunc_)
     {
@@ -1150,6 +1154,8 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
         blockMgr_.reset(currentFunc_);
         blockMgr_.setNextBlockId(savedNextBlockId);
         blockMgr_.setBlock(savedBlockIdx);
+        builder_->restoreTempId(savedNextTemp);
+        builder_->restoreFunction(currentFunc_);
     }
     else
     {

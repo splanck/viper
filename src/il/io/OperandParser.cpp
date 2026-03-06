@@ -394,6 +394,60 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
     return {};
 }
 
+/// @brief Parse call.indirect operands: %fnPtr(%arg1, %arg2, ...).
+/// @details First operand is function pointer, remaining are arguments in parens.
+Expected<void> OperandParser::parseCallIndirectOperands(const std::string &text)
+{
+    // Find the opening paren separating fnPtr from args
+    const size_t lp = text.find('(');
+    if (lp == std::string::npos)
+    {
+        // No parens — just a function pointer with no args
+        std::string fnTok = trim(text);
+        if (!fnTok.empty())
+        {
+            auto fnVal = parseValueToken(fnTok);
+            if (!fnVal)
+                return Expected<void>{fnVal.error()};
+            instr_.operands.push_back(std::move(fnVal.value()));
+        }
+        return {};
+    }
+
+    // Parse function pointer before the paren
+    std::string fnTok = trim(text.substr(0, lp));
+    if (!fnTok.empty())
+    {
+        auto fnVal = parseValueToken(fnTok);
+        if (!fnVal)
+            return Expected<void>{fnVal.error()};
+        instr_.operands.push_back(std::move(fnVal.value()));
+    }
+
+    // Find matching closing paren
+    const size_t rp = text.rfind(')');
+    if (rp == std::string::npos || rp <= lp)
+    {
+        return Expected<void>{
+            makeError(instr_.loc, formatLineDiag(state_.lineNo, "malformed call.indirect"))};
+    }
+
+    // Parse comma-separated args inside parens
+    std::string argsText = text.substr(lp + 1, rp - lp - 1);
+    auto tokens = splitCommaSeparated(argsText, "call.indirect");
+    if (!tokens)
+        return Expected<void>{tokens.error()};
+    for (const auto &tok : tokens.value())
+    {
+        auto argVal = parseValueToken(tok);
+        if (!argVal)
+            return Expected<void>{argVal.error()};
+        instr_.operands.push_back(std::move(argVal.value()));
+    }
+
+    return {};
+}
+
 /// @brief Parse a single branch target segment into a label and argument list.
 ///
 /// Supports optional "label" prefixes and nested argument lists.  String

@@ -44,7 +44,7 @@ entry:
   br L10
 L10:
   .loc 1 1 10
-  %t0 = call @rt_rnd()
+  %t0:f64 = call @rt_rnd()
   .loc 1 1 10
   call @Viper.Terminal.PrintF64(%t0)
   .loc 1 1 10

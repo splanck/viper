@@ -48,7 +48,7 @@ entry:
   br L10
 L10:
   .loc 1 1 4
-  %t1 = call @rt_arr_i64_new(4)
+  %t1:ptr = call @rt_arr_i64_new(4)
   .loc 1 1 4
   call @rt_arr_i64_retain(%t1)
   .loc 1 1 4
@@ -81,7 +81,7 @@ redim_len_cont(%len:i64):
   .loc 1 2 12
   %t6 = load ptr, %t0
   .loc 1 2 12
-  %t7 = call @rt_arr_i64_resize(%t6, %len)
+  %t7:ptr = call @rt_arr_i64_resize(%t6, %len)
   .loc 1 2 12
   call @rt_arr_i64_retain(%t7)
   .loc 1 2 12

@@ -49,7 +49,7 @@ entry:
   br L10
 L10:
   .loc 1 1 4
-  %t1 = call @rt_arr_i64_new(1)
+  %t1:ptr = call @rt_arr_i64_new(1)
   .loc 1 1 4
   call @rt_arr_i64_retain(%t1)
   .loc 1 1 4
@@ -64,7 +64,7 @@ L20:
   .loc 1 2 10
   %t3 = load ptr, %t0
   .loc 1 2 10
-  %t4 = call @rt_arr_i64_len(%t3)
+  %t4:i64 = call @rt_arr_i64_len(%t3)
   .loc 1 2 10
   %t5 = isub.ovf %t4, 1
   .loc 1 2 10

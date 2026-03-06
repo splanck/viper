@@ -48,7 +48,7 @@ func @main() -> i64 {
 entry:
   call @__mod_init$oop()
   %t0 = alloca 8
-  %t1 = call @rt_str_empty()
+  %t1:str = call @rt_str_empty()
   store str, %t0, %t1
   br L10
 L10:
@@ -70,7 +70,7 @@ L20:
   .loc 1 2 20
   %t5 = const_str @.L1
   .loc 1 2 20
-  %t6 = call @rt_str_index_of(%t4, %t5)
+  %t6:i64 = call @rt_str_index_of(%t4, %t5)
   .loc 1 2 20
   call @Viper.Terminal.PrintI64(%t6)
   .loc 1 2 20
@@ -87,7 +87,7 @@ L30:
   .loc 1 3 23
   %t10 = const_str @.L3
   .loc 1 3 23
-  %t11 = call @rt_instr3(%t8, %t9, %t10)
+  %t11:i64 = call @rt_instr3(%t8, %t9, %t10)
   .loc 1 3 23
   call @Viper.Terminal.PrintI64(%t11)
   .loc 1 3 23

@@ -1,25 +1,39 @@
 il 0.2.0
-extern @Viper.Terminal.PrintStr(str) -> void
-extern @Viper.Terminal.PrintI64(i64) -> void
-extern @Viper.Terminal.PrintF64(f64) -> void
-extern @Viper.String.get_Length(str) -> i64
-extern @Viper.String.Substring(str, i64, i64) -> str
-extern @Viper.String.Left(str, i64) -> str
-extern @Viper.String.Right(str, i64) -> str
-extern @Viper.String.Mid(str, i64) -> str
-extern @Viper.String.MidLen(str, i64, i64) -> str
-extern @Viper.String.Trim(str) -> str
-extern @Viper.String.TrimStart(str) -> str
-extern @Viper.String.TrimEnd(str) -> str
-extern @Viper.String.ToUpper(str) -> str
-extern @Viper.String.ToLower(str) -> str
+extern @Viper.String.Asc(str) -> i64
+extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.IndexOf(str, str) -> i64
 extern @Viper.String.IndexOfFrom(str, i64, str) -> i64
-extern @Viper.String.Chr(i64) -> str
-extern @Viper.String.Asc(str) -> i64
-extern @Viper.Convert.ToInt(str) -> i64
+extern @Viper.String.ToLower(str) -> str
+extern @Viper.String.TrimStart(str) -> str
+extern @Viper.String.Left(str, i64) -> str
+extern @Viper.String.get_Length(str) -> i64
+extern @Viper.String.Mid(str, i64) -> str
+extern @Viper.String.MidLen(str, i64, i64) -> str
+extern @Viper.String.TrimEnd(str) -> str
+extern @Viper.String.Right(str, i64) -> str
+extern @Viper.String.Cmp(str, str) -> i64
+extern @Viper.String.CmpNoCase(str, str) -> i64
+extern @Viper.String.Count(str, str) -> i64
+extern @Viper.String.EndsWith(str, str) -> i1
+extern @Viper.String.Flip(str) -> str
+extern @Viper.String.Has(str, str) -> i1
+extern @Viper.String.PadLeft(str, i64, str) -> str
+extern @Viper.String.PadRight(str, i64, str) -> str
+extern @Viper.String.Repeat(str, i64) -> str
+extern @Viper.String.Replace(str, str, str) -> str
+extern @Viper.String.Split(str, str) -> ptr
+extern @Viper.String.StartsWith(str, str) -> i1
+extern @Viper.String.Substring(str, i64, i64) -> str
+extern @Viper.String.Trim(str) -> str
+extern @Viper.String.ToUpper(str) -> str
+extern @Viper.String.Join(str, ptr) -> str
+extern @Viper.Terminal.PrintF64(f64) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.String.Length(str) -> i64
 extern @rt_str_empty() -> str
 extern @Viper.Terminal.ReadLine() -> str
+extern @Viper.Core.Convert.ToInt(str) -> i64
 extern @rt_arr_i64_new(i64) -> ptr
 extern @rt_arr_i64_len(ptr) -> i64
 extern @rt_arr_i64_get(ptr, i64) -> i64
@@ -37,25 +51,25 @@ func @main() -> i64 {
 entry:
   call @__mod_init$oop()
   %t0 = alloca 8
+  store ptr, %t0, null
   %t1 = alloca 8
   %t2 = alloca 8
-  store ptr, %t2, null
   %t3 = alloca 8
   br L10
 L10:
   .loc 1 1 4
-  %t4 = call @Viper.Terminal.ReadLine()
+  %t4:str = call @Viper.Terminal.ReadLine()
   .loc 1 1 4
-  %t5 = call @Viper.Convert.ToInt(%t4)
+  %t5:i64 = call @Viper.Core.Convert.ToInt(%t4)
   .loc 1 1 4
-  store i64, %t3, %t5
+  store i64, %t2, %t5
   .loc 1 1 4
   call @rt_str_release_maybe(%t4)
   .loc 1 1 4
   br L20
 L20:
   .loc 1 2 10
-  %t6 = load i64, %t3
+  %t6 = load i64, %t2
   .loc 1 2 4
   %t7 = iadd.ovf %t6, 1
   .loc 1 2 4
@@ -69,7 +83,7 @@ L30:
   br L40
 L40:
   .loc 1 4 4
-  store i64, %t0, 0
+  store i64, %t3, 0
   .loc 1 4 4
   br L50
 L50:
@@ -77,7 +91,7 @@ L50:
   br loop_head
 L100:
   .loc 1 10 11
-  %t44 = load i64, %t0
+  %t44 = load i64, %t3
   .loc 1 10 11
   call @Viper.Terminal.PrintI64(%t44)
   .loc 1 10 11
@@ -90,31 +104,31 @@ L110:
   .loc 1 11 5
   ret 0
 exit:
-  %t46 = load ptr, %t2
+  %t46 = load ptr, %t0
   call @rt_arr_i64_release(%t46)
-  store ptr, %t2, null
+  store ptr, %t0, null
   ret 0
 dim_len_fail:
   .loc 1 2 4
   trap
 dim_len_cont(%len:i64):
   .loc 1 2 10
-  %t10 = call @rt_arr_i64_new(%len)
+  %t10:ptr = call @rt_arr_i64_new(%len)
   .loc 1 2 10
   call @rt_arr_i64_retain(%t10)
   .loc 1 2 10
-  %t11 = load ptr, %t2
+  %t11 = load ptr, %t0
   .loc 1 2 10
   call @rt_arr_i64_release(%t11)
   .loc 1 2 10
-  store ptr, %t2, %t10
+  store ptr, %t0, %t10
   .loc 1 2 4
   br L30
 loop_head:
   .loc 1 5 10
   %t12 = load i64, %t1
   .loc 1 5 14
-  %t13 = load i64, %t3
+  %t13 = load i64, %t2
   .loc 1 5 12
   %t14 = scmp_lt %t12, %t13
   .loc 1 5 12
@@ -133,11 +147,11 @@ loop_body:
   .loc 1 6 19
   %t20 = imul.ovf %t18, %t19
   .loc 1 6 6
-  %t21 = load ptr, %t2
+  %t21 = load ptr, %t0
   .loc 1 6 12
   %t22 = load i64, %t1
   .loc 1 6 10
-  %t23 = call @rt_arr_i64_len(%t21)
+  %t23:i64 = call @rt_arr_i64_len(%t21)
   .loc 1 6 10
   %t24 = scmp_lt %t22, 0
   .loc 1 6 10
@@ -159,13 +173,13 @@ bc_ok0:
   .loc 1 6 10
   call @rt_arr_i64_set(%t21, %t22, %t20)
   .loc 1 7 14
-  %t30 = load i64, %t0
+  %t30 = load i64, %t3
   .loc 1 7 18
-  %t31 = load ptr, %t2
+  %t31 = load ptr, %t0
   .loc 1 7 20
   %t32 = load i64, %t1
   .loc 1 7 18
-  %t33 = call @rt_arr_i64_len(%t31)
+  %t33:i64 = call @rt_arr_i64_len(%t31)
   .loc 1 7 18
   %t34 = scmp_lt %t32, 0
   .loc 1 7 18
@@ -187,11 +201,11 @@ bc_oob0:
   trap
 bc_ok1:
   .loc 1 7 18
-  %t40 = call @rt_arr_i64_get(%t31, %t32)
+  %t40:i64 = call @rt_arr_i64_get(%t31, %t32)
   .loc 1 7 16
   %t41 = iadd.ovf %t30, %t40
   .loc 1 7 6
-  store i64, %t0, %t41
+  store i64, %t3, %t41
   .loc 1 8 14
   %t42 = load i64, %t1
   .loc 1 8 16

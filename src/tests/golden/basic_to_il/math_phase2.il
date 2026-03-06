@@ -47,7 +47,7 @@ entry:
   br L10
 L10:
   .loc 1 1 10
-  %t0 = call @rt_sin(0.0)
+  %t0:f64 = call @rt_sin(0.0)
   .loc 1 1 10
   call @Viper.Terminal.PrintF64(%t0)
   .loc 1 1 10
@@ -58,7 +58,7 @@ L10:
   br L20
 L20:
   .loc 1 2 10
-  %t2 = call @rt_cos(0.0)
+  %t2:f64 = call @rt_cos(0.0)
   .loc 1 2 10
   call @Viper.Terminal.PrintF64(%t2)
   .loc 1 2 10
@@ -69,7 +69,7 @@ L20:
   br L30
 L30:
   .loc 1 3 10
-  %t4 = call @rt_pow_f64(2.0, 10.0)
+  %t4:f64 = call @rt_pow_f64(2.0, 10.0)
   .loc 1 3 10
   call @Viper.Terminal.PrintF64(%t4)
   .loc 1 3 10

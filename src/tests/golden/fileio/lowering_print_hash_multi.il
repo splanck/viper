@@ -52,7 +52,7 @@ L10:
   .loc 1 1 14
   %t1 = const_str @.L0
   .loc 1 1 14
-  %t2 = call @rt_write_ch_err(%t0, %t1)
+  %t2:i32 = call @rt_write_ch_err(%t0, %t1)
   .loc 1 1 14
   %t3 = alloca 8
   .loc 1 1 14
@@ -71,7 +71,7 @@ L20:
   .loc 1 2 14
   %t13 = const_str @.L1
   .loc 1 2 14
-  %t14 = call @rt_write_ch_err(%t12, %t13)
+  %t14:i32 = call @rt_write_ch_err(%t12, %t13)
   .loc 1 2 14
   %t15 = alloca 8
   .loc 1 2 14
@@ -90,7 +90,7 @@ L30:
   .loc 1 3 14
   %t25 = const_str @.L2
   .loc 1 3 14
-  %t26 = call @rt_println_ch_err(%t24, %t25)
+  %t26:i32 = call @rt_println_ch_err(%t24, %t25)
   .loc 1 3 14
   %t27 = alloca 8
   .loc 1 3 14
@@ -115,9 +115,9 @@ printch_cont:
   .loc 1 1 19
   %t6:i16 = cast.si_narrow.chk 42
   .loc 1 1 19
-  %t7 = call @Viper.String.FromI16(%t6)
+  %t7:str = call @Viper.String.FromI16(%t6)
   .loc 1 1 19
-  %t8 = call @rt_println_ch_err(%t0, %t7)
+  %t8:i32 = call @rt_println_ch_err(%t0, %t7)
   .loc 1 1 19
   %t9 = alloca 8
   .loc 1 1 19
@@ -143,9 +143,9 @@ printch_cont2:
   .loc 1 2 19
   %t18:i16 = cast.si_narrow.chk 7
   .loc 1 2 19
-  %t19 = call @Viper.String.FromI16(%t18)
+  %t19:str = call @Viper.String.FromI16(%t18)
   .loc 1 2 19
-  %t20 = call @rt_println_ch_err(%t12, %t19)
+  %t20:i32 = call @rt_println_ch_err(%t12, %t19)
   .loc 1 2 19
   %t21 = alloca 8
   .loc 1 2 19

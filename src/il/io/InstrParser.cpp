@@ -342,6 +342,13 @@ Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &
                     return parsed;
                 return {};
             }
+            case OperandParseKind::CallIndirect:
+            {
+                auto parsed = operandParser.parseCallIndirectOperands(original);
+                if (!parsed)
+                    return parsed;
+                return {};
+            }
             case OperandParseKind::BranchTarget:
             {
                 size_t branchCount = 0;

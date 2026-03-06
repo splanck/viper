@@ -1,0 +1,124 @@
+module TestFunctions;
+bind "./_support";
+
+func simpleReturn() -> Integer {
+    return 42;
+}
+
+func add(a: Integer, b: Integer) -> Integer {
+    return a + b;
+}
+
+func getLabel() -> String {
+    return "hello";
+}
+
+func isPositive(n: Integer) -> Boolean {
+    return n > 0;
+}
+
+func factorial(n: Integer) -> Integer {
+    if n <= 1 {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+func double(x: Integer) -> Integer {
+    return x * 2;
+}
+
+func increment(x: Integer) -> Integer {
+    return x + 1;
+}
+
+var sideEffectFlag: Integer = 0;
+
+func doSideEffect() {
+    sideEffectFlag = 99;
+}
+
+func greet(name: String, greeting: String = "Hello") -> String {
+    return greeting + " " + name;
+}
+
+func makePoint(x: Integer = 0, y: Integer = 0) -> String {
+    return toString(x) + "," + toString(y);
+}
+
+func localScope() -> Integer {
+    var scoped = 10;
+    return scoped;
+}
+
+func earlyReturn(n: Integer) -> Integer {
+    if n < 0 {
+        return -1;
+    }
+    if n == 0 {
+        return 0;
+    }
+    return 1;
+}
+
+func start() {
+    // 1. Simple function call and return
+    setTest("simple-function");
+    assertEqInt(simpleReturn(), 42, "simpleReturn should return 42");
+
+    // 2. Function with multiple parameters
+    setTest("multiple-params");
+    assertEqInt(add(3, 7), 10, "add(3, 7) should return 10");
+
+    // 3. Function returning Integer
+    setTest("return-integer");
+    var result = add(10, 20);
+    assertEqInt(result, 30, "add(10, 20) should return 30");
+
+    // 4. Function returning String
+    setTest("return-string");
+    assertEqStr(getLabel(), "hello", "getLabel should return 'hello'");
+
+    // 5. Function returning Boolean
+    setTest("return-boolean");
+    assertTrue(isPositive(5), "isPositive(5) should be true");
+    assertFalse(isPositive(-1), "isPositive(-1) should be false");
+
+    // 6. Recursive function (factorial of 5 == 120)
+    setTest("recursive-factorial");
+    assertEqInt(factorial(5), 120, "factorial(5) should be 120");
+
+    // 7. Nested function calls (f(g(x)))
+    setTest("nested-calls");
+    assertEqInt(double(increment(3)), 8, "double(increment(3)) should be 8");
+
+    // 8. Function with no return value (void)
+    setTest("void-function");
+    sideEffectFlag = 0;
+    doSideEffect();
+    assertEqInt(sideEffectFlag, 99, "void function should set side effect flag to 99");
+
+    // 9. Default parameter values
+    setTest("default-params");
+    assertEqStr(greet("World"), "Hello World", "greet with default should use 'Hello'");
+    assertEqStr(greet("World", "Hi"), "Hi World", "greet with override should use 'Hi'");
+
+    // 10. Multiple default parameters
+    setTest("multiple-defaults");
+    assertEqStr(makePoint(), "0,0", "makePoint() with all defaults should be '0,0'");
+    assertEqStr(makePoint(5), "5,0", "makePoint(5) with partial default should be '5,0'");
+    assertEqStr(makePoint(5, 3), "5,3", "makePoint(5,3) with no defaults should be '5,3'");
+
+    // 11. Function as local scope (variables don't leak)
+    setTest("local-scope");
+    var scopeResult = localScope();
+    assertEqInt(scopeResult, 10, "localScope should return 10 from scoped variable");
+
+    // 12. Early return from function
+    setTest("early-return");
+    assertEqInt(earlyReturn(-5), -1, "earlyReturn(-5) should return -1");
+    assertEqInt(earlyReturn(0), 0, "earlyReturn(0) should return 0");
+    assertEqInt(earlyReturn(10), 1, "earlyReturn(10) should return 1");
+
+    report();
+}

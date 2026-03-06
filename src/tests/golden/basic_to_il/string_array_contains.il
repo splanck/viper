@@ -55,7 +55,7 @@ entry:
   br UL1000000000
 UL1000000000:
   .loc 1 2 1
-  %t1 = call @rt_arr_str_alloc(4)
+  %t1:ptr = call @rt_arr_str_alloc(4)
   .loc 1 2 1
   %t2 = load ptr, %t0
   .loc 1 2 1
@@ -70,7 +70,7 @@ UL999999999:
   .loc 1 3 1
   %t4 = load ptr, %t0
   .loc 1 3 1
-  %t5 = call @rt_arr_str_len(%t4)
+  %t5:i64 = call @rt_arr_str_len(%t4)
   .loc 1 3 1
   %t6 = scmp_lt 0, 0
   .loc 1 3 1
@@ -91,7 +91,7 @@ UL999999998:
   .loc 1 4 1
   %t14 = load ptr, %t0
   .loc 1 4 1
-  %t15 = call @rt_arr_str_len(%t14)
+  %t15:i64 = call @rt_arr_str_len(%t14)
   .loc 1 4 1
   %t16 = scmp_lt 1, 0
   .loc 1 4 1
@@ -110,7 +110,7 @@ UL999999997:
   .loc 1 5 7
   %t23 = load ptr, %t0
   .loc 1 5 7
-  %t24 = call @rt_arr_str_len(%t23)
+  %t24:i64 = call @rt_arr_str_len(%t23)
   .loc 1 5 7
   %t25 = scmp_lt 1, 0
   .loc 1 5 7
@@ -129,7 +129,7 @@ UL999999996:
   .loc 1 6 7
   %t34 = load ptr, %t0
   .loc 1 6 7
-  %t35 = call @rt_arr_str_len(%t34)
+  %t35:i64 = call @rt_arr_str_len(%t34)
   .loc 1 6 7
   %t36 = scmp_lt 0, 0
   .loc 1 6 7
@@ -180,7 +180,7 @@ bc_ok2:
   .loc 1 5 7
   %t31 = load ptr, %t0
   .loc 1 5 7
-  %t32 = call @rt_arr_str_get(%t31, 1)
+  %t32:str = call @rt_arr_str_get(%t31, 1)
   .loc 1 5 7
   call @rt_str_retain_maybe(%t32)
   .loc 1 5 7
@@ -202,7 +202,7 @@ bc_ok3:
   .loc 1 6 7
   %t42 = load ptr, %t0
   .loc 1 6 7
-  %t43 = call @rt_arr_str_get(%t42, 0)
+  %t43:str = call @rt_arr_str_get(%t42, 0)
   .loc 1 6 7
   call @rt_str_retain_maybe(%t43)
   .loc 1 6 7

@@ -174,6 +174,28 @@ void printCallOperands(const Instr &instr, std::ostream &os, const SerializeCont
     os << ')';
 }
 
+/// @brief Emit operand list for call.indirect instructions.
+/// @details Format: call.indirect %fnPtr(%arg1, %arg2, ...)
+///          First operand is the function pointer, remaining are arguments.
+void printCallIndirectOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx)
+{
+    if (instr.operands.empty())
+        return;
+    os << ' ';
+    printValue(os, instr.operands[0], ctx);
+    os << '(';
+    if (instr.operands.size() > 1)
+    {
+        for (size_t i = 1; i < instr.operands.size(); ++i)
+        {
+            if (i > 1)
+                os << ", ";
+            printValue(os, instr.operands[i], ctx);
+        }
+    }
+    os << ')';
+}
+
 /// @brief Emit optional return operand for ret instructions.
 /// @param instr Return instruction to serialise.
 /// @param os Stream receiving serialized operand.
@@ -342,6 +364,7 @@ const Formatter &formatterFor(Opcode op)
         std::array<Formatter, kNumOpcodes> table;
         table.fill(&printDefaultOperands);
         table[toIndex(Opcode::Call)] = &printCallOperands;
+        table[toIndex(Opcode::CallIndirect)] = &printCallIndirectOperands;
         table[toIndex(Opcode::Ret)] = &printRetOperand;
         table[toIndex(Opcode::Br)] = &printBrOperands;
         table[toIndex(Opcode::CBr)] = &printCBrOperands;
@@ -471,6 +494,10 @@ void printInstr(const Instr &in, std::ostream &os, const SerializeContext &ctx)
         {
             if (in.type.kind != *def)
                 os << ':' << in.type.toString();
+        }
+        else if (info.resultType == TypeCategory::Dynamic && in.type.kind != Type::Kind::Void)
+        {
+            os << ':' << in.type.toString();
         }
         os << " = ";
     }

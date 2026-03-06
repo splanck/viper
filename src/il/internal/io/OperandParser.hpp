@@ -45,6 +45,9 @@ class OperandParser
     /// @return Empty on success; otherwise, a diagnostic describing the malformed call.
     [[nodiscard]] il::support::Expected<void> parseCallOperands(const std::string &text);
 
+    /// @brief Parse call.indirect operands: %fnPtr(%arg1, %arg2, ...).
+    [[nodiscard]] il::support::Expected<void> parseCallIndirectOperands(const std::string &text);
+
     /// @brief Parse branch target lists of the form `label(args), label(args)`.
     /// @param text Textual segment containing the branch targets.
     /// @param expectedTargets Number of targets dictated by the opcode metadata.

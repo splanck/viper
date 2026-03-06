@@ -1,0 +1,71 @@
+module TestStrings;
+bind "./_support";
+
+func start() {
+    testStringBasics();
+    testStringInterpolation();
+    testStringMethods();
+    report();
+}
+
+func testStringBasics() {
+    setTest("string-basics");
+
+    // 1. Empty string
+    var s = "";
+    assertEqStr(s, "", "empty string literal");
+
+    // 2. String concatenation
+    var hello = "Hello" + " " + "World";
+    assertEqStr(hello, "Hello World", "string concatenation");
+
+    // 3. String length
+    var len = Viper.String.Length("abcde");
+    assertEqInt(len, 5, "string length");
+
+    // 4. Empty string length
+    assertEqInt(Viper.String.Length(""), 0, "empty string length");
+}
+
+func testStringInterpolation() {
+    setTest("string-interpolation");
+
+    // 5. Integer interpolation
+    var x = 42;
+    var s = "Value is ${x}";
+    assertEqStr(s, "Value is 42", "integer interpolation");
+
+    // 6. Expression in interpolation
+    var a = 3;
+    var b = 4;
+    var s2 = "Sum is ${a + b}";
+    assertEqStr(s2, "Sum is 7", "expression interpolation");
+
+    // 7. String variable interpolation
+    var name = "World";
+    var greeting = "Hello ${name}!";
+    assertEqStr(greeting, "Hello World!", "string var interpolation");
+
+    // 8. Multiple interpolations
+    var x2 = 1;
+    var y2 = 2;
+    var s3 = "${x2} + ${y2} = ${x2 + y2}";
+    assertEqStr(s3, "1 + 2 = 3", "multiple interpolations");
+}
+
+func testStringMethods() {
+    setTest("string-methods");
+
+    // 9. String Contains
+    assertTrue(Viper.String.Has("hello world", "world"), "string contains found");
+    assertFalse(Viper.String.Has("hello world", "xyz"), "string contains not found");
+
+    // 10. String ToUpper
+    assertEqStr(Viper.String.ToUpper("hello"), "HELLO", "string to upper");
+
+    // 11. String ToLower
+    assertEqStr(Viper.String.ToLower("HELLO"), "hello", "string to lower");
+
+    // 12. String Trim
+    assertEqStr(Viper.String.Trim("  hello  "), "hello", "string trim");
+}

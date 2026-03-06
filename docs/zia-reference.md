@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-03-05
 ---
 
 # Zia — Reference
@@ -16,7 +16,7 @@ Complete language reference for Zia. This document describes **syntax**, **types
 - **Entity types**: Reference semantics with identity, methods, inheritance, properties, static members, and destructors
 - **Value types**: Copy semantics with stack allocation
 - **Interfaces**: Contracts with full runtime itable dispatch
-- **Generics**: Parameterized types for collections (`List[T]`, `Map[K, V]`)
+- **Generics**: Parameterized types and functions with optional constraints (`List[T]`, `func max[T: Comparable]`)
 - **Exception handling**: `try`/`catch`/`finally` with structured error propagation
 - **Modules**: File-based modules with bind system
 - **C-like syntax**: Familiar braces, semicolons, and operators
@@ -108,6 +108,7 @@ identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 42          // Decimal
 0xFF        // Hexadecimal
 0b1010      // Binary
+()          // Unit literal (void value)
 ```
 
 #### Floating-Point Literals
@@ -135,6 +136,10 @@ identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 | `\r` | Carriage return |
 | `\\` | Backslash |
 | `\"` | Double quote |
+| `\'` | Single quote |
+| `\0` | Null character |
+| `\xNN` | Hex byte (two hex digits) |
+| `\uXXXX` | Unicode code point (four hex digits, UTF-8 encoded) |
 | `\$` | Dollar sign (in interpolated strings) |
 
 #### Boolean Literals
@@ -203,6 +208,31 @@ Copy-semantics types defined with the `value` keyword:
 var point: Point;
 ```
 
+### Tuple Types
+
+Tuple types group multiple values into a single type:
+
+```viper
+var pair: (Integer, String) = (42, "hello");
+var x = pair.0;     // Access by index
+```
+
+### Fixed-Size Array Types
+
+Arrays with a compile-time size:
+
+```viper
+var grid: Integer[100];     // Fixed array of 100 integers
+```
+
+### Set Types
+
+Sets hold unique values. Created with set literals or the `Set` constructor:
+
+```viper
+var s: Set[Integer] = {1, 2, 3};
+```
+
 ### Function Types
 
 Function signatures as types:
@@ -237,7 +267,7 @@ variableName        // Variable reference
 | Operator | Description | Example |
 |----------|-------------|---------|
 | `-` | Negation | `-x` |
-| `!` | Logical NOT | `!flag` |
+| `!` / `not` | Logical NOT | `!flag` or `not flag` |
 | `~` | Bitwise NOT | `~bits` |
 | `&` | Function reference | `&myFunc` |
 
@@ -297,8 +327,8 @@ func start() {
 
 | Operator | Description |
 |----------|-------------|
-| `&&` | Logical AND |
-| `||` | Logical OR |
+| `&&` / `and` | Logical AND |
+| `||` / `or` | Logical OR |
 
 #### Bitwise
 
@@ -369,6 +399,39 @@ list[index]             // Access list element
 map["key"]              // Access map value (keys are String)
 ```
 
+### Block Expressions
+
+A block can produce a value when the last statement is an expression without a trailing semicolon:
+
+```viper
+var x = {
+    var a = 10;
+    var b = 20;
+    a + b           // Block evaluates to 30
+};
+```
+
+### If Expressions
+
+`if`/`else` can be used as value-producing expressions:
+
+```viper
+var sign = if x > 0 { "positive" } else { "non-positive" };
+```
+
+Both branches must be present and produce the same type.
+
+### Try Expression
+
+The postfix `?` operator propagates null or error values from an expression. If the operand is null (or an error), the enclosing function returns immediately with that null/error. Otherwise, the inner value is unwrapped:
+
+```viper
+func findUser(id: Integer) -> User? {
+    var record = database.lookup(id)?;  // Returns null if lookup returns null
+    return record.toUser();
+}
+```
+
 ### Function/Method Calls
 
 ```viper
@@ -376,10 +439,51 @@ functionName(arg1, arg2)
 object.methodName(arg1)
 ```
 
+#### Named Arguments
+
+Arguments can be passed by name using `name: value` syntax:
+
+```viper
+func createRect(x: Integer, y: Integer, w: Integer, h: Integer) -> Rect { ... }
+
+var r = createRect(x: 10, y: 20, w: 100, h: 50);
+```
+
 ### Object Creation
 
 ```viper
 new EntityType()        // Create entity instance
+```
+
+### Value Type Initialization (Struct Literals)
+
+Value types can be initialized with field assignments:
+
+```viper
+value Point {
+    Integer x;
+    Integer y;
+}
+
+var p = Point { x = 10, y = 20 };
+```
+
+### Tuple Expressions
+
+Tuples group multiple values. Access elements with `.0`, `.1`, etc.:
+
+```viper
+var pair = (42, "hello");
+var num = pair.0;           // 42
+var str = pair.1;           // "hello"
+```
+
+### Collection Literals
+
+```viper
+var list = [1, 2, 3];              // List[Integer]
+var map = {"key": 42, "other": 7}; // Map[String, Integer]
+var set = {1, 2, 3};               // Set[Integer]
 ```
 
 ### Range Expressions
@@ -622,6 +726,23 @@ func start() {
 
 Default values must be trailing — a parameter with a default cannot be followed by a parameter without one.
 
+### Generic Function Declaration
+
+Functions can be parameterized over types with optional constraints:
+
+```viper
+func identity[T](x: T) -> T {
+    return x;
+}
+
+func findMax[T: Comparable](a: T, b: T) -> T {
+    if a > b { return a; }
+    return b;
+}
+```
+
+Type parameters are declared in `[...]` after the function name. Constraints (like `T: Comparable`) restrict the type parameter to types implementing the named interface.
+
 ### Global Variable Declaration
 
 ```viper
@@ -671,6 +792,32 @@ entity Player {
 ```viper
 entity ChildEntity extends ParentEntity {
     // Additional fields and methods
+}
+```
+
+#### The `super` Keyword
+
+Within a child entity, `super` refers to the parent entity's implementation. Use it to call the parent's methods:
+
+```viper
+entity Child extends Parent {
+    override func greet() -> String {
+        return super.greet() + " (child)";
+    }
+}
+```
+
+#### The `override` Keyword
+
+Methods that override a parent's method must be marked with `override`:
+
+```viper
+entity Base {
+    func describe() -> String { return "Base"; }
+}
+
+entity Derived extends Base {
+    override func describe() -> String { return "Derived"; }
 }
 ```
 
@@ -1126,7 +1273,7 @@ From highest to lowest:
 | Precedence | Operators | Associativity |
 |------------|-----------|---------------|
 | 1 | `()` `[]` `.` `?.` | Left |
-| 2 | `-` `!` `~` `&` (unary) | Right |
+| 2 | `-` `!`/`not` `~` `&` (unary) | Right |
 | 3 | `*` `/` `%` | Left |
 | 4 | `+` `-` | Left |
 | 5 | `<` `<=` `>` `>=` | Left |
@@ -1134,8 +1281,8 @@ From highest to lowest:
 | 7 | `&` | Left |
 | 8 | `^` | Left |
 | 9 | `|` | Left |
-| 10 | `&&` | Left |
-| 11 | `||` | Left |
+| 10 | `&&` / `and` | Left |
+| 11 | `||` / `or` | Left |
 | 12 | `??` | Left |
 | 13 | `..` `..=` | Left |
 | 14 | `? :` | Right |
@@ -1154,18 +1301,26 @@ and         as          bind        break       catch
 continue    deinit      else        entity      expose
 extends     false       final       finally     for
 func        guard       hide        if          implements
-in          interface   is          let         match
-module      namespace   new         not         null
-or          override    property    return      self
-static      super       throw       true        try
-value       var         weak        while
+in          interface   is          match       module
+namespace   new         not         null        or
+override    property    return      self        static
+super       throw       true        try         value
+var         while
+```
+
+### Reserved for Future Use
+
+The following keywords are recognized by the lexer but have no current semantics:
+
+```text
+let         weak
 ```
 
 ### Type Names
 
 ```text
-Boolean     Integer     List        Map         Number
-Ptr         String
+Boolean     Bytes       Integer     List        Map
+Number      Ptr         Set         String
 ```
 
 ---
@@ -1187,7 +1342,8 @@ decl        ::= entityDecl | valueDecl | interfaceDecl | funcDecl | varDecl | na
 entityDecl  ::= "entity" IDENT ["extends" IDENT] ["implements" identList] "{" member* "}"
 valueDecl   ::= "value" IDENT ["implements" identList] "{" member* "}"
 interfaceDecl ::= "interface" IDENT "{" methodSig* "}"
-funcDecl    ::= "func" IDENT "(" params ")" ["->" type] block
+funcDecl    ::= "func" IDENT ["[" genericParams "]"] "(" params ")" ["->" type] block
+genericParams ::= IDENT [":" IDENT] ("," IDENT [":" IDENT])*
 param       ::= IDENT ":" type ["=" expr]
 varDecl     ::= ("var" | "final") IDENT [":" type] ["=" expr] ";"
 namespaceDecl ::= "namespace" qualifiedName "{" decl* "}"
@@ -1232,16 +1388,19 @@ comparison  ::= additive (("<" | "<=" | ">" | ">=") additive)*
 additive    ::= multiplicative (("+" | "-") multiplicative)*
 multiplicative ::= unary (("*" | "/" | "%") unary)*
 unary       ::= ("-" | "!" | "~" | "&") unary | postfix
-postfix     ::= primary (call | index | field | optionalChain | "!" | "?")*
-primary     ::= literal | IDENT | "(" expr ")" | "new" type "(" args ")"
-              | "[" exprList "]" | "{" mapEntries "}"
+postfix     ::= primary (call | index | field | optionalChain | "!" | "?" | "as" type | "is" type)*
+primary     ::= literal | IDENT | "(" expr ")" | "(" expr "," exprList ")"
+              | "new" type "(" args ")" | type "{" fieldInits "}"
+              | "[" exprList "]" | "{" mapEntries "}" | "{" exprList "}"
+              | "if" expr block "else" block | block
 ```
 
 ### Types
 
 ```text
 type        ::= IDENT ["[" typeList "]"] ["?"]
-              | "(" typeList ")" "->" type
+              | IDENT "[" INTEGER "]"
+              | "(" typeList ")" ["->" type]
 ```
 
 ---

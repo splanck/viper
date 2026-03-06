@@ -55,11 +55,11 @@ L20:
   .loc 1 2 29
   %t1 = const_str @.L0
   .loc 1 2 29
-  %t2 = call @Viper.String.FromStr(%t1)
+  %t2:ptr = call @Viper.String.FromStr(%t1)
   .loc 1 2 4
   %t3 = load ptr, %t0
   .loc 1 2 4
-  %t4 = call @rt_obj_release_check0(%t3)
+  %t4:i1 = call @rt_obj_release_check0(%t3)
   .loc 1 2 4
   cbr %t4, obj_assign_dtor, obj_assign_cont
 L30:
@@ -67,7 +67,7 @@ L30:
   ret 0
 exit:
   %t5 = load ptr, %t0
-  %t6 = call @rt_obj_release_check0(%t5)
+  %t6:i1 = call @rt_obj_release_check0(%t5)
   cbr %t6, obj_epilogue_dtor, obj_epilogue_cont
 obj_assign_dtor:
   .loc 1 2 4

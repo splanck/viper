@@ -399,19 +399,21 @@ LowerResult Lowerer::emitUnboxValue(Value boxed, Type ilType, TypeRef semanticTy
 Lowerer::Value Lowerer::emitOptionalWrap(Value val, TypeRef innerType)
 {
     Type ilType = mapType(innerType);
-    // Reference types (Ptr, Str) are already nullable pointers — wrapping is a no-op.
-    if (ilType.kind == Type::Kind::Ptr || ilType.kind == Type::Kind::Str)
+    // Object references (Ptr) are already nullable pointers — wrapping is a no-op.
+    if (ilType.kind == Type::Kind::Ptr)
         return val;
+    // Strings and primitives need boxing to convert to ptr for Optional representation.
     return emitBox(val, ilType);
 }
 
 LowerResult Lowerer::emitOptionalUnwrap(Value val, TypeRef innerType)
 {
     Type ilType = mapType(innerType);
-    // Reference types (Ptr, Str) are already the underlying value — no unboxing needed.
+    // Object references (Ptr) are already the underlying value — no unboxing needed.
     // Optional reference types use null to represent None, so the pointer IS the value.
-    if (ilType.kind == Type::Kind::Ptr || ilType.kind == Type::Kind::Str)
+    if (ilType.kind == Type::Kind::Ptr)
         return {val, ilType};
+    // Strings and primitives need unboxing from ptr back to their concrete type.
     return emitUnbox(val, ilType);
 }
 
@@ -504,11 +506,20 @@ Lowerer::Value Lowerer::emitValueTypeCopy(const ValueTypeInfo &info, Value sourc
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value destPtr = Value::temp(allocaId);
 
-    // Copy all fields from source to destination
+    // Copy all fields from source to destination.
+    // Use raw stores — the destination is freshly allocated (uninitialized),
+    // so emitFieldStore's retain/release on the "old value" would read garbage.
     for (const auto &field : info.fields)
     {
         Value srcValue = emitFieldLoad(&field, sourcePtr);
-        emitFieldStore(&field, destPtr, srcValue);
+        Type fieldType = mapType(field.type);
+        Value fieldAddr = emitGEP(destPtr, static_cast<int64_t>(field.offset));
+        if (fieldType.kind == Type::Kind::Str)
+        {
+            // Retain the source string for the new copy
+            emitCall(runtime::kStrRetainMaybe, {srcValue});
+        }
+        emitStore(fieldAddr, srcValue, fieldType);
     }
 
     return destPtr;
@@ -544,8 +555,15 @@ Lowerer::Value Lowerer::emitValueTypeAlloc(const ValueTypeInfo &info)
                 zeroVal = Value::constFloat(0.0);
                 break;
             case Type::Kind::Str:
-                zeroVal = Value::constStr("");
-                break;
+            {
+                // String fields need null initialization via raw ptr store.
+                // Cannot use emitFieldStore here because it calls retain/release
+                // which require a valid str-typed value, and constStr("") points
+                // to a static literal that crashes rt_string_header.
+                Value fieldAddr = emitGEP(destPtr, static_cast<int64_t>(field.offset));
+                emitStore(fieldAddr, Value::null(), Type(Type::Kind::Ptr));
+                continue;
+            }
             case Type::Kind::Ptr:
             default:
                 zeroVal = Value::null();

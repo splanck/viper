@@ -1,0 +1,112 @@
+module TestInterfaces;
+bind "./_support";
+
+interface IShape {
+    func area() -> Integer;
+    func name() -> String;
+}
+
+entity Circle implements IShape {
+    expose Integer radius;
+
+    func init(r: Integer) {
+        radius = r;
+    }
+
+    expose func area() -> Integer {
+        return radius * radius * 3;
+    }
+
+    expose func name() -> String {
+        return "circle";
+    }
+}
+
+entity Square implements IShape {
+    expose Integer side;
+
+    func init(s: Integer) {
+        side = s;
+    }
+
+    expose func area() -> Integer {
+        return side * side;
+    }
+
+    expose func name() -> String {
+        return "square";
+    }
+}
+
+entity Rect implements IShape {
+    expose Integer w;
+    expose Integer h;
+
+    func init(width: Integer, height: Integer) {
+        w = width;
+        h = height;
+    }
+
+    expose func area() -> Integer {
+        return w * h;
+    }
+
+    expose func name() -> String {
+        return "rect";
+    }
+}
+
+func getShapeName(s: IShape) -> String {
+    return s.name();
+}
+
+func getShapeArea(s: IShape) -> Integer {
+    return s.area();
+}
+
+func start() {
+    setTest("interface basic");
+    var c = new Circle(5);
+    assertEqInt(c.area(), 75, "circle area");
+    assertEqStr(c.name(), "circle", "circle name");
+
+    setTest("interface on square");
+    var sq = new Square(4);
+    assertEqInt(sq.area(), 16, "square area");
+    assertEqStr(sq.name(), "square", "square name");
+
+    setTest("interface-typed parameter");
+    assertEqStr(getShapeName(c), "circle", "interface dispatch circle");
+    assertEqStr(getShapeName(sq), "square", "interface dispatch square");
+
+    setTest("interface area dispatch");
+    assertEqInt(getShapeArea(c), 75, "interface area circle");
+    assertEqInt(getShapeArea(sq), 16, "interface area square");
+
+    setTest("multiple implementors");
+    var r = new Rect(3, 5);
+    assertEqInt(r.area(), 15, "rect area");
+    assertEqStr(getShapeName(r), "rect", "rect dispatch");
+
+    setTest("different values");
+    assertNeqInt(getShapeArea(c), getShapeArea(sq), "circle != square area");
+
+    setTest("pass interface to function");
+    var sq2 = new Square(7);
+    assertEqInt(getShapeArea(sq2), 49, "square 7 via interface");
+
+    setTest("field mutation then interface");
+    sq.side = 6;
+    assertEqInt(sq.area(), 36, "area after mutation");
+    assertEqInt(getShapeArea(sq), 36, "interface area after mutation");
+
+    setTest("many instances");
+    var s1 = new Circle(1);
+    var s2 = new Square(2);
+    var s3 = new Rect(2, 3);
+    assertEqInt(s1.area(), 3, "tiny circle");
+    assertEqInt(s2.area(), 4, "small square");
+    assertEqInt(s3.area(), 6, "small rect");
+
+    report();
+}

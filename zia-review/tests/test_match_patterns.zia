@@ -1,0 +1,150 @@
+module TestMatchPatterns;
+bind "./_support";
+
+func start() {
+    // 1. Match integer literal
+    setTest("match-int-literal");
+    var val = 2;
+    var result = 0;
+    match val {
+        1 => { result = 10; }
+        2 => { result = 20; }
+        3 => { result = 30; }
+        _ => { result = -1; }
+    }
+    assertEqInt(result, 20, "match should select arm for integer 2");
+
+    // 2. Match string literal (BUG-MATCH-002 regression)
+    setTest("match-string-literal");
+    var s = "hello";
+    var sResult = 0;
+    match s {
+        "world" => { sResult = 1; }
+        "hello" => { sResult = 2; }
+        _ => { sResult = -1; }
+    }
+    assertEqInt(sResult, 2, "match string literal hello");
+
+    // 3. Match boolean literal (BUG-MATCH-003 regression)
+    setTest("match-boolean");
+    var b = true;
+    var bResult = 0;
+    match b {
+        true => { bResult = 1; }
+        false => { bResult = 2; }
+    }
+    assertEqInt(bResult, 1, "match boolean true");
+
+    // 4. Match with binding (var capture)
+    setTest("match-binding");
+    var num = 7;
+    var captured = 0;
+    match num {
+        1 => { captured = 100; }
+        n => { captured = n; }
+    }
+    assertEqInt(captured, 7, "match binding should capture value 7");
+
+    // 5. Match with wildcard (_)
+    setTest("match-wildcard");
+    var w = 999;
+    var wildResult = 0;
+    match w {
+        0 => { wildResult = 0; }
+        1 => { wildResult = 1; }
+        _ => { wildResult = -1; }
+    }
+    assertEqInt(wildResult, -1, "match wildcard should catch 999");
+
+    // 6. Match multiple arms (first match wins)
+    setTest("match-first-wins");
+    var m = 5;
+    var firstResult = 0;
+    match m {
+        5 => { firstResult = 1; }
+        5 => { firstResult = 2; }
+        _ => { firstResult = 3; }
+    }
+    assertEqInt(firstResult, 1, "first matching arm should win");
+
+    // 7. Match with guard condition
+    setTest("match-guard");
+    var g = 15;
+    var guardResult = 0;
+    match g {
+        n if n > 10 => { guardResult = 1; }
+        n if n > 0 => { guardResult = 2; }
+        _ => { guardResult = 3; }
+    }
+    assertEqInt(guardResult, 1, "match guard n > 10 should fire for 15");
+
+    // 8. Match negative literal (BUG-MATCH-001 regression)
+    setTest("match-negative-literal");
+    var neg = -3;
+    var negResult = 0;
+    match neg {
+        -3 => { negResult = 1; }
+        0 => { negResult = 2; }
+        3 => { negResult = 3; }
+        _ => { negResult = -1; }
+    }
+    assertEqInt(negResult, 1, "match negative literal -3");
+
+    // 9. Match exhaustiveness (wildcard as default)
+    setTest("match-exhaustive-wildcard");
+    var e = 42;
+    var exhResult = 0;
+    match e {
+        0 => { exhResult = 0; }
+        _ => { exhResult = 42; }
+    }
+    assertEqInt(exhResult, 42, "wildcard should handle all unmatched cases");
+
+    // 10. Nested match statements
+    setTest("match-nested");
+    var outer = 1;
+    var inner = 2;
+    var nestedResult = 0;
+    match outer {
+        1 => {
+            match inner {
+                2 => { nestedResult = 12; }
+                _ => { nestedResult = 10; }
+            }
+        }
+        _ => { nestedResult = 0; }
+    }
+    assertEqInt(nestedResult, 12, "nested match should resolve to 12");
+
+    // 11. Match returning value via variable assignment
+    setTest("match-assign-result");
+    var input = 3;
+    var output = 0;
+    match input {
+        1 => { output = 100; }
+        2 => { output = 200; }
+        3 => { output = 300; }
+        _ => { output = -1; }
+    }
+    assertEqInt(output, 300, "match should assign 300 for input 3");
+
+    // 12. Match on zero vs positive vs negative
+    setTest("match-sign-classification");
+    var r0 = classify(0);
+    var r1 = classify(5);
+    var r2 = classify(-5);
+    assertEqStr(r0, "zero", "0 classified as zero");
+    assertEqStr(r1, "positive", "5 classified as positive");
+    assertEqStr(r2, "negative", "-5 classified as negative");
+
+    report();
+}
+
+func classify(v: Integer) -> String {
+    match v {
+        0 => { return "zero"; }
+        n if n > 0 => { return "positive"; }
+        _ => { return "negative"; }
+    }
+    return "unknown";
+}

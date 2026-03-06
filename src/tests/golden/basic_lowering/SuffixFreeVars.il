@@ -52,7 +52,7 @@ entry:
   call @__mod_init$oop()
   %t0 = alloca 8
   %t1 = alloca 8
-  %t2 = call @rt_str_empty()
+  %t2:str = call @rt_str_empty()
   store str, %t1, %t2
   %t3 = alloca 8
   store ptr, %t3, null
@@ -65,7 +65,7 @@ UL999999999:
   br UL999999998
 UL999999998:
   .loc 1 3 1
-  %t4 = call @rt_arr_i64_new(3)
+  %t4:ptr = call @rt_arr_i64_new(3)
   .loc 1 3 1
   call @rt_arr_i64_retain(%t4)
   .loc 1 3 1
@@ -100,7 +100,7 @@ UL999999995:
   .loc 1 6 1
   %t9 = load ptr, %t3
   .loc 1 6 5
-  %t10 = call @rt_arr_i64_len(%t9)
+  %t10:i64 = call @rt_arr_i64_len(%t9)
   .loc 1 6 5
   %t11 = scmp_lt 0, 0
   .loc 1 6 5
@@ -145,7 +145,7 @@ UL999999992:
   .loc 1 9 7
   %t21 = load ptr, %t3
   .loc 1 9 7
-  %t22 = call @rt_arr_i64_len(%t21)
+  %t22:i64 = call @rt_arr_i64_len(%t21)
   .loc 1 9 7
   %t23 = scmp_lt 0, 0
   .loc 1 9 7
@@ -177,7 +177,7 @@ bc_oob0:
   trap
 bc_ok1:
   .loc 1 9 7
-  %t29 = call @rt_arr_i64_get(%t21, 0)
+  %t29:i64 = call @rt_arr_i64_get(%t21, 0)
   .loc 1 9 7
   call @Viper.Terminal.PrintI64(%t29)
   .loc 1 9 7

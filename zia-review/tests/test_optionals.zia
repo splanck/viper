@@ -1,0 +1,117 @@
+module TestOptionals;
+bind "./_support";
+
+func start() {
+    testOptionalBasics();
+    testOptionalStrings();
+    testNullCoalescing();
+    testOptionalReassign();
+    report();
+}
+
+func testOptionalBasics() {
+    setTest("optional-basics");
+
+    // 1. Optional Integer with value
+    var x: Integer? = 42;
+    assertTrue(x != null, "optional with value is not null");
+
+    // 2. Optional Integer that is null
+    var y: Integer? = null;
+    assertTrue(y == null, "optional null is null");
+
+    // 3. Optional with value comparison
+    var z: Integer? = 100;
+    var zVal = z ?? 0;
+    assertEqInt(zVal, 100, "optional unwrap via coalesce");
+
+    // 4. Optional null comparison
+    var n: Integer? = null;
+    var nVal = n ?? -1;
+    assertEqInt(nVal, -1, "null coalesces to default");
+
+}
+
+func testOptionalStrings() {
+    setTest("optional-strings");
+
+    // 5. String? with value
+    var s: String? = "hello";
+    assertTrue(s != null, "string optional not null");
+
+    // 6. String? that is null
+    var s2: String? = null;
+    assertTrue(s2 == null, "string optional is null");
+
+    // 7. String? coalescing
+    var s3: String? = null;
+    var val = s3 ?? "default";
+    assertEqStr(val, "default", "string coalesce null");
+
+    // 8. String? coalescing with value
+    var s4: String? = "present";
+    var val2 = s4 ?? "default";
+    assertEqStr(val2, "present", "string coalesce non-null");
+}
+
+func testNullCoalescing() {
+    setTest("null-coalescing");
+
+    // 5. Coalescing with non-null value
+    var x: Integer? = 42;
+    var result = x ?? 0;
+    assertEqInt(result, 42, "coalesce non-null");
+
+    // 6. Coalescing with null value
+    var y: Integer? = null;
+    var result2 = y ?? 99;
+    assertEqInt(result2, 99, "coalesce null");
+
+    // 7. Nested coalescing (BUG-OPT-002 regression)
+    var a: Integer? = null;
+    var b: Integer? = null;
+    var r = (a ?? 5) ?? 0;
+    assertEqInt(r, 5, "nested coalesce picks inner default");
+    var c: Integer? = 7;
+    var r2 = (c ?? 5) ?? 0;
+    assertEqInt(r2, 7, "nested coalesce picks value");
+
+    // 8. Coalescing with expression
+    var d: Integer? = null;
+    var r3 = d ?? 7;
+    assertEqInt(r3, 7, "coalesce null to literal");
+}
+
+func testOptionalReassign() {
+    setTest("optional-reassign");
+
+    // 9. Assign value to optional
+    var a: Integer? = null;
+    a = 100;
+    assertTrue(a != null, "reassigned optional not null");
+    var aVal = a ?? 0;
+    assertEqInt(aVal, 100, "reassigned optional value");
+
+    // 10. Assign null to optional
+    var b: Integer? = 5;
+    b = null;
+    assertTrue(b == null, "assigned null to optional");
+
+    // 11. Toggle optional value
+    var c: Integer? = null;
+    c = 42;
+    c = null;
+    c = 99;
+    var cVal = c ?? 0;
+    assertEqInt(cVal, 99, "toggled optional final value");
+
+    // 12. Optional in function
+    var result = optionalHelper(null);
+    assertEqInt(result, -1, "function with null optional");
+    var result2 = optionalHelper(42);
+    assertEqInt(result2, 42, "function with valued optional");
+}
+
+func optionalHelper(x: Integer?) -> Integer {
+    return x ?? -1;
+}

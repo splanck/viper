@@ -53,7 +53,7 @@ entry:
   %t0 = alloca 8
   %t1 = alloca 8
   %t2 = alloca 8
-  %t3 = call @rt_str_empty()
+  %t3:str = call @rt_str_empty()
   store str, %t2, %t3
   %t4 = alloca 8
   %t5 = alloca 8
@@ -74,7 +74,7 @@ L30:
   .loc 1 3 15
   %t7:i32 = cast.si_narrow.chk %t6
   .loc 1 3 10
-  %t8 = call @Viper.String.FromI32(%t7)
+  %t8:str = call @Viper.String.FromI32(%t7)
   .loc 1 3 10
   call @Viper.Terminal.PrintStr(%t8)
   .loc 1 3 10
@@ -84,7 +84,7 @@ L30:
   .loc 1 3 24
   %t10 = load f64, %t1
   .loc 1 3 19
-  %t11 = call @Viper.Core.Convert.ToString_Double(%t10)
+  %t11:str = call @Viper.Core.Convert.ToString_Double(%t10)
   .loc 1 3 19
   call @Viper.Terminal.PrintStr(%t11)
   .loc 1 3 19
@@ -110,11 +110,11 @@ L50:
   .loc 1 5 14
   %t15 = load str, %t2
   .loc 1 5 14
-  %t16 = call @rt_string_cstr(%t15)
+  %t16:ptr = call @rt_string_cstr(%t15)
   .loc 1 5 14
   %t17 = alloca 1
   .loc 1 5 14
-  %t18 = call @rt_val_to_double(%t16, %t17)
+  %t18:f64 = call @rt_val_to_double(%t16, %t17)
   .loc 1 5 14
   %t19 = load i1, %t17
   .loc 1 5 14
@@ -133,7 +133,7 @@ L80:
   .loc 1 8 14
   %t24 = load f64, %t4
   .loc 1 8 10
-  %t25 = call @rt_int_floor(%t24)
+  %t25:f64 = call @rt_int_floor(%t24)
   .loc 1 8 10
   call @Viper.Terminal.PrintF64(%t25)
   .loc 1 8 10
@@ -143,7 +143,7 @@ L80:
   .loc 1 8 23
   %t27 = load f64, %t5
   .loc 1 8 19
-  %t28 = call @rt_int_floor(%t27)
+  %t28:f64 = call @rt_int_floor(%t27)
   .loc 1 8 19
   call @Viper.Terminal.PrintF64(%t28)
   .loc 1 8 19

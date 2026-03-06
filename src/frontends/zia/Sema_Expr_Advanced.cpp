@@ -598,6 +598,18 @@ bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
                     coverage.coveredIntegers.insert(
                         static_cast<IntLiteralExpr *>(pattern.literal.get())->value);
                 }
+                else if (pattern.literal->kind == ExprKind::Unary)
+                {
+                    // Negative integer literal: -(IntLiteral)
+                    auto *unary = static_cast<UnaryExpr *>(pattern.literal.get());
+                    if (unary->op == UnaryOp::Neg && unary->operand &&
+                        unary->operand->kind == ExprKind::IntLiteral)
+                    {
+                        int64_t val =
+                            static_cast<IntLiteralExpr *>(unary->operand.get())->value;
+                        coverage.coveredIntegers.insert(-val);
+                    }
+                }
                 else if (pattern.literal->kind == ExprKind::BoolLiteral)
                 {
                     coverage.coveredBooleans.insert(

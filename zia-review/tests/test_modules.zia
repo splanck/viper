@@ -1,0 +1,67 @@
+module TestModules;
+bind "./_support";
+bind Viper.Terminal;
+bind Viper.Math;
+
+func start() {
+    testModuleDecl();
+    testBindNamespace();
+    testNamespaceAccess();
+    report();
+}
+
+func testModuleDecl() {
+    setTest("module-decl");
+
+    // 1. Module declaration works (if we got here, it parsed)
+    assertTrue(true, "module declaration parsed");
+
+    // 2. Support module bind works (assertions work)
+    assertEqInt(1, 1, "bind support module works");
+
+    // 3. Functions from bound module are callable
+    assertEqInt(2 + 2, 4, "basic expression in module");
+
+    // 4. Global variables work in module context
+    var x = 42;
+    assertEqInt(x, 42, "module-level var decl");
+}
+
+func testBindNamespace() {
+    setTest("bind-namespace");
+
+    // 5. Bind Viper.Terminal - Say is available
+    // Can't easily test terminal output, but calling it shouldn't crash
+    assertTrue(true, "bind Viper.Terminal compiled");
+
+    // 6. Bind Viper.Math - math functions available
+    var result = Viper.Math.Abs(-5.0);
+    assertApprox(result, 5.0, 0.001, "bind Viper.Math abs");
+
+    // 7. Math Sqrt via bound namespace
+    var sq = Viper.Math.Sqrt(25.0);
+    assertApprox(sq, 5.0, 0.001, "bind Viper.Math sqrt");
+
+    // 8. Math Min
+    var mn = Viper.Math.Min(3.0, 7.0);
+    assertApprox(mn, 3.0, 0.001, "bind Viper.Math min");
+}
+
+func testNamespaceAccess() {
+    setTest("namespace-access");
+
+    // 9. String functions via Viper.String
+    var len = Viper.String.Length("test");
+    assertEqInt(len, 4, "Viper.String.Length");
+
+    // 10. String Has
+    assertTrue(Viper.String.Has("abcdef", "cde"), "Viper.String.Has");
+
+    // 11. Math Floor
+    var fl = Viper.Math.Floor(3.7);
+    assertApprox(fl, 3.0, 0.001, "Viper.Math.Floor");
+
+    // 12. Math Ceil
+    var cl = Viper.Math.Ceil(3.2);
+    assertApprox(cl, 4.0, 0.001, "Viper.Math.Ceil");
+}

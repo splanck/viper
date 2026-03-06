@@ -53,7 +53,7 @@ entry:
   br UL1000000000
 UL1000000000:
   .loc 1 4 7
-  %t0 = call @F()
+  %t0:i64 = call @F()
   .loc 1 4 7
   call @Viper.Terminal.PrintI64(%t0)
   .loc 1 4 7

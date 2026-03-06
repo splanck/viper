@@ -11,14 +11,14 @@ extern @rt_sin(f64) -> f64
 extern @rt_cos(f64) -> f64
 func @main() -> i64 {
 entry:
-  %t0 = call @rt_abs_i64(-5)
-  %t1 = call @rt_abs_f64(-1.5)
-  %t2 = call @rt_floor(1.9)
-  %t3 = call @rt_ceil(1.1)
-  %t4 = call @rt_sqrt(9.0)
-  %t5 = call @rt_pow_f64_chkdom(2.0, 10.0)
-  %t6 = call @rt_sin(0.0)
-  %t7 = call @rt_cos(0.0)
+  %t0:i64 = call @rt_abs_i64(-5)
+  %t1:f64 = call @rt_abs_f64(-1.5)
+  %t2:f64 = call @rt_floor(1.9)
+  %t3:f64 = call @rt_ceil(1.1)
+  %t4:f64 = call @rt_sqrt(9.0)
+  %t5:f64 = call @rt_pow_f64_chkdom(2.0, 10.0)
+  %t6:f64 = call @rt_sin(0.0)
+  %t7:f64 = call @rt_cos(0.0)
   call @rt_print_i64(%t0)
   call @rt_print_f64(%t1)
   call @rt_print_f64(%t2)

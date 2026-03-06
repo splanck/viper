@@ -58,9 +58,9 @@ entry:
   br L10
 L10:
   .loc 1 1 4
-  %t4 = call @Viper.Terminal.ReadLine()
+  %t4:str = call @Viper.Terminal.ReadLine()
   .loc 1 1 4
-  %t5 = call @Viper.Core.Convert.ToInt(%t4)
+  %t5:i64 = call @Viper.Core.Convert.ToInt(%t4)
   .loc 1 1 4
   store i64, %t2, %t5
   .loc 1 1 4
@@ -113,7 +113,7 @@ dim_len_fail:
   trap
 dim_len_cont(%len:i64):
   .loc 1 2 10
-  %t10 = call @rt_arr_i64_new(%len)
+  %t10:ptr = call @rt_arr_i64_new(%len)
   .loc 1 2 10
   call @rt_arr_i64_retain(%t10)
   .loc 1 2 10
@@ -151,7 +151,7 @@ loop_body:
   .loc 1 6 12
   %t22 = load i64, %t1
   .loc 1 6 10
-  %t23 = call @rt_arr_i64_len(%t21)
+  %t23:i64 = call @rt_arr_i64_len(%t21)
   .loc 1 6 10
   %t24 = scmp_lt %t22, 0
   .loc 1 6 10
@@ -179,7 +179,7 @@ bc_ok0:
   .loc 1 7 20
   %t32 = load i64, %t1
   .loc 1 7 18
-  %t33 = call @rt_arr_i64_len(%t31)
+  %t33:i64 = call @rt_arr_i64_len(%t31)
   .loc 1 7 18
   %t34 = scmp_lt %t32, 0
   .loc 1 7 18
@@ -201,7 +201,7 @@ bc_oob0:
   trap
 bc_ok1:
   .loc 1 7 18
-  %t40 = call @rt_arr_i64_get(%t31, %t32)
+  %t40:i64 = call @rt_arr_i64_get(%t31, %t32)
   .loc 1 7 16
   %t41 = iadd.ovf %t30, %t40
   .loc 1 7 6

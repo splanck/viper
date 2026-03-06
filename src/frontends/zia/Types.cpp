@@ -611,8 +611,7 @@ il::core::Type::Kind toILType(const ViperType &type)
             if (!type.typeArgs.empty())
             {
                 auto innerKind = toILType(*type.typeArgs[0]);
-                if (innerKind == il::core::Type::Kind::Str ||
-                    innerKind == il::core::Type::Kind::Ptr)
+                if (innerKind == il::core::Type::Kind::Ptr)
                     return innerKind;
             }
             return il::core::Type::Kind::Ptr;

@@ -164,6 +164,15 @@ bool Parser::parsePatternCore(MatchArm::Pattern &out)
         return out.literal != nullptr;
     }
 
+    // Negative integer/number literals: treat `-42` as a literal pattern
+    if (check(TokenKind::Minus) && (check(TokenKind::IntegerLiteral, 1) ||
+                                     check(TokenKind::NumberLiteral, 1)))
+    {
+        out.kind = MatchArm::Pattern::Kind::Literal;
+        out.literal = parseUnary();
+        return out.literal != nullptr;
+    }
+
     Token lparenTok;
     if (match(TokenKind::LParen, &lparenTok))
     {

@@ -1,0 +1,68 @@
+module TestTypeCoercion;
+bind "./_support";
+
+func start() {
+    testToString();
+    testNumericConversion();
+    testBooleanContext();
+    report();
+}
+
+func testToString() {
+    setTest("to-string");
+
+    // 1. Integer to string
+    assertEqStr(toString(42), "42", "int to string");
+
+    // 2. Negative integer to string
+    assertEqStr(toString(-7), "-7", "negative int to string");
+
+    // 3. Zero to string
+    assertEqStr(toString(0), "0", "zero to string");
+
+    // 4. Boolean true to string
+    assertEqStr(toString(true), "true", "true to string");
+
+    // 5. Boolean false to string
+    assertEqStr(toString(false), "false", "false to string");
+}
+
+func testNumericConversion() {
+    setTest("numeric-conv");
+
+    // 6. Integer arithmetic stays integer
+    var x: Integer = 10 / 3;
+    assertEqInt(x, 3, "integer division truncates");
+
+    // 7. Integer modulo
+    var m: Integer = 10 % 3;
+    assertEqInt(m, 1, "integer modulo");
+
+    // 8. Number arithmetic
+    var n: Number = 10.0 / 3.0;
+    assertApprox(n, 3.3333, 0.01, "number division");
+
+    // 9. Number precision
+    var pi: Number = 3.14159;
+    assertApprox(pi, 3.14159, 0.00001, "number precision");
+}
+
+func testBooleanContext() {
+    setTest("boolean-context");
+
+    // 10. Boolean in if condition
+    var flag = true;
+    var result = 0;
+    if flag {
+        result = 1;
+    }
+    assertEqInt(result, 1, "boolean in if");
+
+    // 11. Boolean negation
+    var f = false;
+    assertTrue(!f, "boolean negation");
+
+    // 12. Boolean from comparison
+    var b = 5 > 3;
+    assertTrue(b, "boolean from comparison");
+}

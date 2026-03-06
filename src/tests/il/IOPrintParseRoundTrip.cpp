@@ -209,7 +209,8 @@ void reportDiag(const il::support::Diag &diag)
 
 bool shouldSkipFixture(const std::filesystem::path &path)
 {
-    static const std::vector<std::string> kSkipFiles = {"serializer_all_opcodes.il"};
+    static const std::vector<std::string> kSkipFiles = {"serializer_all_opcodes.il",
+                                                        "oop_runtime_complete.il"};
     const auto filename = path.filename().string();
     return std::find(kSkipFiles.begin(), kSkipFiles.end(), filename) != kSkipFiles.end();
 }

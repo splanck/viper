@@ -1,9 +1,36 @@
 il 0.2.0
-extern @rt_print_str(str) -> void
-extern @rt_print_i64(i64) -> void
-extern @rt_print_f64(f64) -> void
-extern @rt_len(str) -> i64
-extern @rt_substr(str, i64, i64) -> str
+extern @Viper.String.Asc(str) -> i64
+extern @Viper.String.Chr(i64) -> str
+extern @Viper.String.IndexOf(str, str) -> i64
+extern @Viper.String.IndexOfFrom(str, i64, str) -> i64
+extern @Viper.String.ToLower(str) -> str
+extern @Viper.String.TrimStart(str) -> str
+extern @Viper.String.Left(str, i64) -> str
+extern @Viper.String.get_Length(str) -> i64
+extern @Viper.String.Mid(str, i64) -> str
+extern @Viper.String.MidLen(str, i64, i64) -> str
+extern @Viper.String.TrimEnd(str) -> str
+extern @Viper.String.Right(str, i64) -> str
+extern @Viper.String.Cmp(str, str) -> i64
+extern @Viper.String.CmpNoCase(str, str) -> i64
+extern @Viper.String.Count(str, str) -> i64
+extern @Viper.String.EndsWith(str, str) -> i1
+extern @Viper.String.Flip(str) -> str
+extern @Viper.String.Has(str, str) -> i1
+extern @Viper.String.PadLeft(str, i64, str) -> str
+extern @Viper.String.PadRight(str, i64, str) -> str
+extern @Viper.String.Repeat(str, i64) -> str
+extern @Viper.String.Replace(str, str, str) -> str
+extern @Viper.String.Split(str, str) -> ptr
+extern @Viper.String.StartsWith(str, str) -> i1
+extern @Viper.String.Substring(str, i64, i64) -> str
+extern @Viper.String.Trim(str) -> str
+extern @Viper.String.ToUpper(str) -> str
+extern @Viper.String.Join(str, ptr) -> str
+extern @Viper.Terminal.PrintF64(f64) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.String.Length(str) -> i64
 extern @rt_str_empty() -> str
 global const str @.L0 = "\n"
 func @__mod_init$oop() -> void {
@@ -38,11 +65,11 @@ L40:
   .loc 1 4 4
   %t7 = isub.ovf 0, %t6
   .loc 1 4 10
-  call @rt_print_i64(%t7)
+  call @Viper.Terminal.PrintI64(%t7)
   .loc 1 4 10
   %t8 = const_str @.L0
   .loc 1 4 10
-  call @rt_print_str(%t8)
+  call @Viper.Terminal.PrintStr(%t8)
   .loc 1 4 4
   br exit
 exit:
@@ -54,11 +81,11 @@ if_test_0:
   cbr %t3, if_then_0, if_else
 if_then_0:
   .loc 1 3 20
-  call @rt_print_i64(1)
+  call @Viper.Terminal.PrintI64(1)
   .loc 1 3 20
   %t4 = const_str @.L0
   .loc 1 3 20
-  call @rt_print_str(%t4)
+  call @Viper.Terminal.PrintStr(%t4)
   .loc 1 3 4
   br if_exit
 if_else:

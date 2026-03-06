@@ -1,0 +1,33 @@
+module TestErrorsOOP;
+
+// ERROR 1: Missing interface method
+interface IGreeter {
+    func greet() -> String;
+}
+
+entity BadGreeter implements IGreeter {
+    func init() {}
+    // Missing: expose func greet() -> String
+}
+
+// ERROR 2: Extending non-existent entity
+entity Orphan extends NonExistentParent {
+    func init() {}
+}
+
+// ERROR 3: Accessing undefined method
+entity Simple {
+    expose Integer x;
+    func init() { x = 0; }
+}
+
+func err3() {
+    var s = new Simple();
+    s.nonExistentMethod();
+}
+
+func start() {
+    var b = new BadGreeter();
+    var s = new Simple();
+    err3();
+}

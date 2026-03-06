@@ -112,15 +112,20 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
             Value cond;
             if (scrutinee.type && scrutinee.type->kind == TypeKindSem::String)
             {
-                Value eqResult = emitCallRet(
-                    Type(Type::Kind::I64), kStringEquals, {scrutinee.value, litResult.value});
-                cond =
-                    emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), eqResult, Value::constInt(0));
+                cond = emitCallRet(
+                    Type(Type::Kind::I1), kStringEquals, {scrutinee.value, litResult.value});
             }
             else if (scrutinee.type && scrutinee.type->kind == TypeKindSem::Number)
             {
                 cond = emitBinary(
                     Opcode::FCmpEQ, Type(Type::Kind::I1), scrutinee.value, litResult.value);
+            }
+            else if (scrutinee.type && scrutinee.type->kind == TypeKindSem::Boolean)
+            {
+                // Booleans are i1 — extend to i64 for ICmpEq comparison
+                Value lhsExt = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), scrutinee.value);
+                Value rhsExt = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), litResult.value);
+                cond = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), lhsExt, rhsExt);
             }
             else
             {

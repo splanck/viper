@@ -1,0 +1,30 @@
+module TestErrorsTypes;
+
+// ERROR 1: Type mismatch in assignment
+func err1() {
+    var x: Integer = "hello";
+}
+
+// ERROR 2: Wrong argument type to function
+func takesInt(n: Integer) -> Integer {
+    return n;
+}
+
+func err2() {
+    var result = takesInt("not an int");
+}
+
+// ERROR 3: Wrong number of arguments
+func twoArgs(a: Integer, b: Integer) -> Integer {
+    return a + b;
+}
+
+func err3() {
+    var result = twoArgs(1);
+}
+
+func start() {
+    err1();
+    err2();
+    err3();
+}

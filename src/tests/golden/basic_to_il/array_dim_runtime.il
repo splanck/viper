@@ -55,7 +55,7 @@ entry:
   br L10
 L10:
   .loc 1 1 4
-  %t3 = call @rt_arr_i64_new(2)
+  %t3:ptr = call @rt_arr_i64_new(2)
   .loc 1 1 4
   call @rt_arr_i64_retain(%t3)
   .loc 1 1 4
@@ -70,7 +70,7 @@ L20:
   .loc 1 2 13
   %t5 = load ptr, %t0
   .loc 1 2 13
-  %t6 = call @rt_arr_i64_len(%t5)
+  %t6:i64 = call @rt_arr_i64_len(%t5)
   .loc 1 2 13
   %t7 = isub.ovf %t6, 1
   .loc 1 2 4
@@ -94,7 +94,7 @@ L40:
   .loc 1 4 10
   %t17 = load i64, %t1
   .loc 1 4 8
-  %t18 = call @rt_arr_i64_len(%t16)
+  %t18:i64 = call @rt_arr_i64_len(%t16)
   .loc 1 4 8
   %t19 = scmp_lt %t17, 0
   .loc 1 4 8
@@ -115,7 +115,7 @@ L50:
   .loc 1 5 14
   %t26 = load i64, %t1
   .loc 1 5 12
-  %t27 = call @rt_arr_i64_len(%t25)
+  %t27:i64 = call @rt_arr_i64_len(%t25)
   .loc 1 5 12
   %t28 = scmp_lt %t26, 0
   .loc 1 5 12
@@ -167,7 +167,7 @@ redim_len_cont(%len:i64):
   .loc 1 3 15
   %t13 = load ptr, %t0
   .loc 1 3 15
-  %t14 = call @rt_arr_i64_resize(%t13, %len)
+  %t14:ptr = call @rt_arr_i64_resize(%t13, %len)
   .loc 1 3 15
   call @rt_arr_i64_retain(%t14)
   .loc 1 3 15
@@ -190,7 +190,7 @@ bc_oob0:
   trap
 bc_ok1:
   .loc 1 5 12
-  %t34 = call @rt_arr_i64_get(%t25, %t26)
+  %t34:i64 = call @rt_arr_i64_get(%t25, %t26)
   .loc 1 5 4
   store i64, %t2, %t34
   .loc 1 5 4

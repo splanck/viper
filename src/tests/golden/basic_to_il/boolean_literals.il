@@ -50,9 +50,9 @@ entry:
   br L10
 L10:
   .loc 1 1 4
-  %t3 = call @Viper.Terminal.ReadLine()
+  %t3:str = call @Viper.Terminal.ReadLine()
   .loc 1 1 4
-  %t4 = call @Viper.Core.Convert.ToInt(%t3)
+  %t4:i64 = call @Viper.Core.Convert.ToInt(%t3)
   .loc 1 1 4
   store i64, %t2, %t4
   .loc 1 1 4

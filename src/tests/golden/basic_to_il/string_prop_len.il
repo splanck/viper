@@ -55,7 +55,7 @@ L20:
   .loc 1 2 4
   %t2 = load ptr, %t0
   .loc 1 2 4
-  %t3 = call @rt_obj_release_check0(%t2)
+  %t3:i1 = call @rt_obj_release_check0(%t2)
   .loc 1 2 4
   cbr %t3, obj_assign_dtor, obj_assign_cont
 L30:
@@ -64,7 +64,7 @@ L30:
   .loc 1 3 10
   %t5 = load ptr, %t0
   .loc 1 3 12
-  %t6 = call @Viper.String.get_Length(%t5)
+  %t6:i64 = call @Viper.String.get_Length(%t5)
   .loc 1 3 12
   call @Viper.Terminal.PrintI64(%t6)
   .loc 1 3 12
@@ -78,7 +78,7 @@ L40:
   ret 0
 exit:
   %t8 = load ptr, %t0
-  %t9 = call @rt_obj_release_check0(%t8)
+  %t9:i1 = call @rt_obj_release_check0(%t8)
   cbr %t9, obj_epilogue_dtor, obj_epilogue_cont
 obj_assign_dtor:
   .loc 1 2 4

@@ -81,7 +81,7 @@ L-999999999_FIRST#:
   .loc 1 9 8
   %t8 = sitofp %t7
   .loc 1 9 8
-  %t9 = call @SECOND#(%t8)
+  %t9:f64 = call @SECOND#(%t8)
   .loc 1 9 8
   ret %t9
 ret_FIRST#:
@@ -127,7 +127,7 @@ L-999999999_SECOND#:
   .loc 1 13 8
   %t11 = cast.fp_to_si.rte.chk %t10
   .loc 1 13 8
-  %t12 = call @FIRST#(%t11)
+  %t12:f64 = call @FIRST#(%t11)
   .loc 1 13 8
   ret %t12
 ret_SECOND#:
@@ -165,7 +165,7 @@ L10:
   .loc 1 15 10
   %t0 = sitofp 1
   .loc 1 15 10
-  %t1 = call @F#(%t0)
+  %t1:f64 = call @F#(%t0)
   .loc 1 15 10
   call @Viper.Terminal.PrintF64(%t1)
   .loc 1 15 10
@@ -178,7 +178,7 @@ L20:
   .loc 1 16 14
   %t3 = const_str @.L2
   .loc 1 16 10
-  %t4 = call @ID$(%t3)
+  %t4:str = call @ID$(%t3)
   .loc 1 16 10
   call @Viper.Terminal.PrintStr(%t4)
   .loc 1 16 10
@@ -189,7 +189,7 @@ L20:
   br L30
 L30:
   .loc 1 17 10
-  %t6 = call @FIRST#(2)
+  %t6:f64 = call @FIRST#(2)
   .loc 1 17 10
   call @Viper.Terminal.PrintF64(%t6)
   .loc 1 17 10

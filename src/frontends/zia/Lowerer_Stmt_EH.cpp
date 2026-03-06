@@ -53,10 +53,10 @@ void Lowerer::lowerTryStmt(TryStmt *stmt)
     size_t afterIdx = createBlock("after_try");
 
     // Create handler block with parameters via the builder directly
-    // Handler receives: %err (Ptr — opaque error value) and %tok (I64 — resume token)
+    // Handler receives: %err (error) and %tok (resumetok) per IL spec
     std::vector<il::core::Param> handlerParams;
-    handlerParams.push_back({"err", Type(Type::Kind::Ptr)});
-    handlerParams.push_back({"tok", Type(Type::Kind::I64)});
+    handlerParams.push_back({"err", Type(Type::Kind::Error)});
+    handlerParams.push_back({"tok", Type(Type::Kind::ResumeTok)});
 
     builder_->createBlock(
         *currentFunc_, "handler_" + std::to_string(blockMgr_.nextBlockId()), handlerParams);
@@ -119,8 +119,8 @@ void Lowerer::lowerTryStmt(TryStmt *stmt)
         const auto &bp = currentFunc_->blocks[handlerIdx].params;
         if (!bp.empty())
         {
-            createSlot(stmt->catchVar, Type(Type::Kind::Ptr));
-            storeToSlot(stmt->catchVar, Value::temp(bp[0].id), Type(Type::Kind::Ptr));
+            createSlot(stmt->catchVar, Type(Type::Kind::Error));
+            storeToSlot(stmt->catchVar, Value::temp(bp[0].id), Type(Type::Kind::Error));
         }
     }
 
