@@ -633,6 +633,18 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
+        case ExprKind::Await:
+        {
+            const auto &e = static_cast<const AwaitExpr &>(expr);
+            p.line("AwaitExpr " + locStr(e.loc));
+            p.push();
+            if (e.operand)
+                printExpr(*e.operand, p);
+            else
+                p.line("<null>");
+            p.pop();
+            break;
+        }
 
         // -- Construction ---------------------------------------------------
         case ExprKind::New:

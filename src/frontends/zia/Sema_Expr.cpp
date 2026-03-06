@@ -127,6 +127,14 @@ TypeRef Sema::analyzeExpr(Expr *expr)
         case ExprKind::Block:
             result = analyzeBlockExpr(static_cast<BlockExpr *>(expr));
             break;
+        case ExprKind::Await:
+        {
+            auto *awaitExpr = static_cast<AwaitExpr *>(expr);
+            analyzeExpr(awaitExpr->operand.get());
+            // await returns an opaque object (the resolved Future value)
+            result = types::any();
+            break;
+        }
         default:
             result = types::unknown();
             break;

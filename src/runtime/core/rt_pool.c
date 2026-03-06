@@ -49,10 +49,44 @@ static const size_t kClassSizes[RT_POOL_COUNT] = {64, 128, 256, 512};
 
 /// @brief Header for each block on the freelist.
 /// Uses intrusive linking - the header occupies the first bytes of the block.
+/// The `next` pointer MUST be accessed via atomic_load_next / atomic_store_next
+/// helpers because concurrent threads may read/write it through the lock-free
+/// freelist (push_to_freelist writes `next`, pop_from_freelist reads it).
 typedef struct rt_pool_block
 {
     struct rt_pool_block *next;
 } rt_pool_block_t;
+
+/// @brief Atomically load a block's next pointer (acquire).
+static inline rt_pool_block_t *atomic_load_next(rt_pool_block_t *block)
+{
+#if RT_COMPILER_MSVC
+    rt_pool_block_t *val = *(volatile rt_pool_block_t **)&block->next;
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
+    _ReadWriteBarrier();
+#endif
+    return val;
+#else
+    return __atomic_load_n(&block->next, __ATOMIC_ACQUIRE);
+#endif
+}
+
+/// @brief Atomically store a block's next pointer (release).
+static inline void atomic_store_next(rt_pool_block_t *block, rt_pool_block_t *next)
+{
+#if RT_COMPILER_MSVC
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
+    _ReadWriteBarrier();
+#endif
+    *(volatile rt_pool_block_t **)&block->next = next;
+#else
+    __atomic_store_n(&block->next, next, __ATOMIC_RELEASE);
+#endif
+}
 
 /// @brief Slab metadata - tracks a single large allocation subdivided into blocks.
 typedef struct rt_pool_slab
@@ -239,7 +273,7 @@ static void push_slab_to_freelist(rt_pool_state_t *pool, rt_pool_slab_t *slab)
     {
         rt_pool_block_t *old_head = (rt_pool_block_t *)unpack_ptr(old_tagged);
         uint16_t old_version = unpack_version(old_tagged);
-        last->next = old_head;
+        atomic_store_next(last, old_head);
         new_tagged = pack_tagged_ptr(first, (uint16_t)(old_version + 1));
     } while (!atomic_cas_u64(&pool->freelist_tagged, &old_tagged, new_tagged));
 
@@ -267,7 +301,7 @@ static rt_pool_block_t *pop_from_freelist(rt_pool_state_t *pool)
             return NULL;
 
         uint16_t old_version = unpack_version(old_tagged);
-        rt_pool_block_t *next = head->next;
+        rt_pool_block_t *next = atomic_load_next(head);
 
         // Pack the new tagged pointer with incremented version
         uint64_t new_tagged = pack_tagged_ptr(next, (uint16_t)(old_version + 1));
@@ -296,7 +330,7 @@ static void push_to_freelist(rt_pool_state_t *pool, rt_pool_block_t *block)
     {
         rt_pool_block_t *old_head = (rt_pool_block_t *)unpack_ptr(old_tagged);
         uint16_t old_version = unpack_version(old_tagged);
-        block->next = old_head;
+        atomic_store_next(block, old_head);
         new_tagged = pack_tagged_ptr(block, (uint16_t)(old_version + 1));
     } while (!atomic_cas_u64(&pool->freelist_tagged, &old_tagged, new_tagged));
 

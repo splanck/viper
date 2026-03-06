@@ -930,6 +930,10 @@ class Lowerer
     /// @return LowerResult with unwrapped value; traps if null at runtime.
     LowerResult lowerForceUnwrap(ForceUnwrapExpr *expr);
 
+    /// @brief Lower an await expression — calls Future.Get() on the operand.
+    /// @return LowerResult with the resolved value (Ptr type).
+    LowerResult lowerAwait(AwaitExpr *expr);
+
     /// @brief Lower a lambda expression.
     /// @return LowerResult with closure pointer.
     LowerResult lowerLambda(LambdaExpr *expr);

@@ -638,6 +638,21 @@ ExprPtr Parser::parseUnary()
 
     ExprPtr result;
 
+    // await expr — parsed as a unary prefix like ! or -
+    if (check(TokenKind::KwAwait))
+    {
+        Token awaitTok = advance();
+        SourceLoc loc = awaitTok.loc;
+        ExprPtr operand = parseUnary();
+        if (!operand)
+        {
+            --exprDepth_;
+            return nullptr;
+        }
+        --exprDepth_;
+        return std::make_unique<AwaitExpr>(loc, std::move(operand));
+    }
+
     if (check(TokenKind::Minus) || check(TokenKind::Bang) || check(TokenKind::Tilde) ||
         check(TokenKind::KwNot) || check(TokenKind::Ampersand))
     {

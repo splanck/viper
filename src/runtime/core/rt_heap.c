@@ -199,11 +199,18 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
     hdr->len = init_len;
     hdr->cap = cap;
 
-    /* Register the global shutdown handler once on first allocation. */
-    if (!g_shutdown_registered)
+    /* Register the global shutdown handler once on first allocation.
+       Use atomic CAS to ensure exactly-once registration even under
+       concurrent first-allocation from multiple threads. */
+    if (!__atomic_load_n(&g_shutdown_registered, __ATOMIC_ACQUIRE))
     {
-        g_shutdown_registered = 1;
-        atexit(rt_global_shutdown);
+        int expected = 0;
+        if (__atomic_compare_exchange_n(
+                &g_shutdown_registered, &expected, 1, /*weak=*/0,
+                __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+        {
+            atexit(rt_global_shutdown);
+        }
     }
 
     /* Notify the GC of a new allocation (for auto-trigger). */

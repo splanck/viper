@@ -222,6 +222,9 @@ struct FunctionDecl : Decl
     /// @brief True if this is a foreign function (imported from another module, no body).
     bool isForeign = false;
 
+    /// @brief True if this is an async function (returns Future).
+    bool isAsync = false;
+
     /// @brief True if this overrides a parent method.
     bool isOverride = false;
 

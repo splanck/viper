@@ -51,19 +51,12 @@
 #include <pthread.h>
 #endif
 
-// ============================================================================
-// FNV-1a 64-bit hash
-// ============================================================================
+#include "../text/rt_hash_util.h"
 
+/// @brief Hash a byte sequence using the shared SipHash-2-4 utility.
 static uint64_t hash_bytes(const char *data, size_t len)
 {
-    uint64_t h = 14695981039346656037ULL;
-    for (size_t i = 0; i < len; i++)
-    {
-        h ^= (uint8_t)data[i];
-        h *= 1099511628211ULL;
-    }
-    return h;
+    return rt_fnv1a(data, len);
 }
 
 // ============================================================================

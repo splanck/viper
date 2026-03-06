@@ -590,20 +590,38 @@ class ModuleAdapter
                 adaptSwitchI32(instr, out, block);
                 break;
 
-            // === Structured Error Handling (not yet supported in native codegen) ===
+            // === Structured Error Handling ===
             case il::core::Opcode::TrapKind:
             case il::core::Opcode::TrapErr:
+                // Lower to a plain trap — the runtime's rt_trap() handles
+                // longjmp-based recovery when a handler is active.
+                out.opcode = "trap";
+                if (!instr.operands.empty())
+                    convertOperands(instr, {ILValue::Kind::I64}, out);
+                break;
+            case il::core::Opcode::ResumeLabel:
+                // resume.label is a branch to an explicit target label.
+                // The resume token operand is ignored in native codegen.
+                adaptBr(instr, out, block);
+                break;
             case il::core::Opcode::ErrGetKind:
             case il::core::Opcode::ErrGetCode:
             case il::core::Opcode::ErrGetIp:
             case il::core::Opcode::ErrGetLine:
+                // Return 0 for all error field queries in native codegen.
+                // Full error field extraction requires runtime bridge support.
+                out.opcode = "const";
+                out.resultId = -1;
+                if (!instr.operands.empty())
+                    setResultKind(out, instr, instr.type);
+                out.ops.clear();
+                out.ops.push_back(ILValue{ILValue::Kind::I64, -1, 0.0, 0, {}, {}, 0});
+                break;
             case il::core::Opcode::ResumeSame:
             case il::core::Opcode::ResumeNext:
-            case il::core::Opcode::ResumeLabel:
-                reportUnsupported(std::string{"Native codegen does not yet support structured "
-                                              "error handling (opcode: "} +
+                reportUnsupported(std::string{"Native codegen does not yet support "} +
                                   il::core::toString(instr.op) +
-                                  "). Use VM execution for programs using try/catch.");
+                                  ". Use resume.label instead.");
 
             default:
                 reportUnsupported(std::string{"IL opcode '"} + il::core::toString(instr.op) +

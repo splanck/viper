@@ -180,6 +180,10 @@ enum class ExprKind
     /// @see ForceUnwrapExpr
     ForceUnwrap,
 
+    /// @brief Await expression: `await future` — suspends until Future resolves.
+    /// @see AwaitExpr
+    Await,
+
     /// @}
     // =========================================================================
     /// @name Construction Expressions
@@ -803,6 +807,27 @@ struct ForceUnwrapExpr : Expr
     /// @param l Source location.
     /// @param e The operand expression.
     ForceUnwrapExpr(SourceLoc l, ExprPtr e) : Expr(ExprKind::ForceUnwrap, l), operand(std::move(e))
+    {
+    }
+};
+
+/// @brief Await expression: `await future`.
+/// @details Suspends the current async function until the given Future resolves
+/// to a value. The result type is the inner type of the Future.
+///
+/// ## Example
+/// ```
+/// let result = await Async.Run(fetchData, url)
+/// ```
+struct AwaitExpr : Expr
+{
+    /// @brief The future expression to await.
+    ExprPtr operand;
+
+    /// @brief Construct an await expression.
+    /// @param l Source location.
+    /// @param e The future operand expression.
+    AwaitExpr(SourceLoc l, ExprPtr e) : Expr(ExprKind::Await, l), operand(std::move(e))
     {
     }
 };

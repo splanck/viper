@@ -68,6 +68,13 @@ extern void rt_trap(const char *msg);
 #define GC_EMPTY NULL
 #define GC_TOMBSTONE ((void *)(uintptr_t)1)
 
+/// Epoch tagging: objects that survive GC_PROMOTION_THRESHOLD consecutive
+/// collection passes are "promoted" and skipped in future trial-deletion
+/// phases.  Every GC_FULL_SCAN_INTERVAL passes, ALL objects are scanned
+/// regardless of promotion (catches new cycles involving promoted objects).
+#define GC_PROMOTION_THRESHOLD 8
+#define GC_FULL_SCAN_INTERVAL 16
+
 /// Entry in the tracked-object hash table.
 typedef struct gc_entry
 {
@@ -75,6 +82,7 @@ typedef struct gc_entry
     rt_gc_traverse_fn traverse;
     int64_t trial_rc; ///< Temporary refcount for cycle detection.
     int8_t color;     ///< 0=white(unchecked), 1=gray(candidate), 2=black(reachable)
+    uint16_t survived; ///< Number of collection passes this object has survived.
 } gc_entry;
 
 /// Weak reference record.
@@ -287,6 +295,7 @@ void rt_gc_track(void *obj, rt_gc_traverse_fn traverse)
     e->traverse = traverse;
     e->trial_rc = 0;
     e->color = 0;
+    e->survived = 0;
     g_gc.count++;
 
     gc_unlock();
@@ -543,8 +552,15 @@ int64_t rt_gc_collect(void)
         return 0;
     }
 
+    /* Epoch tagging: every GC_FULL_SCAN_INTERVAL passes, scan ALL objects
+       regardless of promotion status to catch new cycles involving
+       long-lived objects. */
+    int full_scan = (g_gc.pass_count % GC_FULL_SCAN_INTERVAL == 0);
+
     /* Phase 1: Initialize trial refcounts and build a snapshot of all live
-       entries for safe traversal outside the lock. */
+       entries for safe traversal outside the lock.  Promoted objects are
+       included in the snapshot but marked black (skipped) unless this is
+       a full scan pass. */
     int64_t snap_count = 0;
     gc_snap_entry *snapshot = (gc_snap_entry *)malloc((size_t)g_gc.count * sizeof(gc_snap_entry));
     if (!snapshot)
@@ -554,8 +570,16 @@ int64_t rt_gc_collect(void)
     {
         if (!gc_slot_is_live(&g_gc.entries[i]))
             continue;
+
         g_gc.entries[i].trial_rc = 1; /* assume 1 external ref */
-        g_gc.entries[i].color = 0;    /* white */
+
+        /* Skip promoted objects in non-full-scan passes: mark them black
+           so they are treated as reachable without trial-deletion. */
+        if (!full_scan && g_gc.entries[i].survived >= GC_PROMOTION_THRESHOLD)
+            g_gc.entries[i].color = 2; /* black = skip */
+        else
+            g_gc.entries[i].color = 0; /* white = candidate */
+
         snapshot[snap_count].obj = g_gc.entries[i].obj;
         snapshot[snap_count].traverse = g_gc.entries[i].traverse;
         snap_count++;
@@ -587,6 +611,18 @@ int64_t rt_gc_collect(void)
             snapshot[i].traverse(snapshot[i].obj, trial_restore, NULL);
         }
     }
+
+    /* Phase 3b: Epoch tagging — increment survived counter for objects
+       that survived this pass (color == 2, reachable). */
+    for (int64_t i = 0; i < g_gc.capacity; i++)
+    {
+        if (gc_slot_is_live(&g_gc.entries[i]) && g_gc.entries[i].color == 2)
+        {
+            if (g_gc.entries[i].survived < UINT16_MAX)
+                g_gc.entries[i].survived++;
+        }
+    }
+
     gc_unlock();
 
     free(snapshot);

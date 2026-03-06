@@ -256,6 +256,23 @@ DeclPtr Parser::parseDeclaration()
         error("expected 'func' after 'foreign'");
         return nullptr;
     }
+    // async func — marks function as async (returns Future)
+    if (check(TokenKind::KwAsync))
+    {
+        advance(); // consume 'async'
+        if (check(TokenKind::KwFunc))
+        {
+            auto decl = parseFunctionDecl();
+            if (decl)
+            {
+                auto *fn = static_cast<FunctionDecl *>(decl.get());
+                fn->isAsync = true;
+            }
+            return decl;
+        }
+        error("expected 'func' after 'async'");
+        return nullptr;
+    }
     if (check(TokenKind::KwFunc))
     {
         return parseFunctionDecl();

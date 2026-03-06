@@ -322,6 +322,14 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 TypeRef exprType = sema_.typeOf(expr);
                 Type ilReturnType = exprType ? mapType(exprType) : Type(Type::Kind::Void);
 
+                // Use the extern's declared return type for the call instruction
+                // to match the function signature. The sema type may differ (e.g.,
+                // String? maps to Ptr, but the extern returns str). We'll use the
+                // extern type for the call and the sema type for the result.
+                Type callReturnType = ilReturnType;
+                if (rtDesc)
+                    callReturnType = rtDesc->signature.retType;
+
                 if (ilReturnType.kind == Type::Kind::Void)
                 {
                     emitCall(funcName, args);
@@ -329,7 +337,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 }
                 else
                 {
-                    Value result = emitCallRet(ilReturnType, funcName, args);
+                    Value result = emitCallRet(callReturnType, funcName, args);
                     return {result, ilReturnType};
                 }
             }
@@ -475,6 +483,13 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         TypeRef exprType = sema_.functionReturnType(runtimeCallee);
         Type ilReturnType = exprType ? mapType(exprType) : Type(Type::Kind::Void);
 
+        // Use the extern's declared return type for the call instruction so it
+        // matches the function signature. The sema type may differ for optional
+        // returns (e.g., String? maps to Ptr, but the extern returns str).
+        Type callReturnType = ilReturnType;
+        if (rtDesc)
+            callReturnType = rtDesc->signature.retType;
+
         // Handle void return types correctly - don't try to store void results
         if (ilReturnType.kind == Type::Kind::Void)
         {
@@ -483,7 +498,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         }
         else
         {
-            Value result = emitCallRet(ilReturnType, runtimeCallee, args);
+            Value result = emitCallRet(callReturnType, runtimeCallee, args);
             return {result, ilReturnType};
         }
     }

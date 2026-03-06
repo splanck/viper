@@ -363,6 +363,22 @@ TypeRef Sema::analyzeForceUnwrap(ForceUnwrapExpr *expr)
 
     if (!operandType || operandType->kind != TypeKindSem::Optional)
     {
+        // Reference types (Entity, Ptr, String) are nullable at the IL level, so
+        // force-unwrapping them is valid even when narrowing has already removed the
+        // Optional wrapper. This supports the common guard-clause pattern:
+        //   if x == null { return; }
+        //   var y = x!;  // redundant but valid
+        // For non-nullable types (Integer, Number, Boolean, Byte), '!' is an error.
+        if (operandType &&
+            (operandType->kind == TypeKindSem::Entity || operandType->kind == TypeKindSem::Value ||
+             operandType->kind == TypeKindSem::Ptr || operandType->kind == TypeKindSem::String ||
+             operandType->kind == TypeKindSem::Interface || operandType->kind == TypeKindSem::List ||
+             operandType->kind == TypeKindSem::Map || operandType->kind == TypeKindSem::Set ||
+             operandType->kind == TypeKindSem::Any || operandType->kind == TypeKindSem::Unknown))
+        {
+            return operandType;
+        }
+
         error(expr->loc,
               "Force-unwrap '!' requires an optional type, got " +
                   (operandType ? operandType->toString() : "unknown"));

@@ -149,16 +149,38 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
                 }
             }
 
-            // Assignment - LHS must be assignable, types must be compatible
-            if (!rightType->isConvertibleTo(*leftType))
+            // Assignment - LHS must be assignable, types must be compatible.
+            // Use the original (non-narrowed) declared type for the check, since
+            // guard-clause narrowing may have refined the variable's effective type
+            // (e.g., Page? narrowed to Page), but reassignment should still accept
+            // the original type.
             {
-                errorTypeMismatch(expr->loc, leftType, rightType);
+                TypeRef assignTarget = leftType;
+                if (expr->left->kind == ExprKind::Ident)
+                {
+                    auto *lhsIdent = static_cast<IdentExpr *>(expr->left.get());
+                    Symbol *sym = currentScope_->lookup(lhsIdent->name);
+                    if (sym && sym->type)
+                        assignTarget = sym->type;
+                }
+                if (!rightType->isConvertibleTo(*assignTarget))
+                {
+                    errorTypeMismatch(expr->loc, assignTarget, rightType);
+                }
             }
-            // Track initialization for definite-assignment analysis
+            // Track initialization for definite-assignment analysis.
+            // Also clear any narrowing on the variable since the new value
+            // may have a different type (e.g., re-assigning Page? to a narrowed Page var).
             if (expr->left->kind == ExprKind::Ident)
             {
                 auto *ident = static_cast<IdentExpr *>(expr->left.get());
                 markInitialized(ident->name);
+                // Clear narrowing — the variable now has the RHS type
+                if (!narrowedTypes_.empty())
+                {
+                    for (auto &scope : narrowedTypes_)
+                        scope.erase(ident->name);
+                }
             }
             // Assignment expression returns the assigned value
             return leftType;

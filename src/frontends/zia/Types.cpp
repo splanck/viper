@@ -611,7 +611,10 @@ il::core::Type::Kind toILType(const ViperType &type)
             if (!type.typeArgs.empty())
             {
                 auto innerKind = toILType(*type.typeArgs[0]);
-                if (innerKind == il::core::Type::Kind::Ptr)
+                // Ptr and Str are both nullable pointer types at the IL level,
+                // so Optional wrapping them is a no-op — just use the inner type.
+                if (innerKind == il::core::Type::Kind::Ptr ||
+                    innerKind == il::core::Type::Kind::Str)
                     return innerKind;
             }
             return il::core::Type::Kind::Ptr;

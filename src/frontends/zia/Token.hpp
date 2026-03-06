@@ -230,6 +230,16 @@ enum class TokenKind
     /// Syntax: `weak var parent: Node?;`
     KwWeak,
 
+    /// @brief Async function modifier.
+    /// @details Marks a function as asynchronous, returning a Future.
+    /// Syntax: `async func fetchData(url: String) -> String { ... }`
+    KwAsync,
+
+    /// @brief Await expression keyword.
+    /// @details Suspends execution until a Future resolves to a value.
+    /// Syntax: `let result = await someFuture`
+    KwAwait,
+
     /// @}
 
     //=========================================================================

@@ -927,6 +927,20 @@ LowerResult Lowerer::lowerForceUnwrap(ForceUnwrapExpr *expr)
 }
 
 //=============================================================================
+// Await Expression Lowering
+//=============================================================================
+
+LowerResult Lowerer::lowerAwait(AwaitExpr *expr)
+{
+    // Lower the future-producing operand expression.
+    auto futureResult = lowerExpr(expr->operand.get());
+
+    // Emit call to Viper.Threads.Future.Get(future) which blocks until resolved.
+    Value result = emitCallRet(Type(Type::Kind::Ptr), runtime::kFutureGet, {futureResult.value});
+    return {result, Type(Type::Kind::Ptr)};
+}
+
+//=============================================================================
 // Lambda Expression Lowering
 //=============================================================================
 

@@ -18,13 +18,7 @@
 
 #include "cmd_codegen_arm64.hpp"
 
-#include "codegen/aarch64/AsmEmitter.hpp"
-#include "codegen/aarch64/LowerILToMIR.hpp"
-#include "codegen/aarch64/LowerOvf.hpp"
-#include "codegen/aarch64/Peephole.hpp"
-#include "codegen/aarch64/RegAllocLinear.hpp"
-#include "codegen/aarch64/RodataPool.hpp"
-#include "codegen/common/LabelUtil.hpp"
+#include "codegen/aarch64/CodegenPipeline.hpp"
 #include "codegen/common/LinkerSupport.hpp"
 #include "common/RunProcess.hpp"
 #include "il/core/Instr.hpp"
@@ -168,15 +162,6 @@ std::optional<Options> parseArgs(const ArgvView &args)
 }
 
 /// @brief Emit pooled module-level string constants for AArch64 assembly.
-/// @details Delegates to the @ref viper::codegen::aarch64::RodataPool, which
-///          ensures deterministic labels and assembler-safe string contents.
-/// @param os Output stream receiving the `.rodata` fragments.
-/// @param pool Pre-populated rodata pool built from the IL module.
-static void emitGlobalsAArch64(std::ostream &os, const viper::codegen::aarch64::RodataPool &pool)
-{
-    pool.emit(os);
-}
-
 /// @brief Write text to disk, replacing any existing file.
 /// @details Opens @p path in binary truncate mode, streams @p text into the file,
 ///          and reports IO failures to @p err so the caller can surface them.
@@ -349,158 +334,20 @@ int emitAndMaybeLink(const Options &opts)
 #else
     auto &ti = linuxTarget();
 #endif
-    AsmEmitter emitter{ti};
-    LowerILToMIR lowerer{ti};
 
-    // Build a pooled view of rodata and emit at file start
-    viper::codegen::aarch64::RodataPool pool;
-    pool.buildFromModule(mod);
+    // Run the modular code-generation pipeline.
+    passes::AArch64Module pipelineModule;
+    pipelineModule.ilMod = &mod;
+    pipelineModule.ti = &ti;
 
-    std::ostringstream asmStream;
-    emitGlobalsAArch64(asmStream, pool);
-    for (const auto &fn : mod.functions)
-    {
-        MFunction mir = lowerer.lowerFunction(fn);
-        // 0) Expand overflow-checked arithmetic pseudo-ops before RA
-        lowerOverflowOps(mir);
-        // 1) Sanitize basic block labels and (optionally) uniquify across module
-        {
-            using viper::codegen::common::sanitizeLabel;
-            std::unordered_map<std::string, std::string> bbMap;
-            bbMap.reserve(mir.blocks.size());
-            const bool uniquify = (mod.functions.size() > 1);
-            // Build map and rename blocks.
-            // All block labels use the Mach-O assembler-local "L" prefix so
-            // they stay out of the symbol table and are compatible with
-            // .subsections_via_symbols.  The function's external symbol
-            // (_main, _f, etc.) is emitted separately by AsmEmitter::
-            // emitFunctionHeader, so block labels are purely internal.
-            for (std::size_t bi = 0; bi < mir.blocks.size(); ++bi)
-            {
-                auto &bb = mir.blocks[bi];
-                const std::string old = bb.name;
-                const std::string suffix = uniquify ? (std::string("_") + fn.name) : std::string();
-                const std::string neu = "L" + sanitizeLabel(old, suffix);
-                bbMap.emplace(old, neu);
-                bb.name = neu;
-            }
-            // Remap label operands for branches that target basic blocks
-            for (auto &bb : mir.blocks)
-            {
-                for (auto &mi : bb.instrs)
-                {
-                    auto remapIfBB = [&](std::string &lbl)
-                    {
-                        auto it = bbMap.find(lbl);
-                        if (it != bbMap.end())
-                            lbl = it->second;
-                    };
-                    switch (mi.opc)
-                    {
-                        case viper::codegen::aarch64::MOpcode::Br:
-                            if (mi.ops.size() >= 1 &&
-                                mi.ops[0].kind == viper::codegen::aarch64::MOperand::Kind::Label)
-                                remapIfBB(mi.ops[0].label);
-                            break;
-                        case viper::codegen::aarch64::MOpcode::BCond:
-                        case viper::codegen::aarch64::MOpcode::Cbz:
-                        case viper::codegen::aarch64::MOpcode::Cbnz:
-                            if (mi.ops.size() >= 2 &&
-                                mi.ops[1].kind == viper::codegen::aarch64::MOperand::Kind::Label)
-                                remapIfBB(mi.ops[1].label);
-                            break;
-                        default:
-                            break;
-                    }
-                }
-            }
-        }
-        // Remap labels in MIR that refer to IL string globals to pooled labels
-        for (auto &bb : mir.blocks)
-        {
-            for (auto &mi : bb.instrs)
-            {
-                switch (mi.opc)
-                {
-                    case viper::codegen::aarch64::MOpcode::AdrPage:
-                        if (mi.ops.size() >= 2 &&
-                            mi.ops[1].kind == viper::codegen::aarch64::MOperand::Kind::Label)
-                        {
-                            const auto &n2l = pool.nameToLabel();
-                            auto it = n2l.find(mi.ops[1].label);
-                            if (it != n2l.end())
-                                mi.ops[1].label = it->second;
-                        }
-                        break;
-                    case viper::codegen::aarch64::MOpcode::AddPageOff:
-                        if (mi.ops.size() >= 3 &&
-                            mi.ops[2].kind == viper::codegen::aarch64::MOperand::Kind::Label)
-                        {
-                            const auto &n2l = pool.nameToLabel();
-                            auto it = n2l.find(mi.ops[2].label);
-                            if (it != n2l.end())
-                                mi.ops[2].label = it->second;
-                        }
-                        break;
-                    default:
-                        break;
-                }
-            }
-        }
-        // Detect leaf functions: scan for Bl/Blr instructions.
-        mir.isLeaf = true;
-        for (const auto &bb : mir.blocks)
-        {
-            for (const auto &mi : bb.instrs)
-            {
-                if (mi.opc == viper::codegen::aarch64::MOpcode::Bl ||
-                    mi.opc == viper::codegen::aarch64::MOpcode::Blr)
-                {
-                    mir.isLeaf = false;
-                    break;
-                }
-            }
-            if (!mir.isLeaf)
-                break;
-        }
+    PipelineOptions pipeOpts;
+    pipeOpts.dumpMirBeforeRA = opts.dump_mir_before_ra;
+    pipeOpts.dumpMirAfterRA = opts.dump_mir_after_ra;
 
-        // Dump MIR before register allocation if requested
-        if (opts.dump_mir_before_ra)
-        {
-            std::cerr << "=== MIR before RA: " << fn.name << " ===\n";
-            std::cerr << toString(mir) << "\n";
-        }
-        [[maybe_unused]] auto ra = allocate(mir, ti);
-        // Dump MIR after register allocation if requested
-        if (opts.dump_mir_after_ra)
-        {
-            std::cerr << "=== MIR after RA: " << fn.name << " ===\n";
-            std::cerr << toString(mir) << "\n";
-        }
-        // Run peephole optimizations after RA
-        [[maybe_unused]] auto peepholeStats = runPeephole(mir);
-        // Prune callee-saved registers that peephole eliminated.
-        pruneUnusedCalleeSaved(mir);
-        // Debug: dump MIR after peephole
-        if (opts.dump_mir_after_ra)
-        {
-            std::cerr << "=== MIR after peephole: " << fn.name << " ===\n";
-            std::cerr << toString(mir) << "\n";
-        }
-        emitter.emitFunction(asmStream, mir);
-        asmStream << "\n";
-    }
+    if (!runCodegenPipeline(pipelineModule, pipeOpts))
+        return 1;
 
-    // Emit platform-specific directives at end of module.
-    // .subsections_via_symbols enables function-level dead stripping on macOS
-    // and prevents the linker from setting MH_ALLOW_STACK_EXECUTION.
-    // .note.GNU-stack marks the stack as non-executable on Linux ELF.
-    if (ti.isLinux())
-        asmStream << ".section .note.GNU-stack,\"\",@progbits\n";
-    else if (!ti.isWindows())
-        asmStream << ".subsections_via_symbols\n";
-
-    std::string asmText = asmStream.str();
+    std::string asmText = pipelineModule.assembly;
 
     // Determine assembly destination
     std::string asmPath;

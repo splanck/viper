@@ -121,6 +121,7 @@ set(RT_TEXT_SOURCES
         text/rt_ini.c
         text/rt_guid.c
         text/rt_hash.c
+        text/rt_hash_util.c
         text/rt_json.c
         text/rt_json_stream.c
         text/rt_xml.c

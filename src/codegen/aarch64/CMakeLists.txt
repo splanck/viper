@@ -24,7 +24,8 @@ add_library(il_codegen_aarch64 STATIC
         passes/PeepholePass.cpp
         passes/EmitPass.cpp
         passes/SchedulerPass.cpp
-        passes/BlockLayoutPass.cpp)
+        passes/BlockLayoutPass.cpp
+        CodegenPipeline.cpp)
 target_include_directories(il_codegen_aarch64 PUBLIC
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>

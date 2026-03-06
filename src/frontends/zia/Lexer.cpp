@@ -95,6 +95,10 @@ const char *tokenKindToString(TokenKind kind)
             return "static";
         case TokenKind::KwWeak:
             return "weak";
+        case TokenKind::KwAsync:
+            return "async";
+        case TokenKind::KwAwait:
+            return "await";
         case TokenKind::KwModule:
             return "module";
         case TokenKind::KwNamespace:
@@ -271,10 +275,12 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-// Sorted for binary search (45 keywords)
-constexpr std::array<KeywordEntry, 45> kKeywordTable = {{
+// Sorted for binary search (47 keywords)
+constexpr std::array<KeywordEntry, 47> kKeywordTable = {{
     {"and", TokenKind::KwAnd},
     {"as", TokenKind::KwAs},
+    {"async", TokenKind::KwAsync},
+    {"await", TokenKind::KwAwait},
     {"bind", TokenKind::KwBind},
     {"break", TokenKind::KwBreak},
     {"catch", TokenKind::KwCatch},

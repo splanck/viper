@@ -126,6 +126,8 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
             return lowerTry(static_cast<TryExpr *>(expr));
         case ExprKind::ForceUnwrap:
             return lowerForceUnwrap(static_cast<ForceUnwrapExpr *>(expr));
+        case ExprKind::Await:
+            return lowerAwait(static_cast<AwaitExpr *>(expr));
         case ExprKind::Lambda:
             return lowerLambda(static_cast<LambdaExpr *>(expr));
         case ExprKind::Tuple:

@@ -255,6 +255,18 @@ inline constexpr const char *kThreadSleep = kThreadsThreadSleep;
 /// @}
 
 //=============================================================================
+/// @name Async/Future Aliases
+/// @brief Short names for Viper.Threads.Async and Viper.Threads.Future functions.
+/// @{
+//=============================================================================
+
+/// @brief Spawn an async task. Returns a Future handle.
+inline constexpr const char *kAsyncRun = kThreadsAsyncRun;
+/// @brief Block until a Future completes and return its value.
+inline constexpr const char *kFutureGet = kThreadsFutureGet;
+/// @}
+
+//=============================================================================
 // Zia-Specific Configuration Constants
 //=============================================================================
 /// @name Configuration Constants
