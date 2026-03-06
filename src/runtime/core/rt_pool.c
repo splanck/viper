@@ -19,7 +19,7 @@
 //   - Slab list insertion uses atomic CAS; no mutex is held during allocation.
 //   - Allocation requests larger than the largest size class (512 bytes) fall
 //     through to the system allocator.
-//   - Blocks are not zeroed on recycling; callers must initialise before use.
+//   - Blocks are zeroed on both allocation and recycling (memset in alloc/free).
 //
 // Ownership/Lifetime:
 //   - Slabs are allocated from the system heap and never freed individually;

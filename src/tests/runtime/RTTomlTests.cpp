@@ -136,6 +136,45 @@ static void test_empty()
     assert(rt_map_len(root) == 0);
 }
 
+static void test_depth_limit()
+{
+    // Build a TOML section name with 201 dot-separated parts (depth = 201 > TOML_MAX_DEPTH=200)
+    // e.g. [a.a.a....a] with 201 'a's separated by dots
+    char deep[512];
+    int pos = 0;
+    deep[pos++] = '[';
+    for (int i = 0; i < 201; i++)
+    {
+        if (i > 0)
+            deep[pos++] = '.';
+        deep[pos++] = 'a';
+    }
+    deep[pos++] = ']';
+    deep[pos++] = '\n';
+    deep[pos++] = '\0';
+
+    rt_string src = make_str(deep);
+    // The overly-deep section should trigger the error flag
+    assert(rt_toml_is_valid(src) == 0);
+
+    // Verify that a section at exactly depth 200 is accepted
+    char ok[512];
+    pos = 0;
+    ok[pos++] = '[';
+    for (int i = 0; i < 200; i++)
+    {
+        if (i > 0)
+            ok[pos++] = '.';
+        ok[pos++] = 'b';
+    }
+    ok[pos++] = ']';
+    ok[pos++] = '\n';
+    ok[pos++] = '\0';
+
+    rt_string src2 = make_str(ok);
+    assert(rt_toml_is_valid(src2) == 1);
+}
+
 int main()
 {
     test_parse_simple();
@@ -147,5 +186,6 @@ int main()
     test_get_dotted();
     test_null_safety();
     test_empty();
+    test_depth_limit();
     return 0;
 }

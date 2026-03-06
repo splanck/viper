@@ -851,9 +851,6 @@ struct CapturedVar
 {
     /// @brief Variable name.
     std::string name;
-
-    /// @brief Whether captured by reference (true) or value (false).
-    bool byReference = false;
 };
 
 /// @brief Anonymous function expression: `(x) => x + 1`.

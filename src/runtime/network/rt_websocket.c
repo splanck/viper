@@ -296,7 +296,16 @@ static int parse_ws_url(const char *url, int *is_secure, char **host, int *port,
     // Check for port
     if (*host_end == ':')
     {
-        *port = atoi(host_end + 1);
+        char *endptr = NULL;
+        long port_val = strtol(host_end + 1, &endptr, 10);
+        if (endptr == host_end + 1 || port_val < 1 || port_val > 65535)
+        {
+            free(*host);
+            *host = NULL;
+            return 0;
+        }
+        *port = (int)port_val;
+        host_end = endptr;
         while (*host_end && *host_end != '/')
             host_end++;
     }

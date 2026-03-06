@@ -17,6 +17,15 @@
 
 #include <string.h>
 
+/// @brief Secure memory zeroing that the compiler cannot optimize away.
+/// @details Uses a volatile function pointer to prevent dead-store elimination.
+static void rt_secure_zero(void *ptr, size_t len)
+{
+    volatile unsigned char *p = (volatile unsigned char *)ptr;
+    while (len--)
+        *p++ = 0;
+}
+
 //=============================================================================
 // SHA-256
 //=============================================================================
@@ -205,6 +214,10 @@ void rt_hmac_sha256(
     sha256_update(&ctx, opad, 64);
     sha256_update(&ctx, mac, 32);
     sha256_final(&ctx, mac);
+
+    rt_secure_zero(k, sizeof(k));
+    rt_secure_zero(ipad, sizeof(ipad));
+    rt_secure_zero(opad, sizeof(opad));
 }
 
 //=============================================================================
@@ -218,6 +231,7 @@ void rt_hkdf_extract(
     {
         uint8_t zero_salt[32] = {0};
         rt_hmac_sha256(zero_salt, 32, ikm, ikm_len, prk);
+        rt_secure_zero(zero_salt, sizeof(zero_salt));
     }
     else
     {
@@ -270,7 +284,13 @@ void rt_hkdf_expand(
         memcpy(okm + pos, t, copy);
         pos += copy;
         counter++;
+
+        rt_secure_zero(k, sizeof(k));
+        rt_secure_zero(ipad, sizeof(ipad));
+        rt_secure_zero(opad, sizeof(opad));
+        rt_secure_zero(temp, sizeof(temp));
     }
+    rt_secure_zero(t, sizeof(t));
 }
 
 void rt_hkdf_expand_label(const uint8_t secret[32],

@@ -431,6 +431,13 @@ if (NOT TARGET test_bytecode_vm)
     viper_add_ctest(test_bytecode_vm test_bytecode_vm)
 endif ()
 
+# VM vs BytecodeVM equivalence tests
+if (NOT TARGET test_vm_bytecode_equivalence)
+    viper_add_test(test_vm_bytecode_equivalence ${VIPER_TESTS_DIR}/unit/test_vm_bytecode_equivalence.cpp)
+    target_link_libraries(test_vm_bytecode_equivalence PRIVATE il_build il_vm viper_bytecode viper_support)
+    viper_add_ctest(test_vm_bytecode_equivalence test_vm_bytecode_equivalence)
+endif ()
+
 function(viper_add_runtime_tests)
     if (TARGET test_rt_string)
         return()
@@ -1429,4 +1436,29 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_shutdown ${VIPER_TESTS_DIR}/runtime/RTShutdownTests.cpp)
     target_link_libraries(test_rt_shutdown PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_shutdown test_rt_shutdown)
+
+    # HKDF / secure-zero correctness tests (Phase 1 Item 3)
+    viper_add_test(test_rt_hkdf ${VIPER_TESTS_DIR}/runtime/RTHkdfTests.cpp)
+    target_link_libraries(test_rt_hkdf PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_hkdf test_rt_hkdf)
+
+    # String UTF-8 Mid tests (Phase 2 Item 9)
+    viper_add_test(test_rt_string_utf8_mid ${VIPER_TESTS_DIR}/runtime/RTStringUtf8MidTests.cpp)
+    target_link_libraries(test_rt_string_utf8_mid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_string_utf8_mid test_rt_string_utf8_mid)
+
+    # GC batch lock correctness tests (Phase 2 Item 13)
+    viper_add_test(test_rt_gc_batch_lock ${VIPER_TESTS_DIR}/runtime/RTGCBatchLockTests.cpp)
+    target_link_libraries(test_rt_gc_batch_lock PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_gc_batch_lock test_rt_gc_batch_lock)
+
+    # Comprehensive rt_map tests (Phase 3 Item 19)
+    viper_add_test(test_rt_map_comprehensive ${VIPER_TESTS_DIR}/runtime/RTMapComprehensiveTests.cpp)
+    target_link_libraries(test_rt_map_comprehensive PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_map_comprehensive test_rt_map_comprehensive)
+
+    # rt_pool allocator tests (Phase 3 Item 19)
+    viper_add_test(test_rt_pool ${VIPER_TESTS_DIR}/runtime/RTPoolTests.cpp)
+    target_link_libraries(test_rt_pool PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_pool test_rt_pool)
 endfunction()

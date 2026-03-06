@@ -14,6 +14,7 @@
 // Key invariants:
 //   - Unknown base kinds conservatively return MayAlias.
 //   - Distinct allocas never alias each other.
+//   - Non-escaping allocas never alias with function parameters.
 //   - noalias parameters never alias other pointers.
 //   - ModRef queries only apply to Opcode::Call instructions.
 // Ownership/Lifetime: BasicAA is constructed per-function, collecting alloca
@@ -107,6 +108,7 @@ class BasicAA
     const il::core::Function *function_;
     const il::core::Module *module_;
     std::unordered_set<unsigned> allocas_;
+    std::unordered_set<unsigned> nonEscapingAllocas_;
     std::unordered_set<unsigned> noaliasParams_;
     std::unordered_set<unsigned> params_;
 
@@ -179,6 +181,75 @@ inline void BasicAA::collectFunctionInfo(const il::core::Function &function)
             if (instr.op == il::core::Opcode::Alloca && instr.result)
                 allocas_.insert(*instr.result);
         }
+
+    // Escape analysis: determine which allocas have their addresses escape.
+    // An alloca escapes if its temp ID (or a GEP derived from it) appears as:
+    //   1. Any operand in a Call/CallIndirect instruction
+    //   2. The value operand (index 1) of a Store instruction
+    std::unordered_set<unsigned> escapedAllocas;
+    for (unsigned allocaId : allocas_)
+    {
+        bool escaped = false;
+        // Collect all temps derived from this alloca via GEP chains
+        std::unordered_set<unsigned> derived;
+        derived.insert(allocaId);
+        bool changed = true;
+        while (changed)
+        {
+            changed = false;
+            for (const auto &[id, def] : defs_)
+            {
+                if (derived.count(id))
+                    continue;
+                if (def.op == il::core::Opcode::GEP && !def.operands.empty() &&
+                    def.operands[0].kind == il::core::Value::Kind::Temp &&
+                    derived.count(def.operands[0].id))
+                {
+                    derived.insert(id);
+                    changed = true;
+                }
+            }
+        }
+
+        // Check if any derived temp escapes via call or store
+        for (const auto &block : function.blocks)
+        {
+            if (escaped)
+                break;
+            for (const auto &instr : block.instructions)
+            {
+                if (escaped)
+                    break;
+                if (instr.op == il::core::Opcode::Call || instr.op == il::core::Opcode::CallIndirect)
+                {
+                    for (const auto &op : instr.operands)
+                        if (op.kind == il::core::Value::Kind::Temp && derived.count(op.id))
+                        {
+                            escaped = true;
+                            break;
+                        }
+                }
+                else if (instr.op == il::core::Opcode::Store)
+                {
+                    // Store: operand[0] = ptr (destination), operand[1] = value
+                    // The alloca escapes if it's stored AS A VALUE (not stored TO)
+                    if (instr.operands.size() >= 2 &&
+                        instr.operands[1].kind == il::core::Value::Kind::Temp &&
+                        derived.count(instr.operands[1].id))
+                    {
+                        escaped = true;
+                    }
+                }
+            }
+        }
+        if (escaped)
+            escapedAllocas.insert(allocaId);
+    }
+
+    // Non-escaping = all allocas minus escaped ones
+    for (unsigned allocaId : allocas_)
+        if (!escapedAllocas.count(allocaId))
+            nonEscapingAllocas_.insert(allocaId);
 }
 
 inline bool BasicAA::equalValues(const il::core::Value &lhs, const il::core::Value &rhs)
@@ -427,6 +498,14 @@ inline AliasResult BasicAA::alias(const il::core::Value &lhs,
         return AliasResult::NoAlias;
 
     if (l.kind == BaseKind::Alloca && r.kind == BaseKind::Alloca && l.id != r.id)
+        return AliasResult::NoAlias;
+
+    // Non-escaping alloca cannot alias with parameters (address never leaves function)
+    if (l.kind == BaseKind::Alloca && r.kind == BaseKind::Param &&
+        nonEscapingAllocas_.count(l.id))
+        return AliasResult::NoAlias;
+    if (r.kind == BaseKind::Alloca && l.kind == BaseKind::Param &&
+        nonEscapingAllocas_.count(r.id))
         return AliasResult::NoAlias;
 
     if (l.kind == BaseKind::Global && r.kind == BaseKind::Global && l.global != r.global)

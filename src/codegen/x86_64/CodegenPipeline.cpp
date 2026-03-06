@@ -427,6 +427,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
     cmd.push_back(stackArg.str());
 #else
     cmd.push_back("-Wl,--gc-sections");
+    cmd.push_back("-pie");
     if (hasComponent(ctx, RtComponent::Threads))
         cmd.push_back("-pthread");
     cmd.push_back("-lm");

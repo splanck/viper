@@ -825,6 +825,13 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr)
                       "wildcard (_) or handle all cases");
             }
         }
+        else
+        {
+            warn(WarningCode::W019_NonExhaustiveMatch,
+                 expr->loc,
+                 "Non-exhaustive patterns: consider adding a wildcard (_) case "
+                 "to handle all possible values");
+        }
     }
 
     return resultType ? resultType : types::unknown();

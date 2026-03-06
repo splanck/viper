@@ -35,6 +35,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <queue>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -303,6 +304,62 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     {
         if (!labels.contains(label))
             return Expected<void>{makeError({}, formatFunctionDiag(fn, "unknown label " + label))};
+    }
+
+    // ===== PASS 3: Lightweight dominance check =====
+    // Compute reachable blocks via BFS from entry, then warn if a definition
+    // in an unreachable block is used in a reachable block.
+    {
+        std::unordered_set<const BasicBlock *> reachable;
+        std::queue<const BasicBlock *> worklist;
+        if (!fn.blocks.empty())
+        {
+            worklist.push(&fn.blocks.front());
+            reachable.insert(&fn.blocks.front());
+        }
+        while (!worklist.empty())
+        {
+            const BasicBlock *cur = worklist.front();
+            worklist.pop();
+            for (const auto &instr : cur->instructions)
+            {
+                if (!isTerminator(instr.op))
+                    continue;
+                for (const auto &label : instr.labels)
+                {
+                    if (auto it = blockMap.find(label); it != blockMap.end())
+                    {
+                        if (reachable.insert(it->second).second)
+                            worklist.push(it->second);
+                    }
+                }
+                break;
+            }
+        }
+
+        // Check: any use of a temp defined in an unreachable block
+        for (const auto &bb : fn.blocks)
+        {
+            if (!reachable.contains(&bb))
+                continue;
+            for (const auto &instr : bb.instructions)
+            {
+                for (const auto &op : instr.operands)
+                {
+                    if (op.kind != Value::Kind::Temp)
+                        continue;
+                    auto defIt = definingBlock.find(op.id);
+                    if (defIt != definingBlock.end() && !reachable.contains(defIt->second))
+                    {
+                        std::ostringstream msg;
+                        msg << "use of %" << op.id << " defined in unreachable block ^"
+                            << defIt->second->label;
+                        sink.report(il::support::Diag{
+                            il::support::Severity::Warning, msg.str(), instr.loc, {}});
+                    }
+                }
+            }
+        }
     }
 
     return {};

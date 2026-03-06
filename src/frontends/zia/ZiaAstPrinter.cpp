@@ -729,8 +729,7 @@ static void printExpr(const Expr &expr, Printer &p)
                 p.push();
                 for (const auto &cap : e.captures)
                 {
-                    p.line("Capture \"" + cap.name + "\"" +
-                           (cap.byReference ? " (by-ref)" : " (by-val)"));
+                    p.line("Capture \"" + cap.name + "\"");
                 }
                 p.pop();
             }

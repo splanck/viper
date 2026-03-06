@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #ifdef _WIN32
 #define strcasecmp _stricmp
 #else
@@ -1538,6 +1539,119 @@ static const uint8_t *cert_get_issuer(const uint8_t *cert_der, size_t cert_len, 
     return NULL;
 }
 
+/// @brief Parse a UTCTime or GeneralizedTime DER value into a Unix timestamp.
+/// @param data Pointer to the time value bytes (after tag/length).
+/// @param len Length of the time value.
+/// @param tag DER tag (0x17 = UTCTime, 0x18 = GeneralizedTime).
+/// @return Unix timestamp, or -1 on parse failure.
+static time_t parse_der_time(const uint8_t *data, size_t len, uint8_t tag)
+{
+    struct tm tm_val;
+    memset(&tm_val, 0, sizeof(tm_val));
+
+    const char *s = (const char *)data;
+    int pos = 0;
+
+    if (tag == 0x17 && len >= 12)
+    {
+        /* UTCTime: YYMMDDHHMMSSZ */
+        int yy = (s[0] - '0') * 10 + (s[1] - '0');
+        tm_val.tm_year = (yy >= 50) ? yy : (100 + yy); /* RFC 5280: 50-99 → 1950-1999, 0-49 → 2000-2049 */
+        pos = 2;
+    }
+    else if (tag == 0x18 && len >= 14)
+    {
+        /* GeneralizedTime: YYYYMMDDHHMMSSZ */
+        int yyyy = (s[0] - '0') * 1000 + (s[1] - '0') * 100 + (s[2] - '0') * 10 + (s[3] - '0');
+        tm_val.tm_year = yyyy - 1900;
+        pos = 4;
+    }
+    else
+    {
+        return (time_t)-1;
+    }
+
+    tm_val.tm_mon = (s[pos] - '0') * 10 + (s[pos + 1] - '0') - 1;
+    tm_val.tm_mday = (s[pos + 2] - '0') * 10 + (s[pos + 3] - '0');
+    tm_val.tm_hour = (s[pos + 4] - '0') * 10 + (s[pos + 5] - '0');
+    tm_val.tm_min = (s[pos + 6] - '0') * 10 + (s[pos + 7] - '0');
+    tm_val.tm_sec = (s[pos + 8] - '0') * 10 + (s[pos + 9] - '0');
+
+#if defined(_WIN32)
+    return _mkgmtime(&tm_val);
+#else
+    return timegm(&tm_val);
+#endif
+}
+
+/// @brief Check if a certificate's Validity period covers the current time.
+/// @param cert_der DER-encoded certificate.
+/// @param cert_len Length in bytes.
+/// @return 0 if valid (current time within notBefore..notAfter), -1 on error or expired.
+static int cert_check_expiry(const uint8_t *cert_der, size_t cert_len)
+{
+    uint8_t t;
+    size_t vl, hl;
+
+    /* Certificate SEQUENCE */
+    if (der_read_tlv(cert_der, cert_len, &t, &vl, &hl) != 0 || t != 0x30)
+        return -1;
+    /* TBSCertificate SEQUENCE */
+    const uint8_t *cert_val = cert_der + hl;
+    if (der_read_tlv(cert_val, vl, &t, &vl, &hl) != 0 || t != 0x30)
+        return -1;
+
+    const uint8_t *tbs = cert_val + hl;
+    size_t tbs_len = vl;
+    size_t pos = 0;
+    int seq_count = 0;
+
+    /* Walk TBSCertificate fields to find Validity (field index 3, skipping version tag). */
+    while (pos < tbs_len)
+    {
+        if (der_read_tlv(tbs + pos, tbs_len - pos, &t, &vl, &hl) != 0)
+            break;
+
+        if (t == 0xA0) /* version [0] EXPLICIT — skip */
+        {
+            pos += hl + vl;
+            continue;
+        }
+
+        seq_count++;
+        if (t == 0x30 && seq_count == 3) /* Validity is the 3rd SEQUENCE */
+        {
+            const uint8_t *validity = tbs + pos + hl;
+            size_t validity_len = vl;
+            size_t vpos = 0;
+
+            /* notBefore (UTCTime or GeneralizedTime) */
+            if (der_read_tlv(validity + vpos, validity_len - vpos, &t, &vl, &hl) != 0)
+                return -1;
+            time_t not_before = parse_der_time(validity + vpos + hl, vl, t);
+            vpos += hl + vl;
+
+            /* notAfter */
+            if (der_read_tlv(validity + vpos, validity_len - vpos, &t, &vl, &hl) != 0)
+                return -1;
+            time_t not_after = parse_der_time(validity + vpos + hl, vl, t);
+
+            if (not_before == (time_t)-1 || not_after == (time_t)-1)
+                return -1;
+
+            time_t now = time(NULL);
+            if (now < not_before || now > not_after)
+                return -1; /* expired or not yet valid */
+
+            return 0; /* valid */
+        }
+
+        pos += hl + vl;
+    }
+
+    return -1; /* Validity field not found */
+}
+
 /// @brief Verify certificate chain against the Linux system CA bundle (best-effort).
 ///
 /// Checks that the end-entity certificate's Issuer DER matches the Subject DER
@@ -1564,6 +1678,14 @@ static int tls_verify_chain(rt_tls_session_t *session)
     if (!f)
     {
         session->error = "TLS: could not open CA bundle";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    // Check end-entity certificate expiration
+    if (cert_check_expiry(session->server_cert_der, session->server_cert_der_len) != 0)
+    {
+        fclose(f);
+        session->error = "TLS: server certificate has expired or is not yet valid";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
@@ -1603,7 +1725,12 @@ static int tls_verify_chain(rt_tls_session_t *session)
                 size_t ca_subj_len = 0;
                 const uint8_t *ca_subj = cert_get_subject(ca_der, ca_len, &ca_subj_len);
                 if (ca_subj && der_names_equal(ee_issuer, ee_issuer_len, ca_subj, ca_subj_len))
-                    found = 1;
+                {
+                    /* Check CA cert expiration before accepting. */
+                    if (cert_check_expiry(ca_der, ca_len) == 0)
+                        found = 1;
+                    /* If CA is expired, keep scanning for another matching CA. */
+                }
             }
             pem_pos = 0;
         }

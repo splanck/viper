@@ -140,6 +140,9 @@ static void *parse_array(const char **p)
     return seq;
 }
 
+/// @brief Maximum nesting depth for TOML sections/tables (consistent with JSON/XML/YAML).
+#define TOML_MAX_DEPTH 200
+
 // --- Internal parse error flag (S-14, thread-local to avoid concurrent parse clobbering) ---
 static _Thread_local int g_toml_had_error = 0;
 
@@ -197,6 +200,20 @@ void *rt_toml_parse(rt_string src)
             {
                 // Create nested map for section
                 const char *name_cstr = rt_string_cstr(section_name);
+
+                // Count nesting depth (dots + 1)
+                int depth = 1;
+                for (const char *d = name_cstr; *d; d++)
+                {
+                    if (*d == '.')
+                        depth++;
+                }
+                if (depth > TOML_MAX_DEPTH)
+                {
+                    g_toml_had_error = 1;
+                    skip_line(&p);
+                    continue;
+                }
 
                 // Handle dotted section names
                 void *target = root;

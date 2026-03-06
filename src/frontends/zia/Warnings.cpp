@@ -50,6 +50,7 @@ static constexpr WarningInfo kWarningTable[] = {
     {WarningCode::W016_OptionalWithoutCheck, "W016", "optional-without-check"},
     {WarningCode::W017_XorConfusion, "W017", "xor-confusion"},
     {WarningCode::W018_BitwiseAndConfusion, "W018", "bitwise-and-confusion"},
+    {WarningCode::W019_NonExhaustiveMatch, "W019", "non-exhaustive-match"},
 };
 
 static_assert(sizeof(kWarningTable) / sizeof(kWarningTable[0]) == kWarningCodeCount,
@@ -130,6 +131,7 @@ const std::unordered_set<WarningCode> &WarningPolicy::defaultEnabled()
         WarningCode::W016_OptionalWithoutCheck,
         WarningCode::W017_XorConfusion,
         WarningCode::W018_BitwiseAndConfusion,
+        WarningCode::W019_NonExhaustiveMatch,
     };
     return defaults;
 }

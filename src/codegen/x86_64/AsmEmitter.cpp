@@ -259,6 +259,8 @@ void emitRoDataPool(std::span<const std::string> stringLiterals,
     static_cast<void>(stringLengths);
 #if defined(__APPLE__)
     os << ".section __TEXT,__const\n";
+#elif defined(_WIN32)
+    os << ".section .rdata,\"dr\"\n";
 #else
     os << ".section .rodata\n";
 #endif
@@ -435,6 +437,9 @@ void AsmEmitter::emitFunction(std::ostream &os,
     os << ".text\n";
     const std::string linkName = asmfmt::format_label(viper::common::MangleLink(func.name));
     os << ".globl " << linkName << "\n";
+#if !defined(__APPLE__) && !defined(_WIN32)
+    os << ".type " << linkName << ", @function\n";
+#endif
     os << linkName << ":\n";
 
     for (std::size_t i = 0; i < func.blocks.size(); ++i)

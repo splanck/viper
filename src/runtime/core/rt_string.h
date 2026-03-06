@@ -11,12 +11,12 @@
 //   - Empty string is represented as NULL or a zero-length allocated string; both are valid.
 //
 // Encoding & indexing:
-//   - All lengths and indices are BYTE-based, not codepoint-based. This follows
-//     traditional BASIC string semantics. rt_str_len() returns the byte count.
-//   - Slicing functions (Left$, Right$, Mid$, Substring) operate on byte offsets.
-//     Slicing mid-codepoint produces a valid (but possibly ill-formed) UTF-8 fragment.
-//   - rt_str_flip() is the only codepoint-aware operation — it reverses by UTF-8
-//     sequences (1-4 bytes each) rather than by individual bytes.
+//   - rt_str_len() returns the byte count; all low-level APIs are byte-based.
+//   - Mid$, MidLen$: operate on CODEPOINT offsets (1-based). These are the
+//     primary user-facing slicing functions and are UTF-8 safe.
+//   - rt_str_substr(), Left$, Right$: operate on byte offsets. These are internal
+//     or BASIC-compatible and may split UTF-8 sequences.
+//   - rt_str_flip() reverses by UTF-8 sequences (1-4 bytes each).
 //   - Case conversion (UCase$/LCase$) is ASCII-only: bytes 0x41-0x5A / 0x61-0x7A
 //     are toggled; multi-byte UTF-8 sequences pass through unchanged.
 //

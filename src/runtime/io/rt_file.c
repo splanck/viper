@@ -136,6 +136,10 @@ static RtFileChannelEntry *rt_file_find_channel(int32_t channel)
 ///          via @ref rt_file_init, and the freshly provisioned entry is returned
 ///          to the caller.  Allocation failures bubble up as @c NULL so callers
 ///          can surface @ref Err_RuntimeError.
+/// @brief Maximum number of open file channels.
+/// @details Prevents unbounded resource allocation from untrusted input.
+static const size_t kMaxOpenChannels = 1024;
+
 static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel)
 {
     if (channel < 0)
@@ -148,6 +152,8 @@ static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel)
     size_t *pcount = rtf_count();
     size_t *pcap = rtf_capacity();
     if (!pcount || !pcap)
+        return NULL;
+    if (*pcount >= kMaxOpenChannels)
         return NULL;
     if (*pcount == *pcap)
     {

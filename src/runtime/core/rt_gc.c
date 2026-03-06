@@ -493,38 +493,34 @@ void rt_gc_clear_weak_refs(void *target)
 //=============================================================================
 
 /// Visitor that trial-decrements child refcounts.
+/// Called while gc_lock is held for the entire phase.
 static void trial_decrement(void *child, void *ctx)
 {
     (void)ctx;
     if (!child)
         return;
 
-    gc_lock();
     int64_t idx = find_entry(child);
     if (idx >= 0)
         g_gc.entries[idx].trial_rc--;
-    gc_unlock();
 }
 
 /// Visitor that restores trial refcounts (marks reachable children).
+/// Called while gc_lock is held for the entire phase.
 static void trial_restore(void *child, void *ctx)
 {
     (void)ctx;
     if (!child)
         return;
 
-    gc_lock();
     int64_t idx = find_entry(child);
     if (idx >= 0 && g_gc.entries[idx].color != 2)
     {
         g_gc.entries[idx].color = 2; /* black = reachable */
-        /* Recursively restore children. */
+        /* Recursively restore children — lock is already held. */
         gc_entry e = g_gc.entries[idx];
-        gc_unlock();
         e.traverse(e.obj, trial_restore, NULL);
-        return;
     }
-    gc_unlock();
 }
 
 /// Lightweight snapshot entry for traversal outside the lock.
@@ -570,7 +566,9 @@ int64_t rt_gc_collect(void)
     /* Phase 2: Trial decrement — for each tracked object, visit its
        children.  If a child is also tracked, decrement its trial_rc.
        After this phase, objects whose trial_rc <= 0 are only referenced
-       by other tracked objects (potential cycle members). */
+       by other tracked objects (potential cycle members).
+       Lock held across the entire phase to avoid per-child churn. */
+    gc_lock();
     for (int64_t i = 0; i < snap_count; i++)
     {
         snapshot[i].traverse(snapshot[i].obj, trial_decrement, NULL);
@@ -578,23 +576,18 @@ int64_t rt_gc_collect(void)
 
     /* Phase 3: Scan — objects with trial_rc > 0 have external references
        and are definitely reachable.  Mark them black and recursively
-       mark everything reachable from them.  We look up each snapshot
-       entry in the (possibly rehashed) live table via find_entry. */
+       mark everything reachable from them.  Lock remains held from Phase 2
+       to avoid per-child acquire/release overhead. */
     for (int64_t i = 0; i < snap_count; i++)
     {
-        gc_lock();
         int64_t idx = find_entry(snapshot[i].obj);
         if (idx >= 0 && g_gc.entries[idx].trial_rc > 0 && g_gc.entries[idx].color != 2)
         {
             g_gc.entries[idx].color = 2; /* black = definitely reachable */
-            gc_unlock();
             snapshot[i].traverse(snapshot[i].obj, trial_restore, NULL);
         }
-        else
-        {
-            gc_unlock();
-        }
     }
+    gc_unlock();
 
     free(snapshot);
 

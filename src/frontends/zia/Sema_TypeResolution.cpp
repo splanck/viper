@@ -319,7 +319,6 @@ void Sema::collectCaptures(const Expr *expr,
                             captured.insert(ident->name);
                             CapturedVar cv;
                             cv.name = ident->name;
-                            cv.byReference = !sym->isFinal; // Mutable vars by reference
                             captures.push_back(cv);
                         }
                     }

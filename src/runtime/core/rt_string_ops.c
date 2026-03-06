@@ -613,13 +613,16 @@ rt_string rt_str_right(rt_string s, int64_t n)
     return rt_str_substr(s, (int64_t)start, n);
 }
 
+// Forward declare UTF-8 helpers used by Mid functions
+static size_t utf8_char_to_byte_offset(const char *data, size_t byte_len, int64_t char_pos);
+
 /// @brief Implement BASIC's two-argument `MID$` overload.
-/// @details Interprets @p start as one-based, returns the original string when
-///          @p start == 1, and otherwise slices from the specified position to
-///          the end.  Negative or zero starts trigger traps with detailed
-///          messages.
+/// @details Interprets @p start as one-based codepoint position.  Returns the
+///          original string when @p start == 1, and otherwise slices from the
+///          specified codepoint position to the end.  Negative or zero starts
+///          trigger traps with detailed messages.
 /// @param s Source string handle.
-/// @param start One-based starting position.
+/// @param start One-based codepoint position.
 /// @return Resulting substring.
 rt_string rt_str_mid(rt_string s, int64_t start)
 {
@@ -633,15 +636,15 @@ rt_string rt_str_mid(rt_string s, int64_t start)
         snprintf(buf, sizeof(buf), "MID$: start must be >= 1 (got %s)", numbuf);
         rt_trap(buf);
     }
-    size_t len = rt_string_len_bytes(s);
+    size_t byte_len = rt_string_len_bytes(s);
     if (start == 1)
         return rt_string_ref(s);
-    uint64_t start_idx_u = (uint64_t)(start - 1);
-    if (start_idx_u >= len)
+    const char *data = s->data;
+    size_t byte_off = utf8_char_to_byte_offset(data, byte_len, start);
+    if (byte_off >= byte_len)
         return rt_empty_string();
-    size_t start_idx = (size_t)start_idx_u;
-    size_t n = len - start_idx;
-    return rt_str_substr(s, (int64_t)start_idx, (int64_t)n);
+    size_t n = byte_len - byte_off;
+    return rt_str_substr(s, (int64_t)byte_off, (int64_t)n);
 }
 
 /// @brief Implement BASIC's three-argument `MID$` overload.
@@ -672,32 +675,19 @@ rt_string rt_str_mid_len(rt_string s, int64_t start, int64_t len)
         snprintf(buf, sizeof(buf), "MID$: len must be >= 0 (got %s)", numbuf);
         rt_trap(buf);
     }
-    size_t slen = rt_string_len_bytes(s);
+    size_t byte_len = rt_string_len_bytes(s);
     if (len == 0)
         return rt_empty_string();
-    uint64_t start_idx_u = (uint64_t)(start - 1);
-    if (start_idx_u >= slen)
+    const char *data = s->data;
+    size_t byte_start = utf8_char_to_byte_offset(data, byte_len, start);
+    if (byte_start >= byte_len)
         return rt_empty_string();
-    size_t start_idx = (size_t)start_idx_u;
-    size_t avail = slen - start_idx;
-    uint64_t requested = (uint64_t)len;
-    if (requested > SIZE_MAX)
-    {
-        if (start_idx == 0)
-            return rt_string_ref(s);
-        len = (int64_t)avail;
-    }
-    else
-    {
-        size_t req_len = (size_t)requested;
-        if (start_idx == 0 && req_len >= slen)
-            return rt_string_ref(s);
-        if (req_len >= avail)
-            len = (int64_t)avail;
-        else
-            len = (int64_t)req_len;
-    }
-    return rt_str_substr(s, (int64_t)start_idx, len);
+    // Find the byte offset of (start + len) to compute the byte length
+    size_t byte_end = utf8_char_to_byte_offset(data, byte_len, start + len);
+    size_t byte_count = byte_end - byte_start;
+    if (byte_start == 0 && byte_end >= byte_len)
+        return rt_string_ref(s);
+    return rt_str_substr(s, (int64_t)byte_start, (int64_t)byte_count);
 }
 
 /// @brief Search for a substring using zero-based indexing.
@@ -1467,6 +1457,36 @@ rt_string rt_str_repeat(rt_string str, int64_t count)
 
     *dst = '\0';
     return result;
+}
+
+/// @brief Convert a 1-based codepoint offset to a byte offset in a UTF-8 string.
+/// @param data Pointer to the string data.
+/// @param byte_len Total byte length of the string.
+/// @param char_pos 1-based codepoint position (1 = first character).
+/// @return Byte offset corresponding to the start of the codepoint, or byte_len
+///         if char_pos is past the end.
+static size_t utf8_char_to_byte_offset(const char *data, size_t byte_len, int64_t char_pos)
+{
+    size_t byte_off = 0;
+    int64_t cp = 1;
+    while (byte_off < byte_len && cp < char_pos)
+    {
+        unsigned char c = (unsigned char)data[byte_off];
+        size_t clen = 1;
+        if ((c & 0x80) == 0)
+            clen = 1;
+        else if ((c & 0xE0) == 0xC0)
+            clen = 2;
+        else if ((c & 0xF0) == 0xE0)
+            clen = 3;
+        else if ((c & 0xF8) == 0xF0)
+            clen = 4;
+        if (byte_off + clen > byte_len)
+            clen = byte_len - byte_off;
+        byte_off += clen;
+        cp++;
+    }
+    return byte_off;
 }
 
 /// @brief Get UTF-8 character byte length from leading byte.

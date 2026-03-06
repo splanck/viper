@@ -110,10 +110,28 @@ void Sema::analyzeStmt(Stmt *stmt)
     }
 }
 
+/// @brief Check if a statement unconditionally terminates (return/break/continue/throw).
+static bool stmtTerminates(const Stmt *s)
+{
+    if (!s)
+        return false;
+    if (s->kind == StmtKind::Return || s->kind == StmtKind::Break ||
+        s->kind == StmtKind::Continue || s->kind == StmtKind::Throw)
+        return true;
+    if (s->kind == StmtKind::Block)
+    {
+        auto *block = static_cast<const BlockStmt *>(s);
+        if (!block->statements.empty())
+            return stmtTerminates(block->statements.back().get());
+    }
+    return false;
+}
+
 void Sema::analyzeBlockStmt(BlockStmt *stmt)
 {
     pushScope();
     bool afterTerminator = false;
+    int guardNarrowings = 0;
     for (auto &s : stmt->statements)
     {
         // W002: Unreachable code after return/break/continue
@@ -132,7 +150,36 @@ void Sema::analyzeBlockStmt(BlockStmt *stmt)
         {
             afterTerminator = true;
         }
+
+        // Guard-clause narrowing: if (x == null) return; → x is non-null after
+        if (s->kind == StmtKind::If)
+        {
+            auto *ifStmt = static_cast<IfStmt *>(s.get());
+            if (!ifStmt->elseBranch && stmtTerminates(ifStmt->thenBranch.get()))
+            {
+                std::string nullCheckVar;
+                bool isNotNull = false;
+                if (tryExtractNullCheck(ifStmt->condition.get(), nullCheckVar, isNotNull))
+                {
+                    // if (x == null) return; → x is non-null after
+                    // if (x != null) return; → x is null after (less useful, but correct)
+                    TypeRef varType = lookupVarType(nullCheckVar);
+                    if (varType && varType->kind == TypeKindSem::Optional)
+                    {
+                        TypeRef narrowed = isNotNull ? nullptr : varType->innerType();
+                        if (!isNotNull && narrowed)
+                        {
+                            pushNarrowingScope();
+                            narrowType(nullCheckVar, narrowed);
+                            guardNarrowings++;
+                        }
+                    }
+                }
+            }
+        }
     }
+    for (int i = 0; i < guardNarrowings; i++)
+        popNarrowingScope();
     popScope();
 }
 

@@ -400,6 +400,9 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
     // Create end block for the match
     size_t endIdx = createBlock("match_end");
 
+    // Create a trap block for non-exhaustive match fallthrough
+    size_t nocaseIdx = createBlock("match_nocase");
+
     // Create blocks for each arm body and the next arm's test
     std::vector<size_t> armBlocks;
     std::vector<size_t> nextTestBlocks;
@@ -412,7 +415,7 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
         }
         else
         {
-            nextTestBlocks.push_back(endIdx); // Last arm falls through to end
+            nextTestBlocks.push_back(nocaseIdx); // Last arm falls through to trap
         }
     }
 
@@ -495,6 +498,18 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
 
     // Remove the scrutinee slot
     removeSlot(scrutineeSlot);
+
+    // Emit a trap for non-exhaustive match fallthrough.
+    // If all arms had a wildcard/irrefutable pattern, the last arm's failure
+    // branch is unreachable and the trap will be eliminated by DCE.
+    setBlock(nocaseIdx);
+    {
+        il::core::Instr trapInstr;
+        trapInstr.op = Opcode::Trap;
+        trapInstr.type = Type(Type::Kind::Void);
+        trapInstr.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(trapInstr);
+    }
 
     // Continue from end block
     setBlock(endIdx);

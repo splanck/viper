@@ -47,6 +47,9 @@ bool Parser::at(TokenKind k) const
 /// @return Reference to the token at position @p n.
 const Token &Parser::peek(int n) const
 {
+    static const int kMaxPeekDistance = 256;
+    if (n > kMaxPeekDistance)
+        n = kMaxPeekDistance;
     while (tokens_.size() <= static_cast<size_t>(n))
     {
         tokens_.push_back(lexer_.next());
