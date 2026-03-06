@@ -86,6 +86,7 @@ entity Level {
         if t == TILE_PLATFORM { return true; }
         if t == TILE_CAVE_TOP { return true; }
         if t == TILE_CAVE_WALL { return true; }
+        if t == TILE_BRIDGE { return true; }
         return false;
     }
 

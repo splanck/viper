@@ -322,7 +322,8 @@ entity Player {
         }
 
         // Update state based on movement
-        if state != PS_HURT {
+        // Allow state transition out of PS_HURT once iframes expire
+        if state != PS_HURT || iframes <= 0 {
             if onGround {
                 if vx == 0 {
                     state = PS_IDLE;

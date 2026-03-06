@@ -18,6 +18,7 @@ bind "./pickups";
 bind "./hud";
 bind "./menu";
 bind "./renderer";
+bind "./sound";
 
 entity Game {
     hide Canvas canvas;
@@ -36,6 +37,7 @@ entity Game {
     hide SpriteFactory sprites;
     hide Renderer renderObj;
     hide PhysicsHelper phys;
+    hide SoundManager sfx;
 
     // Game state
     hide Integer score;
@@ -51,6 +53,9 @@ entity Game {
     // Death/respawn
     hide Integer deathTimer;
 
+    // Sound: track previous player state for jump detection
+    hide Integer prevPlayerState;
+
     expose func init() {
         gameState = STATE_MENU;
         score = 0;
@@ -61,6 +66,7 @@ entity Game {
         levelCompleteTimer = 0;
         timeBonus = 0;
         deathTimer = 0;
+        prevPlayerState = PS_IDLE;
 
         // Create subsystems
         sprites = new SpriteFactory();
@@ -75,6 +81,8 @@ entity Game {
         menus = new MenuSystem();
         renderObj = new Renderer();
         phys = new PhysicsHelper();
+        sfx = new SoundManager();
+        sfx.setup("examples/games/sidescroller/");
     }
 
     // =========================================================================
@@ -127,13 +135,16 @@ entity Game {
         menus.drawTitle(canvas);
 
         if result == STATE_PLAYING {
+            sfx.playMenuSelect();
             startNewGame();
         }
         if result == STATE_HIGHSCORES {
+            sfx.playMenuSelect();
             gameState = STATE_HIGHSCORES;
             menus.resetSelection();
         }
         if result == STATE_CONTROLS {
+            sfx.playMenuSelect();
             gameState = STATE_CONTROLS;
         }
         if result == -2 {
@@ -173,6 +184,7 @@ entity Game {
                 bx = player.pixelX() - BULLET_W;
             }
             bullets.fire(bx, by, player.facing);
+            sfx.playShoot();
         }
 
         // Update camera
@@ -198,6 +210,16 @@ entity Game {
 
         // Level timer
         levelTimer = levelTimer + 1;
+
+        // Detect jump state transition for sound
+        if player.state == PS_JUMP || player.state == PS_DJUMP {
+            if prevPlayerState != PS_JUMP {
+                if prevPlayerState != PS_DJUMP {
+                    sfx.playJump();
+                }
+            }
+        }
+        prevPlayerState = player.state;
 
         // --- Collision checks ---
         checkPlayerEnemyCollision();
@@ -244,6 +266,7 @@ entity Game {
                                               player.pixelY() + PLAYER_H,
                                               COL_SLIME);
                     renderObj.shake(6, 3);
+                    sfx.playStomp();
                     return;
                 }
             }
@@ -252,6 +275,7 @@ entity Game {
             player.takeDamage(1);
             renderObj.shake(8, 4);
             renderObj.flash(COL_HUD_RED, 6);
+            sfx.playHurt();
         }
     }
 
@@ -267,10 +291,12 @@ entity Game {
                 coins = coins + 1;
                 score = score + COIN_SCORE;
                 particles.burstCoinCollect(player.centerX(), player.centerY());
+                sfx.playCoin();
             } else {
                 player.collectPowerUp(collected);
                 particles.burstSpark(player.centerX(), player.centerY(),
                                      COL_SPARK_YELLOW);
+                sfx.playPowerup();
             }
 
             // Check for more
@@ -302,10 +328,12 @@ entity Game {
                             score = score + BOSS_SCORE;
                             renderObj.shake(15, 8);
                             particles.burstDeath(bx, by);
+                            sfx.playEnemyDeath();
                         } else {
                             score = score + ENEMY_SCORE;
                             particles.burstEnemyDeath(bx, by, COL_SPARK_YELLOW);
                             renderObj.shake(6, 3);
+                            sfx.playEnemyDeath();
                         }
                     } else {
                         renderObj.shake(3, 2);
@@ -328,6 +356,7 @@ entity Game {
             player.takeDamage(1);
             renderObj.shake(8, 4);
             renderObj.flash(COL_HUD_RED, 6);
+            sfx.playHurt();
         }
     }
 
@@ -343,6 +372,7 @@ entity Game {
             player.takeDamage(2);
             renderObj.shake(10, 5);
             renderObj.flash(COL_LAVA_BRIGHT, 8);
+            sfx.playHurt();
         }
     }
 
@@ -368,6 +398,7 @@ entity Game {
             if dy < TILE_SIZE * 2 {
                 reachedCheckpoint = true;
                 particles.burstSpark(cpx + 16, cpy + 16, COL_CHECKPOINT);
+                sfx.playCheckpoint();
             }
         }
     }
@@ -397,6 +428,7 @@ entity Game {
             levelCompleteTimer = 0;
             menus.resetSelection();
             gameState = STATE_LEVELCOMPLETE;
+            sfx.playLevelComplete();
 
             // Add to high scores
             var totalScore = score + timeBonus;
@@ -422,6 +454,7 @@ entity Game {
             particles.burstDeath(player.centerX(), player.centerY());
             renderObj.shake(12, 6);
             renderObj.flash(COL_HUD_RED, 10);
+            sfx.playDeath();
         }
 
         // Still update particles and render during death
@@ -475,9 +508,11 @@ entity Game {
         menus.drawPause(canvas);
 
         if result == STATE_PLAYING {
+            sfx.playMenuSelect();
             gameState = STATE_PLAYING;
         }
         if result == STATE_MENU {
+            sfx.playMenuSelect();
             gameState = STATE_MENU;
             menus.resetSelection();
         }
@@ -492,9 +527,11 @@ entity Game {
         menus.drawGameOver(canvas, score);
 
         if result == STATE_PLAYING {
+            sfx.playMenuSelect();
             startNewGame();
         }
         if result == STATE_MENU {
+            sfx.playMenuSelect();
             gameState = STATE_MENU;
             menus.resetSelection();
         }
@@ -516,6 +553,7 @@ entity Game {
         menus.drawLevelComplete(canvas, score, timeBonus, currentLevel);
 
         if result == STATE_PLAYING {
+            sfx.playMenuSelect();
             score = score + timeBonus;
             currentLevel = currentLevel + 1;
             if currentLevel > LEVEL_COUNT {
@@ -537,6 +575,7 @@ entity Game {
         menus.drawVictory(canvas, score + timeBonus);
 
         if result == STATE_MENU {
+            sfx.playMenuSelect();
             gameState = STATE_MENU;
             menus.resetSelection();
         }
@@ -551,6 +590,7 @@ entity Game {
         menus.drawHighScores(canvas);
 
         if result == STATE_MENU {
+            sfx.playMenuSelect();
             gameState = STATE_MENU;
             menus.resetSelection();
         }
@@ -565,6 +605,7 @@ entity Game {
         menus.drawControls(canvas);
 
         if result == STATE_MENU {
+            sfx.playMenuSelect();
             gameState = STATE_MENU;
             menus.resetSelection();
         }

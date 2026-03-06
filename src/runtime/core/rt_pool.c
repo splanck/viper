@@ -240,50 +240,6 @@ static rt_pool_slab_t *allocate_slab(rt_pool_class_t class_idx)
     return slab;
 }
 
-/// @brief Push blocks from a new slab onto the freelist.
-/// @param pool Pool state for the size class.
-/// @param slab Newly allocated slab.
-static void push_slab_to_freelist(rt_pool_state_t *pool, rt_pool_slab_t *slab)
-{
-    // Build a local chain of all blocks in the slab
-    rt_pool_block_t *first = NULL;
-    rt_pool_block_t *last = NULL;
-
-    for (size_t i = 0; i < slab->block_count; i++)
-    {
-        rt_pool_block_t *block = (rt_pool_block_t *)(slab->data + i * slab->block_size);
-        block->next = NULL;
-
-        if (!first)
-        {
-            first = block;
-            last = block;
-        }
-        else
-        {
-            last->next = block;
-            last = block;
-        }
-    }
-
-    // Atomically prepend the chain to the freelist using tagged pointers
-    uint64_t old_tagged = atomic_load_u64(&pool->freelist_tagged);
-    uint64_t new_tagged;
-    do
-    {
-        rt_pool_block_t *old_head = (rt_pool_block_t *)unpack_ptr(old_tagged);
-        uint16_t old_version = unpack_version(old_tagged);
-        atomic_store_next(last, old_head);
-        new_tagged = pack_tagged_ptr(first, (uint16_t)(old_version + 1));
-    } while (!atomic_cas_u64(&pool->freelist_tagged, &old_tagged, new_tagged));
-
-#if RT_COMPILER_MSVC
-    rt_atomic_fetch_add_size(&pool->free_count, slab->block_count, __ATOMIC_RELAXED);
-#else
-    __atomic_fetch_add(&pool->free_count, slab->block_count, __ATOMIC_RELAXED);
-#endif
-}
-
 /// @brief Pop a block from the freelist.
 /// @param pool Pool state for the size class.
 /// @return Block pointer, or NULL if freelist is empty.
@@ -364,6 +320,12 @@ void *rt_pool_alloc(size_t size)
         if (!slab)
             return NULL;
 
+        // Reserve the first block for this allocation before pushing the
+        // rest to the freelist. This prevents a race where other threads
+        // consume all blocks between push and our pop, causing a spurious
+        // NULL return.
+        block = (rt_pool_block_t *)(slab->data);
+
         // Atomically link slab into list using CAS loop
         // This prevents the lost-update race where concurrent slab allocations
         // could orphan one or more slabs (RACE-002 fix)
@@ -387,13 +349,46 @@ void *rt_pool_alloc(size_t size)
             &pool->slabs, &expected, slab, 1, __ATOMIC_RELEASE, __ATOMIC_RELAXED));
 #endif
 
-        // Push all blocks to freelist
-        push_slab_to_freelist(pool, slab);
+        // Push remaining blocks (skip first, which is reserved) to freelist
+        if (slab->block_count > 1)
+        {
+            rt_pool_block_t *first = NULL;
+            rt_pool_block_t *last = NULL;
 
-        // Now pop one for this allocation
-        block = pop_from_freelist(pool);
-        if (!block)
-            return NULL; // Should not happen
+            for (size_t i = 1; i < slab->block_count; i++)
+            {
+                rt_pool_block_t *b = (rt_pool_block_t *)(slab->data + i * slab->block_size);
+                b->next = NULL;
+
+                if (!first)
+                {
+                    first = b;
+                    last = b;
+                }
+                else
+                {
+                    last->next = b;
+                    last = b;
+                }
+            }
+
+            // Atomically prepend the chain to the freelist
+            uint64_t old_tagged = atomic_load_u64(&pool->freelist_tagged);
+            uint64_t new_tagged;
+            do
+            {
+                rt_pool_block_t *old_head = (rt_pool_block_t *)unpack_ptr(old_tagged);
+                uint16_t old_version = unpack_version(old_tagged);
+                atomic_store_next(last, old_head);
+                new_tagged = pack_tagged_ptr(first, (uint16_t)(old_version + 1));
+            } while (!atomic_cas_u64(&pool->freelist_tagged, &old_tagged, new_tagged));
+
+#if RT_COMPILER_MSVC
+            rt_atomic_fetch_add_size(&pool->free_count, slab->block_count - 1, __ATOMIC_RELAXED);
+#else
+            __atomic_fetch_add(&pool->free_count, slab->block_count - 1, __ATOMIC_RELAXED);
+#endif
+        }
     }
 
 #if RT_COMPILER_MSVC
