@@ -98,10 +98,12 @@ bool processBlock(BasicBlock &B, std::vector<CSETable> &scopes, viper::il::UseDe
 } // namespace
 
 /// @brief Run dominator-tree-scoped CSE on a function.
-/// @details Builds the dominator tree and walks it in pre-order using an
-///          explicit stack. Each domtree node pushes a new expression scope
-///          before processing its basic block and pops it after processing
-///          all dominated children.
+/// @details Iterates to a fixed point: each iteration rebuilds the dominator
+///          tree and walks it in pre-order using an explicit stack. Each
+///          domtree node pushes a new expression scope before processing its
+///          basic block and pops it after processing all dominated children.
+///          Iteration stops when no more redundancies are found or after a
+///          bounded number of passes.
 /// @param M Module containing \p F (needed to construct a CFGContext).
 /// @param F Function to optimize in place.
 /// @return True if any redundant instruction was removed; false otherwise.
@@ -110,65 +112,69 @@ bool runEarlyCSE(Module &M, Function &F)
     if (F.blocks.empty())
         return false;
 
-    viper::analysis::CFGContext cfg(M);
-    viper::analysis::DomTree domTree = viper::analysis::computeDominatorTree(cfg, F);
+    bool changedAny = false;
 
-    // Build a label → block* map for fast lookup.
-    std::unordered_map<std::string, BasicBlock *> labelToBlock;
-    labelToBlock.reserve(F.blocks.size());
-    for (auto &B : F.blocks)
-        labelToBlock.emplace(B.label, &B);
-
-    // Build use-def chains once for O(uses) replacement.
-    viper::il::UseDefInfo useInfo(F);
-
-    // Iterative pre-order DFS over the dominator tree.
-    // Each worklist entry is either "enter B" (push scope, process B, then
-    // schedule children) or "leave" (pop scope).  We encode "leave" as
-    // nullptr in the block slot.
-    struct WorkItem
+    // Iterate to fixed point (bounded to avoid pathological cases).
+    for (int iter = 0; iter < 4; ++iter)
     {
-        BasicBlock *block; // nullptr → pop scope
-    };
+        viper::analysis::CFGContext cfg(M);
+        viper::analysis::DomTree domTree = viper::analysis::computeDominatorTree(cfg, F);
 
-    std::vector<CSETable> scopes;
-    scopes.reserve(F.blocks.size());
+        // Build use-def chains for O(uses) replacement.
+        viper::il::UseDefInfo useInfo(F);
 
-    bool changed = false;
-
-    std::vector<WorkItem> worklist;
-    worklist.reserve(F.blocks.size() * 2);
-    worklist.push_back({&F.blocks.front()});
-
-    while (!worklist.empty())
-    {
-        WorkItem item = worklist.back();
-        worklist.pop_back();
-
-        if (!item.block)
+        // Iterative pre-order DFS over the dominator tree.
+        // Each worklist entry is either "enter B" (push scope, process B, then
+        // schedule children) or "leave" (pop scope).  We encode "leave" as
+        // nullptr in the block slot.
+        struct WorkItem
         {
-            // Pop the scope we pushed when we entered the corresponding block.
-            scopes.pop_back();
-            continue;
+            BasicBlock *block; // nullptr → pop scope
+        };
+
+        std::vector<CSETable> scopes;
+        scopes.reserve(F.blocks.size());
+
+        bool changed = false;
+
+        std::vector<WorkItem> worklist;
+        worklist.reserve(F.blocks.size() * 2);
+        worklist.push_back({&F.blocks.front()});
+
+        while (!worklist.empty())
+        {
+            WorkItem item = worklist.back();
+            worklist.pop_back();
+
+            if (!item.block)
+            {
+                // Pop the scope we pushed when we entered the corresponding block.
+                scopes.pop_back();
+                continue;
+            }
+
+            // Push a new expression scope for this block.
+            scopes.emplace_back();
+            // Schedule scope pop after all children are processed.
+            worklist.push_back({nullptr});
+
+            changed |= processBlock(*item.block, scopes, useInfo);
+
+            // Schedule dominated children (order doesn't matter for correctness).
+            auto childIt = domTree.children.find(item.block);
+            if (childIt != domTree.children.end())
+            {
+                for (BasicBlock *child : childIt->second)
+                    worklist.push_back({child});
+            }
         }
 
-        // Push a new expression scope for this block.
-        scopes.emplace_back();
-        // Schedule scope pop after all children are processed.
-        worklist.push_back({nullptr});
-
-        changed |= processBlock(*item.block, scopes, useInfo);
-
-        // Schedule dominated children (order doesn't matter for correctness).
-        auto childIt = domTree.children.find(item.block);
-        if (childIt != domTree.children.end())
-        {
-            for (BasicBlock *child : childIt->second)
-                worklist.push_back({child});
-        }
+        if (!changed)
+            break;
+        changedAny = true;
     }
 
-    return changed;
+    return changedAny;
 }
 
 } // namespace il::transform

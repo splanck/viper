@@ -107,7 +107,13 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
         }
     }
 
-    // Multiple implementations - dispatch switch
+    // Multiple implementations - SwitchI32 dispatch
+    //
+    // Narrow the I64 class ID to I32 for the switch scrutinee, then emit a
+    // single SwitchI32 instruction that jumps directly to the right call block.
+    // This replaces the previous O(N) if-else chain with O(1) dispatch.
+    Value classIdI32 = emitUnary(Opcode::CastUiNarrowChk, Type(Type::Kind::I32), classIdVal);
+
     size_t endBlock = createBlock("vdispatch_end");
     Value resultSlot;
     if (ilReturnType.kind != Type::Kind::Void)
@@ -120,39 +126,48 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
         resultSlot = Value::temp(id);
     }
 
+    // Create a call block for each dispatch entry.
+    std::vector<size_t> callBlocks;
+    callBlocks.reserve(dispatchTable.size());
+    for (size_t i = 0; i < dispatchTable.size(); ++i)
+        callBlocks.push_back(createBlock("vdispatch_call_" + std::to_string(i)));
+
+    // Emit SwitchI32: scrutinee is the I32 class ID, cases are class IDs.
+    // Default target is the last entry (fallback).
+    {
+        il::core::Instr sw;
+        sw.op = Opcode::SwitchI32;
+        sw.type = Type(Type::Kind::Void);
+        sw.operands.push_back(classIdI32);
+
+        // Default case → last call block (fallback for unknown class IDs).
+        sw.labels.push_back(currentFunc_->blocks[callBlocks.back()].label);
+        sw.brArgs.push_back({});
+
+        // One case per dispatch entry.
+        for (size_t i = 0; i < dispatchTable.size(); ++i)
+        {
+            sw.operands.push_back(
+                Value::constInt(static_cast<int64_t>(dispatchTable[i].first)));
+            sw.labels.push_back(currentFunc_->blocks[callBlocks[i]].label);
+            sw.brArgs.push_back({});
+        }
+
+        sw.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(std::move(sw));
+        blockMgr_.currentBlock()->terminated = true;
+    }
+
+    // Emit each call block: call the target method, store result, branch to end.
     for (size_t i = 0; i < dispatchTable.size(); ++i)
     {
         const auto &[classId, targetMethod] = dispatchTable[i];
-        bool isLast = (i == dispatchTable.size() - 1);
-
-        if (isLast)
-        {
-            if (ilReturnType.kind == Type::Kind::Void)
-                emitCall(targetMethod, args);
-            else
-                emitStore(resultSlot, emitCallRet(ilReturnType, targetMethod, args), ilReturnType);
-            emitBr(endBlock);
-        }
+        setBlock(callBlocks[i]);
+        if (ilReturnType.kind == Type::Kind::Void)
+            emitCall(targetMethod, args);
         else
-        {
-            size_t nextCheck = createBlock("vdispatch_check_" + std::to_string(i + 1));
-            size_t callBlock = createBlock("vdispatch_call_" + std::to_string(i));
-
-            emitCBr(emitBinary(Opcode::ICmpEq,
-                               Type(Type::Kind::I1),
-                               classIdVal,
-                               Value::constInt(static_cast<int64_t>(classId))),
-                    callBlock,
-                    nextCheck);
-
-            setBlock(callBlock);
-            if (ilReturnType.kind == Type::Kind::Void)
-                emitCall(targetMethod, args);
-            else
-                emitStore(resultSlot, emitCallRet(ilReturnType, targetMethod, args), ilReturnType);
-            emitBr(endBlock);
-            setBlock(nextCheck);
-        }
+            emitStore(resultSlot, emitCallRet(ilReturnType, targetMethod, args), ilReturnType);
+        emitBr(endBlock);
     }
 
     setBlock(endBlock);

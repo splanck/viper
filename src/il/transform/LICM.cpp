@@ -327,7 +327,16 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
                 bool allowLoads = true;
                 if (instr.op == Opcode::Load)
                 {
-                    allowLoads = !loopHasMod;
+                    // When the loop contains memory-modifying calls, loads from
+                    // non-escaping allocas are still safe: the call cannot
+                    // observe or modify stack memory whose address never left
+                    // the function.
+                    if (loopHasMod)
+                    {
+                        allowLoads = !instr.operands.empty() &&
+                                     instr.operands[0].kind == Value::Kind::Temp &&
+                                     aa.isNonEscapingAlloca(instr.operands[0].id);
+                    }
                     if (allowLoads && !instr.operands.empty())
                     {
                         auto loadSize = viper::analysis::BasicAA::typeSizeBytes(instr.type);

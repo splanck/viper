@@ -275,4 +275,7 @@ void registerLateCleanupPass(PassRegistry &registry);
 /// @brief Register the sibling recursion pass.
 void registerSiblingRecursionPass(PassRegistry &registry);
 
+/// @brief Register the reassociation pass.
+void registerReassociatePass(PassRegistry &registry);
+
 } // namespace il::transform

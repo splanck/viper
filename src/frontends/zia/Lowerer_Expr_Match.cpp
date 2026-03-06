@@ -397,6 +397,158 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
     if (hasResult)
         createSlot(resultSlot, ilResultType);
 
+    // ---- SwitchI32 fast path for integer-only match ----
+    // When the scrutinee is Integer and every arm is either an integer literal
+    // (without guard) or a wildcard/binding (the default), emit a single
+    // SwitchI32 instruction instead of an O(N) if-else chain.
+    if (scrutineeType && scrutineeType->kind == TypeKindSem::Integer)
+    {
+        bool canSwitch = true;
+        size_t defaultArmIdx = SIZE_MAX;
+        std::vector<std::pair<int64_t, size_t>> caseValues; // (value, arm index)
+
+        for (size_t i = 0; i < expr->arms.size(); ++i)
+        {
+            const auto &arm = expr->arms[i];
+            if (arm.pattern.guard)
+            {
+                canSwitch = false;
+                break;
+            }
+            if (arm.pattern.kind == MatchArm::Pattern::Kind::Wildcard ||
+                arm.pattern.kind == MatchArm::Pattern::Kind::Binding)
+            {
+                defaultArmIdx = i;
+                // Only the last arm can be wildcard/binding for switch.
+                if (i + 1 != expr->arms.size())
+                {
+                    canSwitch = false;
+                    break;
+                }
+            }
+            else if (arm.pattern.kind == MatchArm::Pattern::Kind::Literal && arm.pattern.literal &&
+                     arm.pattern.literal->kind == ExprKind::IntLiteral)
+            {
+                auto *lit = static_cast<IntLiteralExpr *>(arm.pattern.literal.get());
+                caseValues.emplace_back(lit->value, i);
+            }
+            else
+            {
+                canSwitch = false;
+                break;
+            }
+        }
+
+        // Need at least 2 cases to justify a switch (1 case → just use the generic path).
+        if (canSwitch && caseValues.size() >= 2)
+        {
+            size_t endIdx = createBlock("match_end");
+            size_t nocaseIdx = createBlock("match_nocase");
+
+            // Narrow I64 scrutinee to I32 for SwitchI32.
+            Value scrutineeI32 = emitUnary(
+                Opcode::CastUiNarrowChk, Type(Type::Kind::I32), scrutinee.value);
+
+            // Create arm body blocks.
+            std::vector<size_t> armBlocks;
+            armBlocks.reserve(expr->arms.size());
+            for (size_t i = 0; i < expr->arms.size(); ++i)
+                armBlocks.push_back(createBlock("match_arm_" + std::to_string(i)));
+
+            // Determine default target: either the wildcard arm or the trap block.
+            size_t defaultTarget =
+                (defaultArmIdx != SIZE_MAX) ? armBlocks[defaultArmIdx] : nocaseIdx;
+
+            // Emit SwitchI32.
+            {
+                il::core::Instr sw;
+                sw.op = Opcode::SwitchI32;
+                sw.type = Type(Type::Kind::Void);
+                sw.operands.push_back(scrutineeI32);
+
+                // Default target.
+                sw.labels.push_back(currentFunc_->blocks[defaultTarget].label);
+                sw.brArgs.push_back({});
+
+                // Cases.
+                for (const auto &[val, armIdx] : caseValues)
+                {
+                    sw.operands.push_back(Value::constInt(static_cast<int64_t>(val)));
+                    sw.labels.push_back(currentFunc_->blocks[armBlocks[armIdx]].label);
+                    sw.brArgs.push_back({});
+                }
+
+                sw.loc = curLoc_;
+                blockMgr_.currentBlock()->instructions.push_back(std::move(sw));
+                blockMgr_.currentBlock()->terminated = true;
+            }
+
+            // Emit each arm body block.
+            for (size_t i = 0; i < expr->arms.size(); ++i)
+            {
+                const auto &arm = expr->arms[i];
+                auto localsBackup = locals_;
+                auto slotsBackup = slots_;
+                auto localTypesBackup = localTypes_;
+
+                setBlock(armBlocks[i]);
+
+                // Emit bindings (wildcard/binding arms bind the scrutinee).
+                Value scrutineeInArm = loadFromSlot(scrutineeSlot, scrutinee.type);
+                PatternValue scrutineeValueInArm{scrutineeInArm, scrutineeType};
+                emitPatternBindings(arm.pattern, scrutineeValueInArm);
+
+                if (arm.body)
+                {
+                    auto bodyResult = lowerExpr(arm.body.get());
+                    if (hasResult)
+                    {
+                        Value bodyValue = bodyResult.value;
+                        if (expectsOptional)
+                        {
+                            TypeRef bodyType = sema_.typeOf(arm.body.get());
+                            if (!bodyType || bodyType->kind != TypeKindSem::Optional)
+                            {
+                                if (optionalInner)
+                                    bodyValue =
+                                        emitOptionalWrap(bodyResult.value, optionalInner);
+                            }
+                        }
+                        storeToSlot(resultSlot, bodyValue, ilResultType);
+                    }
+                }
+
+                if (!isTerminated())
+                    emitBr(endIdx);
+
+                locals_ = std::move(localsBackup);
+                slots_ = std::move(slotsBackup);
+                localTypes_ = std::move(localTypesBackup);
+            }
+
+            // Trap block for non-exhaustive match.
+            setBlock(nocaseIdx);
+            {
+                il::core::Instr trapInstr;
+                trapInstr.op = Opcode::Trap;
+                trapInstr.type = Type(Type::Kind::Void);
+                trapInstr.loc = curLoc_;
+                blockMgr_.currentBlock()->instructions.push_back(trapInstr);
+            }
+
+            // Continue from end block.
+            setBlock(endIdx);
+            removeSlot(scrutineeSlot);
+            if (hasResult)
+            {
+                Value result = loadFromSlot(resultSlot, ilResultType);
+                removeSlot(resultSlot);
+                return {result, ilResultType};
+            }
+            return {Value::constInt(0), Type(Type::Kind::Void)};
+        }
+    }
+
     // Create end block for the match
     size_t endIdx = createBlock("match_end");
 

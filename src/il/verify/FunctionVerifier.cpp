@@ -306,58 +306,196 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
             return Expected<void>{makeError({}, formatFunctionDiag(fn, "unknown label " + label))};
     }
 
-    // ===== PASS 3: Lightweight dominance check =====
-    // Compute reachable blocks via BFS from entry, then warn if a definition
-    // in an unreachable block is used in a reachable block.
+    // ===== PASS 3: Dominance verification =====
+    // Compute dominators using iterative dataflow (Cooper-Harvey-Kennedy) and
+    // verify that every use of a temp is dominated by its definition.
     {
-        std::unordered_set<const BasicBlock *> reachable;
-        std::queue<const BasicBlock *> worklist;
-        if (!fn.blocks.empty())
+        const BasicBlock *entry = &fn.blocks.front();
+
+        // Build CFG predecessor map from the block map.
+        std::unordered_map<const BasicBlock *, std::vector<const BasicBlock *>> preds;
+        for (const auto &blk : fn.blocks)
         {
-            worklist.push(&fn.blocks.front());
-            reachable.insert(&fn.blocks.front());
-        }
-        while (!worklist.empty())
-        {
-            const BasicBlock *cur = worklist.front();
-            worklist.pop();
-            for (const auto &instr : cur->instructions)
+            for (const auto &instr : blk.instructions)
             {
                 if (!isTerminator(instr.op))
                     continue;
                 for (const auto &label : instr.labels)
                 {
                     if (auto it = blockMap.find(label); it != blockMap.end())
-                    {
-                        if (reachable.insert(it->second).second)
-                            worklist.push(it->second);
-                    }
+                        preds[it->second].push_back(&blk);
                 }
                 break;
             }
         }
 
-        // Check: any use of a temp defined in an unreachable block
-        for (const auto &bb : fn.blocks)
+        // Compute reverse post-order via DFS.
+        std::vector<const BasicBlock *> rpo;
         {
-            if (!reachable.contains(&bb))
-                continue;
-            for (const auto &instr : bb.instructions)
+            std::unordered_set<const BasicBlock *> visited;
+            struct Frame
             {
-                for (const auto &op : instr.operands)
+                const BasicBlock *bb;
+                bool childrenPushed;
+            };
+            std::vector<Frame> stack;
+            stack.push_back({entry, false});
+            visited.insert(entry);
+            while (!stack.empty())
+            {
+                auto &top = stack.back();
+                if (!top.childrenPushed)
+                {
+                    top.childrenPushed = true;
+                    // Push successors
+                    for (const auto &instr : top.bb->instructions)
+                    {
+                        if (!isTerminator(instr.op))
+                            continue;
+                        for (const auto &label : instr.labels)
+                        {
+                            if (auto it = blockMap.find(label); it != blockMap.end())
+                            {
+                                if (visited.insert(it->second).second)
+                                    stack.push_back({it->second, false});
+                            }
+                        }
+                        break;
+                    }
+                }
+                else
+                {
+                    rpo.push_back(top.bb);
+                    stack.pop_back();
+                }
+            }
+            std::reverse(rpo.begin(), rpo.end());
+        }
+
+        std::unordered_set<const BasicBlock *> reachable(rpo.begin(), rpo.end());
+
+        // Assign RPO indices for intersection.
+        std::unordered_map<const BasicBlock *, unsigned> rpoIndex;
+        for (unsigned i = 0; i < rpo.size(); ++i)
+            rpoIndex[rpo[i]] = i;
+
+        // Iterative dominator computation.
+        std::unordered_map<const BasicBlock *, const BasicBlock *> idom;
+        idom[entry] = entry;
+
+        auto intersect = [&](const BasicBlock *b1, const BasicBlock *b2) -> const BasicBlock *
+        {
+            auto finger1 = b1;
+            auto finger2 = b2;
+            while (finger1 != finger2)
+            {
+                while (rpoIndex[finger1] > rpoIndex[finger2])
+                    finger1 = idom[finger1];
+                while (rpoIndex[finger2] > rpoIndex[finger1])
+                    finger2 = idom[finger2];
+            }
+            return finger1;
+        };
+
+        bool changed = true;
+        while (changed)
+        {
+            changed = false;
+            for (const auto *bb : rpo)
+            {
+                if (bb == entry)
+                    continue;
+                auto predIt = preds.find(bb);
+                if (predIt == preds.end() || predIt->second.empty())
+                    continue;
+
+                // Pick first processed predecessor as initial idom.
+                const BasicBlock *newIdom = nullptr;
+                for (const auto *p : predIt->second)
+                {
+                    if (idom.contains(p))
+                    {
+                        newIdom = p;
+                        break;
+                    }
+                }
+                if (!newIdom)
+                    continue;
+
+                // Intersect with remaining processed predecessors.
+                for (const auto *p : predIt->second)
+                {
+                    if (p == newIdom || !idom.contains(p))
+                        continue;
+                    newIdom = intersect(p, newIdom);
+                }
+
+                if (idom[bb] != newIdom)
+                {
+                    idom[bb] = newIdom;
+                    changed = true;
+                }
+            }
+        }
+
+        // dominates(A, B): walk B's idom chain up to entry looking for A.
+        auto dominates = [&](const BasicBlock *A, const BasicBlock *B) -> bool
+        {
+            if (A == B)
+                return true;
+            const BasicBlock *cur = B;
+            while (cur != entry)
+            {
+                auto it = idom.find(cur);
+                if (it == idom.end() || it->second == cur)
+                    return false;
+                cur = it->second;
+                if (cur == A)
+                    return true;
+            }
+            return A == entry;
+        };
+
+        // Check every operand use: the defining block must dominate the using block.
+        for (const auto &blk : fn.blocks)
+        {
+            if (!reachable.contains(&blk))
+                continue;
+            for (const auto &instr : blk.instructions)
+            {
+                auto checkValue = [&](const Value &op)
                 {
                     if (op.kind != Value::Kind::Temp)
-                        continue;
+                        return;
                     auto defIt = definingBlock.find(op.id);
-                    if (defIt != definingBlock.end() && !reachable.contains(defIt->second))
+                    if (defIt == definingBlock.end())
+                        return;
+
+                    if (!reachable.contains(defIt->second))
                     {
                         std::ostringstream msg;
                         msg << "use of %" << op.id << " defined in unreachable block ^"
                             << defIt->second->label;
                         sink.report(il::support::Diag{
                             il::support::Severity::Warning, msg.str(), instr.loc, {}});
+                        return;
                     }
-                }
+
+                    if (defIt->second != &blk && !dominates(defIt->second, &blk))
+                    {
+                        std::ostringstream msg;
+                        msg << "use of %" << op.id << " in ^" << blk.label
+                            << " not dominated by definition in ^" << defIt->second->label;
+                        sink.report(il::support::Diag{
+                            il::support::Severity::Warning, msg.str(), instr.loc, {}});
+                    }
+                };
+
+                for (const auto &op : instr.operands)
+                    checkValue(op);
+                for (const auto &bundle : instr.brArgs)
+                    for (const auto &arg : bundle)
+                        checkValue(arg);
             }
         }
     }

@@ -27,6 +27,7 @@
 #include "il/transform/LoopSimplify.hpp"
 #include "il/transform/Mem2Reg.hpp"
 #include "il/transform/Peephole.hpp"
+#include "il/transform/Reassociate.hpp"
 #include "il/transform/SCCP.hpp"
 
 #include <utility>
@@ -462,6 +463,16 @@ void registerEarlyCSEPass(PassRegistry &registry)
                                       p.preserveAllModules();
                                       return p;
                                   });
+}
+
+void registerReassociatePass(PassRegistry &registry)
+{
+    registry.registerModulePass("reassociate",
+                                [](core::Module &module, AnalysisManager &)
+                                {
+                                    reassociate(module);
+                                    return PreservedAnalyses::none();
+                                });
 }
 
 } // namespace il::transform

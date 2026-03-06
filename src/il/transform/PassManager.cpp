@@ -113,6 +113,7 @@ PassManager::PassManager()
     registerLateCleanupPass(passRegistry_);
     registerLoopUnrollPass(passRegistry_);
     registerSiblingRecursionPass(passRegistry_);
+    registerReassociatePass(passRegistry_);
 
     // Pre-register common pipelines
     registerPipeline("O0", {"simplify-cfg", "dce"});
@@ -140,7 +141,7 @@ PassManager::PassManager()
                             "constfold", // Fold runtime math calls exposed by SCCP
                             "dce",       // Clean up after second SCCP
                             "simplify-cfg",  "licm",         "simplify-cfg", "gvn",
-                            "earlycse",      "dse",          "peephole",     "dce",
+                            "reassociate",   "earlycse",     "dse",          "peephole", "dce",
                             "late-cleanup"});
 }
 

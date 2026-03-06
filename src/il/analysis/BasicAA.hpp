@@ -81,6 +81,12 @@ class BasicAA
     /// @brief Compute the byte width of a scalar IL type when known.
     [[nodiscard]] static std::optional<unsigned> typeSizeBytes(const il::core::Type &type);
 
+    /// @brief Check whether a temp id is a non-escaping alloca.
+    /// @details Non-escaping allocas are stack slots whose addresses never leave
+    ///          the function (not passed to calls, not stored as values). Loads
+    ///          from such allocas are safe to hoist past calls.
+    [[nodiscard]] bool isNonEscapingAlloca(unsigned id) const;
+
   private:
     enum class BaseKind
     {
@@ -288,6 +294,11 @@ inline bool BasicAA::isNoAliasParam(unsigned id) const
 inline bool BasicAA::isParam(unsigned id) const
 {
     return params_.count(id) != 0;
+}
+
+inline bool BasicAA::isNonEscapingAlloca(unsigned id) const
+{
+    return nonEscapingAllocas_.count(id) != 0;
 }
 
 inline const il::core::Function *BasicAA::findFunction(std::string_view name) const

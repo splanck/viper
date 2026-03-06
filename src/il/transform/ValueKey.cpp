@@ -146,6 +146,8 @@ bool isSafeCSEOpcode(Opcode op) noexcept
         case Opcode::FCmpGE:
         case Opcode::Zext1:
         case Opcode::Trunc1:
+        case Opcode::ConstStr:
+        case Opcode::GAddr:
             return true;
         default:
             return false;
