@@ -1184,7 +1184,8 @@ bool LinearScanAllocator::isArgumentRegister(PhysReg reg) const
 /// @param reg Physical register to reserve.
 void LinearScanAllocator::reserveForCall(PhysReg reg)
 {
-    // Check if already reserved
+    // Linear search is fine: reservedForCall_ holds at most 6 argument
+    // registers on x86-64, so O(n) with n<=6 beats any fancier structure.
     if (std::find(reservedForCall_.begin(), reservedForCall_.end(), reg) != reservedForCall_.end())
     {
         return;

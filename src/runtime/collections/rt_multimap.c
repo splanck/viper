@@ -124,7 +124,11 @@ static void mm_resize(rt_multimap_impl *mm, size_t new_cap)
 static void maybe_resize(rt_multimap_impl *mm)
 {
     if (mm->key_count * MM_LOAD_FACTOR_DEN > mm->capacity * MM_LOAD_FACTOR_NUM)
+    {
+        if (mm->capacity > SIZE_MAX / 2)
+            return;
         mm_resize(mm, mm->capacity * 2);
+    }
 }
 
 static void rt_multimap_finalize(void *obj)

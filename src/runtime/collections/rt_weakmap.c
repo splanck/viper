@@ -98,6 +98,8 @@ static void wm_grow(rt_weakmap_data *data)
     int64_t old_cap = data->capacity;
     wm_entry *old_entries = data->entries;
 
+    if (old_cap > INT64_MAX / 2)
+        rt_trap("WeakMap: capacity overflow");
     data->capacity = old_cap * 2;
     data->entries = (wm_entry *)calloc((size_t)data->capacity, sizeof(wm_entry));
     data->count = 0;

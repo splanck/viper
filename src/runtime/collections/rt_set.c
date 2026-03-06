@@ -80,6 +80,8 @@ static rt_set_entry *find_entry(rt_set_entry *head, void *elem)
 /// @brief Resize the hash table when load factor is exceeded.
 static void resize_set(rt_set_impl *set)
 {
+    if (set->capacity > SIZE_MAX / 2)
+        return;
     size_t new_capacity = set->capacity * 2;
     rt_set_entry **new_buckets = calloc(new_capacity, sizeof(rt_set_entry *));
     if (!new_buckets)

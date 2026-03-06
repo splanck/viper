@@ -234,6 +234,8 @@ static void maybe_resize(rt_map_impl *map)
     // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
     if (map->count * MAP_LOAD_FACTOR_DEN > map->capacity * MAP_LOAD_FACTOR_NUM)
     {
+        if (map->capacity > SIZE_MAX / 2)
+            return;
         map_resize(map, map->capacity * 2);
     }
 }

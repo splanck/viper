@@ -180,6 +180,8 @@ static void bimap_finalizer(void *obj)
 
 static void resize_fwd(rt_bimap_impl *bm)
 {
+    if (bm->fwd_capacity > SIZE_MAX / 2)
+        return;
     size_t new_cap = bm->fwd_capacity * 2;
     rt_bm_entry **new_buckets = (rt_bm_entry **)calloc(new_cap, sizeof(rt_bm_entry *));
     if (!new_buckets)
@@ -206,6 +208,8 @@ static void resize_fwd(rt_bimap_impl *bm)
 
 static void resize_inv(rt_bimap_impl *bm)
 {
+    if (bm->inv_capacity > SIZE_MAX / 2)
+        return;
     size_t new_cap = bm->inv_capacity * 2;
     rt_bm_inv_link **new_chains = (rt_bm_inv_link **)calloc(new_cap, sizeof(rt_bm_inv_link *));
     if (!new_chains)

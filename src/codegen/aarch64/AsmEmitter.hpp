@@ -526,6 +526,12 @@ class AsmEmitter
     void emitInstruction(std::ostream &os, const MInstr &mi) const;
 
   private:
+    /// @brief Resolve base+offset, materialising into scratch for large offsets.
+    [[nodiscard]] PhysReg resolveBaseOffset(std::ostream &os,
+                                            PhysReg base,
+                                            long long offset,
+                                            long long &resolvedOffset) const;
+
     const TargetInfo *target_{nullptr};
     // Mutable state used during emitFunction to pass frame plan to Ret instructions
     mutable const FramePlan *currentPlan_{nullptr};

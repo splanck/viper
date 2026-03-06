@@ -609,83 +609,84 @@ void AsmEmitter::emitAddFpImm(std::ostream &os, PhysReg dst, long long offset) c
     }
 }
 
+/// @brief Resolve base+offset to an effective base register for load/store.
+/// @details When @p offset fits in the signed immediate range, returns @p base
+///          unchanged and sets @p resolvedOffset to @p offset. For large offsets
+///          that exceed the immediate range, materialises the effective address
+///          into @c kScratchGPR (x9) via movz/movk + add and returns that register
+///          with @p resolvedOffset set to 0.
+/// @param os Output stream for any scratch-register setup instructions.
+/// @param base Original base register.
+/// @param offset Byte offset from base.
+/// @param[out] resolvedOffset Offset to use with the returned base register.
+/// @return The register to use as the base in the subsequent load/store.
+PhysReg AsmEmitter::resolveBaseOffset(std::ostream &os,
+                                      PhysReg base,
+                                      long long offset,
+                                      long long &resolvedOffset) const
+{
+    if (isInSignedImmRange(offset))
+    {
+        resolvedOffset = offset;
+        return base;
+    }
+    // Large offset: materialise effective address into scratch register
+    emitMovRI(os, kScratchGPR, offset);
+    os << "  add " << rn(kScratchGPR) << ", " << rn(base) << ", " << rn(kScratchGPR) << "\n";
+    resolvedOffset = 0;
+    return kScratchGPR;
+}
+
+/// @brief Load a GPR from [base + offset], using a scratch register for large offsets.
 void AsmEmitter::emitLdrFromBase(std::ostream &os,
                                  PhysReg dst,
                                  PhysReg base,
                                  long long offset) const
 {
-    if (isInSignedImmRange(offset))
-    {
-        os << "  ldr " << rn(dst) << ", [" << rn(base) << ", #" << offset << "]\n";
-    }
-    else
-    {
-        // Large offset: use scratch register x9 to compute address
-        emitMovRI(os, kScratchGPR, offset);
-        os << "  add " << rn(kScratchGPR) << ", " << rn(base) << ", " << rn(kScratchGPR) << "\n";
-        os << "  ldr " << rn(dst) << ", [" << rn(kScratchGPR) << "]\n";
-    }
+    long long resolved;
+    PhysReg b = resolveBaseOffset(os, base, offset, resolved);
+    os << "  ldr " << rn(dst) << ", [" << rn(b) << ", #" << resolved << "]\n";
 }
 
+/// @brief Store a GPR to [base + offset], using a scratch register for large offsets.
 void AsmEmitter::emitStrToBase(std::ostream &os, PhysReg src, PhysReg base, long long offset) const
 {
-    if (isInSignedImmRange(offset))
-    {
-        os << "  str " << rn(src) << ", [" << rn(base) << ", #" << offset << "]\n";
-    }
-    else
-    {
-        // Large offset: use scratch register x9 to compute address
-        emitMovRI(os, kScratchGPR, offset);
-        os << "  add " << rn(kScratchGPR) << ", " << rn(base) << ", " << rn(kScratchGPR) << "\n";
-        os << "  str " << rn(src) << ", [" << rn(kScratchGPR) << "]\n";
-    }
+    long long resolved;
+    PhysReg b = resolveBaseOffset(os, base, offset, resolved);
+    os << "  str " << rn(src) << ", [" << rn(b) << ", #" << resolved << "]\n";
 }
 
+/// @brief Load an FPR from [base + offset], using a scratch register for large offsets.
 void AsmEmitter::emitLdrFprFromBase(std::ostream &os,
                                     PhysReg dst,
                                     PhysReg base,
                                     long long offset) const
 {
-    if (isInSignedImmRange(offset))
-    {
-        os << "  ldr ";
-        printD(os, dst);
-        os << ", [" << rn(base) << ", #" << offset << "]\n";
-    }
-    else
-    {
-        // Large offset: use scratch register x9 to compute address
-        emitMovRI(os, kScratchGPR, offset);
-        os << "  add " << rn(kScratchGPR) << ", " << rn(base) << ", " << rn(kScratchGPR) << "\n";
-        os << "  ldr ";
-        printD(os, dst);
-        os << ", [" << rn(kScratchGPR) << "]\n";
-    }
+    long long resolved;
+    PhysReg b = resolveBaseOffset(os, base, offset, resolved);
+    os << "  ldr ";
+    printD(os, dst);
+    os << ", [" << rn(b) << ", #" << resolved << "]\n";
 }
 
+/// @brief Store an FPR to [base + offset], using a scratch register for large offsets.
 void AsmEmitter::emitStrFprToBase(std::ostream &os,
                                   PhysReg src,
                                   PhysReg base,
                                   long long offset) const
 {
-    if (isInSignedImmRange(offset))
-    {
-        os << "  str ";
-        printD(os, src);
-        os << ", [" << rn(base) << ", #" << offset << "]\n";
-    }
-    else
-    {
-        // Large offset: use scratch register x9 to compute address
-        emitMovRI(os, kScratchGPR, offset);
-        os << "  add " << rn(kScratchGPR) << ", " << rn(base) << ", " << rn(kScratchGPR) << "\n";
-        os << "  str ";
-        printD(os, src);
-        os << ", [" << rn(kScratchGPR) << "]\n";
-    }
+    long long resolved;
+    PhysReg b = resolveBaseOffset(os, base, offset, resolved);
+    os << "  str ";
+    printD(os, src);
+    os << ", [" << rn(b) << ", #" << resolved << "]\n";
 }
 
+/// @brief Emit a MOVZ (move wide with zero) instruction.
+/// @param os Output stream for assembly text.
+/// @param dst Destination GPR.
+/// @param imm16 16-bit immediate value.
+/// @param lsl Left-shift amount (0, 16, 32, or 48).
 void AsmEmitter::emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const
 {
     os << "  movz " << rn(dst) << ", #" << imm16;
@@ -694,6 +695,11 @@ void AsmEmitter::emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigne
     os << "\n";
 }
 
+/// @brief Emit a MOVK (move wide with keep) instruction.
+/// @param os Output stream for assembly text.
+/// @param dst Destination GPR (other bits preserved).
+/// @param imm16 16-bit immediate value to insert.
+/// @param lsl Lane position (0, 16, 32, or 48).
 void AsmEmitter::emitMovK(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const
 {
     os << "  movk " << rn(dst) << ", #" << imm16;
@@ -702,6 +708,10 @@ void AsmEmitter::emitMovK(std::ostream &os, PhysReg dst, unsigned imm16, unsigne
     os << "\n";
 }
 
+/// @brief Emit a full 64-bit immediate load using movz + up to three movk.
+/// @param os Output stream for assembly text.
+/// @param dst Destination GPR.
+/// @param value 64-bit immediate to materialise.
 void AsmEmitter::emitMovImm64(std::ostream &os, PhysReg dst, unsigned long long value) const
 {
     unsigned chunks[4] = {
@@ -712,13 +722,10 @@ void AsmEmitter::emitMovImm64(std::ostream &os, PhysReg dst, unsigned long long 
     };
     emitMovZ(os, dst, chunks[0], 0);
     if (chunks[1])
-        /// @brief Emits movk.
         emitMovK(os, dst, chunks[1], 16);
     if (chunks[2])
-        /// @brief Emits movk.
         emitMovK(os, dst, chunks[2], 32);
     if (chunks[3])
-        /// @brief Emits movk.
         emitMovK(os, dst, chunks[3], 48);
 }
 

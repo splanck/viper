@@ -189,6 +189,8 @@ static void ensure_capacity(treemap_impl *tm)
     if (tm->count < tm->capacity)
         return;
 
+    if (tm->capacity > SIZE_MAX / 2)
+        rt_trap("TreeMap: capacity overflow");
     size_t new_cap = tm->capacity == 0 ? TREEMAP_INITIAL_CAPACITY : tm->capacity * 2;
     treemap_entry *new_entries =
         (treemap_entry *)realloc(tm->entries, new_cap * sizeof(treemap_entry));

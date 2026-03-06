@@ -117,7 +117,11 @@ static void ensure_capacity(rt_sortedset set, int64_t needed)
 
     int64_t new_cap = set->cap == 0 ? 8 : set->cap * 2;
     while (new_cap < needed)
+    {
+        if (new_cap > INT64_MAX / 2)
+            rt_trap("SortedSet: capacity overflow");
         new_cap *= 2;
+    }
 
     rt_string *new_data = realloc(set->data, sizeof(rt_string) * new_cap);
     if (!new_data)

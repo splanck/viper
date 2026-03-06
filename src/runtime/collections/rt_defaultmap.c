@@ -86,6 +86,8 @@ static uint64_t dm_hash(const char *key, size_t len)
 
 static void dm_resize(rt_defaultmap_impl *m)
 {
+    if (m->capacity > INT64_MAX / 2)
+        return;
     int64_t new_cap = m->capacity * 2;
     rt_dm_entry **new_buckets = (rt_dm_entry **)calloc((size_t)new_cap, sizeof(rt_dm_entry *));
     if (!new_buckets)

@@ -125,6 +125,8 @@ static void sa_grow(rt_sparse_impl *sa)
     int64_t old_cap = sa->capacity;
     sa_slot *old_slots = sa->slots;
 
+    if (old_cap > INT64_MAX / 2)
+        rt_trap("SparseArray: capacity overflow");
     sa->capacity = old_cap * 2;
     sa->slots = (sa_slot *)calloc((size_t)sa->capacity, sizeof(sa_slot));
     sa->count = 0;

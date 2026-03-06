@@ -303,6 +303,13 @@ void emitRoDataPool(std::span<const std::string> stringLiterals,
 
 } // namespace
 
+/// @brief Find the encoding row matching an opcode and operand pattern.
+/// @details Linear scan over kEncodingTable (49 entries). The table is small
+///          enough that an index is unnecessary; each lookup touches at most
+///          49 cache-hot rows with an early-out on opcode mismatch.
+/// @param op  Machine opcode to look up.
+/// @param operands  Instruction operands used for pattern matching.
+/// @return Pointer to the matching row, or nullptr if no encoding exists.
 const EncodingRow *find_encoding(MOpcode op, std::span<const Operand> operands) noexcept
 {
     for (const auto &row : kEncodingTable)
@@ -361,11 +368,7 @@ int AsmEmitter::RoDataPool::addF64Literal(double value)
 /// @return Mangled label suitable for use in assembly.
 std::string AsmEmitter::RoDataPool::stringLabel(int index) const
 {
-    std::string label;
-    label.reserve(16); // ".LC_str_" (9 chars) + digits + null terminator
-    label = ".LC_str_";
-    label += std::to_string(index);
-    return label;
+    return ".LC_str_" + std::to_string(index);
 }
 
 /// @brief Retrieve the byte length recorded for a string literal entry.
@@ -384,11 +387,7 @@ std::size_t AsmEmitter::RoDataPool::stringByteLength(int index) const
 /// @return Mangled label suitable for use in assembly.
 std::string AsmEmitter::RoDataPool::f64Label(int index) const
 {
-    std::string label;
-    label.reserve(16); // ".LC_f64_" (9 chars) + digits + null terminator
-    label = ".LC_f64_";
-    label += std::to_string(index);
-    return label;
+    return ".LC_f64_" + std::to_string(index);
 }
 
 /// @brief Emit the `.rodata` directives for all stored literals.

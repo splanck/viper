@@ -120,7 +120,11 @@ static int64_t fm_next_pow2(int64_t n)
 {
     int64_t p = 16;
     while (p < n)
+    {
+        if (p > INT64_MAX / 2)
+            rt_trap("FrozenMap: capacity overflow");
         p *= 2;
+    }
     return p;
 }
 

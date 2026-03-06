@@ -97,59 +97,79 @@ namespace
 /// @param instr Instruction to check.
 /// @param reg Register to look for.
 /// @return true if the instruction writes to the given register.
+/// @brief Check if an instruction defines (writes to) a given physical register.
+///
+/// @details Uses a manually maintained opcode switch to classify destination
+///          operands. A table-driven approach was considered, but each opcode
+///          group has different operand-index semantics (e.g., LDP defines
+///          ops[0] AND ops[1]) making a simple "dest is ops[0]" table insufficient.
+///
+/// @param instr Instruction to check.
+/// @param reg   Physical register to look for.
+/// @return true if the instruction writes to @p reg.
+///
+/// @note When adding new MIR opcodes, update the appropriate group below.
 [[nodiscard]] bool definesReg(const MInstr &instr, const MOperand &reg) noexcept
 {
     if (!isPhysReg(reg))
         return false;
 
-    // Most AArch64 instructions have the destination as the first operand.
-    // Check common patterns.
     switch (instr.opc)
     {
+        // --- Moves and conversions (dest = ops[0]) ---
         case MOpcode::MovRR:
         case MOpcode::MovRI:
         case MOpcode::FMovRR:
         case MOpcode::FMovRI:
         case MOpcode::FMovGR:
+        // --- Integer arithmetic (dest = ops[0]) ---
         case MOpcode::AddRRR:
         case MOpcode::SubRRR:
         case MOpcode::MulRRR:
         case MOpcode::SDivRRR:
         case MOpcode::UDivRRR:
+        case MOpcode::AddRI:
+        case MOpcode::SubRI:
+        case MOpcode::MSubRRRR:
+        case MOpcode::MAddRRRR:
+        // --- Bitwise (dest = ops[0]) ---
         case MOpcode::AndRRR:
         case MOpcode::OrrRRR:
         case MOpcode::EorRRR:
-        case MOpcode::AddRI:
-        case MOpcode::SubRI:
         case MOpcode::AndRI:
         case MOpcode::OrrRI:
         case MOpcode::EorRI:
+        // --- Shifts (dest = ops[0]) ---
         case MOpcode::LslRI:
         case MOpcode::LsrRI:
         case MOpcode::AsrRI:
         case MOpcode::LslvRRR:
         case MOpcode::LsrvRRR:
         case MOpcode::AsrvRRR:
-        case MOpcode::Cset:
+        // --- Loads (dest = ops[0]) ---
         case MOpcode::LdrRegFpImm:
         case MOpcode::LdrFprFpImm:
         case MOpcode::LdrRegBaseImm:
         case MOpcode::LdrFprBaseImm:
+        // --- Address computation (dest = ops[0]) ---
         case MOpcode::AddFpImm:
         case MOpcode::AdrPage:
         case MOpcode::AddPageOff:
+        // --- Floating-point arithmetic (dest = ops[0]) ---
         case MOpcode::FAddRRR:
         case MOpcode::FSubRRR:
         case MOpcode::FMulRRR:
         case MOpcode::FDivRRR:
+        // --- FP/int conversions (dest = ops[0]) ---
         case MOpcode::SCvtF:
         case MOpcode::FCvtZS:
         case MOpcode::UCvtF:
         case MOpcode::FCvtZU:
         case MOpcode::FRintN:
-        case MOpcode::MSubRRRR:
-        case MOpcode::MAddRRRR:
+        // --- Conditional select/set (dest = ops[0]) ---
+        case MOpcode::Cset:
         case MOpcode::Csel:
+        // --- Flag-setting arithmetic (dest = ops[0]) ---
         case MOpcode::AddsRRR:
         case MOpcode::SubsRRR:
         case MOpcode::AddsRI:
@@ -172,7 +192,7 @@ namespace
                 return true;
             break;
 
-        // Instructions that don't define registers
+        // --- Instructions that don't define registers ---
         case MOpcode::PhiStoreGPR:
         case MOpcode::PhiStoreFPR:
         case MOpcode::CmpRR:

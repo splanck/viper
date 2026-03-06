@@ -24,6 +24,7 @@
 #include "il/analysis/Dominators.hpp"
 #include "il/utils/Utils.hpp"
 #include <algorithm>
+#include <climits>
 #include <functional>
 #include <optional>
 #include <queue>
@@ -94,6 +95,8 @@ static std::optional<unsigned> scalarSize(const Type &type)
 static std::optional<unsigned> constOffset(const Value &v)
 {
     if (v.kind != Value::Kind::ConstInt || v.i64 < 0)
+        return std::nullopt;
+    if (v.i64 > static_cast<int64_t>(UINT_MAX))
         return std::nullopt;
     return static_cast<unsigned>(v.i64);
 }

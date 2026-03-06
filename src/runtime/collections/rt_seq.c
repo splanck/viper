@@ -152,6 +152,8 @@ static void seq_ensure_capacity(rt_seq_impl *seq, int64_t needed)
     int64_t new_cap = seq->cap;
     while (new_cap < needed)
     {
+        if (new_cap > INT64_MAX / SEQ_GROWTH_FACTOR)
+            rt_trap("Seq: capacity overflow");
         new_cap *= SEQ_GROWTH_FACTOR;
     }
 

@@ -22,6 +22,7 @@
 #include "il/analysis/CFG.hpp"
 #include "il/core/Function.hpp"
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <functional>
 #include <limits>
@@ -127,9 +128,15 @@ DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F)
                 while (b1 != b2)
                 {
                     while (index[b1] > index[b2])
+                    {
+                        assert(DT.idom.count(b1) && "intersect: missing idom entry");
                         b1 = DT.idom[b1];
+                    }
                     while (index[b2] > index[b1])
+                    {
+                        assert(DT.idom.count(b2) && "intersect: missing idom entry");
                         b2 = DT.idom[b2];
+                    }
                 }
                 return b1;
             };

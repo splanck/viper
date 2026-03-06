@@ -116,6 +116,8 @@ static void countmap_finalizer(void *obj)
 
 static void resize(rt_countmap_impl *cm)
 {
+    if (cm->capacity > SIZE_MAX / 2)
+        return;
     size_t new_cap = cm->capacity * 2;
     rt_cm_entry **new_buckets = (rt_cm_entry **)calloc(new_cap, sizeof(rt_cm_entry *));
     if (!new_buckets)

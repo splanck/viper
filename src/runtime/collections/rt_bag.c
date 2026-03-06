@@ -230,6 +230,8 @@ static void maybe_resize(rt_bag_impl *bag)
     // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
     if (bag->count * BAG_LOAD_FACTOR_DEN > bag->capacity * BAG_LOAD_FACTOR_NUM)
     {
+        if (bag->capacity > SIZE_MAX / 2)
+            return;
         bag_resize(bag, bag->capacity * 2);
     }
 }
