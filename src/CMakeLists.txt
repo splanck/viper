@@ -189,8 +189,10 @@ add_library(il_transform STATIC
         il/transform/DCE.cpp
         il/transform/Mem2Reg.cpp
         il/transform/EarlyCSE.cpp
+        il/transform/EHOpt.cpp
         il/transform/DSE.cpp
         il/transform/LoopSimplify.cpp
+        il/transform/LoopRotate.cpp
         il/transform/LICM.cpp
         il/transform/IndVarSimplify.cpp
         il/transform/LoopUnroll.cpp

@@ -278,4 +278,10 @@ void registerSiblingRecursionPass(PassRegistry &registry);
 /// @brief Register the reassociation pass.
 void registerReassociatePass(PassRegistry &registry);
 
+/// @brief Register the exception handling optimization pass.
+void registerEHOptPass(PassRegistry &registry);
+
+/// @brief Register the loop rotation pass.
+void registerLoopRotatePass(PassRegistry &registry);
+
 } // namespace il::transform

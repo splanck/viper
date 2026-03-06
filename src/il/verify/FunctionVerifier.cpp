@@ -500,6 +500,44 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         }
     }
 
+    // ===== PASS 4: Alloca escape verification =====
+    // Detect return instructions that directly return alloca-derived pointers.
+    // Returning a stack address is undefined behaviour because the frame is
+    // deallocated when the function returns.
+    {
+        std::unordered_set<unsigned> allocaIds;
+        for (const auto &blk : fn.blocks)
+        {
+            for (const auto &instr : blk.instructions)
+            {
+                if (instr.op == Opcode::Alloca && instr.result)
+                    allocaIds.insert(*instr.result);
+            }
+        }
+
+        if (!allocaIds.empty())
+        {
+            for (const auto &blk : fn.blocks)
+            {
+                for (const auto &instr : blk.instructions)
+                {
+                    if (instr.op != Opcode::Ret)
+                        continue;
+                    for (const auto &op : instr.operands)
+                    {
+                        if (op.kind == Value::Kind::Temp && allocaIds.contains(op.id))
+                        {
+                            std::ostringstream msg;
+                            msg << "returning alloca-derived pointer %" << op.id;
+                            sink.report(il::support::Diag{
+                                il::support::Severity::Warning, msg.str(), instr.loc, {}});
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     return {};
 }
 

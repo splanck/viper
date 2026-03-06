@@ -29,7 +29,9 @@
 #include "il/io/Serializer.hpp"
 #include "il/transform/AnalysisIDs.hpp"
 #include "il/transform/CheckOpt.hpp"
+#include "il/transform/EHOpt.hpp"
 #include "il/transform/LICM.hpp"
+#include "il/transform/LoopRotate.hpp"
 #include "il/transform/LateCleanup.hpp"
 #include "il/transform/LoopUnroll.hpp"
 #include "il/transform/PipelineExecutor.hpp"
@@ -114,6 +116,8 @@ PassManager::PassManager()
     registerLoopUnrollPass(passRegistry_);
     registerSiblingRecursionPass(passRegistry_);
     registerReassociatePass(passRegistry_);
+    registerEHOptPass(passRegistry_);
+    registerLoopRotatePass(passRegistry_);
 
     // Pre-register common pipelines
     registerPipeline("O0", {"simplify-cfg", "dce"});
@@ -132,10 +136,12 @@ PassManager::PassManager()
     // O2 pipeline with interprocedural constant propagation:
     // Run SCCP both before (to simplify callees) and after inline
     // (to propagate constants through inlined code from call sites).
-    registerPipeline("O2", {"loop-simplify", "indvars",      "loop-unroll",  "simplify-cfg",
+    registerPipeline("O2", {"loop-simplify", "loop-rotate",  "indvars",      "loop-unroll",
+                            "simplify-cfg",
                             "mem2reg",       "simplify-cfg",
                             "sccp", // Pre-inline SCCP: simplify callees
-                            "check-opt",     "dce",          "simplify-cfg", "sibling-recursion",
+                            "check-opt",     "eh-opt",       "dce",          "simplify-cfg",
+                            "sibling-recursion",
                             "inline",        "simplify-cfg",
                             "sccp",      // Post-inline SCCP: propagate call-site constants
                             "constfold", // Fold runtime math calls exposed by SCCP

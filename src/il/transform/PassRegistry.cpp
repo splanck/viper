@@ -27,6 +27,8 @@
 #include "il/transform/LoopSimplify.hpp"
 #include "il/transform/Mem2Reg.hpp"
 #include "il/transform/Peephole.hpp"
+#include "il/transform/EHOpt.hpp"
+#include "il/transform/LoopRotate.hpp"
 #include "il/transform/Reassociate.hpp"
 #include "il/transform/SCCP.hpp"
 
@@ -473,6 +475,21 @@ void registerReassociatePass(PassRegistry &registry)
                                     reassociate(module);
                                     return PreservedAnalyses::none();
                                 });
+}
+
+void registerEHOptPass(PassRegistry &registry)
+{
+    registry.registerModulePass("eh-opt",
+                                [](core::Module &module, AnalysisManager &)
+                                {
+                                    ehOpt(module);
+                                    return PreservedAnalyses::none();
+                                });
+}
+
+void registerLoopRotatePass(PassRegistry &registry)
+{
+    registry.registerFunctionPass("loop-rotate", []() { return std::make_unique<LoopRotate>(); });
 }
 
 } // namespace il::transform
