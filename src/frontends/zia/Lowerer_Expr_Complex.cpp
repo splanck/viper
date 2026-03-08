@@ -23,6 +23,10 @@ namespace il::frontends::zia
 
 using namespace runtime;
 
+/// Closure struct layout: [funcPtr (8 bytes)] [envPtr (8 bytes)]
+static constexpr int kClosureSize = 16;
+static constexpr int kClosureEnvOffset = 8;
+
 //=============================================================================
 // Field Expression Lowering
 //=============================================================================
@@ -1212,14 +1216,14 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     }
 
     // Allocate closure struct: { ptr funcPtr, ptr envPtr } = 16 bytes
-    Value closureSizeVal = Value::constInt(16);
+    Value closureSizeVal = Value::constInt(kClosureSize);
     Value closurePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {closureSizeVal});
 
     // Store function pointer at offset 0
     emitStore(closurePtr, funcPtr, Type(Type::Kind::Ptr));
 
-    // Store environment pointer at offset 8 (null for no captures)
-    Value envFieldAddr = emitGEP(closurePtr, 8);
+    // Store environment pointer at closure env offset
+    Value envFieldAddr = emitGEP(closurePtr, kClosureEnvOffset);
     emitStore(envFieldAddr, envPtr, Type(Type::Kind::Ptr));
 
     return {closurePtr, Type(Type::Kind::Ptr)};

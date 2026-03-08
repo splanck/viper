@@ -122,6 +122,10 @@ static CRITICAL_SECTION g_gc_lock_cs;
 static pthread_mutex_t g_gc_lock_mtx = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
+/// Set to 1 after rt_gc_shutdown(); prevents gc_lock() from re-initializing
+/// a destroyed lock primitive (Windows: DeleteCriticalSection + InitOnce reset).
+static volatile int g_gc_is_shutdown = 0;
+
 /// Auto-trigger: allocation counter and threshold.
 /// When g_gc_threshold > 0, every rt_gc_notify_alloc() call increments
 /// g_gc_alloc_counter; when the counter reaches the threshold, a collection
@@ -161,22 +165,30 @@ static BOOL CALLBACK gc_lock_init_callback(PINIT_ONCE InitOnce, PVOID Parameter,
 
 static void gc_lock(void)
 {
+    if (g_gc_is_shutdown)
+        return; // Lock destroyed after shutdown — no-op to prevent UB
     InitOnceExecuteOnce(&g_gc_lock_once, gc_lock_init_callback, NULL, NULL);
     EnterCriticalSection(&g_gc_lock_cs);
 }
 
 static void gc_unlock(void)
 {
+    if (g_gc_is_shutdown)
+        return;
     LeaveCriticalSection(&g_gc_lock_cs);
 }
 #else
 static void gc_lock(void)
 {
+    if (g_gc_is_shutdown)
+        return;
     pthread_mutex_lock(&g_gc_lock_mtx);
 }
 
 static void gc_unlock(void)
 {
+    if (g_gc_is_shutdown)
+        return;
     pthread_mutex_unlock(&g_gc_lock_mtx);
 }
 #endif
@@ -585,14 +597,14 @@ int64_t rt_gc_collect(void)
         snap_count++;
     }
 
-    gc_unlock();
+    /* Lock remains held from Phase 1 into Phase 2 to prevent another
+       thread from untracking + freeing an object whose pointer is in
+       the snapshot (TOCTOU race). */
 
     /* Phase 2: Trial decrement — for each tracked object, visit its
        children.  If a child is also tracked, decrement its trial_rc.
        After this phase, objects whose trial_rc <= 0 are only referenced
-       by other tracked objects (potential cycle members).
-       Lock held across the entire phase to avoid per-child churn. */
-    gc_lock();
+       by other tracked objects (potential cycle members). */
     for (int64_t i = 0; i < snap_count; i++)
     {
         snapshot[i].traverse(snapshot[i].obj, trial_decrement, NULL);
@@ -817,6 +829,10 @@ void rt_gc_shutdown(void)
     __atomic_store_n(&g_gc_alloc_counter, 0, __ATOMIC_RELAXED);
 
     gc_unlock();
+
+    /* Mark as shut down BEFORE destroying the lock to prevent gc_lock()
+       from re-initializing a destroyed primitive (e.g., from a late finalizer). */
+    g_gc_is_shutdown = 1;
 
     /* Destroy and reinitialize lock primitive so it can be reused. */
 #ifdef _WIN32

@@ -344,7 +344,8 @@ endif ()
 add_library(viper_bytecode STATIC
         bytecode/Bytecode.cpp
         bytecode/BytecodeCompiler.cpp
-        bytecode/BytecodeVM.cpp)
+        bytecode/BytecodeVM.cpp
+        bytecode/BytecodeVM_threaded.cpp)
 target_include_directories(viper_bytecode PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)

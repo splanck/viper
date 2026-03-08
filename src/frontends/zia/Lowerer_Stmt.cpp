@@ -901,6 +901,15 @@ void Lowerer::lowerBreakStmt(BreakStmt * /*stmt*/)
         releaseDeferredTemps(); // Release any pending temps before branch
         emitBr(loopStack_.breakTarget());
     }
+    else
+    {
+        // Defensive: semantic analysis should reject this; emit trap for safety.
+        il::core::Instr trap;
+        trap.op = il::core::Opcode::Trap;
+        trap.type = il::core::Type(il::core::Type::Kind::Void);
+        trap.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(trap);
+    }
 }
 
 void Lowerer::lowerContinueStmt(ContinueStmt * /*stmt*/)
@@ -909,6 +918,15 @@ void Lowerer::lowerContinueStmt(ContinueStmt * /*stmt*/)
     {
         releaseDeferredTemps(); // Release any pending temps before branch
         emitBr(loopStack_.continueTarget());
+    }
+    else
+    {
+        // Defensive: semantic analysis should reject this; emit trap for safety.
+        il::core::Instr trap;
+        trap.op = il::core::Opcode::Trap;
+        trap.type = il::core::Type(il::core::Type::Kind::Void);
+        trap.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(trap);
     }
 }
 

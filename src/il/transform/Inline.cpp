@@ -455,6 +455,8 @@ bool inlineCallSite(Function &caller,
         Value repl = Value::temp(retParam.id);
         viper::il::UseDefInfo useInfo(caller);
         useInfo.replaceAllUses(*callInstr.result, repl);
+        // Safety net: ensure continuation block uses are replaced even if
+        // UseDefInfo was built before the block was fully wired into the CFG.
         replaceUsesInBlock(continuation, *callInstr.result, repl);
     }
 

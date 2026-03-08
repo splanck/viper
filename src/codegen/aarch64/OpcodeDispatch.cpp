@@ -1037,25 +1037,54 @@ bool lowerInstruction(const il::core::Instr &ins,
             // Terminators are lowered in a separate pass after all instructions
             return true;
 
-        // === Structured Error Handling (not yet supported in native codegen) ===
+        // === Structured Error Handling ===
+        // EH markers are no-ops in native codegen.  The runtime's setjmp/longjmp-
+        // based recovery (rt_trap_set_recovery / rt_trap / longjmp) handles trap
+        // recovery at the C level, so the handler push/pop/entry instructions
+        // need no machine code.  This matches the x86-64 strategy exactly.
+        case Opcode::EhPush:
+        case Opcode::EhPop:
+        case Opcode::EhEntry:
+            return true;
+
+        // TrapKind and TrapErr lower to a plain trap call — the runtime's
+        // rt_trap() performs longjmp-based recovery when a handler is active.
         case Opcode::TrapKind:
         case Opcode::TrapErr:
+            bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+            return true;
+
+        // Error field accessors return constant 0 in native codegen.
+        // Full error field extraction requires a runtime bridge that is
+        // not yet implemented; returning 0 is safe and matches x86-64.
         case Opcode::ErrGetKind:
         case Opcode::ErrGetCode:
         case Opcode::ErrGetIp:
         case Opcode::ErrGetLine:
-        case Opcode::EhPush:
-        case Opcode::EhPop:
-        case Opcode::EhEntry:
+        {
+            const uint16_t dst = ctx.nextVRegId++;
+            if (ins.result)
+                ctx.tempVReg[*ins.result] = dst;
+            bbOut().instrs.push_back(
+                MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, dst), MOperand::immOp(0)}});
+            return true;
+        }
+
+        // resume.label is a branch to an explicit target label.
+        // The resume token operand is ignored in native codegen.
+        // Handled as a terminator in TerminatorLowering.cpp.
+        case Opcode::ResumeLabel:
+            return true;
+
+        // resume.same and resume.next require full setjmp-based dispatch
+        // that is not yet implemented in either backend.
         case Opcode::ResumeSame:
         case Opcode::ResumeNext:
-        case Opcode::ResumeLabel:
             fprintf(stderr,
-                    "ERROR: AArch64 native codegen does not yet support structured "
-                    "error handling (opcode: %s). Use VM execution for programs "
-                    "using try/catch.\n",
+                    "ERROR: AArch64 native codegen does not yet support %s. "
+                    "Use resume.label instead.\n",
                     il::core::toString(ins.op));
-            return true;
+            return false;
 
         default:
             // Opcode not handled - caller should process

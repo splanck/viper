@@ -35,10 +35,10 @@ bool EmitPass::run(AArch64Module &module, Diagnostics &diags)
     std::ostringstream os;
 
     // Emit rodata globals (string literals etc.) before function bodies.
-    // TODO(codegen): At O2, the IL optimizer may break const_str → print_str
-    // value chains, causing duplicate adrp+add pairs for the same rodata label.
-    // This is an IL-level issue (SCCP/CSE treats const_str outputs as independent
-    // values); fix requires teaching the optimizer about const_str semantics.
+    // NOTE: EarlyCSE/GVN now handle ConstStr via ValueKey (line 149 of
+    // ValueKey.cpp).  Residual duplicate adrp+add pairs may still appear if
+    // SCCP constant-propagates const_str values after CSE has already run.
+    // Monitor whether pass ordering changes eliminate the remaining cases.
     module.rodataPool.emit(os);
 
     AsmEmitter emitter{*module.ti};

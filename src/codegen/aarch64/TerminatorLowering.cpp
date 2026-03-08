@@ -448,6 +448,16 @@ void lowerTerminators(const il::core::Function &fn,
                 }
                 break;
 
+            case Opcode::ResumeLabel:
+                // resume.label is a branch to an explicit target label.
+                // The resume token operand is ignored in native codegen.
+                if (!term.labels.empty())
+                {
+                    outBB.instrs.push_back(
+                        MInstr{MOpcode::Br, {MOperand::labelOp(term.labels[0])}});
+                }
+                break;
+
             default:
                 break;
         }

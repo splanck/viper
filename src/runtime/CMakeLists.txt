@@ -229,12 +229,14 @@ set(RT_THREADS_SOURCES
 set(RT_NETWORK_SOURCES
         network/rt_network.c
         network/rt_network_http.c
+        network/rt_http_url.c
         network/rt_restclient.c
         network/rt_retry.c
         network/rt_ratelimit.c
         network/rt_websocket.c
         network/rt_crypto.c
         network/rt_tls.c
+        network/rt_tls_verify.c
         network/rt_ecdsa_p256.c
 )
 
@@ -517,6 +519,8 @@ if (VIPER_ENABLE_GRAPHICS AND TARGET vipergfx)
     endif ()
 else ()
     message(STATUS "viper_runtime: Graphics support disabled (vipergfx not available)")
+    # Compile stub implementations so non-graphics builds link cleanly.
+    target_sources(viper_rt_graphics_obj PRIVATE graphics/rt_graphics_stubs.c)
 endif ()
 
 # Audio support (optional, enabled by default)

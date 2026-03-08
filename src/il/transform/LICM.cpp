@@ -367,9 +367,11 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
                 auto inserted = preheader->instructions.insert(
                     preheader->instructions.begin() + insertIndex, std::move(hoisted));
 
-                Instr &insertedInstr = *inserted;
-                if (insertedInstr.result)
-                    invariants.insert(*insertedInstr.result);
+                // Copy result before any further vector operations could
+                // invalidate the iterator returned by insert().
+                auto hoistedResult = inserted->result;
+                if (hoistedResult)
+                    invariants.insert(*hoistedResult);
 
                 changed = true;
             }

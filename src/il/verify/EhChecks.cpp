@@ -62,8 +62,7 @@ std::string encodeStateKey(const std::vector<const BasicBlock *> &stack, bool ha
     key.append(hasResumeToken ? "1|" : "0|");
     for (const BasicBlock *handler : stack)
     {
-        if (handler)
-            key.append(handler->label);
+        key.append(handler ? handler->label : "<null>");
         key.push_back(';');
     }
     return key;

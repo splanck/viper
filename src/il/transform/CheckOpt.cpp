@@ -202,13 +202,15 @@ struct DominatingCheck
     std::optional<unsigned> resultId;
 };
 
-/// @brief Find a basic block by label within a function.
-/// @param function The function containing the block.
+/// @brief Find a basic block by label using a pre-built map for O(1) lookup.
+/// @param blockMap Pre-computed label → block pointer map.
 /// @param label The block label to search for.
 /// @return Pointer to the block, or nullptr if not found.
-BasicBlock *findBlock(Function &function, const std::string &label)
+BasicBlock *findBlock(const std::unordered_map<std::string, BasicBlock *> &blockMap,
+                      const std::string &label)
 {
-    return viper::il::findBlock(function, label);
+    auto it = blockMap.find(label);
+    return it != blockMap.end() ? it->second : nullptr;
 }
 
 /// @brief Find the preheader block for a loop.
@@ -318,11 +320,12 @@ bool isGuaranteedToExecute(const BasicBlock &block, const Loop &loop)
 /// @param loop The loop to check.
 /// @param function The function containing the loop.
 /// @return True if the loop contains any EH-sensitive operations.
-bool loopHasEHSensitiveOps(const Loop &loop, Function &function)
+bool loopHasEHSensitiveOps(const Loop &loop,
+                          const std::unordered_map<std::string, BasicBlock *> &blockMap)
 {
     for (const auto &label : loop.blockLabels)
     {
-        BasicBlock *block = findBlock(function, label);
+        BasicBlock *block = findBlock(blockMap, label);
         if (!block)
             continue;
         for (const auto &instr : block->instructions)
@@ -362,6 +365,11 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
     auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
 
     bool changed = false;
+
+    // Build label → block map once for O(1) lookup (replaces O(n) findBlock).
+    std::unordered_map<std::string, BasicBlock *> blockMap;
+    for (auto &bb : function.blocks)
+        blockMap[bb.label] = &bb;
 
     // Build use-def chains once for O(uses) replacement
     viper::il::UseDefInfo useInfo(function);
@@ -489,14 +497,14 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
 
     for (const Loop &loop : loopInfo.loops())
     {
-        BasicBlock *header = findBlock(function, loop.headerLabel);
+        BasicBlock *header = findBlock(blockMap, loop.headerLabel);
         if (!header)
             continue;
 
         BasicBlock *preheader = findPreheader(function, loop, *header);
         if (!preheader)
             continue;
-        if (loopHasEHSensitiveOps(loop, function))
+        if (loopHasEHSensitiveOps(loop, blockMap))
             continue;
 
         // Seed invariants with out-of-loop definitions
@@ -510,7 +518,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
         // Process each block in the loop
         for (const std::string &blockLabel : loop.blockLabels)
         {
-            BasicBlock *block = findBlock(function, blockLabel);
+            BasicBlock *block = findBlock(blockMap, blockLabel);
             if (!block)
                 continue;
 
@@ -541,9 +549,11 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
                     preheader->instructions.begin() + static_cast<std::ptrdiff_t>(insertIdx),
                     std::move(hoisted));
 
-                // Mark the hoisted result as invariant for potential cascading
-                if (inserted->result)
-                    invariants.insert(*inserted->result);
+                // Copy result before any further vector operations could
+                // invalidate the iterator returned by insert().
+                auto hoistedResult = inserted->result;
+                if (hoistedResult)
+                    invariants.insert(*hoistedResult);
 
                 changed = true;
                 // Don't increment idx - we removed the current instruction

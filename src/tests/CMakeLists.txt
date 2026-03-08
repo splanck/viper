@@ -54,6 +54,11 @@ add_subdirectory(basic)
 add_subdirectory(zia)
 add_subdirectory(golden)
 add_subdirectory(e2e)
+
+# ── Fuzz harnesses (opt-in, not registered as ctest targets) ────────────────
+if (VIPER_ENABLE_FUZZ)
+    add_subdirectory(fuzz)
+endif ()
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/x86_64)
 
 # ── helpers for AArch64 and cross-platform codegen tests ────────────────────

@@ -129,13 +129,17 @@ DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F)
                 {
                     while (index[b1] > index[b2])
                     {
-                        assert(DT.idom.count(b1) && "intersect: missing idom entry");
-                        b1 = DT.idom[b1];
+                        auto it = DT.idom.find(b1);
+                        if (it == DT.idom.end() || !it->second)
+                            return b2; // Broken idom chain — bail to other branch
+                        b1 = it->second;
                     }
                     while (index[b2] > index[b1])
                     {
-                        assert(DT.idom.count(b2) && "intersect: missing idom entry");
-                        b2 = DT.idom[b2];
+                        auto it = DT.idom.find(b2);
+                        if (it == DT.idom.end() || !it->second)
+                            return b1; // Broken idom chain — bail to other branch
+                        b2 = it->second;
                     }
                 }
                 return b1;

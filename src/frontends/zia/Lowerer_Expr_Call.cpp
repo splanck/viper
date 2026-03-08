@@ -23,6 +23,9 @@
 namespace il::frontends::zia
 {
 
+/// Closure struct layout: [funcPtr (8 bytes)] [envPtr (8 bytes)]
+static constexpr int kClosureEnvOffset = 8;
+
 using namespace runtime;
 
 //=============================================================================
@@ -700,7 +703,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         {
             Value closurePtr = funcPtr;
             Value actualFuncPtr = emitLoad(closurePtr, Type(Type::Kind::Ptr));
-            Value envFieldAddr = emitGEP(closurePtr, 8);
+            Value envFieldAddr = emitGEP(closurePtr, kClosureEnvOffset);
             Value envPtr = emitLoad(envFieldAddr, Type(Type::Kind::Ptr));
 
             std::vector<Value> closureArgs;
