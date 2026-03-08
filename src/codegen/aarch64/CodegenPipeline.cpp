@@ -102,9 +102,9 @@ bool runCodegenPipeline(passes::AArch64Module &module, const PipelineOptions &op
         dumpMir(module, "after RA");
 
     // Phase 3: Peephole Optimizations + Prune Unused Callee-Saved Regs
-    // NOTE: SchedulerPass and BlockLayoutPass are available but not yet enabled
-    // in the default pipeline to maintain output compatibility with existing
-    // golden tests.  They can be enabled via a future --schedule flag.
+    // NOTE: SchedulerPass and BlockLayoutPass are available but have
+    // correctness issues (segfaults in native tests).  Needs dedicated
+    // debugging before enabling.
     {
         passes::PeepholePass pass;
         if (!pass.run(module, diags))

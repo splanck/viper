@@ -1638,6 +1638,135 @@ std::size_t reorderBlocks(MFunction &fn)
     return true;
 }
 
+/// @brief Try to fuse cset+cbnz/cbz into a single b.cond instruction.
+///
+/// Pattern:
+///   cset xR, COND
+///   ... (instructions that don't set flags and don't read xR) ...
+///   cbnz xR, label  →  b.COND label    (remove cset, replace cbnz)
+///   cbz  xR, label  →  b.!COND label   (remove cset, replace cbz)
+///
+/// Safety conditions:
+///   - No instruction between cset and cbz/cbnz modifies flags
+///   - No instruction between cset and cbz/cbnz reads the cset destination register
+///   - The cset destination register is dead after the cbz/cbnz
+///
+/// @param instrs Instructions in the basic block.
+/// @param idx Index of the Cset instruction.
+/// @param stats Statistics to update.
+/// @return true if fusion was applied.
+[[nodiscard]] bool tryCsetBranchFusion(std::vector<MInstr> &instrs,
+                                       std::size_t idx,
+                                       PeepholeStats &stats)
+{
+    if (idx >= instrs.size())
+        return false;
+
+    const auto &csetInstr = instrs[idx];
+    if (csetInstr.opc != MOpcode::Cset || csetInstr.ops.size() != 2)
+        return false;
+    if (csetInstr.ops[0].kind != MOperand::Kind::Reg || csetInstr.ops[1].kind != MOperand::Kind::Cond)
+        return false;
+
+    const MOperand csetReg = csetInstr.ops[0];
+    const char *cond = csetInstr.ops[1].cond;
+    if (!cond)
+        return false;
+
+    // Scan forward for cbz/cbnz of csetReg, checking safety conditions.
+    for (std::size_t j = idx + 1; j < instrs.size(); ++j)
+    {
+        const auto &next = instrs[j];
+
+        // Found matching cbz/cbnz?
+        if ((next.opc == MOpcode::Cbnz || next.opc == MOpcode::Cbz) && next.ops.size() == 2 &&
+            isPhysReg(next.ops[0]) && samePhysReg(next.ops[0], csetReg) &&
+            next.ops[1].kind == MOperand::Kind::Label)
+        {
+            // For cbnz: branch if csetReg != 0, i.e., if COND → b.COND
+            // For cbz:  branch if csetReg == 0, i.e., if !COND → b.!COND
+            const char *brCond = cond;
+            if (next.opc == MOpcode::Cbz)
+            {
+                brCond = invertCondition(cond);
+                if (!brCond)
+                    return false;
+            }
+
+            // Check that csetReg is dead after the branch (not used later in the
+            // block). Scan from j+1 to end of block for any use of csetReg.
+            bool regDead = true;
+            for (std::size_t k = j + 1; k < instrs.size(); ++k)
+            {
+                const auto &later = instrs[k];
+                // Stop at block boundaries
+                if (later.opc == MOpcode::Br || later.opc == MOpcode::BCond ||
+                    later.opc == MOpcode::Ret || later.opc == MOpcode::Cbz ||
+                    later.opc == MOpcode::Cbnz)
+                    break;
+                // Check if later instruction reads csetReg
+                for (std::size_t oi = 0; oi < later.ops.size(); ++oi)
+                {
+                    // Skip the destination operand (first for most instrs)
+                    if (oi == 0 && definesReg(later, csetReg))
+                    {
+                        // Redefined — it's dead between here and redefinition
+                        break;
+                    }
+                    if (isPhysReg(later.ops[oi]) && samePhysReg(later.ops[oi], csetReg))
+                    {
+                        regDead = false;
+                        break;
+                    }
+                }
+                if (!regDead)
+                    break;
+            }
+            if (!regDead)
+                return false;
+
+            // Replace cbnz/cbz with b.cond
+            instrs[j] = MInstr{MOpcode::BCond,
+                                {MOperand::condOp(brCond), next.ops[1]}};
+            // Remove the cset instruction
+            instrs.erase(instrs.begin() + static_cast<std::ptrdiff_t>(idx));
+            ++stats.cbzFusions; // reuse the counter
+            return true;
+        }
+
+        // Safety: does this instruction set flags? If so, the cmp flags
+        // would be clobbered, making the b.cond incorrect.
+        switch (next.opc)
+        {
+            case MOpcode::CmpRR:
+            case MOpcode::CmpRI:
+            case MOpcode::TstRR:
+            case MOpcode::FCmpRR:
+            case MOpcode::AddsRRR:
+            case MOpcode::SubsRRR:
+            case MOpcode::AddsRI:
+            case MOpcode::SubsRI:
+            case MOpcode::Cset:
+                return false; // Flags clobbered
+            default:
+                break;
+        }
+
+        // Safety: does this instruction read csetReg?
+        // (We need csetReg to only be used by the cbz/cbnz)
+        for (const auto &op : next.ops)
+        {
+            if (isPhysReg(op) && samePhysReg(op, csetReg))
+                return false;
+        }
+
+        // Safety: stop at block boundaries
+        if (next.opc == MOpcode::Br || next.opc == MOpcode::BCond || next.opc == MOpcode::Ret)
+            return false;
+    }
+    return false;
+}
+
 /// @brief Try to fold an RRR operation into RI when one operand is a known constant.
 ///
 /// Patterns:
@@ -1880,8 +2009,10 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
     std::size_t forwarded = 0;
     for (std::size_t i = 0; i < instrs.size(); ++i)
     {
-        // Look for StrRegFpImm  Rx, #off
-        if (instrs[i].opc != MOpcode::StrRegFpImm)
+        // Look for StrRegFpImm/StrFprFpImm  Rx, #off
+        const bool isGPR = instrs[i].opc == MOpcode::StrRegFpImm;
+        const bool isFPR = instrs[i].opc == MOpcode::StrFprFpImm;
+        if (!isGPR && !isFPR)
             continue;
         if (instrs[i].ops.size() < 2)
             continue;
@@ -1892,15 +2023,18 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
 
         const int64_t storeOff = instrs[i].ops[1].imm;
         const MOperand storeReg = instrs[i].ops[0];
+        const MOpcode matchLoad = isGPR ? MOpcode::LdrRegFpImm : MOpcode::LdrFprFpImm;
+        const MOpcode matchStore = isGPR ? MOpcode::StrRegFpImm : MOpcode::StrFprFpImm;
+        const MOpcode movOpc = isGPR ? MOpcode::MovRR : MOpcode::FMovRR;
 
-        // Scan forward for a matching load from the same FP offset.
+        // Scan forward for matching loads from the same FP offset.
         for (std::size_t j = i + 1; j < instrs.size(); ++j)
         {
             const auto &next = instrs[j];
 
             // If we hit another store to the same offset, the forwarding
             // source changes — stop searching for THIS store.
-            if (next.opc == MOpcode::StrRegFpImm && next.ops.size() >= 2 &&
+            if (next.opc == matchStore && next.ops.size() >= 2 &&
                 next.ops[1].kind == MOperand::Kind::Imm && next.ops[1].imm == storeOff)
                 break;
 
@@ -1908,15 +2042,18 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
             // the load destination is the same register as the store source
             // (e.g. str x11,[fp,#-48]; ldr x11,[fp,#-48]), definesReg would
             // incorrectly abort the search.
-            if (next.opc == MOpcode::LdrRegFpImm && next.ops.size() >= 2 &&
+            if (next.opc == matchLoad && next.ops.size() >= 2 &&
                 next.ops[1].kind == MOperand::Kind::Imm && next.ops[1].imm == storeOff &&
                 isPhysReg(next.ops[0]))
             {
-                // Replace load with mov Ry, Rx.
-                instrs[j] = MInstr{MOpcode::MovRR, {next.ops[0], storeReg}};
+                // Replace load with mov Ry, Rx (or fmov dy, dx for FPR).
+                instrs[j] = MInstr{movOpc, {next.ops[0], storeReg}};
                 ++forwarded;
                 ++stats.deadInstructionsRemoved;
-                break; // only forward the first matching load per store
+                // Continue scanning — there may be more loads from the same
+                // offset further down (e.g. param-heavy patterns).  The store
+                // register is still valid as the forwarding source.
+                continue;
             }
 
             // If the stored register is redefined before the load, stop.
@@ -2271,6 +2408,16 @@ PeepholeStats runPeephole(MFunction &fn)
             if (tryCbzCbnzFusion(instrs, i, stats))
             {
                 // Fusion erased one instruction; recheck at same index
+                if (i > 0)
+                    --i;
+            }
+        }
+
+        // Pass 1.65: Cset+cbnz/cbz → b.cond fusion
+        for (std::size_t i = 0; i < instrs.size(); ++i)
+        {
+            if (tryCsetBranchFusion(instrs, i, stats))
+            {
                 if (i > 0)
                     --i;
             }
