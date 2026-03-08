@@ -827,9 +827,7 @@ struct AwaitExpr : Expr
     /// @brief Construct an await expression.
     /// @param l Source location.
     /// @param e The future operand expression.
-    AwaitExpr(SourceLoc l, ExprPtr e) : Expr(ExprKind::Await, l), operand(std::move(e))
-    {
-    }
+    AwaitExpr(SourceLoc l, ExprPtr e) : Expr(ExprKind::Await, l), operand(std::move(e)) {}
 };
 
 /// @brief Object instantiation expression: `new Foo(args)`.

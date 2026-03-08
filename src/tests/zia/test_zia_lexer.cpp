@@ -557,8 +557,8 @@ TEST(ZiaLexer, BitwiseOperators)
 TEST(ZiaLexer, AllKeywordsRecognized)
 {
     auto tokens = tokenize("var func entity value interface if else while for in "
-                            "return match break continue true false null new self "
-                            "super extends implements module bind let guard");
+                           "return match break continue true false null new self "
+                           "super extends implements module bind let guard");
     // All should be keywords, not identifiers
     for (const auto &tok : tokens)
     {

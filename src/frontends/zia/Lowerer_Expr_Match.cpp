@@ -446,8 +446,8 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
             size_t nocaseIdx = createBlock("match_nocase");
 
             // Narrow I64 scrutinee to I32 for SwitchI32.
-            Value scrutineeI32 = emitUnary(
-                Opcode::CastUiNarrowChk, Type(Type::Kind::I32), scrutinee.value);
+            Value scrutineeI32 =
+                emitUnary(Opcode::CastUiNarrowChk, Type(Type::Kind::I32), scrutinee.value);
 
             // Create arm body blocks.
             std::vector<size_t> armBlocks;
@@ -510,8 +510,7 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
                             if (!bodyType || bodyType->kind != TypeKindSem::Optional)
                             {
                                 if (optionalInner)
-                                    bodyValue =
-                                        emitOptionalWrap(bodyResult.value, optionalInner);
+                                    bodyValue = emitOptionalWrap(bodyResult.value, optionalInner);
                             }
                         }
                         storeToSlot(resultSlot, bodyValue, ilResultType);

@@ -67,8 +67,7 @@ int main(int argc, char *argv[])
         // When line is unknown, it should be omitted entirely (not "line -1")
         const bool omittedLine = result.stderrText.find("line") == std::string::npos;
         const bool hasTrap =
-            result.stderrText.find("Trap @main:entry#1: DomainError (code=0)") !=
-            std::string::npos;
+            result.stderrText.find("Trap @main:entry#1: DomainError (code=0)") != std::string::npos;
         assert(omittedLine && hasTrap);
     }
 

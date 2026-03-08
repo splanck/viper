@@ -58,8 +58,8 @@ static void test_hkdf_extract_rfc5869_case1()
         salt[i] = (uint8_t)i;
 
     uint8_t expected_prk[32];
-    hex_to_bytes("077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5",
-                 expected_prk, 32);
+    hex_to_bytes(
+        "077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5", expected_prk, 32);
 
     uint8_t prk[32];
     rt_hkdf_extract(salt, 13, ikm, 22, prk);
@@ -90,7 +90,8 @@ static void test_hkdf_expand_rfc5869_case1()
     uint8_t expected_okm[42];
     hex_to_bytes("3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf"
                  "34007208d5b887185865",
-                 expected_okm, 42);
+                 expected_okm,
+                 42);
 
     uint8_t okm[42];
     rt_hkdf_expand(prk, info, 10, okm, 42);
@@ -184,8 +185,7 @@ static void test_hmac_sha256_after_secure_zero()
     const char *data_str = "what do ya want for nothing?";
 
     uint8_t expected[32];
-    hex_to_bytes("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
-                 expected, 32);
+    hex_to_bytes("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843", expected, 32);
 
     // Run it twice to ensure the first call's secure_zero doesn't affect the second
     uint8_t mac1[32], mac2[32];

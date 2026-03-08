@@ -177,8 +177,10 @@ void lowerOverflowOps(MFunction &fn)
         }
     }
 
-    // Mark function as non-leaf since trap block calls rt_trap.
-    fn.isLeaf = false;
+    // Note: the trap block contains a `bl rt_trap` call, but rt_trap is noreturn.
+    // The isLeaf scan in CodegenPipeline.cpp skips .Ltrap_ blocks so that the
+    // hot path can benefit from leaf-function optimizations (no callee-saved
+    // register save/restore, potentially frameless).
 }
 
 } // namespace viper::codegen::aarch64

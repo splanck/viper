@@ -28,11 +28,11 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Value.hpp"
+#include "il/transform/OverflowArithmetic.hpp"
 #include "il/utils/UseDefInfo.hpp"
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
-#include "il/transform/OverflowArithmetic.hpp"
 
 #include <limits>
 #include <optional>

@@ -12,9 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_tls_internal.h"
 #include "rt_crypto.h"
 #include "rt_object.h"
+#include "rt_tls_internal.h"
 
 #include <stdio.h>
 #include <stdlib.h>

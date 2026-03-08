@@ -17,12 +17,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_object.h"
-#include "rt_string.h"
 #include "rt_seq.h"
-#include "rt_box.h"
+#include "rt_string.h"
 
 #include <cassert>
 #include <cmath>
@@ -30,7 +30,8 @@
 #include <cstdio>
 #include <cstring>
 
-namespace {
+namespace
+{
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
@@ -44,15 +45,17 @@ extern "C" void vm_trap(const char *msg)
     rt_abort(msg);
 }
 
-#define EXPECT_TRAP(expr)                                                      \
-    do {                                                                        \
-        g_trap_expected = true;                                                \
-        g_last_trap = nullptr;                                                 \
-        if (setjmp(g_trap_jmp) == 0) {                                         \
-            expr;                                                              \
-            assert(false && "Expected trap");                                  \
-        }                                                                      \
-        g_trap_expected = false;                                               \
+#define EXPECT_TRAP(expr)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0)                                                               \
+        {                                                                                          \
+            expr;                                                                                  \
+            assert(false && "Expected trap");                                                      \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
     } while (0)
 
 static rt_string make_key(const char *t)
@@ -423,7 +426,8 @@ static void test_many_entries()
     void *vals[N];
 
     // Insert N entries with unique keys.
-    for (int i = 0; i < N; ++i) {
+    for (int i = 0; i < N; ++i)
+    {
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
         keys[i] = make_key(buf);
@@ -435,30 +439,35 @@ static void test_many_entries()
     assert(rt_map_is_empty(map) == 0);
 
     // Verify all entries retrievable.
-    for (int i = 0; i < N; ++i) {
+    for (int i = 0; i < N; ++i)
+    {
         void *got = rt_map_get(map, keys[i]);
         assert(got == vals[i]);
         assert(rt_map_has(map, keys[i]) == 1);
     }
 
     // Remove half.
-    for (int i = 0; i < N / 2; ++i) {
+    for (int i = 0; i < N / 2; ++i)
+    {
         int8_t removed = rt_map_remove(map, keys[i]);
         assert(removed == 1);
     }
     assert(rt_map_len(map) == N - N / 2);
 
     // Remaining half still accessible.
-    for (int i = N / 2; i < N; ++i) {
+    for (int i = N / 2; i < N; ++i)
+    {
         assert(rt_map_get(map, keys[i]) == vals[i]);
     }
 
     // Removed half returns NULL.
-    for (int i = 0; i < N / 2; ++i) {
+    for (int i = 0; i < N / 2; ++i)
+    {
         assert(rt_map_get(map, keys[i]) == nullptr);
     }
 
-    for (int i = 0; i < N; ++i) {
+    for (int i = 0; i < N; ++i)
+    {
         rt_string_unref(keys[i]);
         rt_release_obj(vals[i]);
     }

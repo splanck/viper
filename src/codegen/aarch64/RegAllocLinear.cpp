@@ -985,8 +985,10 @@ class LinearAllocator
         else
         {
             // For GPR: if this vreg survives a call, prefer callee-saved registers
-            // to avoid spilling around the call
-            if (nextUseAfterCall(vregId, RegClass::GPR))
+            // to avoid spilling around the call.  In leaf functions, always prefer
+            // caller-saved registers to avoid unnecessary callee-saved save/restore
+            // in the prologue/epilogue.
+            if (!fn_.isLeaf && nextUseAfterCall(vregId, RegClass::GPR))
                 phys = pools_.takeGPRPreferCalleeSaved(ti_);
             else
                 phys = pools_.takeGPR();

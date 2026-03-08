@@ -147,8 +147,7 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
         // One case per dispatch entry.
         for (size_t i = 0; i < dispatchTable.size(); ++i)
         {
-            sw.operands.push_back(
-                Value::constInt(static_cast<int64_t>(dispatchTable[i].first)));
+            sw.operands.push_back(Value::constInt(static_cast<int64_t>(dispatchTable[i].first)));
             sw.labels.push_back(currentFunc_->blocks[callBlocks[i]].label);
             sw.brArgs.push_back({});
         }

@@ -270,8 +270,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     {
         x11->visual = vinfo.visual;
         x11->depth = 32;
-        x11->colormap =
-            XCreateColormap(x11->display, root, x11->visual, AllocNone);
+        x11->colormap = XCreateColormap(x11->display, root, x11->visual, AllocNone);
     }
     else
     {
@@ -293,10 +292,10 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
                                 0, /* x, y position (will be overridden) */
                                 params->width,
                                 params->height,
-                                0,              /* border width */
-                                x11->depth,     /* depth matching our visual */
-                                InputOutput,    /* class */
-                                x11->visual,    /* visual matching our depth */
+                                0,           /* border width */
+                                x11->depth,  /* depth matching our visual */
+                                InputOutput, /* class */
+                                x11->visual, /* visual matching our depth */
                                 CWBackPixel | CWBorderPixel | CWColormap | CWEventMask,
                                 &attrs);
 
@@ -366,9 +365,9 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     x11->ximage = XCreateImage(x11->display,
                                x11->visual,
                                x11->depth,
-                               ZPixmap,                  /* format */
-                               0,                        /* offset */
-                               (char *)x11->ximage_buf,  /* presentation buffer */
+                               ZPixmap,                 /* format */
+                               0,                       /* offset */
+                               (char *)x11->ximage_buf, /* presentation buffer */
                                params->width,
                                params->height,
                                32,         /* bitmap_pad (32-bit alignment) */
@@ -749,9 +748,9 @@ int vgfx_platform_present(struct vgfx_window *win)
              * need:     byte[0]=B, byte[1]=G, byte[2]=R, byte[3]=A
              *           = 0xAARRGGBB as uint32_t
              * Swap the RR (bits 0-7) and BB (bits 16-23) fields. */
-            dst[i] = (px & 0xFF00FF00u)              /* keep G and A */
-                   | ((px & 0x000000FFu) << 16)       /* R → bits 16-23 */
-                   | ((px & 0x00FF0000u) >> 16);      /* B → bits 0-7 */
+            dst[i] = (px & 0xFF00FF00u)            /* keep G and A */
+                     | ((px & 0x000000FFu) << 16)  /* R → bits 16-23 */
+                     | ((px & 0x00FF0000u) >> 16); /* B → bits 0-7 */
         }
     }
 

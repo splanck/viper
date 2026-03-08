@@ -1934,6 +1934,95 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
     return forwarded;
 }
 
+/// @brief Eliminate dead stores to frame-pointer-relative offsets.
+///
+/// When multiple stores target the same FP offset with no intervening load
+/// from that offset, earlier stores are dead — only the last one matters.
+/// This pattern arises from register allocation spilling the same slot
+/// multiple times across a basic block.
+///
+/// @param instrs Instructions in the basic block.
+/// @param stats Statistics to update.
+/// @return Number of dead stores removed.
+std::size_t eliminateDeadFpStores(std::vector<MInstr> &instrs, PeepholeStats &stats)
+{
+    // Map from FP offset to the index of the last store to that offset.
+    std::unordered_map<int64_t, std::size_t> lastStore;
+    std::vector<bool> toRemove(instrs.size(), false);
+    std::size_t removed = 0;
+
+    for (std::size_t i = 0; i < instrs.size(); ++i)
+    {
+        const auto &instr = instrs[i];
+
+        // Check for stores to FP-relative offsets.
+        if ((instr.opc == MOpcode::StrRegFpImm || instr.opc == MOpcode::StrFprFpImm) &&
+            instr.ops.size() >= 2 && instr.ops[1].kind == MOperand::Kind::Imm)
+        {
+            const int64_t offset = instr.ops[1].imm;
+
+            // If we've seen a previous store to the same offset, it's dead.
+            auto it = lastStore.find(offset);
+            if (it != lastStore.end())
+            {
+                toRemove[it->second] = true;
+                ++removed;
+            }
+            lastStore[offset] = i;
+            continue;
+        }
+
+        // Loads from FP-relative offsets invalidate the tracking for that offset
+        // (the stored value is consumed, so the store is live).
+        if ((instr.opc == MOpcode::LdrRegFpImm || instr.opc == MOpcode::LdrFprFpImm) &&
+            instr.ops.size() >= 2 && instr.ops[1].kind == MOperand::Kind::Imm)
+        {
+            lastStore.erase(instr.ops[1].imm);
+            continue;
+        }
+
+        // LDP/STP pairs with FP base: invalidate both offsets.
+        if ((instr.opc == MOpcode::StpRegFpImm || instr.opc == MOpcode::StpFprFpImm) &&
+            instr.ops.size() >= 3 && instr.ops[2].kind == MOperand::Kind::Imm)
+        {
+            const int64_t off = instr.ops[2].imm;
+            lastStore.erase(off);
+            lastStore.erase(off + 8);
+            continue;
+        }
+        if ((instr.opc == MOpcode::LdpRegFpImm || instr.opc == MOpcode::LdpFprFpImm) &&
+            instr.ops.size() >= 3 && instr.ops[2].kind == MOperand::Kind::Imm)
+        {
+            lastStore.erase(instr.ops[2].imm);
+            lastStore.erase(instr.ops[2].imm + 8);
+            continue;
+        }
+
+        // Calls may read from the stack frame — conservatively invalidate all.
+        if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr)
+        {
+            lastStore.clear();
+            continue;
+        }
+
+        // Control flow terminators end the basic block — stop tracking.
+        if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond ||
+            instr.opc == MOpcode::Ret || instr.opc == MOpcode::Cbz ||
+            instr.opc == MOpcode::Cbnz)
+        {
+            lastStore.clear();
+            continue;
+        }
+    }
+
+    if (removed > 0)
+    {
+        removeMarkedInstructions(instrs, toRemove);
+        stats.deadInstructionsRemoved += static_cast<int>(removed);
+    }
+    return removed;
+}
+
 /// @brief Remove dead flag-setting instructions (cmp/tst) whose flags are
 ///        clobbered by a subsequent flag-setter before any flag-reading instruction.
 ///
@@ -2203,6 +2292,9 @@ PeepholeStats runPeephole(MFunction &fn)
                     --i;
             }
         }
+
+        // Pass 1.85: Dead FP store elimination (str+str to same offset → remove earlier)
+        eliminateDeadFpStores(instrs, stats);
 
         // Pass 1.9: Store-load forwarding (str+ldr at same FP offset → mov)
         forwardStoreLoads(instrs, stats);

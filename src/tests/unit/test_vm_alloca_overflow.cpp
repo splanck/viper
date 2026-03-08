@@ -44,8 +44,8 @@ int main(int argc, char *argv[])
 
     auto result = viper::tests::runIsolated(buildAndRun);
     assert(result.trapped());
-    bool ok = result.stderrText.find("Trap @main:entry#0 line 1: Overflow (code=0)") !=
-              std::string::npos;
+    bool ok =
+        result.stderrText.find("Trap @main:entry#0 line 1: Overflow (code=0)") != std::string::npos;
     assert(ok);
     return 0;
 }

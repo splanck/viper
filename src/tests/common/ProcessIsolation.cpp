@@ -90,16 +90,25 @@ static void suppressDialogs()
 struct HandleGuard
 {
     HANDLE h = INVALID_HANDLE_VALUE;
+
     ~HandleGuard()
     {
         if (h != INVALID_HANDLE_VALUE && h != nullptr)
             CloseHandle(h);
     }
+
     HandleGuard() = default;
+
     explicit HandleGuard(HANDLE handle) : h(handle) {}
+
     HandleGuard(const HandleGuard &) = delete;
     HandleGuard &operator=(const HandleGuard &) = delete;
-    HandleGuard(HandleGuard &&o) noexcept : h(o.h) { o.h = INVALID_HANDLE_VALUE; }
+
+    HandleGuard(HandleGuard &&o) noexcept : h(o.h)
+    {
+        o.h = INVALID_HANDLE_VALUE;
+    }
+
     HandleGuard &operator=(HandleGuard &&o) noexcept
     {
         if (this != &o)
@@ -111,7 +120,12 @@ struct HandleGuard
         }
         return *this;
     }
-    [[nodiscard]] HANDLE get() const noexcept { return h; }
+
+    [[nodiscard]] HANDLE get() const noexcept
+    {
+        return h;
+    }
+
     HANDLE release() noexcept
     {
         HANDLE tmp = h;
@@ -171,7 +185,8 @@ static ChildResult launchChild(const std::string &extraArg, unsigned timeoutMs)
 
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobInfo{};
     jobInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-    SetInformationJobObject(job.get(), JobObjectExtendedLimitInformation, &jobInfo, sizeof(jobInfo));
+    SetInformationJobObject(
+        job.get(), JobObjectExtendedLimitInformation, &jobInfo, sizeof(jobInfo));
 
     // Set up child STARTUPINFO with stderr redirected to pipe
     STARTUPINFOA si{};
@@ -182,16 +197,16 @@ static ChildResult launchChild(const std::string &extraArg, unsigned timeoutMs)
     si.hStdError = pipeWrite;
 
     PROCESS_INFORMATION pi{};
-    if (!CreateProcessA(nullptr,                          // lpApplicationName
+    if (!CreateProcessA(nullptr,                             // lpApplicationName
                         const_cast<char *>(cmdLine.c_str()), // lpCommandLine
-                        nullptr,                          // lpProcessAttributes
-                        nullptr,                          // lpThreadAttributes
-                        TRUE,                             // bInheritHandles
-                        CREATE_SUSPENDED,                 // dwCreationFlags
-                        nullptr,                          // lpEnvironment
-                        nullptr,                          // lpCurrentDirectory
-                        &si,                              // lpStartupInfo
-                        &pi))                             // lpProcessInformation
+                        nullptr,                             // lpProcessAttributes
+                        nullptr,                             // lpThreadAttributes
+                        TRUE,                                // bInheritHandles
+                        CREATE_SUSPENDED,                    // dwCreationFlags
+                        nullptr,                             // lpEnvironment
+                        nullptr,                             // lpCurrentDirectory
+                        &si,                                 // lpStartupInfo
+                        &pi))                                // lpProcessInformation
     {
         result.exited = true;
         result.exitCode = -1;
@@ -229,8 +244,8 @@ static ChildResult launchChild(const std::string &extraArg, unsigned timeoutMs)
         WaitForSingleObject(pi.hProcess, 1000);
         result.exited = true;
         result.exitCode = -1;
-        result.stderrText = "ProcessIsolation: child timed out after " +
-                            std::to_string(timeoutMs) + "ms\n" + buffer;
+        result.stderrText = "ProcessIsolation: child timed out after " + std::to_string(timeoutMs) +
+                            "ms\n" + buffer;
         return result;
     }
 

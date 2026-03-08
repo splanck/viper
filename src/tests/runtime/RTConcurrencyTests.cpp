@@ -200,11 +200,13 @@ static void test_gc_notify_alloc_no_double_collect()
     int64_t expected_max = total_allocs / 10 + kThreads; // upper bound with thread slack
 
     assert(collections > 0 && "Should have triggered at least one collection");
-    assert(collections <= expected_max && "Too many collections — possible double-collect regression");
+    assert(collections <= expected_max &&
+           "Too many collections — possible double-collect regression");
 
     rt_gc_set_threshold(0);
     printf(" PASS (collections=%lld, expected_max=%lld)\n",
-           (long long)collections, (long long)expected_max);
+           (long long)collections,
+           (long long)expected_max);
 }
 
 //=============================================================================

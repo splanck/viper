@@ -620,8 +620,7 @@ class ModuleAdapter
             case il::core::Opcode::ResumeSame:
             case il::core::Opcode::ResumeNext:
                 reportUnsupported(std::string{"Native codegen does not yet support "} +
-                                  il::core::toString(instr.op) +
-                                  ". Use resume.label instead.");
+                                  il::core::toString(instr.op) + ". Use resume.label instead.");
 
             default:
                 reportUnsupported(std::string{"IL opcode '"} + il::core::toString(instr.op) +

@@ -80,8 +80,8 @@ typedef struct gc_entry
 {
     void *obj; ///< Object pointer (NULL=empty, 1=tombstone, else live).
     rt_gc_traverse_fn traverse;
-    int64_t trial_rc; ///< Temporary refcount for cycle detection.
-    int8_t color;     ///< 0=white(unchecked), 1=gray(candidate), 2=black(reachable)
+    int64_t trial_rc;  ///< Temporary refcount for cycle detection.
+    int8_t color;      ///< 0=white(unchecked), 1=gray(candidate), 2=black(reachable)
     uint16_t survived; ///< Number of collection passes this object has survived.
 } gc_entry;
 

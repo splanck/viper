@@ -372,9 +372,10 @@ TypeRef Sema::analyzeForceUnwrap(ForceUnwrapExpr *expr)
         if (operandType &&
             (operandType->kind == TypeKindSem::Entity || operandType->kind == TypeKindSem::Value ||
              operandType->kind == TypeKindSem::Ptr || operandType->kind == TypeKindSem::String ||
-             operandType->kind == TypeKindSem::Interface || operandType->kind == TypeKindSem::List ||
-             operandType->kind == TypeKindSem::Map || operandType->kind == TypeKindSem::Set ||
-             operandType->kind == TypeKindSem::Any || operandType->kind == TypeKindSem::Unknown))
+             operandType->kind == TypeKindSem::Interface ||
+             operandType->kind == TypeKindSem::List || operandType->kind == TypeKindSem::Map ||
+             operandType->kind == TypeKindSem::Set || operandType->kind == TypeKindSem::Any ||
+             operandType->kind == TypeKindSem::Unknown))
         {
             return operandType;
         }
@@ -621,8 +622,7 @@ bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
                     if (unary->op == UnaryOp::Neg && unary->operand &&
                         unary->operand->kind == ExprKind::IntLiteral)
                     {
-                        int64_t val =
-                            static_cast<IntLiteralExpr *>(unary->operand.get())->value;
+                        int64_t val = static_cast<IntLiteralExpr *>(unary->operand.get())->value;
                         coverage.coveredIntegers.insert(-val);
                     }
                 }

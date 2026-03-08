@@ -44,8 +44,7 @@ static void test_mid_ascii()
 
     rt_string s = make_str("hello world");
     rt_string r = rt_str_mid(s, 7);
-    test_result("Mid(\"hello world\", 7) == \"world\"",
-                strcmp(rt_string_cstr(r), "world") == 0);
+    test_result("Mid(\"hello world\", 7) == \"world\"", strcmp(rt_string_cstr(r), "world") == 0);
 
     rt_string r2 = rt_str_mid(s, 1);
     test_result("Mid(\"hello world\", 1) == \"hello world\"",
@@ -72,8 +71,7 @@ static void test_mid_utf8()
     // "café" — 4 codepoints: c(1) a(2) f(3) é(4)  (é = 0xC3 0xA9 = 2 bytes)
     rt_string cafe = make_str("caf\xc3\xa9");
     rt_string r3 = rt_str_mid(cafe, 4);
-    test_result("Mid(\"café\", 4) == \"é\"",
-                strcmp(rt_string_cstr(r3), "\xc3\xa9") == 0);
+    test_result("Mid(\"café\", 4) == \"é\"", strcmp(rt_string_cstr(r3), "\xc3\xa9") == 0);
 
     printf("\n");
 }
@@ -100,8 +98,7 @@ static void test_midlen_utf8()
     // "café" — MidLen(s, 3, 2) should be "fé"
     rt_string cafe = make_str("caf\xc3\xa9");
     rt_string r3 = rt_str_mid_len(cafe, 3, 2);
-    test_result("MidLen(\"café\", 3, 2) == \"fé\"",
-                strcmp(rt_string_cstr(r3), "f\xc3\xa9") == 0);
+    test_result("MidLen(\"café\", 3, 2) == \"fé\"", strcmp(rt_string_cstr(r3), "f\xc3\xa9") == 0);
 
     // Emoji: "Hi 🌍!" — 5 codepoints: H(1) i(2) (3) 🌍(4) !(5)
     // 🌍 = F0 9F 8C 8D (4 bytes)

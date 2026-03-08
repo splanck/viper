@@ -165,8 +165,8 @@ bool Parser::parsePatternCore(MatchArm::Pattern &out)
     }
 
     // Negative integer/number literals: treat `-42` as a literal pattern
-    if (check(TokenKind::Minus) && (check(TokenKind::IntegerLiteral, 1) ||
-                                     check(TokenKind::NumberLiteral, 1)))
+    if (check(TokenKind::Minus) &&
+        (check(TokenKind::IntegerLiteral, 1) || check(TokenKind::NumberLiteral, 1)))
     {
         out.kind = MatchArm::Pattern::Kind::Literal;
         out.literal = parseUnary();

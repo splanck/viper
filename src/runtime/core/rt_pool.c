@@ -191,10 +191,10 @@ static inline void atomic_store_u64(volatile uint64_t *ptr, uint64_t value)
 /// builtins or CAS operations which provide their own compiler+CPU barriers.
 typedef struct rt_pool_state
 {
-    uint64_t freelist_tagged;     ///< Lock-free freelist head (tagged pointer, via atomic CAS)
-    rt_pool_slab_t *slabs;        ///< List of slabs (via atomic CAS for thread-safe insertion)
-    size_t allocated;             ///< Count of blocks currently allocated (via __atomic_*)
-    size_t free_count;            ///< Count of blocks on freelist (via __atomic_*)
+    uint64_t freelist_tagged; ///< Lock-free freelist head (tagged pointer, via atomic CAS)
+    rt_pool_slab_t *slabs;    ///< List of slabs (via atomic CAS for thread-safe insertion)
+    size_t allocated;         ///< Count of blocks currently allocated (via __atomic_*)
+    size_t free_count;        ///< Count of blocks on freelist (via __atomic_*)
 } rt_pool_state_t;
 
 /// @brief Global pool state for each size class.

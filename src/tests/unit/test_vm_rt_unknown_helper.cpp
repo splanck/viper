@@ -44,9 +44,8 @@ int main(int argc, char *argv[])
 
     auto result = viper::tests::runIsolated(buildAndRun);
     assert(result.trapped());
-    bool messageOk =
-        result.stderrText.find("Trap @main:entry#0 line 1: DomainError (code=0)") !=
-        std::string::npos;
+    bool messageOk = result.stderrText.find("Trap @main:entry#0 line 1: DomainError (code=0)") !=
+                     std::string::npos;
     assert(messageOk && "expected runtime trap diagnostic for unknown runtime helper");
     return 0;
 }

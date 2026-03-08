@@ -92,6 +92,8 @@ bool isCommutativeCSE(Opcode op) noexcept
     {
         case Opcode::Add:
         case Opcode::Mul:
+        case Opcode::IAddOvf:
+        case Opcode::IMulOvf:
         case Opcode::And:
         case Opcode::Or:
         case Opcode::Xor:
@@ -108,20 +110,24 @@ bool isCommutativeCSE(Opcode op) noexcept
 }
 
 /// @brief Determine whether an opcode is safe to use in expression CSE/GVN.
-/// @details The whitelist is intentionally conservative: only operations with
-///          no side effects and no trapping behavior are accepted. This allows
-///          common subexpression elimination to replace occurrences freely
-///          without altering program behavior.
+/// @details The whitelist includes operations with no side effects beyond
+///          possible trapping. Overflow-checked operations (IAddOvf, ISubOvf,
+///          IMulOvf) are safe for CSE: if the first execution does not trap,
+///          all subsequent identical operations will produce the same result
+///          and also not trap. CSE only eliminates redundant computations; it
+///          never introduces new trapping paths.
 /// @param op Opcode to test.
 /// @return True if the opcode is safe for value-based CSE; false otherwise.
 bool isSafeCSEOpcode(Opcode op) noexcept
 {
-    // Restrict to operations that cannot trap and have no hidden side effects.
     switch (op)
     {
         case Opcode::Add:
         case Opcode::Sub:
         case Opcode::Mul:
+        case Opcode::IAddOvf:
+        case Opcode::ISubOvf:
+        case Opcode::IMulOvf:
         case Opcode::And:
         case Opcode::Or:
         case Opcode::Xor:
@@ -215,7 +221,13 @@ static std::vector<Value> normaliseOperands(const Instr &instr)
 std::optional<ValueKey> makeValueKey(const Instr &instr)
 {
     const auto &meta = getOpcodeInfo(instr.op);
-    if (meta.isTerminator || meta.hasSideEffects)
+    if (meta.isTerminator)
+        return std::nullopt;
+    // Allow overflow-checked ops through the side-effects gate: if the first
+    // occurrence doesn't trap, all subsequent identical operations produce the
+    // same result and also don't trap.  CSE removes redundant computations
+    // without introducing new trapping paths.
+    if (meta.hasSideEffects && !isSafeCSEOpcode(instr.op))
         return std::nullopt;
     if (hasMemoryRead(instr.op) || hasMemoryWrite(instr.op))
         return std::nullopt;

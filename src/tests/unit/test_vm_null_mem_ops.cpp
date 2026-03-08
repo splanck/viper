@@ -214,10 +214,9 @@ int main(int argc, char *argv[])
         auto m = makeLoadModule();
         auto result = viper::tests::runModuleIsolated(m);
         assert(result.trapped());
-        bool loadOk =
-            result.stderrText.find(
-                "Trap @main:entry#0 line 1: InvalidOperation (code=0): null load") !=
-            std::string::npos;
+        bool loadOk = result.stderrText.find(
+                          "Trap @main:entry#0 line 1: InvalidOperation (code=0): null load") !=
+                      std::string::npos;
         assert(loadOk);
     }
 
@@ -225,10 +224,9 @@ int main(int argc, char *argv[])
         auto m = makeStoreModule();
         auto result = viper::tests::runModuleIsolated(m);
         assert(result.trapped());
-        bool storeOk =
-            result.stderrText.find(
-                "Trap @main:entry#0 line 2: InvalidOperation (code=0): null store") !=
-            std::string::npos;
+        bool storeOk = result.stderrText.find(
+                           "Trap @main:entry#0 line 2: InvalidOperation (code=0): null store") !=
+                       std::string::npos;
         assert(storeOk);
     }
 
@@ -246,9 +244,8 @@ int main(int argc, char *argv[])
         auto m = makeMisalignedLoadModule(kind);
         auto result = viper::tests::runModuleIsolated(m);
         assert(result.trapped());
-        bool trapped =
-            result.stderrText.find("InvalidOperation (code=0): misaligned load") !=
-            std::string::npos;
+        bool trapped = result.stderrText.find("InvalidOperation (code=0): misaligned load") !=
+                       std::string::npos;
         assert(trapped);
     }
 
@@ -257,9 +254,8 @@ int main(int argc, char *argv[])
         auto m = makeMisalignedStoreModule(kind);
         auto result = viper::tests::runModuleIsolated(m);
         assert(result.trapped());
-        bool trapped =
-            result.stderrText.find("InvalidOperation (code=0): misaligned store") !=
-            std::string::npos;
+        bool trapped = result.stderrText.find("InvalidOperation (code=0): misaligned store") !=
+                       std::string::npos;
         assert(trapped);
     }
 

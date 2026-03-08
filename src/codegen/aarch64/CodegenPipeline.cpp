@@ -59,12 +59,19 @@ bool runCodegenPipeline(passes::AArch64Module &module, const PipelineOptions &op
         }
     }
 
-    // Detect leaf functions: scan for Bl/Blr instructions.
+    // Detect leaf functions: scan for Bl/Blr instructions, but skip trap blocks
+    // (e.g. .Ltrap_ovf_*) because those are cold, noreturn paths that should not
+    // force the function to save/restore callee-saved registers on the hot path.
     for (auto &fn : module.mir)
     {
         fn.isLeaf = true;
         for (const auto &bb : fn.blocks)
         {
+            // Skip trap blocks — they only contain a noreturn call to rt_trap
+            // and should not affect leaf-function classification.
+            if (bb.name.find(".Ltrap_") == 0)
+                continue;
+
             for (const auto &mi : bb.instrs)
             {
                 if (mi.opc == MOpcode::Bl || mi.opc == MOpcode::Blr)

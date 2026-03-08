@@ -187,13 +187,22 @@ class IRBuilder
     unsigned reserveTempId();
 
     /// @brief Save the current temp ID counter (for lambda context switching).
-    unsigned saveTempId() const { return nextTemp; }
+    unsigned saveTempId() const
+    {
+        return nextTemp;
+    }
 
     /// @brief Restore a previously saved temp ID counter.
-    void restoreTempId(unsigned saved) { nextTemp = saved; }
+    void restoreTempId(unsigned saved)
+    {
+        nextTemp = saved;
+    }
 
     /// @brief Restore the current function pointer (for lambda context switching).
-    void restoreFunction(il::core::Function *fn) { curFunc = fn; }
+    void restoreFunction(il::core::Function *fn)
+    {
+        curFunc = fn;
+    }
 
   private:
     il::core::Module &mod;                ///< Module being constructed

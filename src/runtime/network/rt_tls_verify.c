@@ -19,8 +19,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_tls_internal.h"
 #include "rt_crypto.h"
+#include "rt_tls_internal.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -834,7 +834,8 @@ static time_t parse_der_time(const uint8_t *data, size_t len, uint8_t tag)
     {
         /* UTCTime: YYMMDDHHMMSSZ */
         int yy = (s[0] - '0') * 10 + (s[1] - '0');
-        tm_val.tm_year = (yy >= 50) ? yy : (100 + yy); /* RFC 5280: 50-99 -> 1950-1999, 0-49 -> 2000-2049 */
+        tm_val.tm_year =
+            (yy >= 50) ? yy : (100 + yy); /* RFC 5280: 50-99 -> 1950-1999, 0-49 -> 2000-2049 */
         pos = 2;
     }
     else if (tag == 0x18 && len >= 14)

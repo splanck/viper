@@ -321,7 +321,7 @@ bool isGuaranteedToExecute(const BasicBlock &block, const Loop &loop)
 /// @param function The function containing the loop.
 /// @return True if the loop contains any EH-sensitive operations.
 bool loopHasEHSensitiveOps(const Loop &loop,
-                          const std::unordered_map<std::string, BasicBlock *> &blockMap)
+                           const std::unordered_map<std::string, BasicBlock *> &blockMap)
 {
     for (const auto &label : loop.blockLabels)
     {

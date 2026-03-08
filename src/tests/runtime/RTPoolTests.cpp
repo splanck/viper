@@ -18,8 +18,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_pool.h"
 #include "rt_internal.h"
+#include "rt_pool.h"
 
 #include <cassert>
 #include <cstdio>
@@ -228,11 +228,11 @@ static void test_null_free(void)
 
 static void test_mixed_sizes(void)
 {
-    void *a = rt_pool_alloc(32);   // -> 64-byte class
-    void *b = rt_pool_alloc(100);  // -> 128-byte class
-    void *c = rt_pool_alloc(200);  // -> 256-byte class
-    void *d = rt_pool_alloc(400);  // -> 512-byte class
-    void *e = rt_pool_alloc(64);   // -> 64-byte class
+    void *a = rt_pool_alloc(32);  // -> 64-byte class
+    void *b = rt_pool_alloc(100); // -> 128-byte class
+    void *c = rt_pool_alloc(200); // -> 256-byte class
+    void *d = rt_pool_alloc(400); // -> 512-byte class
+    void *e = rt_pool_alloc(64);  // -> 64-byte class
 
     assert(a != nullptr);
     assert(b != nullptr);

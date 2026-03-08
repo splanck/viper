@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt.hpp"
 #include "common/ProcessIsolation.hpp"
+#include "rt.hpp"
 #include <cassert>
 #include <stdint.h>
 #include <string>

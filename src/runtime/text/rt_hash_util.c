@@ -28,8 +28,8 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <windows.h>
 #include <bcrypt.h>
+#include <windows.h>
 #ifndef NT_SUCCESS
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #endif
@@ -50,8 +50,7 @@ static int hash_random_fill(uint8_t *buf, size_t len)
     if (len == 0)
         return 0;
 #ifdef _WIN32
-    NTSTATUS status = BCryptGenRandom(NULL, buf, (ULONG)len,
-                                      BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    NTSTATUS status = BCryptGenRandom(NULL, buf, (ULONG)len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
     return NT_SUCCESS(status) ? 0 : -1;
 #else
     int fd = open("/dev/urandom", O_RDONLY);

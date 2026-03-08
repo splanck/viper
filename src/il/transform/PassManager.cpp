@@ -31,8 +31,8 @@
 #include "il/transform/CheckOpt.hpp"
 #include "il/transform/EHOpt.hpp"
 #include "il/transform/LICM.hpp"
-#include "il/transform/LoopRotate.hpp"
 #include "il/transform/LateCleanup.hpp"
+#include "il/transform/LoopRotate.hpp"
 #include "il/transform/LoopUnroll.hpp"
 #include "il/transform/PipelineExecutor.hpp"
 #include "il/transform/SiblingRecursion.hpp"
@@ -136,19 +136,17 @@ PassManager::PassManager()
     // O2 pipeline with interprocedural constant propagation:
     // Run SCCP both before (to simplify callees) and after inline
     // (to propagate constants through inlined code from call sites).
-    registerPipeline("O2", {"loop-simplify", "loop-rotate",  "indvars",      "loop-unroll",
-                            "simplify-cfg",
-                            "mem2reg",       "simplify-cfg",
-                            "sccp", // Pre-inline SCCP: simplify callees
-                            "check-opt",     "eh-opt",       "dce",          "simplify-cfg",
-                            "sibling-recursion",
-                            "inline",        "simplify-cfg",
-                            "sccp",      // Post-inline SCCP: propagate call-site constants
-                            "constfold", // Fold runtime math calls exposed by SCCP
-                            "dce",       // Clean up after second SCCP
-                            "simplify-cfg",  "licm",         "simplify-cfg", "gvn",
-                            "reassociate",   "earlycse",     "dse",          "peephole", "dce",
-                            "late-cleanup"});
+    registerPipeline(
+        "O2", {"loop-simplify", "loop-rotate",  "indvars",      "loop-unroll",  "simplify-cfg",
+               "mem2reg",       "simplify-cfg",
+               "sccp", // Pre-inline SCCP: simplify callees
+               "check-opt",     "eh-opt",       "dce",          "simplify-cfg", "sibling-recursion",
+               "inline",        "simplify-cfg",
+               "sccp",      // Post-inline SCCP: propagate call-site constants
+               "constfold", // Fold runtime math calls exposed by SCCP
+               "dce",       // Clean up after second SCCP
+               "simplify-cfg",  "licm",         "simplify-cfg", "gvn",          "reassociate",
+               "earlycse",      "dse",          "peephole",     "dce",          "late-cleanup"});
 }
 
 /// @brief Register the SimplifyCFG transform in the function pass registry.

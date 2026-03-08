@@ -205,9 +205,12 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
     if (!__atomic_load_n(&g_shutdown_registered, __ATOMIC_ACQUIRE))
     {
         int expected = 0;
-        if (__atomic_compare_exchange_n(
-                &g_shutdown_registered, &expected, 1, /*weak=*/0,
-                __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+        if (__atomic_compare_exchange_n(&g_shutdown_registered,
+                                        &expected,
+                                        1,
+                                        /*weak=*/0,
+                                        __ATOMIC_ACQ_REL,
+                                        __ATOMIC_ACQUIRE))
         {
             atexit(rt_global_shutdown);
         }

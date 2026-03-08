@@ -226,7 +226,8 @@ inline void BasicAA::collectFunctionInfo(const il::core::Function &function)
             {
                 if (escaped)
                     break;
-                if (instr.op == il::core::Opcode::Call || instr.op == il::core::Opcode::CallIndirect)
+                if (instr.op == il::core::Opcode::Call ||
+                    instr.op == il::core::Opcode::CallIndirect)
                 {
                     for (const auto &op : instr.operands)
                         if (op.kind == il::core::Value::Kind::Temp && derived.count(op.id))
@@ -512,11 +513,9 @@ inline AliasResult BasicAA::alias(const il::core::Value &lhs,
         return AliasResult::NoAlias;
 
     // Non-escaping alloca cannot alias with parameters (address never leaves function)
-    if (l.kind == BaseKind::Alloca && r.kind == BaseKind::Param &&
-        nonEscapingAllocas_.count(l.id))
+    if (l.kind == BaseKind::Alloca && r.kind == BaseKind::Param && nonEscapingAllocas_.count(l.id))
         return AliasResult::NoAlias;
-    if (r.kind == BaseKind::Alloca && l.kind == BaseKind::Param &&
-        nonEscapingAllocas_.count(r.id))
+    if (r.kind == BaseKind::Alloca && l.kind == BaseKind::Param && nonEscapingAllocas_.count(r.id))
         return AliasResult::NoAlias;
 
     if (l.kind == BaseKind::Global && r.kind == BaseKind::Global && l.global != r.global)

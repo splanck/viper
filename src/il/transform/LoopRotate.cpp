@@ -253,6 +253,7 @@ bool rotateLoop(Function &function, const Loop &loop)
         size_t labelIdx;
         std::vector<Value> args;
     };
+
     std::vector<EntryEdge> entryEdges;
 
     for (size_t bi = 0; bi < function.blocks.size(); ++bi)

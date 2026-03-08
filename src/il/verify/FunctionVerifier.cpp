@@ -333,11 +333,13 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         std::vector<const BasicBlock *> rpo;
         {
             std::unordered_set<const BasicBlock *> visited;
+
             struct Frame
             {
                 const BasicBlock *bb;
                 bool childrenPushed;
             };
+
             std::vector<Frame> stack;
             stack.push_back({entry, false});
             visited.insert(entry);
