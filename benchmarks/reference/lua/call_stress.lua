@@ -1,4 +1,4 @@
--- call_stress.lua -- Function call overhead benchmark (100K iterations).
+-- call_stress.lua -- Function call overhead benchmark (10M iterations).
 -- Equivalent to examples/il/benchmarks/call_stress.il
 
 local function add_triple(a, b, c)
@@ -18,7 +18,7 @@ local function compute(n)
 end
 
 local sum = 0
-for i = 0, 99999 do
+for i = 0, 9999999 do
     local r1 = compute(i)
     local r2 = add_triple(i, r1, 1)
     local r3 = mul_pair(r2, 2)

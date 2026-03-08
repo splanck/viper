@@ -1,4 +1,4 @@
-/* call_stress — Function call overhead benchmark (100K iterations).
+/* call_stress — Function call overhead benchmark (10M iterations).
    Equivalent to examples/il/benchmarks/call_stress.il */
 using System;
 using System.Runtime.CompilerServices;
@@ -27,16 +27,23 @@ class CallStress
         return MulPair(sum, 3);
     }
 
-    static int Main()
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static long Run(long n)
     {
         long sum = 0;
-        for (long i = 0; i < 100000; ++i)
+        for (long i = 0; i < n; ++i)
         {
             long r1 = Compute(i);
             long r2 = AddTriple(i, r1, 1);
             long r3 = MulPair(r2, 2);
             sum += r3;
         }
-        return (int)(sum & 0xFF);
+        return sum;
+    }
+
+    static int Main(string[] args)
+    {
+        long result = Run(10000000 + args.Length);
+        return (int)(result & 0xFF);
     }
 }

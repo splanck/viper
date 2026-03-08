@@ -1,8 +1,8 @@
--- arith_stress.lua -- Arithmetic-heavy loop benchmark (500K iterations).
+-- arith_stress.lua -- Arithmetic-heavy loop benchmark (50M iterations).
 -- Equivalent to examples/il/benchmarks/arith_stress.il
 
 local sum = 0
-for i = 0, 499999 do
+for i = 0, 49999999 do
     local t1 = i + 1
     local t2 = t1 * 2
     local t3 = i + 3

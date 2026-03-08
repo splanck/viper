@@ -1,3 +1,4 @@
+// 10M iterations
 fn add_triple(a: i64, b: i64, c: i64) -> i64 {
     a + b + c
 }
@@ -11,8 +12,9 @@ fn compute(n: i64) -> i64 {
 }
 
 fn main() {
+    let args_offset = std::env::args().count() as i64 - 1;
     let mut sum: i64 = 0;
-    for i in 0..100000_i64 {
+    for i in 0..(10000000 + args_offset) {
         let r1 = compute(i);
         let r2 = add_triple(i, r1, 1);
         let r3 = mul_pair(r2, 2);

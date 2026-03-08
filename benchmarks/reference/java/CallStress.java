@@ -1,4 +1,4 @@
-/** CallStress.java — Function call overhead benchmark (100K iterations).
+/** CallStress.java — Function call overhead benchmark (10M iterations).
     Equivalent to examples/il/benchmarks/call_stress.il */
 public class CallStress {
     static long addTriple(long a, long b, long c) {
@@ -18,8 +18,9 @@ public class CallStress {
     }
 
     public static void main(String[] args) {
+        long n = 10000000 + args.length;
         long sum = 0;
-        for (long i = 0; i < 100000; i++) {
+        for (long i = 0; i < n; i++) {
             long r1 = compute(i);
             long r2 = addTriple(i, r1, 1);
             long r3 = mulPair(r2, 2);

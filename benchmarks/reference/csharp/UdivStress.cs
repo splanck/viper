@@ -1,13 +1,15 @@
-/* udiv_stress — Unsigned division stress benchmark (500K iterations).
+/* udiv_stress — Unsigned division stress benchmark (50M iterations).
    Equivalent to examples/il/benchmarks/udiv_stress.il */
 using System;
+using System.Runtime.CompilerServices;
 
 class UdivStress
 {
-    static int Main()
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static long Run(long n)
     {
         long sum = 0;
-        for (long i = 1; i < 500001; ++i)
+        for (long i = 1; i < n; ++i)
         {
             long d1 = i / 2;
             long d2 = i / 4;
@@ -23,6 +25,12 @@ class UdivStress
             long rawSum = sum + s7;
             sum = rawSum & 268435455;
         }
-        return (int)(sum & 0xFF);
+        return sum;
+    }
+
+    static int Main(string[] args)
+    {
+        long result = Run(50000001 + args.Length);
+        return (int)(result & 0xFF);
     }
 }

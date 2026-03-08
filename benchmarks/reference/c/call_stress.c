@@ -1,4 +1,4 @@
-/* call_stress.c — Function call overhead benchmark (100K iterations).
+/* call_stress.c — Function call overhead benchmark (10M iterations).
    Equivalent to examples/il/benchmarks/call_stress.il */
 #include <stdint.h>
 #include <stdlib.h>
@@ -22,10 +22,12 @@ static int64_t compute(int64_t n)
     return mul_pair(sum, 3);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    (void)argv;
+    int64_t n = 10000000 + (argc - 1);
     int64_t sum = 0;
-    for (int64_t i = 0; i < 100000; ++i) {
+    for (int64_t i = 0; i < n; ++i) {
         int64_t r1 = compute(i);
         int64_t r2 = add_triple(i, r1, 1);
         int64_t r3 = mul_pair(r2, 2);

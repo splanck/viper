@@ -1,6 +1,7 @@
-/* mixed_stress — Mixed workload benchmark (100K iterations).
+/* mixed_stress — Mixed workload benchmark (10M iterations).
    Equivalent to examples/il/benchmarks/mixed_stress.il */
 using System;
+using System.Runtime.CompilerServices;
 
 class MixedStress
 {
@@ -9,10 +10,11 @@ class MixedStress
         return x * 3 + 7;
     }
 
-    static int Main()
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static long Run(long n)
     {
         long sum = 0;
-        for (long i = 0; i < 100000; ++i)
+        for (long i = 0; i < n; ++i)
         {
             long t1 = i + 1;
             long t2 = t1 * 2;
@@ -35,6 +37,12 @@ class MixedStress
             }
             sum += tmp;
         }
-        return (int)(sum & 0xFF);
+        return sum;
+    }
+
+    static int Main(string[] args)
+    {
+        long result = Run(10000000 + args.Length);
+        return (int)(result & 0xFF);
     }
 }

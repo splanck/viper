@@ -1,12 +1,14 @@
-/* redundant_stress.c — Redundant computation / constant propagation benchmark (500K iterations).
+/* redundant_stress.c — Redundant computation / constant propagation benchmark (50M iterations).
    Equivalent to examples/il/benchmarks/redundant_stress.il */
 #include <stdint.h>
 #include <stdlib.h>
 
-int main(void)
+int main(int argc, char **argv)
 {
+    (void)argv;
+    int64_t n = 50000000 + (argc - 1);
     int64_t sum = 0;
-    for (int64_t i = 0; i < 500000; ++i) {
+    for (int64_t i = 0; i < n; ++i) {
         /* Constant expressions: SCCP folds these to immediate constants. */
         int64_t k1 = 10 + 20;
         int64_t k2 = k1 * 3;

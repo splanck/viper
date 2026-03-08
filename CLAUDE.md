@@ -11,6 +11,12 @@
 
 NOTES: Never mention Claude in any commit messages or comments. Never commit changes, leave that to me.
 
+## Workflow Preferences
+
+- Do not launch background agents or ask clarifying questions unless explicitly asked. When given a task, proceed directly with execution.
+- If interrupted with new requirements, incorporate them immediately without re-asking.
+- On macOS, use POSIX-compatible shell commands. Avoid GNU-specific awk/sed syntax (no `^` anchors for indented content, no GNU awk features). Test commands mentally for BSD compatibility before running.
+
 ## Core Principles (Priority Order)
 
 1. **Spec First** — IL spec is normative. Changes require ADR, never silent divergence.
@@ -79,6 +85,12 @@ Use template from §20.4 (paste into deliverable). Must include:
 
 ---
 
+## Large-Scale Changes
+
+When making large-scale changes across many files (renames, sed replacements, doc updates), always check ALL files including demos, examples, test fixtures, scripts, and config files — not just source code. Never skip files or try to shortcut the scope. After execution, re-grep for any remaining stale references before reporting done.
+
+---
+
 ## Architecture Guardrails (Strict Layering)
 
 ```
@@ -105,6 +117,8 @@ Cross-layer includes require ADR. Never modify `/docs/il-guide.md#reference` wit
 - **Golden:** Textual stability (IL/BASIC outputs)
 - **E2E:** VM vs native output equivalence
 - Each feature must include a test that fails before implementation and passes after
+- After any build/rename/refactor affecting multiple files, always rebuild and run the full test suite before reporting done. Verify zero regressions.
+- For golden file regeneration, be careful with shell escaping and ensure sed patterns account for indented content (not just line-start anchors).
 
 ---
 

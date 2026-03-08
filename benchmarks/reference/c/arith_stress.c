@@ -1,12 +1,14 @@
-/* arith_stress.c — Arithmetic-heavy loop benchmark (500K iterations).
+/* arith_stress.c — Arithmetic-heavy loop benchmark (50M iterations).
    Equivalent to examples/il/benchmarks/arith_stress.il */
 #include <stdint.h>
 #include <stdlib.h>
 
-int main(void)
+int main(int argc, char **argv)
 {
+    (void)argv;
+    int64_t n = 50000000 + (argc - 1);
     int64_t sum = 0;
-    for (int64_t i = 0; i < 500000; ++i) {
+    for (int64_t i = 0; i < n; ++i) {
         int64_t t1 = i + 1;
         int64_t t2 = t1 * 2;
         int64_t t3 = i + 3;

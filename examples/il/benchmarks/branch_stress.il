@@ -5,7 +5,7 @@ entry:
   br loop(0, 0)
 
 loop(%count: i64, %i: i64):
-  %done = scmp_ge %i, 200000
+  %done = scmp_ge %i, 20000000
   cbr %done, exit(%count), check1(%count, %i)
 
 check1(%c1: i64, %i1: i64):

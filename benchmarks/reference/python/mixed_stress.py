@@ -1,4 +1,4 @@
-"""mixed_stress.py — Mixed workload benchmark (100K iterations).
+"""mixed_stress.py — Mixed workload benchmark (10M iterations).
 Equivalent to examples/il/benchmarks/mixed_stress.il"""
 import sys
 
@@ -6,7 +6,7 @@ def helper(x):
     return x * 3 + 7
 
 s = 0
-for i in range(100000):
+for i in range(10000000):
     t1 = i + 1
     t2 = t1 * 2
     t3 = t2 - i

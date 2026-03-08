@@ -641,22 +641,15 @@ entity EnemyManager {
                                 var t = etype.get(i);
                                 var f = eframe.get(i);
 
-                                // Flash when hurt
+                                // Flash when hurt (skip draw every other 2-frame pair)
+                                var skipDraw = false;
                                 if estate.get(i) == 1 {
                                     if etimer.get(i) % 4 < 2 {
-                                        // Skip drawing (flash effect)
-                                        i = i + 1;
-                                        // Use continue-like pattern
-                                        // We need to not draw — handled below
+                                        skipDraw = true;
                                     }
                                 }
-
-                                if estate.get(i) != 1 {
+                                if skipDraw == false {
                                     drawEnemy(canvas, t, f, sx, sy, sprites);
-                                } else {
-                                    if etimer.get(i) % 4 >= 2 {
-                                        drawEnemy(canvas, t, f, sx, sy, sprites);
-                                    }
                                 }
                             }
                         }

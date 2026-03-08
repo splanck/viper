@@ -1,8 +1,8 @@
--- branch_stress.lua -- Branch-heavy loop benchmark (200K iterations).
+-- branch_stress.lua -- Branch-heavy loop benchmark (20M iterations).
 -- Equivalent to examples/il/benchmarks/branch_stress.il
 
 local count = 0
-for i = 0, 199999 do
+for i = 0, 19999999 do
     if i % 2 == 0 then count = count + 1 end
     if i % 3 == 0 then count = count + 2 end
     if i % 5 == 0 then count = count + 3 end

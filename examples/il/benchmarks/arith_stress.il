@@ -5,7 +5,7 @@ entry:
   br loop(0, 0)
 
 loop(%sum: i64, %i: i64):
-  %done = scmp_ge %i, 500000
+  %done = scmp_ge %i, 50000000
   cbr %done, exit(%sum), body(%sum, %i)
 
 body(%sum0: i64, %i0: i64):

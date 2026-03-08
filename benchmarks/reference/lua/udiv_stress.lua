@@ -1,8 +1,8 @@
--- udiv_stress.lua -- Unsigned division stress test (500K iterations, i from 1 to 500000).
+-- udiv_stress.lua -- Unsigned division stress test (50M iterations, i from 1 to 50000000).
 -- Equivalent to examples/il/benchmarks/udiv_stress.il
 
 local sum = 0
-for i = 1, 500000 do
+for i = 1, 50000000 do
     local d1 = i // 2
     local d2 = i // 4
     local d3 = i // 8

@@ -1,4 +1,4 @@
-/** MixedStress.java — Mixed workload benchmark (100K iterations).
+/** MixedStress.java — Mixed workload benchmark (10M iterations).
     Equivalent to examples/il/benchmarks/mixed_stress.il */
 public class MixedStress {
     static long helper(long x) {
@@ -6,8 +6,9 @@ public class MixedStress {
     }
 
     public static void main(String[] args) {
+        long n = 10000000 + args.length;
         long sum = 0;
-        for (long i = 0; i < 100000; i++) {
+        for (long i = 0; i < n; i++) {
             long t1 = i + 1;
             long t2 = t1 * 2;
             long t3 = t2 - i;

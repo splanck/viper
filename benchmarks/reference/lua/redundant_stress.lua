@@ -1,8 +1,8 @@
--- redundant_stress.lua -- Redundant computation and constant propagation stress test (500K iterations).
+-- redundant_stress.lua -- Redundant computation and constant propagation stress test (50M iterations).
 -- Equivalent to examples/il/benchmarks/redundant_stress.il
 
 local sum = 0
-for i = 0, 499999 do
+for i = 0, 49999999 do
     -- Constant expressions (SCCP folds these in the IL optimizer).
     local k1 = 10 + 20     -- 30
     local k2 = k1 * 3      -- 90

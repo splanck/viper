@@ -1,6 +1,8 @@
+// 50M iterations
 fn main() {
+    let args_offset = std::env::args().count() as i64 - 1;
     let mut sum: i64 = 0;
-    for i in 1..500001_i64 {
+    for i in 1..(50000001 + args_offset) {
         let d1 = i / 2;
         let d2 = i / 4;
         let d3 = i / 8;

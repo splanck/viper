@@ -1,13 +1,15 @@
-/* arith_stress — Arithmetic-heavy loop benchmark (500K iterations).
+/* arith_stress — Arithmetic-heavy loop benchmark (50M iterations).
    Equivalent to examples/il/benchmarks/arith_stress.il */
 using System;
+using System.Runtime.CompilerServices;
 
 class ArithStress
 {
-    static int Main()
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static long Run(long n)
     {
         long sum = 0;
-        for (long i = 0; i < 500000; ++i)
+        for (long i = 0; i < n; ++i)
         {
             long t1 = i + 1;
             long t2 = t1 * 2;
@@ -20,6 +22,12 @@ class ArithStress
             long t9 = t8 - 11;
             sum += t9;
         }
-        return (int)(sum & 0xFF);
+        return sum;
+    }
+
+    static int Main(string[] args)
+    {
+        long result = Run(50000000 + args.Length);
+        return (int)(result & 0xFF);
     }
 }

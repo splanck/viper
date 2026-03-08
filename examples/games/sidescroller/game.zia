@@ -260,6 +260,7 @@ entity Game {
                     // Stomp kill
                     enemies.damageEnemy(hit, 10);
                     player.vy = PLAYER_JUMP / 2;
+                    player.iframes = 20;
                     score = score + ENEMY_SCORE;
 
                     particles.burstEnemyDeath(player.pixelX() + PLAYER_W / 2,

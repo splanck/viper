@@ -1,4 +1,4 @@
-/** FibStress.java — Recursive fibonacci(35) benchmark.
+/** FibStress.java — Recursive fibonacci(40) benchmark.
     Equivalent to examples/il/benchmarks/fib_stress.il */
 public class FibStress {
     static long fib(long n) {
@@ -7,7 +7,7 @@ public class FibStress {
     }
 
     public static void main(String[] args) {
-        long result = fib(35);
+        long result = fib(40 + args.length);
         System.exit((int)(result & 0xFF));
     }
 }

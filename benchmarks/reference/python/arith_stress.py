@@ -1,9 +1,9 @@
-"""arith_stress.py — Arithmetic-heavy loop benchmark (500K iterations).
+"""arith_stress.py — Arithmetic-heavy loop benchmark (50M iterations).
 Equivalent to examples/il/benchmarks/arith_stress.il"""
 import sys
 
 s = 0
-for i in range(500000):
+for i in range(50000000):
     t1 = i + 1
     t2 = t1 * 2
     t3 = i + 3

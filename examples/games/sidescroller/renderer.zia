@@ -119,11 +119,11 @@ entity Renderer {
         // 3. Pickups
         pickups.drawAll(canvas, camX, camY, sprites);
 
-        // 4. Enemies
-        enemies.drawAll(canvas, camX, camY, sprites);
-
-        // 5. Player
+        // 4. Player (drawn before enemies so overlapping enemies are visible)
         drawPlayer(canvas, camX, camY, player, sprites);
+
+        // 5. Enemies (on top of player — bats/bullets visible when overlapping)
+        enemies.drawAll(canvas, camX, camY, sprites);
 
         // 6. Projectiles
         bullets.drawAll(canvas, camX, camY, sprites);

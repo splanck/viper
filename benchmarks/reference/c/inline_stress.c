@@ -1,4 +1,4 @@
-/* inline_stress.c — Inlining stress benchmark (500K iterations).
+/* inline_stress.c — Inlining stress benchmark (50M iterations).
    Equivalent to examples/il/benchmarks/inline_stress.il */
 #include <stdint.h>
 #include <stdlib.h>
@@ -31,10 +31,12 @@ static int64_t combine(int64_t x)
     return add3(d, s, i);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    (void)argv;
+    int64_t n = 50000000 + (argc - 1);
     int64_t sum = 0;
-    for (int64_t i = 0; i < 500000; ++i) {
+    for (int64_t i = 0; i < n; ++i) {
         int64_t r = combine(i);
         int64_t raw_sum = sum + r;
         sum = raw_sum & 268435455;

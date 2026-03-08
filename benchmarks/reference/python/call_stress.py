@@ -1,4 +1,4 @@
-"""call_stress.py — Function call overhead benchmark (100K iterations).
+"""call_stress.py — Function call overhead benchmark (10M iterations).
 Equivalent to examples/il/benchmarks/call_stress.il"""
 import sys
 
@@ -16,7 +16,7 @@ def compute(n):
     return mul_pair(s, 3)
 
 total = 0
-for i in range(100000):
+for i in range(10000000):
     r1 = compute(i)
     r2 = add_triple(i, r1, 1)
     r3 = mul_pair(r2, 2)

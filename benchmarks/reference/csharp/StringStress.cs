@@ -1,13 +1,15 @@
-/* string_stress — String manipulation benchmark (50K iterations).
+/* string_stress — String manipulation benchmark (500K iterations).
    Equivalent to examples/il/benchmarks/string_stress.il */
 using System;
+using System.Runtime.CompilerServices;
 
 class StringStress
 {
-    static int Main()
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static long Run(long n)
     {
         long sum = 0;
-        for (long i = 0; i < 50000; ++i)
+        for (long i = 0; i < n; ++i)
         {
             string buf = "Hello";
             buf += " ";
@@ -15,6 +17,12 @@ class StringStress
             buf += "!";
             sum += buf.Length;
         }
-        return (int)(sum & 0xFF);
+        return sum;
+    }
+
+    static int Main(string[] args)
+    {
+        long result = Run(500000 + args.Length);
+        return (int)(result & 0xFF);
     }
 }

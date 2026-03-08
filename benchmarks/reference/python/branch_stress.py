@@ -1,9 +1,9 @@
-"""branch_stress.py — Branch-heavy loop benchmark (200K iterations).
+"""branch_stress.py — Branch-heavy loop benchmark (20M iterations).
 Equivalent to examples/il/benchmarks/branch_stress.il"""
 import sys
 
 count = 0
-for i in range(200000):
+for i in range(20000000):
     if i % 2 == 0:
         count += 1
     if i % 3 == 0:

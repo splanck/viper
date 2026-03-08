@@ -1,4 +1,4 @@
--- mixed_stress.lua -- Mixed workload benchmark (100K iterations).
+-- mixed_stress.lua -- Mixed workload benchmark (10M iterations).
 -- Equivalent to examples/il/benchmarks/mixed_stress.il
 
 local function helper(x)
@@ -6,7 +6,7 @@ local function helper(x)
 end
 
 local sum = 0
-for i = 0, 99999 do
+for i = 0, 9999999 do
     local t1 = i + 1
     local t2 = t1 * 2
     local t3 = t2 - i

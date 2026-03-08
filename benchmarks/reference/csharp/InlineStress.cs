@@ -1,6 +1,7 @@
-/* inline_stress — Inlining stress benchmark (500K iterations).
+/* inline_stress — Inlining stress benchmark (50M iterations).
    Equivalent to examples/il/benchmarks/inline_stress.il */
 using System;
+using System.Runtime.CompilerServices;
 
 class InlineStress
 {
@@ -17,15 +18,22 @@ class InlineStress
         return Add3(d, s, i);
     }
 
-    static int Main()
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static long Run(long n)
     {
         long sum = 0;
-        for (long i = 0; i < 500000; ++i)
+        for (long i = 0; i < n; ++i)
         {
             long r = Combine(i);
             long rawSum = sum + r;
             sum = rawSum & 268435455;
         }
-        return (int)(sum & 0xFF);
+        return sum;
+    }
+
+    static int Main(string[] args)
+    {
+        long result = Run(50000000 + args.Length);
+        return (int)(result & 0xFF);
     }
 }

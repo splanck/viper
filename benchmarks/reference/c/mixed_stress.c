@@ -1,4 +1,4 @@
-/* mixed_stress.c — Mixed workload benchmark (100K iterations).
+/* mixed_stress.c — Mixed workload benchmark (10M iterations).
    Equivalent to examples/il/benchmarks/mixed_stress.il */
 #include <stdint.h>
 #include <stdlib.h>
@@ -8,10 +8,12 @@ static int64_t helper(int64_t x)
     return x * 3 + 7;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    (void)argv;
+    int64_t n = 10000000 + (argc - 1);
     int64_t sum = 0;
-    for (int64_t i = 0; i < 100000; ++i) {
+    for (int64_t i = 0; i < n; ++i) {
         int64_t t1 = i + 1;
         int64_t t2 = t1 * 2;
         int64_t t3 = t2 - i;

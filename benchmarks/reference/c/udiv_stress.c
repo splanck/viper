@@ -1,12 +1,14 @@
-/* udiv_stress.c — Unsigned division stress benchmark (500K iterations).
+/* udiv_stress.c — Unsigned division stress benchmark (50M iterations).
    Equivalent to examples/il/benchmarks/udiv_stress.il */
 #include <stdint.h>
 #include <stdlib.h>
 
-int main(void)
+int main(int argc, char **argv)
 {
+    (void)argv;
+    int64_t n = 50000001 + (argc - 1);
     int64_t sum = 0;
-    for (int64_t i = 1; i < 500001; ++i) {
+    for (int64_t i = 1; i < n; ++i) {
         /* Divide by ascending powers of 2. */
         int64_t d1 = i / 2;
         int64_t d2 = i / 4;

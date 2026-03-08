@@ -1,4 +1,4 @@
-/* fib_stress.c — Recursive fibonacci(35) benchmark.
+/* fib_stress.c — Recursive fibonacci(40) benchmark.
    Equivalent to examples/il/benchmarks/fib_stress.il */
 #include <stdint.h>
 #include <stdlib.h>
@@ -11,6 +11,6 @@ static int64_t fib(int64_t n)
 
 int main(void)
 {
-    int64_t result = fib(35);
+    int64_t result = fib(40);
     return (int)(result & 0xFF);
 }

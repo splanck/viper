@@ -534,13 +534,8 @@ CSEOF
             fi
             cp "$csharp_file" "$TMPDIR_BENCH/csharp_proj/Program.cs"
             if "$DOTNET" build "$TMPDIR_BENCH/csharp_proj" -c Release -o "$dotnet_build_dir" --nologo -v q 2>/dev/null; then
-                dotnet_exe="$dotnet_build_dir/BenchCS"
-                if [[ -x "$dotnet_exe" ]]; then
-                    result=$(time_executable "$dotnet_exe" "$ITERATIONS" "$WARMUP")
-                else
-                    # Fallback: run via dotnet command
-                    result=$(time_executable "$DOTNET" "$ITERATIONS" "$WARMUP" "$dotnet_build_dir/BenchCS.dll")
-                fi
+                # Always run via dotnet to ensure DOTNET_ROOT is respected
+                result=$(time_executable "$DOTNET" "$ITERATIONS" "$WARMUP" "$dotnet_build_dir/BenchCS.dll")
                 [[ -n "$modes_json" ]] && modes_json="$modes_json,"
                 modes_json="$modes_json\"csharp\":$result"
             else

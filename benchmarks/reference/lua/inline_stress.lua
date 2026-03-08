@@ -1,4 +1,4 @@
--- inline_stress.lua -- Inlining stress test (500K iterations).
+-- inline_stress.lua -- Inlining stress test (50M iterations).
 -- Equivalent to examples/il/benchmarks/inline_stress.il
 
 local function double(x)
@@ -22,7 +22,7 @@ local function combine(x)
 end
 
 local sum = 0
-for i = 0, 499999 do
+for i = 0, 49999999 do
     local r = combine(i)
     local raw_sum = sum + r
     sum = raw_sum & 268435455

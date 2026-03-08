@@ -1,9 +1,10 @@
-/** ArithStress.java — Arithmetic-heavy loop benchmark (500K iterations).
+/** ArithStress.java — Arithmetic-heavy loop benchmark (50M iterations).
     Equivalent to examples/il/benchmarks/arith_stress.il */
 public class ArithStress {
     public static void main(String[] args) {
+        long n = 50000000 + args.length;
         long sum = 0;
-        for (long i = 0; i < 500000; i++) {
+        for (long i = 0; i < n; i++) {
             long t1 = i + 1;
             long t2 = t1 * 2;
             long t3 = i + 3;

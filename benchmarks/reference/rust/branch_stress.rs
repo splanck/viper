@@ -1,6 +1,8 @@
+// 20M iterations
 fn main() {
+    let args_offset = std::env::args().count() as i64 - 1;
     let mut count: i64 = 0;
-    for i in 0..200000_i64 {
+    for i in 0..(20000000 + args_offset) {
         if i % 2 == 0 {
             count += 1;
         }

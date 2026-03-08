@@ -1,3 +1,4 @@
+// 50M iterations
 fn double(x: i64) -> i64 {
     x + x
 }
@@ -19,8 +20,9 @@ fn combine(x: i64) -> i64 {
 }
 
 fn main() {
+    let args_offset = std::env::args().count() as i64 - 1;
     let mut sum: i64 = 0;
-    for i in 0..500000_i64 {
+    for i in 0..(50000000 + args_offset) {
         let r = combine(i);
         let raw_sum = sum + r;
         sum = raw_sum & 268435455;
