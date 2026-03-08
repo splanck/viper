@@ -32,8 +32,10 @@
 #include "il/core/Module.hpp"
 #include "il/core/Value.hpp"
 #include "il/transform/CallEffects.hpp"
+#include "il/transform/OverflowArithmetic.hpp"
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -44,6 +46,41 @@ static bool traceEnabled()
     static const bool enabled = std::getenv("VIPER_DCE_TRACE") != nullptr;
     return enabled;
 }
+/// @brief Check whether an overflow-checked op with constant operands is
+///        provably non-overflowing, making it safe to remove when dead.
+/// @details If both operands are ConstInt and the operation does not overflow,
+///          the instruction's only "side effect" (trapping) provably cannot
+///          fire, so removing the instruction is semantics-preserving.
+static bool isDeadOverflowOp(const il::core::Instr &instr)
+{
+    using il::core::Opcode;
+    using il::core::Value;
+
+    if (instr.op != Opcode::IAddOvf && instr.op != Opcode::ISubOvf &&
+        instr.op != Opcode::IMulOvf)
+        return false;
+    if (instr.operands.size() < 2)
+        return false;
+    if (instr.operands[0].kind != Value::Kind::ConstInt ||
+        instr.operands[1].kind != Value::Kind::ConstInt)
+        return false;
+
+    const long long lhs = instr.operands[0].i64;
+    const long long rhs = instr.operands[1].i64;
+    long long result{};
+    switch (instr.op)
+    {
+        case Opcode::IAddOvf:
+            return !__builtin_add_overflow(lhs, rhs, &result);
+        case Opcode::ISubOvf:
+            return !__builtin_sub_overflow(lhs, rhs, &result);
+        case Opcode::IMulOvf:
+            return !__builtin_mul_overflow(lhs, rhs, &result);
+        default:
+            return false;
+    }
+}
+
 } // namespace
 
 using namespace il::core;
@@ -294,6 +331,19 @@ void dce(Module &M)
                         B.instructions.erase(B.instructions.begin() + i);
                         continue;
                     }
+                }
+                // Eliminate overflow-checked ops whose results are unused and
+                // whose constant operands provably do not overflow.  SCCP folds
+                // the result and propagates the constant, but leaves the
+                // instruction because hasSideEffects=true.  Since we can verify
+                // the trap cannot fire, removing the dead instruction is safe.
+                if (I.result && uses[*I.result] == 0 && isDeadOverflowOp(I))
+                {
+                    if (traceEnabled())
+                        std::cerr << "[dce] removing dead overflow op %" << *I.result << " = "
+                                  << toString(I.op) << " in " << F.name << ":" << B.label << "\n";
+                    B.instructions.erase(B.instructions.begin() + i);
+                    continue;
                 }
                 ++i;
             }

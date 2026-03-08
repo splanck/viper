@@ -95,11 +95,20 @@ switch (mi.opc)
     case K::AndRRR:
         emitAndRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
         break;
+    case K::AndRI:
+        emitAndRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2]));
+        break;
     case K::OrrRRR:
         emitOrrRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
         break;
+    case K::OrrRI:
+        emitOrrRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2]));
+        break;
     case K::EorRRR:
         emitEorRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
+        break;
+    case K::EorRI:
+        emitEorRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2]));
         break;
     case K::AddRI:
         emitAddRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2]));

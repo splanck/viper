@@ -1904,6 +1904,21 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
                 next.ops[1].kind == MOperand::Kind::Imm && next.ops[1].imm == storeOff)
                 break;
 
+            // Found a matching load?  Check BEFORE definesReg, because when
+            // the load destination is the same register as the store source
+            // (e.g. str x11,[fp,#-48]; ldr x11,[fp,#-48]), definesReg would
+            // incorrectly abort the search.
+            if (next.opc == MOpcode::LdrRegFpImm && next.ops.size() >= 2 &&
+                next.ops[1].kind == MOperand::Kind::Imm && next.ops[1].imm == storeOff &&
+                isPhysReg(next.ops[0]))
+            {
+                // Replace load with mov Ry, Rx.
+                instrs[j] = MInstr{MOpcode::MovRR, {next.ops[0], storeReg}};
+                ++forwarded;
+                ++stats.deadInstructionsRemoved;
+                break; // only forward the first matching load per store
+            }
+
             // If the stored register is redefined before the load, stop.
             if (definesReg(next, storeReg))
                 break;
@@ -1917,18 +1932,6 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
             if (next.opc == MOpcode::Br || next.opc == MOpcode::BCond || next.opc == MOpcode::Ret ||
                 next.opc == MOpcode::Cbz || next.opc == MOpcode::Cbnz)
                 break;
-
-            // Found a matching load?
-            if (next.opc == MOpcode::LdrRegFpImm && next.ops.size() >= 2 &&
-                next.ops[1].kind == MOperand::Kind::Imm && next.ops[1].imm == storeOff &&
-                isPhysReg(next.ops[0]))
-            {
-                // Replace load with mov Ry, Rx.
-                instrs[j] = MInstr{MOpcode::MovRR, {next.ops[0], storeReg}};
-                ++forwarded;
-                ++stats.deadInstructionsRemoved;
-                break; // only forward the first matching load per store
-            }
         }
     }
     return forwarded;
