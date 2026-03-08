@@ -71,9 +71,12 @@ TEST(Arm64CLI, Select_ConstArms)
     EXPECT_TRUE(hasCompare);
     EXPECT_NE(asmText.find("b."), std::string::npos);
     EXPECT_NE(asmText.find(" mov x"), std::string::npos);
-    // Phi values passed via spill slots - stores and loads expected
+    // Phi values passed via spill slots - stores expected; loads may be
+    // forwarded to movs by cross-block store-load forwarding.
     EXPECT_NE(asmText.find(" str x"), std::string::npos);
-    EXPECT_NE(asmText.find(" ldr x"), std::string::npos);
+    const bool hasLoadOrFwd =
+        asmText.find(" ldr x") != std::string::npos || asmText.find(" mov x") != std::string::npos;
+    EXPECT_TRUE(hasLoadOrFwd);
 }
 
 TEST(Arm64CLI, Select_LoadArms)

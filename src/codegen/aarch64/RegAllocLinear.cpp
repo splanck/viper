@@ -482,14 +482,18 @@ class LinearAllocator
     {
         pools_.build(ti);
         buildCFG();
+        buildPredecessors();
         computeLiveOutSets();
     }
 
     AllocationResult run()
     {
-        for (auto &bb : fn_.blocks)
+        blockExitStates_.resize(fn_.blocks.size());
+
+        for (std::size_t bi = 0; bi < fn_.blocks.size(); ++bi)
         {
-            allocateBlock(bb);
+            restoreFromPredecessor(bi);
+            allocateBlock(fn_.blocks[bi]);
             releaseBlockState();
         }
 
@@ -517,6 +521,15 @@ class LinearAllocator
     std::vector<std::vector<std::size_t>> succs_;
     std::vector<std::unordered_set<uint16_t>> liveOutGPR_;
     std::vector<std::unordered_set<uint16_t>> liveOutFPR_;
+
+    // Cross-block register persistence: predecessor map and exit-state cache.
+    std::vector<std::vector<std::size_t>> preds_;
+    struct BlockExitState
+    {
+        std::unordered_map<uint16_t, PhysReg> gpr;
+        std::unordered_map<uint16_t, PhysReg> fpr;
+    };
+    std::vector<BlockExitState> blockExitStates_;
 
     void buildCFG()
     {
@@ -559,6 +572,67 @@ class LinearAllocator
                     }
                 }
             }
+        }
+    }
+
+    /// @brief Build predecessor map from the successor map.
+    void buildPredecessors()
+    {
+        preds_.assign(fn_.blocks.size(), {});
+        for (std::size_t i = 0; i < succs_.size(); ++i)
+            for (auto s : succs_[i])
+                preds_[s].push_back(i);
+    }
+
+    /// @brief Pre-assign registers from a single predecessor's exit state.
+    ///
+    /// If block @p bi has exactly one predecessor in the CFG, and that predecessor
+    /// has already been processed (forward edge), reuse its register assignments.
+    /// This eliminates reload instructions at block entry for vregs that are still
+    /// in the same physical register from the predecessor.
+    void restoreFromPredecessor(std::size_t bi)
+    {
+        if (preds_[bi].size() != 1)
+            return; // multi-predecessor: can't persist (different paths may disagree)
+
+        const std::size_t pred = preds_[bi][0];
+        if (pred >= bi)
+            return; // back-edge: predecessor not processed yet
+
+        const auto &es = blockExitStates_[pred];
+
+        for (const auto &kv : es.gpr)
+        {
+            const uint16_t vid = kv.first;
+            const PhysReg phys = kv.second;
+
+            // Take the register from the free pool
+            auto it = std::find(pools_.gprFree.begin(), pools_.gprFree.end(), phys);
+            if (it == pools_.gprFree.end())
+                continue; // register not available (shouldn't happen after releaseBlockState)
+            pools_.gprFree.erase(it);
+
+            // Pre-assign: the vreg is already in this physical register
+            auto &st = gprStates_[vid];
+            st.hasPhys = true;
+            st.phys = phys;
+            // spilled and fpOffset remain from previous block processing
+            // dirty = false: spill slot matches register value (predecessor spilled it)
+        }
+
+        for (const auto &kv : es.fpr)
+        {
+            const uint16_t vid = kv.first;
+            const PhysReg phys = kv.second;
+
+            auto it = std::find(pools_.fprFree.begin(), pools_.fprFree.end(), phys);
+            if (it == pools_.fprFree.end())
+                continue;
+            pools_.fprFree.erase(it);
+
+            auto &st = fprStates_[vid];
+            st.hasPhys = true;
+            st.phys = phys;
         }
     }
 
@@ -1241,6 +1315,27 @@ class LinearAllocator
             if (itB != blockIndex_.end())
             {
                 const std::size_t bi = itB->second;
+
+                // Save exit state for cross-block register persistence.
+                // Record vreg→phys mappings for live-out vregs BEFORE releasing
+                // their physical registers, so successor blocks can reuse them.
+                if (bi < blockExitStates_.size())
+                {
+                    auto &es = blockExitStates_[bi];
+                    for (auto vid : liveOutGPR_[bi])
+                    {
+                        auto it = gprStates_.find(vid);
+                        if (it != gprStates_.end() && it->second.hasPhys)
+                            es.gpr[vid] = it->second.phys;
+                    }
+                    for (auto vid : liveOutFPR_[bi])
+                    {
+                        auto it = fprStates_.find(vid);
+                        if (it != fprStates_.end() && it->second.hasPhys)
+                            es.fpr[vid] = it->second.phys;
+                    }
+                }
+
                 for (auto vid : liveOutGPR_[bi])
                 {
                     auto it = gprStates_.find(vid);

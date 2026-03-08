@@ -2341,6 +2341,106 @@ PeepholeStats runPeephole(MFunction &fn)
         removeDeadFlagSetters(instrs, stats);
     }
 
+    // Pass 4.8: Cross-block store-load forwarding for phi stores/loads.
+    // When block A ends with str Rx, [fp, #off] and its layout successor B
+    // starts with ldr Ry, [fp, #off], replace the load with mov Ry, Rx.
+    // This eliminates the store→load round-trip through the stack for block
+    // parameter passing (phi stores/loads from IL block params).
+    //
+    // SAFETY: Only forward when block B has exactly ONE predecessor (block A).
+    // If B has multiple predecessors, different paths may store different values
+    // to the same FP offset.
+    {
+        // Build predecessor count for each block from branch targets.
+        std::unordered_map<std::string, std::size_t> predCount;
+        for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi)
+        {
+            for (const auto &mi : fn.blocks[bi].instrs)
+            {
+                if (mi.opc == MOpcode::Br && !mi.ops.empty() &&
+                    mi.ops[0].kind == MOperand::Kind::Label)
+                    ++predCount[mi.ops[0].label];
+                else if (mi.opc == MOpcode::BCond && mi.ops.size() >= 2 &&
+                         mi.ops[1].kind == MOperand::Kind::Label)
+                    ++predCount[mi.ops[1].label];
+                else if ((mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz) &&
+                         mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
+                    ++predCount[mi.ops[1].label];
+            }
+        }
+
+        for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi)
+        {
+            auto &predInstrs = fn.blocks[bi].instrs;
+            auto &succBlock = fn.blocks[bi + 1];
+            auto &succInstrs = succBlock.instrs;
+
+            if (predInstrs.empty() || succInstrs.empty())
+                continue;
+
+            // Only forward to blocks with exactly one predecessor
+            auto pcIt = predCount.find(succBlock.name);
+            if (pcIt == predCount.end() || pcIt->second != 1)
+                continue;
+
+            // Collect stores at the end of the predecessor block.
+            struct StoreInfo
+            {
+                std::size_t idx;
+                MOperand srcReg;
+            };
+            std::unordered_map<int64_t, StoreInfo> endStores;
+
+            for (std::size_t i = predInstrs.size(); i-- > 0;)
+            {
+                const auto &instr = predInstrs[i];
+
+                // Skip terminators
+                if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond ||
+                    instr.opc == MOpcode::Ret || instr.opc == MOpcode::Cbz ||
+                    instr.opc == MOpcode::Cbnz)
+                    continue;
+
+                // Record FP-relative stores
+                if (instr.opc == MOpcode::StrRegFpImm && instr.ops.size() >= 2 &&
+                    isPhysReg(instr.ops[0]) && instr.ops[1].kind == MOperand::Kind::Imm)
+                {
+                    const int64_t off = instr.ops[1].imm;
+                    if (endStores.find(off) == endStores.end())
+                        endStores[off] = {i, instr.ops[0]};
+                    continue;
+                }
+
+                // Stop scanning at non-store, non-terminator
+                break;
+            }
+
+            if (endStores.empty())
+                continue;
+
+            // Forward to loads at the start of the successor block.
+            for (std::size_t j = 0; j < succInstrs.size(); ++j)
+            {
+                const auto &instr = succInstrs[j];
+
+                if (instr.opc != MOpcode::LdrRegFpImm)
+                    break;
+                if (instr.ops.size() < 2 || !isPhysReg(instr.ops[0]) ||
+                    instr.ops[1].kind != MOperand::Kind::Imm)
+                    break;
+
+                const int64_t off = instr.ops[1].imm;
+                auto it = endStores.find(off);
+                if (it == endStores.end())
+                    continue;
+
+                // Replace load with mov
+                succInstrs[j] = MInstr{MOpcode::MovRR, {instr.ops[0], it->second.srcReg}};
+                ++stats.deadInstructionsRemoved;
+            }
+        }
+    }
+
     // Pass 5: Branch inversion and branch-to-next removal.
     // This must be done after per-block passes since it looks at adjacent blocks.
     for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi)
