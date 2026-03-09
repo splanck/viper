@@ -31,6 +31,7 @@
 #include "codegen/aarch64/passes/SchedulerPass.hpp"
 
 #include "codegen/aarch64/MachineIR.hpp"
+#include "codegen/aarch64/TargetAArch64.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -62,7 +63,7 @@ static unsigned instrLatency(MOpcode opc) noexcept
         case MOpcode::LdpFprFpImm:
             return 4;
 
-        // Integer multiply: 3 cycles.
+        // Integer multiply / divide: 3 cycles.
         case MOpcode::MulRRR:
         case MOpcode::SDivRRR:
         case MOpcode::UDivRRR:
@@ -144,6 +145,138 @@ static bool isTerminator(MOpcode opc) noexcept
 }
 
 // ---------------------------------------------------------------------------
+// Flag (NZCV) classification helpers
+// ---------------------------------------------------------------------------
+
+/// Sentinel register ID used to model the implicit NZCV condition flags
+/// register in the dependency graph.  No physical register has this ID.
+static constexpr uint32_t kNZCV = UINT32_MAX - 1;
+
+/// Sentinel for the stack pointer, which is implicitly read/written by
+/// SubSpImm, AddSpImm, and SP-relative load/store instructions.
+static constexpr uint32_t kSP = UINT32_MAX - 2;
+
+/// @brief Returns true if the opcode sets the NZCV condition flags.
+static bool setsFlags(MOpcode opc) noexcept
+{
+    switch (opc)
+    {
+        case MOpcode::AddsRRR:
+        case MOpcode::SubsRRR:
+        case MOpcode::AddsRI:
+        case MOpcode::SubsRI:
+        case MOpcode::CmpRR:
+        case MOpcode::CmpRI:
+        case MOpcode::TstRR:
+        case MOpcode::FCmpRR:
+            return true;
+        default:
+            return false;
+    }
+}
+
+/// @brief Returns true if the opcode reads the NZCV condition flags.
+static bool usesFlags(MOpcode opc) noexcept
+{
+    switch (opc)
+    {
+        case MOpcode::BCond:
+        case MOpcode::Cset:
+        case MOpcode::Csel:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Stack pointer helpers
+// ---------------------------------------------------------------------------
+
+/// @brief Returns true if the opcode implicitly modifies the stack pointer.
+static bool modifiesSP(MOpcode opc) noexcept
+{
+    return opc == MOpcode::SubSpImm || opc == MOpcode::AddSpImm;
+}
+
+/// @brief Returns true if the opcode implicitly reads the stack pointer
+///        (SP-relative loads/stores for outgoing arguments).
+static bool usesSP(MOpcode opc) noexcept
+{
+    switch (opc)
+    {
+        case MOpcode::StrRegSpImm:
+        case MOpcode::StrFprSpImm:
+        case MOpcode::SubSpImm:
+        case MOpcode::AddSpImm:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Operand definition helpers
+// ---------------------------------------------------------------------------
+
+/// @brief Returns the number of leading register operands that are definitions
+///        (destinations) for a given opcode.  All remaining register operands
+///        are treated as uses (sources).
+///
+/// Most ALU instructions define ops[0] only.  Pair loads define ops[0] and
+/// ops[1].  Stores, compares, branches, and calls define no explicit register.
+static int numDefOperands(MOpcode opc) noexcept
+{
+    switch (opc)
+    {
+        // Stores: ops[0] is the source register being stored, NOT a definition.
+        case MOpcode::StrRegFpImm:
+        case MOpcode::StrRegBaseImm:
+        case MOpcode::StrRegSpImm:
+        case MOpcode::StrFprFpImm:
+        case MOpcode::StrFprBaseImm:
+        case MOpcode::StrFprSpImm:
+        case MOpcode::StpRegFpImm:
+        case MOpcode::StpFprFpImm:
+        case MOpcode::PhiStoreGPR:
+        case MOpcode::PhiStoreFPR:
+        // Compares: no register destination; only set flags.
+        case MOpcode::CmpRR:
+        case MOpcode::CmpRI:
+        case MOpcode::TstRR:
+        case MOpcode::FCmpRR:
+        // Branches and returns: no register destination.
+        case MOpcode::Br:
+        case MOpcode::BCond:
+        case MOpcode::Cbz:
+        case MOpcode::Cbnz:
+        case MOpcode::Ret:
+        // Calls: implicit defs handled separately (caller-saved clobber).
+        case MOpcode::Bl:
+        case MOpcode::Blr:
+        // Stack pointer adjustments
+        case MOpcode::SubSpImm:
+        case MOpcode::AddSpImm:
+            return 0;
+
+        // Pair loads define two registers.
+        case MOpcode::LdpRegFpImm:
+        case MOpcode::LdpFprFpImm:
+            return 2;
+
+        // Everything else: single destination in ops[0].
+        default:
+            return 1;
+    }
+}
+
+/// @brief Returns true if the opcode is a call (Bl or Blr).
+static bool isCall(MOpcode opc) noexcept
+{
+    return opc == MOpcode::Bl || opc == MOpcode::Blr;
+}
+
+// ---------------------------------------------------------------------------
 // Dependency node
 // ---------------------------------------------------------------------------
 
@@ -174,66 +307,219 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
     for (std::size_t i = 0; i < N; ++i)
         nodes[i].instrIdx = i;
 
+    // Helper: add a dependency edge from instruction i to predecessor p.
+    auto addDep = [&](std::size_t i, std::size_t p, unsigned lat) {
+        if (p != i)
+        {
+            nodes[i].preds.push_back(p);
+            nodes[i].predLat.push_back(lat);
+        }
+    };
+
     // last_def[physReg] = index of the last instruction that defined physReg.
-    // We use uint32_t to keep it small; UINT32_MAX = "none".
+    // usesSinceDef[physReg] = indices of ALL instructions that read physReg since
+    //   its last definition.  When a new def occurs we add WAR deps to every entry,
+    //   ensuring the def cannot be reordered before ANY earlier reader — not just
+    //   the most recent one.
+    // kNZCV is used as a sentinel to model the implicit NZCV flags register.
     constexpr auto kNone = static_cast<std::size_t>(~0ULL);
     std::unordered_map<uint32_t, std::size_t> lastDef;
+    std::unordered_map<uint32_t, std::vector<std::size_t>> usesSinceDef;
 
     // Last instruction indices with memory side-effects.
     std::size_t lastStore = kNone;
     std::size_t lastLoad = kNone;
 
+    // Caller-saved registers that Bl/Blr implicitly clobber.
+    static const uint32_t callerSaved[] = {
+        static_cast<uint32_t>(PhysReg::X0),  static_cast<uint32_t>(PhysReg::X1),
+        static_cast<uint32_t>(PhysReg::X2),  static_cast<uint32_t>(PhysReg::X3),
+        static_cast<uint32_t>(PhysReg::X4),  static_cast<uint32_t>(PhysReg::X5),
+        static_cast<uint32_t>(PhysReg::X6),  static_cast<uint32_t>(PhysReg::X7),
+        static_cast<uint32_t>(PhysReg::X8),  static_cast<uint32_t>(PhysReg::X9),
+        static_cast<uint32_t>(PhysReg::X10), static_cast<uint32_t>(PhysReg::X11),
+        static_cast<uint32_t>(PhysReg::X12), static_cast<uint32_t>(PhysReg::X13),
+        static_cast<uint32_t>(PhysReg::X14), static_cast<uint32_t>(PhysReg::X15),
+        static_cast<uint32_t>(PhysReg::X16), static_cast<uint32_t>(PhysReg::X17),
+        static_cast<uint32_t>(PhysReg::V0),  static_cast<uint32_t>(PhysReg::V1),
+        static_cast<uint32_t>(PhysReg::V2),  static_cast<uint32_t>(PhysReg::V3),
+        static_cast<uint32_t>(PhysReg::V4),  static_cast<uint32_t>(PhysReg::V5),
+        static_cast<uint32_t>(PhysReg::V6),  static_cast<uint32_t>(PhysReg::V7),
+        static_cast<uint32_t>(PhysReg::V16), static_cast<uint32_t>(PhysReg::V17),
+        static_cast<uint32_t>(PhysReg::V18), static_cast<uint32_t>(PhysReg::V19),
+        static_cast<uint32_t>(PhysReg::V20), static_cast<uint32_t>(PhysReg::V21),
+        static_cast<uint32_t>(PhysReg::V22), static_cast<uint32_t>(PhysReg::V23),
+        static_cast<uint32_t>(PhysReg::V24), static_cast<uint32_t>(PhysReg::V25),
+        static_cast<uint32_t>(PhysReg::V26), static_cast<uint32_t>(PhysReg::V27),
+        static_cast<uint32_t>(PhysReg::V28), static_cast<uint32_t>(PhysReg::V29),
+        static_cast<uint32_t>(PhysReg::V30), static_cast<uint32_t>(PhysReg::V31),
+    };
+
     for (std::size_t i = 0; i < N; ++i)
     {
         const MInstr &mi = body[i];
+        const int nDefs = numDefOperands(mi.opc);
 
-        // Register data dependencies: scan all USE operands.
-        for (const auto &op : mi.ops)
+        // --- Register USE dependencies (RAW) ---
+        // Operands at index >= nDefs are uses; they depend on the last def.
+        for (std::size_t opIdx = static_cast<std::size_t>(nDefs); opIdx < mi.ops.size(); ++opIdx)
         {
+            const auto &op = mi.ops[opIdx];
             if (op.kind != MOperand::Kind::Reg || !op.reg.isPhys)
                 continue;
             const uint32_t reg = op.reg.idOrPhys;
             auto it = lastDef.find(reg);
-            if (it != lastDef.end() && it->second != i)
-            {
-                const std::size_t def = it->second;
-                // Add i → def backward edge (i depends on def).
-                nodes[i].preds.push_back(def);
-                nodes[i].predLat.push_back(instrLatency(body[def].opc));
-            }
+            if (it != lastDef.end())
+                addDep(i, it->second, instrLatency(body[it->second].opc));
+            usesSinceDef[reg].push_back(i);
         }
 
-        // Conservative memory dependencies.
+        // For Blr, ops[0] is a USE (the target register to call through).
+        if (mi.opc == MOpcode::Blr && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Reg &&
+            mi.ops[0].reg.isPhys)
+        {
+            const uint32_t reg = mi.ops[0].reg.idOrPhys;
+            auto it = lastDef.find(reg);
+            if (it != lastDef.end())
+                addDep(i, it->second, instrLatency(body[it->second].opc));
+            usesSinceDef[reg].push_back(i);
+        }
+
+        // --- NZCV flag dependencies (RAW on flags) ---
+        // If this instruction uses flags, depend on the last flag-setter.
+        if (usesFlags(mi.opc))
+        {
+            auto it = lastDef.find(kNZCV);
+            if (it != lastDef.end())
+                addDep(i, it->second, 1);
+            usesSinceDef[kNZCV].push_back(i);
+        }
+
+        // --- Stack pointer dependencies ---
+        // SP-relative ops (StrRegSpImm, SubSpImm, AddSpImm) implicitly read SP.
+        if (usesSP(mi.opc))
+        {
+            auto it = lastDef.find(kSP);
+            if (it != lastDef.end())
+                addDep(i, it->second, 1);
+            usesSinceDef[kSP].push_back(i);
+        }
+        // SubSpImm/AddSpImm implicitly define SP (WAW + WAR).
+        if (modifiesSP(mi.opc))
+        {
+            auto dit = lastDef.find(kSP);
+            if (dit != lastDef.end())
+                addDep(i, dit->second, 1);
+            auto uit = usesSinceDef.find(kSP);
+            if (uit != usesSinceDef.end())
+                for (auto u : uit->second)
+                    addDep(i, u, 1);
+            usesSinceDef[kSP].clear();
+            lastDef[kSP] = i;
+        }
+
+        // --- Conservative memory dependencies ---
         if (isLoad(mi.opc))
         {
             // Load depends on last store (RAW through memory).
-            if (lastStore != kNone && lastStore != i)
-            {
-                nodes[i].preds.push_back(lastStore);
-                nodes[i].predLat.push_back(1);
-            }
+            if (lastStore != kNone)
+                addDep(i, lastStore, 1);
             lastLoad = i;
         }
         else if (isStore(mi.opc))
         {
             // Store depends on last store (WAW) and last load (WAR).
-            if (lastStore != kNone && lastStore != i)
-            {
-                nodes[i].preds.push_back(lastStore);
-                nodes[i].predLat.push_back(1);
-            }
-            if (lastLoad != kNone && lastLoad != i)
-            {
-                nodes[i].preds.push_back(lastLoad);
-                nodes[i].predLat.push_back(1);
-            }
+            if (lastStore != kNone)
+                addDep(i, lastStore, 1);
+            if (lastLoad != kNone)
+                addDep(i, lastLoad, 1);
             lastStore = i;
         }
 
-        // Update def map for every DEF operand.
-        // (Conservative: assume first operand is def for most opcodes.)
-        if (!mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Reg && mi.ops[0].reg.isPhys)
-            lastDef[mi.ops[0].reg.idOrPhys] = i;
+        // --- Calls act as full memory barriers ---
+        if (isCall(mi.opc))
+        {
+            if (lastStore != kNone)
+                addDep(i, lastStore, 1);
+            if (lastLoad != kNone)
+                addDep(i, lastLoad, 1);
+            // Call also reads any live registers (conservatively: depend on all
+            // recent defs of caller-saved regs so they aren't reordered past call).
+            for (uint32_t r : callerSaved)
+            {
+                auto it = lastDef.find(r);
+                if (it != lastDef.end())
+                    addDep(i, it->second, 1);
+            }
+            auto flagIt = lastDef.find(kNZCV);
+            if (flagIt != lastDef.end())
+                addDep(i, flagIt->second, 1);
+        }
+
+        // --- WAW + WAR dependencies, then update DEF map ---
+        // WAW: if this instruction defines a register that was previously defined,
+        //      it must come after the old definition.
+        // WAR: if this instruction defines a register that was previously read,
+        //      it must come after that reader (so the reader sees the old value).
+        for (int d = 0; d < nDefs && d < static_cast<int>(mi.ops.size()); ++d)
+        {
+            if (mi.ops[d].kind == MOperand::Kind::Reg && mi.ops[d].reg.isPhys)
+            {
+                const uint32_t reg = mi.ops[d].reg.idOrPhys;
+                auto dit = lastDef.find(reg);
+                if (dit != lastDef.end())
+                    addDep(i, dit->second, 1); // WAW dependency
+                auto uit = usesSinceDef.find(reg);
+                if (uit != usesSinceDef.end())
+                    for (auto u : uit->second)
+                        addDep(i, u, 1); // WAR dependency
+                usesSinceDef[reg].clear();
+                lastDef[reg] = i;
+            }
+        }
+
+        // Flag definitions — WAW + WAR on flags too.
+        if (setsFlags(mi.opc))
+        {
+            auto dit = lastDef.find(kNZCV);
+            if (dit != lastDef.end())
+                addDep(i, dit->second, 1);
+            auto uit = usesSinceDef.find(kNZCV);
+            if (uit != usesSinceDef.end())
+                for (auto u : uit->second)
+                    addDep(i, u, 1);
+            usesSinceDef[kNZCV].clear();
+            lastDef[kNZCV] = i;
+        }
+
+        // Call clobbers: Bl/Blr implicitly define all caller-saved registers
+        // and flags (the callee may clobber them).  Add WAW + WAR deps.
+        if (isCall(mi.opc))
+        {
+            for (uint32_t r : callerSaved)
+            {
+                auto dit = lastDef.find(r);
+                if (dit != lastDef.end())
+                    addDep(i, dit->second, 1); // WAW
+                auto uit = usesSinceDef.find(r);
+                if (uit != usesSinceDef.end())
+                    for (auto u : uit->second)
+                        addDep(i, u, 1); // WAR
+                usesSinceDef[r].clear();
+                lastDef[r] = i;
+            }
+            auto fDit = lastDef.find(kNZCV);
+            if (fDit != lastDef.end())
+                addDep(i, fDit->second, 1);
+            auto fUit = usesSinceDef.find(kNZCV);
+            if (fUit != usesSinceDef.end())
+                for (auto u : fUit->second)
+                    addDep(i, u, 1);
+            usesSinceDef[kNZCV].clear();
+            lastDef[kNZCV] = i;
+            lastStore = i;
+            lastLoad = i;
+        }
     }
 
     // Deduplicate predecessor lists (a node may have been added multiple times).
@@ -276,15 +562,17 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
     // approximately topological for sequential code).
     for (std::size_t i = N; i-- > 0;)
     {
+        // critPath(i) = instrLatency(i) + max over successors s of critPath(s).
+        // This gives the total latency from scheduling node i to the end of
+        // the DAG, making loads (4 cycles) and multiplies (3 cycles) higher
+        // priority than single-cycle ALU ops.
         unsigned maxSuccCrit = 0;
         for (auto s : succs[i])
         {
-            const unsigned edge = instrLatency(body[i].opc);
-            const unsigned c = edge + nodes[s].critPath;
-            if (c > maxSuccCrit)
-                maxSuccCrit = c;
+            if (nodes[s].critPath > maxSuccCrit)
+                maxSuccCrit = nodes[s].critPath;
         }
-        nodes[i].critPath = maxSuccCrit + 1;
+        nodes[i].critPath = instrLatency(body[i].opc) + maxSuccCrit;
     }
 
     // -----------------------------------------------------------------------
@@ -353,26 +641,62 @@ static void scheduleFunction(MFunction &fn)
         if (bb.instrs.size() <= 1)
             continue;
 
-        // Partition into body and terminators.
-        std::vector<MInstr> body, terms;
-        for (auto &mi : bb.instrs)
+        // Split the instruction stream into segments separated by mid-block
+        // terminators (BCond, Cbz, Cbnz that appear before the final
+        // terminator group).  Each segment is scheduled independently, then
+        // reassembled with the separator branches in their original positions.
+        //
+        // Example block layout:
+        //   adds x15, x12, #3      ← segment 0
+        //   b.vs L.Ltrap_ovf       ← separator 0 (mid-block guard)
+        //   mov x14, #20           ← segment 1
+        //   cbz x14, L.Ltrap_div0  ← separator 1 (mid-block guard)
+        //   sdiv x13, x15, x14     ← segment 2
+        //   ...
+        //   b.ne Lbc_oob0          ← final terminator
+        //   b Lbc_ok0              ← final terminator
+
+        // First, find where the final terminator group starts (consecutive
+        // terminators at the end of the block).
+        std::size_t termStart = bb.instrs.size();
+        while (termStart > 0 && isTerminator(bb.instrs[termStart - 1].opc))
+            --termStart;
+
+        // Now collect segments and separators from the body (indices 0..termStart-1).
+        std::vector<MInstr> result;
+        result.reserve(bb.instrs.size());
+        std::vector<MInstr> segment;
+
+        for (std::size_t i = 0; i < termStart; ++i)
         {
+            auto &mi = bb.instrs[i];
             if (isTerminator(mi.opc))
-                terms.push_back(mi);
+            {
+                // Mid-block terminator — schedule the preceding segment,
+                // then append the terminator as a barrier.
+                if (segment.size() > 1)
+                    segment = scheduleBlock(std::move(segment));
+                result.insert(result.end(), segment.begin(), segment.end());
+                segment.clear();
+                result.push_back(mi); // Keep the mid-block branch in place.
+            }
             else
-                body.push_back(mi);
+            {
+                segment.push_back(mi);
+            }
         }
 
-        if (body.size() <= 1)
-            continue; // Nothing to reorder.
+        // Schedule the final body segment (between the last mid-block branch
+        // and the final terminator group).
+        if (segment.size() > 1)
+            segment = scheduleBlock(std::move(segment));
+        result.insert(result.end(), segment.begin(), segment.end());
 
-        body = scheduleBlock(std::move(body));
+        // Append final terminators in original order.
+        for (std::size_t i = termStart; i < bb.instrs.size(); ++i)
+            result.push_back(bb.instrs[i]);
 
-        // Reassemble: scheduled body + terminators in original order.
-        bb.instrs.clear();
-        bb.instrs.reserve(body.size() + terms.size());
-        bb.instrs.insert(bb.instrs.end(), body.begin(), body.end());
-        bb.instrs.insert(bb.instrs.end(), terms.begin(), terms.end());
+        bb.instrs = std::move(result);
     }
 }
 

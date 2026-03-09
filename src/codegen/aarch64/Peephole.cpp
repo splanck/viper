@@ -1374,6 +1374,14 @@ std::size_t removeDeadInstructions(std::vector<MInstr> &instrs, PeepholeStats &s
                         static_cast<uint32_t>(PhysReg::V0) + i);
     }
 
+    // Mark callee-saved GPRs (x19-x28) as live at block exit.
+    // Their values persist across blocks and may be used by successors.
+    for (uint32_t r = static_cast<uint32_t>(PhysReg::X19);
+         r <= static_cast<uint32_t>(PhysReg::X28); ++r)
+    {
+        liveRegs.insert((static_cast<uint32_t>(RegClass::GPR) << 16) | r);
+    }
+
     // Backward scan to compute liveness and mark dead instructions
     std::vector<bool> toRemove(instrs.size(), false);
     std::size_t removed = 0;
@@ -2361,6 +2369,318 @@ std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &st
     return folded;
 }
 
+// ---------------------------------------------------------------------------
+// Loop constant hoisting
+// ---------------------------------------------------------------------------
+
+/// @brief Check whether a physical register is callee-saved (x19-x28).
+///
+/// Callee-saved registers persist across function calls and loop iterations,
+/// making them safe targets for hoisting constant materializations out of loops.
+[[nodiscard]] bool isCalleeSavedGPR(uint32_t phys) noexcept
+{
+    return phys >= static_cast<uint32_t>(PhysReg::X19) && phys <= static_cast<uint32_t>(PhysReg::X28);
+}
+
+/// @brief Hoist loop-invariant MovRI instructions from loop bodies to preheaders.
+///
+/// Conservative approach: only hoists when ALL of these hold:
+/// 1. The back-edge is a true loop (latch branches back to header).
+/// 2. The preheader (header - 1) verifiably falls through or branches to header.
+/// 3. The MovRI destination is callee-saved (x19-x28).
+/// 4. The register is ONLY defined by MovRI with the same immediate in the loop.
+/// 5. No other instruction in the loop defines the register.
+/// 6. The register is not used before its first MovRI in the header block
+///    (conservative: we require the MovRI to be in the header block itself).
+///
+/// @param fn  The MIR function to optimize.
+/// @return Number of instructions hoisted.
+std::size_t hoistLoopConstants(MFunction &fn)
+{
+    if (fn.blocks.size() < 3)
+        return 0;
+
+    // Build block-name → block-index map.
+    std::unordered_map<std::string, std::size_t> nameToIdx;
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
+        nameToIdx[fn.blocks[i].name] = i;
+
+    // Helper: get the branch target label from a terminator instruction.
+    auto getBranchTarget = [](const MInstr &mi) -> std::string
+    {
+        if (mi.opc == MOpcode::Br && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
+            return mi.ops[0].label;
+        if (mi.opc == MOpcode::BCond && mi.ops.size() >= 2 &&
+            mi.ops[1].kind == MOperand::Kind::Label)
+            return mi.ops[1].label;
+        if ((mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz) && mi.ops.size() >= 2 &&
+            mi.ops[1].kind == MOperand::Kind::Label)
+            return mi.ops[1].label;
+        return {};
+    };
+
+    // Helper: check if an opcode is a store/cmp/branch (ops[0] is NOT a def).
+    auto isNonDefOpc = [](MOpcode opc) -> bool
+    {
+        return opc == MOpcode::StrRegFpImm || opc == MOpcode::StrRegBaseImm ||
+               opc == MOpcode::StrRegSpImm || opc == MOpcode::StrFprFpImm ||
+               opc == MOpcode::StrFprBaseImm || opc == MOpcode::StrFprSpImm ||
+               opc == MOpcode::StpRegFpImm || opc == MOpcode::StpFprFpImm ||
+               opc == MOpcode::CmpRR || opc == MOpcode::CmpRI || opc == MOpcode::TstRR ||
+               opc == MOpcode::FCmpRR || opc == MOpcode::Br || opc == MOpcode::BCond ||
+               opc == MOpcode::Cbz || opc == MOpcode::Cbnz || opc == MOpcode::Ret ||
+               opc == MOpcode::Bl || opc == MOpcode::Blr || opc == MOpcode::SubSpImm ||
+               opc == MOpcode::AddSpImm || opc == MOpcode::PhiStoreGPR ||
+               opc == MOpcode::PhiStoreFPR;
+    };
+
+    // Find back-edges: branch from block[i] to block[j] where j < i (strict).
+    // Only keep the FIRST back-edge per header to avoid nested loop complications.
+    struct LoopEdge
+    {
+        std::size_t header;
+        std::size_t latch;
+    };
+    std::vector<LoopEdge> loops;
+    std::unordered_set<std::size_t> seenHeaders;
+
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
+    {
+        const auto &instrs = fn.blocks[i].instrs;
+        for (const auto &mi : instrs)
+        {
+            std::string target = getBranchTarget(mi);
+            if (target.empty())
+                continue;
+
+            auto it = nameToIdx.find(target);
+            if (it != nameToIdx.end() && it->second < i)
+            {
+                // Deduplicate: one loop per header.
+                if (seenHeaders.insert(it->second).second)
+                    loops.push_back({it->second, i});
+            }
+        }
+    }
+
+    if (loops.empty())
+        return 0;
+
+    // Track which registers have already been hoisted across all loops in this
+    // function, to prevent conflicting hoists from different loops.
+    std::unordered_map<uint32_t, int64_t> globallyHoisted;
+
+    std::size_t hoisted = 0;
+
+    for (const auto &loop : loops)
+    {
+        // --- Validate preheader ---
+        if (loop.header == 0)
+            continue;
+        const std::size_t preIdx = loop.header - 1;
+
+        // The preheader must NOT be inside another loop's body that we're
+        // also processing.  Skip if the preheader index is within [header..latch]
+        // of any other loop.
+        bool preInLoop = false;
+        for (const auto &other : loops)
+        {
+            if (&other == &loop)
+                continue;
+            if (preIdx >= other.header && preIdx <= other.latch)
+            {
+                preInLoop = true;
+                break;
+            }
+        }
+        if (preInLoop)
+            continue;
+
+        auto &preBlock = fn.blocks[preIdx];
+        if (preBlock.instrs.empty())
+            continue;
+
+        // Verify the preheader actually reaches the header.  It must either:
+        // (a) have an unconditional branch to the header, OR
+        // (b) have a conditional branch where one target is the header and the
+        //     block falls through to header (i.e., preIdx + 1 == header, which
+        //     is always true by construction), OR
+        // (c) have no branch terminator (fallthrough to next block = header).
+        {
+            bool reachesHeader = false;
+            const auto &lastInstr = preBlock.instrs.back();
+            std::string lastTarget = getBranchTarget(lastInstr);
+
+            if (lastTarget.empty())
+            {
+                // No branch → falls through to next block = header.
+                reachesHeader = true;
+            }
+            else
+            {
+                auto tgtIt = nameToIdx.find(lastTarget);
+                if (tgtIt != nameToIdx.end() && tgtIt->second == loop.header)
+                    reachesHeader = true;
+                // For conditional branches, the fallthrough also reaches header
+                // since preIdx + 1 == header by construction.
+                if (lastInstr.opc == MOpcode::BCond || lastInstr.opc == MOpcode::Cbz ||
+                    lastInstr.opc == MOpcode::Cbnz)
+                    reachesHeader = true;
+            }
+
+            if (!reachesHeader)
+                continue;
+        }
+
+        // --- Collect register definitions in the loop body [header..latch] ---
+        struct RegInfo
+        {
+            std::size_t movriCount{0};
+            std::size_t otherDefCount{0};
+            int64_t immValue{0};
+        };
+        std::unordered_map<uint32_t, RegInfo> regDefs;
+
+        for (std::size_t bi = loop.header; bi <= loop.latch && bi < fn.blocks.size(); ++bi)
+        {
+            const auto &instrs = fn.blocks[bi].instrs;
+            for (std::size_t ii = 0; ii < instrs.size(); ++ii)
+            {
+                const auto &mi = instrs[ii];
+                if (mi.opc == MOpcode::MovRI && mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
+                    mi.ops[0].reg.cls == RegClass::GPR && mi.ops[1].kind == MOperand::Kind::Imm)
+                {
+                    const uint32_t phys = mi.ops[0].reg.idOrPhys;
+                    auto &info = regDefs[phys];
+                    if (info.movriCount == 0)
+                        info.immValue = mi.ops[1].imm;
+                    else if (mi.ops[1].imm != info.immValue)
+                        ++info.otherDefCount; // Different value → not hoistable
+                    ++info.movriCount;
+                }
+                else
+                {
+                    // Track non-MovRI definitions.
+                    if (!mi.ops.empty() && isPhysReg(mi.ops[0]) &&
+                        mi.ops[0].reg.cls == RegClass::GPR && !isNonDefOpc(mi.opc))
+                    {
+                        ++regDefs[mi.ops[0].reg.idOrPhys].otherDefCount;
+                    }
+                    // Calls clobber caller-saved registers.
+                    if (mi.opc == MOpcode::Bl || mi.opc == MOpcode::Blr)
+                    {
+                        for (uint32_t r = static_cast<uint32_t>(PhysReg::X0);
+                             r <= static_cast<uint32_t>(PhysReg::X17); ++r)
+                            ++regDefs[r].otherDefCount;
+                    }
+                }
+            }
+        }
+
+        // Find insertion point in preheader (before terminators).
+        auto &preInstrs = preBlock.instrs;
+        std::size_t insertIdx = preInstrs.size();
+        while (insertIdx > 0)
+        {
+            const auto opc = preInstrs[insertIdx - 1].opc;
+            if (opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Cbz ||
+                opc == MOpcode::Cbnz || opc == MOpcode::Ret)
+                --insertIdx;
+            else
+                break;
+        }
+
+        // --- Hoist eligible MovRI instructions ---
+        for (auto &[phys, info] : regDefs)
+        {
+            if (info.movriCount == 0 || info.otherDefCount > 0)
+                continue;
+            if (!isCalleeSavedGPR(phys))
+                continue;
+
+            // Check for conflicts with previous hoists in this function.
+            auto git = globallyHoisted.find(phys);
+            if (git != globallyHoisted.end() && git->second != info.immValue)
+                continue; // Already hoisted with a different value elsewhere
+
+            // SAFETY: for every block in the loop that uses this register as a
+            // source, there must be a MovRI defining it BEFORE the first use in
+            // that same block.  This ensures that no matter what order blocks
+            // execute, the register always gets set to #K before being read.
+            // If any block uses the register without a prior MovRI in that block,
+            // the value might come from outside the loop, so hoisting is unsafe.
+            bool safeInAllBlocks = true;
+            for (std::size_t bi = loop.header; bi <= loop.latch && bi < fn.blocks.size(); ++bi)
+            {
+                const auto &instrs = fn.blocks[bi].instrs;
+                // Scan instructions in this block for uses of the register.
+                // If we see a use before a MovRI def, it's unsafe.
+                for (std::size_t ii = 0; ii < instrs.size(); ++ii)
+                {
+                    const auto &mi = instrs[ii];
+
+                    // Is this a MovRI defining our register with the right value?
+                    if (mi.opc == MOpcode::MovRI && mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
+                        mi.ops[0].reg.cls == RegClass::GPR && mi.ops[0].reg.idOrPhys == phys &&
+                        mi.ops[1].kind == MOperand::Kind::Imm && mi.ops[1].imm == info.immValue)
+                        break; // Defined before any use in this block — safe for this block
+
+                    // Check source operands for uses of this register.
+                    std::size_t startOp = isNonDefOpc(mi.opc) ? 0 : 1;
+                    for (std::size_t oi = startOp; oi < mi.ops.size(); ++oi)
+                    {
+                        if (mi.ops[oi].kind == MOperand::Kind::Reg && mi.ops[oi].reg.isPhys &&
+                            mi.ops[oi].reg.cls == RegClass::GPR &&
+                            mi.ops[oi].reg.idOrPhys == phys)
+                        {
+                            safeInAllBlocks = false;
+                            break;
+                        }
+                    }
+                    if (!safeInAllBlocks)
+                        break;
+                }
+                if (!safeInAllBlocks)
+                    break;
+            }
+            if (!safeInAllBlocks)
+                continue;
+
+            // Record this hoist globally to prevent conflicts.
+            globallyHoisted[phys] = info.immValue;
+
+            // Insert MovRI in preheader.
+            MInstr hoistedMov{MOpcode::MovRI,
+                              {MOperand::regOp(static_cast<PhysReg>(phys)),
+                               MOperand::immOp(info.immValue)}};
+            preInstrs.insert(preInstrs.begin() + static_cast<std::ptrdiff_t>(insertIdx), hoistedMov);
+            ++insertIdx;
+
+            // Remove ALL MovRI for this register (same value) from the loop body.
+            for (std::size_t bi = loop.header; bi <= loop.latch && bi < fn.blocks.size(); ++bi)
+            {
+                auto &instrs = fn.blocks[bi].instrs;
+                instrs.erase(
+                    std::remove_if(instrs.begin(), instrs.end(),
+                                   [phys, &info](const MInstr &mi)
+                                   {
+                                       return mi.opc == MOpcode::MovRI && mi.ops.size() >= 2 &&
+                                              isPhysReg(mi.ops[0]) &&
+                                              mi.ops[0].reg.cls == RegClass::GPR &&
+                                              mi.ops[0].reg.idOrPhys == phys &&
+                                              mi.ops[1].kind == MOperand::Kind::Imm &&
+                                              mi.ops[1].imm == info.immValue;
+                                   }),
+                    instrs.end());
+            }
+
+            ++hoisted;
+        }
+    }
+
+    return hoisted;
+}
+
 } // namespace
 
 PeepholeStats runPeephole(MFunction &fn)
@@ -2369,6 +2689,9 @@ PeepholeStats runPeephole(MFunction &fn)
 
     // Pass 0: Reorder blocks for better code layout
     stats.blocksReordered = static_cast<int>(reorderBlocks(fn));
+
+    // Pass 0.5: Hoist loop-invariant MovRI out of loop bodies
+    stats.loopConstsHoisted = static_cast<int>(hoistLoopConstants(fn));
 
     for (auto &block : fn.blocks)
     {

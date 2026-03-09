@@ -10,7 +10,7 @@
 //          all AArch64 passes through the PassManager in the correct order.
 //
 // Key invariants:
-//   - Pass order: Lowering → RegAlloc → Scheduler → BlockLayout → Peephole → Emit.
+//   - Pass order: Lowering → RegAlloc → Peephole → Scheduler → Emit.
 //   - MIR dump hooks fire between passes when requested via PipelineOptions.
 //   - All passes implement the Pass<AArch64Module> interface.
 //
@@ -29,6 +29,7 @@
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 #include "codegen/aarch64/passes/PeepholePass.hpp"
 #include "codegen/aarch64/passes/RegAllocPass.hpp"
+#include "codegen/aarch64/passes/SchedulerPass.hpp"
 
 #include <iostream>
 
@@ -101,10 +102,9 @@ bool runCodegenPipeline(passes::AArch64Module &module, const PipelineOptions &op
     if (opts.dumpMirAfterRA)
         dumpMir(module, "after RA");
 
-    // Phase 3: Peephole Optimizations + Prune Unused Callee-Saved Regs
-    // NOTE: SchedulerPass and BlockLayoutPass are available but have
-    // correctness issues (segfaults in native tests).  Needs dedicated
-    // debugging before enabling.
+    // Phase 3: Peephole Optimizations + Prune Unused Callee-Saved Regs.
+    // Must run before scheduling so that store-load forwarding, cset+branch
+    // fusion, and dead store elimination produce the best MIR first.
     {
         passes::PeepholePass pass;
         if (!pass.run(module, diags))
@@ -117,7 +117,17 @@ bool runCodegenPipeline(passes::AArch64Module &module, const PipelineOptions &op
     if (opts.dumpMirAfterRA)
         dumpMir(module, "after peephole");
 
-    // Phase 6: Assembly Emission
+    // Phase 4: Post-RA instruction scheduling.
+    {
+        passes::SchedulerPass sched;
+        if (!sched.run(module, diags))
+        {
+            diags.flush(std::cerr);
+            return false;
+        }
+    }
+
+    // Phase 5: Assembly Emission
     {
         passes::EmitPass pass;
         if (!pass.run(module, diags))
