@@ -176,6 +176,9 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_action.c
         graphics/rt_font.c
         graphics/rt_graphics.c
+        graphics/rt_canvas.c
+        graphics/rt_drawing.c
+        graphics/rt_drawing_advanced.c
         graphics/rt_gui_app.c
         graphics/rt_gui_codeeditor.c
         graphics/rt_gui_features.c

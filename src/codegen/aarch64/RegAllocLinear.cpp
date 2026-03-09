@@ -189,6 +189,7 @@ static bool isThreeAddrRRR(MOpcode opc)
         case MOpcode::AddRRR:
         case MOpcode::SubRRR:
         case MOpcode::MulRRR:
+        case MOpcode::SmulhRRR:
         case MOpcode::SDivRRR:
         case MOpcode::UDivRRR:
         case MOpcode::AndRRR:

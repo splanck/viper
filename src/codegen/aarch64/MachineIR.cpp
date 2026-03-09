@@ -177,6 +177,8 @@ namespace viper::codegen::aarch64
             return "SubRRR";
         case MOpcode::MulRRR:
             return "MulRRR";
+        case MOpcode::SmulhRRR:
+            return "SmulhRRR";
         case MOpcode::SDivRRR:
             return "SDivRRR";
         case MOpcode::UDivRRR:

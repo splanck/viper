@@ -52,7 +52,9 @@ struct InlineCostConfig
     unsigned tinyFunctionBonus = 16;
 
     /// Maximum total instruction count growth allowed per module.
-    unsigned maxCodeGrowth = 1000;
+    /// Raised from 1000 to 2000 to allow more aggressive inlining in O2
+    /// where multiple call sites benefit from constant-argument specialization.
+    unsigned maxCodeGrowth = 2000;
 
     /// Enable aggressive inlining mode.
     bool aggressive = false;

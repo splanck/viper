@@ -120,6 +120,17 @@ void lowerOverflowOps(MFunction &fn)
 
     // The trap block index is now stable — fn.blocks will not reallocate.
     // Only iterate blocks that existed before we added the trap block.
+
+    // Compute the maximum virtual register ID across the entire function so
+    // that new temporaries introduced by the mul overflow expansion do not
+    // collide with existing virtual registers.
+    uint16_t maxVReg = 0;
+    for (const auto &block : fn.blocks)
+        for (const auto &instr : block.instrs)
+            for (const auto &op : instr.ops)
+                if (!op.reg.isPhys && op.kind == MOperand::Kind::Reg)
+                    maxVReg = std::max(maxVReg, op.reg.idOrPhys);
+
     const std::size_t blockCount = fn.blocks.size() - 1U;
     for (std::size_t blockIdx = 0; blockIdx < blockCount; ++blockIdx)
     {
@@ -132,15 +143,43 @@ void lowerOverflowOps(MFunction &fn)
 
             if (instr.opc == MOpcode::MulOvfRRR)
             {
-                // Multiply overflow detection:
-                // The MulOvfRRR pseudo has 3 operands: [dst, lhs, rhs]
-                // We replace it with plain MulRRR (which the rest of the
-                // pipeline handles). Full smulh-based detection is deferred
-                // to a future revision — for now, mul overflow is not checked
-                // on ARM64, matching the practical impossibility argument
-                // (two 64-bit values multiplied into a 64-bit result always
-                // silently truncates, same as x86 IMUL r64,r64).
-                block.instrs[i] = MInstr{MOpcode::MulRRR, instr.ops};
+                // Multiply overflow detection using smulh:
+                //   mul    Xd, Xn, Xm          // low 64 bits
+                //   smulh  Xtmp1, Xn, Xm       // high 64 bits (signed)
+                //   asr    Xtmp2, Xd, #63       // sign extension of bit 63
+                //   cmp    Xtmp1, Xtmp2         // compare high bits with expected sign
+                //   b.ne   .Ltrap_ovf           // overflow if they don't match
+                auto dst = instr.ops[0];
+                auto lhs = instr.ops[1];
+                auto rhs = instr.ops[2];
+
+                // 1. mul Xd, Xn, Xm
+                block.instrs[i] = MInstr{MOpcode::MulRRR, {dst, lhs, rhs}};
+
+                // 2. smulh Xtmp1, Xn, Xm
+                auto smulhDst = MOperand::vregOp(RegClass::GPR, ++maxVReg);
+                MInstr smulh{MOpcode::SmulhRRR, {smulhDst, lhs, rhs}};
+
+                // 3. asr Xtmp2, Xd, #63
+                auto asrDst = MOperand::vregOp(RegClass::GPR, ++maxVReg);
+                MInstr asr{MOpcode::AsrRI, {asrDst, dst, MOperand::immOp(63)}};
+
+                // 4. cmp Xtmp1, Xtmp2
+                MInstr cmp{MOpcode::CmpRR, {smulhDst, asrDst}};
+
+                // 5. b.ne .Ltrap_ovf
+                MInstr bne{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel)}};
+
+                // Insert instructions after the mul
+                auto insertPos =
+                    block.instrs.begin() + static_cast<std::ptrdiff_t>(i + 1);
+                insertPos = block.instrs.insert(insertPos, std::move(smulh));
+                insertPos = block.instrs.insert(insertPos + 1, std::move(asr));
+                insertPos = block.instrs.insert(insertPos + 1, std::move(cmp));
+                block.instrs.insert(insertPos + 1, std::move(bne));
+
+                // Skip past the 4 instructions we just inserted
+                i += 4;
                 continue;
             }
 

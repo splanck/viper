@@ -16,6 +16,7 @@
 
 #include "codegen/aarch64/passes/RegAllocPass.hpp"
 
+#include "codegen/aarch64/Coalescer.hpp"
 #include "codegen/aarch64/RegAllocLinear.hpp"
 
 namespace viper::codegen::aarch64::passes
@@ -31,6 +32,9 @@ bool RegAllocPass::run(AArch64Module &module, Diagnostics &diags)
 
     for (auto &fn : module.mir)
     {
+        // Coalesce MovRR/FMovRR between virtual registers before register
+        // allocation to reduce register pressure and eliminate redundant copies.
+        coalesce(fn);
         [[maybe_unused]] auto result = allocate(fn, *module.ti);
     }
 

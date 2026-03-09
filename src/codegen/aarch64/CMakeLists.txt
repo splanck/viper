@@ -17,7 +17,15 @@ add_library(il_codegen_aarch64 STATIC
         fastpaths/FastPaths_Return.cpp
         LowerOvf.cpp
         RegAllocLinear.cpp
+        Coalescer.cpp
         Peephole.cpp
+        # Modular peephole sub-passes (Phase 4B)
+        peephole/IdentityElim.cpp
+        peephole/StrengthReduce.cpp
+        peephole/CopyPropDCE.cpp
+        peephole/BranchOpt.cpp
+        peephole/MemoryOpt.cpp
+        peephole/LoopOpt.cpp
         # Modular PassManager passes (Priority 2F)
         passes/LoweringPass.cpp
         passes/RegAllocPass.cpp

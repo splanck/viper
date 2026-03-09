@@ -24,7 +24,11 @@
 #include <cstring>
 #include <string>
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+#else
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -50,13 +54,24 @@ extern "C" void vm_trap(const char *msg)
 // rt_tcp_recv -> should return empty bytes (length 0) without trap.
 static void test_tcp_recv_timeout()
 {
-#if !defined(_WIN32)
+#if defined(_WIN32)
+    // Initialize WinSock2
+    WSADATA wsa;
+    int wsarc = WSAStartup(MAKEWORD(2, 2), &wsa);
+    assert(wsarc == 0);
+#endif
+
     // Create a TCP listener on a random port
+#if defined(_WIN32)
+    SOCKET listener = socket(AF_INET, SOCK_STREAM, 0);
+    assert(listener != INVALID_SOCKET);
+#else
     int listener = socket(AF_INET, SOCK_STREAM, 0);
     assert(listener >= 0);
+#endif
 
     int opt = 1;
-    setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
 
     struct sockaddr_in addr = {};
     addr.sin_family = AF_INET;
@@ -70,7 +85,11 @@ static void test_tcp_recv_timeout()
     assert(rc == 0);
 
     // Get the assigned port
+#if defined(_WIN32)
+    int addrlen = sizeof(addr);
+#else
     socklen_t addrlen = sizeof(addr);
+#endif
     getsockname(listener, (struct sockaddr *)&addr, &addrlen);
     int port = ntohs(addr.sin_port);
 
@@ -80,8 +99,13 @@ static void test_tcp_recv_timeout()
     assert(conn != NULL);
 
     // Accept on the server side (but never send anything)
+#if defined(_WIN32)
+    SOCKET client_fd = accept(listener, NULL, NULL);
+    assert(client_fd != INVALID_SOCKET);
+#else
     int client_fd = accept(listener, NULL, NULL);
     assert(client_fd >= 0);
+#endif
 
     // Set a short recv timeout (100ms) and try to receive
     rt_tcp_set_recv_timeout(conn, 100);
@@ -96,10 +120,13 @@ static void test_tcp_recv_timeout()
 
     // Clean up
     rt_tcp_close(conn);
+#if defined(_WIN32)
+    closesocket(client_fd);
+    closesocket(listener);
+    WSACleanup();
+#else
     close(client_fd);
     close(listener);
-#else
-    printf("  SKIP: TCP timeout test not implemented on Windows\n");
 #endif
 }
 

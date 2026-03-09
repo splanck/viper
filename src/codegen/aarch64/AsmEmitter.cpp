@@ -326,6 +326,12 @@ void AsmEmitter::emitMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg 
     os << "  mul " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
 }
 
+void AsmEmitter::emitSmulhRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    // AArch64 signed multiply high: smulh xd, xn, xm
+    os << "  smulh " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
+}
+
 void AsmEmitter::emitSDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
 {
     // AArch64 signed division: sdiv xd, xn, xm
@@ -963,6 +969,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
     {
         case MOpcode::SDivRRR:
             emitSDivRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]));
+            return;
+        case MOpcode::SmulhRRR:
+            emitSmulhRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]));
             return;
         case MOpcode::UDivRRR:
             emitUDivRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]));

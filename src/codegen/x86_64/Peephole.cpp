@@ -27,6 +27,7 @@
 
 #include "Peephole.hpp"
 
+#include "codegen/common/PeepholeDCE.hpp"
 #include "codegen/common/PeepholeUtil.hpp"
 
 #include <algorithm>
@@ -976,95 +977,64 @@ void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs
     }
 }
 
+// Forwarding alias to avoid shadowing the anonymous-namespace hasSideEffects.
+inline bool dceHasSideEffects(const MInstr &instr) noexcept { return hasSideEffects(instr); }
+
+/// @brief Traits for the shared DCE template (x86-64 backend).
+struct X64DCETraits
+{
+    using MInstr = ::viper::codegen::x64::MInstr;
+    using RegKey = uint16_t;
+
+    static constexpr bool kIterateToFixpoint = true;
+
+    static bool hasSideEffects(const ::viper::codegen::x64::MInstr &instr) noexcept
+    {
+        return dceHasSideEffects(instr);
+    }
+
+    static std::optional<RegKey> getDefRegKey(const MInstr &instr) noexcept
+    {
+        return getDefReg(instr);
+    }
+
+    static void collectUsedRegKeys(const MInstr &instr,
+                                   std::unordered_set<RegKey> &live) noexcept
+    {
+        collectUsedRegs(instr, live);
+    }
+
+    static void addBlockExitLiveKeys(std::unordered_set<RegKey> &live) noexcept
+    {
+        const auto &exitRegs = getBlockExitLiveRegs();
+        live.insert(exitRegs.begin(), exitRegs.end());
+    }
+
+    static bool isLabelOrBranchTarget(const MInstr &instr) noexcept
+    {
+        return instr.opcode == MOpcode::LABEL;
+    }
+
+    static void addAllAllocatableKeys(std::unordered_set<RegKey> &live) noexcept
+    {
+        const auto &allRegs = getAllAllocatableRegs();
+        live.insert(allRegs.begin(), allRegs.end());
+    }
+};
+
 /// @brief Run dead code elimination on a basic block.
-/// @details Performs backward liveness analysis and removes instructions that
-///          define registers which are never used. Iterates until fixpoint.
+/// @details Delegates to the shared template in PeepholeDCE.hpp. The x86-64
+///          backend iterates to a fixed point (kIterateToFixpoint = true).
 /// @param instrs Instructions in the basic block.
 /// @param stats Statistics counter to update.
 /// @return Number of instructions eliminated.
 std::size_t runBlockDCE(std::vector<MInstr> &instrs, PeepholeStats &stats)
 {
-    if (instrs.empty())
-        return 0;
-
-    std::size_t totalEliminated = 0;
-    bool changed = true;
-
-    while (changed)
-    {
-        changed = false;
-
-        // Build liveness: for each instruction, which registers are live after it?
-        // Work backwards from the end of the block
-        std::unordered_set<uint16_t> liveRegs;
-
-        // At block exit, assume all callee-saved and return registers are live
-        // On Windows x64, callee-saved GPRs are: RBX, RBP, RDI, RSI, RSP, R12-R15
-        // Use pre-computed set for efficiency (avoids 11 individual inserts per iteration)
-        const auto &exitRegs = getBlockExitLiveRegs();
-        liveRegs.insert(exitRegs.begin(), exitRegs.end());
-
-        std::vector<bool> toRemove(instrs.size(), false);
-
-        // Process instructions in reverse order
-        for (std::size_t i = instrs.size(); i > 0; --i)
-        {
-            const std::size_t idx = i - 1;
-            const auto &instr = instrs[idx];
-
-            // Instructions with side effects cannot be eliminated
-            if (hasSideEffects(instr))
-            {
-                // Labels are jump targets - any register could be live at entry
-                // because control can flow there from a branch elsewhere.
-                // Mark all allocatable registers as live to prevent incorrectly
-                // eliminating code that precedes a branch to this label.
-                // Use pre-computed set for efficiency (avoids 32 individual inserts).
-                if (instr.opcode == MOpcode::LABEL)
-                {
-                    const auto &allRegs = getAllAllocatableRegs();
-                    liveRegs.insert(allRegs.begin(), allRegs.end());
-                }
-                collectUsedRegs(instr, liveRegs);
-                continue;
-            }
-
-            // Check if the instruction defines a register
-            auto defReg = getDefReg(instr);
-            if (!defReg.has_value())
-            {
-                // No def, keep and collect uses
-                collectUsedRegs(instr, liveRegs);
-                continue;
-            }
-
-            // If the defined register is not live, this instruction is dead
-            if (liveRegs.find(*defReg) == liveRegs.end())
-            {
-                toRemove[idx] = true;
-                ++stats.deadCodeEliminated;
-                changed = true;
-                continue;
-            }
-
-            // Remove def from live set, add uses
-            liveRegs.erase(*defReg);
-            collectUsedRegs(instr, liveRegs);
-        }
-
-        // Remove dead instructions
-        if (changed)
-        {
-            removeMarkedInstructions(instrs, toRemove);
-            totalEliminated += std::count(toRemove.begin(), toRemove.end(), true);
-        }
-    }
-
-    return totalEliminated;
+    std::size_t eliminated =
+        viper::codegen::common::runBlockDCE<X64DCETraits>(instrs);
+    stats.deadCodeEliminated += eliminated;
+    return eliminated;
 }
-
-// removeMarkedInstructions is provided by the using-declaration above
-// (viper::codegen::common::removeMarkedInstructions from PeepholeUtil.hpp).
 
 } // namespace
 

@@ -34,6 +34,7 @@ set(ZIA_SOURCES
         Lowerer_Expr_Match.cpp
         Lowerer_Dispatch.cpp
         Lowerer_Emit.cpp
+        LowererTypeLayout.cpp
         ZiaLocationScope.cpp
         Compiler.cpp
         ZiaAstPrinter.cpp

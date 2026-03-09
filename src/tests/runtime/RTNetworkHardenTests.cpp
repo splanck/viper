@@ -32,11 +32,22 @@
 #include <cstring>
 #include <string>
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+// WinSock uses SOCKET (unsigned) with INVALID_SOCKET; POSIX uses int with -1.
+typedef SOCKET sock_t;
+#define SOCK_INVALID INVALID_SOCKET
+#define SOCK_CLOSE(s) closesocket(s)
+#else
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+typedef int sock_t;
+#define SOCK_INVALID (-1)
+#define SOCK_CLOSE(s) close(s)
 #endif
 
 // ── Trap interception ──────────────────────────────────────────────────────
@@ -76,17 +87,34 @@ extern "C" int rt_trap_get_net_code(void);
         g_trap_expected = false;                                                                   \
     } while (0)
 
+// ── Platform init/cleanup ─────────────────────────────────────────────────
+
+static void net_init()
+{
+#if defined(_WIN32)
+    WSADATA wsa;
+    int rc = WSAStartup(MAKEWORD(2, 2), &wsa);
+    assert(rc == 0);
+#endif
+}
+
+static void net_cleanup()
+{
+#if defined(_WIN32)
+    WSACleanup();
+#endif
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/// Create a localhost TCP listener on a random port; returns fd and port.
-#if !defined(_WIN32)
-static int make_listener(int *out_port)
+/// Create a localhost TCP listener on a random port; returns socket and port.
+static sock_t make_listener(int *out_port)
 {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    assert(fd >= 0);
+    sock_t fd = socket(AF_INET, SOCK_STREAM, 0);
+    assert(fd != SOCK_INVALID);
 
     int opt = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
 
     struct sockaddr_in addr = {};
     addr.sin_family = AF_INET;
@@ -99,18 +127,30 @@ static int make_listener(int *out_port)
     rc = listen(fd, 1);
     assert(rc == 0);
 
+#if defined(_WIN32)
+    int addrlen = sizeof(addr);
+#else
     socklen_t addrlen = sizeof(addr);
+#endif
     getsockname(fd, (struct sockaddr *)&addr, &addrlen);
     *out_port = ntohs(addr.sin_port);
 
     return fd;
 }
+
+/// Platform-portable microsecond sleep.
+static void sleep_us(int us)
+{
+#if defined(_WIN32)
+    Sleep((unsigned)(us / 1000));
+#else
+    usleep(us);
 #endif
+}
 
 // ── Scenario 1: Connect to nonexistent host ────────────────────────────────
 static void test_connect_nonexistent_host()
 {
-#if !defined(_WIN32)
     rt_string host = rt_string_from_bytes("this.host.does.not.exist.invalid", 32);
     EXPECT_TRAP(rt_tcp_connect_for(host, 80, 2000));
 
@@ -120,15 +160,11 @@ static void test_connect_nonexistent_host()
     assert(code == Err_HostNotFound);
 
     printf("  PASS: ConnectNonexistentHost → Err_HostNotFound (%d)\n", code);
-#else
-    printf("  SKIP: ConnectNonexistentHost (Windows)\n");
-#endif
 }
 
 // ── Scenario 2: Connect to a port that refuses ─────────────────────────────
 static void test_connect_refused_port()
 {
-#if !defined(_WIN32)
     // Port 1 is almost certainly not listening on localhost.
     rt_string host = rt_string_from_bytes("127.0.0.1", 9);
     EXPECT_TRAP(rt_tcp_connect_for(host, 1, 2000));
@@ -140,30 +176,26 @@ static void test_connect_refused_port()
     assert(code == Err_ConnectionRefused || code == Err_NetworkError);
 
     printf("  PASS: ConnectRefusedPort → code %d\n", code);
-#else
-    printf("  SKIP: ConnectRefusedPort (Windows)\n");
-#endif
 }
 
 // ── Scenario 3: Send after remote close (SIGPIPE test) ─────────────────────
 static void test_send_after_remote_close()
 {
-#if !defined(_WIN32)
     int port = 0;
-    int listener = make_listener(&port);
+    sock_t listener = make_listener(&port);
 
     rt_string host = rt_string_from_bytes("127.0.0.1", 9);
     void *conn = rt_tcp_connect(host, port);
     assert(conn != nullptr);
 
     // Accept then immediately close server side.
-    int client_fd = accept(listener, NULL, NULL);
-    assert(client_fd >= 0);
-    close(client_fd);
-    close(listener);
+    sock_t client_fd = accept(listener, NULL, NULL);
+    assert(client_fd != SOCK_INVALID);
+    SOCK_CLOSE(client_fd);
+    SOCK_CLOSE(listener);
 
     // Small delay to let the FIN propagate.
-    usleep(50000);
+    sleep_us(50000);
 
     // TCP allows the first send() after peer FIN to succeed (data goes into
     // kernel send buffer; the RST comes back asynchronously).  Send in a loop
@@ -181,7 +213,7 @@ static void test_send_after_remote_close()
             rt_tcp_send(conn, data);
             g_trap_expected = false;
             // Send succeeded (kernel buffered) — wait for RST and retry.
-            usleep(50000);
+            sleep_us(50000);
             continue;
         }
         g_trap_expected = false;
@@ -199,26 +231,22 @@ static void test_send_after_remote_close()
 
     // Connection is now broken; just release.
     rt_tcp_close(conn);
-#else
-    printf("  SKIP: SendAfterRemoteClose (Windows)\n");
-#endif
 }
 
 // ── Scenario 4: Recv on a closed connection ────────────────────────────────
 static void test_recv_on_closed_connection()
 {
-#if !defined(_WIN32)
     int port = 0;
-    int listener = make_listener(&port);
+    sock_t listener = make_listener(&port);
 
     rt_string host = rt_string_from_bytes("127.0.0.1", 9);
     void *conn = rt_tcp_connect(host, port);
     assert(conn != nullptr);
 
-    int client_fd = accept(listener, NULL, NULL);
-    assert(client_fd >= 0);
-    close(client_fd);
-    close(listener);
+    sock_t client_fd = accept(listener, NULL, NULL);
+    assert(client_fd != SOCK_INVALID);
+    SOCK_CLOSE(client_fd);
+    SOCK_CLOSE(listener);
 
     // Close our own connection, then try to recv.
     rt_tcp_close(conn);
@@ -231,15 +259,11 @@ static void test_recv_on_closed_connection()
     assert(code == Err_ConnectionClosed);
 
     printf("  PASS: RecvOnClosedConnection → Err_ConnectionClosed (%d)\n", code);
-#else
-    printf("  SKIP: RecvOnClosedConnection (Windows)\n");
-#endif
 }
 
 // ── Scenario 5: DNS lookup for nonexistent domain ──────────────────────────
 static void test_dns_nonexistent_domain()
 {
-#if !defined(_WIN32)
     rt_string domain = rt_string_from_bytes("nonexistent.invalid", 19);
     EXPECT_TRAP(rt_dns_resolve(domain));
 
@@ -249,9 +273,6 @@ static void test_dns_nonexistent_domain()
     assert(code == Err_DnsError);
 
     printf("  PASS: DnsNonexistentDomain → Err_DnsError (%d)\n", code);
-#else
-    printf("  SKIP: DnsNonexistentDomain (Windows)\n");
-#endif
 }
 
 // ── Scenario 6: HTTP request with malformed URL ────────────────────────────
@@ -260,7 +281,6 @@ static void test_dns_nonexistent_domain()
 // verify the URL validation path specifically.
 static void test_http_malformed_url()
 {
-#if !defined(_WIN32)
     // rt_url_parse traps on empty URLs (the parser is lenient for
     // scheme-less strings, treating them as relative path references).
     rt_string bad_url = rt_string_from_bytes("", 0);
@@ -274,24 +294,20 @@ static void test_http_malformed_url()
     assert(code == Err_InvalidUrl);
 
     printf("  PASS: HttpMalformedUrl → Err_InvalidUrl (%d)\n", code);
-#else
-    printf("  SKIP: HttpMalformedUrl (Windows)\n");
-#endif
 }
 
 // ── Scenario 7: Connection stall mid-transfer (recv timeout) ───────────────
 static void test_connection_stall_mid_transfer()
 {
-#if !defined(_WIN32)
     int port = 0;
-    int listener = make_listener(&port);
+    sock_t listener = make_listener(&port);
 
     rt_string host = rt_string_from_bytes("127.0.0.1", 9);
     void *conn = rt_tcp_connect(host, port);
     assert(conn != nullptr);
 
-    int client_fd = accept(listener, NULL, NULL);
-    assert(client_fd >= 0);
+    sock_t client_fd = accept(listener, NULL, NULL);
+    assert(client_fd != SOCK_INVALID);
 
     // Send a few bytes then stall (never send more).
     const char *partial = "partial";
@@ -316,17 +332,13 @@ static void test_connection_stall_mid_transfer()
     printf("  PASS: ConnectionStallMidTransfer → timeout returns empty bytes\n");
 
     rt_tcp_close(conn);
-    close(client_fd);
-    close(listener);
-#else
-    printf("  SKIP: ConnectionStallMidTransfer (Windows)\n");
-#endif
+    SOCK_CLOSE(client_fd);
+    SOCK_CLOSE(listener);
 }
 
 // ── Scenario 8: Network unreachable (RFC 5737 TEST-NET) ────────────────────
 static void test_network_unreachable()
 {
-#if !defined(_WIN32)
     // 192.0.2.1 is RFC 5737 TEST-NET-1 — should be unreachable on any real network.
     rt_string host = rt_string_from_bytes("192.0.2.1", 9);
     EXPECT_TRAP(rt_tcp_connect_for(host, 80, 1000));
@@ -337,15 +349,11 @@ static void test_network_unreachable()
     assert(code == Err_Timeout || code == Err_NetworkError);
 
     printf("  PASS: NetworkUnreachable → code %d\n", code);
-#else
-    printf("  SKIP: NetworkUnreachable (Windows)\n");
-#endif
 }
 
 // ── Scenario 9: Resolve IPv4 for nonexistent domain ────────────────────────
 static void test_dns_resolve4_nonexistent()
 {
-#if !defined(_WIN32)
     rt_string domain = rt_string_from_bytes("nohost.invalid", 14);
     EXPECT_TRAP(rt_dns_resolve4(domain));
 
@@ -354,15 +362,11 @@ static void test_dns_resolve4_nonexistent()
     assert(code == Err_DnsError);
 
     printf("  PASS: DnsResolve4Nonexistent → Err_DnsError (%d)\n", code);
-#else
-    printf("  SKIP: DnsResolve4Nonexistent (Windows)\n");
-#endif
 }
 
 // ── Scenario 10: Reverse DNS for non-routable address ──────────────────────
 static void test_dns_reverse_invalid()
 {
-#if !defined(_WIN32)
     rt_string addr = rt_string_from_bytes("192.0.2.1", 9);
     EXPECT_TRAP(rt_dns_reverse(addr));
 
@@ -371,14 +375,13 @@ static void test_dns_reverse_invalid()
     assert(code == Err_DnsError);
 
     printf("  PASS: DnsReverseInvalid → Err_DnsError (%d)\n", code);
-#else
-    printf("  SKIP: DnsReverseInvalid (Windows)\n");
-#endif
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
 int main()
 {
+    net_init();
+
     test_connect_nonexistent_host();
     test_connect_refused_port();
     test_send_after_remote_close();
@@ -389,6 +392,8 @@ int main()
     test_network_unreachable();
     test_dns_resolve4_nonexistent();
     test_dns_reverse_invalid();
+
+    net_cleanup();
 
     printf("All network-harden tests passed.\n");
     return 0;

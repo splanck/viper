@@ -208,31 +208,6 @@ void dce(Module &M)
         }
         auto uses = countUses(F);
 
-        // Build a predecessor edge index once: for each target label, collect
-        // (terminator*, successorIndex) pairs. Speeds up param pruning.
-        std::unordered_map<std::string, std::vector<std::pair<Instr *, size_t>>> predEdges;
-        // Reserve buckets roughly based on total labels encountered to
-        // minimize rehashing while building the map.
-        {
-            std::size_t totalLabels = 0;
-            for (auto &PB : F.blocks)
-                for (auto &I : PB.instructions)
-                    totalLabels += I.labels.size();
-            if (totalLabels)
-                predEdges.reserve(totalLabels);
-        }
-        for (auto &PB : F.blocks)
-        {
-            for (auto &I : PB.instructions)
-            {
-                if (I.op != Opcode::Br && I.op != Opcode::CBr && I.op != Opcode::SwitchI32)
-                    continue;
-                for (size_t l = 0; l < I.labels.size(); ++l)
-                {
-                    predEdges[I.labels[l]].emplace_back(&I, l);
-                }
-            }
-        }
         // Gather allocas and track if they are "observed" (loaded from or used by GEP).
         // An alloca is dead only if it has no uses at all, OR if it's only used by
         // stores (no loads or GEPs that might lead to loads).
@@ -346,6 +321,34 @@ void dce(Module &M)
                     continue;
                 }
                 ++i;
+            }
+        }
+
+        // Build a predecessor edge index: for each target label, collect
+        // (terminator*, successorIndex) pairs.  This must happen AFTER the dead
+        // instruction removal phase above, because erase() on the instruction
+        // vector invalidates pointers into it.  Building the index earlier would
+        // leave dangling Instr* entries for any block that had instructions
+        // removed.
+        std::unordered_map<std::string, std::vector<std::pair<Instr *, size_t>>> predEdges;
+        {
+            std::size_t totalLabels = 0;
+            for (auto &PB : F.blocks)
+                for (auto &I : PB.instructions)
+                    totalLabels += I.labels.size();
+            if (totalLabels)
+                predEdges.reserve(totalLabels);
+        }
+        for (auto &PB : F.blocks)
+        {
+            for (auto &I : PB.instructions)
+            {
+                if (I.op != Opcode::Br && I.op != Opcode::CBr && I.op != Opcode::SwitchI32)
+                    continue;
+                for (size_t l = 0; l < I.labels.size(); ++l)
+                {
+                    predEdges[I.labels[l]].emplace_back(&I, l);
+                }
             }
         }
 

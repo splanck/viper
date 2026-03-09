@@ -89,6 +89,7 @@ enum class MOpcode
     AddRRR,
     SubRRR,
     MulRRR,
+    SmulhRRR, // smulh dst, lhs, rhs (signed multiply high)
     SDivRRR,  // sdiv dst, lhs, rhs (signed division)
     UDivRRR,  // udiv dst, lhs, rhs (unsigned division)
     MSubRRRR, // msub dst, mul1, mul2, sub (dst = sub - mul1*mul2)
