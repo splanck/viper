@@ -550,6 +550,8 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
     {
         auto storage = lowerer_.resolveVariableStorage(name, stmt.loc);
         assert(storage && "INPUT target should have storage");
+        if (!storage)
+            return; // Safety: skip if storage lookup fails in Release builds.
         Lowerer::SlotType slotInfo = storage->slotInfo;
         // Be robust when symbol typing is incomplete in this context: consult
         // semantic analyzer for declared types to guide conversion (BUG-080).

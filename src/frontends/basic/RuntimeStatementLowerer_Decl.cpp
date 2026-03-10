@@ -44,6 +44,8 @@ void RuntimeStatementLowerer::lowerConst(const ConstStmt &stmt)
     // Resolve storage for the constant (same as variable)
     auto storage = lowerer_.resolveVariableStorage(stmt.name, stmt.loc);
     assert(storage && "CONST target should have storage");
+    if (!storage)
+        return; // Safety: skip if storage lookup fails in Release builds.
 
     // Store the value
     Lowerer::SlotType slotInfo = storage->slotInfo;
@@ -308,6 +310,8 @@ void RuntimeStatementLowerer::lowerReDim(const ReDimStmt &stmt)
     const auto *info = lowerer_.findSymbol(stmt.name);
     auto storage = lowerer_.resolveVariableStorage(stmt.name, stmt.loc);
     assert(storage && "REDIM target should have resolvable storage");
+    if (!storage)
+        return; // Safety: skip if storage lookup fails in Release builds.
     Value current = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr), storage->pointer);
     const char *resizeFn = "rt_arr_i64_resize";
     if (info && info->isObject)

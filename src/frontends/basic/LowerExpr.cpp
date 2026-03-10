@@ -58,6 +58,8 @@ Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
 
     auto storage = resolveVariableStorage(v.name, v.loc);
     assert(storage && "variable should have resolved storage");
+    if (!storage)
+        return {Value::null(), Type(Type::Kind::Ptr)}; // Safety: null result in Release.
     Type ty = storage->slotInfo.type;
     Value val = emitLoad(ty, storage->pointer);
     return {val, ty};

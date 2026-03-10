@@ -195,13 +195,14 @@ entity EnemyManager {
     // =========================================================================
 
     hide func updateSlime(i: Integer, level: Level, dt: Integer) {
-        // Animation (ms-based, only when not hurt)
+        // Animation — 4-frame cycle (ms-based, only when not hurt)
         if estate.get(i) != 1 {
             var tm = etimer.get(i) + dt;
             if tm >= SLIME_ANIM_MS {
                 tm = 0;
-                var f = eframe.get(i);
-                eframe.set(i, 1 - f);
+                var f = eframe.get(i) + 1;
+                if f > 3 { f = 0; }
+                eframe.set(i, f);
             }
             etimer.set(i, tm);
         }
@@ -398,8 +399,21 @@ entity EnemyManager {
         if dx > 0 { edir.set(i, 1); }
         if dx < 0 { edir.set(i, -1); }
 
-        // Animation frame based on phase
-        eframe.set(i, bossPhase);
+        // Animation frame: phase normally, wind-up (frame 3) right before shooting
+        var shootWindup = false;
+        var tm0 = etimer.get(i);
+        if bossPhase == 0 {
+            if tm0 + dt >= BOSS_SHOOT0_MS - 160 { shootWindup = true; }
+        } else if bossPhase == 1 {
+            if tm0 + dt >= BOSS_SHOOT1_MS - 160 { shootWindup = true; }
+        } else if bossPhase == 2 {
+            if tm0 + dt >= BOSS_SHOOT2_MS - 160 { shootWindup = true; }
+        }
+        if shootWindup {
+            eframe.set(i, 3);
+        } else {
+            eframe.set(i, bossPhase);
+        }
 
         // Apply gravity (scaled by dt)
         var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;

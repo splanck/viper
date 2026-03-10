@@ -137,10 +137,12 @@ void lowerTerminators(const il::core::Function &fn,
                         const std::string &dst = term.labels[0];
                         auto itIds = phiVregId.find(dst);
                         auto itSpill = phiSpillOffset.find(dst);
-                        if (itIds != phiVregId.end() && itSpill != phiSpillOffset.end())
+                        auto itClass = phiRegClass.find(dst);
+                        if (itIds != phiVregId.end() && itSpill != phiSpillOffset.end() &&
+                            itClass != phiRegClass.end())
                         {
                             const auto &ids = itIds->second;
-                            const auto &classes = phiRegClass.at(dst);
+                            const auto &classes = itClass->second;
                             const auto &spillOffsets = itSpill->second;
                             // Use the block's tempVReg snapshot to find correct vreg
                             // mappings for temps defined in this block. This is critical
@@ -281,8 +283,11 @@ void lowerTerminators(const il::core::Function &fn,
                         auto itSpill = phiSpillOffset.find(dst);
                         if (itSpill == phiSpillOffset.end())
                             return;
+                        auto itClass = phiRegClass.find(dst);
+                        if (itClass == phiRegClass.end())
+                            return;
                         const auto &ids = itIds->second;
-                        const auto &classes = phiRegClass.at(dst);
+                        const auto &classes = itClass->second;
                         const auto &spillOffsets = itSpill->second;
                         // Store phi values to spill slots since register allocator
                         // releases vreg mappings at block boundaries

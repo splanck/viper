@@ -345,7 +345,8 @@ entity Player {
         if state == PS_RUN {
             if animTimer >= ANIM_RUN_MS {
                 animTimer = 0;
-                animFrame = 1 - animFrame;
+                animFrame = animFrame + 1;
+                if animFrame > 3 { animFrame = 0; }
             }
         }
     }
@@ -407,14 +408,15 @@ entity Player {
     }
 
     expose func getSpriteFrame() -> Integer {
+        // 12-frame layout: 0-1 idle, 2-5 run(4), 6 jump, 7 fall, 8 djump, 9 wallslide, 10 hurt, 11 dead
         if state == PS_IDLE { return animFrame; }
         if state == PS_RUN { return 2 + animFrame; }
-        if state == PS_JUMP { return 4; }
-        if state == PS_FALL { return 5; }
-        if state == PS_DJUMP { return 6; }
-        if state == PS_WALLSLIDE { return 7; }
-        if state == PS_HURT { return 8; }
-        if state == PS_DEAD { return 9; }
+        if state == PS_JUMP { return 6; }
+        if state == PS_FALL { return 7; }
+        if state == PS_DJUMP { return 8; }
+        if state == PS_WALLSLIDE { return 9; }
+        if state == PS_HURT { return 10; }
+        if state == PS_DEAD { return 11; }
         return 0;
     }
 

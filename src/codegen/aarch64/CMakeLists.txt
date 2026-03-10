@@ -17,6 +17,10 @@ add_library(il_codegen_aarch64 STATIC
         fastpaths/FastPaths_Return.cpp
         LowerOvf.cpp
         RegAllocLinear.cpp
+        # Modular register allocator sub-components (Phase 4C)
+        ra/RegPools.cpp
+        ra/OperandRoles.cpp
+        ra/Allocator.cpp
         Coalescer.cpp
         Peephole.cpp
         # Modular peephole sub-passes (Phase 4B)

@@ -130,6 +130,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     {
         storage = resolveVariableStorage(expr.name, expr.loc);
         assert(storage && "array access requires resolvable storage");
+        if (!storage)
+            return {Value::null(), Value::null()}; // Safety: null in Release.
     }
 
     // Determine element type early so we can require the right runtime functions

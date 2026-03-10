@@ -130,6 +130,8 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
     {
         auto storage = lowerer_.resolveVariableStorage(var->name, stmt.loc);
         assert(storage && "LET target should have storage");
+        if (!storage)
+            return; // Safety: skip if storage lookup fails in Release builds.
         if (stmt.expr && !storage->isField)
         {
             std::string className;

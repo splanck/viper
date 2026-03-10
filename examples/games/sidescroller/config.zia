@@ -88,6 +88,14 @@ final TILE_BRIDGE = 12;
 final TILE_SIGN_START = 13;
 final TILE_SIGN_END = 14;
 final TILE_CHECKPOINT = 15;
+// New tiles for Levels 3-5
+final TILE_MAGMA = 16;
+final TILE_OBSIDIAN = 17;
+final TILE_CLOUD = 18;
+final TILE_SKY_BRICK = 19;
+final TILE_RUIN_STONE = 20;
+final TILE_VINE = 21;
+final TILE_MOSS_STONE = 22;
 
 // =============================================================================
 // Enemy Types
@@ -202,9 +210,12 @@ final MENU_QUIT = 3;
 // =============================================================================
 // Level Config
 // =============================================================================
-final LEVEL_COUNT = 2;
+final LEVEL_COUNT = 5;
 final LEVEL1_WIDTH = 200;     // tiles wide
 final LEVEL2_WIDTH = 220;     // tiles wide
+final LEVEL3_WIDTH = 230;     // Volcanic Depths
+final LEVEL4_WIDTH = 200;     // Sky Fortress
+final LEVEL5_WIDTH = 250;     // Ancient Ruins (longest)
 final LEVEL_HEIGHT = 17;      // tiles tall (17 * 48 = 816 pixels)
 final GROUND_ROW = 15;        // default ground tile row
 final FLOOR_ROW = 16;         // bottom row (below ground)
@@ -212,6 +223,9 @@ final FLOOR_ROW = 16;         // bottom row (below ground)
 // Themes
 final THEME_GRASSLANDS = 0;
 final THEME_CAVE = 1;
+final THEME_VOLCANO = 2;
+final THEME_SKY = 3;
+final THEME_RUINS = 4;
 
 // =============================================================================
 // Key Codes
@@ -322,6 +336,27 @@ final COL_ENEMY_BULLET = 0xFF4444;
 // Misc
 final COL_CHECKPOINT = 0x44FF44;
 final COL_SIGN = 0xBB9955;
+
+// Volcano theme
+final COL_MAGMA = 0x442222;
+final COL_MAGMA_DARK = 0x331111;
+final COL_MAGMA_GLOW = 0xFF4400;
+final COL_OBSIDIAN = 0x1A1A22;
+final COL_OBSIDIAN_LIGHT = 0x333344;
+
+// Sky theme
+final COL_SKY_BRIGHT = 0x88CCFF;
+final COL_SKY_PALE = 0xCCEEFF;
+final COL_CLOUD_WHITE = 0xEEEEFF;
+final COL_SKY_STONE = 0x99AABB;
+final COL_SKY_STONE_DARK = 0x778899;
+
+// Ruins theme
+final COL_RUIN = 0x777766;
+final COL_RUIN_DARK = 0x555544;
+final COL_RUIN_MOSS = 0x446633;
+final COL_VINE_GREEN = 0x338833;
+final COL_VINE_DARK = 0x226622;
 
 // =============================================================================
 // Action Names (for Viper.Input.Action)

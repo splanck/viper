@@ -67,8 +67,14 @@ entity Level {
 
         if num == 1 {
             buildGrasslands();
-        } else {
+        } else if num == 2 {
             buildCrystalCave();
+        } else if num == 3 {
+            buildVolcanicDepths();
+        } else if num == 4 {
+            buildSkyFortress();
+        } else {
+            buildAncientRuins();
         }
     }
 
@@ -87,6 +93,12 @@ entity Level {
         if t == TILE_CAVE_TOP { return true; }
         if t == TILE_CAVE_WALL { return true; }
         if t == TILE_BRIDGE { return true; }
+        if t == TILE_MAGMA { return true; }
+        if t == TILE_OBSIDIAN { return true; }
+        if t == TILE_CLOUD { return true; }
+        if t == TILE_SKY_BRICK { return true; }
+        if t == TILE_RUIN_STONE { return true; }
+        if t == TILE_MOSS_STONE { return true; }
         return false;
     }
 
@@ -459,6 +471,470 @@ entity Level {
 
         // End sign (after boss)
         tileGrid.Set(215, GROUND_ROW - 1, TILE_SIGN_END);
+    }
+
+    // =========================================================================
+    // Level 3: Volcanic Depths
+    // =========================================================================
+
+    hide func buildVolcanicDepths() {
+        levelWidth = LEVEL3_WIDTH;
+        levelHeight = LEVEL_HEIGHT;
+        levelTheme = THEME_VOLCANO;
+
+        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+
+        // Magma rock floor and ceiling
+        fillRow(0, 0, levelWidth - 1, TILE_MAGMA);
+        fillRow(1, 0, levelWidth - 1, TILE_MAGMA);
+        fillRow(GROUND_ROW, 0, levelWidth - 1, TILE_MAGMA);
+        fillRow(FLOOR_ROW, 0, levelWidth - 1, TILE_MAGMA);
+
+        playerStartX = 3 * TILE_SIZE;
+        playerStartY = (GROUND_ROW - 2) * TILE_SIZE;
+
+        // --- Section 1: Descent (cols 0-40) ---
+        addPlatform(8, 12, 4);
+        addPlatform(14, 10, 3);
+        addPlatform(20, 12, 4);
+
+        addPickup(PICKUP_COIN, 9, 11);
+        addPickup(PICKUP_COIN, 15, 9);
+        addPickup(PICKUP_COIN, 21, 11);
+
+        addEnemy(ENEMY_SLIME, 25, 14);
+        addEnemy(ENEMY_SLIME, 32, 14);
+
+        // Lava river section
+        clearGround(35, 45);
+        fillRow(FLOOR_ROW, 35, 45, TILE_LAVA);
+
+        // Obsidian stepping stones over lava
+        fillArea(35, 13, 37, 13, TILE_OBSIDIAN);
+        fillArea(40, 11, 42, 11, TILE_OBSIDIAN);
+        fillArea(44, 13, 45, 13, TILE_OBSIDIAN);
+
+        addPickup(PICKUP_COIN, 36, 12);
+        addPickup(PICKUP_COIN, 41, 10);
+        addPickup(PICKUP_HEALTH, 44, 12);
+
+        addEnemy(ENEMY_BAT, 38, 5);
+        addEnemy(ENEMY_BAT, 43, 4);
+
+        // --- Section 2: Ascending volcano (cols 45-90) ---
+        // Obsidian walls for wall-jumping
+        fillArea(50, 6, 51, 14, TILE_OBSIDIAN);
+        fillArea(55, 4, 56, 14, TILE_OBSIDIAN);
+        fillArea(60, 2, 61, 14, TILE_OBSIDIAN);
+
+        addPickup(PICKUP_COIN, 53, 5);
+        addPickup(PICKUP_COIN, 58, 3);
+        addPickup(PICKUP_COIN, 63, 2);
+
+        addEnemy(ENEMY_BAT, 52, 3);
+        addEnemy(ENEMY_BAT, 57, 2);
+
+        // Landing area after ascent
+        fillArea(64, 10, 70, 14, TILE_MAGMA);
+        addEnemy(ENEMY_TURRET, 67, 9);
+
+        addPlatform(73, 12, 4);
+        addPlatform(79, 10, 4);
+        addPlatform(84, 12, 3);
+
+        addPickup(PICKUP_SPEED, 80, 9);
+
+        addEnemy(ENEMY_SLIME, 75, 11);
+        addEnemy(ENEMY_TURRET, 85, 11);
+
+        // --- Section 3: Checkpoint + narrow bridges (cols 90-140) ---
+        tileGrid.Set(92, GROUND_ROW - 1, TILE_CHECKPOINT);
+        checkpointX = 92 * TILE_SIZE;
+        checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
+        hasCheckpoint = true;
+
+        // Narrow obsidian bridges over lava
+        clearGround(98, 135);
+        fillRow(FLOOR_ROW, 98, 135, TILE_LAVA);
+
+        // Bridge sections (2-tile-wide obsidian)
+        fillArea(98, 13, 100, 13, TILE_OBSIDIAN);
+        fillArea(105, 11, 107, 11, TILE_OBSIDIAN);
+        fillArea(112, 13, 114, 13, TILE_OBSIDIAN);
+        fillArea(119, 10, 121, 10, TILE_OBSIDIAN);
+        fillArea(126, 12, 128, 12, TILE_OBSIDIAN);
+        fillArea(133, 13, 135, 13, TILE_OBSIDIAN);
+
+        addPickup(PICKUP_COIN, 99, 12);
+        addPickup(PICKUP_COIN, 106, 10);
+        addPickup(PICKUP_COIN, 113, 12);
+        addPickup(PICKUP_COIN, 120, 9);
+        addPickup(PICKUP_COIN, 127, 11);
+        addPickup(PICKUP_SHIELD, 115, 12);
+
+        addEnemy(ENEMY_BAT, 103, 4);
+        addEnemy(ENEMY_BAT, 117, 5);
+        addEnemy(ENEMY_TURRET, 130, 14);
+
+        // --- Section 4: Magma chamber + turret gauntlet (cols 140-185) ---
+        fillRow(GROUND_ROW, 138, 180, TILE_MAGMA);
+        fillRow(FLOOR_ROW, 138, 180, TILE_MAGMA);
+
+        addEnemy(ENEMY_TURRET, 145, 14);
+        addEnemy(ENEMY_TURRET, 155, 14);
+        addEnemy(ENEMY_TURRET, 165, 14);
+
+        addPlatform(148, 10, 3);
+        addPlatform(158, 8, 3);
+        addPlatform(168, 10, 3);
+
+        addPickup(PICKUP_RAPIDFIRE, 159, 7);
+        addPickup(PICKUP_HEALTH, 170, 9);
+
+        var i = 142;
+        while i < 175 {
+            addPickup(PICKUP_COIN, i, 14);
+            i = i + 4;
+        }
+
+        addEnemy(ENEMY_SLIME, 150, 14);
+        addEnemy(ENEMY_SLIME, 162, 14);
+        addEnemy(ENEMY_BAT, 170, 4);
+
+        // --- Section 5: Final stretch (cols 185-225) ---
+        // Spike pits
+        clearGround(188, 192);
+        fillRow(FLOOR_ROW, 188, 192, TILE_SPIKE);
+        fillRow(13, 188, 192, TILE_BRIDGE);
+
+        addPlatform(195, 11, 4);
+        addPlatform(202, 9, 4);
+        addPlatform(208, 11, 3);
+
+        addPickup(PICKUP_COIN, 196, 10);
+        addPickup(PICKUP_COIN, 203, 8);
+        addPickup(PICKUP_COIN, 209, 10);
+
+        addEnemy(ENEMY_BAT, 200, 4);
+        addEnemy(ENEMY_SLIME, 212, 14);
+
+        // End sign
+        tileGrid.Set(225, GROUND_ROW - 1, TILE_SIGN_END);
+    }
+
+    // =========================================================================
+    // Level 4: Sky Fortress
+    // =========================================================================
+
+    hide func buildSkyFortress() {
+        levelWidth = LEVEL4_WIDTH;
+        levelHeight = LEVEL_HEIGHT;
+        levelTheme = THEME_SKY;
+
+        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+
+        // Cloud ground (no bottom row — sky below)
+        fillRow(GROUND_ROW, 0, 30, TILE_CLOUD);
+        fillRow(FLOOR_ROW, 0, 30, TILE_SKY_BRICK);
+
+        playerStartX = 3 * TILE_SIZE;
+        playerStartY = (GROUND_ROW - 2) * TILE_SIZE;
+
+        // --- Section 1: Cloud platforms (cols 0-45) ---
+        addPlatform(8, 12, 5);
+        addPlatform(15, 10, 4);
+        addPlatform(21, 8, 3);
+        addPlatform(26, 12, 4);
+
+        addPickup(PICKUP_COIN, 9, 11);
+        addPickup(PICKUP_COIN, 11, 11);
+        addPickup(PICKUP_COIN, 16, 9);
+        addPickup(PICKUP_COIN, 22, 7);
+        addPickup(PICKUP_COIN, 27, 11);
+
+        addEnemy(ENEMY_BAT, 18, 4);
+        addEnemy(ENEMY_BAT, 25, 3);
+
+        // Gap to cloud section
+        clearGround(31, 45);
+        // Floating cloud platforms
+        fillArea(33, 12, 35, 12, TILE_CLOUD);
+        fillArea(38, 10, 40, 10, TILE_CLOUD);
+        fillArea(43, 12, 45, 12, TILE_CLOUD);
+
+        addPickup(PICKUP_COIN, 34, 11);
+        addPickup(PICKUP_COIN, 39, 9);
+        addPickup(PICKUP_HEALTH, 44, 11);
+
+        addEnemy(ENEMY_BAT, 36, 5);
+        addEnemy(ENEMY_BAT, 41, 3);
+
+        // --- Section 2: Tower ascent (cols 45-85) ---
+        // Sky brick tower with wall-jump corridors
+        fillArea(48, 4, 49, 14, TILE_SKY_BRICK);
+        fillArea(53, 2, 54, 14, TILE_SKY_BRICK);
+        fillArea(58, 4, 59, 14, TILE_SKY_BRICK);
+        fillRow(GROUND_ROW, 46, 60, TILE_SKY_BRICK);
+        fillRow(FLOOR_ROW, 46, 60, TILE_SKY_BRICK);
+
+        addPickup(PICKUP_COIN, 50, 5);
+        addPickup(PICKUP_COIN, 50, 3);
+        addPickup(PICKUP_COIN, 55, 3);
+        addPickup(PICKUP_COIN, 56, 5);
+        addPickup(PICKUP_SPEED, 55, 2);
+
+        addEnemy(ENEMY_BAT, 51, 2);
+        addEnemy(ENEMY_BAT, 57, 2);
+
+        // Landing after tower
+        fillRow(GROUND_ROW, 61, 80, TILE_SKY_BRICK);
+        fillRow(FLOOR_ROW, 61, 80, TILE_SKY_BRICK);
+
+        addPlatform(63, 11, 3);
+        addPlatform(68, 9, 3);
+        addPlatform(73, 7, 3);
+        addPlatform(78, 11, 3);
+
+        addPickup(PICKUP_COIN, 64, 10);
+        addPickup(PICKUP_COIN, 69, 8);
+        addPickup(PICKUP_COIN, 74, 6);
+        addPickup(PICKUP_SHIELD, 79, 10);
+
+        addEnemy(ENEMY_TURRET, 66, 14);
+        addEnemy(ENEMY_TURRET, 76, 14);
+
+        // --- Section 3: Checkpoint + cloud hop (cols 85-130) ---
+        tileGrid.Set(87, GROUND_ROW - 1, TILE_CHECKPOINT);
+        checkpointX = 87 * TILE_SIZE;
+        checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
+        hasCheckpoint = true;
+
+        // Long cloud hopping section (no ground)
+        clearGround(90, 130);
+
+        // Cloud chain
+        fillArea(90, 13, 92, 13, TILE_CLOUD);
+        fillArea(96, 11, 98, 11, TILE_CLOUD);
+        fillArea(102, 13, 104, 13, TILE_CLOUD);
+        fillArea(108, 10, 110, 10, TILE_CLOUD);
+        fillArea(114, 12, 116, 12, TILE_CLOUD);
+        fillArea(120, 9, 122, 9, TILE_CLOUD);
+        fillArea(126, 11, 128, 11, TILE_CLOUD);
+
+        addPickup(PICKUP_COIN, 91, 12);
+        addPickup(PICKUP_COIN, 97, 10);
+        addPickup(PICKUP_COIN, 103, 12);
+        addPickup(PICKUP_COIN, 109, 9);
+        addPickup(PICKUP_COIN, 115, 11);
+        addPickup(PICKUP_COIN, 121, 8);
+        addPickup(PICKUP_RAPIDFIRE, 127, 10);
+
+        addEnemy(ENEMY_BAT, 95, 4);
+        addEnemy(ENEMY_BAT, 107, 3);
+        addEnemy(ENEMY_BAT, 119, 5);
+        addEnemy(ENEMY_BAT, 125, 2);
+
+        // --- Section 4: Final tower (cols 130-195) ---
+        fillRow(GROUND_ROW, 130, 195, TILE_SKY_BRICK);
+        fillRow(FLOOR_ROW, 130, 195, TILE_SKY_BRICK);
+
+        // Turret defense
+        addEnemy(ENEMY_TURRET, 138, 14);
+        addEnemy(ENEMY_TURRET, 148, 14);
+        addEnemy(ENEMY_TURRET, 158, 14);
+
+        addPlatform(142, 10, 3);
+        addPlatform(152, 8, 3);
+        addPlatform(162, 10, 3);
+
+        addPickup(PICKUP_HEALTH, 153, 7);
+
+        var i = 135;
+        while i < 170 {
+            addPickup(PICKUP_COIN, i, 14);
+            i = i + 3;
+        }
+
+        addEnemy(ENEMY_SLIME, 145, 14);
+        addEnemy(ENEMY_SLIME, 155, 14);
+        addEnemy(ENEMY_SLIME, 165, 14);
+
+        // End sign
+        tileGrid.Set(190, GROUND_ROW - 1, TILE_SIGN_END);
+    }
+
+    // =========================================================================
+    // Level 5: Ancient Ruins (Final Level)
+    // =========================================================================
+
+    hide func buildAncientRuins() {
+        levelWidth = LEVEL5_WIDTH;
+        levelHeight = LEVEL_HEIGHT;
+        levelTheme = THEME_RUINS;
+
+        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+
+        // Ruin stone floor and vine ceiling
+        fillRow(0, 0, levelWidth - 1, TILE_VINE);
+        fillRow(1, 0, levelWidth - 1, TILE_VINE);
+        fillRow(GROUND_ROW, 0, levelWidth - 1, TILE_MOSS_STONE);
+        fillRow(FLOOR_ROW, 0, levelWidth - 1, TILE_RUIN_STONE);
+
+        playerStartX = 3 * TILE_SIZE;
+        playerStartY = (GROUND_ROW - 2) * TILE_SIZE;
+
+        // --- Section 1: Exterior ruins (cols 0-50) ---
+        addPlatform(8, 12, 5);
+        addPlatform(16, 10, 4);
+        addPlatform(22, 8, 3);
+        addPlatform(28, 12, 4);
+
+        addPickup(PICKUP_COIN, 9, 11);
+        addPickup(PICKUP_COIN, 11, 11);
+        addPickup(PICKUP_COIN, 17, 9);
+        addPickup(PICKUP_COIN, 23, 7);
+        addPickup(PICKUP_COIN, 29, 11);
+
+        // Crumbling pillars (ruin stone walls)
+        fillArea(35, 6, 36, 14, TILE_RUIN_STONE);
+        fillArea(42, 4, 43, 14, TILE_RUIN_STONE);
+
+        addPickup(PICKUP_COIN, 38, 5);
+        addPickup(PICKUP_COIN, 45, 3);
+
+        addEnemy(ENEMY_SLIME, 20, 14);
+        addEnemy(ENEMY_SLIME, 32, 14);
+        addEnemy(ENEMY_BAT, 38, 3);
+        addEnemy(ENEMY_BAT, 46, 2);
+
+        // --- Section 2: Interior temple (cols 50-100) ---
+        // Temple walls with vine decorations
+        fillArea(50, 2, 51, 14, TILE_RUIN_STONE);
+        tileGrid.Set(50, 3, TILE_VINE);
+        tileGrid.Set(51, 5, TILE_VINE);
+
+        fillRow(GROUND_ROW, 52, 95, TILE_RUIN_STONE);
+        fillRow(FLOOR_ROW, 52, 95, TILE_RUIN_STONE);
+
+        addPlatform(56, 12, 4);
+        addPlatform(63, 10, 4);
+        addPlatform(70, 8, 3);
+        addPlatform(76, 11, 4);
+        addPlatform(83, 9, 3);
+
+        // Spike pits
+        clearGround(60, 62);
+        fillRow(FLOOR_ROW, 60, 62, TILE_SPIKE);
+        clearGround(72, 74);
+        fillRow(FLOOR_ROW, 72, 74, TILE_SPIKE);
+
+        addPickup(PICKUP_COIN, 57, 11);
+        addPickup(PICKUP_COIN, 64, 9);
+        addPickup(PICKUP_COIN, 71, 7);
+        addPickup(PICKUP_COIN, 77, 10);
+        addPickup(PICKUP_HEALTH, 84, 8);
+
+        addEnemy(ENEMY_TURRET, 59, 14);
+        addEnemy(ENEMY_TURRET, 69, 14);
+        addEnemy(ENEMY_TURRET, 80, 14);
+        addEnemy(ENEMY_BAT, 66, 4);
+        addEnemy(ENEMY_BAT, 78, 3);
+
+        // Checkpoint
+        tileGrid.Set(90, GROUND_ROW - 1, TILE_CHECKPOINT);
+        checkpointX = 90 * TILE_SIZE;
+        checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
+        hasCheckpoint = true;
+
+        // --- Section 3: Deep sanctum (cols 100-180) ---
+        // Descending corridor with moss stone walls
+        fillArea(100, 4, 101, 14, TILE_MOSS_STONE);
+        fillArea(105, 6, 106, 14, TILE_MOSS_STONE);
+        fillArea(110, 4, 111, 14, TILE_MOSS_STONE);
+
+        addPlatform(102, 10, 3);
+        addPlatform(107, 8, 3);
+        addPlatform(112, 6, 3);
+
+        addPickup(PICKUP_COIN, 103, 9);
+        addPickup(PICKUP_COIN, 108, 7);
+        addPickup(PICKUP_COIN, 113, 5);
+        addPickup(PICKUP_SPEED, 108, 6);
+
+        addEnemy(ENEMY_BAT, 104, 3);
+        addEnemy(ENEMY_BAT, 109, 2);
+
+        // Wide sanctum floor
+        fillRow(GROUND_ROW, 115, 175, TILE_RUIN_STONE);
+        fillRow(FLOOR_ROW, 115, 175, TILE_RUIN_STONE);
+
+        // Lava hazards
+        clearGround(120, 124);
+        fillRow(FLOOR_ROW, 120, 124, TILE_LAVA);
+        fillArea(120, 13, 122, 13, TILE_BRIDGE);
+
+        clearGround(135, 139);
+        fillRow(FLOOR_ROW, 135, 139, TILE_LAVA);
+        fillArea(135, 12, 137, 12, TILE_BRIDGE);
+
+        clearGround(150, 154);
+        fillRow(FLOOR_ROW, 150, 154, TILE_SPIKE);
+        fillArea(150, 13, 152, 13, TILE_BRIDGE);
+
+        addPlatform(125, 11, 3);
+        addPlatform(131, 9, 3);
+        addPlatform(140, 11, 3);
+        addPlatform(146, 8, 3);
+        addPlatform(156, 10, 3);
+
+        addPickup(PICKUP_COIN, 126, 10);
+        addPickup(PICKUP_COIN, 132, 8);
+        addPickup(PICKUP_COIN, 141, 10);
+        addPickup(PICKUP_COIN, 147, 7);
+        addPickup(PICKUP_RAPIDFIRE, 157, 9);
+        addPickup(PICKUP_SHIELD, 145, 14);
+
+        addEnemy(ENEMY_TURRET, 128, 14);
+        addEnemy(ENEMY_TURRET, 143, 14);
+        addEnemy(ENEMY_TURRET, 158, 14);
+        addEnemy(ENEMY_SLIME, 133, 14);
+        addEnemy(ENEMY_SLIME, 148, 14);
+        addEnemy(ENEMY_BAT, 138, 4);
+        addEnemy(ENEMY_BAT, 153, 3);
+
+        var i = 160;
+        while i < 175 {
+            addPickup(PICKUP_COIN, i, 14);
+            i = i + 2;
+        }
+
+        // --- Section 4: Final boss arena (cols 180-245) ---
+        fillRow(GROUND_ROW, 180, 245, TILE_RUIN_STONE);
+        fillRow(FLOOR_ROW, 180, 245, TILE_RUIN_STONE);
+
+        // Arena walls
+        fillArea(180, 2, 181, 12, TILE_RUIN_STONE);
+        fillArea(243, 2, 244, 14, TILE_RUIN_STONE);
+
+        // Platforms for dodging
+        addPlatform(190, 10, 3);
+        addPlatform(200, 8, 3);
+        addPlatform(210, 10, 3);
+        addPlatform(220, 8, 3);
+        addPlatform(230, 10, 3);
+
+        // Health and shield before boss
+        addPickup(PICKUP_HEALTH, 183, 14);
+        addPickup(PICKUP_HEALTH, 185, 14);
+        addPickup(PICKUP_SHIELD, 187, 14);
+
+        // Final boss
+        bossX = 210 * TILE_SIZE;
+        bossY = (GROUND_ROW - 3) * TILE_SIZE;
+        hasBoss = true;
+
+        // End sign
+        tileGrid.Set(245, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
     // =========================================================================

@@ -23,10 +23,16 @@ entity Renderer {
     hide Integer lavaFrame;
     hide Integer lavaTimer;
 
+    // Ambient effect timers
+    hide Integer shimmerTimer;
+    hide Integer shimmerIndex;
+
     expose func init() {
         fx = FX.New();
         lavaFrame = 0;
         lavaTimer = 0;
+        shimmerTimer = 0;
+        shimmerIndex = 0;
     }
 
     // Trigger screen shake (convert game frames/intensity to ScreenFX units)
@@ -70,6 +76,14 @@ entity Renderer {
             lavaTimer = 0;
             lavaFrame = 1 - lavaFrame;
         }
+
+        // Crystal shimmer timer (cycle through positions)
+        shimmerTimer = shimmerTimer + dt;
+        if shimmerTimer >= 200 {
+            shimmerTimer = 0;
+            shimmerIndex = shimmerIndex + 1;
+            if shimmerIndex > 99 { shimmerIndex = 0; }
+        }
     }
 
     // =========================================================================
@@ -95,10 +109,17 @@ entity Renderer {
         // 2. Tile map
         drawTiles(canvas, camX, camY, level, sprites);
 
+        // 2b. Ambient tile effects (lava glow, crystal shimmer)
+        drawAmbientEffects(canvas, camX, camY, level);
+
         // 3. Pickups
         pickups.drawAll(canvas, camX, camY, sprites);
 
         // 4. Player (drawn before enemies so overlapping enemies are visible)
+        // Speed trail: afterimage when speedTimer active
+        if player.speedTimer > 0 {
+            drawSpeedTrail(canvas, camX, camY, player, sprites);
+        }
         drawPlayer(canvas, camX, camY, player, sprites);
 
         // 5. Enemies (on top of player — bats/bullets visible when overlapping)
@@ -116,9 +137,9 @@ entity Renderer {
                        player.speedTimer, player.shieldHits,
                        player.rapidFireTimer);
 
-        // Boss health bar — only show when player is in boss arena
+        // Boss health bar — show when player is near the boss
         if enemies.isBossAlive() {
-            if player.pixelX() > 180 * TILE_SIZE {
+            if player.pixelX() > level.bossX - 20 * TILE_SIZE {
                 hudObj.drawBossBar(canvas, enemies.getBossHp(), enemies.bossMaxHp);
             }
         }
@@ -191,6 +212,23 @@ entity Renderer {
         var facing = player.facing;
 
         var spr = sprites.getPlayerFrame(facing, frame);
+
+        // Jetpack flame drawn behind player (when ascending)
+        if player.onGround == false {
+            if player.vy < 0 {
+                var flameX = sx + PLAYER_W / 2 - 4;
+                var flameY = sy + PLAYER_H - 4;
+                var flameH = 8 + (0 - player.vy) / 200;
+                if flameH > 18 { flameH = 18; }
+                // Outer flame (orange)
+                canvas.Triangle(flameX, flameY, flameX + 8, flameY,
+                               flameX + 4, flameY + flameH, COL_TITLE_ORANGE);
+                // Inner flame (yellow, smaller)
+                canvas.Triangle(flameX + 2, flameY, flameX + 6, flameY,
+                               flameX + 4, flameY + flameH - 3, COL_SPARK_YELLOW);
+            }
+        }
+
         canvas.BlitAlpha(sx - 3, sy - 2, spr);
 
         // Shield glow effect
@@ -204,5 +242,81 @@ entity Renderer {
             canvas.DiscAlpha(sx + PLAYER_W / 2, sy + PLAYER_H / 2,
                             PLAYER_H / 2 + 2, COL_SPEED, 30);
         }
+    }
+
+    // =========================================================================
+    // Ambient tile effects — lava glow + crystal shimmer
+    // =========================================================================
+
+    hide func drawAmbientEffects(canvas: Canvas, camX: Integer, camY: Integer,
+                                  level: Level) {
+        var startCol = camX / TILE_SIZE;
+        if startCol < 0 { startCol = 0; }
+        var endCol = (camX + SCREEN_W) / TILE_SIZE + 1;
+        if endCol >= level.levelWidth { endCol = level.levelWidth - 1; }
+
+        var startRow = camY / TILE_SIZE;
+        if startRow < 0 { startRow = 0; }
+        var endRow = (camY + SCREEN_H) / TILE_SIZE + 1;
+        if endRow >= level.levelHeight { endRow = level.levelHeight - 1; }
+
+        var row = startRow;
+        while row <= endRow {
+            var col = startCol;
+            while col <= endCol {
+                var tile = level.getTile(col, row);
+                var sx = col * TILE_SIZE - camX;
+                var sy = row * TILE_SIZE - camY;
+
+                // Lava glow — orange haze above lava tiles
+                if tile == TILE_LAVA {
+                    canvas.DiscAlpha(sx + TILE_SIZE / 2, sy - 8,
+                                    TILE_SIZE / 2 + 6, COL_LAVA_BRIGHT, 18);
+                }
+
+                // Magma glow
+                if tile == TILE_MAGMA {
+                    canvas.DiscAlpha(sx + TILE_SIZE / 2, sy + TILE_SIZE / 2,
+                                    TILE_SIZE / 2, COL_MAGMA_GLOW, 12);
+                }
+
+                // Crystal shimmer — occasional sparkle
+                if tile == TILE_CRYSTAL {
+                    var shimmerHit = (col * 37 + row * 53 + shimmerIndex) % 12;
+                    if shimmerHit == 0 {
+                        var sparkX = sx + (col * 17) % TILE_SIZE;
+                        var sparkY = sy + (row * 23) % TILE_SIZE;
+                        canvas.Disc(sparkX, sparkY, 2, COL_WHITE);
+                        canvas.DiscAlpha(sparkX, sparkY, 5, COL_CRYSTAL_BLUE, 40);
+                    }
+                }
+
+                col = col + 1;
+            }
+            row = row + 1;
+        }
+    }
+
+    // =========================================================================
+    // Speed trail — translucent afterimage behind the player
+    // =========================================================================
+
+    hide func drawSpeedTrail(canvas: Canvas, camX: Integer, camY: Integer,
+                              player: Player, sprites: SpriteFactory) {
+        if player.state == PS_DEAD { return; }
+        if player.vx == 0 { return; }
+
+        var sx = player.pixelX() - camX;
+        var sy = player.pixelY() - camY;
+
+        // Offset trail behind the player based on facing
+        var trailOff = 8 * player.facing;
+
+        var frame = player.getSpriteFrame();
+        var spr = sprites.getPlayerFrame(player.facing, frame);
+
+        // Draw two translucent afterimages behind player
+        canvas.BlitAlpha(sx - 3 - trailOff, sy - 2, spr);
+        canvas.BlitAlpha(sx - 3 - trailOff * 2, sy - 2, spr);
     }
 }

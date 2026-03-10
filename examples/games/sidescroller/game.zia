@@ -62,6 +62,15 @@ entity Game {
     // Sound: track previous player state for jump detection
     hide Integer prevPlayerState;
 
+    // Particle effect tracking
+    hide Boolean prevOnGround;
+    hide Integer prevVy;
+    hide Integer wallSparkTimer;   // ms accumulator for wall-slide sparks
+    hide Integer jetFlameTimer;    // ms accumulator for jetpack flame
+
+    // Level intro splash
+    hide Integer introTimer;       // ms countdown for level name splash
+
     expose func init() {
         sm = StateMachine.New();
         sm.AddState(STATE_MENU);
@@ -85,6 +94,11 @@ entity Game {
         dt = 16;
         deathTimer = 0;
         prevPlayerState = PS_IDLE;
+        prevOnGround = false;
+        prevVy = 0;
+        wallSparkTimer = 0;
+        jetFlameTimer = 0;
+        introTimer = 0;
 
         // Create subsystems
         sprites = new SpriteFactory();
@@ -264,7 +278,7 @@ entity Game {
         renderObj.update(dt);
 
         // Update HUD
-        hudObj.update(score, coins);
+        hudObj.update(score, coins, dt);
 
         // Level timer (ms-based)
         levelTimer = levelTimer + dt;
@@ -278,6 +292,60 @@ entity Game {
             }
         }
         prevPlayerState = player.state;
+
+        // --- Particle effects ---
+
+        // Hard landing dust (transition from airborne to grounded with high downward velocity)
+        if player.onGround {
+            if prevOnGround == false {
+                if prevVy > 600 {
+                    particles.burstLandDust(player.pixelX() + PLAYER_W / 2,
+                                            player.pixelY() + PLAYER_H);
+                } else {
+                    // Light landing — small puff
+                    particles.burstDust(player.pixelX() + PLAYER_W / 2,
+                                        player.pixelY() + PLAYER_H);
+                }
+            }
+        }
+
+        // Wall-slide sparks (every 80ms while sliding)
+        if player.state == PS_WALLSLIDE {
+            wallSparkTimer = wallSparkTimer + dt;
+            if wallSparkTimer >= 80 {
+                wallSparkTimer = 0;
+                var sparkX = player.pixelX();
+                if player.wallDir > 0 {
+                    sparkX = sparkX + PLAYER_W;
+                }
+                particles.burstWallSlideSpark(sparkX,
+                                               player.pixelY() + PLAYER_H / 2,
+                                               player.wallDir);
+            }
+        } else {
+            wallSparkTimer = 0;
+        }
+
+        // Jetpack flame (every 50ms while airborne and moving upward)
+        if player.onGround == false {
+            if player.vy < 0 {
+                jetFlameTimer = jetFlameTimer + dt;
+                if jetFlameTimer >= 50 {
+                    jetFlameTimer = 0;
+                    // Flame comes from jetpack (center-back of player)
+                    var flameX = player.pixelX() + PLAYER_W / 2;
+                    particles.burstJetpackFlame(flameX,
+                                                player.pixelY() + PLAYER_H);
+                }
+            } else {
+                jetFlameTimer = 0;
+            }
+        } else {
+            jetFlameTimer = 0;
+        }
+
+        prevOnGround = player.onGround;
+        prevVy = player.vy;
 
         // --- Collision checks ---
         checkPlayerEnemyCollision();
@@ -298,6 +366,34 @@ entity Game {
         renderObj.renderPlaying(canvas, camera, level, player, enemies,
                                 bullets, pickups, particles, hudObj, sprites,
                                 score, coins, currentLevel);
+
+        // Level intro splash overlay
+        if introTimer > 0 {
+            introTimer = introTimer - dt;
+            if introTimer < 0 { introTimer = 0; }
+            drawLevelIntro(currentLevel);
+        }
+    }
+
+    hide func drawLevelIntro(levelNum: Integer) {
+        var levelName = "GRASSLANDS";
+        if levelNum == 2 { levelName = "CRYSTAL CAVE"; }
+        if levelNum == 3 { levelName = "VOLCANIC DEPTHS"; }
+        if levelNum == 4 { levelName = "SKY FORTRESS"; }
+        if levelNum == 5 { levelName = "ANCIENT RUINS"; }
+
+        // Fade: full opacity at start, fading out near end
+        var alpha = introTimer * 200 / 2000;
+        if alpha > 200 { alpha = 200; }
+        if alpha < 20 { alpha = 20; }
+
+        // Dark banner across center
+        canvas.BoxAlpha(0, 280, SCREEN_W, 120, COL_BLACK, alpha);
+
+        // Level number + name
+        var numStr = Int(levelNum);
+        canvas.TextCenteredScaled(300, "LEVEL " + numStr, COL_HUD_GRAY, 3);
+        canvas.TextCenteredScaled(340, levelName, COL_WHITE, 4);
     }
 
     // =========================================================================
@@ -487,7 +583,7 @@ entity Game {
                 menus.saveHighScores();
             }
 
-            if currentLevel == 2 {
+            if currentLevel == LEVEL_COUNT {
                 sm.Transition(STATE_VICTORY);
             }
         }
@@ -694,5 +790,6 @@ entity Game {
         levelTimer = 0;
         reachedCheckpoint = false;
         deathTimer = 0;
+        introTimer = 2000; // 2 second level intro splash
     }
 }

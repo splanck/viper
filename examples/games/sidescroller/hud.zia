@@ -10,17 +10,21 @@ bind "./config";
 entity HUD {
     hide SV displayScore;    // Animated score (rolls toward target)
     hide Integer displayCoins;
+    hide Integer pulseTimer;  // ms accumulator for heart pulse
 
     expose func init() {
         // Smoothing 0.75 → rolls quickly but visibly toward target
         displayScore = SV.New(0.0, 0.75);
         displayCoins = 0;
+        pulseTimer = 0;
     }
 
-    expose func update(targetScore: Integer, targetCoins: Integer) {
+    expose func update(targetScore: Integer, targetCoins: Integer, dt: Integer) {
         displayScore.set_Target(targetScore + 0.0);
         displayScore.Update();
         displayCoins = targetCoins;
+        pulseTimer = pulseTimer + dt;
+        if pulseTimer >= 600 { pulseTimer = 0; }
     }
 
     expose func drawHUD(canvas: Canvas, hp: Integer, maxHp: Integer,
@@ -38,22 +42,25 @@ entity HUD {
         canvas.TextScaled(180, 12, "SCORE", 2, COL_HUD_GRAY);
         canvas.TextScaled(300, 12, scoreStr, 2, COL_WHITE);
 
-        // Coins
-        canvas.TextScaled(540, 12, "x", 2, COL_COIN_GOLD);
+        // Coins — small coin icon + count
+        canvas.Disc(548, 18, 7, COL_COIN_GOLD);
+        canvas.Disc(548, 18, 4, COL_COIN_DARK);
+        canvas.TextScaled(562, 12, "x", 2, COL_COIN_GOLD);
         var coinStr = Int(coins);
-        canvas.TextScaled(570, 12, coinStr, 2, COL_COIN_GOLD);
+        canvas.TextScaled(582, 12, coinStr, 2, COL_COIN_GOLD);
 
         // Lives
         canvas.TextScaled(SCREEN_W - 200, 12, "LIVES", 2, COL_HUD_GRAY);
         var livesStr = Int(lives);
         canvas.TextScaled(SCREEN_W - 90, 12, livesStr, 2, COL_WHITE);
 
-        // Level name
+        // Level name — all 5 levels
         var levelName = "GRASSLANDS";
-        if levelNum == 2 {
-            levelName = "CRYSTAL CAVE";
-        }
-        canvas.TextScaled(580, 12, levelName, 2, COL_HUD_BLUE);
+        if levelNum == 2 { levelName = "CRYSTAL CAVE"; }
+        if levelNum == 3 { levelName = "VOLCANIC DEPTHS"; }
+        if levelNum == 4 { levelName = "SKY FORTRESS"; }
+        if levelNum == 5 { levelName = "ANCIENT RUINS"; }
+        canvas.TextScaled(650, 12, levelName, 2, COL_HUD_BLUE);
 
         // Active power-up indicators
         var pxStart = 12;
@@ -77,12 +84,27 @@ entity HUD {
         while i < maxHp {
             var hx = x + i * 32;
             if i < hp {
-                canvas.Disc(hx + 7, y + 7, 7, COL_HUD_RED);
-                canvas.Disc(hx + 19, y + 7, 7, COL_HUD_RED);
-                canvas.Box(hx + 1, y + 7, 25, 12, COL_HUD_RED);
-                canvas.Box(hx + 4, y + 16, 19, 5, COL_HUD_RED);
-                canvas.Box(hx + 7, y + 19, 13, 3, COL_HUD_RED);
-                canvas.Box(hx + 10, y + 21, 7, 3, COL_HUD_RED);
+                // Pulse the last remaining heart when HP == 1
+                var isLastHeart = (hp == 1) && (i == 0);
+                var heartCol = COL_HUD_RED;
+                if isLastHeart {
+                    // Pulse between red and bright white-red
+                    if pulseTimer < 300 {
+                        heartCol = 0xFF5555;
+                    }
+                }
+                canvas.Disc(hx + 7, y + 7, 7, heartCol);
+                canvas.Disc(hx + 19, y + 7, 7, heartCol);
+                canvas.Box(hx + 1, y + 7, 25, 12, heartCol);
+                canvas.Box(hx + 4, y + 16, 19, 5, heartCol);
+                canvas.Box(hx + 7, y + 19, 13, 3, heartCol);
+                canvas.Box(hx + 10, y + 21, 7, 3, heartCol);
+                // Pulse glow effect on last heart
+                if isLastHeart {
+                    if pulseTimer < 300 {
+                        canvas.DiscAlpha(hx + 13, y + 12, 16, COL_HUD_RED, 40);
+                    }
+                }
             } else {
                 canvas.Ring(hx + 7, y + 7, 7, COL_HUD_GRAY);
                 canvas.Ring(hx + 19, y + 7, 7, COL_HUD_GRAY);

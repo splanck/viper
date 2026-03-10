@@ -129,4 +129,61 @@ entity ParticleSystem {
         emitter.SetSize(2.0, 3.0);
         emitter.Burst(12);
     }
+
+    // Hard landing — wider dust cloud
+    expose func burstLandDust(x: Integer, y: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.set_Color(COL_DUST);
+        emitter.SetLifetime(18, 30);
+        emitter.SetVelocity(8.0, 25.0, 20.0, 160.0);
+        emitter.SetGravity(0.0, 0.2);
+        emitter.SetSize(2.0, 4.0);
+        emitter.Burst(10);
+    }
+
+    // Wall slide sparks — directional
+    expose func burstWallSlideSpark(x: Integer, y: Integer, dir: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.set_Color(COL_SPARK_YELLOW);
+        emitter.SetLifetime(6, 10);
+        // Sparks fly away from wall: dir=-1 means wall on left, sparks go right (315-45)
+        // dir=1 means wall on right, sparks go left (135-225)
+        if dir < 0 {
+            emitter.SetVelocity(8.0, 16.0, 300.0, 60.0);
+        } else {
+            emitter.SetVelocity(8.0, 16.0, 120.0, 240.0);
+        }
+        emitter.SetGravity(0.0, 0.3);
+        emitter.SetSize(1.0, 2.0);
+        emitter.Burst(2);
+    }
+
+    // Jetpack flame — small downward particles
+    expose func burstJetpackFlame(x: Integer, y: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        // Orange flame core
+        emitter.set_Color(COL_TITLE_ORANGE);
+        emitter.SetLifetime(5, 8);
+        emitter.SetVelocity(4.0, 10.0, 240.0, 300.0);
+        emitter.SetGravity(0.0, -0.2);
+        emitter.SetSize(1.0, 3.0);
+        emitter.Burst(1);
+        // Yellow tip
+        emitter.set_Color(COL_SPARK_YELLOW);
+        emitter.SetSize(1.0, 2.0);
+        emitter.Burst(1);
+    }
+
+    // Boss intro — dramatic entrance burst
+    expose func burstBossIntro(x: Integer, y: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.set_Color(COL_BOSS_EYE);
+        emitter.SetLifetime(20, 35);
+        emitter.SetVelocity(15.0, 35.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.0);
+        emitter.SetSize(2.0, 4.0);
+        emitter.Burst(16);
+        emitter.set_Color(COL_SPARK_YELLOW);
+        emitter.Burst(8);
+    }
 }

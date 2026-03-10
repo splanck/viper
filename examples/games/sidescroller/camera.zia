@@ -62,8 +62,14 @@ entity GameCamera {
     expose func drawBackground(canvas: Canvas, theme: Integer, sprites: SpriteFactory) {
         if theme == THEME_GRASSLANDS {
             drawGrasslandsBg(canvas, sprites);
-        } else {
+        } else if theme == THEME_CAVE {
             drawCaveBg(canvas);
+        } else if theme == THEME_VOLCANO {
+            drawVolcanoBg(canvas);
+        } else if theme == THEME_SKY {
+            drawSkyBg(canvas);
+        } else {
+            drawRuinsBg(canvas);
         }
     }
 
@@ -71,14 +77,20 @@ entity GameCamera {
         // Night sky gradient
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, COL_SKY_TOP, COL_SKY_BOT);
 
-        // Stars (static, pseudo-random)
+        // Stars (round discs instead of square boxes)
         var si = 0;
         while si < 60 {
             var starX = (si * 137 + 29) % SCREEN_W;
             var starY = (si * 97 + 13) % (SCREEN_H / 2);
             var brightness = 80 + (si * 31) % 176;
             var starCol = brightness * 0x010101;
-            canvas.Box(starX, starY, 2, 2, starCol);
+            if si % 10 == 0 {
+                // Occasional bright star with glow
+                canvas.Disc(starX, starY, 2, starCol);
+                canvas.DiscAlpha(starX, starY, 4, starCol, 30);
+            } else {
+                canvas.Disc(starX, starY, 1, starCol);
+            }
             si = si + 1;
         }
 
@@ -117,17 +129,19 @@ entity GameCamera {
             tx = tx + 60;
         }
 
-        // Near bushes (0.7x parallax — closest background layer)
+        // Near bushes (0.7x parallax — round shapes instead of rectangles)
         var bushScroll = x * PARA_BUSH / 100;
         var bi = 0;
         while bi < 12 {
             var bx2 = (bi * 113 + 19) - (bushScroll % 1400);
             if bx2 < 0 - 60 { bx2 = bx2 + 1400; }
             if bx2 < SCREEN_W + 60 {
-                var bh2 = 18 + (bi * 29) % 14;
-                var by2 = SCREEN_H - 130 + (bi * 17) % 20;
-                canvas.Box(bx2, by2, 48, bh2, 0x1A5C1A);
-                canvas.Box(bx2 + 8, by2 - 8, 32, 12, 0x2D7D2D);
+                var br = 10 + (bi * 29) % 8;
+                var by2 = SCREEN_H - 120 + (bi * 17) % 20;
+                // Bush cluster using overlapping discs
+                canvas.Disc(bx2 + 12, by2, br, 0x1A5C1A);
+                canvas.Disc(bx2 + 28, by2 - 2, br - 2, 0x1A5C1A);
+                canvas.Disc(bx2 + 20, by2 - 6, br + 2, 0x2D7D2D);
             }
             bi = bi + 1;
         }
@@ -150,6 +164,15 @@ entity GameCamera {
             i = i + 1;
         }
 
+        // Stalactites hanging from ceiling (triangles)
+        var sti = 0;
+        while sti < 8 {
+            var stx = (sti * 163 + 17) % SCREEN_W;
+            var sth = 30 + (sti * 47) % 40;
+            canvas.Triangle(stx, 0, stx + 10, 0, stx + 5, sth, 0x3A3A5E);
+            sti = sti + 1;
+        }
+
         // Stone pillars (0.2x parallax — depth cue)
         var pillarScroll = x * PARA_CAVE_PILLAR / 100;
         var pi = 0;
@@ -159,9 +182,125 @@ entity GameCamera {
             if px < SCREEN_W + 40 {
                 var ph = 200 + (pi * 67) % 120;
                 canvas.BoxAlpha(px, SCREEN_H - ph, 28, ph, 0x3A3A5E, 80);
-                canvas.BoxAlpha(px + 4, SCREEN_H - ph - 10, 20, 14, 0x4A4A6E, 60);
+                // Pillar cap (rounded)
+                canvas.DiscAlpha(px + 14, SCREEN_H - ph - 4, 14, 0x4A4A6E, 60);
             }
             pi = pi + 1;
+        }
+
+        // Stalagmites rising from floor (triangles)
+        var smi = 0;
+        while smi < 6 {
+            var smx = (smi * 197 + 43) % SCREEN_W;
+            var smh = 25 + (smi * 53) % 35;
+            canvas.Triangle(smx, SCREEN_H, smx + 12, SCREEN_H, smx + 6, SCREEN_H - smh, 0x44446A);
+            smi = smi + 1;
+        }
+    }
+
+    hide func drawVolcanoBg(canvas: Canvas) {
+        // Dark red/black gradient
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, 0x1A0808, 0x331111);
+
+        // Lava glow from below
+        canvas.BoxAlpha(0, SCREEN_H - 100, SCREEN_W, 100, 0xFF4400, 25);
+        canvas.BoxAlpha(0, SCREEN_H - 50, SCREEN_W, 50, 0xFF6600, 15);
+
+        // Ember particles (static, pseudo-random)
+        var ei = 0;
+        while ei < 20 {
+            var ex = (ei * 131 + 17) % SCREEN_W;
+            var ey = (ei * 97 + 43) % SCREEN_H;
+            var er = 1 + ei % 2;
+            canvas.Disc(ex, ey, er, 0xFF6622);
+            canvas.DiscAlpha(ex, ey, er + 2, 0xFF4400, 30);
+            ei = ei + 1;
+        }
+
+        // Distant volcanic pillars (parallax)
+        var pillarScroll = x * 15 / 100;
+        var pi = 0;
+        while pi < 5 {
+            var px = (pi * 263 + 41) - (pillarScroll % 1400);
+            if px < 0 - 40 { px = px + 1400; }
+            if px < SCREEN_W + 40 {
+                var ph = 250 + (pi * 73) % 100;
+                canvas.BoxAlpha(px, SCREEN_H - ph, 32, ph, 0x331111, 60);
+                canvas.Triangle(px - 8, SCREEN_H - ph, px + 40, SCREEN_H - ph, px + 16, SCREEN_H - ph - 20, 0x441111);
+            }
+            pi = pi + 1;
+        }
+    }
+
+    hide func drawSkyBg(canvas: Canvas) {
+        // Bright sky gradient (pale blue to white)
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, 0x4488CC, COL_SKY_PALE);
+
+        // Sun
+        canvas.Disc(200, 100, 50, 0xFFEE88);
+        canvas.DiscAlpha(200, 100, 70, 0xFFEE88, 30);
+
+        // Volumetric cloud layers
+        var ci = 0;
+        while ci < 10 {
+            var cx = (ci * 149 + 33) % (SCREEN_W + 100);
+            var cy = 200 + (ci * 61) % 200;
+            var cr = 40 + (ci * 37) % 30;
+            canvas.DiscAlpha(cx, cy, cr, 0xFFFFFF, 20 + ci * 2);
+            canvas.DiscAlpha(cx + 20, cy - 10, cr - 10, 0xFFFFFF, 25 + ci);
+            ci = ci + 1;
+        }
+
+        // Ambient birds (V-shapes using lines)
+        var bi = 0;
+        while bi < 6 {
+            var birdScroll = x * 5 / 100;
+            var bx = (bi * 211 + 19) - (birdScroll % 1600);
+            if bx < 0 - 20 { bx = bx + 1600; }
+            var by = 50 + (bi * 83) % 150;
+            canvas.Line(bx, by, bx + 6, by - 4, 0x334466);
+            canvas.Line(bx + 6, by - 4, bx + 12, by, 0x334466);
+            bi = bi + 1;
+        }
+    }
+
+    hide func drawRuinsBg(canvas: Canvas) {
+        // Dark green/gray gradient
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, 0x1A2A1A, 0x2A3A2A);
+
+        // Crumbling pillars in parallax
+        var pillarScroll = x * 12 / 100;
+        var pi = 0;
+        while pi < 7 {
+            var px = (pi * 191 + 37) - (pillarScroll % 1400);
+            if px < 0 - 30 { px = px + 1400; }
+            if px < SCREEN_W + 30 {
+                var ph = 180 + (pi * 59) % 120;
+                canvas.BoxAlpha(px, SCREEN_H - ph, 24, ph, 0x444433, 70);
+                // Broken column top (triangle)
+                canvas.Triangle(px - 4, SCREEN_H - ph, px + 28, SCREEN_H - ph, px + 12, SCREEN_H - ph - 12, 0x555544);
+            }
+            pi = pi + 1;
+        }
+
+        // Vine curtains hanging from top
+        var vi = 0;
+        while vi < 8 {
+            var vx = (vi * 167 + 23) % SCREEN_W;
+            var vlen = 60 + (vi * 43) % 80;
+            canvas.Line(vx, 0, vx + 4, vlen, 0x336633);
+            canvas.Line(vx + 8, 0, vx + 3, vlen - 10, 0x225522);
+            vi = vi + 1;
+        }
+
+        // Fireflies (glowing dots)
+        var fi = 0;
+        while fi < 12 {
+            var fx = (fi * 127 + 51) % SCREEN_W;
+            var fy = (fi * 83 + 29) % SCREEN_H;
+            canvas.Disc(fx, fy, 1, 0x88FF88);
+            canvas.DiscAlpha(fx, fy, 4, 0x88FF88, 20);
+            fi = fi + 1;
         }
     }
 

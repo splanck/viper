@@ -303,6 +303,8 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
     {
         const auto *desc = il::runtime::findRuntimeDescriptor(feature);
         assert(desc && "requested runtime feature missing from registry");
+        if (!desc)
+            continue; // Safety: skip if registry lookup fails in Release builds.
         tryDeclare(*desc);
     }
 

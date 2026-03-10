@@ -478,11 +478,14 @@ void rt_url_set_scheme(void *obj, rt_string scheme)
         return;
 
     rt_url_t *url = (rt_url_t *)obj;
+    const char *str = rt_string_cstr(scheme);
+    char *dup = str ? strdup(str) : NULL;
+    if (str && !dup)
+        return; // OOM: preserve existing value.
+
     if (url->scheme)
         free(url->scheme);
-
-    const char *str = rt_string_cstr(scheme);
-    url->scheme = str ? strdup(str) : NULL;
+    url->scheme = dup;
 
     // Convert to lowercase
     if (url->scheme)
@@ -513,11 +516,14 @@ void rt_url_set_host(void *obj, rt_string host)
         return;
 
     rt_url_t *url = (rt_url_t *)obj;
+    const char *str = rt_string_cstr(host);
+    char *dup = str ? strdup(str) : NULL;
+    if (str && !dup)
+        return; // OOM: preserve existing value.
+
     if (url->host)
         free(url->host);
-
-    const char *str = rt_string_cstr(host);
-    url->host = str ? strdup(str) : NULL;
+    url->host = dup;
 }
 
 int64_t rt_url_port(void *obj)
@@ -532,6 +538,12 @@ void rt_url_set_port(void *obj, int64_t port)
 {
     if (!obj)
         return;
+
+    // Clamp to valid port range (0 = unset, 1-65535 = valid).
+    if (port < 0)
+        port = 0;
+    else if (port > 65535)
+        port = 65535;
 
     ((rt_url_t *)obj)->port = port;
 }
@@ -554,11 +566,14 @@ void rt_url_set_path(void *obj, rt_string path)
         return;
 
     rt_url_t *url = (rt_url_t *)obj;
+    const char *str = rt_string_cstr(path);
+    char *dup = str ? strdup(str) : NULL;
+    if (str && !dup)
+        return; // OOM: preserve existing value.
+
     if (url->path)
         free(url->path);
-
-    const char *str = rt_string_cstr(path);
-    url->path = str ? strdup(str) : NULL;
+    url->path = dup;
 }
 
 rt_string rt_url_query(void *obj)
@@ -579,11 +594,14 @@ void rt_url_set_query(void *obj, rt_string query)
         return;
 
     rt_url_t *url = (rt_url_t *)obj;
+    const char *str = rt_string_cstr(query);
+    char *dup = str ? strdup(str) : NULL;
+    if (str && !dup)
+        return; // OOM: preserve existing value.
+
     if (url->query)
         free(url->query);
-
-    const char *str = rt_string_cstr(query);
-    url->query = str ? strdup(str) : NULL;
+    url->query = dup;
 }
 
 rt_string rt_url_fragment(void *obj)
@@ -604,11 +622,14 @@ void rt_url_set_fragment(void *obj, rt_string fragment)
         return;
 
     rt_url_t *url = (rt_url_t *)obj;
+    const char *str = rt_string_cstr(fragment);
+    char *dup = str ? strdup(str) : NULL;
+    if (str && !dup)
+        return; // OOM: preserve existing value.
+
     if (url->fragment)
         free(url->fragment);
-
-    const char *str = rt_string_cstr(fragment);
-    url->fragment = str ? strdup(str) : NULL;
+    url->fragment = dup;
 }
 
 rt_string rt_url_user(void *obj)
@@ -629,11 +650,14 @@ void rt_url_set_user(void *obj, rt_string user)
         return;
 
     rt_url_t *url = (rt_url_t *)obj;
+    const char *str = rt_string_cstr(user);
+    char *dup = str ? strdup(str) : NULL;
+    if (str && !dup)
+        return; // OOM: preserve existing value.
+
     if (url->user)
         free(url->user);
-
-    const char *str = rt_string_cstr(user);
-    url->user = str ? strdup(str) : NULL;
+    url->user = dup;
 }
 
 rt_string rt_url_pass(void *obj)
@@ -654,11 +678,14 @@ void rt_url_set_pass(void *obj, rt_string pass)
         return;
 
     rt_url_t *url = (rt_url_t *)obj;
+    const char *str = rt_string_cstr(pass);
+    char *dup = str ? strdup(str) : NULL;
+    if (str && !dup)
+        return; // OOM: preserve existing value.
+
     if (url->pass)
         free(url->pass);
-
-    const char *str = rt_string_cstr(pass);
-    url->pass = str ? strdup(str) : NULL;
+    url->pass = dup;
 }
 
 rt_string rt_url_authority(void *obj)
@@ -680,7 +707,7 @@ rt_string rt_url_authority(void *obj)
     if (url->host)
         size += strlen(url->host);
     if (url->port > 0)
-        size += 8; // :65535
+        size += 22; // :PORT (max 19 digits for int64_t + colon + margin)
 
     if (size == 0)
         return rt_string_from_bytes("", 0);
@@ -690,17 +717,18 @@ rt_string rt_url_authority(void *obj)
         return rt_string_from_bytes("", 0);
 
     char *p = result;
+    char *end = result + size + 1;
     if (url->user)
     {
-        p += sprintf(p, "%s", url->user);
+        p += snprintf(p, (size_t)(end - p), "%s", url->user);
         if (url->pass)
-            p += sprintf(p, ":%s", url->pass);
+            p += snprintf(p, (size_t)(end - p), ":%s", url->pass);
         *p++ = '@';
     }
     if (url->host)
-        p += sprintf(p, "%s", url->host);
+        p += snprintf(p, (size_t)(end - p), "%s", url->host);
     if (url->port > 0)
-        p += sprintf(p, ":%lld", (long long)url->port);
+        p += snprintf(p, (size_t)(end - p), ":%lld", (long long)url->port);
 
     rt_string str = rt_string_from_bytes(result, p - result);
     free(result);
@@ -759,7 +787,7 @@ rt_string rt_url_full(void *obj)
     if (url->host)
         size += strlen(url->host);
     if (url->port > 0)
-        size += 8; // :65535
+        size += 22; // :PORT (max 19 digits for int64_t + colon + margin)
     if (url->path)
         size += strlen(url->path);
     if (url->query)
@@ -775,29 +803,30 @@ rt_string rt_url_full(void *obj)
         return rt_string_from_bytes("", 0);
 
     char *p = result;
+    char *end = result + size + 1;
     if (url->scheme)
-        p += sprintf(p, "%s://", url->scheme);
+        p += snprintf(p, (size_t)(end - p), "%s://", url->scheme);
     if (url->user)
     {
-        p += sprintf(p, "%s", url->user);
+        p += snprintf(p, (size_t)(end - p), "%s", url->user);
         if (url->pass)
-            p += sprintf(p, ":%s", url->pass);
+            p += snprintf(p, (size_t)(end - p), ":%s", url->pass);
         *p++ = '@';
     }
     if (url->host)
-        p += sprintf(p, "%s", url->host);
+        p += snprintf(p, (size_t)(end - p), "%s", url->host);
     if (url->port > 0)
     {
         int64_t default_port = default_port_for_scheme(url->scheme);
         if (url->port != default_port)
-            p += sprintf(p, ":%lld", (long long)url->port);
+            p += snprintf(p, (size_t)(end - p), ":%lld", (long long)url->port);
     }
     if (url->path)
-        p += sprintf(p, "%s", url->path);
+        p += snprintf(p, (size_t)(end - p), "%s", url->path);
     if (url->query && url->query[0])
-        p += sprintf(p, "?%s", url->query);
+        p += snprintf(p, (size_t)(end - p), "?%s", url->query);
     if (url->fragment && url->fragment[0])
-        p += sprintf(p, "#%s", url->fragment);
+        p += snprintf(p, (size_t)(end - p), "#%s", url->fragment);
 
     rt_string str = rt_string_from_bytes(result, p - result);
     free(result);
@@ -1142,7 +1171,7 @@ rt_string rt_url_encode_query(void *map)
 
         if (i > 0)
             result[pos++] = '&';
-        pos += sprintf(result + pos, "%s=%s", enc_key, enc_value);
+        pos += snprintf(result + pos, cap - pos, "%s=%s", enc_key, enc_value);
 
         free(enc_key);
         free(enc_value);
