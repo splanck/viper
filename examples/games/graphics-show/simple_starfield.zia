@@ -6,7 +6,7 @@ module simple_starfield;
 // Uses integer math only to work around Viperlang type coercion bugs.
 // ============================================================================
 
-bind Viper.Random;
+bind Viper.Math.Random;
 bind Viper.Graphics;
 bind Viper.Graphics.Canvas;
 bind Viper.Graphics.Color;

@@ -1101,6 +1101,7 @@ Action state is updated automatically when you call `Canvas.Poll()`.
 | Method        | Signature | Description                                     |
 |---------------|-----------|------------------------------------------------|
 | `Clear()`     | `Void()`  | Remove all defined actions and bindings         |
+| `LoadPreset(name)` | `Boolean(String)` | Load a predefined set of actions with standard key bindings |
 
 ### Action Definition Methods
 
@@ -1189,6 +1190,31 @@ Action state is updated automatically when you call `Canvas.Poll()`.
 |---------------|--------------------|-----------------------------------------------------------------------|
 | `Load(json)`  | `Boolean(String)`  | Load actions and bindings from a JSON string; returns true on success |
 | `Save()`      | `String()`         | Serialize all actions and bindings to a JSON string                   |
+
+### Action Presets
+
+`LoadPreset()` loads a predefined set of input bindings in one call, eliminating 30-50 lines of boilerplate per game.
+
+#### Available Presets
+
+| Preset Name | Actions Defined | Key Bindings |
+|-------------|----------------|--------------|
+| `"standard_movement"` | `move_up`, `move_down`, `move_left`, `move_right` | WASD + Arrow keys |
+| `"menu_navigation"` | `menu_up`, `menu_down`, `menu_left`, `menu_right`, `confirm`, `back` | Arrows + Enter/Escape |
+| `"platformer"` | `left`, `right`, `jump`, `shoot`, `pause` | A/D or Left/Right, Space/W/Up, E, Escape |
+| `"topdown"` | `up`, `down`, `left`, `right`, `fire`, `pause` | WASD + Arrows, Space, Escape |
+
+#### Example
+```zia
+// Instead of 30+ lines of Action.Define + Action.BindKey...
+Action.LoadPreset("platformer");
+Action.LoadPreset("menu_navigation");
+
+// Presets can be combined — later bindings don't overwrite earlier ones
+// Custom actions can still be added on top
+Action.Define("special_attack");
+Action.BindKey("special_attack", 81);  // Q
+```
 
 ### Axis Constants
 

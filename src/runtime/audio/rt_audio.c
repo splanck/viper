@@ -282,6 +282,34 @@ void *rt_sound_load(rt_string path)
     return wrapper;
 }
 
+void *rt_sound_load_mem(const void *data, int64_t size)
+{
+    if (!data || size <= 0)
+        return NULL;
+
+    if (!ensure_audio_init())
+        return NULL;
+
+    /* Load the sound from memory via ViperAUD */
+    vaud_sound_t snd = vaud_load_sound_mem(g_audio_ctx, data, (size_t)size);
+    if (!snd)
+        return NULL;
+
+    /* Allocate wrapper object */
+    rt_sound *wrapper = (rt_sound *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sound));
+    if (!wrapper)
+    {
+        vaud_free_sound(snd);
+        return NULL;
+    }
+
+    wrapper->vptr = NULL;
+    wrapper->sound = snd;
+    rt_obj_set_finalizer(wrapper, rt_sound_finalize);
+
+    return wrapper;
+}
+
 void rt_sound_free(void *sound)
 {
     if (!sound)
@@ -606,6 +634,13 @@ void rt_audio_stop_all_sounds(void) {}
 void *rt_sound_load(rt_string path)
 {
     (void)path;
+    return NULL;
+}
+
+void *rt_sound_load_mem(const void *data, int64_t size)
+{
+    (void)data;
+    (void)size;
     return NULL;
 }
 

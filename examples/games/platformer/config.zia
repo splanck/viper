@@ -1,0 +1,63 @@
+// config.zia — Constants for the platformer showcase demo
+module config;
+
+// Screen
+final SCREEN_W = 800;
+final SCREEN_H = 600;
+
+// Tiles
+final TILE_W = 32;
+final TILE_H = 32;
+final LEVEL_W = 50;
+final LEVEL_H = 19;
+
+// Player (centipixel physics: position * 100 for sub-pixel precision)
+final PLAYER_W = 24;
+final PLAYER_H = 32;
+final PLAYER_SPEED = 400;
+final PLAYER_JUMP = -1200;
+final GRAVITY = 60;
+final MAX_FALL = 1000;
+final DT_BASE = 16;
+
+// Player states (for StateMachine)
+final PS_IDLE = 0;
+final PS_RUN = 1;
+final PS_JUMP = 2;
+final PS_FALL = 3;
+
+// Tile types
+final TILE_EMPTY = 0;
+final TILE_GROUND = 1;
+final TILE_PLATFORM = 2;
+final TILE_SPIKE = 3;
+
+// Coins (ObjectPool)
+final MAX_COINS = 32;
+final COIN_SIZE = 12;
+final COIN_PACK = 100000;
+
+// Moving platform
+final PLAT_W = 96;
+final PLAT_H = 12;
+
+// Colors
+final COL_SKY = 0x5599DD;
+final COL_GROUND = 0x8B6914;
+final COL_GROUND_TOP = 0x4CAF50;
+final COL_PLATFORM = 0x9E7744;
+final COL_PLAT_TOP = 0xBB9955;
+final COL_SPIKE = 0xFF4444;
+final COL_PLAYER = 0x3366CC;
+final COL_PLAYER_DARK = 0x224488;
+final COL_PLAYER_EYE = 0xFFFFFF;
+final COL_COIN = 0xFFD700;
+final COL_COIN_DARK = 0xDAA520;
+final COL_MOVPLAT = 0x6688AA;
+final COL_WHITE = 0xFFFFFF;
+final COL_BLACK = 0x000000;
+final COL_MENU_BG = 0x1A1A3A;
+final COL_MENU_HL = 0x4466CC;
+final COL_TEXT = 0xDDDDDD;
+final COL_TITLE = 0xFF8844;
+final COL_HUD_BG = 0x222244;

@@ -580,48 +580,55 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
             // Add ALL parent's fields to this entity's scope (including inherited fields)
             // by scanning fieldTypes_ for entries with parent's name prefix.
             // This ensures grandparent fields are also accessible in grandchildren.
+            // NOTE: Collect entries first, then insert — inserting into an
+            // unordered_map during iteration can trigger a rehash and
+            // invalidate the iterator.
             std::string parentPrefix = parent->name + ".";
+            std::vector<std::pair<std::string, TypeRef>> inheritedFields;
             for (const auto &entry : fieldTypes_)
             {
                 if (entry.first.rfind(parentPrefix, 0) == 0)
                 {
-                    // Extract field name from "Parent.fieldName"
                     std::string fieldName = entry.first.substr(parentPrefix.size());
-                    // Skip if already defined (could be overridden)
                     if (!currentScope_->lookupLocal(fieldName))
                     {
-                        Symbol sym;
-                        sym.kind = Symbol::Kind::Field;
-                        sym.name = fieldName;
-                        sym.type = entry.second;
-                        defineSymbol(fieldName, sym);
-                        // Also register in this entity's field types
-                        fieldTypes_[decl.name + "." + fieldName] = entry.second;
+                        inheritedFields.emplace_back(fieldName, entry.second);
                     }
                 }
+            }
+            for (const auto &[fieldName, fieldType] : inheritedFields)
+            {
+                Symbol sym;
+                sym.kind = Symbol::Kind::Field;
+                sym.name = fieldName;
+                sym.type = fieldType;
+                defineSymbol(fieldName, sym);
+                fieldTypes_[decl.name + "." + fieldName] = fieldType;
             }
 
             // Add ALL parent's methods to this entity's scope (including inherited methods)
             std::string methodPrefix = parent->name + ".";
+            std::vector<std::pair<std::string, TypeRef>> inheritedMethods;
             for (const auto &entry : methodTypes_)
             {
                 if (entry.first.rfind(methodPrefix, 0) == 0)
                 {
-                    // Extract method name from "Parent.methodName"
                     std::string methodName = entry.first.substr(methodPrefix.size());
-                    // Skip if already defined (could be overridden)
                     if (!currentScope_->lookupLocal(methodName))
                     {
-                        Symbol sym;
-                        sym.kind = Symbol::Kind::Method;
-                        sym.name = methodName;
-                        sym.type = entry.second;
-                        sym.isFinal = true;
-                        defineSymbol(methodName, sym);
-                        // Also register in this entity's method types
-                        methodTypes_[decl.name + "." + methodName] = entry.second;
+                        inheritedMethods.emplace_back(methodName, entry.second);
                     }
                 }
+            }
+            for (const auto &[methodName, methodType] : inheritedMethods)
+            {
+                Symbol sym;
+                sym.kind = Symbol::Kind::Method;
+                sym.name = methodName;
+                sym.type = methodType;
+                sym.isFinal = true;
+                defineSymbol(methodName, sym);
+                methodTypes_[decl.name + "." + methodName] = methodType;
             }
         }
     }

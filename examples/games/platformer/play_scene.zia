@@ -1,0 +1,459 @@
+// play_scene.zia — Main gameplay scene
+// Demonstrates: Tilemap (level layout + collision), Camera (viewport scrolling),
+//   CollisionRect (AABB overlap detection), StateMachine (player states),
+//   SpriteAnimation (frame cycling), ObjectPool (coin management),
+//   PathFollower (moving platform)
+module play_scene;
+
+bind Viper.Graphics;
+bind Viper.Input;
+bind Viper.Game;
+bind Viper.Fmt;
+bind "../lib/iscene";
+bind "./config";
+bind "./game";
+
+entity PlayScene implements IScene {
+    hide PlatformerGame game;
+
+    // Tilemap — level grid with collision data
+    hide Tilemap tilemap;
+
+    // Camera — viewport with bounds clamping
+    hide Camera cam;
+
+    // Player physics (centipixel positions for sub-pixel precision)
+    hide Integer px;
+    hide Integer py;
+    hide Integer pvx;
+    hide Integer pvy;
+    hide Boolean onGround;
+    hide Integer facing;
+
+    // StateMachine — player state tracking
+    hide StateMachine playerSM;
+
+    // SpriteAnimation — visual frame cycling
+    hide SpriteAnimation playerAnim;
+
+    // CollisionRect — AABB for platform overlap test
+    hide CollisionRect playerRect;
+    hide CollisionRect platRect;
+
+    // ObjectPool — coin management
+    hide ObjectPool coinPool;
+    hide Integer totalCoins;
+
+    // PathFollower — moving platform path
+    hide PathFollower platPath;
+    hide Integer platPrevX;
+
+    expose func init(g: PlatformerGame) {
+        game = g;
+        facing = 1;
+    }
+
+    // =========================================================================
+    // Scene lifecycle
+    // =========================================================================
+
+    expose func onEnter() {
+        // --- Tilemap: level layout and collision ---
+        tilemap = Tilemap.New(LEVEL_W, LEVEL_H, TILE_W, TILE_H);
+        tilemap.SetCollision(TILE_GROUND, 1);
+        tilemap.SetCollision(TILE_PLATFORM, 1);
+        buildLevel();
+
+        // --- Camera: viewport with level bounds ---
+        cam = Camera.New(SCREEN_W, SCREEN_H);
+        cam.SetBounds(SCREEN_W / 2, SCREEN_H / 2,
+                       LEVEL_W * TILE_W - SCREEN_W / 2,
+                       LEVEL_H * TILE_H - SCREEN_H / 2);
+
+        // --- Player ---
+        px = 3 * TILE_W * 100;
+        py = 15 * TILE_H * 100;
+        pvx = 0;
+        pvy = 0;
+        onGround = false;
+        facing = 1;
+
+        // StateMachine: 4 player states
+        playerSM = StateMachine.New();
+        playerSM.AddState(PS_IDLE);
+        playerSM.AddState(PS_RUN);
+        playerSM.AddState(PS_JUMP);
+        playerSM.AddState(PS_FALL);
+        playerSM.SetInitial(PS_FALL);
+
+        // SpriteAnimation: 4-frame cycle for run animation
+        playerAnim = SpriteAnimation.New();
+        playerAnim.Setup(4, 8, 1);
+        playerAnim.Play();
+
+        // CollisionRect: player and platform hitboxes
+        playerRect = CollisionRect.New(0.0, 0.0, 0.0 + PLAYER_W, 0.0 + PLAYER_H);
+        platRect = CollisionRect.New(0.0, 0.0, 0.0 + PLAT_W, 0.0 + PLAT_H);
+
+        // --- ObjectPool: coin slots ---
+        coinPool = ObjectPool.New(MAX_COINS);
+        totalCoins = 0;
+        spawnCoin(7 * TILE_W + 10, 13 * TILE_H - COIN_SIZE);
+        spawnCoin(12 * TILE_W + 10, 10 * TILE_H - COIN_SIZE);
+        spawnCoin(15 * TILE_W + 10, 10 * TILE_H - COIN_SIZE);
+        spawnCoin(24 * TILE_W + 10, 13 * TILE_H - COIN_SIZE);
+        spawnCoin(30 * TILE_W + 10, 16 * TILE_H - COIN_SIZE);
+        spawnCoin(35 * TILE_W + 10, 16 * TILE_H - COIN_SIZE);
+        spawnCoin(40 * TILE_W + 10, 13 * TILE_H - COIN_SIZE);
+        spawnCoin(45 * TILE_W + 10, 16 * TILE_H - COIN_SIZE);
+
+        // --- PathFollower: moving platform over gap ---
+        platPath = PathFollower.New();
+        platPath.AddPoint(17 * TILE_W, 16 * TILE_H);
+        platPath.AddPoint(21 * TILE_W, 16 * TILE_H);
+        platPath.set_Speed(40);
+        platPath.set_Mode(2);  // ping-pong
+        platPath.Start();
+        platPrevX = 17 * TILE_W;
+    }
+
+    expose func onExit() { }
+
+    // =========================================================================
+    // Level building
+    // =========================================================================
+
+    hide func buildLevel() {
+        // Ground: rows 17-18 across full width
+        tilemap.FillRect(0, 17, LEVEL_W, 2, TILE_GROUND);
+
+        // Gaps in ground
+        tilemap.FillRect(18, 17, 3, 2, TILE_EMPTY);
+        tilemap.FillRect(33, 17, 3, 2, TILE_EMPTY);
+
+        // Elevated platforms
+        tilemap.FillRect(6, 14, 4, 1, TILE_PLATFORM);
+        tilemap.FillRect(12, 11, 5, 1, TILE_PLATFORM);
+        tilemap.FillRect(23, 14, 4, 1, TILE_PLATFORM);
+        tilemap.FillRect(38, 14, 5, 1, TILE_PLATFORM);
+        tilemap.FillRect(44, 11, 4, 1, TILE_PLATFORM);
+
+        // Spikes in gaps
+        tilemap.FillRect(18, 18, 3, 1, TILE_SPIKE);
+        tilemap.FillRect(33, 18, 3, 1, TILE_SPIKE);
+    }
+
+    hide func spawnCoin(x: Integer, y: Integer) {
+        var handle = coinPool.Acquire();
+        if handle >= 0 {
+            coinPool.SetData(handle, x * COIN_PACK + y);
+            totalCoins = totalCoins + 1;
+        }
+    }
+
+    // =========================================================================
+    // Update
+    // =========================================================================
+
+    expose func update(dt: Integer) {
+        if Action.Pressed("pause") {
+            game.goToMenu();
+            return;
+        }
+
+        updatePlayer(dt);
+        updatePlatform(dt);
+        checkCoins();
+
+        playerAnim.Update();
+        playerSM.Update();
+    }
+
+    hide func updatePlayer(dt: Integer) {
+        // Horizontal input
+        var moveX = 0;
+        if Action.Held("move_left") { moveX = -1; facing = -1; }
+        if Action.Held("move_right") { moveX = 1; facing = 1; }
+
+        pvx = moveX * PLAYER_SPEED;
+
+        // Jump
+        if onGround {
+            if Action.Pressed("jump") {
+                pvy = PLAYER_JUMP;
+                onGround = false;
+                playerSM.Transition(PS_JUMP);
+            }
+        }
+
+        // Gravity
+        pvy = pvy + GRAVITY * dt / DT_BASE;
+        if pvy > MAX_FALL { pvy = MAX_FALL; }
+
+        // Move X with tile collision
+        var newPx = px + pvx * dt / DT_BASE;
+        var pixX = newPx / 100;
+        var pixY = py / 100;
+
+        if checkTileCollisionH(pixX, pixY) == false {
+            px = newPx;
+        } else {
+            pvx = 0;
+        }
+
+        // Move Y with tile collision
+        var newPy = py + pvy * dt / DT_BASE;
+        pixX = px / 100;
+        pixY = newPy / 100;
+
+        onGround = false;
+        if checkTileCollisionV(pixX, pixY) == false {
+            py = newPy;
+        } else {
+            if pvy > 0 {
+                // Landing — snap to tile top
+                var tileRow = (pixY + PLAYER_H - 1) / TILE_H;
+                py = (tileRow * TILE_H - PLAYER_H) * 100;
+                onGround = true;
+            }
+            pvy = 0;
+        }
+
+        // Update state machine
+        if onGround {
+            if moveX != 0 {
+                playerSM.Transition(PS_RUN);
+            } else {
+                playerSM.Transition(PS_IDLE);
+            }
+        } else {
+            if pvy > 0 {
+                playerSM.Transition(PS_FALL);
+            }
+        }
+
+        // Clamp to level bounds
+        if px < 0 { px = 0; pvx = 0; }
+        var maxPx = (LEVEL_W * TILE_W - PLAYER_W) * 100;
+        if px > maxPx { px = maxPx; }
+
+        // Death by falling
+        if py > LEVEL_H * TILE_H * 100 {
+            resetPlayer();
+        }
+
+        // Camera tracks player center
+        cam.Follow(px / 100 + PLAYER_W / 2, py / 100 + PLAYER_H / 2);
+    }
+
+    hide func checkTileCollisionH(pixX: Integer, pixY: Integer) -> Boolean {
+        var left = pixX / TILE_W;
+        var right = (pixX + PLAYER_W - 1) / TILE_W;
+        var top = pixY / TILE_H;
+        var bottom = (pixY + PLAYER_H - 1) / TILE_H;
+
+        var row = top;
+        while row <= bottom {
+            if tilemap.IsSolidAt(left, row) { return true; }
+            if tilemap.IsSolidAt(right, row) { return true; }
+            row = row + 1;
+        }
+        return false;
+    }
+
+    hide func checkTileCollisionV(pixX: Integer, pixY: Integer) -> Boolean {
+        var left = pixX / TILE_W;
+        var right = (pixX + PLAYER_W - 1) / TILE_W;
+        var top = pixY / TILE_H;
+        var bottom = (pixY + PLAYER_H - 1) / TILE_H;
+
+        var col = left;
+        while col <= right {
+            if tilemap.IsSolidAt(col, top) { return true; }
+            if tilemap.IsSolidAt(col, bottom) { return true; }
+            col = col + 1;
+        }
+        return false;
+    }
+
+    hide func updatePlatform(dt: Integer) {
+        platPrevX = platPath.X;
+        platPath.Update(dt);
+
+        // Check if player is standing on the moving platform
+        var ppx = px / 100;
+        var ppy = py / 100;
+        var platX = platPath.X;
+        var platY = platPath.Y;
+
+        // Update CollisionRect positions for overlap test
+        playerRect.SetPosition(0.0 + ppx, 0.0 + ppy + PLAYER_H - 4);
+        playerRect.SetSize(0.0 + PLAYER_W, 4.0);
+        platRect.SetPosition(0.0 + platX, 0.0 + platY);
+        platRect.SetSize(0.0 + PLAT_W, 0.0 + PLAT_H);
+
+        // CollisionRect.Overlaps — demonstrates AABB overlap detection
+        if platRect.Overlaps(playerRect) {
+            if pvy >= 0 {
+                onGround = true;
+                pvy = 0;
+                py = (platY - PLAYER_H) * 100;
+                // Carry player with platform movement
+                var dx = platPath.X - platPrevX;
+                px = px + dx * 100;
+            }
+        }
+    }
+
+    hide func checkCoins() {
+        var ppx = px / 100;
+        var ppy = py / 100;
+
+        // Iterate active coins via ObjectPool
+        var handle = coinPool.FirstActive();
+        while handle >= 0 {
+            var next = coinPool.NextActive(handle);
+            var data = coinPool.GetData(handle);
+            var cx = data / COIN_PACK;
+            var cy = data % COIN_PACK;
+
+            // Simple AABB overlap
+            if ppx + PLAYER_W > cx {
+                if ppx < cx + COIN_SIZE {
+                    if ppy + PLAYER_H > cy {
+                        if ppy < cy + COIN_SIZE {
+                            coinPool.Release(handle);
+                            game.addCoin();
+                            game.doShake(3, 100, 50);
+                        }
+                    }
+                }
+            }
+
+            handle = next;
+        }
+    }
+
+    hide func resetPlayer() {
+        px = 3 * TILE_W * 100;
+        py = 15 * TILE_H * 100;
+        pvx = 0;
+        pvy = 0;
+        onGround = false;
+        playerSM.Transition(PS_FALL);
+        game.doFlash(0xFF000060, 200);
+    }
+
+    // =========================================================================
+    // Draw
+    // =========================================================================
+
+    expose func draw(canvas: Canvas) {
+        canvas.Box(0, 0, SCREEN_W, SCREEN_H, COL_SKY);
+
+        drawTiles(canvas);
+        drawMovingPlatform(canvas);
+        drawCoins(canvas);
+        drawPlayer(canvas);
+        drawHUD(canvas);
+    }
+
+    hide func drawTiles(canvas: Canvas) {
+        var row = 0;
+        while row < LEVEL_H {
+            var col = 0;
+            while col < LEVEL_W {
+                var tile = tilemap.GetTile(col, row);
+                if tile != TILE_EMPTY {
+                    var sx = cam.ToScreenX(col * TILE_W);
+                    var sy = cam.ToScreenY(row * TILE_H);
+
+                    if sx > 0 - TILE_W {
+                        if sx < SCREEN_W {
+                            if tile == TILE_GROUND {
+                                canvas.Box(sx, sy, TILE_W, TILE_H, COL_GROUND);
+                                canvas.Box(sx, sy, TILE_W, 4, COL_GROUND_TOP);
+                            }
+                            if tile == TILE_PLATFORM {
+                                canvas.Box(sx, sy, TILE_W, TILE_H, COL_PLATFORM);
+                                canvas.Box(sx, sy, TILE_W, 4, COL_PLAT_TOP);
+                            }
+                            if tile == TILE_SPIKE {
+                                // Draw spike triangles as a red box with dark top
+                                canvas.Box(sx, sy + TILE_H / 2, TILE_W, TILE_H / 2, COL_SPIKE);
+                                canvas.Box(sx + 4, sy + 4, TILE_W - 8, TILE_H / 2, COL_SPIKE);
+                            }
+                        }
+                    }
+                }
+                col = col + 1;
+            }
+            row = row + 1;
+        }
+    }
+
+    hide func drawMovingPlatform(canvas: Canvas) {
+        var sx = cam.ToScreenX(platPath.X);
+        var sy = cam.ToScreenY(platPath.Y);
+        canvas.Box(sx, sy, PLAT_W, PLAT_H, COL_MOVPLAT);
+        canvas.Box(sx, sy, PLAT_W, 3, COL_WHITE);
+    }
+
+    hide func drawCoins(canvas: Canvas) {
+        var handle = coinPool.FirstActive();
+        while handle >= 0 {
+            var data = coinPool.GetData(handle);
+            var cx = data / COIN_PACK;
+            var cy = data % COIN_PACK;
+
+            var sx = cam.ToScreenX(cx) + COIN_SIZE / 2;
+            var sy = cam.ToScreenY(cy) + COIN_SIZE / 2;
+            canvas.Disc(sx, sy, COIN_SIZE / 2, COL_COIN);
+            canvas.Ring(sx, sy, COIN_SIZE / 2, COL_COIN_DARK);
+
+            handle = coinPool.NextActive(handle);
+        }
+    }
+
+    hide func drawPlayer(canvas: Canvas) {
+        var ppx = px / 100;
+        var ppy = py / 100;
+        var sx = cam.ToScreenX(ppx);
+        var sy = cam.ToScreenY(ppy);
+
+        // Body
+        canvas.Box(sx, sy, PLAYER_W, PLAYER_H, COL_PLAYER);
+        canvas.Box(sx + 2, sy + 2, PLAYER_W - 4, PLAYER_H - 4, COL_PLAYER_DARK);
+
+        // Eye (indicates facing direction)
+        var eyeX = sx + PLAYER_W / 2 + facing * 4;
+        canvas.Box(eyeX - 2, sy + 8, 4, 4, COL_PLAYER_EYE);
+
+        // Leg animation when running (uses SpriteAnimation frame index)
+        if playerSM.IsState(PS_RUN) {
+            var frame = playerAnim.Frame;
+            var legOff = frame % 2;
+            canvas.Box(sx + 4, sy + PLAYER_H - 6 + legOff * 2, 6, 6, COL_PLAYER);
+            canvas.Box(sx + PLAYER_W - 10, sy + PLAYER_H - 6 + (1 - legOff) * 2, 6, 6, COL_PLAYER);
+        }
+    }
+
+    hide func drawHUD(canvas: Canvas) {
+        canvas.BoxAlpha(0, 0, SCREEN_W, 28, COL_HUD_BG, 180);
+
+        var scoreStr = "Score: " + Int(game.getScore());
+        var coinStr = "Coins: " + Int(game.getCoins()) + "/" + Int(totalCoins);
+        canvas.TextScaled(10, 6, scoreStr, 2, COL_WHITE);
+        canvas.TextScaled(250, 6, coinStr, 2, COL_COIN);
+
+        // Show current player state from StateMachine
+        var stateStr = "State: ";
+        if playerSM.IsState(PS_IDLE) { stateStr = stateStr + "Idle"; }
+        if playerSM.IsState(PS_RUN) { stateStr = stateStr + "Run"; }
+        if playerSM.IsState(PS_JUMP) { stateStr = stateStr + "Jump"; }
+        if playerSM.IsState(PS_FALL) { stateStr = stateStr + "Fall"; }
+        canvas.TextScaled(500, 6, stateStr, 2, 0x88CCFF);
+
+        canvas.TextScaled(10, SCREEN_H - 14, "F3: Debug | ESC: Menu | WASD/Arrows: Move | Space: Jump", 1, 0x666666);
+    }
+}

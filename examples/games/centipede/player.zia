@@ -13,6 +13,7 @@ bind "./mushroom";
 
 bind Viper.Game;
 bind Viper.Graphics;
+bind Viper.Input;
 
 // =============================================================================
 // BULLET ENTITY - Player's projectile
@@ -118,20 +119,20 @@ entity Player {
         canFire = true;
     }
 
-    expose func update(canvas: Canvas, field: mushroom.MushroomField) {
-        // Handle movement input
+    expose func update(field: mushroom.MushroomField) {
+        // Handle movement input via Action system
         var moveX = 0;
         var moveY = 0;
 
-        if utils.isLeftHeld(canvas) {
+        if Action.Held(config.ACT_LEFT) {
             moveX = -config.PLAYER_SPEED;
-        } else if utils.isRightHeld(canvas) {
+        } else if Action.Held(config.ACT_RIGHT) {
             moveX = config.PLAYER_SPEED;
         }
 
-        if utils.isUpHeld(canvas) {
+        if Action.Held(config.ACT_UP) {
             moveY = -config.PLAYER_SPEED;
-        } else if utils.isDownHeld(canvas) {
+        } else if Action.Held(config.ACT_DOWN) {
             moveY = config.PLAYER_SPEED;
         }
 
@@ -186,7 +187,7 @@ entity Player {
             canFire = true;
         }
 
-        if utils.isFireHeld(canvas) && canFire && !bullet.isActive() {
+        if Action.Held(config.ACT_FIRE) && canFire && !bullet.isActive() {
             bullet.fire(screenX, screenY - 4);
             canFire = false;
             fireCooldown.Start(config.PLAYER_FIRE_COOLDOWN);

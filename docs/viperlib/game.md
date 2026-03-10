@@ -28,6 +28,7 @@ last-verified: 2026-03-04
 - [Viper.Game.SmoothValue](#vipergamesmoothvalue)
 - [Viper.Game.ButtonGroup](#vipergamebuttongroup)
 - [Viper.Game.ScreenFX](#vipergamescreenfx)
+- [Viper.Game.DebugOverlay](#vipergamedebugoverlay)
 - [Viper.Game.Collision](#vipergamecollision)
 - [Viper.Game.Grid2D](#vipergamegrid2d)
 - [Current Limits](#current-limits)
@@ -534,6 +535,39 @@ fx.Shake(5000, 300, 2000);
 // Earthquake: constant rumble for 3 seconds
 fx.Shake(3000, 3000, 0);
 ```
+
+---
+
+## Viper.Game.DebugOverlay
+
+Real-time debug information overlay. Shows FPS, delta time, and custom watch variables in a semi-transparent panel. Toggle with a key binding during development.
+
+**Type:** Instance (obj)
+**Constructor:** `DebugOverlay.New()`
+
+### Properties
+
+| Property    | Type    | Access | Description                              |
+|-------------|---------|--------|------------------------------------------|
+| `IsEnabled` | Boolean | Read   | Whether the overlay is currently visible |
+| `Fps`       | Integer | Read   | Current FPS (rolling 16-frame average)   |
+
+### Methods
+
+| Method              | Signature                   | Description                                     |
+|---------------------|-----------------------------|-------------------------------------------------|
+| `Enable()`          | `Void()`                    | Show the overlay                                |
+| `Disable()`         | `Void()`                    | Hide the overlay                                |
+| `Toggle()`          | `Void()`                    | Toggle visibility                               |
+| `Update(dt)`        | `Void(Integer)`             | Update FPS tracking (call once per frame with dt in ms) |
+| `Watch(name, value)`| `Void(String, Integer)`     | Add/update a named watch variable (max 16)      |
+| `Unwatch(name)`     | `Void(String)`              | Remove a watch variable                         |
+| `Clear()`           | `Void()`                    | Remove all watch variables                      |
+| `Draw(canvas)`      | `Void(Canvas)`              | Render the overlay on top of everything         |
+
+> FPS is color-coded: **green** (≥55), **yellow** (30–54), **red** (<30).
+
+For full documentation see [Debug Overlay](game/debug.md).
 
 ---
 

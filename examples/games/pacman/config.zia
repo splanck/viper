@@ -73,7 +73,7 @@ final PAD_A = 0;
 final PAD_B = 1;
 final PAD_X = 2;
 final PAD_Y = 3;
-final PAD_START = 6;
+final PAD_START = 7;
 final PAD_DPAD_UP = 10;
 final PAD_DPAD_DOWN = 11;
 final PAD_DPAD_LEFT = 12;
@@ -173,6 +173,12 @@ final EASE_OUT_BOUNCE = 18;
 // =============================================================================
 // GAMEPLAY CONSTANTS
 // =============================================================================
+
+// DeltaTime
+final DT_MAX = 50;
+
+// Gamepad
+final PAD_IDX = 0;
 
 final PACMAN_SPEED = 4;
 final GHOST_SPEED = 3;

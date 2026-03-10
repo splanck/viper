@@ -14,7 +14,7 @@ bind "./mushroom";
 
 bind Viper.Game;
 bind Viper.Graphics;
-bind Viper.Random;
+bind Viper.Math.Random;
 
 // =============================================================================
 // FLEA ENTITY - Mushroom-dropping enemy

@@ -185,6 +185,17 @@ extern "C"
     /// @return Width in pixels (8 * scale * character count).
     int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale);
 
+    /// @brief Draw text horizontally centered on the canvas.
+    void rt_canvas_text_centered(void *canvas, int64_t y, rt_string text, int64_t color);
+
+    /// @brief Draw text right-aligned with a margin from the right edge.
+    void rt_canvas_text_right(
+        void *canvas, int64_t margin, int64_t y, rt_string text, int64_t color);
+
+    /// @brief Draw scaled text horizontally centered on the canvas.
+    void rt_canvas_text_centered_scaled(
+        void *canvas, int64_t y, rt_string text, int64_t scale, int64_t color);
+
     /// @brief Draw a filled rectangle with alpha blending.
     /// @param canvas Canvas handle.
     /// @param x Left edge X coordinate.
@@ -660,8 +671,17 @@ extern "C"
     void rt_canvas_set_fps(void *canvas, int64_t fps);
 
     /// @brief Get milliseconds elapsed since the last Flip() call.
-    /// Returns 0 before the first Flip() or if canvas is NULL.
+    /// If SetDTMax was called, result is clamped to [1, max].
     int64_t rt_canvas_get_delta_time(void *canvas);
+
+    /// @brief Set the maximum delta time clamp. When set, DeltaTime is clamped to [1, max].
+    /// Pass 0 to disable clamping (default).
+    void rt_canvas_set_dt_max(void *canvas, int64_t max_ms);
+
+    /// @brief Poll events and check if the window should remain open.
+    /// Equivalent to calling Poll() then checking !ShouldClose.
+    /// @return 1 if the frame should proceed, 0 if the window is closing.
+    int64_t rt_canvas_begin_frame(void *canvas);
 
     /// @brief Return 1 if the window is maximized, 0 otherwise.
     int8_t rt_canvas_is_maximized(void *canvas);

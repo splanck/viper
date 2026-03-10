@@ -19,8 +19,10 @@ bind "./particle";
 bind "./popup";
 
 bind Viper.Game;
+bind Viper.Game.ScreenFX as FX;
 bind Viper.Graphics;
-bind Viper.Random;
+bind Viper.Input;
+bind Viper.Math.Random;
 bind Viper.Time;
 bind Viper.Fmt;
 
@@ -61,14 +63,18 @@ entity Game {
     // Score display
     hide SmoothValue displayScore;
 
-    // Input debouncing
-    hide Boolean enterWasHeld;
-    hide Boolean escWasHeld;
-    hide Boolean pauseWasHeld;
+    // Screen effects
+    hide FX fx;
+
+    // Frame timing
+    hide Integer dt;
 
     expose func run() {
         // Create canvas
         canvas = Canvas.New("CENTIPEDE", config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
+
+        // Setup input actions
+        self.setupActions();
 
         // Initialize game state
         gameState = config.STATE_MENU;
@@ -77,6 +83,7 @@ entity Game {
         lives = config.INITIAL_LIVES;
         level = 1;
         running = true;
+        dt = 16;
 
         // Initialize timers
         spiderSpawnTimer = Timer.New();
@@ -91,29 +98,30 @@ entity Game {
         // Initialize smooth score display (initial value, speed)
         displayScore = SmoothValue.New(0.0, 900.0);
 
-        // Input debouncing
-        enterWasHeld = false;
-        escWasHeld = false;
-        pauseWasHeld = false;
+        // Initialize screen effects
+        fx = FX.New();
 
         // Main game loop
         while running {
             canvas.Poll();
 
-            // Check for quit
-            if utils.isEscapeHeld(canvas) {
-                if !escWasHeld {
-                    if gameState == config.STATE_PLAYING {
-                        gameState = config.STATE_PAUSED;
-                    } else if gameState == config.STATE_PAUSED {
-                        gameState = config.STATE_MENU;
-                    } else if gameState == config.STATE_MENU {
-                        running = false;
-                    }
+            // Frame-rate-independent timing
+            dt = canvas.DeltaTime;
+            if dt < 1 { dt = 1; }
+            if dt > config.DT_MAX { dt = config.DT_MAX; }
+
+            // Update screen effects
+            fx.Update(dt);
+
+            // Global back/escape handling
+            if Action.Pressed(config.ACT_BACK) {
+                if gameState == config.STATE_PLAYING {
+                    gameState = config.STATE_PAUSED;
+                } else if gameState == config.STATE_PAUSED {
+                    gameState = config.STATE_MENU;
+                } else if gameState == config.STATE_MENU {
+                    running = false;
                 }
-                escWasHeld = true;
-            } else {
-                escWasHeld = false;
             }
 
             // Update based on state
@@ -145,6 +153,56 @@ entity Game {
     }
 
     // =========================================================================
+    // INPUT ACTION SETUP — keyboard + gamepad bindings
+    // =========================================================================
+
+    hide func setupActions() {
+        // Movement
+        Action.Define(config.ACT_LEFT);
+        Action.BindKey(config.ACT_LEFT, config.KEY_LEFT);
+        Action.BindKey(config.ACT_LEFT, config.KEY_A);
+
+        Action.Define(config.ACT_RIGHT);
+        Action.BindKey(config.ACT_RIGHT, config.KEY_RIGHT);
+        Action.BindKey(config.ACT_RIGHT, config.KEY_D);
+
+        Action.Define(config.ACT_UP);
+        Action.BindKey(config.ACT_UP, config.KEY_UP);
+        Action.BindKey(config.ACT_UP, config.KEY_W);
+
+        Action.Define(config.ACT_DOWN);
+        Action.BindKey(config.ACT_DOWN, config.KEY_DOWN);
+        Action.BindKey(config.ACT_DOWN, config.KEY_S);
+
+        // Fire
+        Action.Define(config.ACT_FIRE);
+        Action.BindKey(config.ACT_FIRE, config.KEY_SPACE);
+
+        // Confirm / Back / Pause
+        Action.Define(config.ACT_CONFIRM);
+        Action.BindKey(config.ACT_CONFIRM, config.KEY_ENTER);
+        Action.BindKey(config.ACT_CONFIRM, config.KEY_SPACE);
+
+        Action.Define(config.ACT_BACK);
+        Action.BindKey(config.ACT_BACK, config.KEY_ESCAPE);
+
+        Action.Define(config.ACT_PAUSE);
+        Action.BindKey(config.ACT_PAUSE, config.KEY_P);
+
+        // Gamepad bindings
+        Action.BindPadButton(config.ACT_LEFT, config.PAD_IDX, config.PAD_BTN_LEFT);
+        Action.BindPadButton(config.ACT_RIGHT, config.PAD_IDX, config.PAD_BTN_RIGHT);
+        Action.BindPadButton(config.ACT_UP, config.PAD_IDX, config.PAD_BTN_UP);
+        Action.BindPadButton(config.ACT_DOWN, config.PAD_IDX, config.PAD_BTN_DOWN);
+        Action.BindPadButton(config.ACT_FIRE, config.PAD_IDX, config.PAD_BTN_A);
+        Action.BindPadButton(config.ACT_FIRE, config.PAD_IDX, config.PAD_BTN_X);
+        Action.BindPadButton(config.ACT_CONFIRM, config.PAD_IDX, config.PAD_BTN_A);
+        Action.BindPadButton(config.ACT_BACK, config.PAD_IDX, config.PAD_BTN_B);
+        Action.BindPadButton(config.ACT_BACK, config.PAD_IDX, config.PAD_BTN_START);
+        Action.BindPadButton(config.ACT_PAUSE, config.PAD_IDX, config.PAD_BTN_START);
+    }
+
+    // =========================================================================
     // MENU STATE
     // =========================================================================
 
@@ -153,14 +211,9 @@ entity Game {
             menuAnimFrame = menuAnimFrame + 1;
         }
 
-        // Check for enter to start
-        if utils.isEnterHeld(canvas) || utils.isFireHeld(canvas) {
-            if !enterWasHeld {
-                self.startGame();
-            }
-            enterWasHeld = true;
-        } else {
-            enterWasHeld = false;
+        // Check for enter/fire to start
+        if Action.Pressed(config.ACT_CONFIRM) {
+            self.startGame();
         }
     }
 
@@ -256,17 +309,12 @@ entity Game {
         displayScore.Update();
 
         // Handle pause
-        if utils.isPauseHeld(canvas) {
-            if !pauseWasHeld {
-                gameState = config.STATE_PAUSED;
-            }
-            pauseWasHeld = true;
-        } else {
-            pauseWasHeld = false;
+        if Action.Pressed(config.ACT_PAUSE) {
+            gameState = config.STATE_PAUSED;
         }
 
         // Update player
-        thePlayer.update(canvas, mushroomField);
+        thePlayer.update(mushroomField);
 
         // Update centipede
         theCentipede.update(mushroomField);
@@ -286,6 +334,7 @@ entity Game {
                 theCentipede.killSegment(hitSegment, mushroomField);
                 thePlayer.destroyBullet();
 
+                fx.Shake(3000, 80, 500);
                 if isHead {
                     self.addScoreWithPopup(config.SCORE_CENTIPEDE_HEAD, screenX, screenY);
                 } else {
@@ -440,6 +489,10 @@ entity Game {
         var playerScreenY = thePlayer.getScreenY() + config.TILE_SIZE / 2;
         particles.spawnPlayerDeath(playerScreenX, playerScreenY);
 
+        // Screen effects
+        fx.Shake(8000, 240, 500);
+        fx.Flash(config.COLOR_RED * 256 + 0xAA, 160);
+
         lives = lives - 1;
         if lives <= 0 {
             gameOverTimer.Start(180);  // 3 seconds
@@ -457,22 +510,8 @@ entity Game {
     // =========================================================================
 
     hide func updatePaused() {
-        if utils.isPauseHeld(canvas) {
-            if !pauseWasHeld {
-                gameState = config.STATE_PLAYING;
-            }
-            pauseWasHeld = true;
-        } else {
-            pauseWasHeld = false;
-        }
-
-        if utils.isEnterHeld(canvas) {
-            if !enterWasHeld {
-                gameState = config.STATE_PLAYING;
-            }
-            enterWasHeld = true;
-        } else {
-            enterWasHeld = false;
+        if Action.Pressed(config.ACT_PAUSE) || Action.Pressed(config.ACT_CONFIRM) {
+            gameState = config.STATE_PLAYING;
         }
     }
 
@@ -491,17 +530,8 @@ entity Game {
         gameOverTimer.Update();
 
         if gameOverTimer.IsExpired {
-            if utils.isEnterHeld(canvas) || utils.isFireHeld(canvas) {
-                if !enterWasHeld {
-                    gameState = config.STATE_MENU;
-                }
-                enterWasHeld = true;
-            } else {
-                enterWasHeld = false;
-            }
-
-            if utils.isRestartHeld(canvas) {
-                self.startGame();
+            if Action.Pressed(config.ACT_CONFIRM) {
+                gameState = config.STATE_MENU;
             }
         }
     }
@@ -575,6 +605,17 @@ entity Game {
         // Update and draw score popups
         popups.update();
         popups.draw(canvas);
+
+        // Draw screen effects overlay (flash/fade)
+        var overlayCol = fx.get_OverlayColor();
+        if overlayCol != 0 {
+            var r = (overlayCol / 0x1000000) % 256;
+            var g = (overlayCol / 0x10000) % 256;
+            var b = (overlayCol / 0x100) % 256;
+            var a = overlayCol % 256;
+            var rgb = r * 0x10000 + g * 0x100 + b;
+            canvas.BoxAlpha(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, rgb, a);
+        }
     }
 
     hide func drawHUD() {

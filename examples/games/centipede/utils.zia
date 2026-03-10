@@ -129,55 +129,8 @@ func pointInRect(px: Integer, py: Integer,
 }
 
 // =============================================================================
-// INPUT HELPERS (using canvas.KeyHeld directly)
+// INPUT HELPERS — Now uses Viper.Input.Action (see game.zia setupActions)
 // =============================================================================
-// Note: canvas.KeyHeld() returns Integer (0 or 1), so we compare to 0
-
-func isKeyHeld(canvas: Canvas, keyCode: Integer) -> Boolean {
-    return canvas.KeyHeld(keyCode) != 0;
-}
-
-func isUpHeld(canvas: Canvas) -> Boolean {
-    if canvas.KeyHeld(config.KEY_UP) != 0 { return true; }
-    if canvas.KeyHeld(config.KEY_W) != 0 { return true; }
-    return false;
-}
-
-func isDownHeld(canvas: Canvas) -> Boolean {
-    if canvas.KeyHeld(config.KEY_DOWN) != 0 { return true; }
-    if canvas.KeyHeld(config.KEY_S) != 0 { return true; }
-    return false;
-}
-
-func isLeftHeld(canvas: Canvas) -> Boolean {
-    if canvas.KeyHeld(config.KEY_LEFT) != 0 { return true; }
-    if canvas.KeyHeld(config.KEY_A) != 0 { return true; }
-    return false;
-}
-
-func isRightHeld(canvas: Canvas) -> Boolean {
-    if canvas.KeyHeld(config.KEY_RIGHT) != 0 { return true; }
-    if canvas.KeyHeld(config.KEY_D) != 0 { return true; }
-    return false;
-}
-
-func isFireHeld(canvas: Canvas) -> Boolean {
-    return canvas.KeyHeld(config.KEY_SPACE) != 0;
-}
-
-func isEscapeHeld(canvas: Canvas) -> Boolean {
-    return canvas.KeyHeld(config.KEY_ESCAPE) != 0;
-}
-
-func isEnterHeld(canvas: Canvas) -> Boolean {
-    return canvas.KeyHeld(config.KEY_ENTER) != 0;
-}
-
-func isPauseHeld(canvas: Canvas) -> Boolean {
-    return canvas.KeyHeld(config.KEY_P) != 0;
-}
-
-func isRestartHeld(canvas: Canvas) -> Boolean {
-    return canvas.KeyHeld(config.KEY_R) != 0;
-}
+// All input is handled via Action.Held/Action.Pressed in game.zia and player.zia.
+// Raw key code helpers have been removed.
 

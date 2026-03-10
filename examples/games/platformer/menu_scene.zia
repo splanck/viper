@@ -1,0 +1,91 @@
+// menu_scene.zia — Title screen scene
+// Demonstrates: IScene interface, ButtonGroup for menu selection
+module menu_scene;
+
+bind Viper.Graphics;
+bind Viper.Input;
+bind Viper.Game;
+bind "../lib/iscene";
+bind "./config";
+bind "./game";
+
+entity MenuScene implements IScene {
+    hide PlatformerGame game;
+    hide ButtonGroup menuBG;
+    hide Integer timer;
+
+    expose func init(g: PlatformerGame) {
+        game = g;
+        menuBG = ButtonGroup.New();
+        menuBG.Add(0);  // Play
+        menuBG.Add(1);  // Quit
+        menuBG.Select(0);
+        timer = 0;
+    }
+
+    expose func update(dt: Integer) {
+        timer = timer + 1;
+
+        if Action.Pressed("menu_up") {
+            menuBG.SelectPrev();
+        }
+        if Action.Pressed("menu_down") {
+            menuBG.SelectNext();
+        }
+
+        if Action.Pressed("confirm") {
+            if menuBG.IsSelected(0) {
+                game.resetGame();
+                game.goToPlay();
+            }
+            if menuBG.IsSelected(1) {
+                game.stopGame();
+            }
+        }
+    }
+
+    expose func draw(canvas: Canvas) {
+        canvas.Box(0, 0, SCREEN_W, SCREEN_H, COL_MENU_BG);
+
+        // Animated title
+        var bounce = timer % 60;
+        var ty = 140;
+        if bounce < 30 {
+            ty = ty - bounce / 5;
+        } else {
+            ty = ty - (60 - bounce) / 5;
+        }
+        canvas.TextScaled(190, ty, "PLATFORMER", 5, COL_TITLE);
+        canvas.TextScaled(235, ty + 50, "Showcase Demo", 2, COL_TEXT);
+
+        // API list
+        canvas.TextScaled(150, 270, "APIs: Tilemap, Camera, CollisionRect,", 1, 0x888888);
+        canvas.TextScaled(150, 284, "StateMachine, SpriteAnimation, ObjectPool,", 1, 0x888888);
+        canvas.TextScaled(150, 298, "PathFollower, ButtonGroup, DebugOverlay", 1, 0x888888);
+
+        // Menu options
+        var my = 360;
+        drawOption(canvas, "PLAY", 0, my);
+        drawOption(canvas, "QUIT", 1, my + 50);
+
+        canvas.TextScaled(200, SCREEN_H - 26, "Built with Viper GameBase + IScene", 1, 0x666666);
+    }
+
+    hide func drawOption(canvas: Canvas, label: String, id: Integer, y: Integer) {
+        var x = 340;
+        var col = COL_TEXT;
+        if menuBG.IsSelected(id) {
+            canvas.BoxAlpha(x - 15, y - 3, 180, 28, COL_MENU_HL, 150);
+            col = COL_WHITE;
+            canvas.TextScaled(x - 22, y, ">", 2, COL_TITLE);
+        }
+        canvas.TextScaled(x, y, label, 2, col);
+    }
+
+    expose func onEnter() {
+        timer = 0;
+        menuBG.Select(0);
+    }
+
+    expose func onExit() { }
+}

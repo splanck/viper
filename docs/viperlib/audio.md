@@ -16,6 +16,8 @@ last-verified: 2026-03-04
 - [Viper.Sound.Music](#vipersoundmusic)
 - [Viper.Sound.Voice](#vipersoundvoice)
 - [Viper.Sound.Audio (Static)](#vipersoundaudio-static)
+- [Viper.Sound.SoundBank](#vipersoundsoundbank)
+- [Viper.Sound.Synth](#vipersoundsynth)
 - [Audio File Format](#audio-file-format)
 - [Limits and Behaviors](#limits-and-behaviors)
 
@@ -372,7 +374,142 @@ Viper.Sound.Audio.Shutdown()
 
 ---
 
-**Note:** Playlist management is not provided by the runtime. To play multiple tracks in sequence, manually call `Sound.Stop()` and `Sound.Play()` in response to game events or timers.
+> **See also:** `Viper.Sound.Playlist` provides queue-based music playlist management with shuffle, repeat modes, and auto-advance.
+
+---
+
+## Viper.Sound.SoundBank
+
+Named sound registry that maps string names to loaded Sound objects. Games use SoundBank to manage sounds by name instead of managing Sound handles directly.
+
+**Type:** Instance (obj)
+**Constructor:** `SoundBank.New()`
+
+### Properties
+
+| Property | Type    | Access | Description                  |
+|----------|---------|--------|------------------------------|
+| `Count`  | Integer | Read   | Number of registered sounds  |
+
+### Methods
+
+| Method                     | Signature                          | Description                                                          |
+|----------------------------|------------------------------------|----------------------------------------------------------------------|
+| `Register(name, path)`    | `Integer(String, String)`          | Load WAV file and register under name. Returns 1 on success         |
+| `RegisterSound(name, sound)` | `Integer(String, Sound)`        | Register an existing Sound object (e.g., from Synth). Returns 1 on success |
+| `Play(name)`              | `Integer(String)`                  | Play named sound. Returns voice ID, or -1 if not found              |
+| `PlayEx(name, vol, pan)`  | `Integer(String, Integer, Integer)` | Play with volume (0-100) and pan (-100 to 100)                     |
+| `Has(name)`               | `Boolean(String)`                  | Check if name is registered                                         |
+| `Get(name)`               | `Sound(String)`                    | Get the Sound object for a name, or null                            |
+| `Remove(name)`            | `Void(String)`                     | Remove a named entry                                                |
+| `Clear()`                 | `Void()`                           | Remove all entries                                                  |
+
+Max 64 entries per bank. Names are truncated at 31 characters.
+
+### Zia Example
+
+```rust
+module BankDemo;
+
+bind Viper.Sound;
+
+func start() {
+    Audio.Init();
+    var bank = SoundBank.New();
+
+    // Load from files
+    bank.Register("laser", "sfx/laser.wav");
+    bank.Register("explode", "sfx/boom.wav");
+
+    // Register synthesized sounds
+    var coinSfx = Synth.Sfx(1);  // Coin preset
+    bank.RegisterSound("coin", coinSfx);
+
+    // Play by name
+    bank.Play("laser");
+    bank.PlayEx("explode", 80, -50);  // 80% vol, panned left
+
+    Audio.Shutdown();
+}
+```
+
+---
+
+## Viper.Sound.Synth
+
+Procedural sound synthesis — generates Sound objects from parameters without WAV files. All generated sounds are 16-bit PCM mono at 44100 Hz.
+
+**Type:** Static utility class
+
+### Waveform Types
+
+| Constant  | Value | Description          |
+|-----------|-------|----------------------|
+| Sine      | 0     | Smooth sine wave     |
+| Square    | 1     | Digital square wave  |
+| Sawtooth  | 2     | Ramp/sawtooth wave   |
+| Triangle  | 3     | Triangle wave        |
+
+### SFX Preset Types
+
+| Constant  | Value | Description                                       |
+|-----------|-------|---------------------------------------------------|
+| Jump      | 0     | Quick ascending frequency sweep (square wave)     |
+| Coin      | 1     | Two-tone high-pitched pickup sound                |
+| Hit       | 2     | Short noise burst with fast decay                 |
+| Explosion | 3     | Longer noise burst with slow decay                |
+| Powerup   | 4     | Ascending sweep with triangle wave                |
+| Laser     | 5     | Quick descending sweep with sawtooth              |
+
+### Methods
+
+| Method                              | Signature                                  | Description                                                                                       |
+|-------------------------------------|--------------------------------------------|---------------------------------------------------------------------------------------------------|
+| `Tone(freq, duration, wave)`        | `Sound(Integer, Integer, Integer)`         | Generate a fixed-frequency tone. freq: Hz (20-20000), duration: ms (1-10000), wave: waveform type |
+| `Sweep(startHz, endHz, duration, wave)` | `Sound(Integer, Integer, Integer, Integer)` | Generate a frequency sweep between two frequencies                                              |
+| `Noise(duration, volume)`           | `Sound(Integer, Integer)`                  | Generate white noise with exponential decay. volume: 0-100                                        |
+| `Sfx(type)`                         | `Sound(Integer)`                           | Generate a preset game sound effect                                                               |
+
+### Zia Example
+
+```rust
+module SynthDemo;
+
+bind Viper.Sound;
+
+func start() {
+    Audio.Init();
+
+    // Generate tones
+    var beep = Synth.Tone(440, 200, 0);       // A4, 200ms, sine
+    var buzz = Synth.Tone(220, 100, 1);       // A3, 100ms, square
+
+    // Frequency sweeps
+    var rising = Synth.Sweep(200, 800, 300, 0);  // Rising sine
+    var laser = Synth.Sweep(1500, 200, 120, 2);  // Falling sawtooth
+
+    // White noise
+    var static_noise = Synth.Noise(500, 80);  // 500ms, 80% volume
+
+    // Preset SFX (no WAV files needed!)
+    var jumpSnd = Synth.Sfx(0);   // Jump
+    var coinSnd = Synth.Sfx(1);   // Coin
+    var hitSnd  = Synth.Sfx(2);   // Hit
+    var boomSnd = Synth.Sfx(3);   // Explosion
+
+    // Play them
+    beep.Play();
+    jumpSnd.Play();
+
+    // Register in a SoundBank for easy access
+    var bank = SoundBank.New();
+    bank.RegisterSound("jump", jumpSnd);
+    bank.RegisterSound("coin", coinSnd);
+    bank.Play("jump");
+
+    Audio.Shutdown();
+}
+```
 
 ---
 
@@ -413,6 +550,7 @@ compressed formats are not supported.
 | Sound sample rate | Any | Resampled to 44100 Hz at load time |
 | Pan range | −100 to +100 | −100 = hard left, 0 = center, +100 = hard right |
 | Volume range | 0 to 100 | Applies to Sound, Music, and Voice |
+| Max SoundBank entries | **64** | Names truncated at 31 characters |
 
 ---
 

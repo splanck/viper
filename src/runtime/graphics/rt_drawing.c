@@ -301,6 +301,41 @@ int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale)
 }
 
 //=============================================================================
+// Centered / Right-Aligned Text Helpers
+//=============================================================================
+
+void rt_canvas_text_centered(void *canvas_ptr, int64_t y, rt_string text, int64_t color)
+{
+    if (!canvas_ptr || !text)
+        return;
+    int64_t w = rt_canvas_width(canvas_ptr);
+    int64_t tw = rt_str_len(text) * 8;
+    int64_t x = (w - tw) / 2;
+    rt_canvas_text(canvas_ptr, x, y, text, color);
+}
+
+void rt_canvas_text_right(void *canvas_ptr, int64_t margin, int64_t y, rt_string text, int64_t color)
+{
+    if (!canvas_ptr || !text)
+        return;
+    int64_t w = rt_canvas_width(canvas_ptr);
+    int64_t tw = rt_str_len(text) * 8;
+    int64_t x = w - tw - margin;
+    rt_canvas_text(canvas_ptr, x, y, text, color);
+}
+
+void rt_canvas_text_centered_scaled(
+    void *canvas_ptr, int64_t y, rt_string text, int64_t scale, int64_t color)
+{
+    if (!canvas_ptr || !text || scale < 1)
+        return;
+    int64_t w = rt_canvas_width(canvas_ptr);
+    int64_t tw = rt_str_len(text) * 8 * scale;
+    int64_t x = (w - tw) / 2;
+    rt_canvas_text_scaled(canvas_ptr, x, y, text, scale, color);
+}
+
+//=============================================================================
 // Alpha-Blended Shapes
 //=============================================================================
 

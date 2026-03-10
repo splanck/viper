@@ -1,0 +1,13 @@
+// main.zia — Entry point for the Platformer Showcase Demo
+// Demonstrates 11 Viper runtime APIs in one cohesive game.
+module main;
+
+bind "../lib/gamebase";
+bind "./config";
+bind "./game";
+
+func start() {
+    var game = new PlatformerGame();
+    game.initGame("Platformer Showcase", SCREEN_W, SCREEN_H);
+    game.run();
+}

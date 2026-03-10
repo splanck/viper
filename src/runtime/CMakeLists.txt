@@ -113,6 +113,7 @@ set(RT_COLLECTIONS_SOURCES
         collections/rt_screenfx.c
         collections/rt_pathfollow.c
         collections/rt_quadtree.c
+        collections/rt_debugoverlay.c
 )
 
 set(RT_TEXT_SOURCES
@@ -165,6 +166,7 @@ set(RT_IO_FS_SOURCES
         io/rt_watcher.c
         io/rt_compress.c
         io/rt_archive.c
+        io/rt_savedata.c
 )
 
 set(RT_EXEC_SOURCES
@@ -210,6 +212,8 @@ set(RT_GRAPHICS_SOURCES
 set(RT_AUDIO_SOURCES
         audio/rt_audio.c
         audio/rt_playlist.c
+        audio/rt_soundbank.c
+        audio/rt_synth.c
 )
 
 set(RT_THREADS_SOURCES
@@ -294,6 +298,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_screenfx.h
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_pathfollow.h
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_quadtree.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_debugoverlay.h
         ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_datetime.h
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_map.h
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_binbuf.h
@@ -307,6 +312,8 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_scene.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_spritebatch.h
         ${CMAKE_CURRENT_SOURCE_DIR}/audio/rt_audio.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/audio/rt_soundbank.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/audio/rt_synth.h
         ${CMAKE_CURRENT_SOURCE_DIR}/threads/rt_threads.h
         ${CMAKE_CURRENT_SOURCE_DIR}/network/rt_network.h
 )

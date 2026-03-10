@@ -77,7 +77,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_convert_") || starts("rt_statemachine_") || starts("rt_tween_") ||
         starts("rt_buttongroup_") || starts("rt_particle_") || starts("rt_spriteanim_") ||
         starts("rt_collision_") || starts("rt_objpool_") || starts("rt_screenfx_") ||
-        starts("rt_pathfollow_") || starts("rt_quadtree_"))
+        starts("rt_pathfollow_") || starts("rt_quadtree_") || starts("rt_debugoverlay_"))
         return RtComponent::Collections;
 
     // Text component
@@ -96,7 +96,8 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_linereader_") || starts("rt_linewriter_") || starts("rt_io_file_") ||
         starts("rt_memstream_") || starts("rt_stream_") || starts("rt_watcher_") ||
         starts("rt_compress_") || starts("rt_archive_") || starts("rt_glob_") ||
-        starts("rt_tempfile_") || sym == "rt_eof_ch" || sym == "rt_lof_ch" || sym == "rt_loc_ch" ||
+        starts("rt_tempfile_") || starts("rt_savedata_") ||
+        sym == "rt_eof_ch" || sym == "rt_lof_ch" || sym == "rt_loc_ch" ||
         sym == "rt_close_err" || sym == "rt_seek_ch_err" || sym == "rt_write_ch_err" ||
         sym == "rt_println_ch_err" || sym == "rt_line_input_ch_err" || sym == "rt_open_err_vstr")
         return RtComponent::IoFs;
@@ -127,6 +128,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
 
     // Audio component
     if (starts("rt_audio_") || starts("rt_playlist_") || starts("rt_sound_") ||
+        starts("rt_soundbank_") || starts("rt_synth_") ||
         starts("rt_music_") || starts("rt_voice_"))
         return RtComponent::Audio;
 
@@ -240,6 +242,8 @@ inline std::vector<RtComponent> resolveRequiredComponents(const SymbolRange &sym
     if (has(RtComponent::Text) || has(RtComponent::IoFs) || has(RtComponent::Exec) ||
         has(RtComponent::Network))
         add(RtComponent::Collections);
+    if (has(RtComponent::IoFs))
+        add(RtComponent::Text); // SaveData depends on rt_json_stream_*
     if (has(RtComponent::Collections))
         add(RtComponent::Arrays);
     if (has(RtComponent::Collections) || has(RtComponent::Arrays) || has(RtComponent::Graphics) ||

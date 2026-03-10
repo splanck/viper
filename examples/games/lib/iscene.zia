@@ -1,0 +1,24 @@
+module iscene;
+
+// ============================================================================
+// IScene — Game State Interface
+// ============================================================================
+// Defines the contract for a game scene (menu, gameplay, game over, etc.).
+// Used with GameBase for scene lifecycle management.
+//
+// Lifecycle:
+//   onEnter()  — called once when this scene becomes active
+//   update(dt) — called every frame with delta time in milliseconds
+//   draw(canvas) — called every frame to render the scene
+//   onExit()   — called once when transitioning away from this scene
+// ============================================================================
+
+bind Viper.Graphics;
+bind Viper.Graphics.Canvas;
+
+interface IScene {
+    func update(dt: Integer);
+    func draw(canvas: Canvas);
+    func onEnter();
+    func onExit();
+}

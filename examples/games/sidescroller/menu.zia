@@ -1,28 +1,49 @@
 // menu.zia — Title screen, pause, game over, level complete, high scores, controls
-// Uses Viper.Input.Action for input instead of raw key codes.
+// Uses SaveData for persistent high scores, TextCenteredScaled for centered headers.
 module menu;
 
 bind Viper.Graphics;
 bind Viper.Input;
 bind Viper.Fmt;
-bind Viper.IO.File as FileIO;
-bind Viper.String as Str;
-bind Viper.Core.Convert as Convert;
-bind Viper.Collections.Seq as Seq;
+bind Viper.IO;
+bind Viper.Game;
 bind "./config";
 bind "./sprites";
 
 entity MenuSystem {
-    hide Integer selected;
+    hide ButtonGroup titleBG;
+    hide ButtonGroup pauseBG;
+    hide ButtonGroup gameOverBG;
     hide Integer titleTimer;     // for title animation
     hide Integer bgScroll;       // background scroll
     hide List[Integer] highScores;
     hide List[String] highNames;
+    hide SaveData save;          // cross-platform persistent storage
 
     expose func init() {
-        selected = 0;
+        // Title menu: Play, High Scores, Controls, Quit
+        titleBG = ButtonGroup.New();
+        titleBG.Add(MENU_PLAY);
+        titleBG.Add(MENU_HIGHSCORES);
+        titleBG.Add(MENU_CONTROLS);
+        titleBG.Add(MENU_QUIT);
+        titleBG.Select(MENU_PLAY);
+
+        // Pause menu: Resume (0), Quit to Menu (1)
+        pauseBG = ButtonGroup.New();
+        pauseBG.Add(0);
+        pauseBG.Add(1);
+        pauseBG.Select(0);
+
+        // Game over menu: Try Again (0), Main Menu (1)
+        gameOverBG = ButtonGroup.New();
+        gameOverBG.Add(0);
+        gameOverBG.Add(1);
+        gameOverBG.Select(0);
+
         titleTimer = 0;
         bgScroll = 0;
+        save = SaveData.New("nova_run");
 
         // Default high scores
         highScores = [];
@@ -43,22 +64,20 @@ entity MenuSystem {
         titleTimer = titleTimer + 1;
         bgScroll = bgScroll + 1;
 
-        // Navigation via Action
+        // Navigation via Action + ButtonGroup (auto-wrapping)
         if Action.Pressed(ACT_UP) {
-            selected = selected - 1;
-            if selected < 0 { selected = 3; }
+            titleBG.SelectPrev();
         }
         if Action.Pressed(ACT_DOWN) {
-            selected = selected + 1;
-            if selected > 3 { selected = 0; }
+            titleBG.SelectNext();
         }
 
         // Selection
         if Action.Pressed(ACT_CONFIRM) {
-            if selected == MENU_PLAY { return STATE_PLAYING; }
-            if selected == MENU_HIGHSCORES { return STATE_HIGHSCORES; }
-            if selected == MENU_CONTROLS { return STATE_CONTROLS; }
-            if selected == MENU_QUIT { return -2; }
+            if titleBG.IsSelected(MENU_PLAY) { return STATE_PLAYING; }
+            if titleBG.IsSelected(MENU_HIGHSCORES) { return STATE_HIGHSCORES; }
+            if titleBG.IsSelected(MENU_CONTROLS) { return STATE_CONTROLS; }
+            if titleBG.IsSelected(MENU_QUIT) { return -2; }
         }
 
         return -1;
@@ -81,22 +100,23 @@ entity MenuSystem {
         canvas.TextScaled(340, titleY, "NOVA", 6, COL_TITLE_ORANGE);
         canvas.TextScaled(640, titleY, "RUN", 6, COL_TITLE_YELLOW);
 
-        canvas.TextScaled(420, titleY + 56, "A Platformer Adventure", 2, COL_HUD_GRAY);
+        canvas.TextCenteredScaled(titleY + 56, "A Platformer Adventure", COL_HUD_GRAY, 2);
 
         var menuY = 300;
-        drawMenuOption(canvas, "PLAY", 0, menuY);
-        drawMenuOption(canvas, "HIGH SCORES", 1, menuY + 50);
-        drawMenuOption(canvas, "CONTROLS", 2, menuY + 100);
-        drawMenuOption(canvas, "QUIT", 3, menuY + 150);
+        drawMenuOption(canvas, "PLAY", MENU_PLAY, menuY, titleBG);
+        drawMenuOption(canvas, "HIGH SCORES", MENU_HIGHSCORES, menuY + 50, titleBG);
+        drawMenuOption(canvas, "CONTROLS", MENU_CONTROLS, menuY + 100, titleBG);
+        drawMenuOption(canvas, "QUIT", MENU_QUIT, menuY + 150, titleBG);
 
-        canvas.TextScaled(440, SCREEN_H - 30, "Made with Viper + Zia", 2, COL_HUD_GRAY);
+        canvas.TextCenteredScaled(SCREEN_H - 30, "Made with Viper + Zia", COL_HUD_GRAY, 2);
     }
 
-    hide func drawMenuOption(canvas: Canvas, label: String, index: Integer, y: Integer) {
+    hide func drawMenuOption(canvas: Canvas, label: String, index: Integer,
+                              y: Integer, bg: ButtonGroup) {
         var x = 520;
         var col = COL_MENU_TEXT;
 
-        if index == selected {
+        if bg.IsSelected(index) {
             canvas.BoxAlpha(x - 20, y - 4, 280, 32, COL_MENU_HIGHLIGHT, 150);
             col = COL_WHITE;
             canvas.TextScaled(x - 30, y, ">", 3, COL_TITLE_ORANGE);
@@ -127,15 +147,15 @@ entity MenuSystem {
         }
 
         if Action.Pressed(ACT_UP) {
-            selected = 1 - selected;
+            pauseBG.SelectPrev();
         }
         if Action.Pressed(ACT_DOWN) {
-            selected = 1 - selected;
+            pauseBG.SelectNext();
         }
 
         if Action.Pressed(ACT_CONFIRM) {
-            if selected == 0 { return STATE_PLAYING; }
-            if selected == 1 { return STATE_MENU; }
+            if pauseBG.IsSelected(0) { return STATE_PLAYING; }
+            if pauseBG.IsSelected(1) { return STATE_MENU; }
         }
 
         return STATE_PAUSED;
@@ -143,11 +163,11 @@ entity MenuSystem {
 
     expose func drawPause(canvas: Canvas) {
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, 150);
-        canvas.TextScaled(510, 240, "PAUSED", 4, COL_WHITE);
+        canvas.TextCenteredScaled(240, "PAUSED", COL_WHITE, 4);
 
         var y = 340;
-        drawMenuOption(canvas, "RESUME", 0, y);
-        drawMenuOption(canvas, "QUIT TO MENU", 1, y + 50);
+        drawMenuOption(canvas, "RESUME", 0, y, pauseBG);
+        drawMenuOption(canvas, "QUIT TO MENU", 1, y + 50, pauseBG);
     }
 
     // =========================================================================
@@ -156,15 +176,15 @@ entity MenuSystem {
 
     expose func updateGameOver() -> Integer {
         if Action.Pressed(ACT_UP) {
-            selected = 1 - selected;
+            gameOverBG.SelectPrev();
         }
         if Action.Pressed(ACT_DOWN) {
-            selected = 1 - selected;
+            gameOverBG.SelectNext();
         }
 
         if Action.Pressed(ACT_CONFIRM) {
-            if selected == 0 { return STATE_PLAYING; }
-            if selected == 1 { return STATE_MENU; }
+            if gameOverBG.IsSelected(0) { return STATE_PLAYING; }
+            if gameOverBG.IsSelected(1) { return STATE_MENU; }
         }
 
         return STATE_GAMEOVER;
@@ -173,15 +193,15 @@ entity MenuSystem {
     expose func drawGameOver(canvas: Canvas, score: Integer) {
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, 180);
 
-        canvas.TextScaled(430, 180, "GAME OVER", 5, COL_HUD_RED);
+        canvas.TextCenteredScaled(180, "GAME OVER", COL_HUD_RED, 5);
 
         var scoreStr = Int(score);
-        canvas.TextScaled(450, 260, "FINAL SCORE:", 3, COL_HUD_GRAY);
+        canvas.TextCenteredScaled(260, "FINAL SCORE:", COL_HUD_GRAY, 3);
         canvas.TextScaled(480, 300, scoreStr, 4, COL_COIN_GOLD);
 
         var y = 380;
-        drawMenuOption(canvas, "TRY AGAIN", 0, y);
-        drawMenuOption(canvas, "MAIN MENU", 1, y + 50);
+        drawMenuOption(canvas, "TRY AGAIN", 0, y, gameOverBG);
+        drawMenuOption(canvas, "MAIN MENU", 1, y + 50, gameOverBG);
     }
 
     // =========================================================================
@@ -202,7 +222,7 @@ entity MenuSystem {
                                    timeBonus: Integer, levelNum: Integer) {
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, 150);
 
-        canvas.TextScaled(390, 140, "LEVEL COMPLETE!", 4, COL_HUD_GREEN);
+        canvas.TextCenteredScaled(140, "LEVEL COMPLETE!", COL_HUD_GREEN, 4);
 
         var levelName = "GRASSLANDS";
         if levelNum == 2 { levelName = "CRYSTAL CAVE"; }
@@ -230,7 +250,7 @@ entity MenuSystem {
         }
 
         if revealFrames > 120 {
-            canvas.TextScaled(430, 460, "Press ENTER to continue", 2, COL_HUD_GRAY);
+            canvas.TextCenteredScaled(460, "Press ENTER to continue", COL_HUD_GRAY, 2);
         }
     }
 
@@ -255,17 +275,17 @@ entity MenuSystem {
         var titleCol = COL_TITLE_ORANGE;
         if flash < 15 { titleCol = COL_TITLE_YELLOW; }
 
-        canvas.TextScaled(400, 120, "VICTORY!", 6, titleCol);
+        canvas.TextCenteredScaled(120, "VICTORY!", titleCol, 6);
 
-        canvas.TextScaled(370, 230, "You defeated the Mech Guardian!", 2, COL_WHITE);
-        canvas.TextScaled(420, 270, "The crystals are safe.", 2, COL_CRYSTAL_BLUE);
+        canvas.TextCenteredScaled(230, "You defeated the Mech Guardian!", COL_WHITE, 2);
+        canvas.TextCenteredScaled(270, "The crystals are safe.", COL_CRYSTAL_BLUE, 2);
 
         var scoreStr = Int(score);
         canvas.TextScaled(450, 350, "FINAL SCORE:", 3, COL_HUD_GRAY);
         canvas.TextScaled(480, 390, scoreStr, 4, COL_COIN_GOLD);
 
         if titleTimer > 60 {
-            canvas.TextScaled(440, 490, "Press ENTER for menu", 2, COL_HUD_GRAY);
+            canvas.TextCenteredScaled(490, "Press ENTER for menu", COL_HUD_GRAY, 2);
         }
     }
 
@@ -287,7 +307,7 @@ entity MenuSystem {
         canvas.Box(0, 0, SCREEN_W, SCREEN_H, COL_MENU_BG);
         drawStarfield(canvas);
 
-        canvas.TextScaled(430, 40, "HIGH SCORES", 4, COL_TITLE_YELLOW);
+        canvas.TextCenteredScaled(40, "HIGH SCORES", COL_TITLE_YELLOW, 4);
 
         var i = 0;
         while i < 10 {
@@ -307,7 +327,7 @@ entity MenuSystem {
             i = i + 1;
         }
 
-        canvas.TextScaled(440, SCREEN_H - 40, "Press ENTER to return", 2, COL_HUD_GRAY);
+        canvas.TextCenteredScaled(SCREEN_H - 40, "Press ENTER to return", COL_HUD_GRAY, 2);
     }
 
     expose func addHighScore(score: Integer, name: String) {
@@ -332,36 +352,25 @@ entity MenuSystem {
         return score > highScores.get(9);
     }
 
-    // Persistent high scores — CSV format: score,name per line
+    // Persistent high scores via SaveData (cross-platform JSON)
     expose func loadHighScores() {
-        if FileIO.Exists("highscores.txt") == false {
-            return;
-        }
-        var lines = FileIO.ReadAllLines("highscores.txt");
-        var n = Seq.get_Len(lines);
+        save.Load();
         var i = 0;
-        while i < n {
-            if i >= 10 { return; }
-            var line = "" + Seq.Get(lines, i);
-            var parts = Str.Split(line, ",");
-            if Seq.get_Len(parts) >= 2 {
-                var scoreVal = Convert.ToInt("" + Seq.Get(parts, 0));
-                var name = "" + Seq.Get(parts, 1);
-                highScores.set(i, scoreVal);
-                highNames.set(i, name);
-            }
+        while i < 10 {
+            highScores.set(i, save.GetInt("hs_score_" + Int(i), (10 - i) * 1000));
+            highNames.set(i, save.GetString("hs_name_" + Int(i), "AAA"));
             i = i + 1;
         }
     }
 
     expose func saveHighScores() {
-        var data = "";
         var i = 0;
         while i < 10 {
-            data = data + Int(highScores.get(i)) + "," + highNames.get(i) + "\n";
+            save.SetInt("hs_score_" + Int(i), highScores.get(i));
+            save.SetString("hs_name_" + Int(i), highNames.get(i));
             i = i + 1;
         }
-        FileIO.WriteAllText("highscores.txt", data);
+        save.Save();
     }
 
     // =========================================================================
@@ -381,7 +390,7 @@ entity MenuSystem {
     expose func drawControls(canvas: Canvas) {
         canvas.Box(0, 0, SCREEN_W, SCREEN_H, COL_MENU_BG);
 
-        canvas.TextScaled(470, 40, "CONTROLS", 4, COL_TITLE_ORANGE);
+        canvas.TextCenteredScaled(40, "CONTROLS", COL_TITLE_ORANGE, 4);
 
         var y = 150;
         var gap = 44;
@@ -403,7 +412,7 @@ entity MenuSystem {
         canvas.TextScaled(370, y + gap * 13 + 28, "Slide on walls and wall-jump", 2, COL_MENU_TEXT);
         canvas.TextScaled(370, y + gap * 13 + 56, "Double-jump in mid-air", 2, COL_MENU_TEXT);
 
-        canvas.TextScaled(440, SCREEN_H - 40, "Press ENTER to return", 2, COL_HUD_GRAY);
+        canvas.TextCenteredScaled(SCREEN_H - 40, "Press ENTER to return", COL_HUD_GRAY, 2);
     }
 
     hide func drawControlRow(canvas: Canvas, y: Integer,
@@ -413,7 +422,9 @@ entity MenuSystem {
     }
 
     expose func resetSelection() {
-        selected = 0;
+        titleBG.Select(MENU_PLAY);
+        pauseBG.Select(0);
+        gameOverBG.Select(0);
         titleTimer = 0;
     }
 }

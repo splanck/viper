@@ -66,6 +66,12 @@ extern "C"
     /// @return Opaque sound handle, or NULL on failure.
     void *rt_sound_load(rt_string path);
 
+    /// @brief Load a sound effect from in-memory WAV data.
+    /// @param data Pointer to WAV file data in memory.
+    /// @param size Size of the data in bytes.
+    /// @return Opaque sound handle, or NULL on failure.
+    void *rt_sound_load_mem(const void *data, int64_t size);
+
     /// @brief Free a loaded sound effect.
     /// @param sound Sound handle from rt_sound_load.
     void rt_sound_free(void *sound);

@@ -1,0 +1,94 @@
+// game.zia — PlatformerGame entity extending GameBase
+// Demonstrates: GameBase inheritance, DebugOverlay, Action.LoadPreset
+module game;
+
+bind Viper.Graphics;
+bind Viper.Input;
+bind Viper.Game;
+bind "../lib/gamebase";
+bind "../lib/iscene";
+bind "./config";
+bind "./menu_scene";
+bind "./play_scene";
+
+entity PlatformerGame extends GameBase {
+    expose MenuScene menuScene;
+    expose PlayScene playScene;
+    hide DebugOverlay debug;
+    hide Integer score;
+    hide Integer coinsCollected;
+
+    override expose func onInit() {
+        // Load input presets — demonstrates Action.LoadPreset (Item 2)
+        Action.LoadPreset("platformer");
+        Action.LoadPreset("menu_navigation");
+
+        // Debug overlay toggle
+        Action.Define("debug_toggle");
+        Action.BindKey("debug_toggle", 292);  // F3
+
+        debug = DebugOverlay.New();
+        score = 0;
+        coinsCollected = 0;
+
+        menuScene = new MenuScene(self);
+        playScene = new PlayScene(self);
+        self.setScene(menuScene);
+    }
+
+    override expose func onFrame(dt: Integer) {
+        // Toggle debug overlay with F3
+        if Action.Pressed("debug_toggle") {
+            debug.Toggle();
+        }
+        debug.Update(dt);
+        debug.Watch("Score", score);
+        debug.Watch("Coins", coinsCollected);
+        debug.Draw(self.getCanvas());
+    }
+
+    expose func addCoin() {
+        coinsCollected = coinsCollected + 1;
+        score = score + 100;
+    }
+
+    expose func addScore(points: Integer) {
+        score = score + points;
+    }
+
+    expose func getScore() -> Integer { return score; }
+    expose func getCoins() -> Integer { return coinsCollected; }
+
+    expose func resetGame() {
+        score = 0;
+        coinsCollected = 0;
+    }
+
+    // --- Wrappers for inherited GameBase methods ---
+    // Zia's sema pass doesn't expose inherited methods cross-module,
+    // so scenes call these wrappers instead of the parent methods directly.
+
+    expose func goToPlay() {
+        self.setScene(playScene);
+    }
+
+    expose func goToMenu() {
+        self.transitionTo(menuScene, COL_BLACK, 300);
+    }
+
+    expose func goToMenuDirect() {
+        self.setScene(menuScene);
+    }
+
+    expose func stopGame() {
+        self.quit();
+    }
+
+    expose func doShake(intensity: Integer, dur: Integer, decay: Integer) {
+        self.shake(intensity, dur, decay);
+    }
+
+    expose func doFlash(color: Integer, dur: Integer) {
+        self.flash(color, dur);
+    }
+}

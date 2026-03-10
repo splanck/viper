@@ -1,0 +1,93 @@
+// =============================================================================
+// PAC-MAN - Particle System (using Viper.Game.ParticleEmitter)
+// =============================================================================
+// Visual effects for dot eating, ghost eating, fruit collection, death.
+// =============================================================================
+
+module particles;
+
+bind "./config";
+
+bind Viper.Graphics;
+bind Viper.Game.ParticleEmitter as PE;
+
+entity ParticleSystem {
+    hide PE emitter;
+
+    expose func init() {
+        emitter = PE.New(128);
+        emitter.set_FadeOut(true);
+        emitter.set_Shrink(true);
+    }
+
+    // Tiny sparkle when eating a dot
+    expose func burstDotEat(x: Integer, y: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.set_Color(config.COLOR_DOT);
+        emitter.SetLifetime(5, 10);
+        emitter.SetVelocity(2.0, 6.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.0);
+        emitter.SetSize(1.0, 2.0);
+        emitter.Burst(2);
+    }
+
+    // Blue ring burst for power pellet
+    expose func burstPellet(x: Integer, y: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.set_Color(config.COLOR_BLUE);
+        emitter.SetLifetime(10, 18);
+        emitter.SetVelocity(6.0, 14.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.0);
+        emitter.SetSize(1.0, 3.0);
+        emitter.Burst(8);
+    }
+
+    // Colored explosion when eating a ghost
+    expose func burstGhostEat(x: Integer, y: Integer, col: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.SetLifetime(12, 20);
+        emitter.SetVelocity(5.0, 15.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.1);
+        emitter.SetSize(2.0, 4.0);
+        emitter.set_Color(col);
+        emitter.Burst(8);
+        emitter.set_Color(config.COLOR_WHITE);
+        emitter.Burst(4);
+    }
+
+    // Sparkle when collecting fruit
+    expose func burstFruitCollect(x: Integer, y: Integer, col: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.set_Color(col);
+        emitter.SetLifetime(10, 16);
+        emitter.SetVelocity(4.0, 12.0, 30.0, 150.0);
+        emitter.SetGravity(0.0, 0.3);
+        emitter.SetSize(1.0, 3.0);
+        emitter.Burst(8);
+    }
+
+    // Big explosion on death
+    expose func burstDeath(x: Integer, y: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.SetLifetime(15, 25);
+        emitter.SetVelocity(5.0, 18.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.2);
+        emitter.SetSize(2.0, 4.0);
+        emitter.set_Color(config.COLOR_YELLOW);
+        emitter.Burst(10);
+        emitter.set_Color(config.COLOR_WHITE);
+        emitter.Burst(6);
+    }
+
+    expose func update() {
+        emitter.Update();
+    }
+
+    expose func draw(canvas: Canvas) {
+        emitter.Draw(canvas);
+    }
+
+    expose func reset() {
+        emitter.Clear();
+    }
+}

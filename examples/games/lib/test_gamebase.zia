@@ -1,0 +1,172 @@
+module main;
+
+// ============================================================================
+// Test: GameBase + IScene Framework Validation
+// ============================================================================
+// Validates:
+//   - NullScene sentinel pattern (no optional interface chaining)
+//   - Inherited init() runs when child doesn't define its own
+//   - override expose func syntax accepted by compiler
+//   - Scene transitions via setScene() on GameBase reference
+//   - Deferred transitions (applied at frame boundaries)
+//
+// Design: Scenes hold GameBase references (Dependency Inversion Principle),
+// not concrete game type references. Scene-to-scene wiring uses late binding.
+// ============================================================================
+
+bind "./gamebase";
+bind "./iscene";
+
+bind Viper.Graphics;
+bind Viper.Graphics.Canvas;
+bind Viper.Graphics.Color;
+bind Viper.Game.ScreenFX as FX;
+bind Viper.Input;
+
+// ============================================================================
+// Input constants
+// ============================================================================
+final KEY_ESCAPE = 256;
+final KEY_SPACE  = 32;
+
+final ACT_BACK    = "back";
+final ACT_SWITCH  = "switch_scene";
+
+// ============================================================================
+// Scene 1: Red Screen
+// ============================================================================
+entity RedScene implements IScene {
+    hide GameBase game;
+    hide IScene nextScene;
+    hide Boolean hasNext;
+    hide Integer timer;
+
+    expose func init(g: GameBase) {
+        game = g;
+        hasNext = false;
+        timer = 0;
+    }
+
+    expose func setNextScene(scene: IScene) {
+        nextScene = scene;
+        hasNext = true;
+    }
+
+    expose func update(dt: Integer) {
+        timer = timer + dt;
+
+        if Action.Pressed(ACT_BACK) {
+            game.quit();
+        }
+
+        if Action.Pressed(ACT_SWITCH) {
+            if hasNext {
+                game.setScene(nextScene);
+            }
+        }
+    }
+
+    expose func draw(canvas: Canvas) {
+        canvas.Clear(RGB(80, 20, 20));
+        canvas.Text(20, 20, "RED SCENE", RGB(255, 100, 100));
+        canvas.Text(20, 50, "Press SPACE to switch to Blue", RGB(200, 200, 200));
+        canvas.Text(20, 80, "Press ESC to exit", RGB(150, 150, 150));
+    }
+
+    expose func onEnter() {
+        timer = 0;
+    }
+
+    expose func onExit() { }
+}
+
+// ============================================================================
+// Scene 2: Blue Screen
+// ============================================================================
+entity BlueScene implements IScene {
+    hide GameBase game;
+    hide IScene nextScene;
+    hide Boolean hasNext;
+    hide Integer timer;
+
+    expose func init(g: GameBase) {
+        game = g;
+        hasNext = false;
+        timer = 0;
+    }
+
+    expose func setNextScene(scene: IScene) {
+        nextScene = scene;
+        hasNext = true;
+    }
+
+    expose func update(dt: Integer) {
+        timer = timer + dt;
+
+        if Action.Pressed(ACT_BACK) {
+            game.quit();
+        }
+
+        if Action.Pressed(ACT_SWITCH) {
+            if hasNext {
+                game.setScene(nextScene);
+            }
+        }
+    }
+
+    expose func draw(canvas: Canvas) {
+        canvas.Clear(RGB(20, 20, 80));
+        canvas.Text(20, 20, "BLUE SCENE", RGB(100, 100, 255));
+        canvas.Text(20, 50, "Press SPACE to switch to Red", RGB(200, 200, 200));
+        canvas.Text(20, 80, "Press ESC to exit", RGB(150, 150, 150));
+    }
+
+    expose func onEnter() {
+        timer = 0;
+    }
+
+    expose func onExit() { }
+}
+
+// ============================================================================
+// TestGame — Extends GameBase
+// ============================================================================
+entity TestGame extends GameBase {
+    expose RedScene redScene;
+    expose BlueScene blueScene;
+
+    override expose func onInit() {
+        // Setup input actions
+        Action.Define(ACT_BACK);
+        Action.BindKey(ACT_BACK, KEY_ESCAPE);
+
+        Action.Define(ACT_SWITCH);
+        Action.BindKey(ACT_SWITCH, KEY_SPACE);
+
+        // Create scenes — pass `self` as GameBase reference
+        redScene = new RedScene(self);
+        blueScene = new BlueScene(self);
+
+        // Late-bind scene transitions (breaks circular dependency)
+        redScene.setNextScene(blueScene);
+        blueScene.setNextScene(redScene);
+
+        // Start with red scene
+        self.setScene(redScene);
+    }
+
+    override expose func onFrame(dt: Integer) {
+        // Global overlay: show frame info at bottom
+        var canvas = self.getCanvas();
+        canvas.Text(20, self.getHeight() - 30, "GameBase + IScene Test", RGB(80, 80, 80));
+    }
+}
+
+// ============================================================================
+// Entry point
+// ============================================================================
+func start() {
+    var game = new TestGame();
+    game.initGame("GameBase Test", 640, 480);
+    game.run();
+}

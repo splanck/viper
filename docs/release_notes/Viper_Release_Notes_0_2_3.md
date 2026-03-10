@@ -193,6 +193,40 @@ Split the monolithic 2,750-line `Peephole.cpp` into 6 focused sub-passes under `
 peephole templates (`PeepholeDCE.hpp`, `PeepholeCopyProp.hpp`) parameterized on target traits are
 used by both AArch64 and x86-64 backends.
 
+#### Game Engine Framework (10-Item Improvement Plan)
+
+A comprehensive game development infrastructure built as pure Zia libraries and C runtime additions:
+
+**GameBase + IScene (Zia library)** — Reusable game loop framework. `GameBase` entity handles canvas
+creation, frame pacing, DeltaTime clamping, and scene management. `IScene` interface defines
+`update`/`draw`/`onEnter`/`onExit` lifecycle. Eliminates ~100 lines of boilerplate per game.
+
+**Screen Transitions** — `transitionTo()` on GameBase orchestrates fade-out → scene switch → fade-in
+using ScreenFX. Also adds `shake()` and `flash()` for screen effects.
+
+**Action Presets (C runtime)** — `Action.LoadPreset("platformer")` loads standard input bindings in
+one call. Four presets: `standard_movement`, `menu_navigation`, `platformer`, `topdown`.
+
+**Canvas Frame Helpers (C runtime)** — `BeginFrame()` combines Poll + ShouldClose check.
+`SetDTMax()` auto-clamps DeltaTime. Text layout: `TextCentered`, `TextRight`, `TextCenteredScaled`.
+
+**SaveData (C runtime)** — Cross-platform key-value persistence. JSON storage in platform-appropriate
+directories (macOS Application Support, Linux XDG, Windows AppData).
+
+**DebugOverlay (C runtime)** — Real-time FPS/dt/watch variable overlay with color-coded FPS,
+16-frame rolling average, and up to 16 custom watch entries.
+
+**SoundBank + Synth (C runtime)** — Named sound registry maps string names to Sound objects.
+Procedural synth generates tones, sweeps, noise, and 6 preset game SFX (jump/coin/hit/explosion/
+powerup/laser) without WAV files. Uses Bhaskara I sine approximation and in-memory WAV generation.
+
+**Platformer Showcase Demo** — ~600 LOC across 6 files demonstrating 11+ runtime APIs in one
+cohesive game: Tilemap, Camera, CollisionRect, StateMachine, SpriteAnimation, ObjectPool,
+PathFollower, ButtonGroup, DebugOverlay, ScreenFX, and Action presets.
+
+**Demo Refactoring** — Sidescroller demo refactored to use StateMachine (replacing manual integer
+state tracking) and ButtonGroup (replacing manual selection management).
+
 ---
 
 ### Comprehensive Safety Audits

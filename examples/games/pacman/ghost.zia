@@ -315,6 +315,10 @@ entity Ghost {
         return screenY;
     }
 
+    expose func getColor() -> Integer {
+        return color;
+    }
+
     expose func collidesWithPacman(pacmanX: Integer, pacmanY: Integer) -> Boolean {
         return gridX == pacmanX && gridY == pacmanY;
     }

@@ -229,6 +229,7 @@ final KEY_Z = 90;
 final KEY_X = 88;
 final KEY_ENTER = 257;
 final KEY_ESCAPE = 256;
+final KEY_F3 = 292;
 
 // =============================================================================
 // Colors (0x00RRGGBB for Canvas)

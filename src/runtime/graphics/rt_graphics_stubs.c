@@ -204,6 +204,33 @@ int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale)
     return 0;
 }
 
+void rt_canvas_text_centered(void *canvas, int64_t y, rt_string text, int64_t color)
+{
+    (void)canvas;
+    (void)y;
+    (void)text;
+    (void)color;
+}
+
+void rt_canvas_text_right(void *canvas, int64_t margin, int64_t y, rt_string text, int64_t color)
+{
+    (void)canvas;
+    (void)margin;
+    (void)y;
+    (void)text;
+    (void)color;
+}
+
+void rt_canvas_text_centered_scaled(
+    void *canvas, int64_t y, rt_string text, int64_t scale, int64_t color)
+{
+    (void)canvas;
+    (void)y;
+    (void)text;
+    (void)scale;
+    (void)color;
+}
+
 void rt_canvas_box_alpha(
     void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color, int64_t alpha)
 {
@@ -717,6 +744,18 @@ void rt_canvas_set_fps(void *canvas, int64_t fps)
 }
 
 int64_t rt_canvas_get_delta_time(void *canvas)
+{
+    (void)canvas;
+    return 0;
+}
+
+void rt_canvas_set_dt_max(void *canvas, int64_t max_ms)
+{
+    (void)canvas;
+    (void)max_ms;
+}
+
+int64_t rt_canvas_begin_frame(void *canvas)
 {
     (void)canvas;
     return 0;

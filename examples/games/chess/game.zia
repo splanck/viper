@@ -88,9 +88,8 @@ entity ChessGame {
     hide List[Integer]  undoPrevToStack;         // lastTo before the move
     hide List[Integer]  undoCaptureColorStack;   // 1=white captured, -1=black, 0=none
 
-    // --- Key debounce flags (prevent hold-key repeat) ---
+    // --- Key debounce flag (Ctrl+Z needs manual debounce — modifier combo) ---
     hide Boolean ctrlZWasDown;
-    hide Boolean newGameKeyWasDown;
 
     // --- Legal moves cache (invalidated after each board change) ---
     hide List[Move] cachedLegalMoves_;
@@ -148,10 +147,23 @@ entity ChessGame {
         undoCaptureColorStack = [];
 
         ctrlZWasDown      = false;
-        newGameKeyWasDown = false;
+
+        setupActions();
 
         cachedLegalMoves_ = [];
         legalMovesValid_  = false;
+    }
+
+    hide func setupActions() {
+        Action.Define(ACT_NEW_GAME);
+        Action.BindKey(ACT_NEW_GAME, KEY_N);
+
+        Action.Define(ACT_BACK);
+        Action.BindKey(ACT_BACK, KEY_ESCAPE);
+
+        // Gamepad bindings
+        Action.BindPadButton(ACT_BACK, PAD_IDX, PAD_BTN_B);
+        Action.BindPadButton(ACT_BACK, PAD_IDX, PAD_BTN_START);
     }
 
     // =========================================================================
@@ -210,11 +222,8 @@ entity ChessGame {
 
         if gameState != STATE_PLAYING { return; }
 
-        // 'N' — new game (SDL_SCANCODE_N = 17)
-        var nKey = canvas.KeyHeld(17) != 0;
-        if !nKey { newGameKeyWasDown = false; }
-        if nKey && !newGameKeyWasDown {
-            newGameKeyWasDown = true;
+        // 'N' — new game (Action-based, edge-detected)
+        if Action.Pressed(ACT_NEW_GAME) {
             startNewGame();
             return;
         }

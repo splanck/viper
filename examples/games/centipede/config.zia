@@ -77,6 +77,40 @@ final KEY_S = 83;
 final KEY_D = 68;
 
 // =============================================================================
+// ACTION NAMES (for Viper.Input.Action mapping)
+// =============================================================================
+
+final ACT_LEFT = "move_left";
+final ACT_RIGHT = "move_right";
+final ACT_UP = "move_up";
+final ACT_DOWN = "move_down";
+final ACT_FIRE = "fire";
+final ACT_CONFIRM = "confirm";
+final ACT_BACK = "back";
+final ACT_PAUSE = "pause";
+
+// =============================================================================
+// GAMEPAD BUTTON CONSTANTS
+// =============================================================================
+
+final PAD_IDX = 0;
+final PAD_BTN_A = 0;
+final PAD_BTN_B = 1;
+final PAD_BTN_X = 2;
+final PAD_BTN_RB = 5;
+final PAD_BTN_START = 7;
+final PAD_BTN_UP = 10;
+final PAD_BTN_DOWN = 11;
+final PAD_BTN_LEFT = 12;
+final PAD_BTN_RIGHT = 13;
+
+// =============================================================================
+// DELTATIME
+// =============================================================================
+
+final DT_MAX = 50;
+
+// =============================================================================
 // GAME STATES
 // =============================================================================
 

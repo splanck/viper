@@ -9,7 +9,7 @@ module starfield;
 
 bind "./colors";
 
-bind Viper.Random;
+bind Viper.Math.Random;
 bind Viper.Graphics;
 bind Viper.Graphics.Color;
 bind Viper.Math;

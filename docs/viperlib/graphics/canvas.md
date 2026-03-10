@@ -33,6 +33,7 @@ last-verified: 2026-03-09
 |---------------------------------------|---------------------------------------|------------------------------------------------------------|
 | `Arc(cx, cy, radius, startAngle, endAngle, color)` | `Void(Integer...)`         | Draws a filled arc (pie slice)                             |
 | `ArcFrame(cx, cy, radius, startAngle, endAngle, color)` | `Void(Integer...)`    | Draws an arc outline                                       |
+| `BeginFrame()`                         | `Integer()`                           | Call Poll(), return 0 if ShouldClose, else 1. Simplifies game loop |
 | `Bezier(x1, y1, cx, cy, x2, y2, color)` | `Void(Integer...)`                  | Draws a quadratic Bezier curve                             |
 | `Blit(x, y, pixels)`                  | `Void(Integer, Integer, Pixels)`      | Blits a Pixels buffer to the canvas at (x, y)              |
 | `BlitAlpha(x, y, pixels)`             | `Void(Integer, Integer, Pixels)`      | Blits with alpha blending (respects alpha channel)         |
@@ -75,11 +76,15 @@ last-verified: 2026-03-09
 | `SavePng(path)`                       | `Integer(String)`                     | Saves canvas to PNG file (returns 1 on success)            |
 | `Screenshot()`                        | `Pixels()`                            | Captures entire canvas contents to a Pixels buffer         |
 | `SetClipRect(x, y, w, h)`             | `Void(Integer...)`                    | Sets clipping rectangle; all drawing is constrained to it  |
+| `SetDTMax(max)`                        | `Void(Integer)`                       | Set maximum DeltaTime clamp in ms. DeltaTime getter auto-clamps to [1, max] |
 | `SetFps(fps)`                         | `Void(Integer)`                       | Set the target frame rate (-1 = unlimited)                 |
 | `SetTitle(title)`                     | `Void(String)`                        | Changes the window title at runtime                        |
 | `Text(x, y, text, color)`             | `Void(Integer, Integer, String, Integer)` | Draws text at (x, y) with the specified color          |
 | `TextBg(x, y, text, fg, bg)`          | `Void(Integer, Integer, String, Integer, Integer)` | Draws text with foreground and background colors |
+| `TextCentered(y, text, color)`         | `Void(Integer, String, Integer)`      | Draw text horizontally centered on the canvas              |
+| `TextCenteredScaled(y, text, scale, color)` | `Void(Integer, String, Integer, Integer)` | Draw scaled text horizontally centered               |
 | `TextHeight()`                        | `Integer()`                           | Returns the height of rendered text in pixels (always 8)   |
+| `TextRight(margin, y, text, color)`    | `Void(Integer, Integer, String, Integer)` | Draw text right-aligned with margin from right edge    |
 | `TextWidth(text)`                     | `Integer(String)`                     | Returns the width of rendered text in pixels (8 per char)  |
 | `ThickLine(x1, y1, x2, y2, thickness, color)` | `Void(Integer...)`            | Draws a line with specified thickness (parallelogram body + rounded endcap circles) |
 | `Triangle(x1, y1, x2, y2, x3, y3, color)` | `Void(Integer...)`                 | Draws a filled triangle                                    |
@@ -179,6 +184,9 @@ The canvas includes a built-in 8x8 pixel bitmap font for rendering text:
 - Use `TextBg` for text with a solid background (useful for HUDs/overlays)
 - Use `TextWidth(text)` to measure text width in pixels (8 per character)
 - Use `TextHeight()` to get font height in pixels (always 8)
+- Use `TextCentered(y, text, color)` to draw text horizontally centered on the canvas
+- Use `TextRight(margin, y, text, color)` to draw text right-aligned with a margin
+- Use `TextCenteredScaled(y, text, scale, color)` to draw scaled text centered
 
 **Note:** `TextWidth` and `TextHeight` are static methods -- they do not require a canvas instance.
 
@@ -372,6 +380,40 @@ LOOP
 - `GetScale()` returns 2.0 on HiDPI (Retina) displays — multiply pixel dimensions by this factor for sharp rendering
 - `SetFps(-1)` disables frame rate limiting (default); `GetFps()` returns the configured target
 - `PreventClose(1)` blocks the OS close button; the `ShouldClose` property will not become true until you call `PreventClose(0)`
+
+### Frame Management
+
+`BeginFrame()` and `SetDTMax()` simplify the standard game loop pattern. Instead of
+manually calling `Poll()` and checking `ShouldClose`, use `BeginFrame()` which combines
+both steps into a single call. `SetDTMax()` clamps the `DeltaTime` property to prevent
+physics explosions after lag spikes or window drags.
+
+```rust
+module GameLoop;
+
+bind Viper.Graphics.Canvas as Canvas;
+bind Viper.Graphics.Color as Color;
+
+func start() {
+    var c = Canvas.New("Game", 800, 600);
+    c.SetFps(60);
+    c.SetDTMax(50);
+
+    while c.BeginFrame() != 0 {
+        var dt = c.DeltaTime;  // Already clamped to [1, 50]
+
+        // Game logic using dt for frame-independent movement
+        c.Clear(Color.RGB(0, 0, 0));
+        c.Text(10, 10, "Running...", Color.RGB(255, 255, 255));
+        c.Flip();
+    }
+}
+```
+
+**Notes:**
+- `BeginFrame()` calls `Poll()` internally, then returns 0 if `ShouldClose` is set, otherwise 1
+- `SetDTMax(max)` sets the upper clamp for `DeltaTime` in milliseconds; the `DeltaTime` property auto-clamps to `[1, max]`
+- A typical max of 50 ms (20 FPS equivalent) prevents large time steps that can break physics or animation
 
 ---
 

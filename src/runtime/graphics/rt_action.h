@@ -309,6 +309,16 @@ extern "C"
     int64_t rt_action_chord_count(rt_string action);
 
     //=========================================================================
+    // Preset Loading
+    //=========================================================================
+
+    /// @brief Load a predefined set of actions with standard bindings.
+    /// @param preset_name Preset name: "standard_movement", "menu_navigation",
+    ///                    "platformer", or "topdown".
+    /// @return 1 on success, 0 if preset name not recognized.
+    int8_t rt_action_load_preset(rt_string preset_name);
+
+    //=========================================================================
     // Axis Constant Getters (for runtime.def)
     //=========================================================================
 

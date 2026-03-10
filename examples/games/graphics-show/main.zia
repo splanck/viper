@@ -17,13 +17,61 @@ bind "./snake";
 bind "./fireworks";
 bind "./sierpinski";
 
-bind Viper.Random;
+bind Viper.Math.Random;
 bind Viper.Graphics;
 bind Viper.Graphics.Canvas;
 bind Viper.Graphics.Color;
+bind Viper.Input;
 bind Viper.Math;
 bind Viper.String;
 bind Viper.Time;
+
+// Key codes
+final KEY_UP = 265;
+final KEY_DOWN = 264;
+final KEY_ENTER = 257;
+final KEY_SPACE = 32;
+final KEY_ESCAPE = 27;
+final KEY_W = 87;
+final KEY_S = 83;
+
+// Action names
+final ACT_UP = "menu_up";
+final ACT_DOWN = "menu_down";
+final ACT_CONFIRM = "confirm";
+final ACT_BACK = "back";
+
+// Gamepad
+final PAD_IDX = 0;
+final PAD_BTN_A = 0;
+final PAD_BTN_B = 1;
+final PAD_BTN_START = 7;
+final PAD_BTN_UP = 10;
+final PAD_BTN_DOWN = 11;
+
+func setupActions() {
+    Action.Define(ACT_UP);
+    Action.BindKey(ACT_UP, KEY_UP);
+    Action.BindKey(ACT_UP, KEY_W);
+
+    Action.Define(ACT_DOWN);
+    Action.BindKey(ACT_DOWN, KEY_DOWN);
+    Action.BindKey(ACT_DOWN, KEY_S);
+
+    Action.Define(ACT_CONFIRM);
+    Action.BindKey(ACT_CONFIRM, KEY_ENTER);
+    Action.BindKey(ACT_CONFIRM, KEY_SPACE);
+
+    Action.Define(ACT_BACK);
+    Action.BindKey(ACT_BACK, KEY_ESCAPE);
+
+    // Gamepad bindings
+    Action.BindPadButton(ACT_UP, PAD_IDX, PAD_BTN_UP);
+    Action.BindPadButton(ACT_DOWN, PAD_IDX, PAD_BTN_DOWN);
+    Action.BindPadButton(ACT_CONFIRM, PAD_IDX, PAD_BTN_A);
+    Action.BindPadButton(ACT_BACK, PAD_IDX, PAD_BTN_B);
+    Action.BindPadButton(ACT_BACK, PAD_IDX, PAD_BTN_START);
+}
 
 // Menu item structure
 entity MenuItem {
@@ -251,12 +299,14 @@ func start() {
     var height = 600;
     var canvas = new Canvas("Graphics Show", width, height);
 
+    // Setup input actions
+    setupActions();
+
     // Create menu
     var menu = new Menu();
     menu.init(width, height);
 
     var running = true;
-    var keyDelay = 0;
 
     while running {
         canvas.Poll();
@@ -265,71 +315,38 @@ func start() {
             running = false;
         }
 
-        // Handle input with debouncing
-        if keyDelay > 0 {
-            keyDelay = keyDelay - 1;
-        }
-
-        // ESC to exit
-        if canvas.KeyHeld(27) != 0 {
+        // ESC / Back to exit
+        if Action.Pressed(ACT_BACK) {
             running = false;
         }
 
-        // Up arrow
-        if canvas.KeyHeld(265) != 0 {
-            if keyDelay == 0 {
-                menu.moveUp();
-                keyDelay = 10;
+        // Up/Down menu navigation (edge-detected — no manual debounce needed)
+        if Action.Pressed(ACT_UP) {
+            menu.moveUp();
+        }
+        if Action.Pressed(ACT_DOWN) {
+            menu.moveDown();
+        }
+
+        // Confirm to select (Enter or Space)
+        if Action.Pressed(ACT_CONFIRM) {
+            var selected = menu.getSelected();
+
+            if selected == 8 {
+                // Exit option
+                running = false;
+            } else {
+                // Run selected demo
+                menu.visible = false;
+                runDemo(selected, canvas);
+                menu.visible = true;
+
+                // Clear any lingering key states
+                canvas.Poll();
             }
         }
 
-        // Down arrow
-        if canvas.KeyHeld(264) != 0 {
-            if keyDelay == 0 {
-                menu.moveDown();
-                keyDelay = 10;
-            }
-        }
-
-        // Enter to select
-        if canvas.KeyHeld(257) != 0 {
-            if keyDelay == 0 {
-                var selected = menu.getSelected();
-
-                if selected == 8 {
-                    // Exit option
-                    running = false;
-                } else {
-                    // Run selected demo
-                    menu.visible = false;
-                    runDemo(selected, canvas);
-                    menu.visible = true;
-
-                    // Clear any lingering key states
-                    canvas.Poll();
-                    keyDelay = 30;
-                }
-            }
-        }
-
-        // Space also selects
-        if canvas.KeyHeld(32) != 0 {
-            if keyDelay == 0 {
-                var selected = menu.getSelected();
-
-                if selected == 8 {
-                    running = false;
-                } else {
-                    menu.visible = false;
-                    runDemo(selected, canvas);
-                    menu.visible = true;
-                    canvas.Poll();
-                    keyDelay = 30;
-                }
-            }
-        }
-
-        // Number keys for quick access (1-8)
+        // Number keys for quick access (1-8) — kept as raw KeyHeld
         var numKey = 0;
         if canvas.KeyHeld(49) != 0 { numKey = 1; }  // 1
         if canvas.KeyHeld(50) != 0 { numKey = 2; }  // 2
@@ -341,13 +358,10 @@ func start() {
         if canvas.KeyHeld(56) != 0 { numKey = 8; }  // 8
 
         if numKey > 0 {
-            if keyDelay == 0 {
-                menu.visible = false;
-                runDemo(numKey - 1, canvas);
-                menu.visible = true;
-                canvas.Poll();
-                keyDelay = 30;
-            }
+            menu.visible = false;
+            runDemo(numKey - 1, canvas);
+            menu.visible = true;
+            canvas.Poll();
         }
 
         // Update menu animation

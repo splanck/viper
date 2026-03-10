@@ -1,26 +1,12 @@
-// sound.zia — Sound effect manager for the sidescroller game
-// Loads WAV files from the sounds/ directory relative to basePath.
-// All play functions are safe to call even if audio init or loading failed.
+// sound.zia — Sound effect manager using SoundBank for centralized sound registry
+// Loads WAV files from the sounds/ directory via SoundBank.Register.
 module sound;
 
 bind Viper.Sound;
 
 entity SoundManager {
     hide Boolean ready;
-
-    // Sound effect handles
-    hide Sound sndJump;
-    hide Sound sndShoot;
-    hide Sound sndCoin;
-    hide Sound sndHurt;
-    hide Sound sndEnemyDeath;
-    hide Sound sndPowerup;
-    hide Sound sndCheckpoint;
-    hide Sound sndLevelComplete;
-    hide Sound sndMenuSelect;
-    hide Sound sndMenuMove;
-    hide Sound sndDeath;
-    hide Sound sndStomp;
+    hide SoundBank bank;
 
     expose func init() {
         ready = false;
@@ -32,18 +18,21 @@ entity SoundManager {
 
         Audio.SetMasterVolume(80);
 
-        sndJump = Sound.Load(basePath + "sounds/jump.wav");
-        sndShoot = Sound.Load(basePath + "sounds/shoot.wav");
-        sndCoin = Sound.Load(basePath + "sounds/coin.wav");
-        sndHurt = Sound.Load(basePath + "sounds/hurt.wav");
-        sndEnemyDeath = Sound.Load(basePath + "sounds/enemy_death.wav");
-        sndPowerup = Sound.Load(basePath + "sounds/powerup.wav");
-        sndCheckpoint = Sound.Load(basePath + "sounds/checkpoint.wav");
-        sndLevelComplete = Sound.Load(basePath + "sounds/level_complete.wav");
-        sndMenuSelect = Sound.Load(basePath + "sounds/menu_select.wav");
-        sndMenuMove = Sound.Load(basePath + "sounds/menu_move.wav");
-        sndDeath = Sound.Load(basePath + "sounds/death.wav");
-        sndStomp = Sound.Load(basePath + "sounds/stomp.wav");
+        bank = SoundBank.New();
+
+        // Register all sounds from WAV files via SoundBank
+        bank.Register("jump", basePath + "sounds/jump.wav");
+        bank.Register("shoot", basePath + "sounds/shoot.wav");
+        bank.Register("coin", basePath + "sounds/coin.wav");
+        bank.Register("hurt", basePath + "sounds/hurt.wav");
+        bank.Register("enemy_death", basePath + "sounds/enemy_death.wav");
+        bank.Register("powerup", basePath + "sounds/powerup.wav");
+        bank.Register("checkpoint", basePath + "sounds/checkpoint.wav");
+        bank.Register("level_complete", basePath + "sounds/level_complete.wav");
+        bank.Register("menu_select", basePath + "sounds/menu_select.wav");
+        bank.Register("menu_move", basePath + "sounds/menu_move.wav");
+        bank.Register("death", basePath + "sounds/death.wav");
+        bank.Register("stomp", basePath + "sounds/stomp.wav");
 
         ready = true;
     }
@@ -57,61 +46,61 @@ entity SoundManager {
 
     expose func playJump() {
         if ready == false { return; }
-        sndJump.PlayEx(60, 0);
+        bank.PlayEx("jump", 60, 0);
     }
 
     expose func playShoot() {
         if ready == false { return; }
-        sndShoot.PlayEx(50, 0);
+        bank.PlayEx("shoot", 50, 0);
     }
 
     expose func playCoin() {
         if ready == false { return; }
-        sndCoin.PlayEx(70, 0);
+        bank.PlayEx("coin", 70, 0);
     }
 
     expose func playHurt() {
         if ready == false { return; }
-        sndHurt.PlayEx(80, 0);
+        bank.PlayEx("hurt", 80, 0);
     }
 
     expose func playEnemyDeath() {
         if ready == false { return; }
-        sndEnemyDeath.PlayEx(65, 0);
+        bank.PlayEx("enemy_death", 65, 0);
     }
 
     expose func playPowerup() {
         if ready == false { return; }
-        sndPowerup.PlayEx(70, 0);
+        bank.PlayEx("powerup", 70, 0);
     }
 
     expose func playCheckpoint() {
         if ready == false { return; }
-        sndCheckpoint.PlayEx(70, 0);
+        bank.PlayEx("checkpoint", 70, 0);
     }
 
     expose func playLevelComplete() {
         if ready == false { return; }
-        sndLevelComplete.PlayEx(80, 0);
+        bank.PlayEx("level_complete", 80, 0);
     }
 
     expose func playMenuSelect() {
         if ready == false { return; }
-        sndMenuSelect.PlayEx(60, 0);
+        bank.PlayEx("menu_select", 60, 0);
     }
 
     expose func playMenuMove() {
         if ready == false { return; }
-        sndMenuMove.PlayEx(40, 0);
+        bank.PlayEx("menu_move", 40, 0);
     }
 
     expose func playDeath() {
         if ready == false { return; }
-        sndDeath.PlayEx(80, 0);
+        bank.PlayEx("death", 80, 0);
     }
 
     expose func playStomp() {
         if ready == false { return; }
-        sndStomp.PlayEx(65, 0);
+        bank.PlayEx("stomp", 65, 0);
     }
 }

@@ -172,6 +172,7 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_LineReader,
     RTCLS_LineWriter,
     RTCLS_Watcher,
+    RTCLS_SaveData,
     RTCLS_Compress,
     RTCLS_Archive,
     RTCLS_Log,
@@ -246,12 +247,15 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_ScreenFX,
     RTCLS_PathFollower,
     RTCLS_Quadtree,
+    RTCLS_DebugOverlay,
     // Audio classes
     RTCLS_Audio,
     RTCLS_Sound,
     RTCLS_Voice,
     RTCLS_Music,
     RTCLS_Playlist,
+    RTCLS_SoundBank,
+    RTCLS_Synth,
     // Graphics classes (extended)
     RTCLS_Sprite,
     RTCLS_Tilemap,

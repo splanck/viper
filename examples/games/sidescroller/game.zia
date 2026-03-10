@@ -4,8 +4,9 @@ module game;
 
 bind Viper.Graphics;
 bind Viper.Input;
-bind Viper.Time;
 bind Viper.Fmt;
+bind Viper.Game;
+bind Viper.Game.DebugOverlay as Debug;
 bind "./config";
 bind "./sprites";
 bind "./player";
@@ -23,7 +24,7 @@ bind "./sound";
 
 entity Game {
     hide Canvas canvas;
-    hide Integer gameState;
+    hide StateMachine sm;
 
     // Subsystems
     hide Player player;
@@ -39,6 +40,7 @@ entity Game {
     hide Renderer renderObj;
     hide PhysicsHelper phys;
     hide SoundManager sfx;
+    hide Debug debugOverlay;
 
     // Game state
     hide Integer score;
@@ -61,7 +63,18 @@ entity Game {
     hide Integer prevPlayerState;
 
     expose func init() {
-        gameState = STATE_MENU;
+        sm = StateMachine.New();
+        sm.AddState(STATE_MENU);
+        sm.AddState(STATE_PLAYING);
+        sm.AddState(STATE_PAUSED);
+        sm.AddState(STATE_GAMEOVER);
+        sm.AddState(STATE_LEVELCOMPLETE);
+        sm.AddState(STATE_HIGHSCORES);
+        sm.AddState(STATE_CONTROLS);
+        sm.AddState(STATE_BOSSFIGHT);
+        sm.AddState(STATE_VICTORY);
+        sm.SetInitial(STATE_MENU);
+
         score = 0;
         coins = 0;
         currentLevel = 1;
@@ -88,8 +101,9 @@ entity Game {
         phys = new PhysicsHelper();
         sfx = new SoundManager();
         sfx.setup("examples/games/sidescroller/");
+        debugOverlay = Debug.New();
 
-        // Setup input actions — all bindings in one place
+        // Setup input actions via presets + custom bindings
         setupActions();
 
         // Load saved high scores from disk
@@ -101,54 +115,22 @@ entity Game {
     // =========================================================================
 
     hide func setupActions() {
-        // Movement
-        Action.Define(ACT_LEFT);
-        Action.BindKey(ACT_LEFT, KEY_LEFT);
-        Action.BindKey(ACT_LEFT, KEY_A);
+        // Standard presets: defines move_left, move_right, jump, shoot, pause
+        // with WASD + arrows + gamepad D-pad/A/X/Start
+        Action.LoadPreset("platformer");
 
-        Action.Define(ACT_RIGHT);
-        Action.BindKey(ACT_RIGHT, KEY_RIGHT);
-        Action.BindKey(ACT_RIGHT, KEY_D);
+        // Menu presets: defines menu_up, menu_down, confirm, back
+        // with arrows + WASD + Enter/Space/Escape + gamepad D-pad/A/B
+        Action.LoadPreset("menu_navigation");
 
-        // Jump (3 keys)
-        Action.Define(ACT_JUMP);
-        Action.BindKey(ACT_JUMP, KEY_UP);
-        Action.BindKey(ACT_JUMP, KEY_W);
-        Action.BindKey(ACT_JUMP, KEY_SPACE);
+        // Custom additions beyond what presets provide
+        Action.BindKey(ACT_SHOOT, KEY_Z);               // Z key for shoot
+        Action.BindPadButton(ACT_SHOOT, PAD_IDX, PAD_BTN_RB);   // RB for shoot
+        Action.BindPadButton(ACT_BACK, PAD_IDX, PAD_BTN_START); // Start for back/pause
 
-        // Shoot
-        Action.Define(ACT_SHOOT);
-        Action.BindKey(ACT_SHOOT, KEY_Z);
-        Action.BindKey(ACT_SHOOT, KEY_X);
-
-        // Menu navigation
-        Action.Define(ACT_UP);
-        Action.BindKey(ACT_UP, KEY_UP);
-        Action.BindKey(ACT_UP, KEY_W);
-
-        Action.Define(ACT_DOWN);
-        Action.BindKey(ACT_DOWN, KEY_DOWN);
-        Action.BindKey(ACT_DOWN, KEY_S);
-
-        // Confirm/Back
-        Action.Define(ACT_CONFIRM);
-        Action.BindKey(ACT_CONFIRM, KEY_ENTER);
-        Action.BindKey(ACT_CONFIRM, KEY_SPACE);
-
-        Action.Define(ACT_BACK);
-        Action.BindKey(ACT_BACK, KEY_ESCAPE);
-
-        // Gamepad bindings (pad 0)
-        Action.BindPadButton(ACT_LEFT, PAD_IDX, PAD_BTN_LEFT);
-        Action.BindPadButton(ACT_RIGHT, PAD_IDX, PAD_BTN_RIGHT);
-        Action.BindPadButton(ACT_JUMP, PAD_IDX, PAD_BTN_A);
-        Action.BindPadButton(ACT_SHOOT, PAD_IDX, PAD_BTN_X);
-        Action.BindPadButton(ACT_SHOOT, PAD_IDX, PAD_BTN_RB);
-        Action.BindPadButton(ACT_UP, PAD_IDX, PAD_BTN_UP);
-        Action.BindPadButton(ACT_DOWN, PAD_IDX, PAD_BTN_DOWN);
-        Action.BindPadButton(ACT_CONFIRM, PAD_IDX, PAD_BTN_A);
-        Action.BindPadButton(ACT_BACK, PAD_IDX, PAD_BTN_B);
-        Action.BindPadButton(ACT_BACK, PAD_IDX, PAD_BTN_START);
+        // Debug overlay toggle (F3)
+        Action.Define("debug");
+        Action.BindKey("debug", KEY_F3);
     }
 
     // =========================================================================
@@ -157,43 +139,51 @@ entity Game {
 
     expose func run() {
         canvas = Canvas.New("Nova Run", SCREEN_W, SCREEN_H);
+        canvas.SetFps(60);
+        canvas.SetDTMax(DT_MAX);
 
-        while canvas.get_ShouldClose() == 0 {
-            canvas.Poll();
-
-            // Frame-rate-independent timing
+        while canvas.BeginFrame() != 0 {
             dt = canvas.DeltaTime;
-            if dt < 1 { dt = 1; }
-            if dt > DT_MAX { dt = DT_MAX; }
 
-            if gameState == STATE_MENU {
+            // Debug overlay toggle (F3)
+            if Action.Pressed("debug") {
+                debugOverlay.Toggle();
+            }
+
+            sm.Update();
+
+            if sm.IsState(STATE_MENU) {
                 updateMenu();
             } else {
-            if gameState == STATE_PLAYING {
+            if sm.IsState(STATE_PLAYING) {
                 updatePlaying();
             } else {
-            if gameState == STATE_PAUSED {
+            if sm.IsState(STATE_PAUSED) {
                 updatePaused();
             } else {
-            if gameState == STATE_GAMEOVER {
+            if sm.IsState(STATE_GAMEOVER) {
                 updateGameOver();
             } else {
-            if gameState == STATE_LEVELCOMPLETE {
+            if sm.IsState(STATE_LEVELCOMPLETE) {
                 updateLevelComplete();
             } else {
-            if gameState == STATE_HIGHSCORES {
+            if sm.IsState(STATE_HIGHSCORES) {
                 updateHighScores();
             } else {
-            if gameState == STATE_CONTROLS {
+            if sm.IsState(STATE_CONTROLS) {
                 updateControls();
             } else {
-            if gameState == STATE_VICTORY {
+            if sm.IsState(STATE_VICTORY) {
                 updateVictory();
             }
             }}}}}}}
 
+            // Debug overlay (rendered on top of everything)
+            debugOverlay.Update(dt);
+            debugOverlay.Watch("dt", dt);
+            debugOverlay.Draw(canvas);
+
             canvas.Flip();
-            Viper.Time.SleepMs(FPS_MS);
         }
     }
 
@@ -211,12 +201,12 @@ entity Game {
         }
         if result == STATE_HIGHSCORES {
             sfx.playMenuSelect();
-            gameState = STATE_HIGHSCORES;
+            sm.Transition(STATE_HIGHSCORES);
             menus.resetSelection();
         }
         if result == STATE_CONTROLS {
             sfx.playMenuSelect();
-            gameState = STATE_CONTROLS;
+            sm.Transition(STATE_CONTROLS);
         }
         if result == -2 {
             return;
@@ -230,7 +220,7 @@ entity Game {
     hide func updatePlaying() {
         // Pause check
         if Action.Pressed(ACT_BACK) {
-            gameState = STATE_PAUSED;
+            sm.Transition(STATE_PAUSED);
             menus.resetSelection();
             renderObj.renderPlaying(canvas, camera, level, player, enemies,
                                     bullets, pickups, particles, hudObj, sprites,
@@ -488,7 +478,7 @@ entity Game {
             if timeBonus < 0 { timeBonus = 0; }
             levelCompleteTimer = 0;
             menus.resetSelection();
-            gameState = STATE_LEVELCOMPLETE;
+            sm.Transition(STATE_LEVELCOMPLETE);
             sfx.playLevelComplete();
 
             var totalScore = score + timeBonus;
@@ -498,7 +488,7 @@ entity Game {
             }
 
             if currentLevel == 2 {
-                gameState = STATE_VICTORY;
+                sm.Transition(STATE_VICTORY);
             }
         }
     }
@@ -534,7 +524,7 @@ entity Game {
                     menus.saveHighScores();
                 }
                 menus.resetSelection();
-                gameState = STATE_GAMEOVER;
+                sm.Transition(STATE_GAMEOVER);
                 return;
             }
 
@@ -566,11 +556,11 @@ entity Game {
 
         if result == STATE_PLAYING {
             sfx.playMenuSelect();
-            gameState = STATE_PLAYING;
+            sm.Transition(STATE_PLAYING);
         }
         if result == STATE_MENU {
             sfx.playMenuSelect();
-            gameState = STATE_MENU;
+            sm.Transition(STATE_MENU);
             menus.resetSelection();
         }
     }
@@ -589,7 +579,7 @@ entity Game {
         }
         if result == STATE_MENU {
             sfx.playMenuSelect();
-            gameState = STATE_MENU;
+            sm.Transition(STATE_MENU);
             menus.resetSelection();
         }
     }
@@ -617,7 +607,7 @@ entity Game {
             }
             loadLevel(currentLevel);
             levelCompleteTimer = 0;
-            gameState = STATE_PLAYING;
+            sm.Transition(STATE_PLAYING);
             renderObj.fadeIn(8);
         }
     }
@@ -632,7 +622,7 @@ entity Game {
 
         if result == STATE_MENU {
             sfx.playMenuSelect();
-            gameState = STATE_MENU;
+            sm.Transition(STATE_MENU);
             menus.resetSelection();
         }
     }
@@ -647,7 +637,7 @@ entity Game {
 
         if result == STATE_MENU {
             sfx.playMenuSelect();
-            gameState = STATE_MENU;
+            sm.Transition(STATE_MENU);
             menus.resetSelection();
         }
     }
@@ -662,7 +652,7 @@ entity Game {
 
         if result == STATE_MENU {
             sfx.playMenuSelect();
-            gameState = STATE_MENU;
+            sm.Transition(STATE_MENU);
             menus.resetSelection();
         }
     }
@@ -683,7 +673,7 @@ entity Game {
         loadLevel(1);
 
         renderObj.fadeIn(8);
-        gameState = STATE_PLAYING;
+        sm.Transition(STATE_PLAYING);
     }
 
     hide func loadLevel(num: Integer) {

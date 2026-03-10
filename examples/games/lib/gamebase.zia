@@ -1,0 +1,221 @@
+module gamebase;
+
+// ============================================================================
+// GameBase — Game Loop Framework
+// ============================================================================
+// Eliminates ~100+ lines of boilerplate per game by providing:
+//   - Frame loop with DeltaTime clamping
+//   - Scene lifecycle management (IScene interface)
+//   - Deferred scene transitions (applied at frame boundaries)
+//   - ScreenFX integration (shake, flash, fade)
+//   - Orchestrated scene transitions with fade effects
+//
+// Usage:
+//   entity MyGame extends GameBase {
+//       override expose func onInit() {
+//           // Setup your game, create scenes, call setScene()
+//       }
+//       override expose func onFrame(dt: Integer) {
+//           // Optional: global overlays, debug rendering
+//       }
+//   }
+//
+//   func start() {
+//       var game = new MyGame();
+//       game.initGame("My Game", 800, 600);
+//       game.run();
+//   }
+// ============================================================================
+
+bind "./iscene";
+
+bind Viper.Graphics;
+bind Viper.Graphics.Canvas;
+bind Viper.Graphics.Color;
+bind Viper.Game.ScreenFX as FX;
+
+// ScreenFX type constants (from rt_screenfx.h)
+final FX_SHAKE    = 1;
+final FX_FLASH    = 2;
+final FX_FADE_IN  = 3;
+final FX_FADE_OUT = 4;
+
+// Null Object sentinel — avoids optional interface chaining issues.
+entity NullScene implements IScene {
+    expose func update(dt: Integer) { }
+    expose func draw(canvas: Canvas) { }
+    expose func onEnter() { }
+    expose func onExit() { }
+}
+
+entity GameBase {
+    hide Canvas canvas;
+    hide Integer dt;
+    hide Integer dtMax;
+    hide IScene currentScene;
+    hide IScene pendingScene;
+    hide Boolean hasScene;
+    hide Boolean hasPending;
+    hide Boolean running;
+    hide FX fx;
+
+    // Transition state
+    hide IScene transitionTarget;
+    hide Boolean transitioning;
+    hide Integer transitionColor;
+    hide Integer transitionDurationMs;
+
+    // Initialize the game framework. Call after construction.
+    expose func initGame(title: String, width: Integer, height: Integer) {
+        canvas = new Canvas(title, width, height);
+        canvas.SetFps(60);
+        dtMax = 50;
+        var nullScene = new NullScene();
+        currentScene = nullScene;
+        pendingScene = nullScene;
+        transitionTarget = nullScene;
+        hasScene = false;
+        hasPending = false;
+        running = true;
+        transitioning = false;
+        transitionColor = 0;
+        transitionDurationMs = 300;
+        fx = FX.New();
+        self.onInit();
+    }
+
+    // Main game loop — call after initGame to start the game.
+    expose func run() {
+        while running {
+            canvas.Poll();
+            if canvas.ShouldClose {
+                running = false;
+            }
+
+            // DeltaTime clamping
+            dt = canvas.DeltaTime;
+            if dt < 1 { dt = 1; }
+            if dt > dtMax { dt = dtMax; }
+
+            // Update screen effects
+            fx.Update(dt);
+
+            // Orchestrated transition: fade-out complete → switch scene → fade-in
+            if transitioning {
+                if not fx.IsTypeActive(FX_FADE_OUT) {
+                    self.setScene(transitionTarget);
+                    transitioning = false;
+                    fx.FadeIn(transitionDurationMs, transitionColor);
+                }
+            }
+
+            // Deferred scene transition — applied at frame boundary
+            if hasPending {
+                if hasScene {
+                    currentScene.onExit();
+                }
+                currentScene = pendingScene;
+                hasScene = true;
+                hasPending = false;
+                currentScene.onEnter();
+            }
+
+            // Update and draw current scene
+            if hasScene {
+                currentScene.update(dt);
+                canvas.Clear(0);
+                currentScene.draw(canvas);
+            }
+
+            // Render ScreenFX overlay (flash/fade effects)
+            var overlayCol = fx.OverlayColor;
+            if overlayCol != 0 {
+                var r = (overlayCol / 0x1000000) % 256;
+                var g = (overlayCol / 0x10000) % 256;
+                var b = (overlayCol / 0x100) % 256;
+                var a = overlayCol % 256;
+                var rgb = RGB(r, g, b);
+                canvas.BoxAlpha(0, 0, canvas.Width, canvas.Height, rgb, a);
+            }
+
+            // Hook for global overlays (debug info, etc.)
+            self.onFrame(dt);
+
+            canvas.Flip();
+        }
+    }
+
+    // Queue a scene transition — applied at the start of the next frame.
+    expose func setScene(scene: IScene) {
+        pendingScene = scene;
+        hasPending = true;
+    }
+
+    // Transition to a scene with a fade effect.
+    // Fades out over durationMs, switches scene, then fades back in.
+    expose func transitionTo(scene: IScene, fadeColor: Integer, durationMs: Integer) {
+        transitionTarget = scene;
+        transitionColor = fadeColor;
+        transitionDurationMs = durationMs;
+        transitioning = true;
+        fx.FadeOut(durationMs, fadeColor);
+    }
+
+    // Access the canvas for drawing operations.
+    expose func getCanvas() -> Canvas {
+        return canvas;
+    }
+
+    // Get the current (clamped) delta time in milliseconds.
+    expose func getDT() -> Integer {
+        return dt;
+    }
+
+    // Get the ScreenFX instance for direct effect control.
+    expose func getFX() -> FX {
+        return fx;
+    }
+
+    // Get the canvas width.
+    expose func getWidth() -> Integer {
+        return canvas.Width;
+    }
+
+    // Get the canvas height.
+    expose func getHeight() -> Integer {
+        return canvas.Height;
+    }
+
+    // Set maximum delta time clamp (default 50ms).
+    expose func setDTMax(max: Integer) {
+        dtMax = max;
+    }
+
+    // Set target frames per second.
+    expose func setTargetFps(fps: Integer) {
+        canvas.SetFps(fps);
+    }
+
+    // Trigger a screen shake effect.
+    expose func shake(intensity: Integer, durationMs: Integer, decayMs: Integer) {
+        fx.Shake(intensity, durationMs, decayMs);
+    }
+
+    // Trigger a screen flash effect.
+    expose func flash(colorWithAlpha: Integer, durationMs: Integer) {
+        fx.Flash(colorWithAlpha, durationMs);
+    }
+
+    // Signal the game to stop at the end of the current frame.
+    expose func quit() {
+        running = false;
+    }
+
+    // --- Override hooks ---
+
+    // Called once at the end of initGame(). Override to set up your game.
+    expose func onInit() { }
+
+    // Called every frame after scene draw. Override for global overlays.
+    expose func onFrame(dt: Integer) { }
+}

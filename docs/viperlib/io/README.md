@@ -18,6 +18,7 @@ last-verified: 2026-03-04
 | [Files & Directories](files.md) | File, BinFile, TempFile, Dir, Path, Glob |
 | [Streams & Buffers](streams.md) | Stream, MemStream, LineReader, LineWriter, BinaryBuffer |
 | [Advanced IO](advanced.md) | Archive (zip/tar), Compress (gzip/zstd/lz4), Watcher (filesystem events) |
+| [Persistence](../game/persistence.md) | SaveData — cross-platform key-value game save/load |
 
 ## See Also
 

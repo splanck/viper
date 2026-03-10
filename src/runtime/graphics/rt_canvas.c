@@ -62,6 +62,7 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height)
     canvas->last_event.type = VGFX_EVENT_NONE;
     canvas->last_flip_us = 0;
     canvas->delta_time_ms = 0;
+    canvas->dt_max_ms = 0;
     rt_obj_set_finalizer(canvas, rt_canvas_finalize);
 
     vgfx_window_params_t params = vgfx_window_params_default();
@@ -185,7 +186,16 @@ int64_t rt_canvas_get_delta_time(void *canvas_ptr)
 {
     if (!canvas_ptr)
         return 0;
-    return ((rt_canvas *)canvas_ptr)->delta_time_ms;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    int64_t dt = canvas->delta_time_ms;
+    if (canvas->dt_max_ms > 0)
+    {
+        if (dt < 1)
+            dt = 1;
+        if (dt > canvas->dt_max_ms)
+            dt = canvas->dt_max_ms;
+    }
+    return dt;
 }
 
 void rt_canvas_clear(void *canvas_ptr, int64_t color)
@@ -372,6 +382,22 @@ int64_t rt_canvas_get_fps(void *canvas_ptr)
     if (!canvas->gfx_win)
         return -1;
     return (int64_t)vgfx_get_fps(canvas->gfx_win);
+}
+
+void rt_canvas_set_dt_max(void *canvas_ptr, int64_t max_ms)
+{
+    if (!canvas_ptr)
+        return;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    canvas->dt_max_ms = max_ms > 0 ? max_ms : 0;
+}
+
+int64_t rt_canvas_begin_frame(void *canvas_ptr)
+{
+    if (!canvas_ptr)
+        return 0;
+    rt_canvas_poll(canvas_ptr);
+    return rt_canvas_should_close(canvas_ptr) ? 0 : 1;
 }
 
 double rt_canvas_get_scale(void *canvas_ptr)
