@@ -222,6 +222,43 @@ PeepholeStats runPeephole(MFunction &fn)
             if (pcIt == predCount.end() || pcIt->second != 1)
                 continue;
 
+            // Verify the layout predecessor actually reaches the successor.
+            // If block A ends with an unconditional branch to a DIFFERENT block,
+            // it does NOT fall through to the layout successor.
+            {
+                bool reachesSucc = false;
+                for (const auto &mi : predInstrs)
+                {
+                    // Unconditional branch to successor
+                    if (mi.opc == MOpcode::Br && !mi.ops.empty() &&
+                        mi.ops[0].kind == MOperand::Kind::Label &&
+                        mi.ops[0].label == succBlock.name)
+                    {
+                        reachesSucc = true;
+                        break;
+                    }
+                    // Conditional branch to successor (fallthrough also possible)
+                    if ((mi.opc == MOpcode::BCond || mi.opc == MOpcode::Cbz ||
+                         mi.opc == MOpcode::Cbnz) &&
+                        mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label &&
+                        mi.ops[1].label == succBlock.name)
+                    {
+                        reachesSucc = true;
+                        break;
+                    }
+                }
+                // Also check fallthrough: if last instruction is NOT an
+                // unconditional branch or ret, execution falls through.
+                if (!reachesSucc && !predInstrs.empty())
+                {
+                    const auto &last = predInstrs.back();
+                    if (last.opc != MOpcode::Br && last.opc != MOpcode::Ret)
+                        reachesSucc = true;
+                }
+                if (!reachesSucc)
+                    continue;
+            }
+
             // Collect stores at the end of the predecessor block.
             struct StoreInfo
             {

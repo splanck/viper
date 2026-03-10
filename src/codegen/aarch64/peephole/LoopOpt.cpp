@@ -78,12 +78,82 @@ std::size_t hoistLoopConstants(MFunction &fn)
                opc == MOpcode::PhiStoreFPR;
     };
 
-    struct LoopEdge
+    // Build predecessor map from CFG edges (branch targets + fallthroughs).
+    std::unordered_map<std::size_t, std::vector<std::size_t>> preds;
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
+    {
+        const auto &instrs = fn.blocks[i].instrs;
+        if (instrs.empty())
+            continue;
+
+        // Explicit branch targets.
+        for (const auto &mi : instrs)
+        {
+            std::string target = getBranchTarget(mi);
+            if (!target.empty())
+            {
+                auto it = nameToIdx.find(target);
+                if (it != nameToIdx.end())
+                    preds[it->second].push_back(i);
+            }
+        }
+
+        // Fallthrough edge: if last instr is not unconditional branch or ret,
+        // execution falls through to the next block.
+        if (i + 1 < fn.blocks.size())
+        {
+            const auto &last = instrs.back();
+            if (last.opc != MOpcode::Br && last.opc != MOpcode::Ret)
+                preds[i + 1].push_back(i);
+        }
+    }
+
+    // Compute natural loop body from a back-edge (latch -> header).
+    // Uses the standard reverse-reachability algorithm: start from the latch,
+    // walk predecessors until reaching the header to find all blocks on paths
+    // from header to latch.
+    auto computeLoopBody = [&preds](std::size_t header,
+                                    std::size_t latch) -> std::unordered_set<std::size_t>
+    {
+        std::unordered_set<std::size_t> body;
+        body.insert(header);
+        if (body.count(latch))
+            return body; // Single-block loop.
+
+        std::vector<std::size_t> worklist;
+        worklist.push_back(latch);
+        body.insert(latch);
+
+        while (!worklist.empty())
+        {
+            std::size_t b = worklist.back();
+            worklist.pop_back();
+            auto pit = preds.find(b);
+            if (pit == preds.end())
+                continue;
+            for (std::size_t pred : pit->second)
+            {
+                // Only include predecessors at or after the header in layout.
+                // This prevents the BFS from crawling backwards past the header
+                // (e.g. for BASIC two-header for-loops where for_head_neg's BFS
+                // would otherwise traverse through for_head_pos and beyond).
+                if (pred >= header && !body.count(pred))
+                {
+                    body.insert(pred);
+                    worklist.push_back(pred);
+                }
+            }
+        }
+        return body;
+    };
+
+    struct LoopInfo
     {
         std::size_t header;
         std::size_t latch;
+        std::unordered_set<std::size_t> body;
     };
-    std::vector<LoopEdge> loops;
+    std::vector<LoopInfo> loops;
     std::unordered_set<std::size_t> seenHeaders;
 
     for (std::size_t i = 0; i < fn.blocks.size(); ++i)
@@ -99,7 +169,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
             if (it != nameToIdx.end() && it->second < i)
             {
                 if (seenHeaders.insert(it->second).second)
-                    loops.push_back({it->second, i});
+                    loops.push_back({it->second, i, computeLoopBody(it->second, i)});
             }
         }
     }
@@ -122,13 +192,16 @@ std::size_t hoistLoopConstants(MFunction &fn)
         {
             if (&other == &loop)
                 continue;
-            if (preIdx >= other.header && preIdx <= other.latch)
+            if (other.body.count(preIdx))
             {
                 preInLoop = true;
                 break;
             }
         }
         if (preInLoop)
+            continue;
+        // Also skip if preIdx is inside THIS loop's own body.
+        if (loop.body.count(preIdx))
             continue;
 
         auto &preBlock = fn.blocks[preIdx];
@@ -166,8 +239,10 @@ std::size_t hoistLoopConstants(MFunction &fn)
         };
         std::unordered_map<uint32_t, RegInfo> regDefs;
 
-        for (std::size_t bi = loop.header; bi <= loop.latch && bi < fn.blocks.size(); ++bi)
+        for (std::size_t bi : loop.body)
         {
+            if (bi >= fn.blocks.size())
+                continue;
             const auto &instrs = fn.blocks[bi].instrs;
             for (std::size_t ii = 0; ii < instrs.size(); ++ii)
             {
@@ -224,8 +299,10 @@ std::size_t hoistLoopConstants(MFunction &fn)
                 continue;
 
             bool safeInAllBlocks = true;
-            for (std::size_t bi = loop.header; bi <= loop.latch && bi < fn.blocks.size(); ++bi)
+            for (std::size_t bi : loop.body)
             {
+                if (bi >= fn.blocks.size())
+                    continue;
                 const auto &instrs = fn.blocks[bi].instrs;
                 for (std::size_t ii = 0; ii < instrs.size(); ++ii)
                 {
@@ -264,8 +341,10 @@ std::size_t hoistLoopConstants(MFunction &fn)
             preInstrs.insert(preInstrs.begin() + static_cast<std::ptrdiff_t>(insertIdx), hoistedMov);
             ++insertIdx;
 
-            for (std::size_t bi = loop.header; bi <= loop.latch && bi < fn.blocks.size(); ++bi)
+            for (std::size_t bi : loop.body)
             {
+                if (bi >= fn.blocks.size())
+                    continue;
                 auto &instrs = fn.blocks[bi].instrs;
                 instrs.erase(
                     std::remove_if(instrs.begin(), instrs.end(),
@@ -280,6 +359,11 @@ std::size_t hoistLoopConstants(MFunction &fn)
                                    }),
                     instrs.end());
             }
+
+            // Re-validate insertIdx after erase (defensive: if preIdx were
+            // somehow in the loop body, the erase could shrink preInstrs).
+            if (insertIdx > preInstrs.size())
+                insertIdx = preInstrs.size();
 
             ++hoisted;
         }

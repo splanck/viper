@@ -272,9 +272,92 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
         }
     }
 
-    // Use generalized vreg-based lowering when we exceed register args or have floats
+    // Use generalized vreg-based lowering when we exceed register args or have floats.
+    // IMPORTANT: lowerCallWithArgs uses materializeValueToVReg which traces Load→alloca
+    // chains. The fast path normally skips the IL store instructions that write entry
+    // parameters to their alloca slots (those stores happen in the generic lowering at
+    // LowerILToMIR.cpp:220-320). We must emit those stores here first so that the
+    // alloca slots contain valid data when the loads execute.
     if (binI.operands.size() > ctx.ti.intArgOrder.size() || hasFloatArg)
     {
+        // Emit param→alloca stores: for each IL `store TYPE, %alloca, %param`,
+        // emit the corresponding MIR store from the ABI register to the alloca's
+        // FP-relative frame slot.
+        std::size_t gprIdx = 0;
+        std::size_t fprIdx = 0;
+        std::size_t stackArgIdx = 0;
+        for (std::size_t pi = 0; pi < bb.params.size(); ++pi)
+        {
+            const auto &param = bb.params[pi];
+            const bool isFP = param.type.kind == il::core::Type::Kind::F64;
+
+            // Find the alloca ID for this param from the IL store instructions
+            unsigned allocaId = 0;
+            bool foundAlloca = false;
+            for (const auto &instr : bb.instructions)
+            {
+                if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 2 &&
+                    instr.operands[0].kind == il::core::Value::Kind::Temp &&
+                    instr.operands[1].kind == il::core::Value::Kind::Temp &&
+                    instr.operands[1].id == param.id)
+                {
+                    allocaId = instr.operands[0].id;
+                    foundAlloca = true;
+                    break;
+                }
+            }
+            if (!foundAlloca)
+                return std::nullopt; // Can't map param to alloca, bail
+
+            const int offset = ctx.fb.localOffset(allocaId);
+
+            if (isFP)
+            {
+                if (fprIdx < ctx.ti.f64ArgOrder.size())
+                {
+                    bbMir.instrs.push_back(MInstr{MOpcode::StrFprFpImm,
+                                                   {MOperand::regOp(ctx.ti.f64ArgOrder[fprIdx]),
+                                                    MOperand::immOp(offset)}});
+                    ++fprIdx;
+                }
+                else
+                {
+                    // FP stack arg: load from caller stack, store to alloca
+                    const int callerOff = 16 + static_cast<int>(stackArgIdx) * 8;
+                    ++stackArgIdx;
+                    bbMir.instrs.push_back(MInstr{MOpcode::LdrFprFpImm,
+                                                   {MOperand::regOp(kScratchFPR),
+                                                    MOperand::immOp(callerOff)}});
+                    bbMir.instrs.push_back(MInstr{MOpcode::StrFprFpImm,
+                                                   {MOperand::regOp(kScratchFPR),
+                                                    MOperand::immOp(offset)}});
+                }
+            }
+            else
+            {
+                if (gprIdx < ctx.ti.intArgOrder.size())
+                {
+                    bbMir.instrs.push_back(
+                        MInstr{MOpcode::StrRegFpImm,
+                               {MOperand::regOp(ctx.ti.intArgOrder[gprIdx]),
+                                MOperand::immOp(offset)}});
+                    ++gprIdx;
+                }
+                else
+                {
+                    // GPR stack arg: load from caller stack, store to alloca
+                    const int callerOff = 16 + static_cast<int>(stackArgIdx) * 8;
+                    ++stackArgIdx;
+                    bbMir.instrs.push_back(MInstr{MOpcode::LdrRegFpImm,
+                                                   {MOperand::regOp(kScratchGPR),
+                                                    MOperand::immOp(callerOff)}});
+                    bbMir.instrs.push_back(MInstr{MOpcode::StrRegFpImm,
+                                                   {MOperand::regOp(kScratchGPR),
+                                                    MOperand::immOp(offset)}});
+                }
+            }
+        }
+
         LoweredCall seq{};
         std::unordered_map<unsigned, uint16_t> tempVReg;
         std::unordered_map<unsigned, RegClass> tempRegClass;
@@ -291,6 +374,11 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
             ctx.fb.finalize();
             return ctx.mf;
         }
+
+        // lowerCallWithArgs failed AND we've already added param stores to bbMir.
+        // Clear the stale instructions before falling through to nullopt.
+        bbMir.instrs.clear();
+        return std::nullopt;
     }
 
     // Single-block, marshal only entry params and const i64 to integer arg regs
