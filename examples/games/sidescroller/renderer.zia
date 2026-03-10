@@ -1,7 +1,9 @@
 // renderer.zia — Master render pipeline: draw order, tile rendering, screen effects
+// Uses Viper.Game.ScreenFX for shake, flash, and fade effects.
 module renderer;
 
 bind Viper.Graphics;
+bind Viper.Game.ScreenFX as FX;
 bind "./config";
 bind "./level";
 bind "./player";
@@ -14,76 +16,57 @@ bind "./hud";
 bind "./sprites";
 
 entity Renderer {
-    // Screen effects
-    hide Integer shakeTimer;
-    hide Integer shakeIntensity;
-    hide Integer flashTimer;
-    hide Integer flashColor;
-    hide Integer fadeAlpha;       // 0 = no fade, 255 = fully black
-    hide Integer fadeTarget;
-    hide Integer fadeSpeed;
+    // Screen effects manager (replaces manual shake/flash/fade)
+    hide FX fx;
 
     // Lava animation timer
     hide Integer lavaFrame;
     hide Integer lavaTimer;
 
     expose func init() {
-        shakeTimer = 0;
-        shakeIntensity = 0;
-        flashTimer = 0;
-        flashColor = COL_WHITE;
-        fadeAlpha = 0;
-        fadeTarget = 0;
-        fadeSpeed = 5;
+        fx = FX.New();
         lavaFrame = 0;
         lavaTimer = 0;
     }
 
-    // Trigger screen shake
+    // Trigger screen shake (convert game frames/intensity to ScreenFX units)
     expose func shake(duration: Integer, intensity: Integer) {
-        shakeTimer = duration;
-        shakeIntensity = intensity;
+        // ScreenFX.Shake(intensity_fp, duration_ms, decay_fp)
+        // intensity is in fixed-point (1000 = 1 pixel), duration in ms
+        fx.Shake(intensity * 1000, duration * 16, 500);
     }
 
     // Trigger screen flash
     expose func flash(color: Integer, duration: Integer) {
-        flashColor = color;
-        flashTimer = duration;
+        // ScreenFX.Flash(color_rgba, duration_ms)
+        // Color format is 0xRRGGBBAA — make it opaque
+        fx.Flash(color * 256 + 0xCC, duration * 16);
     }
 
     // Start fade to black
     expose func fadeOut(speed: Integer) {
-        fadeTarget = 255;
-        fadeSpeed = speed;
+        // Convert frame-based speed to duration: 255/speed frames * 16ms
+        var durationMs = 255 * 16 / speed;
+        fx.FadeOut(0x000000FF, durationMs);
     }
 
     // Start fade from black
     expose func fadeIn(speed: Integer) {
-        fadeTarget = 0;
-        fadeSpeed = speed;
+        var durationMs = 255 * 16 / speed;
+        fx.FadeIn(0x000000FF, durationMs);
     }
 
     expose func isFading() -> Boolean {
-        return fadeAlpha != fadeTarget;
+        return fx.IsTypeActive(4); // SCREENFX_FADE_OUT = 4
     }
 
-    expose func update() {
-        if shakeTimer > 0 { shakeTimer = shakeTimer - 1; }
-        if flashTimer > 0 { flashTimer = flashTimer - 1; }
+    expose func update(dt: Integer) {
+        // Update all screen effects with actual delta time
+        fx.Update(dt);
 
-        // Fade
-        if fadeAlpha < fadeTarget {
-            fadeAlpha = fadeAlpha + fadeSpeed;
-            if fadeAlpha > fadeTarget { fadeAlpha = fadeTarget; }
-        }
-        if fadeAlpha > fadeTarget {
-            fadeAlpha = fadeAlpha - fadeSpeed;
-            if fadeAlpha < fadeTarget { fadeAlpha = fadeTarget; }
-        }
-
-        // Lava animation
-        lavaTimer = lavaTimer + 1;
-        if lavaTimer >= 20 {
+        // Lava animation (ms-based)
+        lavaTimer = lavaTimer + dt;
+        if lavaTimer >= LAVA_ANIM_MS {
             lavaTimer = 0;
             lavaFrame = 1 - lavaFrame;
         }
@@ -99,13 +82,9 @@ entity Renderer {
                                pickups: PickupManager, particles: ParticleSystem,
                                hudObj: HUD, sprites: SpriteFactory,
                                score: Integer, coins: Integer, levelNum: Integer) {
-        // Calculate shake offset
-        var shakeX = 0;
-        var shakeY = 0;
-        if shakeTimer > 0 {
-            shakeX = (shakeTimer * 7) % (shakeIntensity * 2) - shakeIntensity;
-            shakeY = (shakeTimer * 11) % (shakeIntensity * 2) - shakeIntensity;
-        }
+        // Get shake offset from ScreenFX (fixed-point: 1000 = 1 pixel)
+        var shakeX = fx.get_ShakeX() / 1000;
+        var shakeY = fx.get_ShakeY() / 1000;
 
         var camX = camera.x + shakeX;
         var camY = camera.y + shakeY;
@@ -144,16 +123,11 @@ entity Renderer {
             }
         }
 
-        // 9. Screen flash
-        if flashTimer > 0 {
-            var flashAlpha = flashTimer * 30;
-            if flashAlpha > 200 { flashAlpha = 200; }
-            canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, flashColor, flashAlpha);
-        }
-
-        // 10. Fade overlay
-        if fadeAlpha > 0 {
-            canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, fadeAlpha);
+        // 9. Screen overlay (flash/fade from ScreenFX)
+        var overlayAlpha = fx.get_OverlayAlpha();
+        if overlayAlpha > 0 {
+            var overlayColor = fx.get_OverlayColor();
+            canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, overlayColor, overlayAlpha);
         }
     }
 
@@ -163,7 +137,6 @@ entity Renderer {
 
     hide func drawTiles(canvas: Canvas, camX: Integer, camY: Integer,
                         level: Level, sprites: SpriteFactory) {
-        // Calculate visible tile range
         var startCol = camX / TILE_SIZE;
         if startCol < 0 { startCol = 0; }
         var endCol = (camX + SCREEN_W) / TILE_SIZE + 1;
@@ -202,14 +175,13 @@ entity Renderer {
     hide func drawPlayer(canvas: Canvas, camX: Integer, camY: Integer,
                          player: Player, sprites: SpriteFactory) {
         if player.state == PS_DEAD {
-            // Don't draw dead player (death particles handle it)
             return;
         }
 
         // Invincibility flash
         if player.iframes > 0 {
             if player.iframes % 6 < 3 {
-                return;  // Blink effect
+                return;
             }
         }
 
@@ -218,7 +190,6 @@ entity Renderer {
         var frame = player.getSpriteFrame();
         var facing = player.facing;
 
-        // Draw sprite
         var spr = sprites.getPlayerFrame(facing, frame);
         canvas.BlitAlpha(sx - 3, sy - 2, spr);
 

@@ -5,6 +5,7 @@ bind Viper.Graphics;
 bind "./config";
 bind "./level";
 bind "./sprites";
+bind "./particles";
 
 entity ProjectilePool {
     hide List[Integer] bx;       // position x (pixels)
@@ -12,6 +13,7 @@ entity ProjectilePool {
     hide List[Integer] bvx;      // velocity x (pixels/frame)
     hide List[Integer] bactive;
     hide Integer bulletCount;
+    hide Integer trailTimer;    // ms accumulator for trail emission
 
     expose func init() {
         bx = [];
@@ -19,6 +21,7 @@ entity ProjectilePool {
         bvx = [];
         bactive = [];
         bulletCount = 0;
+        trailTimer = 0;
     }
 
     expose func reset() {
@@ -27,6 +30,7 @@ entity ProjectilePool {
         bvx = [];
         bactive = [];
         bulletCount = 0;
+        trailTimer = 0;
     }
 
     expose func fire(wx: Integer, wy: Integer, dir: Integer) {
@@ -55,12 +59,25 @@ entity ProjectilePool {
         }
     }
 
-    expose func updateAll(level: Level) {
+    expose func updateAll(level: Level, dt: Integer, particles: ParticleSystem) {
+        // Accumulate trail timer
+        trailTimer = trailTimer + dt;
+        var emitTrail = false;
+        if trailTimer >= 48 {
+            trailTimer = trailTimer - 48;
+            emitTrail = true;
+        }
+
         var i = 0;
         while i < bulletCount {
             if bactive.get(i) == 1 {
-                var nx = bx.get(i) + bvx.get(i);
+                var nx = bx.get(i) + bvx.get(i) * dt / DT_BASE;
                 bx.set(i, nx);
+
+                // Emit trail particle
+                if emitTrail {
+                    particles.burstTrail(nx, by.get(i), COL_BULLET);
+                }
 
                 // Deactivate if off level or hitting solid
                 var tileX = nx / TILE_SIZE;

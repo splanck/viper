@@ -8,6 +8,7 @@ bind "./config";
 bind "./level";
 bind "./physics";
 bind "./sprites";
+bind "./particles";
 
 entity EnemyManager {
     // Parallel arrays for enemy pool
@@ -46,6 +47,7 @@ entity EnemyManager {
     hide List[Integer] ebvy;
     hide List[Integer] ebactive;
     hide Integer ebCount;
+    hide Integer ebTrailTimer;  // ms accumulator for enemy bullet trails
 
     expose func init() {
         etype = [];
@@ -78,6 +80,7 @@ entity EnemyManager {
         ebvy = [];
         ebactive = [];
         ebCount = 0;
+        ebTrailTimer = 0;
     }
 
     expose func reset() {
@@ -102,6 +105,7 @@ entity EnemyManager {
         ebvx = [];
         ebvy = [];
         ebactive = [];
+        ebTrailTimer = 0;
     }
 
     expose func spawnEnemy(t: Integer, wx: Integer, wy: Integer) {
@@ -150,15 +154,16 @@ entity EnemyManager {
         }
     }
 
-    expose func updateAll(level: Level, playerPx: Integer, playerPy: Integer) {
+    expose func updateAll(level: Level, playerPx: Integer, playerPy: Integer, dt: Integer, particles: ParticleSystem) {
         var i = 0;
         while i < enemyCount {
             if eactive.get(i) == 1 {
                 var t = etype.get(i);
 
-                // Handle hurt timer
+                // Handle hurt timer (ms-based)
                 if estate.get(i) == 1 {
-                    var tm = etimer.get(i) - 1;
+                    var tm = etimer.get(i) - dt;
+                    if tm < 0 { tm = 0; }
                     etimer.set(i, tm);
                     if tm <= 0 {
                         estate.set(i, 0);
@@ -166,62 +171,69 @@ entity EnemyManager {
                 }
 
                 if t == ENEMY_SLIME {
-                    updateSlime(i, level);
+                    updateSlime(i, level, dt);
                 }
                 if t == ENEMY_BAT {
-                    updateBat(i, playerPx, playerPy);
+                    updateBat(i, playerPx, playerPy, dt);
                 }
                 if t == ENEMY_TURRET {
-                    updateTurret(i, playerPx, playerPy);
+                    updateTurret(i, playerPx, playerPy, dt);
                 }
                 if t == ENEMY_BOSS {
-                    updateBoss(i, level, playerPx, playerPy);
+                    updateBoss(i, level, playerPx, playerPy, dt);
                 }
             }
             i = i + 1;
         }
 
-        // Update enemy bullets
-        updateEnemyBullets(level);
+        // Update enemy bullets (with particle trails)
+        updateEnemyBullets(level, dt, particles);
     }
 
     // =========================================================================
     // Slime AI — patrol on ground, reverse at edges/walls
     // =========================================================================
 
-    hide func updateSlime(i: Integer, level: Level) {
-        // Animation
-        var tm = etimer.get(i) + 1;
-        if tm >= 20 {
-            tm = 0;
-            var f = eframe.get(i);
-            eframe.set(i, 1 - f);
+    hide func updateSlime(i: Integer, level: Level, dt: Integer) {
+        // Animation (ms-based, only when not hurt)
+        if estate.get(i) != 1 {
+            var tm = etimer.get(i) + dt;
+            if tm >= SLIME_ANIM_MS {
+                tm = 0;
+                var f = eframe.get(i);
+                eframe.set(i, 1 - f);
+            }
+            etimer.set(i, tm);
         }
-        etimer.set(i, tm);
 
-        // Apply gravity
-        var curVy = evy.get(i) + GRAVITY;
+        // Apply gravity (scaled by dt)
+        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
         if curVy > MAX_FALL { curVy = MAX_FALL; }
         evy.set(i, curVy);
 
-        // Move
+        // Compute scaled displacement
         var curX = ex.get(i);
         var curY = ey.get(i);
         var curVx = evx.get(i);
+        var dispX = curVx * dt / DT_BASE;
+        var dispY = curVy * dt / DT_BASE;
 
         outX.set(0, curX);
         outY.set(0, curY);
-        outVx.set(0, curVx);
-        outVy.set(0, curVy);
+        outVx.set(0, dispX);
+        outVy.set(0, dispY);
 
-        var flags = phys.moveAndCollide(curX, curY, curVx, curVy,
+        var flags = phys.moveAndCollide(curX, curY, dispX, dispY,
                                          SLIME_W, SLIME_H, level,
                                          outX, outY, outVx, outVy);
 
         ex.set(i, outX.get(0));
         ey.set(i, outY.get(0));
-        evx.set(i, outVx.get(0));
-        evy.set(i, outVy.get(0));
+        // Zero persistent velocity on wall collision
+        if (flags / 4) % 2 == 1 { evy.set(i, 0); }
+        if (flags / 8) % 2 == 1 { evy.set(i, 0); }
+        if (flags % 2) == 1 { evy.set(i, 0); }
+        if (flags / 2) % 2 == 1 { evy.set(i, 0); }
 
         // Reverse on wall hit
         var hitLeft = (flags / 4) % 2 == 1;
@@ -259,10 +271,10 @@ entity EnemyManager {
     // Bat AI — sine wave patrol, chase player when nearby
     // =========================================================================
 
-    hide func updateBat(i: Integer, playerPx: Integer, playerPy: Integer) {
-        // Animation — wing flap
-        var tm = etimer.get(i) + 1;
-        if tm >= 10 {
+    hide func updateBat(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        // Animation — wing flap (ms-based)
+        var tm = etimer.get(i) + dt;
+        if tm >= BAT_ANIM_MS {
             tm = 0;
             var f = eframe.get(i) + 1;
             if f >= 3 { f = 0; }
@@ -299,11 +311,11 @@ entity EnemyManager {
             if dx > 0 { edir.set(i, 1); }
             if dx < 0 { edir.set(i, -1); }
         } else {
-            // Idle hover — sine wave using timer
-            var wave = etimer2.get(i) + 1;
+            // Idle hover — sine wave using ms timer
+            var wave = etimer2.get(i) + dt;
             etimer2.set(i, wave);
-            // Simple up/down oscillation
-            if wave % 60 < 30 {
+            // Simple up/down oscillation (period = BAT_HOVER_MS)
+            if wave % BAT_HOVER_MS < BAT_HOVER_MS / 2 {
                 evy.set(i, -60);
             } else {
                 evy.set(i, 60);
@@ -311,9 +323,9 @@ entity EnemyManager {
             evx.set(i, 0);
         }
 
-        // Apply velocity directly (bats don't collide with tiles)
-        var newX = ex.get(i) + evx.get(i);
-        var newY = ey.get(i) + evy.get(i);
+        // Apply velocity directly scaled by dt (bats don't collide with tiles)
+        var newX = ex.get(i) + evx.get(i) * dt / DT_BASE;
+        var newY = ey.get(i) + evy.get(i) * dt / DT_BASE;
         ex.set(i, newX);
         ey.set(i, newY);
     }
@@ -322,7 +334,7 @@ entity EnemyManager {
     // Turret AI — static, shoots at player periodically when in range
     // =========================================================================
 
-    hide func updateTurret(i: Integer, playerPx: Integer, playerPy: Integer) {
+    hide func updateTurret(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var cx = ex.get(i) / 100;
         var cy = ey.get(i) / 100;
 
@@ -337,13 +349,13 @@ entity EnemyManager {
         if dx > 0 { edir.set(i, 1); }
         if dx < 0 { edir.set(i, -1); }
 
-        // Shoot timer
-        var tm = etimer.get(i) + 1;
+        // Shoot timer (ms-based accumulator)
+        var tm = etimer.get(i) + dt;
         etimer.set(i, tm);
 
         if adx < TURRET_RANGE {
             if ady < TURRET_RANGE / 2 {
-                if tm >= TURRET_FIRE_RATE {
+                if tm >= TURRET_FIRE_RATE_MS {
                     etimer.set(i, 0);
                     // Fire bullet
                     var bdir = edir.get(i);
@@ -354,9 +366,9 @@ entity EnemyManager {
             }
         }
 
-        // Animate warning light
-        var tm2 = etimer2.get(i) + 1;
-        if tm2 >= 30 { tm2 = 0; }
+        // Animate warning light (ms-based)
+        var tm2 = etimer2.get(i) + dt;
+        if tm2 >= TURRET_LIGHT_MS { tm2 = 0; }
         etimer2.set(i, tm2);
     }
 
@@ -364,7 +376,7 @@ entity EnemyManager {
     // Boss AI — 3 phases with different attack patterns
     // =========================================================================
 
-    hide func updateBoss(i: Integer, level: Level, playerPx: Integer, playerPy: Integer) {
+    hide func updateBoss(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var hp = ehp.get(i);
 
         // Determine phase based on HP
@@ -389,12 +401,12 @@ entity EnemyManager {
         // Animation frame based on phase
         eframe.set(i, bossPhase);
 
-        // Apply gravity
-        var curVy = evy.get(i) + GRAVITY;
+        // Apply gravity (scaled by dt)
+        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
         if curVy > MAX_FALL { curVy = MAX_FALL; }
 
-        // Movement AI based on phase
-        var tm = etimer.get(i) + 1;
+        // Movement AI based on phase (ms-based shoot/jump timers)
+        var tm = etimer.get(i) + dt;
         etimer.set(i, tm);
 
         if bossPhase == 0 {
@@ -402,7 +414,8 @@ entity EnemyManager {
             var d = edir.get(i);
             evx.set(i, d * BOSS_SPEED / 2);
 
-            if tm % 60 == 0 {
+            if tm >= BOSS_SHOOT0_MS {
+                etimer.set(i, 0);
                 spawnEnemyBullet(cx + BOSS_W / 2, cy + 30, d * 8, 0);
             }
         }
@@ -412,15 +425,19 @@ entity EnemyManager {
             var d = edir.get(i);
             evx.set(i, d * BOSS_SPEED);
 
-            if tm % 40 == 0 {
+            if tm >= BOSS_SHOOT1_MS {
+                etimer.set(i, tm - BOSS_SHOOT1_MS);
                 spawnEnemyBullet(cx + BOSS_W / 2, cy + 30, d * 9, 0);
                 spawnEnemyBullet(cx + BOSS_W / 2, cy + 15, d * 8, -3);
             }
 
-            // Jump every 120 frames
-            if tm % 120 == 0 {
+            // Jump uses secondary timer
+            var jt = etimer2.get(i) + dt;
+            if jt >= BOSS_JUMP1_MS {
+                jt = 0;
                 curVy = -900;
             }
+            etimer2.set(i, jt);
         }
 
         if bossPhase == 2 {
@@ -439,34 +456,45 @@ entity EnemyManager {
                 evx.set(i, 0);
             }
 
-            if tm % 25 == 0 {
+            if tm >= BOSS_SHOOT2_MS {
+                etimer.set(i, tm - BOSS_SHOOT2_MS);
                 var d = edir.get(i);
                 spawnEnemyBullet(cx + BOSS_W / 2, cy + 30, d * 10, 0);
                 spawnEnemyBullet(cx + BOSS_W / 2, cy + 15, d * 9, -5);
                 spawnEnemyBullet(cx + BOSS_W / 2, cy + 45, d * 9, 3);
             }
 
-            if tm % 90 == 0 {
+            var jt = etimer2.get(i) + dt;
+            if jt >= BOSS_JUMP2_MS {
+                jt = 0;
                 curVy = -1050;
             }
+            etimer2.set(i, jt);
         }
 
         evy.set(i, curVy);
 
+        // Compute scaled displacement
+        var dispX = evx.get(i) * dt / DT_BASE;
+        var dispY = curVy * dt / DT_BASE;
+
         // Move with collision
         outX.set(0, ex.get(i));
         outY.set(0, ey.get(i));
-        outVx.set(0, evx.get(i));
-        outVy.set(0, curVy);
+        outVx.set(0, dispX);
+        outVy.set(0, dispY);
 
-        var flags = phys.moveAndCollide(ex.get(i), ey.get(i), evx.get(i), curVy,
+        var flags = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY,
                                          BOSS_W, BOSS_H, level,
                                          outX, outY, outVx, outVy);
 
         ex.set(i, outX.get(0));
         ey.set(i, outY.get(0));
-        evx.set(i, outVx.get(0));
-        evy.set(i, outVy.get(0));
+        // Zero persistent velocity on collision
+        if (flags / 4) % 2 == 1 { evx.set(i, 0); }
+        if (flags / 8) % 2 == 1 { evx.set(i, 0); }
+        if (flags % 2) == 1 { evy.set(i, 0); }
+        if (flags / 2) % 2 == 1 { evy.set(i, 0); }
 
         // Reverse on wall
         var hitLeft = (flags / 4) % 2 == 1;
@@ -503,14 +531,27 @@ entity EnemyManager {
         ebCount = ebCount + 1;
     }
 
-    hide func updateEnemyBullets(level: Level) {
+    hide func updateEnemyBullets(level: Level, dt: Integer, particles: ParticleSystem) {
+        // Trail timer for enemy bullets
+        ebTrailTimer = ebTrailTimer + dt;
+        var emitTrail = false;
+        if ebTrailTimer >= 48 {
+            ebTrailTimer = ebTrailTimer - 48;
+            emitTrail = true;
+        }
+
         var i = 0;
         while i < ebCount {
             if ebactive.get(i) == 1 {
-                var bx2 = ebx.get(i) + ebvx.get(i);
-                var by2 = eby.get(i) + ebvy.get(i);
+                var bx2 = ebx.get(i) + ebvx.get(i) * dt / DT_BASE;
+                var by2 = eby.get(i) + ebvy.get(i) * dt / DT_BASE;
                 ebx.set(i, bx2);
                 eby.set(i, by2);
+
+                // Emit red trail for enemy bullets
+                if emitTrail {
+                    particles.burstTrail(bx2, by2, COL_ENEMY_BULLET);
+                }
 
                 // Deactivate if off screen or hitting solid
                 var tileX = bx2 / TILE_SIZE;
@@ -543,7 +584,7 @@ entity EnemyManager {
         var hp = ehp.get(i) - amount;
         ehp.set(i, hp);
         estate.set(i, 1);
-        etimer.set(i, 10);
+        etimer.set(i, HURT_TIMER_MS);
 
         if hp <= 0 {
             eactive.set(i, 0);

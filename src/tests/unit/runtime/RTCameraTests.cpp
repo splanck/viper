@@ -5,6 +5,7 @@
 
 #include "rt_camera.h"
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
 
 static int tests_passed = 0;
@@ -136,6 +137,68 @@ TEST(dirty_flag)
     ASSERT(rt_camera_is_dirty(cam) == 1);
 }
 
+TEST(parallax_add_remove)
+{
+    void *cam = rt_camera_new(800, 600);
+    ASSERT(rt_camera_parallax_count(cam) == 0);
+
+    // Use dummy non-NULL pointers as fake Pixels objects
+    void *fake_pixels_a = (void *)0x1000;
+    void *fake_pixels_b = (void *)0x2000;
+
+    int64_t idx0 = rt_camera_add_parallax(cam, fake_pixels_a, 50, 50);
+    ASSERT(idx0 == 0);
+    ASSERT(rt_camera_parallax_count(cam) == 1);
+
+    int64_t idx1 = rt_camera_add_parallax(cam, fake_pixels_b, 100, 100);
+    ASSERT(idx1 == 1);
+    ASSERT(rt_camera_parallax_count(cam) == 2);
+
+    // Remove first layer, count drops
+    rt_camera_remove_parallax(cam, 0);
+    ASSERT(rt_camera_parallax_count(cam) == 1);
+
+    // Clear all
+    rt_camera_clear_parallax(cam);
+    ASSERT(rt_camera_parallax_count(cam) == 0);
+}
+
+TEST(parallax_max_layers)
+{
+    void *cam = rt_camera_new(800, 600);
+
+    // Fill all 8 slots
+    for (int i = 0; i < 8; i++)
+    {
+        int64_t idx = rt_camera_add_parallax(cam, (void *)(intptr_t)(0x1000 + i), 50, 50);
+        ASSERT(idx == i);
+    }
+    ASSERT(rt_camera_parallax_count(cam) == 8);
+
+    // 9th layer should fail
+    int64_t overflow = rt_camera_add_parallax(cam, (void *)0x9000, 50, 50);
+    ASSERT(overflow == -1);
+    ASSERT(rt_camera_parallax_count(cam) == 8);
+}
+
+TEST(parallax_null_safety)
+{
+    // NULL camera should not crash, returns safe defaults
+    ASSERT(rt_camera_parallax_count(NULL) == 0);
+    ASSERT(rt_camera_add_parallax(NULL, (void *)0x1000, 50, 50) == -1);
+    rt_camera_remove_parallax(NULL, 0); // no crash
+    rt_camera_clear_parallax(NULL);     // no crash
+
+    // NULL pixels should be rejected
+    void *cam = rt_camera_new(800, 600);
+    ASSERT(rt_camera_add_parallax(cam, NULL, 50, 50) == -1);
+    ASSERT(rt_camera_parallax_count(cam) == 0);
+
+    // draw_parallax with NULL canvas returns 0
+    ASSERT(rt_camera_draw_parallax(cam, NULL) == 0);
+    ASSERT(rt_camera_draw_parallax(NULL, (void *)0x1) == 0);
+}
+
 int main()
 {
     printf("RTCameraTests:\n");
@@ -148,6 +211,9 @@ int main()
     RUN_TEST(is_visible_zoom_out);
     RUN_TEST(is_visible_with_camera_offset);
     RUN_TEST(dirty_flag);
+    RUN_TEST(parallax_add_remove);
+    RUN_TEST(parallax_max_layers);
+    RUN_TEST(parallax_null_safety);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

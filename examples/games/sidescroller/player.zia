@@ -1,5 +1,6 @@
 // player.zia — Player entity: physics, states, input, shooting
-// All positions/velocities use x100 scale for sub-pixel precision
+// Uses Viper.Input.Action for named input bindings instead of raw key codes.
+// All positions/velocities use x100 scale for sub-pixel precision.
 module player;
 
 bind Viper.Graphics;
@@ -97,42 +98,39 @@ entity Player {
         vx = 0;
         vy = 0;
         state = PS_IDLE;
-        iframes = 60;
+        iframes = IFRAMES_MS;
         canDoubleJump = true;
         coyoteTimer = 0;
         jumpBufferTimer = 0;
     }
 
-    expose func update(level: Level) {
+    // dt = delta time in milliseconds (clamped by caller)
+    expose func update(level: Level, dt: Integer) {
         if state == PS_DEAD {
             return;
         }
 
-        // Decrement timers
-        if iframes > 0 { iframes = iframes - 1; }
-        if speedTimer > 0 { speedTimer = speedTimer - 1; }
-        if rapidFireTimer > 0 { rapidFireTimer = rapidFireTimer - 1; }
-        if shootCooldown > 0 { shootCooldown = shootCooldown - 1; }
-        if coyoteTimer > 0 { coyoteTimer = coyoteTimer - 1; }
-        if jumpBufferTimer > 0 { jumpBufferTimer = jumpBufferTimer - 1; }
+        // Decrement ms-based timers
+        if iframes > 0 { iframes = iframes - dt; if iframes < 0 { iframes = 0; } }
+        if speedTimer > 0 { speedTimer = speedTimer - dt; if speedTimer < 0 { speedTimer = 0; } }
+        if rapidFireTimer > 0 { rapidFireTimer = rapidFireTimer - dt; if rapidFireTimer < 0 { rapidFireTimer = 0; } }
+        if shootCooldown > 0 { shootCooldown = shootCooldown - dt; if shootCooldown < 0 { shootCooldown = 0; } }
+        if coyoteTimer > 0 { coyoteTimer = coyoteTimer - dt; if coyoteTimer < 0 { coyoteTimer = 0; } }
+        if jumpBufferTimer > 0 { jumpBufferTimer = jumpBufferTimer - dt; if jumpBufferTimer < 0 { jumpBufferTimer = 0; } }
 
         handleInput();
-        applyPhysics(level);
-        updateAnimation();
+        applyPhysics(level, dt);
+        updateAnimation(dt);
     }
 
     hide func handleInput() {
+        // Movement via named actions (bound in game.zia init)
         var moveDir = 0;
-        if Keyboard.IsDown(KEY_LEFT) { moveDir = moveDir - 1; }
-        if Keyboard.IsDown(KEY_A) { moveDir = moveDir - 1; }
-        if Keyboard.IsDown(KEY_RIGHT) { moveDir = moveDir + 1; }
-        if Keyboard.IsDown(KEY_D) { moveDir = moveDir + 1; }
-
-        // Clamp moveDir
+        if Action.Held(ACT_LEFT) { moveDir = moveDir - 1; }
+        if Action.Held(ACT_RIGHT) { moveDir = moveDir + 1; }
         if moveDir > 1 { moveDir = 1; }
         if moveDir < -1 { moveDir = -1; }
 
-        // Update facing
         if moveDir != 0 {
             facing = moveDir;
         }
@@ -148,12 +146,10 @@ entity Player {
         // Horizontal movement
         if onGround {
             if moveDir != 0 {
-                // Accelerate
                 vx = vx + moveDir * accel;
                 if vx > speed { vx = speed; }
                 if vx < 0 - speed { vx = 0 - speed; }
             } else {
-                // Decelerate
                 if vx > 0 {
                     vx = vx - PLAYER_DECEL;
                     if vx < 0 { vx = 0; }
@@ -164,7 +160,6 @@ entity Player {
                 }
             }
         } else {
-            // Air control (reduced)
             if moveDir != 0 {
                 vx = vx + moveDir * PLAYER_AIR_ACCEL;
                 if vx > speed { vx = speed; }
@@ -172,31 +167,17 @@ entity Player {
             }
         }
 
-        // Jump input
-        var jumpPressed = Keyboard.WasPressed(KEY_UP);
-        if jumpPressed == false {
-            jumpPressed = Keyboard.WasPressed(KEY_W);
-        }
-        if jumpPressed == false {
-            jumpPressed = Keyboard.WasPressed(KEY_SPACE);
-        }
-
-        var jumpDown = Keyboard.IsDown(KEY_UP);
-        if jumpDown == false {
-            jumpDown = Keyboard.IsDown(KEY_W);
-        }
-        if jumpDown == false {
-            jumpDown = Keyboard.IsDown(KEY_SPACE);
-        }
+        // Jump input via Action
+        var jumpPressed = Action.Pressed(ACT_JUMP);
+        var jumpDown = Action.Held(ACT_JUMP);
 
         if jumpPressed {
-            jumpBufferTimer = JUMP_BUFFER;
+            jumpBufferTimer = JUMP_BUFFER_MS;
         }
 
         // Process jump
         if jumpBufferTimer > 0 {
             if onGround {
-                // Normal jump
                 vy = PLAYER_JUMP;
                 onGround = false;
                 canDoubleJump = true;
@@ -206,7 +187,6 @@ entity Player {
                 state = PS_JUMP;
             } else {
                 if coyoteTimer > 0 {
-                    // Coyote time jump
                     vy = PLAYER_JUMP;
                     coyoteTimer = 0;
                     jumpBufferTimer = 0;
@@ -214,7 +194,6 @@ entity Player {
                     state = PS_JUMP;
                 } else {
                     if onWall {
-                        // Wall jump
                         vy = WALL_JUMP_VY;
                         vx = 0 - wallDir * WALL_JUMP_VX;
                         facing = 0 - wallDir;
@@ -225,7 +204,6 @@ entity Player {
                         state = PS_JUMP;
                     } else {
                         if canDoubleJump {
-                            // Double jump
                             vy = PLAYER_DJUMP;
                             canDoubleJump = false;
                             jumpBufferTimer = 0;
@@ -247,24 +225,20 @@ entity Player {
             }
         }
 
-        // Shoot input
-        var shootPressed = Keyboard.WasPressed(KEY_Z);
-        if shootPressed == false {
-            shootPressed = Keyboard.WasPressed(KEY_X);
-        }
-        if shootPressed {
+        // Shoot input via Action
+        if Action.Pressed(ACT_SHOOT) {
             if shootCooldown <= 0 {
-                shootCooldown = SHOOT_COOLDOWN;
+                shootCooldown = SHOOT_COOLDOWN_MS;
                 if rapidFireTimer > 0 {
-                    shootCooldown = SHOOT_COOLDOWN / 2;
+                    shootCooldown = SHOOT_COOLDOWN_MS / 2;
                 }
             }
         }
     }
 
-    hide func applyPhysics(level: Level) {
-        // Gravity
-        vy = vy + GRAVITY;
+    hide func applyPhysics(level: Level, dt: Integer) {
+        // Gravity (scaled by dt)
+        vy = vy + GRAVITY * dt / DT_BASE;
         if vy > MAX_FALL { vy = MAX_FALL; }
 
         // Wall slide — slow descent when touching wall and falling
@@ -274,20 +248,27 @@ entity Player {
             }
         }
 
-        // Move and collide
+        // Compute displacement scaled by dt
+        var dispX = vx * dt / DT_BASE;
+        var dispY = vy * dt / DT_BASE;
+
+        // Move and collide using scaled displacement
         outX.set(0, x);
         outY.set(0, y);
-        outVx.set(0, vx);
-        outVy.set(0, vy);
+        outVx.set(0, dispX);
+        outVy.set(0, dispY);
 
-        var flags = phys.moveAndCollide(x, y, vx, vy,
+        var flags = phys.moveAndCollide(x, y, dispX, dispY,
                                          PLAYER_W, PLAYER_H, level,
                                          outX, outY, outVx, outVy);
 
         x = outX.get(0);
         y = outY.get(0);
-        vx = outVx.get(0);
-        vy = outVy.get(0);
+        // Zero persistent velocity on collision (use flags, not output)
+        if (flags / 4) % 2 == 1 { vx = 0; }   // left wall
+        if (flags / 8) % 2 == 1 { vx = 0; }   // right wall
+        if (flags % 2) == 1 { vy = 0; }         // floor
+        if (flags / 2) % 2 == 1 { vy = 0; }   // ceiling
 
         // Detect floor contact
         var wasOnGround = onGround;
@@ -295,8 +276,7 @@ entity Player {
 
         if wasOnGround {
             if onGround == false {
-                // Just left ground — start coyote timer
-                coyoteTimer = COYOTE_FRAMES;
+                coyoteTimer = COYOTE_MS;
             }
         }
 
@@ -322,7 +302,6 @@ entity Player {
         }
 
         // Update state based on movement
-        // Allow state transition out of PS_HURT once iframes expire
         if state != PS_HURT || iframes <= 0 {
             if onGround {
                 if vx == 0 {
@@ -355,16 +334,16 @@ entity Player {
         return LEVEL_HEIGHT;
     }
 
-    hide func updateAnimation() {
-        animTimer = animTimer + 1;
+    hide func updateAnimation(dt: Integer) {
+        animTimer = animTimer + dt;
         if state == PS_IDLE {
-            if animTimer >= 30 {
+            if animTimer >= ANIM_IDLE_MS {
                 animTimer = 0;
                 animFrame = 1 - animFrame;
             }
         }
         if state == PS_RUN {
-            if animTimer >= 8 {
+            if animTimer >= ANIM_RUN_MS {
                 animTimer = 0;
                 animFrame = 1 - animFrame;
             }
@@ -373,11 +352,11 @@ entity Player {
 
     // Return true if player just fired (caller should spawn bullet)
     expose func wantsToShoot() -> Boolean {
-        if shootCooldown == SHOOT_COOLDOWN {
+        if shootCooldown == SHOOT_COOLDOWN_MS {
             return true;
         }
         if rapidFireTimer > 0 {
-            if shootCooldown == SHOOT_COOLDOWN / 2 {
+            if shootCooldown == SHOOT_COOLDOWN_MS / 2 {
                 return true;
             }
         }
@@ -388,17 +367,16 @@ entity Player {
         if iframes > 0 { return; }
         if state == PS_DEAD { return; }
 
-        // Shield absorbs hit
         if shieldHits > 0 {
             shieldHits = shieldHits - 1;
-            iframes = 30;
+            iframes = 480;  // 30 frames * 16ms
             return;
         }
 
         hp = hp - amount;
-        iframes = IFRAMES_MAX;
+        iframes = IFRAMES_MS;
         state = PS_HURT;
-        vy = -450; // Knockback up
+        vy = -450;
 
         if hp <= 0 {
             die();
@@ -418,17 +396,16 @@ entity Player {
             if hp > maxHp { hp = maxHp; }
         }
         if ptype == PICKUP_SPEED {
-            speedTimer = SPEED_DURATION;
+            speedTimer = SPEED_DURATION_MS;
         }
         if ptype == PICKUP_SHIELD {
             shieldHits = 1;
         }
         if ptype == PICKUP_RAPIDFIRE {
-            rapidFireTimer = RAPIDFIRE_DURATION;
+            rapidFireTimer = RAPIDFIRE_DURATION_MS;
         }
     }
 
-    // Get sprite frame index for current state
     expose func getSpriteFrame() -> Integer {
         if state == PS_IDLE { return animFrame; }
         if state == PS_RUN { return 2 + animFrame; }

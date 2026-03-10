@@ -716,6 +716,12 @@ void rt_canvas_set_fps(void *canvas, int64_t fps)
     (void)fps;
 }
 
+int64_t rt_canvas_get_delta_time(void *canvas)
+{
+    (void)canvas;
+    return 0;
+}
+
 int8_t rt_canvas_is_maximized(void *canvas)
 {
     (void)canvas;

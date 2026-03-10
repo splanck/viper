@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-03-09
 ---
 
 # Viper Runtime Library Reference
@@ -145,7 +145,7 @@ implemented in C and exposed through the IL runtime system.
 | [`CollisionRect`](game.md#vipergamecollisionrect)         | Instance | AABB collision detection                 |
 | [`Grid2D`](game.md#vipergamegrid2d)                       | Instance | 2D array for tile maps and grids         |
 | [`ObjectPool`](game.md#vipergameobjectpool)               | Instance | Efficient object slot reuse              |
-| [`ParticleEmitter`](game.md#vipergameparticleemitter)     | Instance | Particle effects system                  |
+| [`ParticleEmitter`](game.md#vipergameparticleemitter)     | Instance | Particle effects with batch rendering    |
 | [`PathFollower`](game.md#vipergamepathfollower)           | Instance | Path following along waypoints           |
 | [`Physics2D`](game.md#vipergamephysics2d)                 | Compound | 2D rigid body physics (World + Body)     |
 | [`Quadtree`](game.md#vipergamequadtree)                   | Instance | Spatial partitioning for collision       |
@@ -169,8 +169,8 @@ implemented in C and exposed through the IL runtime system.
 
 | Class                                         | Type     | Description                      |
 |-----------------------------------------------|----------|----------------------------------|
-| [`Camera`](graphics/README.md#vipergraphicscamera)         | Instance | 2D camera for scrolling/zoom     |
-| [`Canvas`](graphics/README.md#vipergraphicscanvas)         | Instance | 2D graphics canvas               |
+| [`Camera`](graphics/README.md#vipergraphicscamera)         | Instance | 2D camera for scrolling/zoom/parallax |
+| [`Canvas`](graphics/README.md#vipergraphicscanvas)         | Instance | 2D graphics canvas with delta time    |
 | [`Color`](graphics/README.md#vipergraphicscolor)           | Static   | Color creation                   |
 | [`Pixels`](graphics/README.md#vipergraphicspixels)         | Instance | Software image buffer            |
 | [`Scene`](graphics/README.md#vipergraphicsscene)           | Instance | Scene graph container            |

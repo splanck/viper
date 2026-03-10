@@ -1,4 +1,5 @@
 // game.zia — Main game entity: loop, state machine, orchestration
+// Sets up Viper.Input.Action bindings for all input, wires subsystems.
 module game;
 
 bind Viper.Graphics;
@@ -43,12 +44,15 @@ entity Game {
     hide Integer score;
     hide Integer coins;
     hide Integer currentLevel;
-    hide Integer levelTimer;     // frames elapsed in level
+    hide Integer levelTimer;     // milliseconds elapsed in level
     hide Boolean reachedCheckpoint;
 
     // Level complete state
     hide Integer levelCompleteTimer;
     hide Integer timeBonus;
+
+    // Frame timing
+    hide Integer dt;
 
     // Death/respawn
     hide Integer deathTimer;
@@ -65,6 +69,7 @@ entity Game {
         reachedCheckpoint = false;
         levelCompleteTimer = 0;
         timeBonus = 0;
+        dt = 16;
         deathTimer = 0;
         prevPlayerState = PS_IDLE;
 
@@ -83,6 +88,67 @@ entity Game {
         phys = new PhysicsHelper();
         sfx = new SoundManager();
         sfx.setup("examples/games/sidescroller/");
+
+        // Setup input actions — all bindings in one place
+        setupActions();
+
+        // Load saved high scores from disk
+        menus.loadHighScores();
+    }
+
+    // =========================================================================
+    // Input action setup — binds keyboard keys to named actions
+    // =========================================================================
+
+    hide func setupActions() {
+        // Movement
+        Action.Define(ACT_LEFT);
+        Action.BindKey(ACT_LEFT, KEY_LEFT);
+        Action.BindKey(ACT_LEFT, KEY_A);
+
+        Action.Define(ACT_RIGHT);
+        Action.BindKey(ACT_RIGHT, KEY_RIGHT);
+        Action.BindKey(ACT_RIGHT, KEY_D);
+
+        // Jump (3 keys)
+        Action.Define(ACT_JUMP);
+        Action.BindKey(ACT_JUMP, KEY_UP);
+        Action.BindKey(ACT_JUMP, KEY_W);
+        Action.BindKey(ACT_JUMP, KEY_SPACE);
+
+        // Shoot
+        Action.Define(ACT_SHOOT);
+        Action.BindKey(ACT_SHOOT, KEY_Z);
+        Action.BindKey(ACT_SHOOT, KEY_X);
+
+        // Menu navigation
+        Action.Define(ACT_UP);
+        Action.BindKey(ACT_UP, KEY_UP);
+        Action.BindKey(ACT_UP, KEY_W);
+
+        Action.Define(ACT_DOWN);
+        Action.BindKey(ACT_DOWN, KEY_DOWN);
+        Action.BindKey(ACT_DOWN, KEY_S);
+
+        // Confirm/Back
+        Action.Define(ACT_CONFIRM);
+        Action.BindKey(ACT_CONFIRM, KEY_ENTER);
+        Action.BindKey(ACT_CONFIRM, KEY_SPACE);
+
+        Action.Define(ACT_BACK);
+        Action.BindKey(ACT_BACK, KEY_ESCAPE);
+
+        // Gamepad bindings (pad 0)
+        Action.BindPadButton(ACT_LEFT, PAD_IDX, PAD_BTN_LEFT);
+        Action.BindPadButton(ACT_RIGHT, PAD_IDX, PAD_BTN_RIGHT);
+        Action.BindPadButton(ACT_JUMP, PAD_IDX, PAD_BTN_A);
+        Action.BindPadButton(ACT_SHOOT, PAD_IDX, PAD_BTN_X);
+        Action.BindPadButton(ACT_SHOOT, PAD_IDX, PAD_BTN_RB);
+        Action.BindPadButton(ACT_UP, PAD_IDX, PAD_BTN_UP);
+        Action.BindPadButton(ACT_DOWN, PAD_IDX, PAD_BTN_DOWN);
+        Action.BindPadButton(ACT_CONFIRM, PAD_IDX, PAD_BTN_A);
+        Action.BindPadButton(ACT_BACK, PAD_IDX, PAD_BTN_B);
+        Action.BindPadButton(ACT_BACK, PAD_IDX, PAD_BTN_START);
     }
 
     // =========================================================================
@@ -94,6 +160,11 @@ entity Game {
 
         while canvas.get_ShouldClose() == 0 {
             canvas.Poll();
+
+            // Frame-rate-independent timing
+            dt = canvas.DeltaTime;
+            if dt < 1 { dt = 1; }
+            if dt > DT_MAX { dt = DT_MAX; }
 
             if gameState == STATE_MENU {
                 updateMenu();
@@ -148,8 +219,6 @@ entity Game {
             gameState = STATE_CONTROLS;
         }
         if result == -2 {
-            // Quit — close window by breaking out of loop
-            // (canvas.get_ShouldClose will handle it)
             return;
         }
     }
@@ -160,10 +229,9 @@ entity Game {
 
     hide func updatePlaying() {
         // Pause check
-        if Keyboard.WasPressed(KEY_ESCAPE) {
+        if Action.Pressed(ACT_BACK) {
             gameState = STATE_PAUSED;
             menus.resetSelection();
-            // Still render the game underneath the pause overlay
             renderObj.renderPlaying(canvas, camera, level, player, enemies,
                                     bullets, pickups, particles, hudObj, sprites,
                                     score, coins, currentLevel);
@@ -172,7 +240,7 @@ entity Game {
         }
 
         // Update player
-        player.update(level);
+        player.update(level, dt);
 
         // Check if player wants to shoot
         if player.wantsToShoot() {
@@ -190,11 +258,11 @@ entity Game {
         // Update camera
         camera.follow(player.centerX(), player.centerY());
 
-        // Update enemies
-        enemies.updateAll(level, player.pixelX(), player.pixelY());
+        // Update enemies (with particle trails for enemy bullets)
+        enemies.updateAll(level, player.pixelX(), player.pixelY(), dt, particles);
 
-        // Update bullets
-        bullets.updateAll(level);
+        // Update bullets (with particle trails)
+        bullets.updateAll(level, dt, particles);
 
         // Update pickups
         pickups.updateAll();
@@ -203,13 +271,13 @@ entity Game {
         particles.updateAll();
 
         // Update renderer effects
-        renderObj.update();
+        renderObj.update(dt);
 
         // Update HUD
         hudObj.update(score, coins);
 
-        // Level timer
-        levelTimer = levelTimer + 1;
+        // Level timer (ms-based)
+        levelTimer = levelTimer + dt;
 
         // Detect jump state transition for sound
         if player.state == PS_JUMP || player.state == PS_DJUMP {
@@ -254,13 +322,11 @@ entity Game {
         if hit >= 0 {
             var etype = enemies.getEnemyType(hit);
 
-            // Check if stomping (player falling onto enemy)
             if player.vy > 0 {
                 if etype != ENEMY_TURRET {
-                    // Stomp kill
                     enemies.damageEnemy(hit, 10);
                     player.vy = PLAYER_JUMP / 2;
-                    player.iframes = 20;
+                    player.iframes = IFRAMES_STOMP_MS;
                     score = score + ENEMY_SCORE;
 
                     particles.burstEnemyDeath(player.pixelX() + PLAYER_W / 2,
@@ -272,7 +338,6 @@ entity Game {
                 }
             }
 
-            // Take damage
             player.takeDamage(1);
             renderObj.shake(8, 4);
             renderObj.flash(COL_HUD_RED, 6);
@@ -300,7 +365,6 @@ entity Game {
                 sfx.playPowerup();
             }
 
-            // Check for more
             collected = pickups.checkCollection(player.pixelX(), player.pixelY());
         }
     }
@@ -323,7 +387,6 @@ entity Game {
                     particles.burstSpark(bx, by, COL_BULLET);
 
                     if enemies.isActive(hit) == 0 {
-                        // Enemy killed
                         var etype = enemies.getEnemyType(hit);
                         if etype == ENEMY_BOSS {
                             score = score + BOSS_SCORE;
@@ -411,33 +474,29 @@ entity Game {
     hide func checkLevelEnd() {
         var px = player.pixelX();
 
-        // Check for end sign
         var tileX = px / TILE_SIZE;
         var tileY = GROUND_ROW - 1;
 
         if level.getTile(tileX, tileY) == TILE_SIGN_END {
-            // Boss level check
             if level.hasBoss {
                 if enemies.isBossAlive() {
-                    return;  // Can't complete until boss is dead
+                    return;
                 }
             }
 
-            // Level complete
-            timeBonus = (600 - levelTimer / 60) * TIME_BONUS_PER_SEC;
+            timeBonus = (600 - levelTimer / 1000) * TIME_BONUS_PER_SEC;
             if timeBonus < 0 { timeBonus = 0; }
             levelCompleteTimer = 0;
             menus.resetSelection();
             gameState = STATE_LEVELCOMPLETE;
             sfx.playLevelComplete();
 
-            // Add to high scores
             var totalScore = score + timeBonus;
             if menus.isHighScore(totalScore) {
                 menus.addHighScore(totalScore, "PLR");
+                menus.saveHighScores();
             }
 
-            // If this was the last level (with boss), go to victory
             if currentLevel == 2 {
                 gameState = STATE_VICTORY;
             }
@@ -449,38 +508,36 @@ entity Game {
     // =========================================================================
 
     hide func handleDeath() {
-        deathTimer = deathTimer + 1;
-
-        if deathTimer == 1 {
+        if deathTimer == 0 {
             particles.burstDeath(player.centerX(), player.centerY());
             renderObj.shake(12, 6);
             renderObj.flash(COL_HUD_RED, 10);
             sfx.playDeath();
         }
 
-        // Still update particles and render during death
+        deathTimer = deathTimer + dt;
+
         particles.updateAll();
-        renderObj.update();
+        renderObj.update(dt);
         renderObj.renderPlaying(canvas, camera, level, player, enemies,
                                 bullets, pickups, particles, hudObj, sprites,
                                 score, coins, currentLevel);
 
-        if deathTimer >= 90 {
+        if deathTimer >= DEATH_TIMER_MS {
             deathTimer = 0;
             var lives = player.lives - 1;
 
             if lives <= 0 {
-                // Game over
                 var totalScore = score;
                 if menus.isHighScore(totalScore) {
                     menus.addHighScore(totalScore, "PLR");
+                    menus.saveHighScores();
                 }
                 menus.resetSelection();
                 gameState = STATE_GAMEOVER;
                 return;
             }
 
-            // Respawn
             player.reset();
             player.lives = lives;
 
@@ -502,7 +559,6 @@ entity Game {
     hide func updatePaused() {
         var result = menus.updatePause();
 
-        // Render game underneath
         renderObj.renderPlaying(canvas, camera, level, player, enemies,
                                 bullets, pickups, particles, hudObj, sprites,
                                 score, coins, currentLevel);
@@ -547,7 +603,6 @@ entity Game {
 
         var result = menus.updateLevelComplete();
 
-        // Render game underneath
         renderObj.renderPlaying(canvas, camera, level, player, enemies,
                                 bullets, pickups, particles, hudObj, sprites,
                                 score, coins, currentLevel);
@@ -635,22 +690,17 @@ entity Game {
         level.loadLevel(num);
         camera.setLevelSize(level.levelWidth, level.levelHeight);
 
-        // Spawn player
         player.spawn(level.playerStartX, level.playerStartY);
 
-        // Spawn enemies from level data
         enemies.reset();
         enemies.spawnFromLevel(level);
 
-        // Spawn pickups
         pickups.reset();
         pickups.spawnFromLevel(level);
 
-        // Reset bullets and particles
         bullets.reset();
         particles.reset();
 
-        // Reset level state
         levelTimer = 0;
         reachedCheckpoint = false;
         deathTimer = 0;

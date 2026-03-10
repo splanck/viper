@@ -232,6 +232,32 @@ extern "C"
                                                int64_t offset_x,
                                                int64_t offset_y);
 
+    /// @brief Batch-render all live particles directly onto a Canvas.
+    ///
+    /// Uses rt_canvas_disc_alpha() so fade-out is fully supported with
+    /// per-particle alpha blending. Equivalent to DrawAt with zero offsets.
+    ///
+    /// @param emitter The particle emitter to render.
+    /// @param canvas  A Canvas object to draw into (must not be NULL).
+    /// @return The number of particles drawn.
+    int64_t rt_particle_emitter_draw(rt_particle_emitter emitter, void *canvas);
+
+    /// @brief Batch-render all live particles onto a Canvas with position offsets.
+    ///
+    /// Uses rt_canvas_disc_alpha() for alpha-blended disc rendering. The offset
+    /// is added to each particle's world position before drawing, useful for
+    /// camera scrolling without modifying the emitter's own position.
+    ///
+    /// @param emitter  The particle emitter to render.
+    /// @param canvas   A Canvas object to draw into (must not be NULL).
+    /// @param offset_x X offset added to all particle world positions.
+    /// @param offset_y Y offset added to all particle world positions.
+    /// @return The number of particles drawn.
+    int64_t rt_particle_emitter_draw_at(rt_particle_emitter emitter,
+                                        void *canvas,
+                                        int64_t offset_x,
+                                        int64_t offset_y);
+
 #ifdef __cplusplus
 }
 #endif

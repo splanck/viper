@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-03-09
 ---
 
 # Visual Effects
@@ -50,6 +50,9 @@ Simple particle system for visual effects like explosions, sparks, smoke, and ot
 | `SetVelocity(minSpd,maxSpd,minAng,maxAng)`  | `Void(Dbl,Dbl,Dbl,Dbl)`        | Set speed and angle ranges           |
 | `Start()`                                   | `Void()`                       | Begin continuous emission            |
 | `Stop()`                                    | `Void()`                       | Stop emission (particles continue)   |
+| `Draw(canvas)`                              | `Integer(Canvas)`              | Draw all particles to a Canvas       |
+| `DrawAt(canvas, offsetX, offsetY)`          | `Integer(Canvas,Int,Int)`      | Draw all particles with position offset |
+| `DrawToPixels(pixels, offsetX, offsetY)`    | `Integer(Pixels,Int,Int)`      | Draw all particles to a Pixels buffer|
 | `Update()`                                  | `Void()`                       | Update all particles (call per frame)|
 
 ### Zia Example
@@ -106,7 +109,15 @@ explosion.Burst(100)  ' One-shot burst
 
 ' In game loop
 explosion.Update()
-' Render particles using Get() method
+
+' Draw directly to canvas (recommended — uses alpha-blended discs)
+explosion.Draw(canvas)
+
+' Or draw with camera offset for scrolling games
+explosion.DrawAt(canvas, -cameraX, -cameraY)
+
+' Or render to a Pixels buffer for compositing
+explosion.DrawToPixels(pixelsBuffer, 0, 0)
 ```
 
 ---

@@ -27,9 +27,9 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
-#include "rt_graphics.h"
 #include "rt_action.h"
 #include "rt_font.h"
+#include "rt_graphics.h"
 #include "rt_input.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
@@ -56,6 +56,8 @@ typedef struct
     int64_t should_close;    ///< Close request flag
     vgfx_event_t last_event; ///< Last polled event for retrieval
     char *title;             ///< Cached window title (heap-allocated, freed in finalizer)
+    int64_t last_flip_us;    ///< Monotonic time (microseconds) of last Flip()
+    int64_t delta_time_ms;   ///< Milliseconds elapsed between the last two Flip() calls
 } rt_canvas;
 
 /// @brief Forward declaration for pixels internal access.
@@ -142,7 +144,8 @@ static inline int64_t rtg_cos_deg_fp(int64_t deg)
 /// @param h Output hue (0-360).
 /// @param s Output saturation (0-100).
 /// @param l Output lightness (0-100).
-static inline void rtg_rgb_to_hsl(int64_t r, int64_t g, int64_t b, int64_t *h, int64_t *s, int64_t *l)
+static inline void rtg_rgb_to_hsl(
+    int64_t r, int64_t g, int64_t b, int64_t *h, int64_t *s, int64_t *l)
 {
     int64_t max_c = (r > g) ? (r > b ? r : b) : (g > b ? g : b);
     int64_t min_c = (r < g) ? (r < b ? r : b) : (g < b ? g : b);
@@ -197,7 +200,8 @@ static inline int64_t rtg_hue_to_rgb_helper(int64_t p, int64_t q, int64_t t)
 /// @param r Output red (0-255).
 /// @param g Output green (0-255).
 /// @param b Output blue (0-255).
-static inline void rtg_hsl_to_rgb(int64_t h, int64_t s, int64_t l, int64_t *r, int64_t *g, int64_t *b)
+static inline void rtg_hsl_to_rgb(
+    int64_t h, int64_t s, int64_t l, int64_t *r, int64_t *g, int64_t *b)
 {
     if (s == 0)
     {
@@ -212,12 +216,18 @@ static inline void rtg_hsl_to_rgb(int64_t h, int64_t s, int64_t l, int64_t *r, i
     *g = rtg_hue_to_rgb_helper(p, q, h) * 255 / 100;
     *b = rtg_hue_to_rgb_helper(p, q, h - 120) * 255 / 100;
 
-    if (*r < 0) *r = 0;
-    if (*r > 255) *r = 255;
-    if (*g < 0) *g = 0;
-    if (*g > 255) *g = 255;
-    if (*b < 0) *b = 0;
-    if (*b > 255) *b = 255;
+    if (*r < 0)
+        *r = 0;
+    if (*r > 255)
+        *r = 255;
+    if (*g < 0)
+        *g = 0;
+    if (*g > 255)
+        *g = 255;
+    if (*b < 0)
+        *b = 0;
+    if (*b > 255)
+        *b = 255;
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

@@ -14,12 +14,14 @@
 Version 0.2.3 is a hardening and infrastructure release. Rather than adding major new user-facing
 features, this cycle focused on production readiness: comprehensive safety audits across every layer
 (VM, codegen, runtime, network), concurrency hardening with TSan verification, three new IL optimizer
-passes, an interactive REPL for both languages, a multi-language benchmark suite, and a large-scale
-codebase reorganization that consolidates documentation and examples into clean hierarchies.
+passes, major AArch64 backend performance work (post-RA scheduler, register coalescer, loop-invariant
+hoisting, cross-block store-load forwarding), an interactive REPL for both languages, a multi-language
+benchmark suite, and a large-scale codebase reorganization that consolidates documentation and examples
+into clean hierarchies.
 
-1,756 files changed across 26 commits. 380 source files modified with ~30K lines added and ~13K lines
-removed (net +17K in src/). 437 stale files deleted and 81 new files added. Test count increased from
-1,261 to 1,624 (+363 tests).
+1,802 files changed across 32 commits. ~47K lines added and ~70K lines removed. 437 stale files
+deleted and 81 new files added. Test count increased from 1,261 to 1,272 (+11 net; large stale test
+fixture deletion offset by new coverage).
 
 ---
 
@@ -82,7 +84,14 @@ before EarlyCSE in the O2 pipeline to expose more common subexpression eliminati
 - **Verifier**: Replace reachability check with full Cooper-Harvey-Kennedy dominator computation
   for proper dominance verification of SSA uses
 - **SCCP**: Block parameters treated as SSA φ-nodes merging only from executable predecessors
-- **Inliner**: CallGraph SCC analysis (Tarjan) to prevent inlining mutually-recursive functions
+- **Inliner**: CallGraph SCC analysis (Tarjan) to prevent inlining mutually-recursive functions;
+  cost model tuning (`maxCodeGrowth=2000`) and O1 pipeline integration
+- **SimplifyCFG**: Convert hard verification asserts to soft early-returns for fuzz test
+  compatibility
+- **CheckOpt**: Remove incorrect overflow-to-plain demotion that violated IL spec (verifier
+  requires signed arithmetic to use `.ovf` variants); overflow constant folding deferred to
+  ConstFold pass
+- **DCE**: Fix `predEdges` map invalidation after instruction removal (vector pointer stability)
 
 #### Alloca Escape Verification
 
@@ -135,6 +144,55 @@ catch new cycles. Reduces GC overhead for long-lived objects.
 Wire existing pass infrastructure into AArch64 `CodegenPipeline`, replacing monolithic per-function
 loop. Brings the ARM64 backend architecture in line with x86-64.
 
+#### AArch64 Performance Optimizations
+
+Major performance work across the AArch64 backend, adding several new optimization passes:
+
+**Post-RA Instruction Scheduler**
+
+List scheduler running after register allocation with latency-based priority ordering and
+anti-dependency tracking. Reorders instructions within basic blocks to improve pipeline utilization
+while respecting data dependencies and register constraints.
+
+**Register Coalescer**
+
+Pre-regalloc `MovRR`/`FMovRR` elimination via live interval interference analysis (~270 LOC).
+Reduces unnecessary register-to-register moves by merging compatible live ranges before linear scan
+allocation. Integrated into the pipeline before the register allocator pass.
+
+**MIR Loop-Invariant Constant Hoisting**
+
+Hoists `MovRI` (move-immediate) instructions from loop bodies into preheader blocks when the
+register is callee-saved (x19-x28) and defined only by `MovRI` with the same immediate value
+throughout the loop. Uses natural loop body computation via reverse-reachability BFS from the latch
+through predecessors, correctly handling non-contiguous loop bodies (blocks placed after the latch in
+layout order).
+
+**Cross-Block Store-Load Forwarding**
+
+Peephole optimization that forwards stores to loads across basic block boundaries when the layout
+predecessor has a single successor and the store/load access the same FP-relative offset. Includes
+reachability verification to ensure the predecessor actually reaches the successor (unconditional
+branch, conditional branch target, or fallthrough).
+
+**Additional Peephole Optimizations**
+
+- **CSET+branch fusion**: Fuses compare-and-set with subsequent conditional branch for tighter
+  conditional sequences
+- **Dead FP store elimination**: Removes redundant floating-point stores to the same stack slot
+- **Leaf function register preference**: Prefers low-numbered (caller-saved) registers for leaf
+  functions that don't need callee-saved save/restore
+- **Logical immediate emission**: Proper AArch64 encoding for `AND`/`ORR`/`EOR` immediate operands
+- **Dead overflow DCE**: Correct elimination of unused overflow-checked arithmetic results
+- **SmulhRRR opcode**: New MIR opcode for proper signed multiply-high overflow detection
+
+**Peephole Decomposition**
+
+Split the monolithic 2,750-line `Peephole.cpp` into 6 focused sub-passes under `peephole/`:
+`IdentityElim`, `StrengthReduce`, `CopyPropDCE`, `BranchOpt`, `MemoryOpt`, `LoopOpt`. Shared
+peephole templates (`PeepholeDCE.hpp`, `PeepholeCopyProp.hpp`) parameterized on target traits are
+used by both AArch64 and x86-64 backends.
+
 ---
 
 ### Comprehensive Safety Audits
@@ -164,11 +222,17 @@ The bulk of this release is a multi-phase safety audit touching every layer of t
 - **PE/COFF directives**: `.rdata` section and ELF `.type @function` in AsmEmitter
 - **PIE support**: `-pie` flag for Linux linker
 
-#### AArch64 Codegen (2 fixes)
+#### AArch64 Codegen (5 fixes)
 
 - **Dominator intersect guard**: Add runtime guard in `Dominators.cpp intersect()` for release builds
 - **AsmEmitter refactor**: Extract `resolveBaseOffset()` helper from four duplicated base+offset
   load/store functions
+- **Loop body BFS over-inclusion**: Fix natural loop body computation crawling backwards past
+  the header for BASIC two-header for-loop patterns, causing compilation crashes (SIGBUS)
+- **SLF reachability**: Add predecessor reachability verification for cross-block store-load
+  forwarding to prevent incorrect forwarding when the layout predecessor diverges
+- **Fast-path param stores**: Emit param-to-alloca stores for >8-argument functions in the call
+  fast path, fixing uninitialized stack reads in `lowerCallWithArgs`
 
 #### Runtime — Resource Lifecycle (10 fixes)
 
@@ -322,10 +386,18 @@ Readability refactoring of the largest source files:
 | Original | Split Into | Purpose |
 |----------|-----------|---------|
 | `BytecodeVM.cpp` | + `BytecodeVM_threaded.cpp` | Threaded interpreter extracted |
-| `rt_graphics.c` | + `rt_graphics_stubs.c` | Stubs for non-graphics builds |
+| `rt_graphics.c` | + `rt_canvas.c` + `rt_drawing.c` + `rt_drawing_advanced.c` + `rt_graphics_stubs.c` | Graphics rendering split (2,750 LOC) + stubs |
 | `rt_network_http.c` | + `rt_http_url.c` | URL parsing extracted |
 | `rt_tls.c` | + `rt_tls_verify.c` + `rt_tls_internal.h` | Cert verification extracted |
 | `vg_ide_widgets.h` | Split into 6 focused sub-headers | Umbrella include preserved |
+| `Peephole.cpp` | 6 sub-passes in `peephole/` directory | AArch64 peephole decomposition (2,750 LOC) |
+| `Lowerer.hpp` | + `LowererTypes.hpp` + `LowererSymbolTable.hpp` + `LowererTypeLayout.hpp` | Zia lowerer decomposition foundation |
+
+#### Cross-Platform Improvements
+
+- Network tests (`RTNetworkHardenTests`, `RTNetworkTimeoutTests`) ported to Windows via
+  `sock_t`/`SOCK_CLOSE`/`SOCK_INVALID` abstractions + WinSock2
+- Windows build script parity improvements
 
 #### Zia Review Cleanup
 
@@ -347,6 +419,7 @@ issue tracker.
 | rt_map | 24 | Comprehensive map tests |
 | rt_pool | 11 | Pool allocator tests |
 | VM equivalence | 5 | VM vs BytecodeVM output equivalence |
+| Zia frontend | 75 | 35 parser + 24 sema + 16 lowerer unit tests |
 | Fuzz harnesses | 2 | libFuzzer harnesses for Zia lexer and parser |
 
 #### Determinism Stress Test
@@ -379,14 +452,17 @@ issue tracker.
 |---------------------|-----------|----------------|------------|
 | C/C++ Source (LOC)  | ~1,000,000 | ~820,000*     | -180,000*  |
 | C/C++ Source Files  | 2,288     | ~2,500         | +212       |
-| Test Count          | 1,261     | 1,624          | +363       |
-| Commits             | —         | 26             | —          |
-| Files Changed       | —         | 1,756          | —          |
+| Test Count          | 1,261     | 1,272          | +11        |
+| Commits             | —         | 32             | —          |
+| Files Changed       | —         | 1,802          | —          |
+| Lines Added         | —         | 46,557         | —          |
+| Lines Removed       | —         | 70,013         | —          |
 | New Files           | —         | 81             | —          |
 | Deleted Files       | —         | 437            | —          |
 
 *\* Net LOC decreased due to deletion of 437 stale files (devdocs, dead demos, test fixtures,
-zia-review). Actual new code contribution is ~30K lines in src/.*
+zia-review). Test count is net +11 because 286 obsolete test fixture files were removed while
+~300 new tests were added across Zia frontend, REPL, determinism, and pool allocator suites.*
 
 ---
 
@@ -418,13 +494,15 @@ zia-review). Actual new code contribution is ~30K lines in src/.*
                       │
       ┌───────────────┼───────────────┐
       ▼               ▼               ▼
-┌──────────┐    ┌──────────┐    ┌──────────┐
-│  IL VM   │    │  x86-64  │    │ AArch64  │
-│ Bytecode │    │  Native  │    │  Native  │
-│    VM    │    └──────────┘    │ PassMgr  │ (NEW)
-│  REPL    │                   └──────────┘
-│  (NEW)   │
-└──────────┘
+┌──────────┐    ┌──────────┐    ┌───────────────┐
+│  IL VM   │    │  x86-64  │    │    AArch64    │
+│ Bytecode │    │  Native  │    │    Native     │
+│    VM    │    └──────────┘    │  PassMgr (NEW)│
+│  REPL    │                   │  Coalescer    │ (NEW)
+│  (NEW)   │                   │  Scheduler    │ (NEW)
+└──────────┘                   │  Loop Hoist   │ (NEW)
+                               │  6 Peephole   │ (NEW)
+                               └───────────────┘
 ```
 
 ---
@@ -435,11 +513,16 @@ zia-review). Actual new code contribution is ~30K lines in src/.*
 |----------------------------|----------------------|------------------------------------|
 | Interactive REPL           | No                   | Full REPL for Zia and BASIC        |
 | IL Optimizer Passes        | 35                   | 38 (+EH-Opt, LoopRotate, Reassoc)  |
-| Test Count                 | 1,261                | 1,624 (+363)                       |
+| Test Count                 | 1,261                | 1,272 (+11 net)                    |
 | Fuzz Harnesses             | No                   | Zia lexer + parser                 |
 | Determinism Tests          | No                   | 357 checks, 407 compilations       |
 | AArch64 EH Opcodes        | No                   | Full support                       |
 | AArch64 PassManager        | No                   | Wired into CodegenPipeline         |
+| AArch64 Post-RA Scheduler  | No                   | List scheduler with latency model  |
+| AArch64 Reg Coalescer      | No                   | Pre-regalloc MovRR elimination     |
+| AArch64 Loop Hoisting      | No                   | MovRI hoisting with BFS loop body  |
+| AArch64 Cross-Block SLF    | No                   | Store-load forwarding across BBs   |
+| AArch64 Peephole Sub-passes| Monolithic (2750 LOC)| 6 focused sub-passes + shared templates |
 | SipHash (HashDoS resist.)  | FNV-1a               | SipHash-2-4 with OS CSPRNG seed    |
 | GC Epoch Tagging           | No                   | Survival counter, promoted skip    |
 | Async/Await (Zia)          | No                   | Parser + sema + Future.Get lower   |

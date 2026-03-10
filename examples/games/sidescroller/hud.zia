@@ -1,30 +1,25 @@
 // hud.zia — HUD rendering: health, score, lives, power-ups, boss bar
+// Uses Viper.Game.SmoothValue for animated score display.
 module hud;
 
 bind Viper.Graphics;
 bind Viper.Fmt;
+bind Viper.Game.SmoothValue as SV;
 bind "./config";
 
 entity HUD {
-    hide Integer displayScore;   // Animated score (rolls toward target)
+    hide SV displayScore;    // Animated score (rolls toward target)
     hide Integer displayCoins;
 
     expose func init() {
-        displayScore = 0;
+        // Smoothing 0.75 → rolls quickly but visibly toward target
+        displayScore = SV.New(0.0, 0.75);
         displayCoins = 0;
     }
 
     expose func update(targetScore: Integer, targetCoins: Integer) {
-        // Smoothly roll score display toward target
-        if displayScore < targetScore {
-            var diff = targetScore - displayScore;
-            var step = diff / 4;
-            if step < 1 { step = 1; }
-            displayScore = displayScore + step;
-            if displayScore > targetScore {
-                displayScore = targetScore;
-            }
-        }
+        displayScore.set_Target(targetScore + 0.0);
+        displayScore.Update();
         displayCoins = targetCoins;
     }
 
@@ -38,8 +33,8 @@ entity HUD {
         // Health hearts
         drawHearts(canvas, 12, 8, hp, maxHp);
 
-        // Score
-        var scoreStr = Int(displayScore);
+        // Score (animated via SmoothValue)
+        var scoreStr = Int(displayScore.get_ValueI64());
         canvas.TextScaled(180, 12, "SCORE", 2, COL_HUD_GRAY);
         canvas.TextScaled(300, 12, scoreStr, 2, COL_WHITE);
 
@@ -82,16 +77,13 @@ entity HUD {
         while i < maxHp {
             var hx = x + i * 32;
             if i < hp {
-                // Full heart
                 canvas.Disc(hx + 7, y + 7, 7, COL_HUD_RED);
                 canvas.Disc(hx + 19, y + 7, 7, COL_HUD_RED);
                 canvas.Box(hx + 1, y + 7, 25, 12, COL_HUD_RED);
-                // Point at bottom
                 canvas.Box(hx + 4, y + 16, 19, 5, COL_HUD_RED);
                 canvas.Box(hx + 7, y + 19, 13, 3, COL_HUD_RED);
                 canvas.Box(hx + 10, y + 21, 7, 3, COL_HUD_RED);
             } else {
-                // Empty heart (outline only)
                 canvas.Ring(hx + 7, y + 7, 7, COL_HUD_GRAY);
                 canvas.Ring(hx + 19, y + 7, 7, COL_HUD_GRAY);
                 canvas.Frame(hx + 1, y + 7, 25, 12, COL_HUD_GRAY);
@@ -103,7 +95,6 @@ entity HUD {
     hide func drawPowerupIndicator(canvas: Canvas, x: Integer, y: Integer,
                                     label: String, col: Integer,
                                     remaining: Integer, maxDur: Integer) {
-        // Small bar showing remaining duration
         var barW = 75;
         var filled = remaining * barW / maxDur;
         if filled < 1 { filled = 1; }
@@ -121,18 +112,13 @@ entity HUD {
         var x = (SCREEN_W - barW) / 2;
         var y = 56;
 
-        // Background
         canvas.BoxAlpha(x - 2, y - 2, barW + 4, barH + 4, COL_BLACK, 200);
-
-        // Label
         canvas.TextScaled(x, y - 18, "MECH GUARDIAN", 2, COL_BOSS_EYE);
 
-        // HP bar
         canvas.Box(x, y, barW, barH, COL_HUD_GRAY);
         var filled = bossHp * barW / bossMaxHp;
         if filled < 1 { filled = 1; }
 
-        // Color changes based on HP
         var barCol = COL_HUD_GREEN;
         if bossHp * 3 < bossMaxHp * 2 {
             barCol = COL_COIN_GOLD;

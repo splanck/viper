@@ -1,9 +1,14 @@
 // menu.zia — Title screen, pause, game over, level complete, high scores, controls
+// Uses Viper.Input.Action for input instead of raw key codes.
 module menu;
 
 bind Viper.Graphics;
 bind Viper.Input;
 bind Viper.Fmt;
+bind Viper.IO.File as FileIO;
+bind Viper.String as Str;
+bind Viper.Core.Convert as Convert;
+bind Viper.Collections.Seq as Seq;
 bind "./config";
 bind "./sprites";
 
@@ -38,31 +43,18 @@ entity MenuSystem {
         titleTimer = titleTimer + 1;
         bgScroll = bgScroll + 1;
 
-        // Navigation
-        if Keyboard.WasPressed(KEY_UP) {
+        // Navigation via Action
+        if Action.Pressed(ACT_UP) {
             selected = selected - 1;
             if selected < 0 { selected = 3; }
         }
-        if Keyboard.WasPressed(KEY_W) {
-            selected = selected - 1;
-            if selected < 0 { selected = 3; }
-        }
-        if Keyboard.WasPressed(KEY_DOWN) {
-            selected = selected + 1;
-            if selected > 3 { selected = 0; }
-        }
-        if Keyboard.WasPressed(KEY_S) {
+        if Action.Pressed(ACT_DOWN) {
             selected = selected + 1;
             if selected > 3 { selected = 0; }
         }
 
         // Selection
-        var pressed = Keyboard.WasPressed(KEY_ENTER);
-        if pressed == false {
-            pressed = Keyboard.WasPressed(KEY_SPACE);
-        }
-
-        if pressed {
+        if Action.Pressed(ACT_CONFIRM) {
             if selected == MENU_PLAY { return STATE_PLAYING; }
             if selected == MENU_HIGHSCORES { return STATE_HIGHSCORES; }
             if selected == MENU_CONTROLS { return STATE_CONTROLS; }
@@ -86,21 +78,17 @@ entity MenuSystem {
             titleY = titleY - (60 - bounce) / 5;
         }
 
-        // Title: "NOVA RUN"
         canvas.TextScaled(340, titleY, "NOVA", 6, COL_TITLE_ORANGE);
         canvas.TextScaled(640, titleY, "RUN", 6, COL_TITLE_YELLOW);
 
-        // Subtitle
         canvas.TextScaled(420, titleY + 56, "A Platformer Adventure", 2, COL_HUD_GRAY);
 
-        // Menu options
         var menuY = 300;
         drawMenuOption(canvas, "PLAY", 0, menuY);
         drawMenuOption(canvas, "HIGH SCORES", 1, menuY + 50);
         drawMenuOption(canvas, "CONTROLS", 2, menuY + 100);
         drawMenuOption(canvas, "QUIT", 3, menuY + 150);
 
-        // Footer
         canvas.TextScaled(440, SCREEN_H - 30, "Made with Viper + Zia", 2, COL_HUD_GRAY);
     }
 
@@ -109,10 +97,8 @@ entity MenuSystem {
         var col = COL_MENU_TEXT;
 
         if index == selected {
-            // Highlight
             canvas.BoxAlpha(x - 20, y - 4, 280, 32, COL_MENU_HIGHLIGHT, 150);
             col = COL_WHITE;
-            // Arrow indicator
             canvas.TextScaled(x - 30, y, ">", 3, COL_TITLE_ORANGE);
         }
 
@@ -120,7 +106,6 @@ entity MenuSystem {
     }
 
     hide func drawStarfield(canvas: Canvas) {
-        // Simple pseudo-random stars
         var i = 0;
         while i < 80 {
             var sx = (i * 137 + bgScroll * (1 + i % 3)) % SCREEN_W;
@@ -137,29 +122,18 @@ entity MenuSystem {
     // =========================================================================
 
     expose func updatePause() -> Integer {
-        if Keyboard.WasPressed(KEY_ESCAPE) {
+        if Action.Pressed(ACT_BACK) {
             return STATE_PLAYING;
         }
 
-        if Keyboard.WasPressed(KEY_UP) {
+        if Action.Pressed(ACT_UP) {
             selected = 1 - selected;
         }
-        if Keyboard.WasPressed(KEY_W) {
-            selected = 1 - selected;
-        }
-        if Keyboard.WasPressed(KEY_DOWN) {
-            selected = 1 - selected;
-        }
-        if Keyboard.WasPressed(KEY_S) {
+        if Action.Pressed(ACT_DOWN) {
             selected = 1 - selected;
         }
 
-        var pressed = Keyboard.WasPressed(KEY_ENTER);
-        if pressed == false {
-            pressed = Keyboard.WasPressed(KEY_SPACE);
-        }
-
-        if pressed {
+        if Action.Pressed(ACT_CONFIRM) {
             if selected == 0 { return STATE_PLAYING; }
             if selected == 1 { return STATE_MENU; }
         }
@@ -168,13 +142,9 @@ entity MenuSystem {
     }
 
     expose func drawPause(canvas: Canvas) {
-        // Dim overlay
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, 150);
-
-        // Title
         canvas.TextScaled(510, 240, "PAUSED", 4, COL_WHITE);
 
-        // Options
         var y = 340;
         drawMenuOption(canvas, "RESUME", 0, y);
         drawMenuOption(canvas, "QUIT TO MENU", 1, y + 50);
@@ -185,25 +155,14 @@ entity MenuSystem {
     // =========================================================================
 
     expose func updateGameOver() -> Integer {
-        if Keyboard.WasPressed(KEY_UP) {
+        if Action.Pressed(ACT_UP) {
             selected = 1 - selected;
         }
-        if Keyboard.WasPressed(KEY_W) {
-            selected = 1 - selected;
-        }
-        if Keyboard.WasPressed(KEY_DOWN) {
-            selected = 1 - selected;
-        }
-        if Keyboard.WasPressed(KEY_S) {
+        if Action.Pressed(ACT_DOWN) {
             selected = 1 - selected;
         }
 
-        var pressed = Keyboard.WasPressed(KEY_ENTER);
-        if pressed == false {
-            pressed = Keyboard.WasPressed(KEY_SPACE);
-        }
-
-        if pressed {
+        if Action.Pressed(ACT_CONFIRM) {
             if selected == 0 { return STATE_PLAYING; }
             if selected == 1 { return STATE_MENU; }
         }
@@ -232,12 +191,7 @@ entity MenuSystem {
     expose func updateLevelComplete() -> Integer {
         titleTimer = titleTimer + 1;
 
-        var pressed = Keyboard.WasPressed(KEY_ENTER);
-        if pressed == false {
-            pressed = Keyboard.WasPressed(KEY_SPACE);
-        }
-
-        if pressed {
+        if Action.Pressed(ACT_CONFIRM) {
             return STATE_PLAYING;
         }
 
@@ -254,7 +208,6 @@ entity MenuSystem {
         if levelNum == 2 { levelName = "CRYSTAL CAVE"; }
         canvas.TextScaled(500, 200, levelName, 2, COL_HUD_BLUE);
 
-        // Score breakdown (reveal over time)
         var revealFrames = titleTimer;
 
         if revealFrames > 30 {
@@ -288,12 +241,7 @@ entity MenuSystem {
     expose func updateVictory() -> Integer {
         titleTimer = titleTimer + 1;
 
-        var pressed = Keyboard.WasPressed(KEY_ENTER);
-        if pressed == false {
-            pressed = Keyboard.WasPressed(KEY_SPACE);
-        }
-
-        if pressed {
+        if Action.Pressed(ACT_CONFIRM) {
             return STATE_MENU;
         }
 
@@ -303,7 +251,6 @@ entity MenuSystem {
     expose func drawVictory(canvas: Canvas, score: Integer) {
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, 180);
 
-        // Animated colors
         var flash = titleTimer % 30;
         var titleCol = COL_TITLE_ORANGE;
         if flash < 15 { titleCol = COL_TITLE_YELLOW; }
@@ -327,10 +274,10 @@ entity MenuSystem {
     // =========================================================================
 
     expose func updateHighScores() -> Integer {
-        if Keyboard.WasPressed(KEY_ESCAPE) {
+        if Action.Pressed(ACT_BACK) {
             return STATE_MENU;
         }
-        if Keyboard.WasPressed(KEY_ENTER) {
+        if Action.Pressed(ACT_CONFIRM) {
             return STATE_MENU;
         }
         return STATE_HIGHSCORES;
@@ -364,11 +311,9 @@ entity MenuSystem {
     }
 
     expose func addHighScore(score: Integer, name: String) {
-        // Insert in sorted position
         var i = 0;
         while i < 10 {
             if score > highScores.get(i) {
-                // Shift down
                 var j = 9;
                 while j > i {
                     highScores.set(j, highScores.get(j - 1));
@@ -387,15 +332,47 @@ entity MenuSystem {
         return score > highScores.get(9);
     }
 
+    // Persistent high scores — CSV format: score,name per line
+    expose func loadHighScores() {
+        if FileIO.Exists("highscores.txt") == false {
+            return;
+        }
+        var lines = FileIO.ReadAllLines("highscores.txt");
+        var n = Seq.get_Len(lines);
+        var i = 0;
+        while i < n {
+            if i >= 10 { return; }
+            var line = "" + Seq.Get(lines, i);
+            var parts = Str.Split(line, ",");
+            if Seq.get_Len(parts) >= 2 {
+                var scoreVal = Convert.ToInt("" + Seq.Get(parts, 0));
+                var name = "" + Seq.Get(parts, 1);
+                highScores.set(i, scoreVal);
+                highNames.set(i, name);
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func saveHighScores() {
+        var data = "";
+        var i = 0;
+        while i < 10 {
+            data = data + Int(highScores.get(i)) + "," + highNames.get(i) + "\n";
+            i = i + 1;
+        }
+        FileIO.WriteAllText("highscores.txt", data);
+    }
+
     // =========================================================================
     // Controls Screen
     // =========================================================================
 
     expose func updateControls() -> Integer {
-        if Keyboard.WasPressed(KEY_ESCAPE) {
+        if Action.Pressed(ACT_BACK) {
             return STATE_MENU;
         }
-        if Keyboard.WasPressed(KEY_ENTER) {
+        if Action.Pressed(ACT_CONFIRM) {
             return STATE_MENU;
         }
         return STATE_CONTROLS;
@@ -414,10 +391,17 @@ entity MenuSystem {
         drawControlRow(canvas, y + gap * 3, "SHOOT", "Z / X");
         drawControlRow(canvas, y + gap * 4, "PAUSE", "ESCAPE");
 
-        canvas.TextScaled(430, y + gap * 6, "TIPS:", 3, COL_TITLE_YELLOW);
-        canvas.TextScaled(370, y + gap * 7, "Hold jump for higher jumps", 2, COL_MENU_TEXT);
-        canvas.TextScaled(370, y + gap * 7 + 28, "Slide on walls and wall-jump", 2, COL_MENU_TEXT);
-        canvas.TextScaled(370, y + gap * 7 + 56, "Double-jump in mid-air", 2, COL_MENU_TEXT);
+        // Gamepad controls
+        canvas.TextScaled(430, y + gap * 6, "GAMEPAD:", 3, COL_TITLE_YELLOW);
+        drawControlRow(canvas, y + gap * 7, "MOVE", "D-PAD");
+        drawControlRow(canvas, y + gap * 8, "JUMP", "A BUTTON");
+        drawControlRow(canvas, y + gap * 9, "SHOOT", "X / RB");
+        drawControlRow(canvas, y + gap * 10, "PAUSE", "START");
+
+        canvas.TextScaled(430, y + gap * 12, "TIPS:", 3, COL_TITLE_YELLOW);
+        canvas.TextScaled(370, y + gap * 13, "Hold jump for higher jumps", 2, COL_MENU_TEXT);
+        canvas.TextScaled(370, y + gap * 13 + 28, "Slide on walls and wall-jump", 2, COL_MENU_TEXT);
+        canvas.TextScaled(370, y + gap * 13 + 56, "Double-jump in mid-air", 2, COL_MENU_TEXT);
 
         canvas.TextScaled(440, SCREEN_H - 40, "Press ENTER to return", 2, COL_HUD_GRAY);
     }
@@ -428,7 +412,6 @@ entity MenuSystem {
         canvas.TextScaled(620, y, keys, 2, COL_WHITE);
     }
 
-    // Reset selected option (useful when transitioning to a menu)
     expose func resetSelection() {
         selected = 0;
         titleTimer = 0;

@@ -128,6 +128,28 @@ TEST(max_particles)
     rt_particle_emitter_destroy(pe);
 }
 
+TEST(draw_null_safety)
+{
+    rt_particle_emitter pe = rt_particle_emitter_new(100);
+    // Draw with NULL canvas should return 0 (no crash)
+    ASSERT(rt_particle_emitter_draw(pe, NULL) == 0);
+    ASSERT(rt_particle_emitter_draw_at(pe, NULL, 10, 20) == 0);
+    // NULL emitter should also return 0
+    ASSERT(rt_particle_emitter_draw(NULL, (void *)0x1) == 0);
+    ASSERT(rt_particle_emitter_draw_at(NULL, (void *)0x1, 0, 0) == 0);
+    rt_particle_emitter_destroy(pe);
+}
+
+TEST(draw_to_pixels_null_safety)
+{
+    rt_particle_emitter pe = rt_particle_emitter_new(100);
+    // DrawToPixels with NULL pixels should return 0
+    ASSERT(rt_particle_emitter_draw_to_pixels(pe, NULL, 0, 0) == 0);
+    // NULL emitter should also return 0
+    ASSERT(rt_particle_emitter_draw_to_pixels(NULL, (void *)0x1, 0, 0) == 0);
+    rt_particle_emitter_destroy(pe);
+}
+
 int main()
 {
     printf("RTParticleTests:\n");
@@ -139,6 +161,8 @@ int main()
     RUN_TEST(clear);
     RUN_TEST(continuous_emission);
     RUN_TEST(max_particles);
+    RUN_TEST(draw_null_safety);
+    RUN_TEST(draw_to_pixels_null_safety);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-03-09
 ---
 
 # Canvas & Color
@@ -22,6 +22,7 @@ last-verified: 2026-03-04
 
 | Property      | Type    | Description                                        |
 |---------------|---------|----------------------------------------------------|
+| `DeltaTime`   | Integer | Milliseconds elapsed between last two `Flip()` calls |
 | `Height`      | Integer | Canvas height in pixels                            |
 | `ShouldClose` | Integer | Non-zero if the user requested to close the canvas |
 | `Width`       | Integer | Canvas width in pixels                             |
@@ -487,6 +488,79 @@ canvas.Disc(200, 200, 50, purple)
 
 ---
 
+
+## Camera Parallax Layers
+
+The `Viper.Graphics.Camera` class supports up to 8 parallax scrolling layers for creating depth effects in scrolling games.
+
+### Parallax Properties
+
+| Property         | Type    | Description                              |
+|------------------|---------|------------------------------------------|
+| `ParallaxCount`  | Integer | Number of active parallax layers (0-8)   |
+
+### Parallax Methods
+
+| Method                                | Signature                        | Description                                  |
+|---------------------------------------|----------------------------------|----------------------------------------------|
+| `AddParallax(pixels, scrollX, scrollY)` | `Integer(Pixels, Integer, Integer)` | Add a parallax layer; returns index (0-7) or -1 if full |
+| `RemoveParallax(index)`               | `Void(Integer)`                  | Remove parallax layer by index               |
+| `ClearParallax()`                     | `Void()`                         | Remove all parallax layers                   |
+| `DrawParallax(canvas)`                | `Integer(Canvas)`                | Draw all parallax layers to canvas; returns count drawn |
+
+### Scroll Factors
+
+The scroll factor controls how fast a layer scrolls relative to the camera:
+
+| Factor | Effect                                      |
+|--------|----------------------------------------------|
+| 100    | Scrolls at camera speed (foreground)         |
+| 50     | Scrolls at half camera speed (mid-distance)  |
+| 25     | Scrolls at quarter speed (far background)    |
+| 0      | Static (fixed backdrop)                      |
+
+Each layer's Pixels buffer is tiled horizontally and vertically to fill the viewport.
+
+### Parallax Example
+
+```rust
+module ParallaxDemo;
+
+bind Viper.Graphics.Canvas as Canvas;
+bind Viper.Graphics.Camera as Camera;
+bind Viper.Graphics.Pixels as Pixels;
+
+func start() {
+    var c = Canvas.New("Parallax", 800, 600);
+    var cam = Camera.New(800, 600);
+
+    // Load background layers
+    var sky = Pixels.LoadBmp("sky.bmp");
+    var mountains = Pixels.LoadBmp("mountains.bmp");
+    var trees = Pixels.LoadBmp("trees.bmp");
+
+    // Add layers: furthest first, closest last
+    cam.AddParallax(sky, 10, 0);        // Sky: barely moves
+    cam.AddParallax(mountains, 40, 0);  // Mountains: slow scroll
+    cam.AddParallax(trees, 80, 0);      // Trees: nearly camera speed
+
+    while c.get_ShouldClose() == 0 {
+        c.Poll();
+        c.Clear(0);
+
+        // Move camera (e.g., player movement)
+        cam.Move(2, 0);
+
+        // Draw parallax layers (tiled, alpha-blended)
+        cam.DrawParallax(c);
+
+        // Draw game world on top...
+        c.Flip();
+    }
+}
+```
+
+---
 
 ## See Also
 

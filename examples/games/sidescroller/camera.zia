@@ -1,7 +1,9 @@
 // camera.zia — Camera follow + parallax background system
+// Uses Viper.Game.SmoothValue for smooth camera follow instead of manual lerp.
 module camera;
 
 bind Viper.Graphics;
+bind Viper.Game.SmoothValue as SV;
 bind Viper.Math;
 bind "./config";
 bind "./sprites";
@@ -9,35 +11,22 @@ bind "./sprites";
 entity GameCamera {
     expose Integer x;        // Camera world position (top-left pixel)
     expose Integer y;
-    hide Integer targetX;
-    hide Integer targetY;
     hide Integer levelPixelW;
     hide Integer levelPixelH;
 
-    // Parallax cloud positions
-    hide List[Integer] cloudX;
-    hide List[Integer] cloudY;
-    hide List[Integer] cloudType;  // 0 or 1
+    // Smooth follow via exponential smoothing
+    hide SV smoothX;
+    hide SV smoothY;
 
     expose func init() {
         x = 0;
         y = 0;
-        targetX = 0;
-        targetY = 0;
         levelPixelW = 0;
         levelPixelH = 0;
-
-        // Generate random cloud positions
-        cloudX = [];
-        cloudY = [];
-        cloudType = [];
-        var i = 0;
-        while i < 14 {
-            cloudX.add((i * 173 + 47) % SCREEN_W);
-            cloudY.add(30 + (i * 67) % 160);
-            cloudType.add(i % 2);
-            i = i + 1;
-        }
+        // 0.875 ≈ x += (target-x)/8 per frame
+        smoothX = SV.New(0.0, 0.875);
+        // 0.917 ≈ y += (target-y)/12 per frame
+        smoothY = SV.New(0.0, 0.917);
     }
 
     expose func setLevelSize(w: Integer, h: Integer) {
@@ -46,22 +35,28 @@ entity GameCamera {
     }
 
     expose func follow(playerCX: Integer, playerCY: Integer) {
-        targetX = playerCX - HALF_W;
-        targetY = playerCY - HALF_H + 80; // Slight downward bias
+        // Compute desired camera position
+        var targetX = playerCX - HALF_W;
+        var targetY = playerCY - HALF_H + 80; // Slight downward bias
 
-        // Smooth follow (lerp towards target)
-        x = x + (targetX - x) / 8;
-        y = y + (targetY - y) / 12;
-
-        // Clamp to level bounds
-        if x < 0 { x = 0; }
-        if y < 0 { y = 0; }
+        // Clamp target to level bounds
         var maxX = levelPixelW - SCREEN_W;
         var maxY = levelPixelH - SCREEN_H;
         if maxX < 0 { maxX = 0; }
         if maxY < 0 { maxY = 0; }
-        if x > maxX { x = maxX; }
-        if y > maxY { y = maxY; }
+        if targetX < 0 { targetX = 0; }
+        if targetY < 0 { targetY = 0; }
+        if targetX > maxX { targetX = maxX; }
+        if targetY > maxY { targetY = maxY; }
+
+        // Smooth follow
+        smoothX.set_Target(targetX + 0.0);
+        smoothY.set_Target(targetY + 0.0);
+        smoothX.Update();
+        smoothY.Update();
+
+        x = smoothX.get_ValueI64();
+        y = smoothY.get_ValueI64();
     }
 
     expose func drawBackground(canvas: Canvas, theme: Integer, sprites: SpriteFactory) {
@@ -87,8 +82,24 @@ entity GameCamera {
             si = si + 1;
         }
 
+        // Moon
+        canvas.Disc(SCREEN_W - 180, 80, 40, 0xEEEECC);
+        canvas.Disc(SCREEN_W - 170, 75, 35, COL_SKY_TOP);
+
+        // Clouds (0.08x parallax — slowest layer, farthest back)
+        var cloudScroll = x * PARA_CLOUD / 100;
+        var ci = 0;
+        while ci < 8 {
+            var cx2 = ((ci * 173 + 47) % (SCREEN_W + 200)) - (cloudScroll % (SCREEN_W + 200));
+            if cx2 < 0 - 120 { cx2 = cx2 + SCREEN_W + 200; }
+            var cy2 = 60 + (ci * 53) % 120;
+            var cw = 80 + (ci * 37) % 60;
+            canvas.BoxAlpha(cx2, cy2, cw, 12, 0xFFFFFF, 20 + ci * 3);
+            canvas.BoxAlpha(cx2 + 15, cy2 - 6, cw - 30, 8, 0xFFFFFF, 15 + ci * 2);
+            ci = ci + 1;
+        }
+
         // Far mountains (0.15x parallax)
-        // Mountain sprite is 180×120, tile seamlessly, anchored near ground
         var mtn = sprites.getMountainBg();
         var mtnScroll = x * 15 / 100;
         var mx = 0 - (mtnScroll % 180);
@@ -98,7 +109,6 @@ entity GameCamera {
         }
 
         // Mid trees (0.4x parallax)
-        // Tree sprite is 48×72, tile every 60px for slight overlap
         var tree = sprites.getTreeBg();
         var treeScroll = x * 40 / 100;
         var tx = 0 - (treeScroll % 60);
@@ -107,9 +117,20 @@ entity GameCamera {
             tx = tx + 60;
         }
 
-        // Moon
-        canvas.Disc(SCREEN_W - 180, 80, 40, 0xEEEECC);
-        canvas.Disc(SCREEN_W - 170, 75, 35, COL_SKY_TOP);
+        // Near bushes (0.7x parallax — closest background layer)
+        var bushScroll = x * PARA_BUSH / 100;
+        var bi = 0;
+        while bi < 12 {
+            var bx2 = (bi * 113 + 19) - (bushScroll % 1400);
+            if bx2 < 0 - 60 { bx2 = bx2 + 1400; }
+            if bx2 < SCREEN_W + 60 {
+                var bh2 = 18 + (bi * 29) % 14;
+                var by2 = SCREEN_H - 130 + (bi * 17) % 20;
+                canvas.Box(bx2, by2, 48, bh2, 0x1A5C1A);
+                canvas.Box(bx2 + 8, by2 - 8, 32, 12, 0x2D7D2D);
+            }
+            bi = bi + 1;
+        }
     }
 
     hide func drawCaveBg(canvas: Canvas) {
@@ -127,6 +148,20 @@ entity GameCamera {
             }
             canvas.DiscAlpha(gx, gy, 30 + i * 4, glowCol, 15 + i * 2);
             i = i + 1;
+        }
+
+        // Stone pillars (0.2x parallax — depth cue)
+        var pillarScroll = x * PARA_CAVE_PILLAR / 100;
+        var pi = 0;
+        while pi < 6 {
+            var px = (pi * 227 + 31) - (pillarScroll % 1400);
+            if px < 0 - 40 { px = px + 1400; }
+            if px < SCREEN_W + 40 {
+                var ph = 200 + (pi * 67) % 120;
+                canvas.BoxAlpha(px, SCREEN_H - ph, 28, ph, 0x3A3A5E, 80);
+                canvas.BoxAlpha(px + 4, SCREEN_H - ph - 10, 20, 14, 0x4A4A6E, 60);
+            }
+            pi = pi + 1;
         }
     }
 

@@ -41,8 +41,24 @@
 
 #include "rt_camera.h"
 
+#include "rt_graphics.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+
+#include <string.h>
+
+/// Maximum number of parallax scrolling layers per camera.
+#define RT_CAMERA_MAX_PARALLAX 8
+
+/// @brief A single parallax scrolling layer.
+typedef struct
+{
+    void *pixels;            ///< Pixels buffer to tile across the viewport
+    int64_t scroll_factor_x; ///< X scroll % (100 = camera speed, 50 = half, 0 = static)
+    int64_t scroll_factor_y; ///< Y scroll % (100 = camera speed, 50 = half, 0 = static)
+    int64_t offset_y;        ///< Vertical pixel offset for layer positioning
+    int8_t active;           ///< 1 if this layer slot is in use
+} rt_parallax_layer;
 
 /// @brief Camera implementation structure.
 typedef struct rt_camera_impl
@@ -59,6 +75,8 @@ typedef struct rt_camera_impl
     int64_t max_x;      ///< Maximum X bound
     int64_t max_y;      ///< Maximum Y bound
     int64_t dirty;      ///< 1 if position/zoom/rotation changed since last rt_camera_clear_dirty
+    rt_parallax_layer parallax[RT_CAMERA_MAX_PARALLAX]; ///< Fixed parallax layer slots
+    int64_t parallax_count;                             ///< Number of active layers
 } rt_camera_impl;
 
 /// @brief Clamp camera position to bounds.
@@ -104,6 +122,8 @@ void *rt_camera_new(int64_t width, int64_t height)
     camera->max_x = 0;
     camera->max_y = 0;
     camera->dirty = 1; /* newly created camera is always dirty */
+    camera->parallax_count = 0;
+    memset(camera->parallax, 0, sizeof(camera->parallax));
 
     return camera;
 }
@@ -382,4 +402,115 @@ void rt_camera_clear_dirty(void *camera_ptr)
     if (!camera_ptr)
         return;
     ((rt_camera_impl *)camera_ptr)->dirty = 0;
+}
+
+//=============================================================================
+// Parallax Layer Management
+//=============================================================================
+
+int64_t rt_camera_add_parallax(void *camera_ptr,
+                               void *pixels,
+                               int64_t scroll_x_pct,
+                               int64_t scroll_y_pct)
+{
+    if (!camera_ptr || !pixels)
+        return -1;
+    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    if (camera->parallax_count >= RT_CAMERA_MAX_PARALLAX)
+        return -1;
+
+    for (int i = 0; i < RT_CAMERA_MAX_PARALLAX; i++)
+    {
+        if (!camera->parallax[i].active)
+        {
+            camera->parallax[i].pixels = pixels;
+            camera->parallax[i].scroll_factor_x = scroll_x_pct;
+            camera->parallax[i].scroll_factor_y = scroll_y_pct;
+            camera->parallax[i].offset_y = 0;
+            camera->parallax[i].active = 1;
+            camera->parallax_count++;
+            return (int64_t)i;
+        }
+    }
+    return -1;
+}
+
+void rt_camera_remove_parallax(void *camera_ptr, int64_t index)
+{
+    if (!camera_ptr)
+        return;
+    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    if (index < 0 || index >= RT_CAMERA_MAX_PARALLAX)
+        return;
+    if (camera->parallax[index].active)
+    {
+        camera->parallax[index].active = 0;
+        camera->parallax[index].pixels = NULL;
+        camera->parallax_count--;
+    }
+}
+
+void rt_camera_clear_parallax(void *camera_ptr)
+{
+    if (!camera_ptr)
+        return;
+    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    memset(camera->parallax, 0, sizeof(camera->parallax));
+    camera->parallax_count = 0;
+}
+
+int64_t rt_camera_parallax_count(void *camera_ptr)
+{
+    if (!camera_ptr)
+        return 0;
+    return ((rt_camera_impl *)camera_ptr)->parallax_count;
+}
+
+int64_t rt_camera_draw_parallax(void *camera_ptr, void *canvas)
+{
+    if (!camera_ptr || !canvas)
+        return 0;
+    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+
+    int64_t layers_drawn = 0;
+
+    for (int i = 0; i < RT_CAMERA_MAX_PARALLAX; i++)
+    {
+        rt_parallax_layer *layer = &camera->parallax[i];
+        if (!layer->active || !layer->pixels)
+            continue;
+
+        /* Read pixel dimensions from rt_pixels_impl layout: {int64_t w, h, ...} */
+        int64_t *pdata = (int64_t *)layer->pixels;
+        int64_t pw = pdata[0];
+        int64_t ph = pdata[1];
+
+        if (pw <= 0 || ph <= 0)
+            continue;
+
+        /* Compute the parallax scroll offset */
+        int64_t scroll_x = camera->x * layer->scroll_factor_x / 100;
+        int64_t scroll_y = camera->y * layer->scroll_factor_y / 100 + layer->offset_y;
+
+        /* Compute starting tile position (wrap negative modulo) */
+        int64_t start_x = -(scroll_x % pw);
+        if (start_x > 0)
+            start_x -= pw;
+        int64_t start_y = -(scroll_y % ph);
+        if (start_y > 0)
+            start_y -= ph;
+
+        /* Tile the pixels across the viewport */
+        for (int64_t ty = start_y; ty < camera->height; ty += ph)
+        {
+            for (int64_t tx = start_x; tx < camera->width; tx += pw)
+            {
+                rt_canvas_blit_alpha(canvas, tx, ty, layer->pixels);
+            }
+        }
+
+        layers_drawn++;
+    }
+
+    return layers_drawn;
 }

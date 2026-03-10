@@ -8,6 +8,8 @@ final SCREEN_W = 1280;
 final SCREEN_H = 720;
 final TILE_SIZE = 48;
 final FPS_MS = 16;
+final DT_BASE = 16;          // baseline ms per frame (60fps)
+final DT_MAX = 50;           // clamp max delta to avoid spiral
 final HALF_W = 640;
 final HALF_H = 360;
 
@@ -29,6 +31,14 @@ final COYOTE_FRAMES = 6;      // frames after leaving edge where jump still work
 final JUMP_BUFFER = 8;        // frames of early jump press remembered
 final IFRAMES_MAX = 60;       // invincibility frames after taking damage
 
+// DeltaTime-based timer constants (milliseconds)
+final COYOTE_MS = 96;         // 6 frames * 16ms
+final JUMP_BUFFER_MS = 128;   // 8 frames * 16ms
+final IFRAMES_MS = 960;       // 60 frames * 16ms
+final IFRAMES_STOMP_MS = 320; // 20 frames * 16ms (stomp bounce)
+final HURT_TIMER_MS = 160;    // 10 frames * 16ms (enemy flash)
+final DEATH_TIMER_MS = 1440;  // 90 frames * 16ms
+
 // =============================================================================
 // Player
 // =============================================================================
@@ -44,6 +54,7 @@ final BULLET_SPEED = 1200;    // x100
 final BULLET_W = 12;
 final BULLET_H = 6;
 final SHOOT_COOLDOWN = 12;    // frames between shots
+final SHOOT_COOLDOWN_MS = 192; // 12 frames * 16ms
 final MAX_BULLETS = 16;
 
 // =============================================================================
@@ -103,6 +114,7 @@ final TURRET_HP = 3;
 final TURRET_W = 42;
 final TURRET_H = 42;
 final TURRET_FIRE_RATE = 90;  // frames between shots
+final TURRET_FIRE_RATE_MS = 1440; // 90 frames * 16ms
 final TURRET_RANGE = 450;     // pixels
 
 final BOSS_HP = 20;
@@ -132,6 +144,41 @@ final TIME_BONUS_PER_SEC = 10;
 final SPEED_DURATION = 300;   // 5 seconds
 final SHIELD_DURATION = 1;    // absorbs 1 hit (not time-based, but flag)
 final RAPIDFIRE_DURATION = 300;
+final SPEED_DURATION_MS = 4800;     // 300 frames * 16ms
+final RAPIDFIRE_DURATION_MS = 4800;
+
+// Enemy AI timing (milliseconds)
+final SLIME_ANIM_MS = 320;       // 20 frames
+final BAT_ANIM_MS = 160;         // 10 frames
+final BAT_HOVER_MS = 960;        // 60 frames
+final TURRET_LIGHT_MS = 480;     // 30 frames
+final BOSS_SHOOT0_MS = 960;      // 60 frames — phase 0 interval
+final BOSS_SHOOT1_MS = 640;      // 40 frames — phase 1 interval
+final BOSS_SHOOT2_MS = 400;      // 25 frames — phase 2 interval
+final BOSS_JUMP1_MS = 1920;      // 120 frames — phase 1 jump
+final BOSS_JUMP2_MS = 1440;      // 90 frames — phase 2 jump
+final LAVA_ANIM_MS = 320;        // 20 frames
+
+// Animation timing (milliseconds)
+final ANIM_IDLE_MS = 480;        // 30 frames
+final ANIM_RUN_MS = 128;         // 8 frames
+
+// Parallax scroll factors (/100 of camera speed)
+final PARA_CLOUD = 8;         // very far clouds
+final PARA_BUSH = 70;         // near foliage
+final PARA_CAVE_PILLAR = 20;  // cave depth pillars
+
+// Gamepad
+final PAD_IDX = 0;
+final PAD_BTN_A = 0;
+final PAD_BTN_B = 1;
+final PAD_BTN_X = 2;
+final PAD_BTN_RB = 5;
+final PAD_BTN_START = 7;
+final PAD_BTN_UP = 10;
+final PAD_BTN_DOWN = 11;
+final PAD_BTN_LEFT = 12;
+final PAD_BTN_RIGHT = 13;
 
 // =============================================================================
 // Game States
@@ -274,3 +321,15 @@ final COL_ENEMY_BULLET = 0xFF4444;
 // Misc
 final COL_CHECKPOINT = 0x44FF44;
 final COL_SIGN = 0xBB9955;
+
+// =============================================================================
+// Action Names (for Viper.Input.Action)
+// =============================================================================
+final ACT_LEFT = "move_left";
+final ACT_RIGHT = "move_right";
+final ACT_JUMP = "jump";
+final ACT_SHOOT = "shoot";
+final ACT_UP = "menu_up";
+final ACT_DOWN = "menu_down";
+final ACT_CONFIRM = "confirm";
+final ACT_BACK = "back";

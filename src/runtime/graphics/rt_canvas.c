@@ -29,6 +29,8 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+extern int64_t rt_clock_ticks_us(void);
+
 static void rt_canvas_finalize(void *obj)
 {
     if (!obj)
@@ -58,6 +60,8 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height)
     canvas->should_close = 0;
     canvas->title = NULL;
     canvas->last_event.type = VGFX_EVENT_NONE;
+    canvas->last_flip_us = 0;
+    canvas->delta_time_ms = 0;
     rt_obj_set_finalizer(canvas, rt_canvas_finalize);
 
     vgfx_window_params_t params = vgfx_window_params_default();
@@ -155,6 +159,19 @@ void rt_canvas_flip(void *canvas_ptr)
 
     vgfx_update(canvas->gfx_win);
 
+    /* Compute delta time between consecutive Flip() calls */
+    int64_t now_us = rt_clock_ticks_us();
+    if (canvas->last_flip_us > 0)
+    {
+        int64_t delta_us = now_us - canvas->last_flip_us;
+        canvas->delta_time_ms = delta_us > 0 ? delta_us / 1000 : 0;
+    }
+    else
+    {
+        canvas->delta_time_ms = 0; /* first frame */
+    }
+    canvas->last_flip_us = now_us;
+
     /* Signal close to the application; caller checks canvas.should_close */
     if (vgfx_close_requested(canvas->gfx_win))
     {
@@ -162,6 +179,13 @@ void rt_canvas_flip(void *canvas_ptr)
         canvas->gfx_win = NULL;
         canvas->should_close = 1;
     }
+}
+
+int64_t rt_canvas_get_delta_time(void *canvas_ptr)
+{
+    if (!canvas_ptr)
+        return 0;
+    return ((rt_canvas *)canvas_ptr)->delta_time_ms;
 }
 
 void rt_canvas_clear(void *canvas_ptr, int64_t color)
@@ -190,9 +214,6 @@ int64_t rt_canvas_poll(void *canvas_ptr)
 
     // Poll gamepads for state updates
     rt_pad_poll();
-
-    // Update action mapping state from all input sources
-    rt_action_update();
 
     // Update mouse position from current cursor location
     int32_t mx = 0, my = 0;
@@ -227,6 +248,10 @@ int64_t rt_canvas_poll(void *canvas_ptr)
             rt_mouse_button_up((int64_t)canvas->last_event.data.mouse_button.button);
         }
     }
+
+    // Update action mapping state AFTER events are processed so that
+    // Action.Pressed/Held/Released reflect this frame's input.
+    rt_action_update();
 
     return (int64_t)canvas->last_event.type;
 }

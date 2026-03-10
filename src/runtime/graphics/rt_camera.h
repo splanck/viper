@@ -160,6 +160,37 @@ extern "C"
     /// @brief Clear the dirty flag after consuming the change.
     void rt_camera_clear_dirty(void *camera);
 
+    //=========================================================================
+    // Parallax Layers
+    //=========================================================================
+
+    /// @brief Add a parallax scrolling layer.
+    /// @param camera Camera object.
+    /// @param pixels Pixels buffer to tile across the viewport.
+    /// @param scroll_x_pct X scroll factor (100 = camera speed, 50 = half, 0 = static).
+    /// @param scroll_y_pct Y scroll factor (100 = camera speed, 50 = half, 0 = static).
+    /// @return Layer index [0,7] on success, -1 if full or invalid args.
+    int64_t rt_camera_add_parallax(void *camera,
+                                   void *pixels,
+                                   int64_t scroll_x_pct,
+                                   int64_t scroll_y_pct);
+
+    /// @brief Remove a parallax layer by index.
+    void rt_camera_remove_parallax(void *camera, int64_t index);
+
+    /// @brief Remove all parallax layers.
+    void rt_camera_clear_parallax(void *camera);
+
+    /// @brief Get count of active parallax layers.
+    int64_t rt_camera_parallax_count(void *camera);
+
+    /// @brief Render all parallax layers to a canvas.
+    /// Layers are drawn in slot order (0-7). Each layer's Pixels buffer is tiled
+    /// horizontally and vertically to fill the viewport, scrolled by the camera
+    /// position multiplied by the layer's scroll factor.
+    /// @return Number of layers drawn.
+    int64_t rt_camera_draw_parallax(void *camera, void *canvas);
+
 #ifdef __cplusplus
 }
 #endif

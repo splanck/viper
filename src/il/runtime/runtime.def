@@ -1093,6 +1093,7 @@ RT_FUNC(CanvasGradientV,   rt_canvas_gradient_v,    "Viper.Graphics.Canvas.Gradi
 RT_FUNC(CanvasGetScale,     rt_canvas_get_scale,     "Viper.Graphics.Canvas.GetScale",     "f64(obj)")
 RT_FUNC(CanvasGetFps,       rt_canvas_get_fps,       "Viper.Graphics.Canvas.GetFps",       "i64(obj)")
 RT_FUNC(CanvasSetFps,       rt_canvas_set_fps,       "Viper.Graphics.Canvas.SetFps",       "void(obj,i64)")
+RT_FUNC(CanvasGetDeltaTime, rt_canvas_get_delta_time, "Viper.Graphics.Canvas.get_DeltaTime", "i64(obj)")
 RT_FUNC(CanvasIsMaximized,  rt_canvas_is_maximized,  "Viper.Graphics.Canvas.IsMaximized",  "i1(obj)")
 RT_FUNC(CanvasMaximize,     rt_canvas_maximize,      "Viper.Graphics.Canvas.Maximize",     "void(obj)")
 RT_FUNC(CanvasIsMinimized,  rt_canvas_is_minimized,  "Viper.Graphics.Canvas.IsMinimized",  "i1(obj)")
@@ -1276,6 +1277,11 @@ RT_FUNC(CameraToWorldY,     rt_camera_to_world_y,    "Viper.Graphics.Camera.ToWo
 RT_FUNC(CameraMove,         rt_camera_move,          "Viper.Graphics.Camera.Move",          "void(obj,i64,i64)")
 RT_FUNC(CameraSetBounds,    rt_camera_set_bounds,    "Viper.Graphics.Camera.SetBounds",     "void(obj,i64,i64,i64,i64)")
 RT_FUNC(CameraClearBounds,  rt_camera_clear_bounds,  "Viper.Graphics.Camera.ClearBounds",   "void(obj)")
+RT_FUNC(CameraAddParallax,    rt_camera_add_parallax,    "Viper.Graphics.Camera.AddParallax",        "i64(obj,obj,i64,i64)")
+RT_FUNC(CameraRemoveParallax, rt_camera_remove_parallax, "Viper.Graphics.Camera.RemoveParallax",     "void(obj,i64)")
+RT_FUNC(CameraClearParallax,  rt_camera_clear_parallax,  "Viper.Graphics.Camera.ClearParallax",      "void(obj)")
+RT_FUNC(CameraParallaxCount,  rt_camera_parallax_count,  "Viper.Graphics.Camera.get_ParallaxCount",  "i64(obj)")
+RT_FUNC(CameraDrawParallax,   rt_camera_draw_parallax,   "Viper.Graphics.Camera.DrawParallax",       "i64(obj,obj)")
 
 //=============================================================================
 // SCENE GRAPH
@@ -4022,6 +4028,9 @@ RT_FUNC(ParticleEmitterCount, rt_particle_emitter_count, "Viper.Game.ParticleEmi
 RT_ALIAS("Viper.Game.ParticleEmitter.get_Len", ParticleEmitterCount)  // Consistency alias
 RT_FUNC(ParticleEmitterClear, rt_particle_emitter_clear, "Viper.Game.ParticleEmitter.Clear", "void(obj)")
 RT_FUNC(ParticleEmitterGet, rt_particle_emitter_get, "Viper.Game.ParticleEmitter.Get", "i1(obj,i64,ptr,ptr,ptr,ptr)")
+RT_FUNC(ParticleEmitterDraw, rt_particle_emitter_draw, "Viper.Game.ParticleEmitter.Draw", "i64(obj,obj)")
+RT_FUNC(ParticleEmitterDrawAt, rt_particle_emitter_draw_at, "Viper.Game.ParticleEmitter.DrawAt", "i64(obj,obj,i64,i64)")
+RT_FUNC(ParticleEmitterDrawToPixels, rt_particle_emitter_draw_to_pixels, "Viper.Game.ParticleEmitter.DrawToPixels", "i64(obj,obj,i64,i64)")
 
 //=============================================================================
 // Viper.SpriteAnimation - Frame-Based Animation
@@ -5189,6 +5198,7 @@ RT_CLASS_END()
 
 // Viper.Graphics.Canvas - drawing surface
 RT_CLASS_BEGIN("Viper.Graphics.Canvas", Canvas, "obj", CanvasNew)
+    RT_PROP("DeltaTime", "i64", CanvasGetDeltaTime, none)
     RT_PROP("Height", "i64", CanvasHeight, none)
     RT_PROP("ShouldClose", "i1", CanvasShouldClose, none)
     RT_PROP("Width", "i64", CanvasWidth, none)
@@ -5389,6 +5399,11 @@ RT_CLASS_BEGIN("Viper.Graphics.Camera", Camera, "obj", CameraNew)
     RT_METHOD("Move", "void(i64,i64)", CameraMove)
     RT_METHOD("SetBounds", "void(i64,i64,i64,i64)", CameraSetBounds)
     RT_METHOD("ClearBounds", "void()", CameraClearBounds)
+    RT_PROP("ParallaxCount", "i64", CameraParallaxCount, none)
+    RT_METHOD("AddParallax", "i64(obj,i64,i64)", CameraAddParallax)
+    RT_METHOD("RemoveParallax", "void(i64)", CameraRemoveParallax)
+    RT_METHOD("ClearParallax", "void()", CameraClearParallax)
+    RT_METHOD("DrawParallax", "i64(obj)", CameraDrawParallax)
 RT_CLASS_END()
 
 // Viper.Graphics.SceneNode - node in scene graph hierarchy
@@ -6504,6 +6519,9 @@ RT_CLASS_BEGIN("Viper.Game.ParticleEmitter", ParticleEmitter, "obj", ParticleEmi
     RT_METHOD("Burst", "void(i64)", ParticleEmitterBurst)
     RT_METHOD("Update", "void()", ParticleEmitterUpdate)
     RT_METHOD("Clear", "void()", ParticleEmitterClear)
+    RT_METHOD("Draw", "i64(obj)", ParticleEmitterDraw)
+    RT_METHOD("DrawAt", "i64(obj,i64,i64)", ParticleEmitterDrawAt)
+    RT_METHOD("DrawToPixels", "i64(obj,i64,i64)", ParticleEmitterDrawToPixels)
 RT_CLASS_END()
 
 // Viper.SpriteAnimation - frame-based animation

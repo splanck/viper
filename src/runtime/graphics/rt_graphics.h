@@ -659,6 +659,10 @@ extern "C"
     /// @brief Set the target FPS (<=0 = unlimited).
     void rt_canvas_set_fps(void *canvas, int64_t fps);
 
+    /// @brief Get milliseconds elapsed since the last Flip() call.
+    /// Returns 0 before the first Flip() or if canvas is NULL.
+    int64_t rt_canvas_get_delta_time(void *canvas);
+
     /// @brief Return 1 if the window is maximized, 0 otherwise.
     int8_t rt_canvas_is_maximized(void *canvas);
 
