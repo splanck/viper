@@ -382,9 +382,9 @@ entity Game {
         if levelNum == 4 { levelName = "SKY FORTRESS"; }
         if levelNum == 5 { levelName = "ANCIENT RUINS"; }
 
-        // Fade: full opacity at start, fading out near end
-        var alpha = introTimer * 200 / 2000;
-        if alpha > 200 { alpha = 200; }
+        // Fade: moderate opacity at start, fading out near end
+        var alpha = introTimer * 150 / 1200;
+        if alpha > 150 { alpha = 150; }
         if alpha < 20 { alpha = 20; }
 
         // Dark banner across center
@@ -632,9 +632,10 @@ entity Game {
             } else {
                 player.spawn(level.playerStartX, level.playerStartY);
             }
+            camera.snapTo(player.centerX(), player.centerY());
 
             bullets.reset();
-            renderObj.fadeIn(10);
+            renderObj.fadeIn(30);
         }
     }
 
@@ -704,7 +705,6 @@ entity Game {
             loadLevel(currentLevel);
             levelCompleteTimer = 0;
             sm.Transition(STATE_PLAYING);
-            renderObj.fadeIn(8);
         }
     }
 
@@ -768,7 +768,6 @@ entity Game {
         player.reset();
         loadLevel(1);
 
-        renderObj.fadeIn(8);
         sm.Transition(STATE_PLAYING);
     }
 
@@ -777,6 +776,7 @@ entity Game {
         camera.setLevelSize(level.levelWidth, level.levelHeight);
 
         player.spawn(level.playerStartX, level.playerStartY);
+        camera.snapTo(player.centerX(), player.centerY());
 
         enemies.reset();
         enemies.spawnFromLevel(level);
@@ -790,6 +790,6 @@ entity Game {
         levelTimer = 0;
         reachedCheckpoint = false;
         deathTimer = 0;
-        introTimer = 2000; // 2 second level intro splash
+        introTimer = 1200; // 1.2 second level intro splash
     }
 }

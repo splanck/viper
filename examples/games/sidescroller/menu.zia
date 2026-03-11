@@ -263,38 +263,38 @@ entity MenuSystem {
                                    timeBonus: Integer, levelNum: Integer) {
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, 150);
 
-        canvas.TextCenteredScaled(140, "LEVEL COMPLETE!", COL_HUD_GREEN, 4);
+        canvas.TextCenteredScaled(160, "LEVEL COMPLETE!", COL_HUD_GREEN, 3);
 
         var levelName = "GRASSLANDS";
         if levelNum == 2 { levelName = "CRYSTAL CAVE"; }
         if levelNum == 3 { levelName = "VOLCANIC DEPTHS"; }
         if levelNum == 4 { levelName = "SKY FORTRESS"; }
         if levelNum == 5 { levelName = "ANCIENT RUINS"; }
-        canvas.TextScaled(500, 200, levelName, 2, COL_HUD_BLUE);
+        canvas.TextCenteredScaled(210, levelName, COL_HUD_BLUE, 2);
 
         var revealFrames = titleTimer;
 
         if revealFrames > 30 {
             var scoreStr = Int(score);
-            canvas.TextScaled(420, 260, "SCORE:", 3, COL_HUD_GRAY);
-            canvas.TextScaled(580, 260, scoreStr, 3, COL_WHITE);
+            canvas.TextScaled(460, 270, "SCORE:", 2, COL_HUD_GRAY);
+            canvas.TextScaled(570, 270, scoreStr, 2, COL_WHITE);
         }
 
         if revealFrames > 60 {
             var bonusStr = Int(timeBonus);
-            canvas.TextScaled(420, 305, "TIME BONUS:", 3, COL_HUD_GRAY);
-            canvas.TextScaled(580, 305, bonusStr, 3, COL_COIN_GOLD);
+            canvas.TextScaled(460, 310, "TIME BONUS:", 2, COL_HUD_GRAY);
+            canvas.TextScaled(640, 310, bonusStr, 2, COL_COIN_GOLD);
         }
 
         if revealFrames > 90 {
             var total = score + timeBonus;
             var totalStr = Int(total);
-            canvas.TextScaled(420, 360, "TOTAL:", 3, COL_HUD_GRAY);
-            canvas.TextScaled(580, 360, totalStr, 3, COL_TITLE_ORANGE);
+            canvas.TextScaled(460, 350, "TOTAL:", 2, COL_HUD_GRAY);
+            canvas.TextScaled(570, 350, totalStr, 2, COL_TITLE_ORANGE);
         }
 
         if revealFrames > 120 {
-            canvas.TextCenteredScaled(460, "Press ENTER to continue", COL_HUD_GRAY, 2);
+            canvas.TextCenteredScaled(430, "Press ENTER to continue", COL_HUD_GRAY, 2);
         }
     }
 

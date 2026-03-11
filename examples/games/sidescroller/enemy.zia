@@ -336,6 +336,9 @@ entity EnemyManager {
     // =========================================================================
 
     hide func updateTurret(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        // Skip fire logic during hurt state (etimer is shared with hurt handler)
+        if estate.get(i) == 1 { return; }
+
         var cx = ex.get(i) / 100;
         var cy = ey.get(i) / 100;
 
@@ -378,6 +381,18 @@ entity EnemyManager {
     // =========================================================================
 
     hide func updateBoss(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        // Skip AI logic during hurt state (etimer is shared with hurt handler)
+        if estate.get(i) == 1 {
+            // Still apply gravity during hurt so boss doesn't float
+            var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+            if curVy > MAX_FALL { curVy = MAX_FALL; }
+            evy.set(i, curVy);
+            var dispY = curVy * dt / DT_BASE;
+            var newY = ey.get(i) + dispY;
+            ey.set(i, newY);
+            return;
+        }
+
         var hp = ehp.get(i);
 
         // Determine phase based on HP
@@ -603,6 +618,26 @@ entity EnemyManager {
         if hp <= 0 {
             eactive.set(i, 0);
             estate.set(i, 2);
+            // Despawn nearby enemy bullets so they don't ghost-hit the player
+            clearBulletsNear(ex.get(i) / 100, ey.get(i) / 100);
+        }
+    }
+
+    hide func clearBulletsNear(cx: Integer, cy: Integer) {
+        var i = 0;
+        while i < ebCount {
+            if ebactive.get(i) == 1 {
+                var dx = ebx.get(i) - cx;
+                var dy = eby.get(i) - cy;
+                if dx < 0 { dx = 0 - dx; }
+                if dy < 0 { dy = 0 - dy; }
+                if dx < TILE_SIZE * 4 {
+                    if dy < TILE_SIZE * 4 {
+                        ebactive.set(i, 0);
+                    }
+                }
+            }
+            i = i + 1;
         }
     }
 

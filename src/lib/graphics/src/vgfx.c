@@ -812,17 +812,20 @@ int32_t vgfx_update(vgfx_window_t window)
 
     int64_t frame_start = vgfx_platform_now_ms();
 
+    /* Present framebuffer to native window FIRST — this ensures the game's
+     * completed frame is displayed before any event handler (e.g. windowDidResize
+     * on macOS) can modify the framebuffer.  Events are processed afterwards so
+     * they take effect on the next frame. */
+    if (!vgfx_platform_present(window))
+    {
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to present framebuffer");
+        return 0;
+    }
+
     /* Process OS events (keyboard, mouse, window) */
     if (!vgfx_platform_process_events(window))
     {
         vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Event processing error");
-        return 0;
-    }
-
-    /* Present framebuffer to native window */
-    if (!vgfx_platform_present(window))
-    {
-        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to present framebuffer");
         return 0;
     }
 

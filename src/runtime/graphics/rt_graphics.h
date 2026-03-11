@@ -194,7 +194,7 @@ extern "C"
 
     /// @brief Draw scaled text horizontally centered on the canvas.
     void rt_canvas_text_centered_scaled(
-        void *canvas, int64_t y, rt_string text, int64_t scale, int64_t color);
+        void *canvas, int64_t y, rt_string text, int64_t color, int64_t scale);
 
     /// @brief Draw a filled rectangle with alpha blending.
     /// @param canvas Canvas handle.

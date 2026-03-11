@@ -222,7 +222,7 @@ void rt_canvas_text_right(void *canvas, int64_t margin, int64_t y, rt_string tex
 }
 
 void rt_canvas_text_centered_scaled(
-    void *canvas, int64_t y, rt_string text, int64_t scale, int64_t color)
+    void *canvas, int64_t y, rt_string text, int64_t color, int64_t scale)
 {
     (void)canvas;
     (void)y;

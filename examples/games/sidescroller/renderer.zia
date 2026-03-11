@@ -59,7 +59,7 @@ entity Renderer {
     // Start fade from black
     expose func fadeIn(speed: Integer) {
         var durationMs = 255 * 16 / speed;
-        fx.FadeIn(0x000000FF, durationMs);
+        fx.FadeIn(0x00000050, durationMs);
     }
 
     expose func isFading() -> Boolean {

@@ -392,8 +392,11 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
 
     if (_vgfxWindow->pixels)
     {
-        /* Clear framebuffer to black (RGB = 0, 0, 0, A = 0) */
+        /* Clear framebuffer to black (RGB = 0, 0, 0) with fully opaque alpha,
+         * matching the initialization in vgfx_create_window(). */
         memset(_vgfxWindow->pixels, 0, buffer_size);
+        for (size_t i = 3; i < buffer_size; i += 4)
+            _vgfxWindow->pixels[i] = 0xFF;
     }
 
     /* Enqueue RESIZE event for the application to handle */

@@ -325,7 +325,7 @@ void rt_canvas_text_right(void *canvas_ptr, int64_t margin, int64_t y, rt_string
 }
 
 void rt_canvas_text_centered_scaled(
-    void *canvas_ptr, int64_t y, rt_string text, int64_t scale, int64_t color)
+    void *canvas_ptr, int64_t y, rt_string text, int64_t color, int64_t scale)
 {
     if (!canvas_ptr || !text || scale < 1)
         return;
