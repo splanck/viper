@@ -264,7 +264,7 @@ TEST(AArch64PhiCoalescer, LoopStructurePreserved)
     // a conditional branch targeting Lloop (the peephole may fuse cmp+branch
     // or invert the branch direction, eliminating the explicit "b Lloop").
     const bool hasLoopBackEdge =
-        asmText.find("b Lloop") != std::string::npos ||   // unconditional
+        asmText.find("b Lloop") != std::string::npos ||    // unconditional
         asmText.find("b.ne Lloop") != std::string::npos || // conditional (inverted)
         asmText.find("b.eq Lexit") != std::string::npos || // exit branch (original)
         asmText.find("cbnz") != std::string::npos;         // fused cmp+branch

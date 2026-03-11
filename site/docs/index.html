@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Documentation — Viper</title>
+  <meta name="description" content="Viper documentation: language tutorials, runtime API reference, architecture guides, and CLI tools.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="./" class="active">Docs</a>
+    <a href="../showcase.html">Showcase</a>
+    <a href="https://github.com/splanck/viper/releases">Download</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="section">
+  <h1 class="section-title">Documentation</h1>
+  <p class="section-subtitle">Guides, references, and API docs for the Viper platform</p>
+
+  <div class="docs-grid">
+
+    <!-- Start Here -->
+    <div class="docs-category">
+      <h3>Start Here</h3>
+      <ul>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/getting-started.md">Getting Started</a> <span class="doc-desc">— Build, install, run your first program</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/zia-getting-started.md">Zia Tutorial</a> <span class="doc-desc">— Learn Zia by example</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/basic-language.md">BASIC Tutorial</a> <span class="doc-desc">— Learn Viper BASIC by example</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/faq.md">FAQ</a> <span class="doc-desc">— Common questions answered</span></li>
+      </ul>
+    </div>
+
+    <!-- Zia Language -->
+    <div class="docs-category">
+      <h3>Zia Language</h3>
+      <ul>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/zia-getting-started.md">Tutorial</a> <span class="doc-desc">— Hands-on introduction</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/zia-reference.md">Language Reference</a> <span class="doc-desc">— Complete specification</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/feature-parity.md">Feature Parity Matrix</a> <span class="doc-desc">— Zia vs BASIC comparison</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/arithmetic-semantics.md">Arithmetic Semantics</a> <span class="doc-desc">— Overflow and numeric guarantees</span></li>
+      </ul>
+    </div>
+
+    <!-- BASIC Language -->
+    <div class="docs-category">
+      <h3>BASIC Language</h3>
+      <ul>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/basic-language.md">Tutorial</a> <span class="doc-desc">— Learn by example</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/basic-reference.md">Language Reference</a> <span class="doc-desc">— Complete specification</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/basic-namespaces.md">Namespace Reference</a> <span class="doc-desc">— Namespace system</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/lifetime.md">Lifetime Model</a> <span class="doc-desc">— Reference counting and disposal</span></li>
+      </ul>
+    </div>
+
+    <!-- Intermediate Language -->
+    <div class="docs-category">
+      <h3>Intermediate Language</h3>
+      <ul>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/il-guide.md">IL Guide</a> <span class="doc-desc">— Comprehensive specification</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/il-quickstart.md">IL Quickstart</a> <span class="doc-desc">— Fast introduction</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/il-reference.md">Opcode Reference</a> <span class="doc-desc">— Types and opcodes</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/il-passes.md">Optimizer Passes</a> <span class="doc-desc">— SCCP, CSE, DCE, Mem2Reg, etc.</span></li>
+      </ul>
+    </div>
+
+    <!-- Runtime Library -->
+    <div class="docs-category">
+      <h3>Runtime Library</h3>
+      <ul>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/viperlib.md">Runtime Index</a> <span class="doc-desc">— All Viper.* classes and methods</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/runtime-api-complete.md">Full API Reference</a> <span class="doc-desc">— Complete runtime API</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/graphics-library.md">Graphics Library</a> <span class="doc-desc">— ViperGFX 2D API</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/memory-management.md">Memory Management</a> <span class="doc-desc">— GC and object lifetime</span></li>
+      </ul>
+    </div>
+
+    <!-- Runtime Modules -->
+    <div class="docs-category">
+      <h3>Runtime Modules</h3>
+      <ul>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/viperlib/collections/">Collections</a> <span class="doc-desc">— Bag, Bytes, Heap, List, Map, Queue, Ring, Seq, Stack, TreeMap</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/viperlib/graphics/">Graphics &amp; GUI</a> <span class="doc-desc">— Canvas, Sprite, Camera, Tilemap, Widgets</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/viperlib/io/">I/O</a> <span class="doc-desc">— File, Archive, Compress, Dir, Stream</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/viperlib/network.md">Network</a> <span class="doc-desc">— TCP, UDP, HTTP, WebSocket, TLS</span></li>
+      </ul>
+    </div>
+
+    <!-- Tools & CLI -->
+    <div class="docs-category">
+      <h3>Tools &amp; CLI</h3>
+      <ul>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/tools.md">CLI Reference</a> <span class="doc-desc">— viper, zia, vbasic, ilrun, il-verify, il-dis</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/repl.md">REPL</a> <span class="doc-desc">— Interactive Zia/BASIC environment</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/debugging.md">Debugging Guide</a> <span class="doc-desc">— VM tracing and diagnostics</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/testing.md">Testing Guide</a> <span class="doc-desc">— Unit, golden, e2e tests</span></li>
+      </ul>
+    </div>
+
+    <!-- Architecture & Internals -->
+    <div class="docs-category">
+      <h3>Architecture &amp; Internals</h3>
+      <ul>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/architecture.md">Architecture Overview</a> <span class="doc-desc">— Frontends, IL, VM, codegen</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/codemap.md">Code Map</a> <span class="doc-desc">— Source directory layout</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/vm.md">VM Guide</a> <span class="doc-desc">— Dispatch, profiling, runtime ABI</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/backend.md">Backend Guide</a> <span class="doc-desc">— ARM64 and x86-64 codegen</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/interop.md">Cross-Language Interop</a> <span class="doc-desc">— Zia + BASIC IL linking</span></li>
+        <li><a href="https://github.com/splanck/viper/blob/master/docs/contributor-guide.md">Contributor Guide</a> <span class="doc-desc">— Style guide and process</span></li>
+      </ul>
+    </div>
+
+  </div>
+</div>
+
+<footer class="site-footer">
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <div class="footer-links">
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="./">Documentation</a>
+    <a href="https://github.com/splanck/viper/blob/master/LICENSE">License</a>
+  </div>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+{
+  "name": "zia-language",
+  "displayName": "Zia Language",
+  "description": "Zia language support — diagnostics, completions, hover, and symbols via zia-server",
+  "version": "0.1.0",
+  "publisher": "viper",
+  "license": "GPL-3.0",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:zia"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "zia",
+        "aliases": [
+          "Zia",
+          "zia"
+        ],
+        "extensions": [
+          ".zia"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "zia",
+        "scopeName": "source.zia",
+        "path": "./syntaxes/zia.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Zia",
+      "properties": {
+        "zia.server.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the zia-server binary. If empty, searches PATH."
+        },
+        "zia.server.args": {
+          "type": "array",
+          "default": [
+            "--lsp"
+          ],
+          "description": "Arguments passed to zia-server."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

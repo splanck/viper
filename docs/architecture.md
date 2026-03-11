@@ -303,6 +303,8 @@ Diagnostics carry source mapping (file/line/column) through AST → IL → VM/na
     - `front basic -emit-il|-run <file.bas>` — BASIC compile/run
     - `il-opt <in.il> -o <out.il> [--passes ...]` — Optimizer
 - `zia` — Zia compiler (`zia script.zia` to run, `zia script.zia --emit-il` to emit IL)
+- `zia-server` — Language server exposing Zia compiler APIs over MCP (for AI assistants) and LSP (for editors).
+  Uses `--mcp` or `--lsp` flags, or auto-detects from input. See [zia-server.md](zia-server.md).
 
 ### Extensibility points
 

@@ -171,8 +171,7 @@ void lowerOverflowOps(MFunction &fn)
                 MInstr bne{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel)}};
 
                 // Insert instructions after the mul
-                auto insertPos =
-                    block.instrs.begin() + static_cast<std::ptrdiff_t>(i + 1);
+                auto insertPos = block.instrs.begin() + static_cast<std::ptrdiff_t>(i + 1);
                 insertPos = block.instrs.insert(insertPos, std::move(smulh));
                 insertPos = block.instrs.insert(insertPos + 1, std::move(asr));
                 insertPos = block.instrs.insert(insertPos + 1, std::move(cmp));

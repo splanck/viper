@@ -308,7 +308,8 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
         nodes[i].instrIdx = i;
 
     // Helper: add a dependency edge from instruction i to predecessor p.
-    auto addDep = [&](std::size_t i, std::size_t p, unsigned lat) {
+    auto addDep = [&](std::size_t i, std::size_t p, unsigned lat)
+    {
         if (p != i)
         {
             nodes[i].preds.push_back(p);

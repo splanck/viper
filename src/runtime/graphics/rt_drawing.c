@@ -314,7 +314,8 @@ void rt_canvas_text_centered(void *canvas_ptr, int64_t y, rt_string text, int64_
     rt_canvas_text(canvas_ptr, x, y, text, color);
 }
 
-void rt_canvas_text_right(void *canvas_ptr, int64_t margin, int64_t y, rt_string text, int64_t color)
+void rt_canvas_text_right(
+    void *canvas_ptr, int64_t margin, int64_t y, rt_string text, int64_t color)
 {
     if (!canvas_ptr || !text)
         return;

@@ -186,8 +186,8 @@ std::size_t removeDeadInstructions(std::vector<MInstr> &instrs, PeepholeStats &s
     }
 
     // Mark callee-saved GPRs (x19-x28) as live at block exit
-    for (uint32_t r = static_cast<uint32_t>(PhysReg::X19);
-         r <= static_cast<uint32_t>(PhysReg::X28); ++r)
+    for (uint32_t r = static_cast<uint32_t>(PhysReg::X19); r <= static_cast<uint32_t>(PhysReg::X28);
+         ++r)
     {
         liveRegs.insert((static_cast<uint32_t>(RegClass::GPR) << 16) | r);
     }
@@ -303,9 +303,8 @@ std::size_t eliminateDeadFpStores(std::vector<MInstr> &instrs, PeepholeStats &st
             continue;
         }
 
-        if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond ||
-            instr.opc == MOpcode::Ret || instr.opc == MOpcode::Cbz ||
-            instr.opc == MOpcode::Cbnz)
+        if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond || instr.opc == MOpcode::Ret ||
+            instr.opc == MOpcode::Cbz || instr.opc == MOpcode::Cbnz)
         {
             lastStore.clear();
             continue;

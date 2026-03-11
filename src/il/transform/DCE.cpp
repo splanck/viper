@@ -46,6 +46,7 @@ static bool traceEnabled()
     static const bool enabled = std::getenv("VIPER_DCE_TRACE") != nullptr;
     return enabled;
 }
+
 /// @brief Check whether an overflow-checked op with constant operands is
 ///        provably non-overflowing, making it safe to remove when dead.
 /// @details If both operands are ConstInt and the operation does not overflow,
@@ -56,8 +57,7 @@ static bool isDeadOverflowOp(const il::core::Instr &instr)
     using il::core::Opcode;
     using il::core::Value;
 
-    if (instr.op != Opcode::IAddOvf && instr.op != Opcode::ISubOvf &&
-        instr.op != Opcode::IMulOvf)
+    if (instr.op != Opcode::IAddOvf && instr.op != Opcode::ISubOvf && instr.op != Opcode::IMulOvf)
         return false;
     if (instr.operands.size() < 2)
         return false;

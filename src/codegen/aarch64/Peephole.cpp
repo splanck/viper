@@ -265,6 +265,7 @@ PeepholeStats runPeephole(MFunction &fn)
                 std::size_t idx;
                 MOperand srcReg;
             };
+
             std::unordered_map<int64_t, StoreInfo> endStores;
 
             for (std::size_t i = predInstrs.size(); i-- > 0;)

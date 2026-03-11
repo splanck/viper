@@ -19,8 +19,8 @@ hoisting, cross-block store-load forwarding), an interactive REPL for both langu
 benchmark suite, and a large-scale codebase reorganization that consolidates documentation and examples
 into clean hierarchies.
 
-1,802 files changed across 32 commits. ~47K lines added and ~70K lines removed. 437 stale files
-deleted and 81 new files added. Test count increased from 1,261 to 1,272 (+11 net; large stale test
+2,013 files changed across 43 commits. ~69K lines added and ~78K lines removed. 437 stale files
+deleted and 92 new files added. Test count increased from 1,261 to 1,272 (+11 net; large stale test
 fixture deletion offset by new coverage).
 
 ---
@@ -227,6 +227,34 @@ PathFollower, ButtonGroup, DebugOverlay, ScreenFX, and Action presets.
 **Demo Refactoring** — Sidescroller demo refactored to use StateMachine (replacing manual integer
 state tracking) and ButtonGroup (replacing manual selection management).
 
+#### New Runtime APIs
+
+**Canvas.DeltaTime** — Milliseconds elapsed since the last frame, available as a property. Combined
+with `Canvas.SetDTMax()` for automatic delta-time clamping, this enables frame-rate-independent
+physics without manual timer management.
+
+**ParticleEmitter Rendering** — `ParticleEmitter.Draw()`, `DrawAt()`, and `DrawToPixels()` methods
+for rendering particle systems directly, eliminating the need for manual particle array iteration in
+game loops.
+
+**Camera Parallax Layers** — `Camera.AddParallaxLayer()`, `RemoveLayer()`, `ClearLayers()`, and
+`DrawParallax()` for multi-layer parallax scrolling backgrounds with configurable scroll speeds.
+
+**Camera.SnapTo** — Instant camera repositioning for level transitions and respawn events, bypassing
+the normal smooth-follow interpolation.
+
+#### Website
+
+A hand-crafted project website under `site/` for GitHub Pages deployment:
+
+- **Landing page** (`site/index.html`): Hero with logo, code sample tabs (Zia/BASIC/IL), 6 feature
+  cards, showcase preview, architecture diagram, quick install block
+- **Documentation hub** (`site/docs/index.html`): 8-category table of contents linking to
+  GitHub-rendered markdown (Start Here, Zia, BASIC, IL, Runtime, Modules, Tools, Architecture)
+- **Showcase gallery** (`site/showcase.html`): All applications and games with language badges
+- Dark/light theme with localStorage persistence, responsive layout, syntax highlighting
+- Zero dependencies — plain HTML/CSS/JS matching Viper's zero-dependency philosophy
+
 ---
 
 ### Comprehensive Safety Audits
@@ -371,14 +399,48 @@ get/put with `rt_trap` + `rt_arr_oob_panic`.
 
 ---
 
-### Sidescroller Demo Improvements
+### Sidescroller Demo — "Nova Run" (Full Game)
+
+The sidescroller demo evolved from a single-level tech demo into a complete 5-level platformer
+("Nova Run") across 8 phases of development:
+
+#### Content
+
+- 5 themed levels: Training Grounds, Crystal Caverns, Volcanic Depths, Sky Fortress, Ancient Ruins
+- 5 parallax backgrounds with round stars, atmospheric blur, and volumetric clouds
+- 7 new tile types across 3 level themes with 3D bevels, crystal facets, and lava veins
+- Gradient title screen with scrolling elements and pulsing animations
+- Data-driven boss health bar and all 5 level names displayed in HUD
+
+#### Sprite Art Overhaul
+
+All entities redrawn using `DrawTriangle`, `DrawEllipse`, `DrawBezier`, `DrawThickLine`, `Blur`,
+and `Tint` — replacing the original rectangles-only rendering. Includes 4-frame player run cycle
+(was 2), 4-frame slime animation (was 2), and boss attack wind-up frame.
+
+#### Physics & Systems
+
+- Frame-rate-independent physics via DeltaTime scaling across all subsystems
+- Gamepad support via `Action.BindPadButton` with integer button constants
+- Persistent high scores via CSV file I/O
+- 12 procedurally generated WAV sound effects with SoundManager entity integration
+- ParticleEmitter-based effects replacing manual particle arrays
+- Projectile particle trails for player and enemy bullets
+
+#### Visual Effects
+
+Landing dust, wall-slide sparks, jetpack flame, ambient lava glow, crystal shimmer, speed trail,
+and level intro splash screens.
+
+#### Bug Fixes
 
 - Fix lock-free pool allocator race: reserve first slab block before sharing remainder with freelist
 - Fix `TILE_BRIDGE` missing from `isSolid()` — players fell through bridges into spike pits
 - Fix `PS_HURT` state stuck permanently — allow state transitions once iframes expire
-- Add 12 procedurally generated WAV sound effects: jump, shoot, coin, hurt, stomp, enemy death,
-  powerup, checkpoint, level complete, death, menu select, menu move
-- SoundManager entity integration
+- Fix turret/boss shared `etimer` corruption: hurt handler and AI timer cancelled each other out,
+  leaving enemies stuck in permanent hurt state. Added hurt-state guards to turret and boss AI
+- Clear nearby enemy bullets on enemy death to prevent ghost collision damage at dead turret
+  positions (4-tile radius despawn)
 
 ---
 
@@ -425,6 +487,7 @@ Readability refactoring of the largest source files:
 | `rt_tls.c` | + `rt_tls_verify.c` + `rt_tls_internal.h` | Cert verification extracted |
 | `vg_ide_widgets.h` | Split into 6 focused sub-headers | Umbrella include preserved |
 | `Peephole.cpp` | 6 sub-passes in `peephole/` directory | AArch64 peephole decomposition (2,750 LOC) |
+| `RegAllocLinear.cpp` | 8 files in `ra/` directory | AArch64 register allocator decomposition (1,478 LOC) |
 | `Lowerer.hpp` | + `LowererTypes.hpp` + `LowererSymbolTable.hpp` + `LowererTypeLayout.hpp` | Zia lowerer decomposition foundation |
 
 #### Cross-Platform Improvements
@@ -471,8 +534,17 @@ issue tracker.
 
 ---
 
+### Runtime Bug Fixes
+
+- **TextCenteredScaled**: Fix swapped `scale`/`color` parameters in `rt_canvas_text_centered_scaled`
+  that caused enormous near-black rectangles covering the screen during level intro overlays
+
 ### Graphics
 
+- **Present-before-events**: Reorder `vgfx_update` to present the frame before polling events,
+  fixing visual glitches on rapid input during scene transitions
+- **macOS resize alpha**: Set opaque alpha (0xFF) on framebuffer clear during window resize,
+  preventing transparent flicker artifacts on macOS
 - **Linux X11**: Fix 32-bit TrueColor visual via `XMatchVisualInfo`; add RGBA→BGRA swizzle in
   presentation buffer for correct color rendering
 - **Linux linking**: Add `-lX11` for graphics demos
@@ -487,11 +559,11 @@ issue tracker.
 | C/C++ Source (LOC)  | ~1,000,000 | ~820,000*     | -180,000*  |
 | C/C++ Source Files  | 2,288     | ~2,500         | +212       |
 | Test Count          | 1,261     | 1,272          | +11        |
-| Commits             | —         | 32             | —          |
-| Files Changed       | —         | 1,802          | —          |
-| Lines Added         | —         | 46,557         | —          |
-| Lines Removed       | —         | 70,013         | —          |
-| New Files           | —         | 81             | —          |
+| Commits             | —         | 43             | —          |
+| Files Changed       | —         | 2,013          | —          |
+| Lines Added         | —         | 68,697         | —          |
+| Lines Removed       | —         | 78,481         | —          |
+| New Files           | —         | 92             | —          |
 | Deleted Files       | —         | 437            | —          |
 
 *\* Net LOC decreased due to deletion of 437 stale files (devdocs, dead demos, test fixtures,
@@ -563,6 +635,12 @@ zia-review). Test count is net +11 because 286 obsolete test fixture files were 
 | ECDSA P-256 (native)       | OpenSSL-dependent    | Pure C, MSVC-compatible            |
 | Linux Graphics             | Broken colors        | Correct X11 TrueColor + BGRA      |
 | Benchmark Suite            | No                   | 6 languages × 9 benchmarks         |
+| AArch64 RegAlloc Decomp    | Monolithic (1478 LOC)| 8 files in ra/ subdirectory         |
+| Canvas.DeltaTime           | No                   | Frame delta + SetDTMax clamping     |
+| Camera Parallax            | No                   | Multi-layer parallax scrolling      |
+| ParticleEmitter Rendering  | No                   | Draw/DrawAt/DrawToPixels            |
+| Project Website            | No                   | Landing + docs hub + showcase       |
+| Sidescroller Demo          | 1 level, rectangles  | 5 levels, sprite art, full game     |
 | Codebase Organization      | demos/ + devdocs/    | Unified examples/ + docs/          |
 
 ---
@@ -576,6 +654,7 @@ Remaining v0.2.x focus areas:
 - RISC-V backend exploration
 - GUI library maturation (accessibility, additional widget types)
 - Runtime API stability and performance improvements
+- Website Phase 2: convert docs to HTML, search, interactive code samples
 - Self-hosting compiler groundwork
 
 ---

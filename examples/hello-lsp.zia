@@ -1,0 +1,18 @@
+module HelloLSP;
+
+// Try hovering over "start", or typing "Viper." to get completions.
+// Errors should appear as red squiggly underlines.
+
+value Point {
+    var x: Integer;
+    var y: Integer;
+}
+
+func start() {
+    var greeting = "Hello from the Zia Language Server!";
+    Viper.Terminal.Say(greeting);
+
+    var p = Point(10, 20);
+    Viper.Terminal.SayInt(p.x);
+    Viper.Terminal.SayInt(p.y);
+}

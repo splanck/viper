@@ -81,8 +81,7 @@ namespace viper::codegen::common
 /// @tparam Traits Target-specific type providing the required interface.
 /// @param instrs  Mutable instruction vector to compact in place.
 /// @return Number of dead instructions removed.
-template <typename Traits>
-std::size_t runBlockDCE(std::vector<typename Traits::MInstr> &instrs)
+template <typename Traits> std::size_t runBlockDCE(std::vector<typename Traits::MInstr> &instrs)
 {
     using MInstr = typename Traits::MInstr;
     using RegKey = typename Traits::RegKey;

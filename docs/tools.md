@@ -40,6 +40,23 @@ vbasic program.bas --emit-il
 vbasic program.bas -o program.il
 ```
 
+### zia-server
+
+Language server for Zia — serves MCP (for AI assistants) and LSP (for editors).
+
+```bash
+# Start in MCP mode (for Claude Code, Copilot, etc.)
+zia-server --mcp
+
+# Start in LSP mode (for VS Code)
+zia-server --lsp
+
+# Auto-detect protocol from first message
+zia-server
+```
+
+See [Language Server Reference](zia-server.md) for configuration and tool documentation.
+
 ### ilrun
 
 Execute IL programs.

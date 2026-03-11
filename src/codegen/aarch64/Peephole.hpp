@@ -47,7 +47,7 @@ struct PeepholeStats
     int ldpStpMerges{0};            ///< Number of ldr/str pairs merged into ldp/stp.
     int branchInversions{0};        ///< Number of branch inversions applied.
     int immFoldings{0};             ///< Number of RRR→RI immediate foldings.
-    int loopConstsHoisted{0};        ///< Number of MovRI instructions hoisted out of loops.
+    int loopConstsHoisted{0};       ///< Number of MovRI instructions hoisted out of loops.
 
     /// @brief Total number of optimizations applied.
     [[nodiscard]] int total() const noexcept

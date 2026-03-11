@@ -96,10 +96,10 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_linereader_") || starts("rt_linewriter_") || starts("rt_io_file_") ||
         starts("rt_memstream_") || starts("rt_stream_") || starts("rt_watcher_") ||
         starts("rt_compress_") || starts("rt_archive_") || starts("rt_glob_") ||
-        starts("rt_tempfile_") || starts("rt_savedata_") ||
-        sym == "rt_eof_ch" || sym == "rt_lof_ch" || sym == "rt_loc_ch" ||
-        sym == "rt_close_err" || sym == "rt_seek_ch_err" || sym == "rt_write_ch_err" ||
-        sym == "rt_println_ch_err" || sym == "rt_line_input_ch_err" || sym == "rt_open_err_vstr")
+        starts("rt_tempfile_") || starts("rt_savedata_") || sym == "rt_eof_ch" ||
+        sym == "rt_lof_ch" || sym == "rt_loc_ch" || sym == "rt_close_err" ||
+        sym == "rt_seek_ch_err" || sym == "rt_write_ch_err" || sym == "rt_println_ch_err" ||
+        sym == "rt_line_input_ch_err" || sym == "rt_open_err_vstr")
         return RtComponent::IoFs;
 
     // Exec component
@@ -128,8 +128,8 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
 
     // Audio component
     if (starts("rt_audio_") || starts("rt_playlist_") || starts("rt_sound_") ||
-        starts("rt_soundbank_") || starts("rt_synth_") ||
-        starts("rt_music_") || starts("rt_voice_"))
+        starts("rt_soundbank_") || starts("rt_synth_") || starts("rt_music_") ||
+        starts("rt_voice_"))
         return RtComponent::Audio;
 
     // Network component

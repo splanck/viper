@@ -716,8 +716,7 @@ void LinearAllocator::handleCall(MInstr &ins, std::vector<MInstr> &rewritten)
 
 void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewritten)
 {
-    const bool isPhiStore =
-        (ins.opc == MOpcode::PhiStoreGPR || ins.opc == MOpcode::PhiStoreFPR);
+    const bool isPhiStore = (ins.opc == MOpcode::PhiStoreGPR || ins.opc == MOpcode::PhiStoreFPR);
     uint16_t phiSrcVreg = 0;
     bool phiSrcIsFPR = false;
     if (isPhiStore && !ins.ops.empty() && ins.ops[0].kind == MOperand::Kind::Reg &&
@@ -734,9 +733,8 @@ void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewr
     {
         const auto &dst = ins.ops[0];
         const auto &src = ins.ops[1];
-        if (dst.kind == MOperand::Kind::Reg && !dst.reg.isPhys &&
-            src.kind == MOperand::Kind::Reg && src.reg.isPhys &&
-            static_cast<PhysReg>(src.reg.idOrPhys) == PhysReg::X0)
+        if (dst.kind == MOperand::Kind::Reg && !dst.reg.isPhys && src.kind == MOperand::Kind::Reg &&
+            src.reg.isPhys && static_cast<PhysReg>(src.reg.idOrPhys) == PhysReg::X0)
         {
             applyGetBarrier = true;
             getBarrierDstVreg = dst.reg.idOrPhys;

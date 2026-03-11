@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Showcase — Viper</title>
+  <meta name="description" content="Applications and games built with the Viper platform: SQL database, IDE, chess, platformer, paint app, and more.">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="/" class="nav-logo"><img src="logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="docs/">Docs</a>
+    <a href="showcase.html" class="active">Showcase</a>
+    <a href="https://github.com/splanck/viper/releases">Download</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="section">
+  <h1 class="section-title">Showcase</h1>
+  <p class="section-subtitle">Real applications and games built on the Viper platform. All compile to native binaries.</p>
+
+  <!-- Applications -->
+  <div class="showcase-section">
+    <h2>Applications</h2>
+    <div class="showcase-grid">
+      <a href="https://github.com/splanck/viper/tree/master/examples/apps/sqldb" class="showcase-card">
+        <h3>SQL Database</h3>
+        <p>PostgreSQL-compatible database engine with REPL, MVCC transactions, WAL, B-tree indexes, and wire protocol support.</p>
+        <span class="showcase-badge badge-zia">Zia</span>
+      </a>
+
+      <a href="https://github.com/splanck/viper/tree/master/examples/apps/viperide" class="showcase-card">
+        <h3>Viper IDE</h3>
+        <p>Code editor with tabs, find/replace, syntax highlighting, and integrated build system.</p>
+        <span class="showcase-badge badge-zia">Zia</span>
+      </a>
+
+      <a href="https://github.com/splanck/viper/tree/master/examples/apps/paint" class="showcase-card">
+        <h3>Paint</h3>
+        <p>Drawing application with 8 tools, shapes, color picker, and undo/redo support.</p>
+        <span class="showcase-badge badge-zia">Zia</span>
+      </a>
+
+      <a href="https://github.com/splanck/viper/tree/master/examples/apps/webserver" class="showcase-card">
+        <h3>Web Server</h3>
+        <p>Multi-threaded HTTP server with routing, request logging, and static file serving.</p>
+        <span class="showcase-badge badge-zia">Zia</span>
+      </a>
+
+      <a href="https://github.com/splanck/viper/tree/master/examples/apps/varc" class="showcase-card">
+        <h3>Archive Utility</h3>
+        <p>Archive tool with DEFLATE compression and AES-256 encryption.</p>
+        <span class="showcase-badge badge-zia">Zia</span>
+      </a>
+
+      <a href="https://github.com/splanck/viper/tree/master/examples/apps/telnet" class="showcase-card">
+        <h3>Telnet</h3>
+        <p>Telnet client and server with interactive shell support.</p>
+        <span class="showcase-badge badge-zia">Zia</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Zia Games -->
+  <div class="showcase-section">
+    <h2>Games (Zia)</h2>
+    <div class="showcase-grid">
+      <a href="https://github.com/splanck/viper/tree/master/examples/games/chess" class="showcase-card">
+        <h3>Chess</h3>
+        <p>Full chess engine with alpha-beta AI, transposition tables, opening book, and canvas-rendered GUI.</p>
+        <span class="showcase-badge badge-zia">Zia</span>
+      </a>
+
+      <a href="https://github.com/splanck/viper/tree/master/examples/games/sidescroller" class="showcase-card">
+        <h3>Nova Run</h3>
+        <p>2D platformer with jetpack physics, parallax scrolling, particle effects, 5 themed levels, and boss fights.</p>
+        <span class="showcase-badge badge-zia">Zia</span>
+      </a>
+
+      <a href="https://github.com/splanck/viper/tree/master/examples/games/pacman" class="showcase-card">
+        <h3>Pac-Man</h3>
+        <p>Arcade clone with ghost AI personalities, power pellets, animations, and tile-based rendering.</p>
+        <span class="showcase-badge badge-zia">Zia</span>
+      </a>
+
+      <a href="https://github.com/splanck/viper/tree/master/examples/games/centipede" class="showcase-card">
+        <h3>Centipede</h3>
+        <p>Classic arcade game with segmented enemies, mushroom fields, and particle effects.</p>
+        <span class="showcase-badge badge-zia">Zia</span>
+      </a>
+
+      <a href="https://github.com/splanck/viper/tree/master/examples/games/frogger" class="showcase-card">
+        <h3>Frogger</h3>
+        <p>Multi-lane traffic and river crossing with sprite-based rendering.</p>
+        <span class="showcase-badge badge-zia">Zia</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- BASIC Games -->
+  <div class="showcase-section">
+    <h2>Games (BASIC)</h2>
+    <div class="showcase-grid">
+      <a href="https://github.com/splanck/viper/tree/master/examples/games/vtris" class="showcase-card">
+        <h3>VTris</h3>
+        <p>Tetris clone with all 7 tetrominoes, line clearing, high scores, and level progression.</p>
+        <span class="showcase-badge badge-basic">BASIC</span>
+      </a>
+
+      <a href="https://github.com/splanck/viper/tree/master/examples/games/chess-basic" class="showcase-card">
+        <h3>Chess</h3>
+        <p>Console chess with AI opponent and full move validation.</p>
+        <span class="showcase-badge badge-basic">BASIC</span>
+      </a>
+
+      <a href="https://github.com/splanck/viper/tree/master/examples/games/pacman-basic" class="showcase-card">
+        <h3>Pac-Man</h3>
+        <p>Terminal-based Pac-Man with ghost AI personalities.</p>
+        <span class="showcase-badge badge-basic">BASIC</span>
+      </a>
+
+      <a href="https://github.com/splanck/viper/tree/master/examples/games/centipede-basic" class="showcase-card">
+        <h3>Centipede</h3>
+        <p>OOP terminal game with segmented enemy movement.</p>
+        <span class="showcase-badge badge-basic">BASIC</span>
+      </a>
+
+      <a href="https://github.com/splanck/viper/tree/master/examples/games/frogger-basic" class="showcase-card">
+        <h3>Frogger</h3>
+        <p>Console frogger with multi-lane traffic and collision detection.</p>
+        <span class="showcase-badge badge-basic">BASIC</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="text-center mt-2 mb-2">
+    <p style="color: var(--color-text-secondary);">All demos compile to native binaries:</p>
+    <div class="install-block" style="max-width: 500px; margin: 1rem auto;">
+      <pre><span class="comment"># Build all demos</span>
+<span class="cmd">./scripts/build_demos.sh</span>
+
+<span class="comment"># Run any demo</span>
+<span class="cmd">viper run examples/games/chess/</span></pre>
+    </div>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <div class="footer-links">
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="docs/">Documentation</a>
+    <a href="https://github.com/splanck/viper/blob/master/LICENSE">License</a>
+  </div>
+</footer>
+
+<script src="main.js"></script>
+</body>
+</html>

@@ -978,7 +978,10 @@ void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs
 }
 
 // Forwarding alias to avoid shadowing the anonymous-namespace hasSideEffects.
-inline bool dceHasSideEffects(const MInstr &instr) noexcept { return hasSideEffects(instr); }
+inline bool dceHasSideEffects(const MInstr &instr) noexcept
+{
+    return hasSideEffects(instr);
+}
 
 /// @brief Traits for the shared DCE template (x86-64 backend).
 struct X64DCETraits
@@ -998,8 +1001,7 @@ struct X64DCETraits
         return getDefReg(instr);
     }
 
-    static void collectUsedRegKeys(const MInstr &instr,
-                                   std::unordered_set<RegKey> &live) noexcept
+    static void collectUsedRegKeys(const MInstr &instr, std::unordered_set<RegKey> &live) noexcept
     {
         collectUsedRegs(instr, live);
     }
@@ -1030,8 +1032,7 @@ struct X64DCETraits
 /// @return Number of instructions eliminated.
 std::size_t runBlockDCE(std::vector<MInstr> &instrs, PeepholeStats &stats)
 {
-    std::size_t eliminated =
-        viper::codegen::common::runBlockDCE<X64DCETraits>(instrs);
+    std::size_t eliminated = viper::codegen::common::runBlockDCE<X64DCETraits>(instrs);
     stats.deadCodeEliminated += eliminated;
     return eliminated;
 }

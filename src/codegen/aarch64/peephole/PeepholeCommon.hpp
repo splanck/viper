@@ -363,7 +363,7 @@ using viper::codegen::common::removeMarkedInstructions;
 
 /// @brief Classify an operand as use, def, or both.
 [[nodiscard]] inline std::pair<bool, bool> classifyOperand(const MInstr &instr,
-                                                            std::size_t idx) noexcept
+                                                           std::size_t idx) noexcept
 {
     switch (instr.opc)
     {

@@ -28,9 +28,7 @@
 namespace viper::codegen::aarch64::peephole
 {
 
-bool tryLdpStpMerge(std::vector<MInstr> &instrs,
-                    std::size_t idx,
-                    PeepholeStats &stats)
+bool tryLdpStpMerge(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
 {
     if (idx + 1 >= instrs.size())
         return false;

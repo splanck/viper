@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Viper — IL-First Compiler Platform</title>
+  <meta name="description" content="Viper is an IL-first compiler toolchain and virtual machine for building platform-native applications. Two language frontends, native code generation, and a rich runtime library.">
+  <meta property="og:title" content="Viper — IL-First Compiler Platform">
+  <meta property="og:description" content="Build native applications with Zia and BASIC. Typed SSA-based IL, bytecode VM, native ARM64/x86-64 backends, and 226+ runtime classes.">
+  <meta property="og:type" content="website">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="favicon.png">
+</head>
+<body>
+
+<!-- ===== Navigation ===== -->
+<nav class="top-nav">
+  <a href="/" class="nav-logo"><img src="logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="docs/">Docs</a>
+    <a href="showcase.html">Showcase</a>
+    <a href="https://github.com/splanck/viper/releases">Download</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<!-- ===== Hero ===== -->
+<section class="hero">
+  <img src="logo-full.png" alt="Viper" class="hero-logo">
+  <h1 class="hero-title">Viper</h1>
+  <p class="hero-tagline">An IL-first compiler platform for building native applications</p>
+  <p class="hero-status">Pre-alpha &middot; v0.2.2-dev &middot; GPL-3.0</p>
+  <div class="hero-buttons">
+    <a href="docs/" class="btn btn-primary">Get Started</a>
+    <a href="https://github.com/splanck/viper" class="btn btn-secondary">View on GitHub</a>
+  </div>
+</section>
+
+<!-- ===== Code Sample Tabs ===== -->
+<div class="section">
+  <h2 class="section-title">See It in Action</h2>
+  <p class="section-subtitle">Write in Zia or BASIC. Compile to typed IL. Run in the VM or go native.</p>
+
+  <div class="code-tabs">
+    <div class="code-tab-bar">
+      <button class="code-tab-btn active" data-tab="zia">Zia</button>
+      <button class="code-tab-btn" data-tab="basic">BASIC</button>
+      <button class="code-tab-btn" data-tab="il">IL Output</button>
+    </div>
+
+    <div class="code-tab-panel active" data-panel="zia">
+      <pre><code data-lang="zia">module Hello;
+
+bind Viper.Terminal;
+bind Fmt = Viper.Fmt;
+
+func start() {
+    var x = 2 + 3;
+    var y = x * 2;
+    Say("HELLO");
+    Say(Fmt.Int(y));
+}</code></pre>
+    </div>
+
+    <div class="code-tab-panel" data-panel="basic">
+      <pre><code data-lang="basic">DIM x AS INTEGER = 2 + 3
+DIM y AS INTEGER = x * 2
+PRINT "HELLO"
+PRINT y</code></pre>
+    </div>
+
+    <div class="code-tab-panel" data-panel="il">
+      <pre><code data-lang="il">il 0.2.0
+extern @Viper.Fmt.Int(i64) -> str
+extern @Viper.Terminal.Say(str) -> void
+global const str @.L0 = "HELLO"
+func @main() -> void {
+entry_0:
+  %t0 = iadd.ovf 2, 3
+  %t1 = alloca 8
+  store i64, %t1, %t0
+  %t2 = load i64, %t1
+  %t3 = imul.ovf %t2, 2
+  %t4 = alloca 8
+  store i64, %t4, %t3
+  %t5 = const_str @.L0
+  call @Viper.Terminal.Say(%t5)
+  %t6 = load i64, %t4
+  %t7 = call @Viper.Fmt.Int(%t6)
+  call @Viper.Terminal.Say(%t7)
+  ret
+}</code></pre>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Features ===== -->
+<div class="section-alt">
+  <div class="section">
+    <h2 class="section-title">Why Viper?</h2>
+    <p class="section-subtitle">A complete platform built entirely from scratch</p>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">&#9671;</div>
+        <h3>IL-First Design</h3>
+        <p>A typed, SSA-based intermediate language sits at the center. Inspect, verify, and optimize at every stage of compilation.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">&#9998;</div>
+        <h3>Dual Language Frontends</h3>
+        <p>Zia: modern, statically typed with entities, generics, and modules. BASIC: rapid prototyping and education. Both compile to the same IL.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">&#9889;</div>
+        <h3>VM + Native Code</h3>
+        <p>Run instantly in the bytecode VM for development, then compile to native ARM64 or x86-64 machine code for production.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">&#9776;</div>
+        <h3>Rich Runtime</h3>
+        <p>226+ classes across 16 modules: graphics, GUI, networking, threading, audio, I/O, crypto, collections, math, and more.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">&#9878;</div>
+        <h3>Zero Dependencies</h3>
+        <p>Built entirely from scratch. No external libraries, no package managers, no surprises. Every line of code is Viper's own.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">&#9678;</div>
+        <h3>Cross-Platform</h3>
+        <p>macOS, Linux, and Windows with full parity. Every feature works the same on every platform. Native packaging for each OS.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Showcase Preview ===== -->
+<div class="section">
+  <h2 class="section-title">Built with Viper</h2>
+  <p class="section-subtitle">Real applications and games built on the platform</p>
+
+  <div class="showcase-grid">
+    <a href="https://github.com/splanck/viper/tree/master/examples/apps/sqldb" class="showcase-card">
+      <h3>SQL Database</h3>
+      <p>PostgreSQL-compatible engine with MVCC, WAL, B-tree indexes, and wire protocol.</p>
+      <span class="showcase-badge badge-app">App</span>
+    </a>
+
+    <a href="https://github.com/splanck/viper/tree/master/examples/apps/viperide" class="showcase-card">
+      <h3>Viper IDE</h3>
+      <p>Code editor with tabs, find/replace, syntax highlighting, and integrated build.</p>
+      <span class="showcase-badge badge-app">App</span>
+    </a>
+
+    <a href="https://github.com/splanck/viper/tree/master/examples/games/chess" class="showcase-card">
+      <h3>Chess</h3>
+      <p>Full chess engine with alpha-beta AI, transposition tables, and canvas UI.</p>
+      <span class="showcase-badge badge-zia">Zia</span>
+    </a>
+
+    <a href="https://github.com/splanck/viper/tree/master/examples/games/sidescroller" class="showcase-card">
+      <h3>Sidescroller</h3>
+      <p>2D platformer with physics, parallax scrolling, particles, and boss fights.</p>
+      <span class="showcase-badge badge-zia">Zia</span>
+    </a>
+
+    <a href="https://github.com/splanck/viper/tree/master/examples/apps/paint" class="showcase-card">
+      <h3>Paint</h3>
+      <p>Drawing application with 8 tools, shapes, color picker, and undo/redo.</p>
+      <span class="showcase-badge badge-app">App</span>
+    </a>
+
+    <a href="https://github.com/splanck/viper/tree/master/examples/games/pacman" class="showcase-card">
+      <h3>Pac-Man</h3>
+      <p>Arcade clone with ghost AI, animations, and tile-based rendering.</p>
+      <span class="showcase-badge badge-zia">Zia</span>
+    </a>
+  </div>
+
+  <p class="text-center mt-2"><a href="showcase.html">View all demos &rarr;</a></p>
+</div>
+
+<!-- ===== Architecture ===== -->
+<div class="section-alt">
+  <div class="section">
+    <h2 class="section-title">Architecture</h2>
+    <p class="section-subtitle">From source to native binary through a typed intermediate language</p>
+
+    <div class="arch-diagram">
+      <div class="arch-box">Source Languages (Zia, BASIC)</div>
+      <div class="arch-arrow">&#9660;</div>
+      <div class="arch-box">Frontend (Parser + Semantics + Lowering)</div>
+      <div class="arch-arrow">&#9660;</div>
+      <div class="arch-box primary">Viper IL (Typed SSA) + Verifier + Optimizer</div>
+      <div class="arch-arrow">&#9660;</div>
+      <div class="arch-split">
+        <div class="arch-box">Virtual Machine</div>
+        <div class="arch-box">Native Backend (ARM64, x86-64)</div>
+      </div>
+      <div class="arch-arrow">&#9660;</div>
+      <div class="arch-box">Viper Runtime (Collections, I/O, Graphics, Audio, GUI, Network, Threads, ...)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Quick Install ===== -->
+<div class="section">
+  <h2 class="section-title">Get Started</h2>
+  <p class="section-subtitle">Clone, build, and run your first program in under a minute</p>
+
+  <div class="install-block">
+    <pre><span class="comment"># Clone and build</span>
+<span class="cmd">git clone https://github.com/splanck/viper.git</span>
+<span class="cmd">cd viper</span>
+<span class="cmd">./scripts/build_viper.sh</span>
+
+<span class="comment"># Create a new project</span>
+<span class="cmd">viper init my-app</span>
+<span class="cmd">viper run my-app</span>
+
+<span class="comment"># Or run an existing demo</span>
+<span class="cmd">viper run examples/games/pacman/</span>
+
+<span class="comment"># Try the interactive REPL</span>
+<span class="cmd">viper repl</span></pre>
+  </div>
+
+  <p class="text-center mt-2"><a href="docs/">Read the full guide &rarr;</a></p>
+</div>
+
+<!-- ===== Footer ===== -->
+<footer class="site-footer">
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <div class="footer-links">
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="docs/">Documentation</a>
+    <a href="https://github.com/splanck/viper/blob/master/LICENSE">License</a>
+  </div>
+</footer>
+
+<script src="main.js"></script>
+</body>
+</html>

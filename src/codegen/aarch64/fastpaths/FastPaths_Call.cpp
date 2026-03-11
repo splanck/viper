@@ -315,9 +315,9 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
             {
                 if (fprIdx < ctx.ti.f64ArgOrder.size())
                 {
-                    bbMir.instrs.push_back(MInstr{MOpcode::StrFprFpImm,
-                                                   {MOperand::regOp(ctx.ti.f64ArgOrder[fprIdx]),
-                                                    MOperand::immOp(offset)}});
+                    bbMir.instrs.push_back(MInstr{
+                        MOpcode::StrFprFpImm,
+                        {MOperand::regOp(ctx.ti.f64ArgOrder[fprIdx]), MOperand::immOp(offset)}});
                     ++fprIdx;
                 }
                 else
@@ -325,22 +325,21 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
                     // FP stack arg: load from caller stack, store to alloca
                     const int callerOff = 16 + static_cast<int>(stackArgIdx) * 8;
                     ++stackArgIdx;
-                    bbMir.instrs.push_back(MInstr{MOpcode::LdrFprFpImm,
-                                                   {MOperand::regOp(kScratchFPR),
-                                                    MOperand::immOp(callerOff)}});
-                    bbMir.instrs.push_back(MInstr{MOpcode::StrFprFpImm,
-                                                   {MOperand::regOp(kScratchFPR),
-                                                    MOperand::immOp(offset)}});
+                    bbMir.instrs.push_back(
+                        MInstr{MOpcode::LdrFprFpImm,
+                               {MOperand::regOp(kScratchFPR), MOperand::immOp(callerOff)}});
+                    bbMir.instrs.push_back(
+                        MInstr{MOpcode::StrFprFpImm,
+                               {MOperand::regOp(kScratchFPR), MOperand::immOp(offset)}});
                 }
             }
             else
             {
                 if (gprIdx < ctx.ti.intArgOrder.size())
                 {
-                    bbMir.instrs.push_back(
-                        MInstr{MOpcode::StrRegFpImm,
-                               {MOperand::regOp(ctx.ti.intArgOrder[gprIdx]),
-                                MOperand::immOp(offset)}});
+                    bbMir.instrs.push_back(MInstr{
+                        MOpcode::StrRegFpImm,
+                        {MOperand::regOp(ctx.ti.intArgOrder[gprIdx]), MOperand::immOp(offset)}});
                     ++gprIdx;
                 }
                 else
@@ -348,12 +347,12 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
                     // GPR stack arg: load from caller stack, store to alloca
                     const int callerOff = 16 + static_cast<int>(stackArgIdx) * 8;
                     ++stackArgIdx;
-                    bbMir.instrs.push_back(MInstr{MOpcode::LdrRegFpImm,
-                                                   {MOperand::regOp(kScratchGPR),
-                                                    MOperand::immOp(callerOff)}});
-                    bbMir.instrs.push_back(MInstr{MOpcode::StrRegFpImm,
-                                                   {MOperand::regOp(kScratchGPR),
-                                                    MOperand::immOp(offset)}});
+                    bbMir.instrs.push_back(
+                        MInstr{MOpcode::LdrRegFpImm,
+                               {MOperand::regOp(kScratchGPR), MOperand::immOp(callerOff)}});
+                    bbMir.instrs.push_back(
+                        MInstr{MOpcode::StrRegFpImm,
+                               {MOperand::regOp(kScratchGPR), MOperand::immOp(offset)}});
                 }
             }
         }

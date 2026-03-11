@@ -53,8 +53,8 @@ std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx)
     }
 
     // FP RRR behave like integer RRR (3-address: dst = lhs op rhs)
-    if (ins.opc == MOpcode::FAddRRR || ins.opc == MOpcode::FSubRRR ||
-        ins.opc == MOpcode::FMulRRR || ins.opc == MOpcode::FDivRRR)
+    if (ins.opc == MOpcode::FAddRRR || ins.opc == MOpcode::FSubRRR || ins.opc == MOpcode::FMulRRR ||
+        ins.opc == MOpcode::FDivRRR)
     {
         if (idx == 0)
             return {false, true};

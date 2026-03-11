@@ -106,9 +106,7 @@ bool isBranchTo(const MInstr &instr, const std::string &label) noexcept
     return instr.ops[0].label == label;
 }
 
-bool tryCbzCbnzFusion(std::vector<MInstr> &instrs,
-                      std::size_t idx,
-                      PeepholeStats &stats)
+bool tryCbzCbnzFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
 {
     if (idx + 1 >= instrs.size())
         return false;
@@ -165,9 +163,7 @@ bool tryCbzCbnzFusion(std::vector<MInstr> &instrs,
     return true;
 }
 
-bool tryCsetBranchFusion(std::vector<MInstr> &instrs,
-                         std::size_t idx,
-                         PeepholeStats &stats)
+bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
 {
     if (idx >= instrs.size())
         return false;
@@ -175,7 +171,8 @@ bool tryCsetBranchFusion(std::vector<MInstr> &instrs,
     const auto &csetInstr = instrs[idx];
     if (csetInstr.opc != MOpcode::Cset || csetInstr.ops.size() != 2)
         return false;
-    if (csetInstr.ops[0].kind != MOperand::Kind::Reg || csetInstr.ops[1].kind != MOperand::Kind::Cond)
+    if (csetInstr.ops[0].kind != MOperand::Kind::Reg ||
+        csetInstr.ops[1].kind != MOperand::Kind::Cond)
         return false;
 
     const MOperand csetReg = csetInstr.ops[0];
@@ -225,8 +222,7 @@ bool tryCsetBranchFusion(std::vector<MInstr> &instrs,
             if (!regDead)
                 return false;
 
-            instrs[j] = MInstr{MOpcode::BCond,
-                                {MOperand::condOp(brCond), next.ops[1]}};
+            instrs[j] = MInstr{MOpcode::BCond, {MOperand::condOp(brCond), next.ops[1]}};
             instrs.erase(instrs.begin() + static_cast<std::ptrdiff_t>(idx));
             ++stats.cbzFusions;
             return true;

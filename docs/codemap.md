@@ -26,7 +26,7 @@ Source layout for the Viper compiler toolchain (current tree, kept in sync).
 | `src/runtime/`         | C runtime library (strings, collections, I/O, math, graphics, audio, input, networking, threading, text, time, crypto, GC, serialization, physics, async) |
 | `src/support/`         | Shared support: diagnostics, arena, source manager, symbols, result      |
 | `src/tests/`           | Unit, golden, e2e, and perf tests by area                                |
-| `src/tools/`           | CLI tools (`viper`, `vbasic`, `zia`, `ilrun`, `il-verify`, `il-dis`, etc.) |
+| `src/tools/`           | CLI tools (`viper`, `vbasic`, `zia`, `zia-server`, `ilrun`, `il-verify`, `il-dis`, etc.) |
 | `src/tui/`             | Terminal UI library + demo app (`src/tui/apps/tui_demo.cpp`)             |
 | `src/vm/`              | Virtual Machine interpreter, opcode handlers, debug, runtime bridge      |
 | `include/`             | Public headers (`viper/il`, `viper/vm`, `viper/runtime`, `viper/...`)    |
@@ -41,7 +41,7 @@ Source layout for the Viper compiler toolchain (current tree, kept in sync).
 - Runtime: `src/runtime` (C sources and headers)
 - Support & Infra: `src/{common,parse,pass,support}`
 - Tests: `src/tests/{e2e,golden,perf,smoke,unit,...}`
-- Tools: `src/tools/{basic,basic-ast-dump,basic-lex-dump,common,il-dis,il-verify,ilrun,rtgen,vbasic,viper,zia}`
+- Tools: `src/tools/{basic,basic-ast-dump,basic-lex-dump,common,il-dis,il-verify,ilrun,rtgen,vbasic,viper,zia,zia-server}`
 - VM: `src/vm` (+ `ops/{common,generated}` and `debug/`)
 
 For architecture and layering, see [architecture.md](architecture.md).
@@ -92,4 +92,5 @@ For architecture and layering, see [architecture.md](architecture.md).
 | [Docs](codemap/docs.md)        | Documentation subsystem                                  |
 | [Graphics](codemap/graphics.md) | ViperGFX 2D graphics library                             |
 | [Tools](codemap/tools.md)       | CLI tools (viper, vbasic, zia, ilrun, il-verify, il-dis) |
+| [Zia Server](codemap/zia-server.md) | Language server: MCP + LSP protocol handlers         |
 | [TUI](codemap/tui.md)           | Terminal UI library + tests                              |

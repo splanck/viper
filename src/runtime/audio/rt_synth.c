@@ -37,13 +37,13 @@
 //===----------------------------------------------------------------------===//
 
 #define SYNTH_SAMPLE_RATE 44100
-#define SYNTH_CHANNELS    1
-#define SYNTH_BITS        16
-#define SYNTH_MAX_AMP     32000 /* slightly below INT16_MAX to avoid clipping */
-#define WAV_HEADER_SIZE   44
+#define SYNTH_CHANNELS 1
+#define SYNTH_BITS 16
+#define SYNTH_MAX_AMP 32000 /* slightly below INT16_MAX to avoid clipping */
+#define WAV_HEADER_SIZE 44
 
 /* Pi approximation — sufficient for audio synthesis */
-#define SYNTH_PI  3.14159265358979323846
+#define SYNTH_PI 3.14159265358979323846
 #define SYNTH_2PI 6.28318530717958647692
 
 //===----------------------------------------------------------------------===//
@@ -133,23 +133,23 @@ static double waveform_sample(double phase, int64_t waveform)
 
     switch (waveform)
     {
-    case RT_WAVE_SQUARE:
-        return phase < 0.5 ? 1.0 : -1.0;
+        case RT_WAVE_SQUARE:
+            return phase < 0.5 ? 1.0 : -1.0;
 
-    case RT_WAVE_SAWTOOTH:
-        return 2.0 * phase - 1.0;
+        case RT_WAVE_SAWTOOTH:
+            return 2.0 * phase - 1.0;
 
-    case RT_WAVE_TRIANGLE:
-        if (phase < 0.25)
-            return 4.0 * phase;
-        else if (phase < 0.75)
-            return 2.0 - 4.0 * phase;
-        else
-            return 4.0 * phase - 4.0;
+        case RT_WAVE_TRIANGLE:
+            if (phase < 0.25)
+                return 4.0 * phase;
+            else if (phase < 0.75)
+                return 2.0 - 4.0 * phase;
+            else
+                return 4.0 * phase - 4.0;
 
-    case RT_WAVE_SINE:
-    default:
-        return synth_sin(phase);
+        case RT_WAVE_SINE:
+        default:
+            return synth_sin(phase);
     }
 }
 
@@ -392,19 +392,19 @@ void *rt_synth_sfx(int64_t sfx_type)
 {
     switch (sfx_type)
     {
-    case RT_SFX_JUMP:
-        return sfx_jump();
-    case RT_SFX_COIN:
-        return sfx_coin();
-    case RT_SFX_HIT:
-        return sfx_hit();
-    case RT_SFX_EXPLOSION:
-        return sfx_explosion();
-    case RT_SFX_POWERUP:
-        return sfx_powerup();
-    case RT_SFX_LASER:
-        return sfx_laser();
-    default:
-        return NULL;
+        case RT_SFX_JUMP:
+            return sfx_jump();
+        case RT_SFX_COIN:
+            return sfx_coin();
+        case RT_SFX_HIT:
+            return sfx_hit();
+        case RT_SFX_EXPLOSION:
+            return sfx_explosion();
+        case RT_SFX_POWERUP:
+            return sfx_powerup();
+        case RT_SFX_LASER:
+            return sfx_laser();
+        default:
+            return NULL;
     }
 }

@@ -45,9 +45,7 @@ bool isIdentityFMovRR(const MInstr &instr) noexcept
     return samePhysReg(instr.ops[0], instr.ops[1]);
 }
 
-bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs,
-                             std::size_t idx,
-                             PeepholeStats &stats)
+bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
 {
     if (idx + 1 >= instrs.size())
         return false;
@@ -91,9 +89,7 @@ bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs,
     return true;
 }
 
-bool tryFoldImmThenMove(std::vector<MInstr> &instrs,
-                        std::size_t idx,
-                        PeepholeStats &stats)
+bool tryFoldImmThenMove(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
 {
     if (idx + 1 >= instrs.size())
         return false;

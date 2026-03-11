@@ -65,6 +65,7 @@ Documentation for the Viper compiler toolchain: two language frontends (Zia and 
 ## Tools & CLI
 
 - [CLI Tools Reference](tools.md) — `viper`, `zia`, `vbasic`, `ilrun`, `il-verify`, `il-dis`
+- [Language Server (MCP/LSP)](zia-server.md) — `zia-server` for AI assistants and VS Code
 - [REPL](repl.md) — Interactive Zia/BASIC environment
 - [Debugging Guide](debugging.md) — VM tracing, breakpoints, and diagnostics
 - [Testing Guide](testing.md) — Unit, golden, e2e, and performance tests

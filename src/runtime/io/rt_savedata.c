@@ -258,8 +258,7 @@ void *rt_savedata_new(rt_string game_name)
         return NULL;
     }
 
-    rt_savedata_impl *sd =
-        (rt_savedata_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_savedata_impl));
+    rt_savedata_impl *sd = (rt_savedata_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_savedata_impl));
     if (!sd)
         return NULL;
 

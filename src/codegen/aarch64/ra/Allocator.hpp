@@ -29,12 +29,12 @@
 #include <unordered_set>
 #include <vector>
 
+#include "RegPools.hpp"
+#include "VState.hpp"
 #include "codegen/aarch64/FrameBuilder.hpp"
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/RegAllocLinear.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
-#include "RegPools.hpp"
-#include "VState.hpp"
 
 namespace viper::codegen::aarch64::ra
 {
@@ -69,11 +69,13 @@ class LinearAllocator
 
     // Cross-block register persistence: predecessor map and exit-state cache.
     std::vector<std::vector<std::size_t>> preds_;
+
     struct BlockExitState
     {
         std::unordered_map<uint16_t, PhysReg> gpr;
         std::unordered_map<uint16_t, PhysReg> fpr;
     };
+
     std::vector<BlockExitState> blockExitStates_;
 
     // Set when the previous instruction was a call to rt_arr_obj_get

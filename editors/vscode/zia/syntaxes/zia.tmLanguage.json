@@ -1,0 +1,139 @@
+{
+  "name": "Zia",
+  "scopeName": "source.zia",
+  "fileTypes": ["zia"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#constants" },
+    { "include": "#functions" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.zia",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.zia",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.zia",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.zia",
+              "match": "\\\\[nrt\\\\\"0]"
+            },
+            {
+              "name": "constant.character.escape.unicode.zia",
+              "match": "\\\\u[0-9a-fA-F]{4}"
+            },
+            {
+              "name": "meta.interpolation.zia",
+              "begin": "\\\\\\(",
+              "end": "\\)",
+              "patterns": [{ "include": "source.zia" }]
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.zia",
+          "match": "\\b0[xX][0-9a-fA-F_]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.zia",
+          "match": "\\b0[bB][01_]+\\b"
+        },
+        {
+          "name": "constant.numeric.float.zia",
+          "match": "\\b[0-9][0-9_]*\\.[0-9][0-9_]*([eE][+-]?[0-9]+)?\\b"
+        },
+        {
+          "name": "constant.numeric.integer.zia",
+          "match": "\\b[0-9][0-9_]*\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.declaration.zia",
+          "match": "\\b(module|func|var|final|let|value|entity|interface|property|namespace|bind)\\b"
+        },
+        {
+          "name": "keyword.control.zia",
+          "match": "\\b(if|else|while|for|in|return|match|break|continue|guard|try|catch|finally|throw)\\b"
+        },
+        {
+          "name": "keyword.modifier.zia",
+          "match": "\\b(expose|extends|implements|override|static|foreign|weak|hide|async|await)\\b"
+        },
+        {
+          "name": "keyword.operator.logical.zia",
+          "match": "\\b(and|or|not|is|as)\\b"
+        },
+        {
+          "name": "keyword.other.zia",
+          "match": "\\b(new|self|super|deinit)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.builtin.zia",
+          "match": "\\b(Integer|Boolean|String|Float|Void|Byte|Bytes|List|Map|Optional|Any)\\b"
+        },
+        {
+          "name": "entity.name.type.zia",
+          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.zia",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.null.zia",
+          "match": "\\bnull\\b"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.zia",
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.zia",
+          "match": "[+\\-*/%=<>!&|^~?:]|\\.\\.|\\.\\?|->|=>"
+        }
+      ]
+    }
+  }
+}

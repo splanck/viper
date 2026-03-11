@@ -88,8 +88,7 @@ namespace viper::codegen::common
 /// @tparam Traits Target-specific type providing the required interface.
 /// @param instrs  Mutable instruction vector to propagate copies through.
 /// @return Number of operand replacements performed.
-template <typename Traits>
-std::size_t propagateCopies(std::vector<typename Traits::MInstr> &instrs)
+template <typename Traits> std::size_t propagateCopies(std::vector<typename Traits::MInstr> &instrs)
 {
     using MInstr = typename Traits::MInstr;
     using Operand = typename Traits::Operand;

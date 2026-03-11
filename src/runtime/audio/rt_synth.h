@@ -33,19 +33,19 @@ extern "C"
 {
 #endif
 
-    /// @brief Waveform type constants.
-    #define RT_WAVE_SINE     0
-    #define RT_WAVE_SQUARE   1
-    #define RT_WAVE_SAWTOOTH 2
-    #define RT_WAVE_TRIANGLE 3
+/// @brief Waveform type constants.
+#define RT_WAVE_SINE 0
+#define RT_WAVE_SQUARE 1
+#define RT_WAVE_SAWTOOTH 2
+#define RT_WAVE_TRIANGLE 3
 
-    /// @brief SFX preset type constants.
-    #define RT_SFX_JUMP      0
-    #define RT_SFX_COIN      1
-    #define RT_SFX_HIT       2
-    #define RT_SFX_EXPLOSION 3
-    #define RT_SFX_POWERUP   4
-    #define RT_SFX_LASER     5
+/// @brief SFX preset type constants.
+#define RT_SFX_JUMP 0
+#define RT_SFX_COIN 1
+#define RT_SFX_HIT 2
+#define RT_SFX_EXPLOSION 3
+#define RT_SFX_POWERUP 4
+#define RT_SFX_LASER 5
 
     /// @brief Generate a tone at a fixed frequency.
     /// @param freq_hz Frequency in Hz (20-20000).

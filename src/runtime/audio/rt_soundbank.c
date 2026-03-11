@@ -35,7 +35,7 @@
 //===----------------------------------------------------------------------===//
 
 #define BANK_MAX_ENTRIES 64
-#define BANK_NAME_LEN    32
+#define BANK_NAME_LEN 32
 
 typedef struct
 {

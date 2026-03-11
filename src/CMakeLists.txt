@@ -502,6 +502,31 @@ target_link_libraries(zia
         viper_bytecode)
 install(TARGETS zia RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+add_library(zia_server_lib STATIC
+        tools/zia-server/Json.cpp
+        tools/zia-server/Transport.cpp
+        tools/zia-server/JsonRpc.cpp
+        tools/zia-server/CompilerBridge.cpp
+        tools/zia-server/McpHandler.cpp
+        tools/zia-server/DocumentStore.cpp
+        tools/zia-server/LspHandler.cpp)
+target_include_directories(zia_server_lib PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_link_libraries(zia_server_lib
+        PUBLIC
+        viper_common_opts
+        fe_zia
+        viper::il_full
+        il_transform)
+
+add_executable(zia-server
+        tools/zia-server/main.cpp)
+set_target_properties(zia-server PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/zia-server)
+target_link_libraries(zia-server
+        PRIVATE
+        zia_server_lib)
+install(TARGETS zia-server RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
 add_executable(ilrun
         tools/ilrun/main.cpp
         tools/ilrun/cli_compat.cpp

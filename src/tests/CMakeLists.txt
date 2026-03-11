@@ -55,6 +55,24 @@ add_subdirectory(zia)
 add_subdirectory(golden)
 add_subdirectory(e2e)
 
+# ── Zia Language Server tests ──────────────────────────────────────────────
+set(_ZIA_SERVER_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/zia-server)
+
+viper_add_test(test_zia_server_json ${_ZIA_SERVER_TEST_DIR}/test_json.cpp
+        LIBS zia_server_lib)
+
+viper_add_test(test_zia_server_transport ${_ZIA_SERVER_TEST_DIR}/test_transport.cpp
+        LIBS zia_server_lib)
+
+viper_add_test(test_zia_server_bridge ${_ZIA_SERVER_TEST_DIR}/test_compiler_bridge.cpp
+        LIBS zia_server_lib)
+
+viper_add_test(test_zia_server_mcp ${_ZIA_SERVER_TEST_DIR}/test_mcp_handler.cpp
+        LIBS zia_server_lib)
+
+viper_add_test(test_zia_server_lsp ${_ZIA_SERVER_TEST_DIR}/test_lsp_handler.cpp
+        LIBS zia_server_lib)
+
 # ── Fuzz harnesses (opt-in, not registered as ctest targets) ────────────────
 if (VIPER_ENABLE_FUZZ)
     add_subdirectory(fuzz)

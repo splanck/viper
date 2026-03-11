@@ -10,7 +10,7 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 
 ## Overview
 
-- **Total source files**: 46 (.hpp/.cpp)
+- **Total source files**: 61 (.hpp/.cpp)
 
 ## User-Facing Tools
 
@@ -50,6 +50,21 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 | File       | Purpose              |
 |------------|----------------------|
 | `main.cpp` | IL disassembler demo |
+
+### zia-server (`zia-server/`)
+
+| File | Purpose |
+|------|---------|
+| `Json.hpp` / `Json.cpp` | Zero-dependency JSON value type, parser, emitter |
+| `Transport.hpp` / `Transport.cpp` | MCP (newline) and LSP (Content-Length) transports |
+| `JsonRpc.hpp` / `JsonRpc.cpp` | JSON-RPC 2.0 request/response types and builders |
+| `CompilerBridge.hpp` / `CompilerBridge.cpp` | Protocol-agnostic facade wrapping fe_zia APIs |
+| `McpHandler.hpp` / `McpHandler.cpp` | MCP lifecycle + 11 tool definitions + dispatch |
+| `LspHandler.hpp` / `LspHandler.cpp` | LSP capabilities + request/notification handlers |
+| `DocumentStore.hpp` / `DocumentStore.cpp` | In-memory document store for LSP open files |
+| `main.cpp` | Entry point with --mcp/--lsp/auto-detect |
+
+For full details, see [codemap/zia-server.md](zia-server.md).
 
 ## Advanced Tools
 

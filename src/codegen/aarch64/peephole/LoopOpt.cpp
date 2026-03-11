@@ -36,7 +36,8 @@ namespace
 /// @brief Check whether a physical register is callee-saved (x19-x28).
 [[nodiscard]] bool isCalleeSavedGPR(uint32_t phys) noexcept
 {
-    return phys >= static_cast<uint32_t>(PhysReg::X19) && phys <= static_cast<uint32_t>(PhysReg::X28);
+    return phys >= static_cast<uint32_t>(PhysReg::X19) &&
+           phys <= static_cast<uint32_t>(PhysReg::X28);
 }
 
 } // namespace
@@ -153,6 +154,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
         std::size_t latch;
         std::unordered_set<std::size_t> body;
     };
+
     std::vector<LoopInfo> loops;
     std::unordered_set<std::size_t> seenHeaders;
 
@@ -237,6 +239,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
             std::size_t otherDefCount{0};
             int64_t immValue{0};
         };
+
         std::unordered_map<uint32_t, RegInfo> regDefs;
 
         for (std::size_t bi : loop.body)
@@ -268,7 +271,8 @@ std::size_t hoistLoopConstants(MFunction &fn)
                     if (mi.opc == MOpcode::Bl || mi.opc == MOpcode::Blr)
                     {
                         for (uint32_t r = static_cast<uint32_t>(PhysReg::X0);
-                             r <= static_cast<uint32_t>(PhysReg::X17); ++r)
+                             r <= static_cast<uint32_t>(PhysReg::X17);
+                             ++r)
                             ++regDefs[r].otherDefCount;
                     }
                 }
@@ -317,8 +321,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
                     for (std::size_t oi = startOp; oi < mi.ops.size(); ++oi)
                     {
                         if (mi.ops[oi].kind == MOperand::Kind::Reg && mi.ops[oi].reg.isPhys &&
-                            mi.ops[oi].reg.cls == RegClass::GPR &&
-                            mi.ops[oi].reg.idOrPhys == phys)
+                            mi.ops[oi].reg.cls == RegClass::GPR && mi.ops[oi].reg.idOrPhys == phys)
                         {
                             safeInAllBlocks = false;
                             break;
@@ -335,10 +338,11 @@ std::size_t hoistLoopConstants(MFunction &fn)
 
             globallyHoisted[phys] = info.immValue;
 
-            MInstr hoistedMov{MOpcode::MovRI,
-                              {MOperand::regOp(static_cast<PhysReg>(phys)),
-                               MOperand::immOp(info.immValue)}};
-            preInstrs.insert(preInstrs.begin() + static_cast<std::ptrdiff_t>(insertIdx), hoistedMov);
+            MInstr hoistedMov{
+                MOpcode::MovRI,
+                {MOperand::regOp(static_cast<PhysReg>(phys)), MOperand::immOp(info.immValue)}};
+            preInstrs.insert(preInstrs.begin() + static_cast<std::ptrdiff_t>(insertIdx),
+                             hoistedMov);
             ++insertIdx;
 
             for (std::size_t bi : loop.body)
@@ -346,18 +350,18 @@ std::size_t hoistLoopConstants(MFunction &fn)
                 if (bi >= fn.blocks.size())
                     continue;
                 auto &instrs = fn.blocks[bi].instrs;
-                instrs.erase(
-                    std::remove_if(instrs.begin(), instrs.end(),
-                                   [phys, &info](const MInstr &mi)
-                                   {
-                                       return mi.opc == MOpcode::MovRI && mi.ops.size() >= 2 &&
-                                              isPhysReg(mi.ops[0]) &&
-                                              mi.ops[0].reg.cls == RegClass::GPR &&
-                                              mi.ops[0].reg.idOrPhys == phys &&
-                                              mi.ops[1].kind == MOperand::Kind::Imm &&
-                                              mi.ops[1].imm == info.immValue;
-                                   }),
-                    instrs.end());
+                instrs.erase(std::remove_if(instrs.begin(),
+                                            instrs.end(),
+                                            [phys, &info](const MInstr &mi)
+                                            {
+                                                return mi.opc == MOpcode::MovRI &&
+                                                       mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
+                                                       mi.ops[0].reg.cls == RegClass::GPR &&
+                                                       mi.ops[0].reg.idOrPhys == phys &&
+                                                       mi.ops[1].kind == MOperand::Kind::Imm &&
+                                                       mi.ops[1].imm == info.immValue;
+                                            }),
+                             instrs.end());
             }
 
             // Re-validate insertIdx after erase (defensive: if preIdx were

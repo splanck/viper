@@ -93,9 +93,7 @@ bool tryArithmeticIdentity(MInstr &instr, PeepholeStats &stats)
     return false;
 }
 
-bool tryStrengthReduction(MInstr &instr,
-                          const RegConstMap &knownConsts,
-                          PeepholeStats &stats)
+bool tryStrengthReduction(MInstr &instr, const RegConstMap &knownConsts, PeepholeStats &stats)
 {
     if (instr.opc != MOpcode::MulRRR)
         return false;
@@ -137,9 +135,7 @@ bool tryStrengthReduction(MInstr &instr,
     return true;
 }
 
-bool tryDivStrengthReduction(MInstr &instr,
-                             const RegConstMap &knownConsts,
-                             PeepholeStats &stats)
+bool tryDivStrengthReduction(MInstr &instr, const RegConstMap &knownConsts, PeepholeStats &stats)
 {
     if (instr.opc != MOpcode::UDivRRR)
         return false;
@@ -160,9 +156,7 @@ bool tryDivStrengthReduction(MInstr &instr,
     return true;
 }
 
-bool tryImmediateFolding(MInstr &instr,
-                         const RegConstMap &knownConsts,
-                         PeepholeStats &stats)
+bool tryImmediateFolding(MInstr &instr, const RegConstMap &knownConsts, PeepholeStats &stats)
 {
     if (instr.ops.size() != 3)
         return false;
@@ -194,8 +188,7 @@ bool tryImmediateFolding(MInstr &instr,
     return true;
 }
 
-bool tryFPArithmeticIdentity([[maybe_unused]] MInstr &instr,
-                             [[maybe_unused]] PeepholeStats &stats)
+bool tryFPArithmeticIdentity([[maybe_unused]] MInstr &instr, [[maybe_unused]] PeepholeStats &stats)
 {
     return false;
 }

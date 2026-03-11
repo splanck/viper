@@ -71,8 +71,7 @@ struct rt_debugoverlay_impl
 
 rt_debugoverlay rt_debugoverlay_new(void)
 {
-    struct rt_debugoverlay_impl *dbg =
-        rt_obj_new_i64(0, sizeof(struct rt_debugoverlay_impl));
+    struct rt_debugoverlay_impl *dbg = rt_obj_new_i64(0, sizeof(struct rt_debugoverlay_impl));
     if (!dbg)
         return NULL;
 
