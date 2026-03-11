@@ -240,9 +240,53 @@ class OopIndex
         return nextInterfaceId_++;
     }
 
+    /// @brief Metadata for an ENUM type: named integer constants.
+    struct EnumInfo
+    {
+        std::string name;
+        struct Member
+        {
+            std::string name;
+            long long value{0};
+        };
+        std::vector<Member> members;
+    };
+
+    using EnumTable =
+        std::unordered_map<std::string, EnumInfo, OopStringHash, std::equal_to<>>;
+
+    /// @brief Access the enum table.
+    [[nodiscard]] EnumTable &enums() noexcept
+    {
+        return enums_;
+    }
+
+    /// @brief Access the immutable enum table.
+    [[nodiscard]] const EnumTable &enums() const noexcept
+    {
+        return enums_;
+    }
+
+    /// @brief Look up an enum variant value.
+    /// @return The variant's integer value, or std::nullopt if not found.
+    [[nodiscard]] std::optional<long long> findEnumVariant(const std::string &enumName,
+                                                           const std::string &variantName) const
+    {
+        auto it = enums_.find(enumName);
+        if (it == enums_.end())
+            return std::nullopt;
+        for (const auto &m : it->second.members)
+        {
+            if (m.name == variantName)
+                return m.value;
+        }
+        return std::nullopt;
+    }
+
   private:
     ClassTable classes_;
     IfaceTable interfacesByQname_;
+    EnumTable enums_;
     int nextInterfaceId_ = 0;
 };
 

@@ -172,6 +172,11 @@ enum class TokenKind
     /// Syntax: `entity Player { var name: String; func move() { ... } }`
     KwEntity,
 
+    /// @brief Enum type declaration keyword.
+    /// @details Introduces a set of named integer constants.
+    /// Syntax: `enum Color { Red, Green, Blue = 10, Alpha }`
+    KwEnum,
+
     /// @brief Interface declaration keyword.
     /// @details Introduces a contract that entities can implement.
     /// Syntax: `interface Drawable { func draw(); }`

@@ -1793,6 +1793,12 @@ Structures are fundamental to organizing data in programs. Here's what you've le
 
 ---
 
+## See Also
+
+Structures define custom types by grouping fields together. Viper also supports **enumerations** — custom types that represent a fixed set of named integer constants. While structures are ideal when your data has multiple fields, enums are the right choice when a value can only be one of a small, known set of options (like directions, colors, or game states). See the Enum sections in [Appendix A (Zia Reference)](../appendices/a-zia-reference.md#enums) and [Appendix B (BASIC Reference)](../appendices/b-basic-reference.md#enums) for full details.
+
+---
+
 ## Exercises
 
 **Exercise 11.1**: Create a `Book` structure with title, author, and pageCount. Create an array of 3 books and print information about each one.

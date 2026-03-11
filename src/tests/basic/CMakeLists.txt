@@ -75,6 +75,10 @@ function(viper_add_basic_main_tests)
     target_link_libraries(test_basic_semantic_components PRIVATE ${VIPER_BASIC_LIBS})
     viper_add_ctest(test_basic_semantic_components test_basic_semantic_components)
 
+    viper_add_test(test_basic_enums ${_VIPER_BASIC_UNIT_DIR}/test_basic_enums.cpp)
+    target_link_libraries(test_basic_enums PRIVATE ${VIPER_BASIC_LIBS} viper_test_common)
+    viper_add_ctest(test_basic_enums test_basic_enums)
+
     viper_add_test(test_basic_semantic_arrays ${_VIPER_BASIC_UNIT_DIR}/test_basic_semantic_arrays.cpp)
     target_link_libraries(test_basic_semantic_arrays PRIVATE ${VIPER_BASIC_LIBS})
     viper_add_ctest(test_basic_semantic_arrays test_basic_semantic_arrays)

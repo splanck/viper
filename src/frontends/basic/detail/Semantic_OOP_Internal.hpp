@@ -125,6 +125,7 @@ class OopIndexBuilder
     // Declaration processing
     void processClassDecl(const ClassDecl &classDecl);
     void processInterfaceDecl(const InterfaceDecl &interfaceDecl);
+    void processEnumDecl(const EnumDecl &enumDecl);
     void processPropertyDecl(const PropertyDecl &prop, ClassInfo &info);
     void processConstructorDecl(const ConstructorDecl &ctor,
                                 ClassInfo &info,

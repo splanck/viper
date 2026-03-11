@@ -75,6 +75,8 @@ const char *tokenKindToString(TokenKind kind)
             return "value";
         case TokenKind::KwEntity:
             return "entity";
+        case TokenKind::KwEnum:
+            return "enum";
         case TokenKind::KwInterface:
             return "interface";
         case TokenKind::KwFinal:
@@ -275,8 +277,8 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-// Sorted for binary search (47 keywords)
-constexpr std::array<KeywordEntry, 47> kKeywordTable = {{
+// Sorted for binary search (48 keywords)
+constexpr std::array<KeywordEntry, 48> kKeywordTable = {{
     {"and", TokenKind::KwAnd},
     {"as", TokenKind::KwAs},
     {"async", TokenKind::KwAsync},
@@ -288,6 +290,7 @@ constexpr std::array<KeywordEntry, 47> kKeywordTable = {{
     {"deinit", TokenKind::KwDeinit},
     {"else", TokenKind::KwElse},
     {"entity", TokenKind::KwEntity},
+    {"enum", TokenKind::KwEnum},
     {"expose", TokenKind::KwExpose},
     {"extends", TokenKind::KwExtends},
     {"false", TokenKind::KwFalse},

@@ -23,6 +23,7 @@ Complete language reference for Viper BASIC. This document describes **statement
 - **Short-circuit operators**: `ANDALSO` and `ORELSE` (vs. `AND` and `OR`)
 - **Functions**: Return values with `RETURN`; subroutines use `SUB`
 - **Objects**: `CLASS`, methods, fields, `ME`, `NEW`, `DELETE`, optional `DESTRUCTOR`
+- **Enums**: `ENUM...END ENUM` blocks with named integer constants and dot-notation access
 
 ---
 
@@ -177,6 +178,34 @@ Terminates program execution immediately.
 20 END
 30 PRINT "this never prints"
 ```
+
+### ENUM
+
+Declares a named set of integer constants. Variants are auto-numbered from 0, or may specify explicit values.
+
+```basic
+ENUM Direction
+  NORTH           ' 0
+  SOUTH           ' 1
+  EAST            ' 2
+  WEST            ' 3
+END ENUM
+
+LET d = Direction.NORTH
+```
+
+Explicit and mixed values:
+
+```basic
+ENUM Priority
+  LOW             ' 0
+  MEDIUM = 5      ' 5
+  HIGH            ' 6
+  CRITICAL        ' 7
+END ENUM
+```
+
+Negative values are supported (`BACKWARD = -1`). Duplicate variant names produce a compile error.
 
 ### EXIT
 
@@ -950,6 +979,7 @@ For complete namespace documentation, see [Namespace Reference](basic-namespaces
 - `ELSE`
 - `ELSEIF`
 - `END`
+- `ENUM`
 - `EOF`
 - `ERROR`
 - `EXIT`

@@ -1198,6 +1198,29 @@ NEXT
 
 ---
 
+## Enums and Pattern Matching
+
+Polymorphism isn't limited to entities and interfaces. Viper also supports **enumerations** — fixed sets of named constants — with exhaustive pattern matching through `match`:
+
+```rust
+enum Direction { North, South, East, West }
+
+func describe(dir: Direction) -> String {
+    match dir {
+        Direction.North => return "Going up";
+        Direction.South => return "Going down";
+        Direction.East  => return "Going right";
+        Direction.West  => return "Going left";
+    }
+}
+```
+
+The compiler verifies that every variant is handled (or that a `_` wildcard is present), catching missing cases at compile time rather than runtime. This is a form of *compile-time polymorphism* — one function handles multiple forms of a value, with the compiler ensuring completeness.
+
+Enums are especially useful for state machines, command types, and any domain where a value must be exactly one of a known set. For full syntax details, see the Enum sections in [Appendix A (Zia)](../appendices/a-zia-reference.md#enums) and [Appendix B (BASIC)](../appendices/b-basic-reference.md#enums).
+
+---
+
 ## Common Mistakes and Misconceptions
 
 ### Mistake 1: Confusing Variable Type with Object Type

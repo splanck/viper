@@ -236,7 +236,17 @@ DeclPtr Parser::parseDeclaration()
             }
             return decl;
         }
-        error("expected 'func' after 'expose'");
+        if (check(TokenKind::KwEnum))
+        {
+            auto decl = parseEnumDecl();
+            if (decl)
+            {
+                auto *en = static_cast<EnumDecl *>(decl.get());
+                en->visibility = Visibility::Public;
+            }
+            return decl;
+        }
+        error("expected 'func' or 'enum' after 'expose'");
         return nullptr;
     }
     // Foreign function import: `foreign func name(...) -> Type` (no body).
@@ -288,6 +298,10 @@ DeclPtr Parser::parseDeclaration()
     if (check(TokenKind::KwInterface))
     {
         return parseInterfaceDecl();
+    }
+    if (check(TokenKind::KwEnum))
+    {
+        return parseEnumDecl();
     }
     if (check(TokenKind::KwNamespace))
     {
@@ -407,6 +421,7 @@ std::vector<Param> Parser::parseParameters()
             // Swift style: name: Type
             advance(); // consume :
             param.name = first;
+            param.loc = firstLoc;
             param.type = parseType();
             if (!param.type)
                 return {};
@@ -416,6 +431,7 @@ std::vector<Param> Parser::parseParameters()
             // Java style: Type name (name can be contextual keyword like 'value')
             Token nameTok = advance();
             param.name = nameTok.text;
+            param.loc = nameTok.loc;
             param.type = std::make_unique<NamedType>(firstLoc, first);
         }
         else if (match(TokenKind::LBracket))
@@ -441,6 +457,7 @@ std::vector<Param> Parser::parseParameters()
             }
             Token nameTok = advance();
             param.name = nameTok.text;
+            param.loc = nameTok.loc;
             param.type = std::make_unique<GenericType>(firstLoc, first, std::move(typeArgs));
         }
         else if (match(TokenKind::Question))
@@ -453,6 +470,7 @@ std::vector<Param> Parser::parseParameters()
             }
             Token nameTok = advance();
             param.name = nameTok.text;
+            param.loc = nameTok.loc;
             auto baseType = std::make_unique<NamedType>(firstLoc, first);
             param.type = std::make_unique<OptionalType>(firstLoc, std::move(baseType));
         }
@@ -1097,6 +1115,67 @@ DeclPtr Parser::parsePropertyDecl()
     }
 
     return prop;
+}
+
+DeclPtr Parser::parseEnumDecl()
+{
+    auto loc = peek().loc;
+    expect(TokenKind::KwEnum, "enum");
+
+    Token nameTok;
+    if (!expect(TokenKind::Identifier, "enum name", &nameTok))
+        return nullptr;
+
+    auto decl = std::make_unique<EnumDecl>(loc, nameTok.text);
+
+    if (!expect(TokenKind::LBrace, "'{'"))
+        return nullptr;
+
+    // Parse comma-separated variants until '}'
+    while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
+    {
+        Token variantTok;
+        if (!expect(TokenKind::Identifier, "variant name", &variantTok))
+        {
+            resyncAfterError();
+            continue;
+        }
+
+        EnumVariant variant;
+        variant.name = variantTok.text;
+        variant.loc = variantTok.loc;
+
+        // Optional explicit value: = <integer>
+        if (match(TokenKind::Equal))
+        {
+            // Expect an integer literal (or negative: - integer)
+            bool negative = false;
+            if (match(TokenKind::Minus))
+                negative = true;
+
+            Token valTok;
+            if (!expect(TokenKind::IntegerLiteral, "integer value", &valTok))
+            {
+                resyncAfterError();
+                continue;
+            }
+            int64_t val = valTok.intValue;
+            if (negative)
+                val = -val;
+            variant.explicitValue = val;
+        }
+
+        decl->variants.push_back(std::move(variant));
+
+        // Allow trailing comma; stop at '}'
+        if (!match(TokenKind::Comma))
+            break;
+    }
+
+    if (!expect(TokenKind::RBrace, "'}'"))
+        return nullptr;
+
+    return decl;
 }
 
 } // namespace il::frontends::zia

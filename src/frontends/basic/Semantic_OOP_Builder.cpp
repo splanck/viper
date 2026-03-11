@@ -359,6 +359,9 @@ void OopIndexBuilder::scanDeclarations(const std::vector<StmtPtr> &stmts)
             case Stmt::Kind::InterfaceDecl:
                 processInterfaceDecl(static_cast<const InterfaceDecl &>(*stmtPtr));
                 break;
+            case Stmt::Kind::EnumDecl:
+                processEnumDecl(static_cast<const EnumDecl &>(*stmtPtr));
+                break;
             default:
                 break;
         }
@@ -852,6 +855,41 @@ void OopIndexBuilder::build(const Program &program)
 
     // Phase 5: Check interface conformance
     checkInterfaceConformance();
+}
+
+void OopIndexBuilder::processEnumDecl(const EnumDecl &enumDecl)
+{
+    OopIndex::EnumInfo info;
+    info.name = enumDecl.name;
+
+    std::unordered_set<std::string> seen;
+    long long nextValue = 0;
+    for (const auto &member : enumDecl.members)
+    {
+        if (!seen.insert(member.name).second)
+        {
+            if (emitter_)
+            {
+                emitter_->emit(il::support::Severity::Error,
+                               "B2120",
+                               enumDecl.loc,
+                               1,
+                               "duplicate enum member '" + member.name + "' in ENUM " +
+                                   enumDecl.name);
+            }
+            continue;
+        }
+
+        OopIndex::EnumInfo::Member m;
+        m.name = member.name;
+        if (member.value.has_value())
+            nextValue = member.value.value();
+        m.value = nextValue;
+        info.members.push_back(std::move(m));
+        ++nextValue;
+    }
+
+    index_.enums().emplace(enumDecl.name, std::move(info));
 }
 
 } // namespace il::frontends::basic::detail

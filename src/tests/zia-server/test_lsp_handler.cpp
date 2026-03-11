@@ -294,6 +294,99 @@ TEST(LspHandler, HoverOnClosedDoc)
     EXPECT_TRUE(resp["result"].isNull());
 }
 
+TEST(LspHandler, HoverReturnsMarkdownContent)
+{
+    CompilerBridge bridge;
+    MockTransport transport;
+    LspHandler handler(bridge, transport);
+
+    std::string source = "module Test;\nfunc start() {\n    var x = 42;\n}\n";
+    auto openParams = JsonValue::object({
+        {"textDocument",
+         JsonValue::object({
+             {"uri", JsonValue("file:///test.zia")},
+             {"languageId", JsonValue("zia")},
+             {"version", JsonValue(1)},
+             {"text", JsonValue(source)},
+         })},
+    });
+    handler.handleRequest(makeNotif("textDocument/didOpen", std::move(openParams)));
+
+    // LSP uses 0-based line/character. Line 1 char 5 = "start" in "func start() {"
+    auto hoverParams = JsonValue::object({
+        {"textDocument", JsonValue::object({{"uri", JsonValue("file:///test.zia")}})},
+        {"position", JsonValue::object({{"line", JsonValue(1)}, {"character", JsonValue(5)}})},
+    });
+    auto resp =
+        parseResponse(handler.handleRequest(makeReq("textDocument/hover", std::move(hoverParams))));
+
+    EXPECT_FALSE(resp["result"].isNull());
+    auto contents = resp["result"]["contents"];
+    EXPECT_EQ(contents["kind"].asString(), "markdown");
+    EXPECT_TRUE(contents["value"].asString().find("func start") != std::string::npos);
+}
+
+TEST(LspHandler, HoverOnLocalVariableViaLsp)
+{
+    CompilerBridge bridge;
+    MockTransport transport;
+    LspHandler handler(bridge, transport);
+
+    std::string source = "module Test;\nfunc start() {\n    var x = 42;\n}\n";
+    auto openParams = JsonValue::object({
+        {"textDocument",
+         JsonValue::object({
+             {"uri", JsonValue("file:///test.zia")},
+             {"languageId", JsonValue("zia")},
+             {"version", JsonValue(1)},
+             {"text", JsonValue(source)},
+         })},
+    });
+    handler.handleRequest(makeNotif("textDocument/didOpen", std::move(openParams)));
+
+    // LSP 0-based: line 2, character 8 = 'x' in "    var x = 42;"
+    auto hoverParams = JsonValue::object({
+        {"textDocument", JsonValue::object({{"uri", JsonValue("file:///test.zia")}})},
+        {"position", JsonValue::object({{"line", JsonValue(2)}, {"character", JsonValue(8)}})},
+    });
+    auto resp =
+        parseResponse(handler.handleRequest(makeReq("textDocument/hover", std::move(hoverParams))));
+
+    EXPECT_FALSE(resp["result"].isNull());
+    auto value = resp["result"]["contents"]["value"].asString();
+    EXPECT_TRUE(value.find("var x") != std::string::npos);
+    EXPECT_TRUE(value.find("Integer") != std::string::npos);
+}
+
+TEST(LspHandler, HoverOnWhitespaceReturnsNull)
+{
+    CompilerBridge bridge;
+    MockTransport transport;
+    LspHandler handler(bridge, transport);
+
+    std::string source = "module Test;\nfunc start() {\n    var x = 42;\n}\n";
+    auto openParams = JsonValue::object({
+        {"textDocument",
+         JsonValue::object({
+             {"uri", JsonValue("file:///test.zia")},
+             {"languageId", JsonValue("zia")},
+             {"version", JsonValue(1)},
+             {"text", JsonValue(source)},
+         })},
+    });
+    handler.handleRequest(makeNotif("textDocument/didOpen", std::move(openParams)));
+
+    // LSP 0-based: line 2, character 0 = leading whitespace
+    auto hoverParams = JsonValue::object({
+        {"textDocument", JsonValue::object({{"uri", JsonValue("file:///test.zia")}})},
+        {"position", JsonValue::object({{"line", JsonValue(2)}, {"character", JsonValue(0)}})},
+    });
+    auto resp =
+        parseResponse(handler.handleRequest(makeReq("textDocument/hover", std::move(hoverParams))));
+
+    EXPECT_TRUE(resp["result"].isNull());
+}
+
 // ===== Document Symbol =====
 
 TEST(LspHandler, DocumentSymbolsListsFunctions)

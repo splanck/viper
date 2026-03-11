@@ -289,6 +289,7 @@ std::string ViperType::toString() const
         case TypeKindSem::Value:
         case TypeKindSem::Entity:
         case TypeKindSem::Interface:
+        case TypeKindSem::Enum:
             ss << name;
             if (!typeArgs.empty())
             {
@@ -534,6 +535,11 @@ TypeRef interface(const std::string &name, std::vector<TypeRef> typeParams)
     return std::make_shared<ViperType>(TypeKindSem::Interface, name, std::move(typeParams));
 }
 
+TypeRef enumType(const std::string &name)
+{
+    return std::make_shared<ViperType>(TypeKindSem::Enum, name);
+}
+
 TypeRef typeParam(const std::string &name)
 {
     return std::make_shared<ViperType>(TypeKindSem::TypeParam, name);
@@ -569,6 +575,7 @@ il::core::Type::Kind toILType(const ViperType &type)
     switch (type.kind)
     {
         case TypeKindSem::Integer:
+        case TypeKindSem::Enum:
             return il::core::Type::Kind::I64;
 
         case TypeKindSem::Number:
@@ -679,11 +686,12 @@ size_t typeSize(const ViperType &type)
             return 8;
         case TypeKindSem::Entity:
         case TypeKindSem::Interface:
+        case TypeKindSem::Enum:
         case TypeKindSem::List:
         case TypeKindSem::Map:
         case TypeKindSem::Set:
         case TypeKindSem::Function:
-            return 8; // Pointer
+            return 8; // Pointer / I64
         case TypeKindSem::Optional:
             // flag (8) + value size
             if (!type.typeArgs.empty())
@@ -730,6 +738,7 @@ size_t typeAlignment(const ViperType &type)
         case TypeKindSem::Ptr:
         case TypeKindSem::Entity:
         case TypeKindSem::Interface:
+        case TypeKindSem::Enum:
         case TypeKindSem::List:
         case TypeKindSem::Map:
         case TypeKindSem::Set:
@@ -798,6 +807,8 @@ const char *kindToString(TypeKindSem kind)
             return "Entity";
         case TypeKindSem::Interface:
             return "Interface";
+        case TypeKindSem::Enum:
+            return "Enum";
         case TypeKindSem::Error:
             return "Error";
         case TypeKindSem::Ptr:

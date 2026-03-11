@@ -1387,93 +1387,113 @@ entity User implements Printable {
 
 ## Enums
 
-Enums define a type with a fixed set of possible values.
+Enums define a type with a fixed set of named integer constants. Each variant maps to an `I64` value at the IL level.
 
 ### Simple Enums
 
 ```rust
 enum Color {
-    RED,
-    GREEN,
-    BLUE
+    Red,
+    Green,
+    Blue,
 }
 
-var c = Color.RED;
+var c: Color = Color.Red;
 
 match c {
-    Color.RED => Terminal.Say("Red"),
-    Color.GREEN => Terminal.Say("Green"),
-    Color.BLUE => Terminal.Say("Blue")
-}
+    Color.Red => Terminal.Say("Red"),
+    Color.Green => Terminal.Say("Green"),
+    Color.Blue => Terminal.Say("Blue"),
+};
 ```
 
-### Enums with Values
+Variants are automatically numbered starting from 0: `Red` = 0, `Green` = 1, `Blue` = 2.
+
+### Enums with Explicit Values
+
+Variants may specify explicit integer values. Unspecified variants auto-increment from the previous value.
 
 ```rust
 enum HttpStatus {
     OK = 200,
     NOT_FOUND = 404,
-    INTERNAL_ERROR = 500
+    INTERNAL_ERROR = 500,
 }
 
 var status = HttpStatus.OK;
-var code = status.value;          // 200
 ```
 
-### Enums with Associated Data
+Negative values are supported:
 
 ```rust
-enum Result[T, E] {
-    Ok(T),
-    Err(E)
-}
-
-var success: Result[Integer] = Result.Ok(42);
-var failure: Result[Integer] = Result.Err("Not found");
-
-match success {
-    Result.Ok(value) => Terminal.Say("Got: " + value),
-    Result.Err(msg) => Terminal.Say("Error: " + msg)
-}
-
-enum Option[T] {
-    Some(T),
-    None
-}
-
-func findUser(id: Integer) -> Option[User] {
-    if id == 1 {
-        return Option.Some(User("Alice"));
-    }
-    return Option.None;
+enum Offset {
+    Backward = -1,
+    None = 0,
+    Forward = 1,
 }
 ```
 
-### Enum Methods
+### Auto-Increment After Explicit Values
+
+When a variant sets an explicit value, subsequent variants increment from that value:
 
 ```rust
-enum Direction {
-    NORTH,
-    SOUTH,
-    EAST,
-    WEST;
+enum Priority {
+    Low,          // 0
+    Medium = 5,   // 5
+    High,         // 6
+    Critical,     // 7
+}
+```
 
-    func opposite() -> Direction {
-        match self {
-            Direction.NORTH => Direction.SOUTH,
-            Direction.SOUTH => Direction.NORTH,
-            Direction.EAST => Direction.WEST,
-            Direction.WEST => Direction.EAST
-        }
-    }
+### Visibility
 
-    func isVertical() -> Boolean {
-        return self == Direction.NORTH || self == Direction.SOUTH;
-    }
+Use `expose` to make an enum accessible from other modules:
+
+```rust
+expose enum Direction {
+    North,
+    South,
+    East,
+    West,
+}
+```
+
+### Exhaustiveness in Match
+
+When matching on an enum type, the compiler checks that all variants are covered. Missing variants produce an error:
+
+```rust
+// Error: Non-exhaustive patterns: missing variants Direction.South, Direction.West
+match dir {
+    Direction.North => handleNorth(),
+    Direction.East => handleEast(),
+};
+```
+
+Use the wildcard pattern `_` to handle remaining variants:
+
+```rust
+match dir {
+    Direction.North => handleNorth(),
+    _ => handleOther(),
+};
+```
+
+### Using Enums as Parameters and Return Types
+
+```rust
+func describeColor(c: Color) -> String {
+    return match c {
+        Color.Red => "red",
+        Color.Green => "green",
+        Color.Blue => "blue",
+    };
 }
 
-var dir = Direction.NORTH;
-var opp = dir.opposite();         // Direction.SOUTH
+func defaultDirection() -> Direction {
+    return Direction.North;
+}
 ```
 
 **Cross-reference:** [Chapter 17: Polymorphism](../part3-objects/17-polymorphism.md)

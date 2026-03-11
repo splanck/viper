@@ -95,6 +95,7 @@ struct MethodDecl;
 struct PropertyDecl;
 struct ClassDecl;
 struct TypeDecl;
+struct EnumDecl;
 struct InterfaceDecl;
 struct PrintItem;
 struct CaseArm;

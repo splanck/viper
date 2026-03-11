@@ -65,7 +65,7 @@ This document maps existing Viper documentation and code examples to the Bible's
 | 8. Text and Strings | String examples (12 files), `rt_string.h` | String operations, formatting |
 | 9. Files and Persistence | File examples, `rt_file.h` | Reading/writing files |
 | 10. Errors and Recovery | `/docs/specs/errors.md` | Try/catch, error handling |
-| 11. Structures | OOP examples | Records, grouping data |
+| 11. Structures | OOP examples | Records, grouping data, enums as related custom types |
 | 12. Modules | Zia Frogger demo | Import, export, organization |
 | 13. The Standard Library | `/docs/viperlib/` | Survey of available APIs |
 

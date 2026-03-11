@@ -18,12 +18,13 @@ A comprehensive reference for Viper BASIC syntax and features. This appendix ser
 10. [User-Defined Types](#user-defined-types-structures)
 11. [Classes and Objects](#classes-and-objects)
 12. [Interfaces](#interfaces)
-13. [Error Handling](#error-handling)
-14. [Built-in Functions](#built-in-functions)
-15. [Modules](#modules)
-16. [Special Syntax](#special-syntax)
-17. [Common Patterns](#common-patterns)
-18. [Keywords Reference](#keywords-reference)
+13. [Enums](#enums)
+14. [Error Handling](#error-handling)
+15. [Built-in Functions](#built-in-functions)
+16. [Modules](#modules)
+17. [Special Syntax](#special-syntax)
+18. [Common Patterns](#common-patterns)
+19. [Keywords Reference](#keywords-reference)
 
 ---
 
@@ -1946,6 +1947,100 @@ entity Circle implements Drawable {
 
 ---
 
+## Enums
+
+Enums define a named set of integer constants. Each variant is automatically numbered starting from 0, or can be given an explicit value.
+
+> **See also:** [Chapter 11: Structures](../part2-building-blocks/11-structures.md) for other ways to define custom types.
+
+### Declaration
+
+```basic
+ENUM Direction
+  NORTH
+  SOUTH
+  EAST
+  WEST
+END ENUM
+```
+
+Variants are auto-numbered: `NORTH` = 0, `SOUTH` = 1, `EAST` = 2, `WEST` = 3.
+
+### Variant Access
+
+Use dot notation to access variants:
+
+```basic
+LET d = Direction.NORTH
+PRINT d                     ' prints 0
+```
+
+### Explicit Values
+
+Variants may specify explicit integer values. Unspecified variants auto-increment from the previous value.
+
+```basic
+ENUM HttpStatus
+  OK = 200
+  NOT_FOUND = 404
+  SERVER_ERROR = 500
+END ENUM
+
+LET status = HttpStatus.OK
+```
+
+Mixed auto-increment and explicit:
+
+```basic
+ENUM Priority
+  LOW               ' 0
+  MEDIUM = 5        ' 5
+  HIGH              ' 6
+  CRITICAL          ' 7
+END ENUM
+```
+
+### Negative Values
+
+```basic
+ENUM Offset
+  BACKWARD = -1
+  NONE = 0
+  FORWARD = 1
+END ENUM
+```
+
+### Duplicate Variants
+
+Defining the same variant name twice within an enum produces a compile-time error:
+
+```basic
+ENUM Tint
+  RED
+  GREEN
+  RED       ' Error: duplicate enum variant 'RED' in 'TINT'
+END ENUM
+```
+
+### Keyword Names
+
+BASIC's lexer uppercases all identifiers, so enum and variant names that match keywords (like `COLOR`) are accepted in declarations. However, keyword-named enums cannot be used in expressions (the lexer interprets them as their keyword meaning). Use non-keyword names for enums you intend to reference in code.
+
+**Zia equivalent:**
+
+```rust
+enum Direction {
+    North,
+    South,
+    East,
+    West,
+}
+
+var d: Direction = Direction.North;
+```
+
+---
+
 ## Error Handling
 
 Handle runtime errors gracefully to prevent crashes.
@@ -2814,8 +2909,9 @@ AND         AS          BOOLEAN     BYTE        BYREF
 BYVAL       CALL        CASE        CATCH       CLASS
 CLOSE       CONST       CONTINUE    DATE        DECLARE
 DIM         DO          DOUBLE      EACH        ELSE
-ELSEIF      END         EOF         ERASE       ERROR
-EXIT        FALSE       FINALLY     FOR         FUNCTION
+ELSEIF      END         ENUM        EOF         ERASE
+ERROR       EXIT        FALSE       FINALLY     FOR
+FUNCTION
 GET         GLOBAL      GOSUB       GOTO        IF
 IMPLEMENTS  IMPORT      IN          INHERITS    INPUT
 INTEGER     INTERFACE   IS          LET         LINE
@@ -2837,7 +2933,7 @@ WITH        WRITE       XOR
 | Category | Keywords |
 |----------|----------|
 | **Data Types** | `BOOLEAN`, `BYTE`, `DATE`, `DOUBLE`, `INTEGER`, `LONG`, `SINGLE`, `STRING`, `VARIANT` |
-| **Declarations** | `AS`, `CONST`, `DIM`, `FUNCTION`, `GLOBAL`, `LOCAL`, `PRIVATE`, `PROTECTED`, `PUBLIC`, `SHARED`, `STATIC`, `SUB`, `TYPE` |
+| **Declarations** | `AS`, `CONST`, `DIM`, `ENUM`, `FUNCTION`, `GLOBAL`, `LOCAL`, `PRIVATE`, `PROTECTED`, `PUBLIC`, `SHARED`, `STATIC`, `SUB`, `TYPE` |
 | **Control Flow** | `CASE`, `DO`, `EACH`, `ELSE`, `ELSEIF`, `END`, `EXIT`, `FOR`, `GOSUB`, `GOTO`, `IF`, `LOOP`, `NEXT`, `RETURN`, `SELECT`, `STEP`, `THEN`, `TO`, `UNTIL`, `WEND`, `WHILE` |
 | **Operators** | `AND`, `IS`, `MOD`, `NOT`, `OR`, `XOR` |
 | **Error Handling** | `CATCH`, `ERROR`, `FINALLY`, `ON`, `RESUME`, `THROW`, `TRY` |

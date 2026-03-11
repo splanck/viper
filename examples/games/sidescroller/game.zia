@@ -223,6 +223,7 @@ entity Game {
             sm.Transition(STATE_CONTROLS);
         }
         if result == -2 {
+            canvas.Close();
             return;
         }
     }

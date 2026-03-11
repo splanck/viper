@@ -450,6 +450,15 @@ class ExprCheckContext
         return analyzer_->symbols_.count(name) != 0;
     }
 
+    /// @brief Check whether a name refers to a declared enum type.
+    /// @param name The name to look up in the OOP index enum table.
+    /// @return True if the name matches a registered enum.
+    [[nodiscard]] bool isEnumName(const std::string &name) const
+    {
+        const auto &enums = analyzer_->oopIndex_.enums();
+        return enums.find(name) != enums.end();
+    }
+
     /// @brief Access the full set of declared symbol names.
     /// @return Const reference to the unordered set of all known symbol names.
     [[nodiscard]] const std::unordered_set<std::string> &symbols() const noexcept

@@ -595,6 +595,10 @@ class Parser
     /// @return The parsed InterfaceDecl.
     DeclPtr parseInterfaceDecl();
 
+    /// @brief Parse an enum declaration: enum Name { Variant, ... }
+    /// @return The parsed EnumDecl.
+    DeclPtr parseEnumDecl();
+
     /// @brief Parse a namespace declaration: namespace Name { declarations }
     /// @return The parsed NamespaceDecl.
     ///

@@ -151,6 +151,21 @@ bool Parser::parsePatternCore(MatchArm::Pattern &out)
             return true;
         }
 
+        // Dotted identifier (e.g. Color.Red) → enum variant literal pattern
+        if (check(TokenKind::Dot))
+        {
+            advance(); // consume '.'
+            Token variantTok;
+            if (!expect(TokenKind::Identifier, "enum variant name", &variantTok))
+                return false;
+            auto base = std::make_unique<IdentExpr>(nameTok.loc, name);
+            auto fieldExpr =
+                std::make_unique<FieldExpr>(nameTok.loc, std::move(base), variantTok.text);
+            out.kind = MatchArm::Pattern::Kind::Literal;
+            out.literal = std::move(fieldExpr);
+            return true;
+        }
+
         out.kind = MatchArm::Pattern::Kind::Binding;
         out.binding = std::move(name);
         return true;

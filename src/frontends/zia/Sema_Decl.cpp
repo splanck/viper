@@ -14,6 +14,8 @@
 #include "il/runtime/RuntimeNameMap.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
+#include <unordered_set>
+
 namespace il::frontends::zia
 {
 
@@ -723,6 +725,44 @@ void Sema::analyzeInterfaceDecl(InterfaceDecl &decl)
     currentSelfType_ = nullptr;
 }
 
+/// @brief Analyze an enum declaration: validate variants and register them.
+/// @param decl The enum declaration to analyze.
+void Sema::analyzeEnumDecl(EnumDecl &decl)
+{
+    auto enumT = types::enumType(decl.name);
+    enumDecls_[decl.name] = &decl;
+
+    // Validate variants and resolve values
+    std::unordered_set<std::string> seenNames;
+    int64_t nextValue = 0;
+
+    for (auto &variant : decl.variants)
+    {
+        // Check for duplicate variant names
+        if (!seenNames.insert(variant.name).second)
+        {
+            error(variant.loc, "Duplicate enum variant '" + variant.name + "' in '" + decl.name + "'");
+            continue;
+        }
+
+        // Resolve the value (explicit or auto-increment)
+        if (variant.explicitValue.has_value())
+        {
+            nextValue = variant.explicitValue.value();
+        }
+        else
+        {
+            variant.explicitValue = nextValue;
+        }
+
+        // Register the variant as a field-like entry: EnumName.VariantName -> EnumType
+        std::string key = decl.name + "." + variant.name;
+        fieldTypes_[key] = enumT;
+
+        ++nextValue;
+    }
+}
+
 /// @brief Analyze a function declaration body (parameters, return type, body statements).
 /// @param decl The function declaration to analyze.
 void Sema::analyzeFunctionDecl(FunctionDecl &decl)
@@ -751,7 +791,7 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl)
         sym.name = param.name;
         sym.type = paramType;
         sym.isFinal = true; // Parameters are immutable by default
-        defineSymbol(param.name, sym);
+        defineSymbol(param.name, sym, param.loc);
         markInitialized(param.name);
     }
 
@@ -843,7 +883,7 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
     selfSym.name = "self";
     selfSym.type = ownerType;
     selfSym.isFinal = true;
-    defineSymbol("self", selfSym);
+    defineSymbol("self", selfSym, decl.loc);
     markInitialized("self");
 
     // Define explicit parameters
@@ -856,7 +896,7 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
         sym.name = param.name;
         sym.type = paramType;
         sym.isFinal = true;
-        defineSymbol(param.name, sym);
+        defineSymbol(param.name, sym, param.loc);
         markInitialized(param.name);
     }
 

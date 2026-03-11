@@ -224,7 +224,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Entity** (EN-ti-tee): **[Zia]** The keyword used to define object templates (equivalent to "class" in other languages). An entity combines data (fields) and behavior (methods). Represents "things" with identity and behavior. Example: `entity Player { ... }`. ViperScript and ViperC use the traditional `class` keyword. See [Chapter 14](../part3-objects/14-objects.md). See also *Class*, *Object*, *Value*.
 
-**Enumeration** (ee-noo-mer-AY-shun): A type consisting of a fixed set of named values. Also called an enum. Example: `enum Color { RED, GREEN, BLUE }`. Useful when a variable should only have certain specific values. See [Appendix A](a-zia-reference.md). See also *Type*.
+**Enumeration** (ee-noo-mer-AY-shun): A type consisting of a fixed set of named values. Also called an enum. In Zia: `enum Color { Red, Green, Blue }`. In BASIC: `ENUM Color / RED / GREEN / BLUE / END ENUM`. Variants are integer constants (auto-incrementing from 0 or explicitly assigned). Useful when a variable should only have certain specific values. See [Appendix A](a-zia-reference.md#enums) and [Appendix B](b-basic-reference.md#enums). See also *Type*, *Match*.
 
 **Environment**: (1) The runtime context where a program executes, including available variables and resources. (2) The development setup including operating system, tools, and configurations.
 

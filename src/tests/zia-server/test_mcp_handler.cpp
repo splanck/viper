@@ -278,6 +278,67 @@ TEST(McpHandler, ToolsCallDumpTokens)
     EXPECT_TRUE(text.find("module") != std::string::npos);
 }
 
+TEST(McpHandler, ToolsCallHoverLocalVar)
+{
+    CompilerBridge bridge;
+    McpHandler handler(bridge);
+
+    // MCP uses 1-based line/col. Line 3 col 9 = 'x' in "    var x = 42;"
+    auto params = JsonValue::object({
+        {"name", JsonValue("zia/hover")},
+        {"arguments",
+         JsonValue::object({
+             {"source", JsonValue("module Test;\nfunc start() {\n    var x = 42;\n}\n")},
+             {"line", JsonValue(3)},
+             {"col", JsonValue(9)},
+         })},
+    });
+    auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", std::move(params))));
+    auto text = resp["result"]["content"].at(0)["text"].asString();
+    EXPECT_TRUE(text.find("var x") != std::string::npos);
+    EXPECT_TRUE(text.find("Integer") != std::string::npos);
+}
+
+TEST(McpHandler, ToolsCallHoverFunction)
+{
+    CompilerBridge bridge;
+    McpHandler handler(bridge);
+
+    // Line 2 col 6 = 'start' in "func start() {"
+    auto params = JsonValue::object({
+        {"name", JsonValue("zia/hover")},
+        {"arguments",
+         JsonValue::object({
+             {"source", JsonValue("module Test;\nfunc start() {\n    var x = 42;\n}\n")},
+             {"line", JsonValue(2)},
+             {"col", JsonValue(6)},
+         })},
+    });
+    auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", std::move(params))));
+    auto text = resp["result"]["content"].at(0)["text"].asString();
+    EXPECT_TRUE(text.find("func start") != std::string::npos);
+}
+
+TEST(McpHandler, ToolsCallHoverWhitespace)
+{
+    CompilerBridge bridge;
+    McpHandler handler(bridge);
+
+    // Line 3 col 1 = leading whitespace
+    auto params = JsonValue::object({
+        {"name", JsonValue("zia/hover")},
+        {"arguments",
+         JsonValue::object({
+             {"source", JsonValue("module Test;\nfunc start() {\n    var x = 42;\n}\n")},
+             {"line", JsonValue(3)},
+             {"col", JsonValue(1)},
+         })},
+    });
+    auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", std::move(params))));
+    auto text = resp["result"]["content"].at(0)["text"].asString();
+    EXPECT_EQ(text, "(no type information)");
+}
+
 TEST(McpHandler, ToolsCallRuntimeClasses)
 {
     CompilerBridge bridge;

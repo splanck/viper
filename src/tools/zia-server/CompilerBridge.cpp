@@ -274,7 +274,8 @@ static std::string buildSignatureFromType(const TypeRef &funcType)
 
 /// @brief Resolve a hover target using Sema APIs.
 /// Adapted from CompletionEngine::resolveExprType().
-static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx)
+static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx,
+                                      int line, int col)
 {
     HoverResult result;
 
@@ -313,6 +314,15 @@ static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx)
                 current = sym.type;
                 break;
             }
+        }
+
+        // Try position-based lookup (locals, params, entity fields).
+        if (!current)
+        {
+            auto *scoped = sema.findSymbolAtPosition(
+                parts[0], static_cast<uint32_t>(line), static_cast<uint32_t>(col));
+            if (scoped)
+                current = scoped->symbol.type;
         }
 
         // Try module alias expansion.
@@ -441,7 +451,40 @@ static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx)
         return result;
     }
 
-    // ── No dot prefix: search globals, types, module aliases ──
+    // ── No dot prefix: search position-based, then globals, types, module aliases ──
+
+    // 0. Position-based lookup (locals, parameters, entity fields).
+    {
+        auto *scoped = sema.findSymbolAtPosition(
+            ctx.identifier, static_cast<uint32_t>(line), static_cast<uint32_t>(col));
+        if (scoped)
+        {
+            result.name = scoped->symbol.name;
+            result.kind = symbolKindStr(scoped->symbol.kind);
+            result.type = scoped->symbol.type ? scoped->symbol.type->toString() : "";
+            result.isFinal = scoped->symbol.isFinal;
+            result.isExtern = scoped->symbol.isExtern;
+            result.ownerName = scoped->ownerType;
+            if (scoped->symbol.type && scoped->symbol.type->kind == TypeKindSem::Function)
+            {
+                if (scoped->symbol.decl && scoped->symbol.decl->kind == DeclKind::Method)
+                {
+                    auto *md = static_cast<MethodDecl *>(scoped->symbol.decl);
+                    result.signature = buildSignatureFromDecl(md->params, scoped->symbol.type);
+                }
+                else if (scoped->symbol.decl && scoped->symbol.decl->kind == DeclKind::Function)
+                {
+                    auto *fd = static_cast<FunctionDecl *>(scoped->symbol.decl);
+                    result.signature = buildSignatureFromDecl(fd->params, scoped->symbol.type);
+                }
+                else
+                {
+                    result.signature = buildSignatureFromType(scoped->symbol.type);
+                }
+            }
+            return result;
+        }
+    }
 
     // 1. Global symbols.
     auto globals = sema.getGlobalSymbols();
@@ -610,7 +653,7 @@ std::string CompilerBridge::hover(const std::string &source,
     if (!result->sema)
         return "";
 
-    auto hover = resolveHoverTarget(*result->sema, ctx);
+    auto hover = resolveHoverTarget(*result->sema, ctx, line, col);
     if (hover.name.empty())
         return "";
 

@@ -351,6 +351,38 @@ struct TypeDecl : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
+/// @brief ENUM declaration defining a set of named integer constants.
+struct EnumDecl : Stmt
+{
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
+    {
+        return Kind::EnumDecl;
+    }
+
+    /// Enum type name.
+    std::string name;
+
+    /// Individual enum member with an optional explicit integer value.
+    struct Member
+    {
+        std::string name;
+        std::optional<long long> value;
+    };
+
+    /// Ordered members declared in the enum.
+    std::vector<Member> members;
+
+    void accept(StmtVisitor &visitor) const override
+    {
+        visitor.visit(*this);
+    }
+
+    void accept(MutStmtVisitor &visitor) override
+    {
+        visitor.visit(*this);
+    }
+};
+
 /// @brief NAMESPACE declaration grouping declarations under a qualified path.
 struct NamespaceDecl : Stmt
 {

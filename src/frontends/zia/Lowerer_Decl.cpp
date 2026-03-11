@@ -50,6 +50,9 @@ void Lowerer::lowerDecl(Decl *decl)
         case DeclKind::Namespace:
             lowerNamespaceDecl(*static_cast<NamespaceDecl *>(decl));
             break;
+        case DeclKind::Enum:
+            lowerEnumDecl(*static_cast<EnumDecl *>(decl));
+            break;
         default:
             break;
     }
@@ -1671,6 +1674,17 @@ void Lowerer::emitItableInit()
     locals_ = std::move(savedLocals);
     slots_ = std::move(savedSlots);
     localTypes_ = std::move(savedLocalTypes);
+}
+
+void Lowerer::lowerEnumDecl(EnumDecl &decl)
+{
+    // Enums don't produce IL structures — each variant is an I64 constant.
+    // Just register variant values for later lookup during expression lowering.
+    for (const auto &variant : decl.variants)
+    {
+        std::string key = qualifyName(decl.name) + "." + variant.name;
+        enumVariantValues_[key] = variant.explicitValue.value_or(0);
+    }
 }
 
 } // namespace il::frontends::zia

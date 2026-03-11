@@ -233,6 +233,20 @@ bool Sema::analyze(ModuleDecl &module)
                 defineSymbol(iface->name, sym);
                 break;
             }
+            case DeclKind::Enum:
+            {
+                auto *enumDecl = static_cast<EnumDecl *>(decl.get());
+                auto enumT = types::enumType(enumDecl->name);
+                typeRegistry_[enumDecl->name] = enumT;
+
+                Symbol sym;
+                sym.kind = Symbol::Kind::Type;
+                sym.name = enumDecl->name;
+                sym.type = enumT;
+                sym.decl = enumDecl;
+                defineSymbol(enumDecl->name, sym);
+                break;
+            }
             case DeclKind::GlobalVar:
             {
                 auto *gvar = static_cast<GlobalVarDecl *>(decl.get());
@@ -349,9 +363,48 @@ void Sema::popScope()
 /// @brief Define a symbol in the current scope.
 /// @param name The symbol name to register.
 /// @param symbol The symbol metadata to associate with the name.
-void Sema::defineSymbol(const std::string &name, Symbol symbol)
+/// @param locOverride Optional source location for symbols without decl (locals, params).
+void Sema::defineSymbol(const std::string &name, Symbol symbol, SourceLoc locOverride)
 {
     currentScope_->define(name, std::move(symbol));
+
+    // Capture a snapshot for position-based hover queries.
+    Symbol *defined = currentScope_->lookupLocal(name);
+    if (defined)
+    {
+        ScopedSymbol ss;
+        ss.symbol = *defined;
+        ss.loc = locOverride.isValid() ? locOverride
+                                       : (defined->decl ? defined->decl->loc : SourceLoc{});
+        ss.ownerType = currentSelfType_ ? currentSelfType_->name : "";
+        scopedSymbols_.push_back(std::move(ss));
+    }
+}
+
+/// @brief Find the most relevant symbol at a given cursor position.
+const ScopedSymbol *Sema::findSymbolAtPosition(const std::string &name,
+                                                uint32_t line, uint32_t col) const
+{
+    const ScopedSymbol *best = nullptr;
+    for (const auto &ss : scopedSymbols_)
+    {
+        if (ss.symbol.name != name)
+            continue;
+        if (!ss.loc.isValid())
+            continue;
+        // Symbol must be defined at or before the cursor position.
+        if (ss.loc.line > line)
+            continue;
+        if (ss.loc.line == line && ss.loc.column > col)
+            continue;
+        // Pick the innermost (most recently defined before cursor) match.
+        if (!best || ss.loc.line > best->loc.line ||
+            (ss.loc.line == best->loc.line && ss.loc.column > best->loc.column))
+        {
+            best = &ss;
+        }
+    }
+    return best;
 }
 
 /// @brief Look up a symbol by name in the current scope chain.
@@ -656,6 +709,9 @@ void Sema::registerMemberSignatures(std::vector<DeclPtr> &declarations)
                 break;
             case DeclKind::Interface:
                 registerInterfaceMembers(*static_cast<InterfaceDecl *>(decl.get()));
+                break;
+            case DeclKind::Enum:
+                analyzeEnumDecl(*static_cast<EnumDecl *>(decl.get()));
                 break;
             default:
                 break;

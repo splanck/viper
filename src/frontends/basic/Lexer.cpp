@@ -85,7 +85,7 @@ using common::keyword_table::lookupKeywordBinary;
 namespace
 {
 
-constexpr std::array<KeywordEntry<TokenKind>, 107> kKeywordTable{{
+constexpr std::array<KeywordEntry<TokenKind>, 108> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},
     {"ABSTRACT", TokenKind::KeywordAbstract},
     {"ADDFILE", TokenKind::KeywordAddfile},
@@ -120,6 +120,7 @@ constexpr std::array<KeywordEntry<TokenKind>, 107> kKeywordTable{{
     {"ELSE", TokenKind::KeywordElse},
     {"ELSEIF", TokenKind::KeywordElseIf},
     {"END", TokenKind::KeywordEnd},
+    {"ENUM", TokenKind::KeywordEnum},
     {"EOF", TokenKind::KeywordEof},
     {"ERROR", TokenKind::KeywordError},
     {"EXIT", TokenKind::KeywordExit},

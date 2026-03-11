@@ -246,6 +246,12 @@ enum class TypeKindSem
     /// provide. Used for polymorphism via interface references.
     Interface,
 
+    /// @brief Enum type: named set of integer constants.
+    /// @details Each variant maps to an I64 value. Enum types are distinct
+    /// from Integer — assignment between them requires explicit conversion.
+    /// At the IL level, enum values are plain I64 constants.
+    Enum,
+
     /// @}
     // =========================================================================
     /// @name Special Types
@@ -517,7 +523,7 @@ struct ViperType
     bool isUserDefined() const
     {
         return kind == TypeKindSem::Value || kind == TypeKindSem::Entity ||
-               kind == TypeKindSem::Interface;
+               kind == TypeKindSem::Interface || kind == TypeKindSem::Enum;
     }
 
     /// @}
@@ -817,6 +823,12 @@ TypeRef entity(const std::string &name, std::vector<TypeRef> typeParams = {});
 /// @return A new Interface type.
 /// @details Interface types define abstract contracts.
 TypeRef interface(const std::string &name, std::vector<TypeRef> typeParams = {});
+
+/// @brief Create an enum type reference.
+/// @param name The enum type name.
+/// @return A new Enum type.
+/// @details Enum types define named integer constants.
+TypeRef enumType(const std::string &name);
 
 /// @brief Clear the interface implementation registry.
 /// @details Called by the semantic analyzer to avoid cross-module leakage.

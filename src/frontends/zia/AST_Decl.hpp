@@ -42,6 +42,8 @@
 #pragma once
 
 #include "frontends/zia/AST_Stmt.hpp"
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -110,6 +112,10 @@ enum class DeclKind
     /// @brief Destructor declaration: entity cleanup code.
     /// @see DestructorDecl
     Destructor,
+
+    /// @brief Enum type declaration: named set of integer constants.
+    /// @see EnumDecl
+    Enum,
 };
 
 /// @brief Member visibility level.
@@ -159,6 +165,9 @@ struct Param
 
     /// @brief Default value expression (nullptr if required parameter).
     ExprPtr defaultValue;
+
+    /// @brief Source location of the parameter name token.
+    SourceLoc loc;
 };
 
 /// @brief Generic type parameter specification.
@@ -611,6 +620,67 @@ struct NamespaceDecl : Decl
     /// @param l Source location.
     /// @param n Namespace name.
     NamespaceDecl(SourceLoc l, std::string n) : Decl(DeclKind::Namespace, l), name(std::move(n)) {}
+};
+
+/// @brief A single variant in an enum declaration.
+/// @details Represents one named constant in an enum, with an optional
+/// explicit integer value. When no value is given, the variant auto-increments
+/// from the previous variant's value (starting at 0).
+///
+/// ## Example
+/// ```
+/// enum Color {
+///     Red,          // value 0
+///     Green,        // value 1
+///     Blue = 10,    // value 10
+///     Alpha,        // value 11
+/// }
+/// ```
+struct EnumVariant
+{
+    /// @brief Variant name (e.g., "Red", "Green").
+    std::string name;
+
+    /// @brief Explicit integer value, if provided (e.g., `Blue = 10`).
+    /// @details When nullopt, the value is auto-assigned by the semantic analyzer.
+    std::optional<int64_t> explicitValue;
+
+    /// @brief Source location of the variant name.
+    SourceLoc loc;
+};
+
+/// @brief Enum type declaration: a set of named integer constants.
+/// @details Defines an enum type where each variant is a distinct named value.
+/// Enum types are distinct from Integer — you cannot assign an Integer to an
+/// enum variable without conversion. At the IL level, enum variants lower to
+/// I64 constants.
+///
+/// ## Example
+/// ```
+/// enum Direction {
+///     North,
+///     South,
+///     East,
+///     West,
+/// }
+///
+/// var d: Direction = Direction.North;
+/// ```
+struct EnumDecl : Decl
+{
+    /// @brief Enum type name.
+    std::string name;
+
+    /// @brief Enum variants (ordered as declared).
+    std::vector<EnumVariant> variants;
+
+    /// @brief Enum visibility.
+    Visibility visibility = Visibility::Private;
+
+    /// @brief Construct an enum declaration.
+    /// @param l Source location.
+    /// @param n Enum name.
+    EnumDecl(SourceLoc l, std::string n) : Decl(DeclKind::Enum, l), name(std::move(n)) {}
 };
 
 /// @brief Module declaration: the top-level compilation unit.

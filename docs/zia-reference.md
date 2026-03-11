@@ -16,6 +16,7 @@ Complete language reference for Zia. This document describes **syntax**, **types
 - **Entity types**: Reference semantics with identity, methods, inheritance, properties, static members, and destructors
 - **Value types**: Copy semantics with stack allocation
 - **Interfaces**: Contracts with full runtime itable dispatch
+- **Enums**: Named sets of integer constants with exhaustiveness checking in match
 - **Generics**: Parameterized types and functions with optional constraints (`List[T]`, `func max[T: Comparable]`)
 - **Exception handling**: `try`/`catch`/`finally` with structured error propagation
 - **Modules**: File-based modules with bind system
@@ -35,6 +36,7 @@ Complete language reference for Zia. This document describes **syntax**, **types
 - [Entity Types](#entity-types) (includes properties, static members, destructors)
 - [Value Types](#value-types)
 - [Interfaces](#interfaces)
+- [Enums](#enums)
 - [Modules and Imports](#modules-and-imports)
 - [Namespaces](#namespaces)
 - [Runtime Library Access](#runtime-library-access)
@@ -993,6 +995,121 @@ At module initialization, a `__zia_iface_init` function registers each interface
 
 ---
 
+## Enums
+
+Enums define a type with a fixed set of named integer constants. Each variant is lowered to an `I64` constant at the IL level — no new opcodes or runtime support required.
+
+### Declaration
+
+```viper
+enum Color {
+    Red,
+    Green,
+    Blue,
+}
+```
+
+Variants are automatically numbered starting from 0. A trailing comma after the last variant is permitted.
+
+### Explicit Values
+
+Variants may specify explicit integer values. Unspecified variants auto-increment from the previous value.
+
+```viper
+enum HttpStatus {
+    OK = 200,
+    NOT_FOUND = 404,
+    INTERNAL_ERROR = 500,
+}
+```
+
+Mixed auto-increment and explicit values:
+
+```viper
+enum Priority {
+    Low,          // 0
+    Medium = 5,   // 5
+    High,         // 6
+    Critical,     // 7
+}
+```
+
+Negative values are supported: `Backward = -1`.
+
+### Variant Access
+
+Access variants with dot notation:
+
+```viper
+var c: Color = Color.Red;
+var s = HttpStatus.NOT_FOUND;
+```
+
+Enum values can be compared with `==` and `!=`:
+
+```viper
+if c != Color.Red {
+    // ...
+}
+```
+
+### Visibility
+
+Use `expose` to make an enum accessible from other modules:
+
+```viper
+expose enum Direction {
+    North,
+    South,
+    East,
+    West,
+}
+```
+
+### Match Exhaustiveness
+
+When matching on an enum, the compiler verifies that all variants are covered:
+
+```viper
+// Error: Non-exhaustive patterns: missing variants Direction.East, Direction.West
+match dir {
+    Direction.North => handleNorth();
+    Direction.South => handleSouth();
+}
+```
+
+Use the wildcard `_` to cover remaining variants:
+
+```viper
+match dir {
+    Direction.North => handleNorth();
+    _ => handleOther();
+}
+```
+
+### As Function Parameters and Return Types
+
+Enums can be used as parameter types, return types, and variable types:
+
+```viper
+func describeColor(c: Color) -> String {
+    return match c {
+        Color.Red => "red",
+        Color.Green => "green",
+        Color.Blue => "blue",
+    };
+}
+```
+
+### Grammar
+
+```text
+enumDecl    ::= ["expose"] "enum" IDENT "{" enumVariant ("," enumVariant)* [","] "}"
+enumVariant ::= IDENT ["=" ["-"] INTEGER]
+```
+
+---
+
 ## Modules and Imports
 
 ### Module Declaration
@@ -1298,14 +1415,14 @@ The following words are reserved and cannot be used as identifiers:
 
 ```text
 and         as          bind        break       catch
-continue    deinit      else        entity      expose
-extends     false       final       finally     for
-func        guard       hide        if          implements
-in          interface   is          match       module
-namespace   new         not         null        or
-override    property    return      self        static
-super       throw       true        try         value
-var         while
+continue    deinit      else        entity      enum
+expose      extends     false       final       finally
+for         func        guard       hide        if
+implements  in          interface   is          match
+module      namespace   new         not         null
+or          override    property    return      self
+static      super       throw       true        try
+value       var         while
 ```
 
 ### Reserved for Future Use
@@ -1338,10 +1455,12 @@ bind        ::= "bind" STRING ["as" IDENT] ";"
 ### Declarations
 
 ```text
-decl        ::= entityDecl | valueDecl | interfaceDecl | funcDecl | varDecl | namespaceDecl
+decl        ::= entityDecl | valueDecl | interfaceDecl | enumDecl | funcDecl | varDecl | namespaceDecl
 entityDecl  ::= "entity" IDENT ["extends" IDENT] ["implements" identList] "{" member* "}"
 valueDecl   ::= "value" IDENT ["implements" identList] "{" member* "}"
 interfaceDecl ::= "interface" IDENT "{" methodSig* "}"
+enumDecl    ::= ["expose"] "enum" IDENT "{" enumVariant ("," enumVariant)* [","] "}"
+enumVariant ::= IDENT ["=" ["-"] INTEGER]
 funcDecl    ::= "func" IDENT ["[" genericParams "]"] "(" params ")" ["->" type] block
 genericParams ::= IDENT [":" IDENT] ("," IDENT [":" IDENT])*
 param       ::= IDENT ":" type ["=" expr]

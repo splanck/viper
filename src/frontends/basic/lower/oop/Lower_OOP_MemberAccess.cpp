@@ -176,6 +176,19 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveImplicitField(std::str
 
 Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
 {
+    // Check for enum variant access: Color.RED → ConstInt(I64, value)
+    if (expr.base && expr.base->kind() == Expr::Kind::Var)
+    {
+        const auto &varExpr = static_cast<const VarExpr &>(*expr.base);
+        auto enumVal = oopIndex_.findEnumVariant(varExpr.name, expr.member);
+        if (enumVal.has_value())
+        {
+            curLoc = expr.loc;
+            return {Value::constInt(static_cast<long long>(*enumVal)),
+                    Type(Type::Kind::I64)};
+        }
+    }
+
     auto access = resolveMemberField(expr);
     if (!access)
     {

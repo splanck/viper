@@ -1518,6 +1518,25 @@ static void printDecl(const Decl &decl, Printer &p)
             p.line("DestructorDecl " + locStr(decl.loc));
             break;
         }
+        case DeclKind::Enum:
+        {
+            const auto &d = static_cast<const EnumDecl &>(decl);
+            p.line("EnumDecl \"" + d.name + "\" " + locStr(d.loc));
+            if (!d.variants.empty())
+            {
+                p.push();
+                for (const auto &v : d.variants)
+                {
+                    std::string vstr = "Variant \"" + v.name + "\"";
+                    if (v.explicitValue.has_value())
+                        vstr += " = " + std::to_string(v.explicitValue.value());
+                    vstr += " " + locStr(v.loc);
+                    p.line(vstr);
+                }
+                p.pop();
+            }
+            break;
+        }
     }
 }
 

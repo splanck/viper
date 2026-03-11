@@ -61,6 +61,19 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
         baseType = baseType->innerType();
     }
 
+    // Handle enum variant access (e.g., Color.Red) — emit I64 constant
+    if (baseType->kind == TypeKindSem::Enum)
+    {
+        std::string key = baseType->name + "." + expr->field;
+        auto it = enumVariantValues_.find(key);
+        if (it != enumVariantValues_.end())
+        {
+            return {Value::constInt(it->second), Type(Type::Kind::I64)};
+        }
+        // Fallthrough should not happen (Sema catches unknown variants)
+        return {Value::constInt(0), Type(Type::Kind::I64)};
+    }
+
     // Handle module-qualified identifier access (e.g., colors.BLACK)
     // The module is just a namespace - we load the symbol directly
     if (baseType->kind == TypeKindSem::Module)

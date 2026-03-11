@@ -168,6 +168,16 @@ struct Symbol
 
 /// @}
 
+/// @brief Snapshot of a symbol definition for position-based hover lookup.
+/// @details Captured during analysis by defineSymbol(). Persists after scopes
+/// are popped, enabling IDE queries for local variables, parameters, and fields.
+struct ScopedSymbol
+{
+    Symbol symbol;         ///< The full symbol metadata (kind, name, type, etc.)
+    SourceLoc loc;         ///< Position of the defining declaration/statement
+    std::string ownerType; ///< Entity name when inside entity body (empty otherwise)
+};
+
 //===----------------------------------------------------------------------===//
 /// @name Scope Management
 /// @brief Class for managing symbol scopes.
@@ -614,6 +624,13 @@ class Sema
     /// @details Registers the interface type and its method signatures.
     void analyzeInterfaceDecl(InterfaceDecl &decl);
 
+    /// @brief Analyze an enum declaration.
+    /// @param decl The enum declaration.
+    ///
+    /// @details Validates variant names are unique, resolves explicit values,
+    /// auto-increments gaps, and registers each variant in fieldTypes_.
+    void analyzeEnumDecl(EnumDecl &decl);
+
     /// @brief Validate that a type correctly implements all declared interfaces.
     /// @param typeName The name of the implementing type.
     /// @param loc The source location for error reporting.
@@ -733,6 +750,7 @@ class Sema
         bool coversSome = false;
         std::set<int64_t> coveredIntegers;
         std::set<bool> coveredBooleans;
+        std::set<std::string> coveredEnumVariants;
     };
 
     /// @brief Analyze a match pattern and collect bindings/coverage.
@@ -927,7 +945,9 @@ class Sema
     /// @brief Define a symbol in the current scope.
     /// @param name The symbol name.
     /// @param symbol The symbol information.
-    void defineSymbol(const std::string &name, Symbol symbol);
+    /// @param locOverride Optional source location for symbols without a decl pointer
+    ///        (local variables, parameters). If invalid, falls back to symbol.decl->loc.
+    void defineSymbol(const std::string &name, Symbol symbol, SourceLoc locOverride = {});
 
     /// @brief Look up a symbol by name.
     /// @param name The symbol name.
@@ -1108,6 +1128,17 @@ class Sema
     ///       are popped from the scope stack when their block finishes.
     std::vector<Symbol> getGlobalSymbols() const;
 
+    /// @brief Find the most relevant symbol at a given cursor position.
+    /// @param name The identifier name to look up.
+    /// @param line 1-based line number.
+    /// @param col 1-based column number.
+    /// @return Pointer to the matching ScopedSymbol, or nullptr if not found.
+    /// @details Searches all symbols captured during analysis (including locals
+    /// and parameters that are no longer in scope). Returns the innermost
+    /// (most recently defined before cursor) match.
+    const ScopedSymbol *findSymbolAtPosition(const std::string &name,
+                                             uint32_t line, uint32_t col) const;
+
     /// @brief Get all visible fields and methods of a user-defined type.
     /// @param type An entity, value, or interface type reference.
     /// @return Symbols for each exposed field and method.
@@ -1268,6 +1299,10 @@ class Sema
     /// Empty when at module level. Example: "MyLib.Internal"
     std::string namespacePrefix_;
 
+    /// @brief All symbol definitions captured during analysis for position-based lookup.
+    /// @details Populated by defineSymbol(). Persists after scopes are popped.
+    std::vector<ScopedSymbol> scopedSymbols_;
+
     /// @brief Owned lexical scope stack (scopes_[0] is global).
     std::vector<std::unique_ptr<Scope>> scopes_;
 
@@ -1290,6 +1325,9 @@ class Sema
 
     /// @brief Interface declarations for implementation checks.
     std::unordered_map<std::string, InterfaceDecl *> interfaceDecls_;
+
+    /// @brief Enum declarations for variant resolution.
+    std::unordered_map<std::string, EnumDecl *> enumDecls_;
 
     /// @brief Map from method signatures to function types.
     /// @details Key format: "TypeName.methodName"

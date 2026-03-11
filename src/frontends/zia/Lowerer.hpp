@@ -520,6 +520,11 @@ class Lowerer
     /// @details Uses unordered_map for O(1) lookup instead of O(log n).
     std::unordered_map<std::string, InterfaceTypeInfo> interfaceTypes_;
 
+    /// @brief Enum variant values: "EnumName.VariantName" -> I64 constant value.
+    /// @details Populated during lowerEnumDecl(), used during field expression
+    /// lowering to emit ConstInt for enum variant access.
+    std::unordered_map<std::string, int64_t> enumVariantValues_;
+
     /// @brief Current value type context (for self access).
     const ValueTypeInfo *currentValueType_{nullptr};
 
@@ -693,6 +698,10 @@ class Lowerer
     /// @brief Lower an interface declaration.
     /// @param decl The interface declaration.
     void lowerInterfaceDecl(InterfaceDecl &decl);
+
+    /// @brief Lower an enum declaration: register variant values.
+    /// @param decl The enum declaration.
+    void lowerEnumDecl(EnumDecl &decl);
 
     /// @brief Emit interface registration and itable binding for all interfaces.
     /// @details Emits a __zia_iface_init function that:

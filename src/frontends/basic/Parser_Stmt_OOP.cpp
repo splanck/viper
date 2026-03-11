@@ -940,6 +940,123 @@ StmtPtr Parser::parseTypeDecl()
     return decl;
 }
 
+/// @brief Check whether a token can serve as a user-defined name.
+/// @details BASIC's lexer uppercases all identifiers, so names like COLOR
+///          collide with keywords.  In contexts where a user-defined name is
+///          expected (enum names, member names) we accept any token whose
+///          lexeme begins with an alphabetic character — this covers both
+///          identifiers and keyword tokens while excluding operators and
+///          punctuation.
+static bool canBeUsedAsName(const Token &tok)
+{
+    if (tok.kind == TokenKind::Identifier)
+        return true;
+    return !tok.lexeme.empty() &&
+           std::isalpha(static_cast<unsigned char>(tok.lexeme[0]));
+}
+
+/// @brief Parse an ENUM declaration.
+/// @details Parses `ENUM Name ... END ENUM` including named members with optional
+///          explicit integer values. Members without explicit values auto-increment
+///          from the previous value (starting at 0).
+/// @return Newly allocated @ref EnumDecl representing the parsed declaration.
+StmtPtr Parser::parseEnumDecl()
+{
+    auto loc = peek().loc;
+    consume(); // ENUM
+
+    // Accept identifiers or keywords as enum name (e.g., COLOR is a keyword in BASIC)
+    Token nameTok = peek();
+    if (canBeUsedAsName(nameTok))
+    {
+        consume();
+    }
+    else
+    {
+        nameTok = expect(TokenKind::Identifier);
+    }
+
+    auto decl = std::make_unique<EnumDecl>();
+    decl->loc = loc;
+    decl->name = nameTok.lexeme;
+
+    if (at(TokenKind::EndOfLine))
+        consume();
+
+    while (!at(TokenKind::EndOfFile))
+    {
+        while (at(TokenKind::EndOfLine))
+            consume();
+
+        if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordEnum)
+            break;
+
+        // Skip line numbers if present
+        if (at(TokenKind::Number))
+        {
+            if (canBeUsedAsName(peek(1)) ||
+                (peek(1).kind == TokenKind::KeywordEnd && peek(2).kind == TokenKind::KeywordEnum))
+            {
+                consume();
+                continue;
+            }
+        }
+
+        // Accept identifiers or keywords as member names
+        Token memberNameTok = peek();
+        if (canBeUsedAsName(memberNameTok))
+        {
+            consume();
+        }
+        else
+        {
+            memberNameTok = expect(TokenKind::Identifier);
+            if (memberNameTok.kind != TokenKind::Identifier)
+                break;
+        }
+
+        EnumDecl::Member member;
+        member.name = memberNameTok.lexeme;
+
+        // Optional explicit value: = <integer>
+        if (at(TokenKind::Equal))
+        {
+            consume(); // =
+            bool negative = false;
+            if (at(TokenKind::Minus))
+            {
+                negative = true;
+                consume();
+            }
+            Token valTok = expect(TokenKind::Number);
+            if (valTok.kind == TokenKind::Number)
+            {
+                long long val = std::stoll(valTok.lexeme);
+                member.value = negative ? -val : val;
+            }
+        }
+
+        decl->members.push_back(std::move(member));
+
+        if (at(TokenKind::EndOfLine))
+            consume();
+    }
+
+    while (at(TokenKind::EndOfLine))
+        consume();
+
+    if (at(TokenKind::Number) && peek(1).kind == TokenKind::KeywordEnd &&
+        peek(2).kind == TokenKind::KeywordEnum)
+    {
+        consume();
+    }
+
+    expect(TokenKind::KeywordEnd);
+    expect(TokenKind::KeywordEnum);
+
+    return decl;
+}
+
 /// @brief Parse an INTERFACE declaration.
 /// @details Parses `INTERFACE Name ... END INTERFACE` including abstract method
 ///          signatures (SUB/FUNCTION declarations without bodies). Interface methods

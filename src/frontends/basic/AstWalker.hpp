@@ -756,6 +756,13 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         callAfter(stmt);
     }
 
+    void visit(const EnumDecl &stmt) override
+    {
+        callBefore(stmt);
+        // ENUM members are compile-time constants without nested AST nodes.
+        callAfter(stmt);
+    }
+
     void visit(const InterfaceDecl &stmt) override
     {
         callBefore(stmt);

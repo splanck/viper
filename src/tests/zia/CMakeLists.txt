@@ -27,6 +27,11 @@ function(viper_add_zia_tests)
     target_link_libraries(test_zia_types PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_types test_zia_types)
 
+    # Enum tests (declarations, type checking, lowering)
+    viper_add_test(test_zia_enums ${_VIPER_ZIA_DIR}/test_zia_enums.cpp)
+    target_link_libraries(test_zia_enums PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_enums test_zia_enums)
+
     # Expression tests (arithmetic, operators)
     viper_add_test(test_zia_expressions ${_VIPER_ZIA_DIR}/test_zia_expressions.cpp)
     target_link_libraries(test_zia_expressions PRIVATE ${VIPER_ZIA_LIBS})

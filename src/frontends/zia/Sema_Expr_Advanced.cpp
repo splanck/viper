@@ -140,6 +140,20 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
                 return sym->type;
             }
 
+            // Enum variant access (e.g., Color.Red)
+            if (typeIt->second && typeIt->second->kind == TypeKindSem::Enum)
+            {
+                std::string key = dottedBase + "." + expr->field;
+                auto fieldIt = fieldTypes_.find(key);
+                if (fieldIt != fieldTypes_.end())
+                {
+                    return fieldIt->second;
+                }
+                error(expr->loc,
+                      "Enum '" + dottedBase + "' has no variant '" + expr->field + "'");
+                return types::unknown();
+            }
+
             // Return a module type so downstream code can resolve further
             return types::module(dottedBase);
         }
@@ -213,6 +227,19 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
         // If not found in global scope, report error
         error(expr->loc,
               "Module '" + baseType->name + "' has no exported symbol '" + expr->field + "'");
+        return types::unknown();
+    }
+
+    // Check if this is an enum variant access (e.g., Color.Red)
+    if (baseType && baseType->kind == TypeKindSem::Enum)
+    {
+        std::string key = baseType->name + "." + expr->field;
+        auto fieldIt = fieldTypes_.find(key);
+        if (fieldIt != fieldTypes_.end())
+        {
+            return fieldIt->second;
+        }
+        error(expr->loc, "Enum '" + baseType->name + "' has no variant '" + expr->field + "'");
         return types::unknown();
     }
 
@@ -635,6 +662,12 @@ bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
                 {
                     coverage.coversNull = true;
                 }
+                else if (pattern.literal->kind == ExprKind::Field && litType &&
+                         litType->kind == TypeKindSem::Enum)
+                {
+                    auto *fieldExpr = static_cast<FieldExpr *>(pattern.literal.get());
+                    coverage.coveredEnumVariants.insert(fieldExpr->field);
+                }
             }
             return true;
         }
@@ -797,7 +830,7 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr)
             sym.name = binding.first;
             sym.type = binding.second;
             sym.isFinal = true;
-            defineSymbol(binding.first, sym);
+            defineSymbol(binding.first, sym, expr->loc);
         }
 
         if (arm.pattern.guard)
@@ -824,6 +857,30 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr)
                 error(expr->loc,
                       "Non-exhaustive patterns: match on Boolean must cover both true "
                       "and false, or use a wildcard (_)");
+            }
+        }
+        else if (scrutineeType && scrutineeType->kind == TypeKindSem::Enum)
+        {
+            auto it = enumDecls_.find(scrutineeType->name);
+            if (it != enumDecls_.end())
+            {
+                size_t totalVariants = it->second->variants.size();
+                if (coverage.coveredEnumVariants.size() < totalVariants)
+                {
+                    std::string missing;
+                    for (const auto &v : it->second->variants)
+                    {
+                        if (coverage.coveredEnumVariants.find(v.name) ==
+                            coverage.coveredEnumVariants.end())
+                        {
+                            if (!missing.empty())
+                                missing += ", ";
+                            missing += scrutineeType->name + "." + v.name;
+                        }
+                    }
+                    error(expr->loc,
+                          "Non-exhaustive patterns: missing variants " + missing);
+                }
             }
         }
         else if (scrutineeType && scrutineeType->isIntegral())
@@ -952,7 +1009,7 @@ TypeRef Sema::analyzeLambda(LambdaExpr *expr)
         sym.name = param.name;
         sym.type = paramType;
         sym.isFinal = true;
-        defineSymbol(param.name, sym);
+        defineSymbol(param.name, sym, expr->loc);
         markInitialized(param.name);
     }
 

@@ -780,6 +780,34 @@ var count = 0;
 count = 10;  // No 'var', just assignment
 ```
 
+**Enum variant duplicates** are a special case of this error. Each variant name within an enum must be unique:
+
+**Zia:**
+```rust
+// Problem: Duplicate variant
+enum Color { Red, Green, Red }  // Error: duplicate variant 'Red'
+
+// Fix: Remove duplicate
+enum Color { Red, Green, Blue }
+```
+
+**BASIC:**
+```basic
+' Problem: Duplicate variant
+ENUM Tint
+  RED
+  GREEN
+  RED       ' Error B2120: duplicate enum variant
+END ENUM
+
+' Fix: Remove duplicate
+ENUM Tint
+  RED
+  GREEN
+  BLUE
+END ENUM
+```
+
 **Prevention:** Use meaningful, specific names. Search your codebase before adding new names.
 
 ---

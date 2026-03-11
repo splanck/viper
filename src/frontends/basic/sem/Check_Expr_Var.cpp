@@ -57,6 +57,12 @@ SemanticAnalyzer::Type analyzeVarExpr(SemanticAnalyzer &analyzer, VarExpr &expr)
 
     if (!context.hasSymbol(expr.name))
     {
+        // Enum names are not variables — suppress the error when the name
+        // matches a declared enum (e.g., `Tint.RED` parses as VarExpr("TINT")
+        // + MemberAccessExpr).  The lowerer resolves the variant via OopIndex.
+        if (context.isEnumName(expr.name))
+            return Type::Int;
+
         // Find closest matching symbol for suggestion using Levenshtein distance
         std::string best;
         std::size_t bestDist = std::numeric_limits<std::size_t>::max();

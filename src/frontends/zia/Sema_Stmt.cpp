@@ -91,7 +91,7 @@ void Sema::analyzeStmt(Stmt *stmt)
                     sym.kind = Symbol::Kind::Variable;
                     sym.name = tryStmt->catchVar;
                     sym.type = types::ptr();
-                    defineSymbol(tryStmt->catchVar, sym);
+                    defineSymbol(tryStmt->catchVar, sym, tryStmt->loc);
                 }
                 analyzeStmt(tryStmt->catchBody.get());
                 popScope();
@@ -252,7 +252,7 @@ void Sema::analyzeVarStmt(VarStmt *stmt)
     sym.name = stmt->name;
     sym.type = varType;
     sym.isFinal = stmt->isFinal;
-    defineSymbol(stmt->name, sym);
+    defineSymbol(stmt->name, sym, stmt->loc);
 
     // Track definite initialization
     if (stmt->initializer)
@@ -525,7 +525,7 @@ void Sema::analyzeForInStmt(ForInStmt *stmt)
     sym.name = stmt->variable;
     sym.type = elementType ? elementType : types::unknown();
     sym.isFinal = true;
-    defineSymbol(stmt->variable, sym);
+    defineSymbol(stmt->variable, sym, stmt->loc);
     markInitialized(stmt->variable);
 
     if (stmt->isTuple)
@@ -535,7 +535,7 @@ void Sema::analyzeForInStmt(ForInStmt *stmt)
         secondSym.name = stmt->secondVariable;
         secondSym.type = secondType ? secondType : types::unknown();
         secondSym.isFinal = true;
-        defineSymbol(stmt->secondVariable, secondSym);
+        defineSymbol(stmt->secondVariable, secondSym, stmt->loc);
         markInitialized(stmt->secondVariable);
     }
 
@@ -606,7 +606,7 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt)
             sym.name = binding.first;
             sym.type = binding.second;
             sym.isFinal = true;
-            defineSymbol(binding.first, sym);
+            defineSymbol(binding.first, sym, stmt->loc);
         }
 
         if (arm.pattern.guard)
@@ -631,6 +631,30 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt)
                 error(stmt->loc,
                       "Non-exhaustive patterns: match on Boolean must cover both true "
                       "and false, or use a wildcard (_)");
+            }
+        }
+        else if (scrutineeType && scrutineeType->kind == TypeKindSem::Enum)
+        {
+            auto it = enumDecls_.find(scrutineeType->name);
+            if (it != enumDecls_.end())
+            {
+                size_t totalVariants = it->second->variants.size();
+                if (coverage.coveredEnumVariants.size() < totalVariants)
+                {
+                    std::string missing;
+                    for (const auto &v : it->second->variants)
+                    {
+                        if (coverage.coveredEnumVariants.find(v.name) ==
+                            coverage.coveredEnumVariants.end())
+                        {
+                            if (!missing.empty())
+                                missing += ", ";
+                            missing += scrutineeType->name + "." + v.name;
+                        }
+                    }
+                    error(stmt->loc,
+                          "Non-exhaustive patterns: missing variants " + missing);
+                }
             }
         }
         else if (scrutineeType && scrutineeType->isIntegral())

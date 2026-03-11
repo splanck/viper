@@ -267,6 +267,7 @@ class Parser
     StmtPtr parseClassDecl();
     StmtPtr parseInterfaceDecl();
     StmtPtr parseTypeDecl();
+    StmtPtr parseEnumDecl();
     StmtPtr parseDeleteStatement();
     /// @brief Parse a TRY/CATCH statement.
     /// @return Newly constructed TryCatchStmt or nullptr on error.
