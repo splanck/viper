@@ -1177,7 +1177,10 @@ static void printStmt(const Stmt &stmt, Printer &p)
         case StmtKind::Try:
         {
             const auto &s = static_cast<const TryStmt &>(stmt);
-            p.line("TryStmt " + locStr(s.loc));
+            std::string desc = "TryStmt " + locStr(s.loc);
+            if (!s.catchTypeName.empty())
+                desc += " catchType=" + s.catchTypeName;
+            p.line(desc);
             break;
         }
         case StmtKind::Throw:

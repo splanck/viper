@@ -742,7 +742,7 @@ Time 0:30 - Alice sends "/quit"
 module ChatClient;
 
 bind Viper.Network;
-bind Viper.Threads;
+bind Thread = Viper.Threads.Thread;
 bind Viper.Terminal;
 bind Viper.Time;
 
@@ -776,7 +776,7 @@ entity ChatClient {
 
         // Start a separate thread to receive messages
         // This lets us receive while also waiting for user input
-        var receiver = Thread.spawn(self.receiveLoop);
+        var receiver = Thread.Start(self.receiveLoop);
 
         // Main thread handles sending messages
         while self.running {
@@ -1262,8 +1262,10 @@ func onButtonClick() {
 }
 
 // GOOD: Use a separate thread
+bind Thread = Viper.Threads.Thread;
+
 func onButtonClick() {
-    Thread.spawn(func() {
+    Thread.Start(func() {
         var data = Http.Get(slowUrl);
 
         // Update UI from main thread

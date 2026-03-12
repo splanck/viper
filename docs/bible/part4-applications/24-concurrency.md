@@ -8,10 +8,6 @@ This is not acceptable. Modern users expect applications that stay responsive, t
 
 This chapter teaches you to write programs that do many things at once. This is *concurrency* — one of the most powerful and challenging topics in programming.
 
-> **Implementation Status:** This chapter describes Viper's planned concurrency model.
-> Currently available: `Viper.Threads.ConcurrentQueue` and `Viper.Threads.ConcurrentMap`
-> for safe data sharing. Thread spawning, atomics, and futures are planned features.
-
 ---
 
 ## Why Concurrency Matters
@@ -20,666 +16,417 @@ Consider a program that downloads 100 images:
 
 ```rust
 // Sequential: ~100 seconds (1 second per image)
-for url in imageUrls {
+bind Http = Viper.Network.Http;
+
+for url in urls {
     var image = Http.Get(url);
     images.Push(image);
 }
 ```
 
-Most of that time is spent *waiting*. Your computer sends a request, then sits idle for perhaps 900 milliseconds while the server processes it and sends bytes across the internet. Only then does it start the next download. Your CPU, capable of billions of operations per second, twiddles its thumbs.
+Most of that time is spent *waiting*. Your CPU, capable of billions of operations per second, sits idle while the network responds. Now imagine running downloads in parallel — same work, 50-100x faster.
 
-Now imagine downloading them in parallel:
-
-```rust
-// Parallel: ~1-2 seconds (all at once)
-var tasks = [];
-for url in imageUrls {
-    tasks.Push(Thread.spawn(func() {
-        return Http.Get(url);
-    }));
-}
-for task in tasks {
-    images.Push(task.result());
-}
-```
-
-Same work, 50-100x faster. While one download waits for network response, the others proceed. The CPU stays busy orchestrating everything.
-
-That's the power of concurrency. It lets your programs:
+Concurrency lets your programs:
 
 - **Stay responsive**: The user interface remains active while background work proceeds
 - **Run faster**: Multiple CPU cores work on different parts of a problem simultaneously
-- **Model reality**: The real world is concurrent — multiple things happen at once, and programs that model real situations benefit from matching that structure
+- **Model reality**: The real world is concurrent — multiple things happen at once
 - **Handle many clients**: A web server must handle thousands of users at the same time
 
-But concurrency comes with serious challenges. When multiple things happen simultaneously, they can interfere with each other in subtle, hard-to-reproduce ways. Programs that work perfectly 99% of the time suddenly fail. Bugs appear under heavy load and vanish when you try to debug them.
-
-This chapter teaches both the power and the pitfalls.
+But concurrency comes with serious challenges. When multiple things happen simultaneously, they can interfere with each other in subtle, hard-to-reproduce ways. This chapter teaches both the power and the pitfalls.
 
 ---
 
-## Mental Models for Concurrency
+## 24.1 Threads
 
-Before diving into code, let's build intuition. Concurrency is easier to understand through analogy.
+A *thread* is an independent path of execution within your program. All threads share the same memory, but each has its own instruction pointer — its own "place" in the code.
 
-### The Kitchen with Multiple Cooks
+Viper provides threads through the `Viper.Threads.Thread` class.
 
-Imagine a restaurant kitchen. One cook could prepare an entire meal: chop vegetables, cook the protein, make the sauce, plate everything. But it would be slow.
-
-Now imagine four cooks working together. One handles vegetables, another the protein, a third the sauces, the fourth plates and garnishes. The meal gets prepared much faster.
-
-But coordination is crucial. If two cooks reach for the same knife, there's a problem. If one cook needs ingredients the other hasn't finished preparing, they must wait. If everyone tries to use the stove at once, chaos ensues.
-
-Concurrency is exactly this. Multiple workers (threads) doing tasks simultaneously. Shared resources (memory, files) that require coordination. Dependencies between tasks that require proper ordering.
-
-### Juggling Balls
-
-A juggler keeps multiple balls in the air, but only handles one at a time. They throw one up, quickly catch another, throw it, catch the next. To an observer, it looks like everything happens simultaneously.
-
-This is how *concurrency on a single CPU core* works. The processor rapidly switches between tasks — a few milliseconds on one, then switch to another. Each task makes progress, but only one executes at any instant.
-
-With multiple CPU cores, true parallelism occurs — multiple balls actually in your hands at the same moment. But even then, a program with 100 tasks and 4 cores must juggle.
-
-### The Assembly Line
-
-A car factory uses an assembly line. Station 1 adds the frame. Station 2 installs the engine. Station 3 adds wheels. Station 4 paints. Each station works on a different car simultaneously.
-
-This *pipeline* model is common in concurrent programs. Data flows through stages, each handled by a different thread. While one thread processes item A at stage 2, another processes item B at stage 1.
-
----
-
-## Processes vs. Threads: The Conceptual Foundation
-
-To understand concurrency in programs, you need to understand how operating systems organize running code.
-
-### What is a Process?
-
-When you double-click an application, the operating system creates a *process*. A process is an isolated instance of a running program. It has:
-
-- Its own memory space (variables, data)
-- Its own program counter (tracking which instruction executes next)
-- Its own resources (open files, network connections)
-
-If you open two copies of a word processor, those are two separate processes. They can't accidentally interfere with each other because each has isolated memory. If one crashes, the other continues running.
-
-This isolation is safe but makes processes expensive. Creating a new process requires the operating system to set up all this infrastructure. Communication between processes requires special mechanisms (pipes, files, network sockets) because they can't directly share memory.
-
-### What is a Thread?
-
-A *thread* is a lightweight execution path within a process. Multiple threads share the same memory space but each has its own program counter — each follows its own path through the code.
-
-Think of a process as an apartment. A thread is a person living in that apartment. Multiple people (threads) share the kitchen, bathroom, and living room (memory), but each follows their own daily schedule (execution path).
-
-Creating threads is fast because they share the process's existing infrastructure. Communication is easy because they access the same memory. But this sharing is also dangerous — if two threads modify the same data simultaneously, corruption can occur.
-
-### Concurrency vs. Parallelism
-
-These terms are often confused but mean different things:
-
-**Concurrency** is about *structure*. A concurrent program is designed to handle multiple tasks, managing their execution and coordination. Those tasks might run simultaneously, or might take turns.
-
-**Parallelism** is about *execution*. Parallel execution means tasks literally run at the same instant, on different CPU cores.
-
-You can have concurrency without parallelism. A single-core computer runs concurrent programs by rapidly switching between threads. The structure is concurrent; the execution is not parallel.
-
-You can have parallelism without thoughtful concurrency. Running the same independent computation on multiple cores is parallel but doesn't involve the coordination challenges we'll discuss.
-
-Most interesting programs are both concurrent (structured to handle multiple tasks) and parallel (executing on multiple cores). Modern computers have 4, 8, even 128 cores. Software that uses only one core wastes most of the machine's capability.
-
----
-
-## The Problems Concurrency Solves
-
-Why go through the complexity? Because concurrency solves real problems.
-
-### Responsiveness
-
-A photo editing application needs to stay responsive while applying filters. Without concurrency, clicking "Apply Blur" would freeze the interface for seconds. With concurrency, the filtering runs on a background thread while the main thread keeps the interface responsive. You can cancel the operation, see progress, work on other things.
+### Starting a Thread
 
 ```rust
-func applyFilter(image: Image, filter: Filter) {
-    // Show progress indicator
-    progressBar.show();
+bind Thread = Viper.Threads.Thread;
 
-    // Run expensive work in background
-    var worker = Thread.spawn(func() {
-        return filter.apply(image);
+func start() {
+    // Start a new thread that runs a function
+    var t = Thread.Start(func() {
+        Viper.Terminal.Say("Hello from another thread!");
     });
 
-    // Main thread stays responsive
-    // User can click Cancel, resize window, etc.
-
-    var result = worker.result();
-    progressBar.hide();
-    displayImage(result);
+    // Wait for the thread to finish
+    t.Join();
+    Viper.Terminal.Say("Thread completed.");
 }
 ```
 
-### Performance
+`Thread.Start` takes a function and runs it on a new OS thread. It returns a thread handle that you use to manage the thread's lifecycle.
 
-Some computations can be split across multiple cores. Sorting a million numbers is faster if four cores each sort 250,000, then merge results. Processing 1000 images finishes in a quarter of the time with four parallel workers.
+### Thread Properties
+
+Every thread handle exposes useful properties:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Id` | `Integer` | OS-assigned thread identifier |
+| `IsAlive` | `Boolean` | Whether the thread is still running |
+| `HasError` | `Boolean` | Whether the thread terminated with an error |
+| `Error` | `String` | Error message (if `HasError` is true) |
 
 ```rust
-func parallelSum(numbers: List[Integer]) -> Integer {
-    var numCores = 4;
-    var chunkSize = numbers.Length / numCores;
-    var threads: List[Thread<Integer>] = [];
+bind Thread = Viper.Threads.Thread;
 
-    // Launch parallel workers
-    for i in 0..numCores {
-        var start = i * chunkSize;
-        var end = if i == numCores - 1 { numbers.Length } else { (i + 1) * chunkSize };
+func start() {
+    var t = Thread.Start(func() {
+        Thread.Sleep(100);  // Sleep 100 milliseconds
+    });
 
-        threads.Push(Thread.spawn(func() {
-            var sum = 0;
-            for j in start..end {
-                sum += numbers[j];
+    Viper.Terminal.Say("Thread ID: " + toString(t.Id));
+    Viper.Terminal.Say("Alive? " + toString(t.IsAlive));
+
+    t.Join();
+    Viper.Terminal.Say("Still alive? " + toString(t.IsAlive));
+}
+```
+
+### Joining Threads
+
+`Join()` blocks the calling thread until the target thread finishes. Without joining, the main thread might exit before worker threads complete.
+
+```rust
+bind Thread = Viper.Threads.Thread;
+
+func start() {
+    var t = Thread.Start(func() {
+        // Simulate work
+        Thread.Sleep(500);
+    });
+
+    // TryJoin returns immediately: true if done, false if still running
+    var done = t.TryJoin();
+
+    // JoinFor waits up to N milliseconds: true if done, false if timed out
+    var finished = t.JoinFor(1000);
+}
+```
+
+### Safe Thread Operations
+
+`StartSafe` wraps the thread body in error handling, so unhandled errors don't crash the program:
+
+```rust
+bind Thread = Viper.Threads.Thread;
+
+func start() {
+    var t = Thread.StartSafe(func() {
+        // If this throws, the error is captured
+        var x = 1 / 0;
+    });
+
+    t.SafeJoin();  // Safe join that won't propagate errors
+
+    if (t.HasError) {
+        Viper.Terminal.Say("Thread error: " + t.Error);
+    }
+}
+```
+
+### Thread Utilities
+
+| Method | Description |
+|--------|-------------|
+| `Thread.Sleep(ms)` | Pause the current thread for `ms` milliseconds |
+| `Thread.Yield()` | Give other threads a chance to run |
+
+---
+
+## 24.2 Shared State and Monitors
+
+When threads share data, they can corrupt it. Two threads incrementing a counter simultaneously might both read the same value, both add 1, and both write back — losing an increment. This is a *race condition*.
+
+### Monitor (Mutual Exclusion)
+
+A `Monitor` provides mutual exclusion: only one thread can hold the monitor at a time. Other threads that try to enter will block until it's released.
+
+```rust
+bind Thread = Viper.Threads.Thread;
+bind Monitor = Viper.Threads.Monitor;
+
+var counter = 0;
+var lock = new Object();  // Any object can serve as a monitor target
+
+func incrementCounter() {
+    Monitor.Enter(lock);
+    counter = counter + 1;
+    Monitor.Exit(lock);
+}
+
+func start() {
+    var threads: List[Object] = [];
+
+    // Spawn 10 threads, each incrementing 100 times
+    for i in 0..10 {
+        var t = Thread.Start(func() {
+            for j in 0..100 {
+                incrementCounter();
             }
-            return sum;
-        }));
+        });
+        threads.Push(t);
     }
 
-    // Combine results
-    var total = 0;
-    for thread in threads {
-        total += thread.result();
+    // Wait for all threads
+    for t in threads {
+        Thread.Join(t);
     }
-    return total;
+
+    Viper.Terminal.Say("Counter: " + toString(counter));  // Should be 1000
 }
 ```
 
-### Modeling Real-World Systems
+### Monitor Methods
 
-Many real systems are inherently concurrent. A web server handles many clients simultaneously. A game updates physics, AI, rendering, and networking independently. A chat application sends and receives messages concurrently.
+| Method | Description |
+|--------|-------------|
+| `Monitor.Enter(obj)` | Acquire the monitor (blocks if held) |
+| `Monitor.TryEnter(obj)` | Try to acquire without blocking (returns `Boolean`) |
+| `Monitor.TryEnterFor(obj, ms)` | Try to acquire with timeout |
+| `Monitor.Exit(obj)` | Release the monitor |
+| `Monitor.Wait(obj)` | Release and wait for notification |
+| `Monitor.WaitFor(obj, ms)` | Wait with timeout |
+| `Monitor.Pause(obj)` | Notify one waiting thread |
+| `Monitor.PauseAll(obj)` | Notify all waiting threads |
 
-Modeling these with concurrent code is natural. Each concern gets its own thread, mirroring the real-world structure.
-
-### Utilizing I/O Wait Time
-
-When a program reads from disk or network, it spends most of its time *waiting*. A database query might take 50 milliseconds, but the CPU only works for 0.1 milliseconds preparing the request and processing the response.
-
-Without concurrency, the CPU idles during that wait. With concurrency, other threads run during the wait time, keeping the processor busy. A server that handles 1000 concurrent requests might only need 10 threads — because at any moment, most requests are waiting for I/O, and the CPU rapidly services whichever ones need attention.
-
----
-
-## The Problems Concurrency Creates
-
-With great power comes great peril. Concurrency introduces an entirely new category of bugs — ones that are subtle, intermittent, and maddening to debug.
-
-### Race Conditions: The Fundamental Problem
-
-A *race condition* occurs when program behavior depends on the relative timing of operations in different threads. The outcome is unpredictable.
-
-Here's the classic example:
+### Producer-Consumer with Monitor
 
 ```rust
-// DANGEROUS: Race condition!
-var counter = 0;
+bind Thread = Viper.Threads.Thread;
+bind Monitor = Viper.Threads.Monitor;
 
-var t1 = Thread.spawn(func() {
-    for i in 0..100000 {
-        counter += 1;  // Not atomic!
+var buffer: List[Integer] = [];
+var lock = new Object();
+var done = false;
+
+func producer() {
+    for i in 1..=10 {
+        Monitor.Enter(lock);
+        buffer.Push(i);
+        Monitor.Pause(lock);    // Wake a waiting consumer
+        Monitor.Exit(lock);
+        Thread.Sleep(50);
     }
-});
 
-var t2 = Thread.spawn(func() {
-    for i in 0..100000 {
-        counter += 1;  // Race!
-    }
-});
+    Monitor.Enter(lock);
+    done = true;
+    Monitor.PauseAll(lock);     // Wake all consumers
+    Monitor.Exit(lock);
+}
 
-t1.Join();
-t2.Join();
-
-Terminal.Say("Counter: " + counter);
-// Expected: 200000
-// Actual: Something less, different each run!
-```
-
-Run this program 10 times and you'll get 10 different results. Maybe 183,247. Then 176,892. Then 191,004. Never 200,000.
-
-Why? Because `counter += 1` looks like one operation but is actually three:
-
-1. Read the current value of counter into a CPU register
-2. Add 1 to the register
-3. Write the register back to counter
-
-When two threads execute these steps concurrently, they can interleave disastrously.
-
-### Step-by-Step: How Race Conditions Corrupt Data
-
-Let's trace what happens when both threads try to increment a counter that starts at 5:
-
-```text
-Initial: counter = 5
-
-Thread 1                          Thread 2
---------                          --------
-Read counter (gets 5)
-                                  Read counter (gets 5)
-Add 1 (register = 6)
-                                  Add 1 (register = 6)
-Write counter (counter = 6)
-                                  Write counter (counter = 6)
-
-Final: counter = 6 (should be 7!)
-```
-
-Both threads read 5, both compute 6, both write 6. One increment was lost. This is called a *lost update*.
-
-Over 200,000 iterations, thousands of increments get lost. The exact number varies based on timing, which varies based on what else the computer is doing, temperature, phase of the moon, cosmic rays. It's utterly unpredictable.
-
-### The Terrifying Reality
-
-Race conditions don't crash your program with a nice error message. They silently corrupt data. Your bank balance might be wrong. Your game might lose inventory items. Your document might lose edits.
-
-Worse, race conditions are *intermittent*. The bug might not appear during testing because it requires specific timing. It might only manifest under heavy load, or on certain hardware, or once a month. You can't reliably reproduce it, which makes debugging nearly impossible.
-
-This is why concurrent programming requires extreme discipline.
-
-### Data Races vs. Race Conditions
-
-A *data race* specifically refers to unsynchronized access where at least one access is a write. The `counter += 1` example is a data race.
-
-A *race condition* is the broader category: any bug where behavior depends on timing. You can have race conditions even with synchronized access if the logic is wrong.
-
-```rust
-// No data race (proper locking) but still a race condition
-func transfer(from: Account, to: Account, amount: Number) {
-    from.mutex.lock();
-    if from.balance >= amount {
-        from.balance -= amount;
-        from.mutex.unlock();
-
-        to.mutex.lock();
-        to.balance += amount;
-        to.mutex.unlock();
-    } else {
-        from.mutex.unlock();
+func consumer(id: Integer) {
+    while (true) {
+        Monitor.Enter(lock);
+        while (buffer.count() == 0 && !done) {
+            Monitor.Wait(lock);  // Release lock and sleep until notified
+        }
+        if (buffer.count() > 0) {
+            var item = buffer.get(0);
+            buffer.RemoveAt(0);
+            Monitor.Exit(lock);
+            Viper.Terminal.Say("Consumer " + toString(id) + " got: " + toString(item));
+        } else {
+            Monitor.Exit(lock);
+            if (done) { break; }
+        }
     }
 }
 ```
 
-The locks prevent data corruption, but there's a window between unlocking `from` and locking `to` where another thread might see inconsistent state (money subtracted from `from` but not yet added to `to`). The total money in the system temporarily decreases, which might cause other code to make wrong decisions.
+### SafeI64 (Atomic Integer)
 
----
-
-## Threads: Parallel Execution
-
-> **Planned Feature:** `Thread.spawn`, `Thread.Join`, and `thread.result()` are planned APIs
-> not yet available in Viper. The examples below illustrate the intended design.
-
-Now let's learn to write concurrent code, starting with threads.
-
-A *thread* is an independent sequence of execution. Your program starts with one thread (the main thread). You can create more.
+For simple numeric shared state, `SafeI64` provides lock-free atomic operations:
 
 ```rust
-bind Viper.Threads;
-bind Viper.Terminal;
-bind Viper.Time;
+bind Thread = Viper.Threads.Thread;
+bind SafeI64 = Viper.Threads.SafeI64;
 
 func start() {
-    Terminal.Say("Main thread starting");
+    var counter = SafeI64.New(0);  // Create atomic counter starting at 0
 
-    var thread = Thread.spawn(func() {
-        Terminal.Say("Worker thread running");
-        Time.Clock.Sleep(1000);
-        Terminal.Say("Worker thread done");
+    var t1 = Thread.Start(func() {
+        for i in 0..1000 {
+            counter.Add(1);  // Atomic increment
+        }
     });
 
-    Terminal.Say("Main thread continues");
+    var t2 = Thread.Start(func() {
+        for i in 0..1000 {
+            counter.Add(1);
+        }
+    });
 
-    thread.Join();  // Wait for worker to finish
+    t1.Join();
+    t2.Join();
 
-    Terminal.Say("All done");
+    Viper.Terminal.Say("Counter: " + toString(counter.Get()));  // Always 2000
 }
 ```
 
-`Thread.spawn` creates a new thread that runs the provided function. The main thread continues immediately — it doesn't wait for the worker.
+| Method | Description |
+|--------|-------------|
+| `SafeI64.New(initial)` | Create with initial value |
+| `.Get()` | Read current value atomically |
+| `.Set(value)` | Write value atomically |
+| `.Add(delta)` | Add and return new value atomically |
+| `.CompareExchange(expected, desired)` | CAS: set to `desired` if current equals `expected`, returns old value |
 
-`thread.Join()` blocks until the thread completes. Without it, the main thread might exit while the worker is still running.
-
-### Unpredictable Interleaving
-
-Output might be:
-```text
-Main thread starting
-Main thread continues
-Worker thread running
-Worker thread done
-All done
-```
-
-Or:
-```text
-Main thread starting
-Worker thread running
-Main thread continues
-Worker thread done
-All done
-```
-
-The order varies because threads run independently. The operating system schedules them unpredictably.
-
-This unpredictability is *fundamental*. You cannot control or rely on the exact interleaving of thread operations. Your code must be correct regardless of which thread runs when.
-
-### Threads with Return Values
-
-Threads can return values:
+The `CompareExchange` operation (CAS) is the building block for lock-free algorithms:
 
 ```rust
-var thread = Thread.spawn(func() -> Integer {
-    var sum = 0;
-    for i in 0..1000000 {
-        sum += i;
+bind SafeI64 = Viper.Threads.SafeI64;
+
+// Lock-free maximum update
+func atomicMax(atom: SafeI64, candidate: Integer) {
+    while (true) {
+        var current = atom.Get();
+        if (candidate <= current) { break; }
+        var old = atom.CompareExchange(current, candidate);
+        if (old == current) { break; }  // Success
+        // Another thread changed it — retry
     }
-    return sum;
-});
-
-// Do other work here while thread computes...
-prepareOutput();
-
-var result = thread.result();  // Waits and gets result
-Terminal.Say("Sum: " + result);
-```
-
-`thread.result()` blocks until the thread finishes, then returns whatever the thread's function returned.
-
-### Multiple Threads: Dividing Work
-
-Here's a practical example — computing a sum in parallel:
-
-```rust
-func processChunk(data: List[Integer], start: Integer, end: Integer) -> Integer {
-    var sum = 0;
-    for i in start..end {
-        sum += data[i];
-    }
-    return sum;
 }
-
-func parallelSum(data: List[Integer]) -> Integer {
-    var numThreads = 4;
-    var chunkSize = data.Length / numThreads;
-    var threads: List[Thread<Integer>] = [];
-
-    // Launch threads
-    for i in 0..numThreads {
-        var start = i * chunkSize;
-        var end = if i == numThreads - 1 { data.Length } else { (i + 1) * chunkSize };
-
-        threads.Push(Thread.spawn(func() {
-            return processChunk(data, start, end);
-        }));
-    }
-
-    // Gather results
-    var total = 0;
-    for thread in threads {
-        total += thread.result();
-    }
-
-    return total;
-}
-```
-
-Each thread processes an independent chunk. No shared mutable state, so no race conditions. The final combination happens in the main thread after all workers finish.
-
----
-
-## Synchronization: Protecting Shared Data
-
-When threads must share mutable data, you need *synchronization* — mechanisms that coordinate access.
-
-### Mutexes: The Fundamental Lock
-
-A *mutex* (mutual exclusion) ensures only one thread accesses a protected resource at a time. Think of it as a bathroom lock. When someone's inside, the door is locked, and others must wait.
-
-```rust
-bind Viper.Threads;
-
-var counter = 0;
-var mutex = Mutex.create();
-
-var t1 = Thread.spawn(func() {
-    for i in 0..100000 {
-        mutex.lock();    // Acquire the lock
-        counter += 1;    // Only one thread can be here
-        mutex.unlock();  // Release the lock
-    }
-});
-
-var t2 = Thread.spawn(func() {
-    for i in 0..100000 {
-        mutex.lock();
-        counter += 1;
-        mutex.unlock();
-    }
-});
-
-t1.Join();
-t2.Join();
-
-Terminal.Say("Counter: " + counter);  // Always 200000
-```
-
-When a thread calls `mutex.lock()`:
-- If the mutex is unlocked, the thread acquires it and continues
-- If another thread holds it, this thread *blocks* (waits) until the mutex is released
-
-The section of code between `lock()` and `unlock()` is called the *critical section*. Only one thread can execute a critical section protected by a given mutex.
-
-### Visualizing Mutex Protection
-
-```text
-Thread 1                          Thread 2
---------                          --------
-lock() - acquires mutex
-  read counter (5)                lock() - WAITS (mutex held)
-  add 1
-  write counter (6)               ...waiting...
-unlock()                          ...waiting...
-                                  lock() - acquires mutex
-                                    read counter (6)
-lock() - WAITS                      add 1
-                                    write counter (7)
-...waiting...                     unlock()
-lock() - acquires mutex
-...
-```
-
-The mutex serializes access. Each read-modify-write completes before another begins. No lost updates.
-
-### The `synchronized` Block: Safer Locking
-
-Forgetting to unlock is a common bug that freezes your program. The `synchronized` block automatically unlocks when it exits, even if an error occurs:
-
-```rust
-var mutex = Mutex.create();
-
-// Automatically unlocks when block exits
-mutex.synchronized(func() {
-    counter += 1;
-});
-```
-
-This is equivalent to:
-```rust
-mutex.lock();
-try {
-    counter += 1;
-} finally {
-    mutex.unlock();
-}
-```
-
-Always prefer `synchronized` blocks over manual lock/unlock.
-
-### What Mutexes Actually Protect
-
-A common misconception: the mutex doesn't protect the *variable* — it protects the *code*. A mutex only works if *all* code that accesses the shared data uses the *same* mutex.
-
-```rust
-// BROKEN: Two different mutexes protecting same data
-var counter = 0;
-var mutex1 = Mutex.create();
-var mutex2 = Mutex.create();  // Different mutex!
-
-var t1 = Thread.spawn(func() {
-    mutex1.lock();
-    counter += 1;
-    mutex1.unlock();
-});
-
-var t2 = Thread.spawn(func() {
-    mutex2.lock();  // This doesn't wait for mutex1!
-    counter += 1;
-    mutex2.unlock();
-});
-// Still a race condition!
-```
-
-Each thread acquires its own lock, so they run simultaneously. You must use the *same* mutex everywhere you access the shared data.
-
----
-
-## Atomic Operations: Lock-Free Speed
-
-> **Planned Feature:** `Atomic[T]` is a planned API not yet available in Viper.
-> The examples below illustrate the intended design.
-
-For simple operations like incrementing a counter, mutexes have overhead. *Atomic operations* provide thread-safe operations without locks.
-
-An atomic operation completes as an indivisible unit. No thread can see it "half done." The hardware guarantees this.
-
-```rust
-bind Viper.Threads;
-
-var counter = new Atomic[Integer](0);
-
-var t1 = Thread.spawn(func() {
-    for i in 0..100000 {
-        counter.increment();  // Atomic - no lock needed
-    }
-});
-
-var t2 = Thread.spawn(func() {
-    for i in 0..100000 {
-        counter.increment();
-    }
-});
-
-t1.Join();
-t2.Join();
-
-Terminal.Say("Counter: " + counter.Get());  // Always 200000
-```
-
-Atomic operations available:
-- `increment()`, `decrement()`
-- `add(value)`, `subtract(value)`
-- `get()`, `set(value)`
-- `compareAndSwap(expected, new)` — set to new value only if current value equals expected
-
-### When to Use Atomics vs. Mutexes
-
-Use atomics for:
-- Simple counters
-- Flags (on/off switches)
-- Single values that change independently
-
-Use mutexes for:
-- Complex data structures
-- Operations involving multiple variables
-- When you need to read, compute, then write (unless using compare-and-swap)
-
-```rust
-// Atomic is perfect for a simple counter
-var visitCount = new Atomic[Integer](0);
-visitCount.increment();
-
-// Mutex needed for complex update
-var account = Account { balance: 1000, lastTransaction: null };
-var accountMutex = Mutex.create();
-
-accountMutex.synchronized(func() {
-    account.balance -= 100;
-    account.lastTransaction = Time.DateTime.Now();  // Must update together
-});
 ```
 
 ---
 
-## Thread-Safe Collections
+## 24.3 Synchronization Primitives
 
-> **Partially Available:** Viper currently provides `Viper.Threads.ConcurrentQueue` and
-> `Viper.Threads.ConcurrentMap` for thread-safe data sharing. The `ConcurrentList` shown
-> below is a planned addition.
+Beyond monitors, Viper provides specialized synchronization tools for different coordination patterns.
 
-Viper provides collections that handle synchronization internally:
+### Gate (Semaphore)
 
-```rust
-bind Viper.Threads;
-
-var safeList = new ConcurrentList[String]();
-
-// Multiple threads can safely add items
-Thread.spawn(func() {
-    safeList.Add("item1");
-});
-
-Thread.spawn(func() {
-    safeList.Add("item2");
-});
-```
-
-These collections use internal locking or lock-free algorithms. They're convenient, but understand their limitations:
+A `Gate` controls access to a limited resource. It maintains a count of available permits. Threads enter (consuming a permit) and leave (releasing a permit).
 
 ```rust
-// STILL A RACE CONDITION despite thread-safe collection
-if !safeList.Contains("item") {
-    safeList.Add("item");  // Another thread might add between check and add!
-}
-```
-
-The collection protects individual operations, not sequences of operations. For check-then-act patterns, you still need external synchronization.
-
----
-
-## Communication: Channels
-
-> **Planned Feature:** `Channel[T]` is a planned API not yet available in Viper. For current
-> thread-safe data passing, use `Viper.Threads.ConcurrentQueue`.
-
-There's a philosophy in concurrent programming: "Don't communicate by sharing memory; share memory by communicating."
-
-Instead of multiple threads accessing shared data (with all the synchronization complexity), have threads send messages to each other. This is what *channels* provide.
-
-```rust
-bind Viper.Threads;
-bind Viper.Terminal;
-bind Viper.Time;
+bind Thread = Viper.Threads.Thread;
+bind Gate = Viper.Threads.Gate;
 
 func start() {
-    var channel = new Channel[String]();
+    // Allow up to 3 concurrent database connections
+    var dbGate = Gate.New(3);
+
+    for i in 0..10 {
+        Thread.Start(func() {
+            dbGate.Enter();              // Wait for a permit
+            Viper.Terminal.Say("Query " + toString(i) + " running");
+            Thread.Sleep(200);           // Simulate query
+            dbGate.Leave();              // Release permit
+        });
+    }
+}
+```
+
+| Method | Description |
+|--------|-------------|
+| `Gate.New(permits)` | Create with N initial permits |
+| `.Enter()` | Acquire one permit (blocks if none available) |
+| `.TryEnter()` | Try without blocking |
+| `.TryEnterFor(ms)` | Try with timeout |
+| `.Leave()` | Release one permit |
+| `.Leave(n)` | Release N permits |
+| `.Permits` | Current available permit count |
+
+### Barrier
+
+A `Barrier` makes multiple threads wait until all of them have arrived at a synchronization point before any can proceed. Useful for phased algorithms.
+
+```rust
+bind Thread = Viper.Threads.Thread;
+bind Barrier = Viper.Threads.Barrier;
+
+func start() {
+    var barrier = Barrier.New(3);  // Wait for 3 threads
+
+    for i in 0..3 {
+        Thread.Start(func() {
+            Viper.Terminal.Say("Thread " + toString(i) + " phase 1 done");
+            barrier.Arrive();  // Wait until all 3 threads arrive
+            Viper.Terminal.Say("Thread " + toString(i) + " phase 2 starting");
+        });
+    }
+}
+```
+
+| Method/Property | Description |
+|-----------------|-------------|
+| `Barrier.New(parties)` | Create for N parties |
+| `.Arrive()` | Arrive and wait; returns arrival index |
+| `.Reset()` | Reset for reuse |
+| `.Parties` | Total parties expected |
+| `.Waiting` | Number currently waiting |
+
+### RwLock (Reader-Writer Lock)
+
+A `RwLock` allows multiple simultaneous readers *or* one exclusive writer. This is more efficient than a Monitor when reads vastly outnumber writes.
+
+```rust
+bind Thread = Viper.Threads.Thread;
+bind RwLock = Viper.Threads.RwLock;
+
+var cache: List[String] = [];
+var rwLock = RwLock.New();
+
+func readCache(index: Integer) -> String {
+    rwLock.ReadEnter();
+    var result = cache.get(index);
+    rwLock.ReadExit();
+    return result;
+}
+
+func writeCache(value: String) {
+    rwLock.WriteEnter();
+    cache.Push(value);
+    rwLock.WriteExit();
+}
+```
+
+| Method/Property | Description |
+|-----------------|-------------|
+| `RwLock.New()` | Create a new reader-writer lock |
+| `.ReadEnter()` / `.ReadExit()` | Acquire/release read access |
+| `.WriteEnter()` / `.WriteExit()` | Acquire/release write access |
+| `.TryReadEnter()` | Try read lock without blocking |
+| `.TryWriteEnter()` | Try write lock without blocking |
+| `.Readers` | Number of current readers |
+| `.IsWriteLocked` | Whether a writer holds the lock |
+
+---
+
+## 24.4 Channels
+
+Channels provide safe communication between threads without shared mutable state. One thread *sends* data into the channel; another thread *receives* it. This is the "communicate by sharing" approach to concurrency.
+
+```rust
+bind Thread = Viper.Threads.Thread;
+bind Channel = Viper.Threads.Channel;
+
+func start() {
+    var ch = Channel.New(5);  // Buffered channel with capacity 5
 
     // Producer thread
-    var producer = Thread.spawn(func() {
-        for i in 0..10 {
-            channel.send("Message " + i);
-            Time.Clock.Sleep(100);
+    var producer = Thread.Start(func() {
+        for i in 1..=10 {
+            ch.Send(i);
+            Viper.Terminal.Say("Sent: " + toString(i));
         }
-        channel.Close();
+        ch.Close();
     });
 
     // Consumer thread
-    var consumer = Thread.spawn(func() {
-        while true {
-            var message = channel.receive();
-            if message == null {
-                break;  // Channel closed
+    var consumer = Thread.Start(func() {
+        while (!ch.IsClosed || !ch.IsEmpty) {
+            var item = ch.Recv();
+            if (item != null) {
+                Viper.Terminal.Say("Received: " + toString(item));
             }
-            Terminal.Say("Got: " + message);
         }
     });
 
@@ -688,762 +435,640 @@ func start() {
 }
 ```
 
-### How Channels Work
+### Channel Methods
 
-A channel is like a pipe. One end sends data, the other receives. The channel handles all synchronization internally.
+| Method | Description |
+|--------|-------------|
+| `Channel.New(capacity)` | Create a buffered channel |
+| `.Send(item)` | Send an item (blocks if full) |
+| `.TrySend(item)` | Try to send without blocking |
+| `.SendFor(item, ms)` | Send with timeout |
+| `.Recv()` | Receive an item (blocks if empty) |
+| `.TryRecv(out)` | Try to receive without blocking |
+| `.RecvFor(out, ms)` | Receive with timeout |
+| `.Close()` | Close the channel (no more sends) |
 
-- `channel.send(value)` puts a value into the channel
-- `channel.receive()` takes a value out (waits if empty)
-- `channel.Close()` signals no more data is coming
+### Channel Properties
 
-### Buffered vs. Unbuffered Channels
+| Property | Type | Description |
+|----------|------|-------------|
+| `Length` | `Integer` | Number of items currently buffered |
+| `Cap` | `Integer` | Maximum capacity |
+| `IsClosed` | `Boolean` | Whether the channel has been closed |
+| `IsEmpty` | `Boolean` | Whether the buffer is empty |
+| `IsFull` | `Boolean` | Whether the buffer is at capacity |
 
-```rust
-// Unbuffered: send blocks until receive
-var channel = new Channel[Integer]();
+### Pipeline Pattern
 
-// Buffered: can hold 10 items before blocking
-var buffered = new Channel[Integer](10);
-```
-
-An unbuffered channel synchronizes sender and receiver — the sender blocks until someone receives. This is *rendezvous* style communication.
-
-A buffered channel allows the sender to continue (up to the buffer size) without waiting. Useful when producer is sometimes faster than consumer.
-
-### Select: Waiting on Multiple Channels
-
-Sometimes you need to receive from whichever channel has data first:
-
-```rust
-var chan1 = new Channel[String]();
-var chan2 = new Channel[String]();
-
-// In another thread: sending to chan1
-// In another thread: sending to chan2
-
-// Wait for whichever channel has data first
-var result = Channel.select([chan1, chan2]);
-Terminal.Say("Got from channel " + result.index + ": " + result.value);
-```
-
-### Why Channels Are Safer
-
-Channels eliminate shared mutable state. Each piece of data is owned by one thread at a time. When sent through a channel, ownership transfers. No two threads access the same data simultaneously.
-
-This doesn't make race conditions impossible (you can still have logic races), but it eliminates the most common source: data races on shared memory.
-
----
-
-## Semaphores: Counting Locks
-
-> **Planned Feature:** `Semaphore` is a planned API not yet available in Viper.
-> The examples below illustrate the intended design.
-
-A mutex allows one thread in. A *semaphore* allows N threads in. Think of it as a limited parking lot with N spaces.
+Channels naturally compose into pipelines where each stage processes data and passes results to the next:
 
 ```rust
-bind Viper.Threads;
+bind Thread = Viper.Threads.Thread;
+bind Channel = Viper.Threads.Channel;
 
-// Allow at most 3 concurrent database connections
-var dbSemaphore = Semaphore.create(3);
+func start() {
+    var raw = Channel.New(10);
+    var processed = Channel.New(10);
 
-func queryDatabase(query: String) -> Result {
-    dbSemaphore.acquire();  // Wait for a "permit"
-    try {
-        var connection = Database.connect();
-        var result = connection.execute(query);
-        connection.Close();
-        return result;
-    } finally {
-        dbSemaphore.release();  // Return the "permit"
+    // Stage 1: Generate data
+    Thread.Start(func() {
+        for i in 1..=5 {
+            raw.Send(i);
+        }
+        raw.Close();
+    });
+
+    // Stage 2: Process (double each value)
+    Thread.Start(func() {
+        while (!raw.IsClosed || !raw.IsEmpty) {
+            var item = raw.Recv();
+            if (item != null) {
+                processed.Send(item * 2);
+            }
+        }
+        processed.Close();
+    });
+
+    // Stage 3: Consume results
+    while (!processed.IsClosed || !processed.IsEmpty) {
+        var result = processed.Recv();
+        if (result != null) {
+            Viper.Terminal.Say("Result: " + toString(result));
+        }
     }
 }
 ```
 
-Even if 100 threads call `queryDatabase`, only 3 will be inside the database section at once. The rest wait for a permit to become available.
-
-### Common Semaphore Uses
-
-- Limiting concurrent connections (databases, APIs)
-- Rate limiting (only N requests per second)
-- Resource pools (only N workers processing at once)
-
 ---
 
-## Thread Pools: Efficient Thread Reuse
+## 24.5 Thread Pools
 
-> **Planned Feature:** `ThreadPool` and `Future<T>` are planned APIs not yet available in Viper.
-> The examples below illustrate the intended design.
-
-Creating threads has overhead. For many small tasks, a *thread pool* is more efficient. The pool maintains a fixed number of worker threads and assigns tasks to them.
+Creating a new OS thread for every task is expensive. A *thread pool* maintains a set of reusable worker threads. You submit tasks; the pool assigns them to available workers.
 
 ```rust
-bind Viper.Threads;
-bind Viper.Terminal;
+bind Pool = Viper.Threads.Pool;
 
 func start() {
-    // Pool with 4 worker threads
-    var pool = ThreadPool.create(4);
+    var pool = Pool.New(4);  // 4 worker threads
 
-    // Submit 100 tasks
-    for i in 0..100 {
-        pool.submit(func() {
-            var result = expensiveCalculation(i);
-            Terminal.Say("Task " + i + " result: " + result);
+    // Submit 20 tasks to the pool
+    for i in 0..20 {
+        pool.Submit(func() {
+            Viper.Terminal.Say("Task " + toString(i) + " running");
+            Thread.Sleep(100);
         });
     }
 
-    // Wait for all tasks to complete
-    pool.waitAll();
-    pool.shutdown();
+    pool.Wait();      // Wait for all tasks to complete
+    pool.Shutdown();   // Clean up pool resources
+
+    Viper.Terminal.Say("All tasks done.");
+    Viper.Terminal.Say("Pool processed " + toString(pool.Size) + " workers.");
 }
 ```
 
-Instead of creating 100 threads (expensive), the pool's 4 workers process tasks from a queue. As each task finishes, the worker picks up the next.
+### Pool Methods
 
-### Futures: Getting Results from Pool Tasks
+| Method | Description |
+|--------|-------------|
+| `Pool.New(size)` | Create pool with N worker threads |
+| `.Submit(func)` | Submit a task for execution |
+| `.Wait()` | Block until all submitted tasks complete |
+| `.WaitFor(ms)` | Wait with timeout |
+| `.Shutdown()` | Graceful shutdown (finishes pending tasks) |
+| `.ShutdownNow()` | Immediate shutdown (drops pending tasks) |
 
-```rust
-var pool = ThreadPool.create(4);
+### Pool Properties
 
-var futures: List[Future<Integer>] = [];
-for i in 0..10 {
-    var future = pool.submitWithResult(func() -> Integer {
-        return expensiveCalculation(i);
-    });
-    futures.Push(future);
-}
-
-// Collect results
-for future in futures {
-    var result = future.Get();  // Blocks until ready
-    Terminal.Say("Result: " + result);
-}
-```
-
-A `Future` represents a value that will be available later. `future.Get()` blocks until the computation completes, then returns the result.
+| Property | Type | Description |
+|----------|------|-------------|
+| `Size` | `Integer` | Number of worker threads |
+| `Pending` | `Integer` | Tasks waiting to execute |
+| `Active` | `Integer` | Tasks currently executing |
+| `IsShutdown` | `Boolean` | Whether shutdown was requested |
 
 ---
 
-## Async/Await: Simpler I/O Concurrency
+## 24.6 Promises and Futures
 
-> **Planned Feature:** `async`/`await` syntax and `Viper.Async` are planned features not yet
-> available in Viper. The examples below illustrate the intended design.
-
-For I/O-bound work (network, files), async/await offers a cleaner model than manual threads:
+A `Promise` represents a value that will be provided later. A `Future` is the read-side of a promise — it lets another thread wait for and retrieve the result.
 
 ```rust
-bind Viper.Async;
-
-async func fetchData(url: String) -> String {
-    var response = await Http.getAsync(url);
-    return response.body;
-}
-
-async func processUrls(urls: List[String]) {
-    // Fetch all in parallel
-    var tasks = [];
-    for url in urls {
-        tasks.Push(fetchData(url));
-    }
-
-    // Wait for all to complete
-    var results = await Async.All(tasks);
-
-    for result in results {
-        Terminal.Say("Got: " + result.Length + " bytes");
-    }
-}
+bind Thread = Viper.Threads.Thread;
+bind Promise = Viper.Threads.Promise;
 
 func start() {
-    var urls = [
-        "https://api.example.com/data1",
-        "https://api.example.com/data2",
-        "https://api.example.com/data3"
-    ];
+    var p = Promise.New();
+    var f = p.GetFuture();
 
-    Async.run(processUrls(urls));
-}
-```
-
-The `async` keyword marks a function that can pause. The `await` keyword pauses until an async operation completes, allowing other code to run meanwhile.
-
-Under the hood, async/await typically uses fewer threads than explicit threading. Multiple async functions can share a single thread, with the runtime switching between them during I/O waits.
-
----
-
-## Deadlocks: The Deadly Embrace
-
-A *deadlock* occurs when threads wait for each other forever. Neither can proceed because each holds something the other needs.
-
-```rust
-bind Viper.Time;
-
-// DEADLOCK EXAMPLE - DON'T DO THIS
-var mutex1 = Mutex.create();
-var mutex2 = Mutex.create();
-
-var t1 = Thread.spawn(func() {
-    mutex1.lock();           // T1 holds mutex1
-    Time.Clock.Sleep(100);         // Small delay makes deadlock likely
-    mutex2.lock();           // T1 wants mutex2... but T2 has it!
-    // Never reaches here
-    mutex2.unlock();
-    mutex1.unlock();
-});
-
-var t2 = Thread.spawn(func() {
-    mutex2.lock();           // T2 holds mutex2
-    Time.Clock.Sleep(100);
-    mutex1.lock();           // T2 wants mutex1... but T1 has it!
-    // Never reaches here
-    mutex1.unlock();
-    mutex2.unlock();
-});
-
-t1.Join();  // Waits forever
-t2.Join();
-```
-
-### Visualizing Deadlock
-
-```text
-Time  Thread 1                    Thread 2
-----  --------                    --------
-0     lock(mutex1) - acquired     lock(mutex2) - acquired
-1     ...                         ...
-2     lock(mutex2) - BLOCKED      lock(mutex1) - BLOCKED
-      (mutex2 held by T2)         (mutex1 held by T1)
-
-      DEADLOCK: Both threads blocked forever
-```
-
-T1 has mutex1 and needs mutex2. T2 has mutex2 and needs mutex1. Neither can release what they hold because they're blocked trying to acquire what the other holds.
-
-### The Four Conditions for Deadlock
-
-Deadlock requires all four conditions:
-
-1. **Mutual exclusion**: Resources can only be held by one thread
-2. **Hold and wait**: Threads hold resources while waiting for more
-3. **No preemption**: Resources can't be forcibly taken away
-4. **Circular wait**: A cycle exists in who's waiting for whom
-
-Break any condition and deadlock becomes impossible.
-
-### Preventing Deadlocks
-
-**Lock ordering**: Always acquire locks in a consistent order. If everyone locks mutex1 before mutex2, circular wait is impossible.
-
-```rust
-// Always lock in consistent order (by ID, alphabetically, etc.)
-func transferMoney(from: Account, to: Account, amount: Number) {
-    // Lock lower ID first, always
-    var first = if from.id < to.id { from } else { to };
-    var second = if from.id < to.id { to } else { from };
-
-    first.mutex.lock();
-    second.mutex.lock();
-
-    from.balance -= amount;
-    to.balance += amount;
-
-    second.mutex.unlock();
-    first.mutex.unlock();
-}
-```
-
-**Timeout**: Use `tryLock` with a timeout. If you can't acquire a lock in time, release what you hold and retry.
-
-```rust
-func safeOperation() -> Boolean {
-    if !mutex1.tryLock(1000) {  // 1 second timeout
-        return false;
-    }
-
-    if !mutex2.tryLock(1000) {
-        mutex1.unlock();  // Release first lock
-        return false;
-    }
-
-    // Do work
-    mutex2.unlock();
-    mutex1.unlock();
-    return true;
-}
-```
-
-**Single lock**: Use one lock for related resources. Simpler but may reduce parallelism.
-
-**Avoid nesting**: Design to minimize holding multiple locks simultaneously.
-
----
-
-## Livelock and Starvation
-
-Deadlock isn't the only way concurrency fails.
-
-### Livelock: Busy Doing Nothing
-
-In a livelock, threads aren't blocked but can't make progress because they keep reacting to each other.
-
-Imagine two people in a hallway. They both step left to pass. Then both step right. Then both step left again. Forever.
-
-```rust
-// Potential livelock
-while !mutex.tryLock(10) {
-    // Keep retrying immediately
-}
-```
-
-If two threads do this in opposite order with two mutexes, they might repeatedly acquire one, fail to get the other, release, retry — forever.
-
-**Solution**: Add randomized delays. Instead of retrying immediately, wait a random time. This breaks the synchronization that causes livelock.
-
-### Starvation: Never Getting a Turn
-
-*Starvation* occurs when a thread never gets access to a resource despite it being available to others. Low-priority threads might starve if high-priority threads monopolize resources.
-
-**Solution**: Use fair locks that serve waiters in order. Bound how long any thread can hold a resource.
-
----
-
-## Common Mistakes in Concurrent Programming
-
-### Mistake 1: Forgetting to Join Threads
-
-```rust
-// Bad: Program might exit before thread finishes
-func start() {
-    Thread.spawn(func() {
-        doImportantWork();
+    // Worker thread computes a result
+    Thread.Start(func() {
+        Thread.Sleep(200);  // Simulate computation
+        p.Set(42);          // Fulfill the promise
     });
-    // Program ends immediately!
-}
 
-// Good: Wait for thread
+    // Main thread waits for the result
+    var result = f.Get();  // Blocks until the promise is fulfilled
+    Viper.Terminal.Say("Got: " + toString(result));  // "Got: 42"
+}
+```
+
+### Error Propagation
+
+Promises can propagate errors to futures:
+
+```rust
+bind Thread = Viper.Threads.Thread;
+bind Promise = Viper.Threads.Promise;
+
 func start() {
-    var t = Thread.spawn(func() {
-        doImportantWork();
+    var p = Promise.New();
+    var f = p.GetFuture();
+
+    Thread.Start(func() {
+        p.SetError("computation failed");
     });
-    t.Join();
-}
-```
 
-### Mistake 2: Sharing Mutable Data Without Synchronization
-
-```rust
-// Bad: Race condition
-var data = [];
-Thread.spawn(func() { data.Push("A"); });
-Thread.spawn(func() { data.Push("B"); });
-
-// Good: Use thread-safe collection
-var data = new ConcurrentList[String]();
-Thread.spawn(func() { data.Add("A"); });
-Thread.spawn(func() { data.Add("B"); });
-
-// Or use mutex
-var data = [];
-var mutex = Mutex.create();
-Thread.spawn(func() {
-    mutex.synchronized(func() { data.Push("A"); });
-});
-```
-
-### Mistake 3: Holding Locks Too Long
-
-```rust
-// Bad: Holds lock during slow I/O
-mutex.lock();
-var data = Http.Get(slowUrl);  // Blocks other threads for seconds!
-process(data);
-mutex.unlock();
-
-// Good: Only lock for shared data access
-var data = Http.Get(slowUrl);  // No lock needed here
-mutex.lock();
-sharedResults.Push(data);      // Only lock for shared access
-mutex.unlock();
-```
-
-### Mistake 4: Lock Ordering Inconsistency
-
-```rust
-// Bad: Different order in different places
-func transferA() {
-    account1.lock();
-    account2.lock();  // Order: 1, 2
-}
-
-func transferB() {
-    account2.lock();
-    account1.lock();  // Order: 2, 1 - DEADLOCK RISK!
-}
-```
-
-### Mistake 5: Forgetting to Unlock
-
-```rust
-// Bad: If error occurs, mutex stays locked forever
-mutex.lock();
-riskyOperation();  // What if this throws an error?
-mutex.unlock();
-
-// Good: Use synchronized block
-mutex.synchronized(func() {
-    riskyOperation();
-});
-```
-
-### Mistake 6: Check-Then-Act Races
-
-```rust
-// Bad: Gap between check and action
-if !cache.Contains(key) {
-    // Another thread might add key here!
-    cache.Set(key, computeValue());
-}
-
-// Good: Atomic check-and-set
-cache.setIfAbsent(key, func() {
-    return computeValue();
-});
-```
-
----
-
-## Debugging Concurrent Programs
-
-Concurrency bugs are notoriously hard to debug. They're intermittent, timing-dependent, and often disappear when you add debugging code (which changes timing).
-
-### Strategy 1: Stress Testing
-
-Run your program under heavy load. More threads, more operations, more chaos. Bugs that appear 1 in 1000 runs become 1 in 10 under stress.
-
-```rust
-func stressTest() {
-    for trial in 0..1000 {
-        var threads: List[Thread<void>] = [];
-        for i in 0..100 {
-            threads.Push(Thread.spawn(func() {
-                // Run the suspicious code
-                suspiciousOperation();
-            }));
-        }
-        for t in threads {
-            t.Join();
-        }
-        // Verify invariants
-        if !checkInvariants() {
-            Terminal.Say("Bug found on trial " + trial);
-            break;
-        }
+    f.Wait();
+    if (f.IsError) {
+        Viper.Terminal.Say("Error: " + f.Error);
     }
 }
 ```
 
-### Strategy 2: Race Detectors
+### Future Methods and Properties
 
-Some tools detect data races automatically by tracking memory accesses. They slow execution significantly but catch races that testing misses.
+| Method | Description |
+|--------|-------------|
+| `.Get()` | Block and retrieve the value |
+| `.TryGet()` | Non-blocking get (returns null if not ready) |
+| `.GetFor(ms)` | Get with timeout |
+| `.Wait()` | Block until resolved (value or error) |
+| `.WaitFor(ms)` | Wait with timeout |
 
-### Strategy 3: Logging with Timestamps
+| Property | Type | Description |
+|----------|------|-------------|
+| `IsDone` | `Boolean` | Whether the promise has been fulfilled |
+| `IsError` | `Boolean` | Whether it resolved with an error |
+| `Error` | `String` | Error message (if `IsError`) |
 
-Add logging with thread IDs and timestamps. Reconstruct the sequence of events after a failure.
+### Async Combinators
+
+The `Async` class provides higher-level operations built on futures:
 
 ```rust
-bind Viper.Terminal;
+bind Async = Viper.Threads.Async;
 
-func logMessage(message: String) {
-    var threadId = Thread.currentId();
-    var time = Time.Clock.Ticks();
-    Terminal.Say("[" + time + "] Thread " + threadId + ": " + message);
+func start() {
+    // Run a function asynchronously, get a Future back
+    var f = Async.Run(func() {
+        return computeExpensiveValue();
+    });
+
+    // Create a delayed future (resolves after N ms)
+    var delayed = Async.Delay(1000);
+
+    // Wait for ALL futures in a list
+    var results = Async.All(futures);
+
+    // Wait for ANY future (first to complete)
+    var first = Async.Any(futures);
 }
 ```
 
-### Strategy 4: Minimize Shared State
-
-The best debugging strategy is prevention. The less shared mutable state, the fewer potential bugs.
-
-### Strategy 5: Code Review
-
-Concurrent code needs extra review. Fresh eyes catch lock ordering issues, missing synchronization, and other subtle bugs.
+| Method | Description |
+|--------|-------------|
+| `Async.Run(func)` | Run asynchronously, returns a `Future` |
+| `Async.RunCancellable(func, token)` | Run with cancellation support |
+| `Async.Delay(ms)` | Future that resolves after N milliseconds |
+| `Async.All(futures)` | Future that resolves when all complete |
+| `Async.Any(futures)` | Future that resolves when any completes |
+| `Async.Map(future, func)` | Transform a future's value |
 
 ---
 
-## Best Practices for Concurrent Code
+## 24.7 Concurrent Collections
+
+Regular collections (`List`, `Map`) are **not** thread-safe. Accessing them from multiple threads without locks leads to corruption. Viper provides two thread-safe collections.
+
+### ConcurrentQueue
+
+A thread-safe FIFO queue, ideal for producer-consumer patterns:
+
+```rust
+bind Thread = Viper.Threads.Thread;
+bind ConcurrentQueue = Viper.Threads.ConcurrentQueue;
+
+func start() {
+    var queue = ConcurrentQueue.New();
+
+    // Producer
+    Thread.Start(func() {
+        for i in 1..=10 {
+            queue.Enqueue(i);
+            Thread.Sleep(50);
+        }
+    });
+
+    // Consumer
+    Thread.Start(func() {
+        for i in 0..10 {
+            var item = queue.Dequeue();  // Blocks if empty
+            Viper.Terminal.Say("Got: " + toString(item));
+        }
+    });
+}
+```
+
+| Method | Description |
+|--------|-------------|
+| `ConcurrentQueue.New()` | Create an empty queue |
+| `.Enqueue(item)` | Add to the back |
+| `.Dequeue()` | Remove from front (blocks if empty) |
+| `.TryDequeue()` | Non-blocking dequeue (returns null if empty) |
+| `.DequeueTimeout(ms)` | Dequeue with timeout |
+| `.Peek()` | Look at front without removing |
+| `.Clear()` | Remove all items |
+| `.Length` | Number of items |
+| `.IsEmpty` | Whether empty |
+
+### ConcurrentMap
+
+A thread-safe key-value store with string keys:
+
+```rust
+bind Thread = Viper.Threads.Thread;
+bind ConcurrentMap = Viper.Threads.ConcurrentMap;
+
+func start() {
+    var config = ConcurrentMap.New();
+
+    // Writer thread
+    Thread.Start(func() {
+        config.Set("host", "localhost");
+        config.Set("port", "8080");
+    });
+
+    // Reader thread (safe to read concurrently)
+    Thread.Start(func() {
+        var host = config.GetOr("host", "127.0.0.1");
+        Viper.Terminal.Say("Connecting to " + host);
+    });
+}
+```
+
+| Method | Description |
+|--------|-------------|
+| `ConcurrentMap.New()` | Create an empty map |
+| `.Set(key, value)` | Insert or update |
+| `.Get(key)` | Retrieve value (null if missing) |
+| `.GetOr(key, default)` | Retrieve with default fallback |
+| `.Has(key)` | Check if key exists |
+| `.SetIfMissing(key, value)` | Set only if key doesn't exist (returns true if set) |
+| `.Remove(key)` | Remove a key (returns true if found) |
+| `.Clear()` | Remove all entries |
+| `.Keys()` | Get all keys |
+| `.Values()` | Get all values |
+| `.Length` | Number of entries |
+| `.IsEmpty` | Whether empty |
+
+---
+
+## 24.8 Parallel Utilities
+
+The `Parallel` class provides high-level utilities for common parallel patterns without manual thread management:
+
+```rust
+bind Parallel = Viper.Threads.Parallel;
+
+func start() {
+    // Parallel for loop (partitioned across cores)
+    Parallel.For(0, 1000, func(i: Integer) {
+        // Process item i
+    });
+
+    // Parallel for-each over a collection
+    var items: List[String] = ["a", "b", "c", "d"];
+    Parallel.ForEach(items, func(item: String) {
+        Viper.Terminal.Say("Processing: " + item);
+    });
+
+    // Parallel map: transform each element concurrently
+    var results = Parallel.Map(items, func(item: String) {
+        return item + "!";
+    });
+}
+```
+
+### Using a Custom Pool
+
+By default, `Parallel` uses a shared default pool. You can provide your own:
+
+```rust
+bind Parallel = Viper.Threads.Parallel;
+bind Pool = Viper.Threads.Pool;
+
+func start() {
+    var pool = Pool.New(2);  // Only 2 workers
+
+    Parallel.ForPool(0, 100, func(i: Integer) {
+        // Runs on the custom pool
+    }, pool);
+
+    pool.Shutdown();
+}
+```
+
+### Parallel Methods
+
+| Method | Description |
+|--------|-------------|
+| `Parallel.For(start, end, func)` | Parallel for-loop over range |
+| `Parallel.ForPool(start, end, func, pool)` | Same, with custom pool |
+| `Parallel.ForEach(collection, func)` | Apply function to each item |
+| `Parallel.ForEachPool(collection, func, pool)` | Same, with custom pool |
+| `Parallel.Map(collection, func)` | Transform each item in parallel |
+| `Parallel.MapPool(collection, func, pool)` | Same, with custom pool |
+| `Parallel.Invoke(funcs)` | Run multiple functions in parallel |
+| `Parallel.InvokePool(funcs, pool)` | Same, with custom pool |
+| `Parallel.Reduce(collection, func, initial)` | Parallel reduction |
+| `Parallel.ReducePool(collection, func, initial, pool)` | Same, with custom pool |
+| `Parallel.DefaultWorkers()` | Number of default worker threads |
+| `Parallel.DefaultPool()` | Access the shared default pool |
+
+---
+
+## 24.9 Cancellation
+
+Long-running tasks should be cancellable. The `CancelToken` provides cooperative cancellation — a way for one part of the program to signal "stop" and for the running task to check periodically and comply.
+
+```rust
+bind Thread = Viper.Threads.Thread;
+bind CancelToken = Viper.Threads.CancelToken;
+
+func start() {
+    var token = CancelToken.New();
+
+    var worker = Thread.Start(func() {
+        for i in 0..1000000 {
+            // Periodically check for cancellation
+            if (token.IsCancelled) {
+                Viper.Terminal.Say("Cancelled at iteration " + toString(i));
+                return;
+            }
+            // Do work...
+        }
+    });
+
+    Thread.Sleep(100);   // Let it run a bit
+    token.Cancel();      // Request cancellation
+    worker.Join();
+}
+```
+
+### Linked Tokens
+
+Create a child token that cancels when the parent does:
+
+```rust
+bind CancelToken = Viper.Threads.CancelToken;
+
+var parentToken = CancelToken.New();
+var childToken = parentToken.Linked(parentToken);
+
+parentToken.Cancel();  // Both parent and child are now cancelled
+```
+
+| Method/Property | Description |
+|-----------------|-------------|
+| `CancelToken.New()` | Create a new token |
+| `.Cancel()` | Request cancellation |
+| `.Reset()` | Reset to non-cancelled state |
+| `.Check()` | Returns true if cancelled |
+| `.ThrowIfCancelled()` | Throws if cancelled |
+| `.Linked(parent)` | Create a child linked to parent |
+| `.IsCancelled` | Whether cancellation was requested |
+
+---
+
+## 24.10 Rate Limiting
+
+### Debouncer
+
+A `Debouncer` suppresses repeated signals that arrive within a quiet period. Only after the signals stop for the configured delay does the debouncer become "ready". This is useful for UI events like search-as-you-type, where you want to wait until the user stops typing.
+
+```rust
+bind Debouncer = Viper.Threads.Debouncer;
+
+func start() {
+    var debounce = Debouncer.New(300);  // 300ms quiet period
+
+    // Simulate rapid signals (like keystrokes)
+    debounce.Signal();
+    Thread.Sleep(100);
+    debounce.Signal();
+    Thread.Sleep(100);
+    debounce.Signal();
+
+    // Wait for the quiet period
+    Thread.Sleep(400);
+
+    if (debounce.IsReady) {
+        Viper.Terminal.Say("Now execute the search!");
+    }
+}
+```
+
+| Method/Property | Description |
+|-----------------|-------------|
+| `Debouncer.New(delayMs)` | Create with quiet period |
+| `.Signal()` | Register a signal (resets timer) |
+| `.Reset()` | Reset state |
+| `.Delay` | Configured delay in milliseconds |
+| `.IsReady` | Whether the quiet period has elapsed |
+| `.SignalCount` | Total signals received |
+
+### Throttler
+
+A `Throttler` limits how often an action can occur. At most one action per interval.
+
+```rust
+bind Throttler = Viper.Threads.Throttler;
+
+func start() {
+    var throttle = Throttler.New(1000);  // At most once per second
+
+    for i in 0..10 {
+        if (throttle.Try()) {
+            Viper.Terminal.Say("Action executed at iteration " + toString(i));
+        } else {
+            Viper.Terminal.Say("Throttled at iteration " + toString(i));
+        }
+        Thread.Sleep(200);
+    }
+}
+```
+
+| Method/Property | Description |
+|-----------------|-------------|
+| `Throttler.New(intervalMs)` | Create with minimum interval |
+| `.Try()` | Try to proceed (returns true if allowed) |
+| `.Reset()` | Reset state |
+| `.CanProceed` | Whether an action is allowed now |
+| `.Count` | Total successful actions |
+| `.Interval` | Configured interval in milliseconds |
+| `.RemainingMs` | Milliseconds until next allowed action |
+
+---
+
+## 24.11 Scheduling
+
+The `Scheduler` manages named tasks that should execute at scheduled times:
+
+```rust
+bind Scheduler = Viper.Threads.Scheduler;
+
+func start() {
+    var sched = Scheduler.New();
+
+    // Schedule tasks by name with delay in milliseconds
+    sched.Schedule("backup", 5000);      // Due in 5 seconds
+    sched.Schedule("heartbeat", 1000);   // Due in 1 second
+
+    // Poll loop
+    while (sched.Pending > 0) {
+        var dueTask = sched.Poll();  // Returns name of due task, or null
+        if (dueTask != null) {
+            Viper.Terminal.Say("Running: " + dueTask);
+        }
+        Thread.Sleep(100);
+    }
+}
+```
+
+| Method/Property | Description |
+|-----------------|-------------|
+| `Scheduler.New()` | Create a new scheduler |
+| `.Schedule(name, delayMs)` | Schedule a named task |
+| `.Cancel(name)` | Cancel a scheduled task |
+| `.IsDue(name)` | Check if a task is due |
+| `.Poll()` | Get next due task name (or null) |
+| `.Clear()` | Cancel all tasks |
+| `.Pending` | Number of scheduled tasks |
+
+---
+
+## 24.12 Best Practices
 
 ### 1. Minimize Shared Mutable State
 
-Every piece of shared mutable state is a potential bug. Prefer:
-- Immutable data (can be safely shared without locks)
-- Thread-local data (each thread has its own copy)
-- Message passing (data moves between threads, not shared)
+The primary source of concurrency bugs is shared mutable state. Prefer:
 
-### 2. When You Must Share, Use Proper Synchronization
+- **Channels** for communication between threads
+- **Immutable data** passed to threads at creation time
+- **`SafeI64`** for simple counters
+- **`ConcurrentMap`/`ConcurrentQueue`** for shared collections
 
-Don't assume operations are atomic. Don't assume memory is immediately visible to other threads. Use mutexes, atomics, or thread-safe collections.
+### 2. Always Join Threads
 
-### 3. Prefer Message Passing Over Shared Memory
-
-Channels and message queues are easier to reason about than shared data with locks.
-
-### 4. Keep Critical Sections Short
-
-Hold locks for the minimum time necessary. Long critical sections reduce parallelism and increase contention.
-
-### 5. Consistent Lock Ordering
-
-Document and enforce lock ordering. If you must hold multiple locks, always acquire them in the same order everywhere.
-
-### 6. Use Higher-Level Abstractions
-
-Thread pools, futures, async/await — these handle common patterns correctly. Don't reinvent synchronization unless necessary.
-
-### 7. Test Thoroughly
-
-Test under load. Test with more threads than cores. Test with randomized timing. Test on different machines.
-
-### 8. Document Threading Assumptions
-
-Comment which methods are thread-safe, which locks protect which data, what ordering guarantees exist.
-
----
-
-## A Complete Example: Parallel Image Processor
-
-Let's put it all together with a real application:
+Unjoined threads can outlive the main function, leading to undefined behavior or resource leaks:
 
 ```rust
-module ImageProcessor;
+// Bad: thread might not finish before program exits
+Thread.Start(func() { doWork(); });
 
-bind Viper.Threads;
-bind Viper.Graphics;
-bind File = Viper.IO.File;
-bind Viper.Terminal;
-bind Viper.Time;
+// Good: always track and join
+var t = Thread.Start(func() { doWork(); });
+t.Join();
+```
 
-value ImageTask {
-    inputPath: String;
-    outputPath: String;
-}
+### 3. Use StartSafe for Robustness
 
-entity ParallelProcessor {
-    hide pool: ThreadPool;
-    hide completedCount: Atomic[Integer];
-    hide totalCount: Integer;
+`Thread.StartSafe` catches errors in the thread body, preventing crashes and allowing error inspection:
 
-    expose func init(numWorkers: Integer) {
-        self.pool = ThreadPool.create(numWorkers);
-        self.completedCount = Atomic.create(0);
-        self.totalCount = 0;
-    }
-
-    func process(tasks: List[ImageTask]) {
-        self.totalCount = tasks.Length;
-        var futures: List[Future<Boolean>] = [];
-
-        for task in tasks {
-            var future = self.pool.submitWithResult(func() -> Boolean {
-                return self.processImage(task);
-            });
-            futures.Push(future);
-        }
-
-        // Progress reporting in main thread
-        while self.completedCount.Get() < self.totalCount {
-            var done = self.completedCount.Get();
-            var percent = (done * 100) / self.totalCount;
-            Terminal.Say("Progress: " + percent + "% (" + done + "/" + self.totalCount + ")");
-            Time.Clock.Sleep(500);
-        }
-
-        // Collect results
-        var successCount = 0;
-        for future in futures {
-            if future.Get() {
-                successCount += 1;
-            }
-        }
-
-        Terminal.Say("Completed: " + successCount + "/" + self.totalCount + " succeeded");
-    }
-
-    func processImage(task: ImageTask) -> Boolean {
-        try {
-            var image = Image.load(task.inputPath);
-
-            // Apply some processing
-            image = applyGrayscale(image);
-            image = applyResize(image, 800, 600);
-
-            image.save(task.outputPath);
-
-            self.completedCount.increment();
-            return true;
-
-        } catch Error as e {
-            Terminal.Say("Error processing " + task.inputPath + ": " + e.message);
-            self.completedCount.increment();
-            return false;
-        }
-    }
-
-    func shutdown() {
-        self.pool.shutdown();
-    }
-}
-
-func applyGrayscale(image: Image) -> Image {
-    for y in 0..image.height {
-        for x in 0..image.width {
-            var pixel = image.getPixel(x, y);
-            var gray = (pixel.r + pixel.g + pixel.b) / 3;
-            image.setPixel(x, y, Color(gray, gray, gray));
-        }
-    }
-    return image;
-}
-
-func applyResize(image: Image, width: Integer, height: Integer) -> Image {
-    return image.resize(width, height);
-}
-
-func start() {
-    var files = File.listDir("input_images/");
-    var tasks: List[ImageTask] = [];
-
-    for file in files {
-        if file.EndsWith(".jpg") || file.EndsWith(".png") {
-            tasks.Push(ImageTask {
-                inputPath: "input_images/" + file,
-                outputPath: "output_images/" + file
-            });
-        }
-    }
-
-    Terminal.Say("Processing " + tasks.Length + " images...");
-
-    var processor = ParallelProcessor(4);  // 4 worker threads
-    processor.process(tasks);
-    processor.shutdown();
-
-    Terminal.Say("Done!");
+```rust
+var t = Thread.StartSafe(func() { riskyOperation(); });
+t.SafeJoin();
+if (t.HasError) {
+    Viper.Terminal.Say("Thread failed: " + t.Error);
 }
 ```
 
-### Walking Through the Design
+### 4. Prefer Thread Pools Over Raw Threads
 
-This example demonstrates several best practices:
+Thread pools reuse threads, avoiding the overhead of creating and destroying OS threads:
 
-1. **Thread pool** instead of creating threads per task — efficient for many small jobs
-
-2. **Atomic counter** for progress tracking — no mutex needed for simple counter
-
-3. **Futures** to collect success/failure results from each task
-
-4. **No shared mutable state** between image processing tasks — each task works on independent data
-
-5. **Progress reporting** in main thread while workers process — keeps user informed
-
-6. **Error handling** that doesn't crash the entire program — failed images are counted and reported
-
----
-
-## The Two Languages
-
-**Zia**
 ```rust
-bind Viper.Threads;
-bind Viper.Terminal;
+// Bad: 1000 OS threads
+for i in 0..1000 {
+    Thread.Start(func() { processItem(i); });
+}
 
-var thread = Thread.spawn(func() {
-    Terminal.Say("In thread");
+// Good: 4 workers handling 1000 tasks
+var pool = Pool.New(4);
+for i in 0..1000 {
+    pool.Submit(func() { processItem(i); });
+}
+pool.Wait();
+pool.Shutdown();
+```
+
+### 5. Avoid Deadlocks
+
+A *deadlock* occurs when two threads each wait for something the other holds. Rules to prevent deadlocks:
+
+- Always acquire locks in the same order
+- Use `TryEnter` / `TryEnterFor` with timeouts instead of blocking forever
+- Keep critical sections (code between Enter/Exit) short
+- Never call unknown code while holding a lock
+
+### 6. Use Cancellation for Long Tasks
+
+Cooperative cancellation via `CancelToken` lets you cleanly stop long-running work:
+
+```rust
+var token = CancelToken.New();
+
+pool.Submit(func() {
+    while (!token.IsCancelled) {
+        processNextBatch();
+    }
 });
-thread.Join();
 
-var mutex = Mutex.create();
-mutex.lock();
-// critical section
-mutex.unlock();
-```
-
-**BASIC**
-```basic
-DIM t AS Thread
-t = THREAD_SPAWN(MyWorker)
-THREAD_JOIN t
-
-DIM m AS Mutex
-m = MUTEX_CREATE()
-MUTEX_LOCK m
-' critical section
-MUTEX_UNLOCK m
-
-SUB MyWorker()
-    PRINT "In thread"
-END SUB
+// Later: request clean shutdown
+token.Cancel();
 ```
 
 ---
 
 ## Summary
 
-Concurrency is powerful and perilous. Here's what to remember:
+| Concept | Class | Use Case |
+|---------|-------|----------|
+| Threads | `Thread` | Independent execution paths |
+| Mutual exclusion | `Monitor` | Protecting shared state |
+| Atomic integers | `SafeI64` | Lock-free counters |
+| Semaphore | `Gate` | Limiting concurrent access |
+| Barrier | `Barrier` | Phase synchronization |
+| Reader-writer lock | `RwLock` | Read-heavy shared data |
+| Communication | `Channel` | Thread-safe message passing |
+| Task execution | `Pool` | Reusable worker threads |
+| Async results | `Promise` / `Future` | Deferred values |
+| Combinators | `Async` | High-level async operations |
+| Safe queue | `ConcurrentQueue` | Thread-safe FIFO |
+| Safe map | `ConcurrentMap` | Thread-safe key-value store |
+| Parallel loops | `Parallel` | Data parallelism |
+| Cancellation | `CancelToken` | Cooperative task stopping |
+| Rate limiting | `Debouncer` / `Throttler` | Controlling action frequency |
+| Task scheduling | `Scheduler` | Time-based task management |
 
-- **Threads** run code in parallel, enabling responsiveness and performance
-- **Race conditions** occur when thread timing affects correctness — the fundamental danger
-- **Mutexes** protect critical sections, ensuring only one thread enters at a time
-- **Atomics** provide fast, lock-free operations for simple cases
-- **Channels** enable communication without shared memory
-- **Semaphores** limit how many threads access a resource simultaneously
-- **Thread pools** efficiently manage many tasks with few threads
-- **Deadlocks** happen when threads wait for each other forever
-- **Async/await** simplifies I/O-bound concurrency
+All concurrency types live under `Viper.Threads`. Import them with:
 
-Rules of thumb:
+```rust
+bind Thread = Viper.Threads.Thread;
+bind Monitor = Viper.Threads.Monitor;
+bind Channel = Viper.Threads.Channel;
+// ... etc.
+```
 
-1. **Avoid shared mutable state when possible** — immutable data is always safe
-2. **When you must share, use proper synchronization** — never access shared data unprotected
-3. **Prefer message passing over shared memory** — channels are easier to reason about
-4. **Keep critical sections short** — hold locks briefly
-5. **Use consistent lock ordering** — prevents deadlocks
-6. **Test concurrent code thoroughly** — bugs hide until stressed
-
-Concurrency is one of the most challenging areas in programming. Even experts make mistakes. But mastering it unlocks the full power of modern hardware and enables applications that feel responsive and fast.
-
----
-
-## Exercises
-
-**Exercise 24.1 (Mimic)**: Modify the first thread example to create three worker threads instead of one. Each should print its own message (e.g., "Worker 1 running", "Worker 2 running"). Wait for all to complete.
-
-**Exercise 24.2 (Counter)**: Write a program with a shared counter and 4 threads. Each thread increments the counter 10,000 times. First implement it without synchronization (observe the race condition), then fix it using a mutex, then fix it using an atomic.
-
-**Exercise 24.3 (Pipeline)**: Create a producer-consumer pipeline: Thread 1 generates numbers 1-100, Thread 2 squares them, Thread 3 prints results. Use channels to connect them.
-
-**Exercise 24.4 (Word Counter)**: Write a program that counts words in multiple files in parallel. Each file is processed by a separate thread. Combine the totals at the end.
-
-**Exercise 24.5 (Rate Limiter)**: Using a semaphore, create a function that limits concurrent API calls to at most 5. Test by making 20 calls that each take 1 second.
-
-**Exercise 24.6 (Parallel Search)**: Given a large array of strings, search for a target using 4 parallel threads. Each searches a quarter of the array. Return the index if found, -1 if not.
-
-**Exercise 24.7 (Dining Philosophers)**: Implement the classic dining philosophers problem. Five philosophers sit at a table with five forks. Each needs two forks to eat. Implement without deadlock using lock ordering.
-
-**Exercise 24.8 (Thread Pool)**: Implement a simple thread pool from scratch. It should have a fixed number of workers and a task queue. Workers pull tasks from the queue and execute them.
-
-**Exercise 24.9 (Parallel Merge Sort)**: Implement merge sort that splits the array across threads for sorting, then merges results. Compare performance to single-threaded sort.
-
-**Exercise 24.10 (Thread-Safe Cache)**: Build a cache with get/set operations that is thread-safe. Add expiration so entries are removed after a timeout. Handle concurrent reads efficiently (multiple readers allowed when no writer).
-
-**Exercise 24.11 (Web Crawler)**: Build a web crawler that fetches pages in parallel but limits concurrent requests to 10. Use a semaphore for the limit and channels to coordinate.
-
-**Exercise 24.12 (Challenge - Job Queue)**: Create a priority job queue system. Jobs have priorities 1-10. Multiple workers process jobs from the queue, always taking the highest priority available. Handle the case where high-priority jobs keep arriving (ensure low-priority jobs eventually run).
-
----
-
-*We've completed Part IV! You can now build real applications: games, networked services, data processors, and more — including ones that take full advantage of modern multi-core processors.*
-
-*Part V takes you deeper — understanding how Viper works under the hood, optimizing performance, testing your code, and designing larger systems.*
-
-*[Continue to Part V: Mastery](../part5-mastery/25-how-viper-works.md)*
+Concurrency is powerful but demands discipline. Start simple — use channels and thread pools before reaching for low-level primitives. Test under load. And remember: the best concurrent code is code where threads don't share state at all.

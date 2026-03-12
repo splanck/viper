@@ -141,6 +141,11 @@ SharedOptionParseResult parseSharedOption(int &index, int argc, char **argv, Sha
         opts.disabledWarnings.emplace_back(arg.substr(5));
         return SharedOptionParseResult::Parsed;
     }
+    if (arg == "--profile")
+    {
+        opts.profile = true;
+        return SharedOptionParseResult::Parsed;
+    }
     return SharedOptionParseResult::NotMatched;
 }
 

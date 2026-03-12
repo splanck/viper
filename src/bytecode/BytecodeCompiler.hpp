@@ -34,6 +34,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace viper
@@ -83,6 +84,12 @@ class BytecodeCompiler
     /// @brief Mapping from block labels to the SSA IDs of their block parameters.
     /// @details Used to emit stores for branch arguments that feed block parameters.
     std::unordered_map<std::string, std::vector<uint32_t>> blockParamIds_;
+
+    /// @brief Set of block labels that are direct targets of eh.push instructions.
+    /// @details Only these blocks receive handler values (error, resume_token)
+    ///          via the dispatchTrap stack push. Other blocks with eh.entry (e.g.,
+    ///          typed-catch forwarding blocks) receive values via normal branch args.
+    std::unordered_set<std::string> ehPushTargets_;
 
     /// @brief A pending branch fixup requiring offset resolution after all blocks
     ///        have been emitted.

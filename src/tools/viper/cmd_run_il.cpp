@@ -340,6 +340,13 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
 
     config.boundsChecksRequested = config.sharedOpts.boundsChecks;
 
+    // --profile enables both instruction counting and wall-clock timing.
+    if (config.sharedOpts.profile)
+    {
+        config.countFlag = true;
+        config.timeFlag = true;
+    }
+
     return true;
 }
 

@@ -2011,41 +2011,47 @@ Concurrency primitives for parallel execution.
 
 ### Threads
 
-#### spawn
+Import threads with:
+```rust
+bind Thread = Viper.Threads.Thread;
+```
+
+#### Start
 
 ```rust
-func Thread.spawn(fn: func() -> T) -> Thread<T>
+func Thread.Start(fn: func()) -> Thread
 ```
 
 Creates and starts a new thread running the given function.
 
 **Thread methods:**
 ```rust
-thread.Join() -> void      // Wait for thread to complete
-thread.result() -> T       // Wait and get return value
+Thread.Join(t) -> void     // Wait for thread to complete
+t.Join() -> void           // Wait for thread to complete (method form)
 ```
 
 **Example:**
 ```rust
+bind Thread = Viper.Threads.Thread;
+
 // Simple thread
-var thread = Thread.spawn(func() {
+var t = Thread.Start(func() {
     Terminal.Say("Hello from thread!");
 });
-thread.Join();
+Thread.Join(t);
 
-// Thread with return value
-var thread = Thread.spawn(func() -> Integer {
+// Thread running a longer task
+var t = Thread.Start(func() {
     var sum = 0;
     for i in 0..1000000 {
         sum += i;
     }
-    return sum;
+    Terminal.Say("Sum: " + sum);
 });
 
 // Do other work while thread runs...
 
-var result = thread.result();
-Terminal.Say("Sum: " + result);
+t.Join();
 ```
 
 ---
@@ -2064,13 +2070,15 @@ mutex.synchronized(fn: func()) -> void
 
 **Example:**
 ```rust
+bind Thread = Viper.Threads.Thread;
+
 var counter = 0;
 var mutex = Mutex.create();
 
 // WRONG: Race condition
 var threads = [];
 for i in 0..10 {
-    threads.Push(Thread.spawn(func() {
+    threads.Push(Thread.Start(func() {
         for j in 0..1000 {
             counter += 1;  // Not thread-safe!
         }
@@ -2080,7 +2088,7 @@ for i in 0..10 {
 // CORRECT: With mutex
 var threads = [];
 for i in 0..10 {
-    threads.Push(Thread.spawn(func() {
+    threads.Push(Thread.Start(func() {
         for j in 0..1000 {
             mutex.lock();
             counter += 1;
@@ -2100,31 +2108,34 @@ mutex.synchronized(func() {
 
 ---
 
-### Atomics
+### SafeI64
 
 Lock-free atomic operations for simple counters and flags.
 
 ```rust
-var atomic = new Atomic[Integer](initialValue: Integer) -> Atomic[Integer]
+bind SafeI64 = Viper.Threads.SafeI64;
+
+var atomic = SafeI64.New(initialValue: Integer) -> SafeI64
 
 atomic.Get() -> Integer
 atomic.Set(value: Integer) -> void
-atomic.increment() -> Integer          // Returns old value
-atomic.decrement() -> Integer          // Returns old value
-atomic.Add(n: Integer) -> Integer          // Returns old value
-atomic.compareAndSwap(expected: Integer, new: Integer) -> Boolean
+atomic.Add(n: Integer) -> Integer          // Adds n, returns old value
+atomic.Sub(n: Integer) -> Integer          // Subtracts n, returns old value
 ```
 
 **Example:**
 ```rust
-var counter = new Atomic[Integer](0);
+bind Thread = Viper.Threads.Thread;
+bind SafeI64 = Viper.Threads.SafeI64;
+
+var counter = SafeI64.New(0);
 
 // Safe to call from multiple threads
 var threads = [];
 for i in 0..10 {
-    threads.Push(Thread.spawn(func() {
+    threads.Push(Thread.Start(func() {
         for j in 0..1000 {
-            counter.increment();
+            counter.Add(1);
         }
     }));
 }
@@ -2136,7 +2147,7 @@ for thread in threads {
 Terminal.Say("Count: " + counter.Get());  // Always 10000
 ```
 
-**When to use:** Use Atomics for simple counters or flags. Use Mutex for more complex shared state.
+**When to use:** Use SafeI64 for simple counters or flags. Use Mutex for more complex shared state.
 
 ---
 
@@ -2155,10 +2166,12 @@ channel.Close() -> void
 
 **Example:**
 ```rust
+bind Thread = Viper.Threads.Thread;
+
 var channel = new Channel[String]();
 
 // Producer thread
-var producer = Thread.spawn(func() {
+var producer = Thread.Start(func() {
     for i in 0..5 {
         channel.send("Message " + i);
         Time.Clock.Sleep(100);
@@ -2187,38 +2200,31 @@ producer.Join();
 Manages a pool of worker threads for efficient task execution.
 
 ```rust
-var pool = ThreadPool.create(numWorkers: Integer) -> ThreadPool
+bind Pool = Viper.Threads.Pool;
+
+var pool = Pool.New(numWorkers: Integer) -> Pool
 
 pool.submit(fn: func()) -> void
-pool.submitWithResult(fn: func() -> T) -> Future<T>
 pool.waitAll() -> void
 pool.shutdown() -> void
 ```
 
-**Future methods:**
-```rust
-future.Get() -> T                  // Blocks until result ready
-future.isReady() -> Boolean
-```
-
 **Example:**
 ```rust
-var pool = ThreadPool.create(4);  // 4 worker threads
+bind Pool = Viper.Threads.Pool;
+
+var pool = Pool.New(4);  // 4 worker threads
 
 // Submit many tasks
-var futures = [];
 for url in imageUrls {
-    futures.Push(pool.submitWithResult(func() {
-        return Http.Get(url);
-    }));
+    pool.submit(func() {
+        var response = Http.Get(url);
+        processImage(response.body);
+    });
 }
 
-// Collect results
-for future in futures {
-    var response = future.Get();
-    processImage(response.body);
-}
-
+// Wait for all tasks to complete
+pool.waitAll();
 pool.shutdown();
 ```
 

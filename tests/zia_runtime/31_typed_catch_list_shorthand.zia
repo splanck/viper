@@ -1,0 +1,111 @@
+module RuntimeTest31;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+// Test: Typed catch (catch(e: ErrorType)) and [Type] shorthand syntax
+
+//=============================================================================
+// Test 1: [Type] shorthand — [Integer] desugars to List[Integer]
+//=============================================================================
+func testListShorthand() {
+    var nums: [Integer] = [1, 2, 3, 4, 5];
+    assertEqInt(nums.count(), 5, "shorthand_count");
+    assertEqInt(nums.get(0), 1, "shorthand_get_0");
+    assertEqInt(nums.get(4), 5, "shorthand_get_4");
+
+    // Nested shorthand: [[Integer]] → List[List[Integer]]
+    // (Only test at type level — actual nested lists need runtime support)
+    var strs: [String] = ["hello", "world"];
+    assertEqStr(strs.get(0), "hello", "shorthand_str_0");
+    assertEqStr(strs.get(1), "world", "shorthand_str_1");
+}
+
+//=============================================================================
+// Test 2: Basic try/catch (untyped — existing behavior)
+//=============================================================================
+func testBasicTryCatch() {
+    var caught = false;
+    try {
+        var x = 1 / 0;
+    } catch(e) {
+        caught = true;
+    }
+    assertTrue(caught, "basic_catch");
+}
+
+//=============================================================================
+// Test 3: Typed catch — DivideByZero
+//=============================================================================
+func testTypedCatchDivByZero() {
+    var caught = false;
+    try {
+        var x = 1 / 0;
+    } catch(e: DivideByZero) {
+        caught = true;
+    }
+    assertTrue(caught, "typed_catch_div_by_zero");
+}
+
+//=============================================================================
+// Test 4: Typed catch — wrong type does NOT catch
+//=============================================================================
+func testTypedCatchMismatch() {
+    // Division by zero should NOT be caught by a Bounds handler.
+    // The error should propagate to the outer catch-all.
+    var caughtInner = false;
+    var caughtOuter = false;
+    try {
+        try {
+            var x = 1 / 0;
+        } catch(e: Bounds) {
+            caughtInner = true;
+        }
+    } catch(e) {
+        caughtOuter = true;
+    }
+    assertTrue(!caughtInner, "typed_catch_mismatch_inner");
+    assertTrue(caughtOuter, "typed_catch_mismatch_outer");
+}
+
+//=============================================================================
+// Test 5: Typed catch — catch-all "Error" type
+//=============================================================================
+func testTypedCatchAll() {
+    var caught = false;
+    try {
+        var x = 1 / 0;
+    } catch(e: Error) {
+        caught = true;
+    }
+    assertTrue(caught, "typed_catch_all_error");
+}
+
+//=============================================================================
+// Test 6: Typed catch with finally
+//=============================================================================
+func testTypedCatchFinally() {
+    var caught = false;
+    var finalized = false;
+    try {
+        var x = 1 / 0;
+    } catch(e: DivideByZero) {
+        caught = true;
+    } finally {
+        finalized = true;
+    }
+    assertTrue(caught, "typed_catch_finally_caught");
+    assertTrue(finalized, "typed_catch_finally_ran");
+}
+
+func start() {
+    testListShorthand();
+    testBasicTryCatch();
+    testTypedCatchDivByZero();
+    testTypedCatchMismatch();
+    testTypedCatchAll();
+    testTypedCatchFinally();
+
+    report();
+}

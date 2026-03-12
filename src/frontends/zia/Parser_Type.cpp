@@ -47,6 +47,21 @@ TypePtr Parser::parseType()
 
 TypePtr Parser::parseBaseType()
 {
+    // [Type] shorthand for List[Type] — e.g., [Integer] desugars to List[Integer]
+    if (check(TokenKind::LBracket))
+    {
+        Token lbTok = advance(); // consume '['
+        SourceLoc loc = lbTok.loc;
+        auto innerType = parseType(); // recurse: [[T]] → List[List[T]]
+        if (!innerType)
+            return nullptr;
+        if (!expect(TokenKind::RBracket, "]"))
+            return nullptr;
+        std::vector<TypePtr> args;
+        args.push_back(std::move(innerType));
+        return std::make_unique<GenericType>(loc, "List", std::move(args));
+    }
+
     // Named type (possibly qualified: Module.Type or Module.SubModule.Type)
     if (check(TokenKind::Identifier))
     {

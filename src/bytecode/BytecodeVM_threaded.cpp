@@ -184,6 +184,7 @@ void BytecodeVM::runThreaded()
         [0xCA] = &&L_RESUME_SAME,
         [0xCB] = &&L_RESUME_NEXT,
         [0xCC] = &&L_RESUME_LABEL,
+        [0xCD] = &&L_TRAP_KIND,
     };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -1413,6 +1414,37 @@ L_RESUME_LABEL:
     // Target offset is in the next code word (raw i32 offset)
     int32_t offset = static_cast<int32_t>(code[pc++]);
     pc = static_cast<uint32_t>(static_cast<int32_t>(pc - 1) + offset);
+    DISPATCH();
+}
+
+L_TRAP_KIND:
+{
+    // Push the current trap kind, mapped to the IL-level TrapKind enum
+    // (vm/Trap.hpp) used by the frontend lowerer for typed-catch comparisons.
+    int64_t ilKind;
+    switch (trapKind_)
+    {
+        case TrapKind::DivisionByZero:
+            ilKind = 0;
+            break;
+        case TrapKind::Overflow:
+            ilKind = 1;
+            break;
+        case TrapKind::InvalidCast:
+            ilKind = 2;
+            break;
+        case TrapKind::IndexOutOfBounds:
+            ilKind = 4;
+            break;
+        case TrapKind::NullPointer:
+            ilKind = 3;
+            break;
+        default:
+            ilKind = 9;
+            break;
+    }
+    sp->i64 = ilKind;
+    sp++;
     DISPATCH();
 }
 

@@ -72,6 +72,9 @@ struct SharedCliOptions
 
     /// @brief Warning codes/names disabled via `-Wno-XXX`.
     std::vector<std::string> disabledWarnings;
+
+    /// @brief Enable combined profiling (instruction count + wall-clock timing).
+    bool profile = false;
 };
 
 /// @brief Result of attempting to parse a shared CLI option.

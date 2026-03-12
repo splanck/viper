@@ -698,12 +698,23 @@ StmtPtr Parser::parseTryStmt()
     // Parse optional catch clause
     if (match(TokenKind::KwCatch))
     {
-        // Optional catch variable: catch(e) or catch
+        // Optional catch variable: catch(e), catch(e: ErrorType), or catch
         if (match(TokenKind::LParen))
         {
             if (checkIdentifierLike())
             {
                 stmt->catchVar = advance().text;
+
+                // Optional typed catch: catch(e: ErrorType)
+                if (match(TokenKind::Colon))
+                {
+                    if (!check(TokenKind::Identifier))
+                    {
+                        error("expected error type name after ':' in catch clause");
+                        return nullptr;
+                    }
+                    stmt->catchTypeName = advance().text;
+                }
             }
             if (!expect(TokenKind::RParen, "')'"))
                 return nullptr;

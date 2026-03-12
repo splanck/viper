@@ -196,21 +196,46 @@ This keeps your code clean while still providing timing information.
 
 Manual timing works for small programs, but for larger ones, you need a *profiler*. A profiler automatically measures where your program spends time.
 
+### Using `--profile`
+
+Viper includes a built-in profiler that reports instruction count and wall-clock timing:
+
+```bash
+# Profile a program — shows instruction count and elapsed time
+viper run --profile myproject/
+
+# Output (on stderr):
+# [SUMMARY] instr=1284350 time_ms=42.7
+```
+
+The `--profile` flag enables both instruction counting and wall-clock timing in a single pass. This tells you *how much work* your program does (instruction count) and *how long it takes* (wall-clock time).
+
+You can also use the individual flags for more targeted analysis:
+
+```bash
+# Instruction count only (via viper -run for IL files)
+viper -run --count program.il
+
+# Wall-clock timing only
+viper -run --time program.il
+
+# Both (equivalent to --profile)
+viper -run --count --time program.il
+```
+
 ### Using Viper's Diagnostic Flags
 
-> **Planned Feature:** A built-in profiler (`--profile`) is a planned feature not yet available
-> in Viper. The diagnostic flags below are currently available for inspecting your program's
-> compilation. For runtime profiling, use the manual timing techniques shown earlier in this
-> chapter.
-
-Viper provides diagnostic flags to inspect the compiled representation of your program:
+Viper provides additional diagnostic flags to inspect the compiled representation of your program:
 
 ```bash
 # Dump the IL (intermediate language) representation
-zia --dump-il myprogram.zia
+viper run --dump-il myproject/
 
 # Dump the optimized IL after optimization passes
-zia --dump-il-opt myprogram.zia
+viper run --dump-il-opt myproject/
+
+# Dump IL before and after each optimization pass
+viper run --dump-il-passes myproject/
 ```
 
 The `--dump-il` flag shows the raw IL your code compiles to, while `--dump-il-opt` shows the IL after Viper's optimizer has run. Comparing the two helps you understand what the optimizer does and whether your code structure helps or hinders optimization.
@@ -222,16 +247,6 @@ When examining `--dump-il-opt` output, look for:
 - **Excessive allocations**: Many `alloca` or object creation instructions in hot paths
 - **Missed constant folding**: Arithmetic on values the compiler should have computed at compile time
 - **Redundant loads/stores**: The same value being loaded from memory multiple times
-
-### Future Profiling (Planned)
-
-A full profiling system is planned for Viper that will provide:
-- Per-function call counts and timing
-- Sampling and instrumentation modes
-- Memory allocation profiling
-- These will be accessible via `--profile` flags once implemented
-
-For now, use the manual timing approach with `Time.Clock.Ticks()` and `Time.Clock.TicksUs()` shown in the previous section to identify bottlenecks in your code.
 
 ---
 
@@ -881,17 +896,18 @@ var data3 = Http.Get(url3);  // Wait 200ms
 // Total: 600ms
 ```
 
-**Fast: Parallel** *(Thread.spawn is a planned feature -- see [Chapter 24](../part4-applications/24-concurrency.md))*
+**Fast: Parallel** *(see [Chapter 24](../part4-applications/24-concurrency.md))*
 ```rust
-var tasks = [
-    Thread.spawn(func() { return Http.Get(url1); }),
-    Thread.spawn(func() { return Http.Get(url2); }),
-    Thread.spawn(func() { return Http.Get(url3); })
-];
+bind Thread = Viper.Threads.Thread;
+bind Http = Viper.Network.Http;
 
-var data1 = tasks[0].result();
-var data2 = tasks[1].result();
-var data3 = tasks[2].result();
+var t1 = Thread.Start(func() { return Http.Get(url1); });
+var t2 = Thread.Start(func() { return Http.Get(url2); });
+var t3 = Thread.Start(func() { return Http.Get(url3); });
+
+t1.Join();
+t2.Join();
+t3.Join();
 // Total: ~200ms (they run simultaneously)
 ```
 

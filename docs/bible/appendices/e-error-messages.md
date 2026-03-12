@@ -1811,16 +1811,19 @@ Warning: DataRaceWarning at main.zia:45:12
 **Fix examples:**
 
 ```rust
+bind Thread = Viper.Threads.Thread;
+bind SafeI64 = Viper.Threads.SafeI64;
+
 // Problem: Unsynchronized access
 var counter = 0;
 
-var t1 = Thread.spawn(func() {
+var t1 = Thread.Start(func() {
     for i in 0..1000 {
         counter = counter + 1;  // Race condition!
     }
 });
 
-var t2 = Thread.spawn(func() {
+var t2 = Thread.Start(func() {
     for i in 0..1000 {
         counter = counter + 1;  // Race condition!
     }
@@ -1830,7 +1833,7 @@ var t2 = Thread.spawn(func() {
 var counter = 0;
 var mutex = Mutex.create();
 
-var t1 = Thread.spawn(func() {
+var t1 = Thread.Start(func() {
     for i in 0..1000 {
         mutex.lock();
         counter = counter + 1;
@@ -1839,11 +1842,11 @@ var t1 = Thread.spawn(func() {
 });
 
 // Solution 2: Use atomic operations
-var counter = Atomic.new(0);
+var counter = SafeI64.New(0);
 
-var t1 = Thread.spawn(func() {
+var t1 = Thread.Start(func() {
     for i in 0..1000 {
-        counter.increment();  // Atomic, thread-safe
+        counter.Add(1);  // Atomic, thread-safe
     }
 });
 ```

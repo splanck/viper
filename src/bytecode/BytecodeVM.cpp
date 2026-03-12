@@ -1418,6 +1418,39 @@ void BytecodeVM::run()
                 break;
             }
 
+            case BCOpcode::TRAP_KIND:
+            {
+                // Push the current trap kind, mapped to the IL-level TrapKind
+                // enum (vm/Trap.hpp) which the frontend lowerer uses for
+                // typed-catch comparisons. The BytecodeVM's own TrapKind enum
+                // has different numbering, so we translate here.
+                int64_t ilKind;
+                switch (trapKind_)
+                {
+                    case TrapKind::DivisionByZero:
+                        ilKind = 0;
+                        break; // il::vm::TrapKind::DivideByZero
+                    case TrapKind::Overflow:
+                        ilKind = 1;
+                        break; // il::vm::TrapKind::Overflow
+                    case TrapKind::InvalidCast:
+                        ilKind = 2;
+                        break; // il::vm::TrapKind::InvalidCast
+                    case TrapKind::IndexOutOfBounds:
+                        ilKind = 4;
+                        break; // il::vm::TrapKind::Bounds
+                    case TrapKind::NullPointer:
+                        ilKind = 3;
+                        break; // il::vm::TrapKind::DomainError
+                    default:
+                        ilKind = 9;
+                        break; // il::vm::TrapKind::RuntimeError
+                }
+                sp_->i64 = ilKind;
+                sp_++;
+                break;
+            }
+
             //==================================================================
             // Default
             //==================================================================
@@ -1647,11 +1680,13 @@ void BytecodeVM::popExceptionHandler()
 /// to the handler. Returns false if the trap propagates to the top level.
 bool BytecodeVM::dispatchTrap(TrapKind kind)
 {
-    // Search for a handler
+    // Search for a handler. We do NOT pop the handler here — the handler's
+    // own eh.pop instruction is responsible for cleanup. This matches the
+    // standard VM's prepareTrap semantics and is required for typed-catch
+    // rethrow to propagate correctly to outer handlers.
     while (!ehStack_.empty())
     {
         BCExceptionHandler eh = ehStack_.back();
-        ehStack_.pop_back();
 
         // Unwind call stack to the frame where handler was registered
         while (callStack_.size() > eh.frameIndex + 1)
@@ -1698,6 +1733,9 @@ bool BytecodeVM::dispatchTrap(TrapKind kind)
             state_ = VMState::Running;
             return true;
         }
+
+        // Frame for this handler no longer exists — discard and try next
+        ehStack_.pop_back();
     }
 
     // No handler found - trap propagates to top level

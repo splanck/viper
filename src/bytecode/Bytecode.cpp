@@ -267,6 +267,8 @@ const char *opcodeName(BCOpcode op)
             return "RESUME_NEXT";
         case BCOpcode::RESUME_LABEL:
             return "RESUME_LABEL";
+        case BCOpcode::TRAP_KIND:
+            return "TRAP_KIND";
 
         // Debug Operations
         case BCOpcode::LINE:

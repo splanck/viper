@@ -52,8 +52,22 @@ void BytecodeCompiler::compileFunction(const il::core::Function &fn)
     ssaToLocal_.clear();
     blockOffsets_.clear();
     pendingBranches_.clear();
+    ehPushTargets_.clear();
     currentStackDepth_ = 0;
     maxStackDepth_ = 0;
+
+    // Collect eh.push target labels so we can distinguish real handler blocks
+    // (entered via dispatchTrap) from forwarding handler blocks (entered via CBr).
+    for (const auto &block : fn.blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op == il::core::Opcode::EhPush && !instr.labels.empty())
+            {
+                ehPushTargets_.insert(instr.labels[0]);
+            }
+        }
+    }
 
     // Build SSA to locals mapping
     buildSSAToLocalsMap(fn);
@@ -201,13 +215,15 @@ void BytecodeCompiler::compileBlock(const il::core::BasicBlock &block)
     // Handle block parameters - they receive values from branch arguments
     // The calling block will have already pushed the arguments
 
-    // Check if this is a handler block (has params and starts with eh.entry)
-    // For handler blocks, we need to pop stack values into the block parameters
-    // since they're pushed by dispatchTrap, not by a branch instruction
+    // Check if this is a handler block that receives values from dispatchTrap.
+    // Only blocks that are direct targets of eh.push receive stack-pushed values
+    // from dispatchTrap. Other blocks with eh.entry (e.g., typed-catch forwarding
+    // blocks) receive their values via normal branch arguments stored to locals.
     bool isHandlerBlock = false;
     if (!block.params.empty() && !block.instructions.empty())
     {
-        if (block.instructions[0].op == il::core::Opcode::EhEntry)
+        if (block.instructions[0].op == il::core::Opcode::EhEntry &&
+            ehPushTargets_.count(block.label))
         {
             isHandlerBlock = true;
         }
@@ -479,8 +495,8 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr)
             break;
 
         case Opcode::TrapKind:
-            // Get current trap kind
-            emit(BCOpcode::ERR_GET_KIND);
+            // Push the current trap kind (stored by dispatchTrap, no stack operand)
+            emit(BCOpcode::TRAP_KIND);
             pushStack();
             storeResult(instr);
             break;

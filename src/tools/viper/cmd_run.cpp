@@ -30,6 +30,7 @@
 #include "viper/il/Verify.hpp"
 #include "viper/vm/VM.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -190,7 +191,7 @@ int verifyAndExecute(il::core::Module &module,
 
     bool useStandardVm = debugVm || shared.trace.enabled();
 
-    if (useStandardVm)
+    if (useStandardVm || shared.profile)
     {
         vm::TraceConfig traceCfg = shared.trace;
         traceCfg.sm = &sm;
@@ -201,7 +202,17 @@ int verifyAndExecute(il::core::Module &module,
         runCfg.programArgs = programArgs;
 
         vm::Runner runner(module, std::move(runCfg));
+
+        std::chrono::steady_clock::time_point startTime;
+        if (shared.profile)
+            startTime = std::chrono::steady_clock::now();
+
         int rc = static_cast<int>(runner.run());
+
+        std::chrono::steady_clock::time_point endTime;
+        if (shared.profile)
+            endTime = std::chrono::steady_clock::now();
+
         const auto trapMessage = runner.lastTrapMessage();
         if (trapMessage)
         {
@@ -214,6 +225,14 @@ int verifyAndExecute(il::core::Module &module,
             if (rc == 0)
                 rc = 1;
         }
+
+        if (shared.profile)
+        {
+            double ms = std::chrono::duration<double, std::milli>(endTime - startTime).count();
+            std::cerr << "[SUMMARY] instr=" << runner.instructionCount()
+                      << " time_ms=" << ms << "\n";
+        }
+
         return rc;
     }
 

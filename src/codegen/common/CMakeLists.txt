@@ -1,6 +1,11 @@
 add_library(viper_codegen_common STATIC
         Diagnostics.cpp
-        LinkerSupport.cpp)
+        LinkerSupport.cpp
+        objfile/ObjectFileWriter.cpp
+        objfile/ElfWriter.cpp
+        objfile/MachOWriter.cpp
+        objfile/StringTable.cpp
+        objfile/SymbolTable.cpp)
 target_include_directories(viper_codegen_common PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)

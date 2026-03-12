@@ -695,8 +695,11 @@ Dynamic arrays that grow as needed.
 // Creation
 var numbers = [1, 2, 3, 4, 5];
 var empty: List[Integer] = [];
-var sized = [Integer](100);       // Array of 100 zeros
-var filled = [Integer](100, 42);  // Array of 100 forty-twos
+
+// [Type] shorthand for List[Type]
+var scores: [Integer] = [95, 87, 100];     // Same as List[Integer]
+var words: [String] = ["hello", "world"];   // Same as List[String]
+var nested: [[Integer]] = [];               // Same as List[List[Integer]]
 
 // Access
 var first = numbers[0];           // First element (0-indexed)
@@ -1610,18 +1613,18 @@ Handle exceptional conditions gracefully.
 
 ```rust
 func divide(a: Number, b: Number) -> Number {
-    if b == 0 {
-        throw DivisionByZeroError("Cannot divide by zero");
+    if (b == 0) {
+        throw "Cannot divide by zero";
     }
     return a / b;
 }
 
 func validateAge(age: Integer) -> Integer {
-    if age < 0 {
-        throw ValidationError("Age cannot be negative");
+    guard (age >= 0) else {
+        throw "Age cannot be negative";
     }
-    if age > 150 {
-        throw ValidationError("Age seems unrealistic");
+    guard (age <= 150) else {
+        throw "Age seems unrealistic";
     }
     return age;
 }
@@ -1630,39 +1633,42 @@ func validateAge(age: Integer) -> Integer {
 ### Try/Catch Blocks
 
 ```rust
+// Catch-all: catches any error
 try {
     var result = divide(10, 0);
-    Terminal.Say(result);
-} catch DivisionByZeroError {
-    Terminal.Say("Cannot divide by zero!");
-} catch MathError as e {
-    Terminal.Say("Math error: " + e.message);
-} catch Error as e {
-    Terminal.Say("General error: " + e.message);
+    Viper.Terminal.Say(toString(result));
+} catch(e) {
+    Viper.Terminal.Say("Error occurred!");
 } finally {
     // Always executed, even if error occurred
     cleanup();
 }
-```
 
-### Custom Error Types
-
-```rust
-entity ValidationError extends Error {
-    hide field: String;
-
-    expose func init(message: String, field: String) {
-        super(message);
-        self.field = field;
-    }
-
-    expose func getField() -> String {
-        return self.field;
-    }
+// Typed catch: catches only specific error types
+try {
+    var result = divide(10, 0);
+} catch(e: DivideByZero) {
+    Viper.Terminal.Say("Cannot divide by zero!");
 }
 
-throw ValidationError("Invalid email format", "email");
+// Typed catch with fallthrough to outer handler
+try {
+    try {
+        var result = divide(10, 0);
+    } catch(e: Bounds) {
+        // DivideByZero does NOT match Bounds — error propagates
+        Viper.Terminal.Say("Bounds error");
+    }
+} catch(e) {
+    // Catches the re-raised DivideByZero here
+    Viper.Terminal.Say("Caught in outer handler");
+}
 ```
+
+**Valid error type names for typed catch:**
+`DivideByZero`, `Overflow`, `InvalidCast`, `DomainError`, `Bounds`,
+`FileNotFound`, `EOF`, `IOError`, `InvalidOperation`, `RuntimeError`,
+`Interrupt`, `NetworkError`, `Error` (catch-all).
 
 ### Optional Chaining and Null Coalescing
 
@@ -2177,8 +2183,9 @@ match x { a => ..., _ => ...} // Pattern match
 
 ### Error Handling
 ```rust
-try { } catch Error { } finally { }
-throw ErrorType();
+try { } catch(e) { } finally { }        // Catch-all
+try { } catch(e: DivideByZero) { }      // Typed catch
+throw "error message";
 value ?? default
 obj?.field
 ```

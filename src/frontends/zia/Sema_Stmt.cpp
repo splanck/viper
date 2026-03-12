@@ -82,6 +82,33 @@ void Sema::analyzeStmt(Stmt *stmt)
             auto *tryStmt = static_cast<TryStmt *>(stmt);
             if (tryStmt->tryBody)
                 analyzeStmt(tryStmt->tryBody.get());
+
+            // Validate typed catch error type name.
+            if (!tryStmt->catchTypeName.empty())
+            {
+                static const char *const validErrorTypes[] = {
+                    "DivideByZero",     "Overflow",     "InvalidCast",
+                    "DomainError",      "Bounds",       "FileNotFound",
+                    "EOF",              "IOError",      "InvalidOperation",
+                    "RuntimeError",     "Interrupt",    "NetworkError",
+                    "Error", // catch-all alias
+                };
+                bool found = false;
+                for (const auto *name : validErrorTypes)
+                {
+                    if (tryStmt->catchTypeName == name)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    error(tryStmt->loc, "unknown error type '" + tryStmt->catchTypeName +
+                                            "' in catch clause");
+                }
+            }
+
             if (tryStmt->catchBody)
             {
                 pushScope();

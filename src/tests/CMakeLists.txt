@@ -99,6 +99,8 @@ if (VIPER_ENABLE_FUZZ)
     add_subdirectory(fuzz)
 endif ()
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/x86_64)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/objfile)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/binenc)
 
 # ── helpers for AArch64 and cross-platform codegen tests ────────────────────
 # Defined at file scope so they are available both inside and outside the
@@ -672,6 +674,7 @@ set(ZIA_LANG_TESTS
         28_numeric_edge_cases
         29_control_flow_advanced
         30_value_types
+        31_typed_catch_list_shorthand
 )
 
 foreach (test_name IN LISTS ZIA_LANG_TESTS)

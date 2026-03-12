@@ -41,8 +41,8 @@ Tracked issues are categorized by severity.
 | Ch21 | FIXED | Game project rewritten (B4) |
 | Ch22 | FIXED | TCP/HTTP API + module paths |
 | Ch23 | FIXED | Module paths + `[Type]` syntax (B1, B3) |
-| Ch24 | FIXED | Planned-feature notices added (C1) |
-| Ch25-26 | FIXED | `--profile` replaced with available flags (C2) |
+| Ch24 | FIXED | Complete rewrite documenting actual Viper.Threads.* API (C1) |
+| Ch25-26 | FIXED | `--profile` flag implemented + documented (C2) |
 | Appendix A | FIXED | `[Type]` → `List[Type]` (B1) |
 | Appendix D | FIXED | Canvas/Color/Input reference rewritten (B4) |
 
@@ -175,11 +175,8 @@ Tracked issues are categorized by severity.
 - **Problem**: Module is `Viper.IO.File`, not `Viper.File`.
 - **Fix**: `bind File = Viper.IO.File;`
 
-### ISSUE-10-002 (P0): Typed catch blocks are not supported
-- **File**: `part2-building-blocks/10-errors.md` ~lines 283-289, 457-464, 593, 602, 642-644, 797, 840, 870, 913, 980, 1036
-- **Code**: `catch e: FileNotFound { }` / `catch e: ParseError { }` / `catch e: DivisionByZero { }`
-- **Problem**: Zia parser (`Parser_Stmt.cpp:699-715`) only supports `catch(e) { }` — generic catch without type filtering. The AST has no field for catch type.
-- **Fix**: Use generic `catch e { }` and check error properties inside the block.
+### ~~ISSUE-10-002 (P0): Typed catch blocks are not supported~~ FIXED
+- **Status**: Fixed — typed catch (`catch(e: ErrorType)`) now implemented in parser, sema, and lowerer. Supports all 12 TrapKind error types plus `Error` catch-all. Unmatched errors re-raise to outer handlers via `trap.from_err`.
 
 ### ISSUE-10-003 (P0): Custom error types don't exist as constructors
 - **File**: `part2-building-blocks/10-errors.md` ~lines 445-447, 961, 980
@@ -387,15 +384,8 @@ Tracked issues are categorized by severity.
 
 ## Chapter 24 (Concurrency)
 
-### ISSUE-24-001 (P0): Threading API does not exist
-- **File**: `part4-applications/24-concurrency.md` — throughout
-- **Lines**: 310-312, 432, 546, 608, 642-644, 725, 758-759, 810, 854, 1194-1198, 1331-1332
-- **Code**: `bind Viper.Threading;` / `Thread.spawn()` / `Atomic[Integer]` / `ThreadPool.create()` / `Future<T>`
-- **Problem**: None of these APIs exist. The runtime only provides:
-  - `Viper.Threads.ConcurrentQueue` (Enqueue/TryDequeue)
-  - `Viper.Threads.ConcurrentMap` (thread-safe hash map)
-  - No general-purpose threading, futures, or atomics API.
-- **Fix**: Chapter needs fundamental rewrite to match available concurrency primitives, or mark as "planned features".
+### ~~ISSUE-24-001 (P0): Threading API does not exist~~ FIXED
+- **Status**: Fixed — Complete rewrite of Ch24 documenting actual `Viper.Threads.*` API (18 classes, 89 RT_FUNCs, 129 RT_METHODs). All fictional `Thread.spawn()` / `Atomic[T]` / `ThreadPool.create()` / `Future<T>` references replaced with real API.
 
 ### ~~ISSUE-24-002 (P0): `[Type]` list syntax~~ FIXED
 - **Status**: Fixed — all instances replaced with `List[Type]`.
@@ -404,15 +394,11 @@ Tracked issues are categorized by severity.
 
 ## Chapters 25-26 (How Viper Works, Performance)
 
-### ISSUE-25-001 (P0): `--profile` flag does not exist
-- **File**: `part5-mastery/26-performance.md` ~lines 202, 239, 247
-- **Code**: `zia --profile myprogram.zia` / `--profile=instrument` / `--profile=memory`
-- **Problem**: `viper --help` shows no `--profile` flag. Available diagnostics: `--dump-tokens`, `--dump-ast`, `--dump-sema-ast`, `--dump-il`, `--dump-il-opt`, `--dump-il-passes`.
-- **Fix**: Remove profiler references or mark as planned feature.
+### ~~ISSUE-25-001 (P0): `--profile` flag does not exist~~ FIXED
+- **Status**: Fixed — `--profile` CLI flag implemented (enables `--count` + `--time` + top opcodes summary). Ch26 documentation updated.
 
-### ISSUE-25-002 (P1): Profiler output documentation for non-existent feature
-- **File**: `part5-mastery/26-performance.md` ~lines 208-226
-- **Problem**: Documents detailed profiler output that cannot be produced.
+### ~~ISSUE-25-002 (P1): Profiler output documentation for non-existent feature~~ FIXED
+- **Status**: Fixed — profiler output documentation now matches actual `--profile` flag behavior.
 
 ---
 

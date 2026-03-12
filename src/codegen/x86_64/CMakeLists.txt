@@ -26,6 +26,7 @@ add_library(viper_codegen_x86_64 STATIC
         Peephole.cpp
         Backend.cpp
         CodegenPipeline.cpp
+        binenc/X64BinaryEncoder.cpp
         passes/LoweringPass.cpp
         passes/LegalizePass.cpp
         passes/RegAllocPass.cpp

@@ -622,7 +622,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Source code**: The human-readable text that programmers write. What you see in code files. Gets compiled or interpreted into something the computer executes. See also *Compiler*, *Code*.
 
-**Spawn**: To create and start a new thread. `Thread.spawn(func)` creates a thread that runs the given function. See [Chapter 24](../part4-applications/24-concurrency.md). See also *Thread*.
+**Spawn**: To create and start a new thread. `Thread.Start(func() { ... })` creates a thread that runs the given function. See [Chapter 24](../part4-applications/24-concurrency.md). See also *Thread*.
 
 **Stack**: (1) A region of memory for function calls and local variables. Fast but limited in size. (2) A LIFO (Last In, First Out) data structure. See also *Heap*, *LIFO*, *Call stack*.
 

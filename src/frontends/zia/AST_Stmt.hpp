@@ -478,6 +478,11 @@ struct TryStmt : Stmt
     /// @brief Catch variable name (empty if no catch clause).
     std::string catchVar;
 
+    /// @brief Catch error type name for typed catch (empty for catch-all).
+    /// @details When non-empty, only errors matching this TrapKind are caught.
+    /// Unmatched errors are re-raised to the next handler in the chain.
+    std::string catchTypeName;
+
     /// @brief Catch body (nullptr if no catch clause).
     StmtPtr catchBody;
 

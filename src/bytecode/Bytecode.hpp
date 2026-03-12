@@ -217,6 +217,7 @@ enum class BCOpcode : uint8_t
     RESUME_SAME = 0xCA,   ///< Resume execution at the faulting instruction.
     RESUME_NEXT = 0xCB,   ///< Resume execution at the instruction after the fault.
     RESUME_LABEL = 0xCC,  ///< Resume execution at a labelled target.
+    TRAP_KIND = 0xCD,     ///< Push the current trap kind (no operands).
 
     // Debug Operations (0xD0-0xDF)
     LINE = 0xD0,       ///< Source line marker for debug info.
