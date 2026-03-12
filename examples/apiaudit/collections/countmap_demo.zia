@@ -15,7 +15,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var cm = CountMap.New();
-    SayInt(cm.Len);       // 0
+    SayInt(cm.Length);       // 0
     SayBool(cm.IsEmpty);  // 1
 
     // --- Inc / Len ---
@@ -26,7 +26,7 @@ func start() {
     SayInt(cm.Inc("cherry"));    // 1
     SayInt(cm.Inc("cherry"));    // 2
     SayInt(cm.Inc("cherry"));    // 3
-    SayInt(cm.Len);              // 3
+    SayInt(cm.Length);              // 3
     SayBool(cm.IsEmpty);         // 0
 
     // --- IncBy ---
@@ -49,7 +49,7 @@ func start() {
     Say("--- Set ---");
     cm.Set("date", 10);
     SayInt(cm.Get("date"));     // 10
-    SayInt(cm.Len);             // 4
+    SayInt(cm.Length);             // 4
 
     // --- Total ---
     Say("--- Total ---");
@@ -60,30 +60,30 @@ func start() {
     SayInt(cm.Dec("apple"));    // 1 (was 2, now 1)
     SayInt(cm.Dec("apple"));    // 0 (was 1, removed)
     SayBool(cm.Has("apple"));   // 0
-    SayInt(cm.Len);             // 3
+    SayInt(cm.Length);             // 3
 
     // --- Keys ---
     Say("--- Keys ---");
     var keys = cm.Keys();
-    SayInt(keys.Len);           // 3
+    SayInt(keys.Length);           // 3
 
     // --- MostCommon ---
     Say("--- MostCommon ---");
     var top = cm.MostCommon(2);
-    SayInt(top.Len);            // 2
+    SayInt(top.Length);            // 2
     // Should be sorted by count descending: date(10), banana(6)
 
     // --- Remove ---
     Say("--- Remove ---");
     SayBool(cm.Remove("date"));   // 1
     SayBool(cm.Has("date"));      // 0
-    SayInt(cm.Len);               // 2
+    SayInt(cm.Length);               // 2
     SayBool(cm.Remove("date"));   // 0
 
     // --- Clear ---
     Say("--- Clear ---");
     cm.Clear();
-    SayInt(cm.Len);               // 0
+    SayInt(cm.Length);               // 0
     SayBool(cm.IsEmpty);          // 1
 
     Say("=== CountMap audit complete ===");

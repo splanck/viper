@@ -17,7 +17,7 @@ func start() {
     Say("--- GenerateKey ---");
     var key = Cipher.GenerateKey();
     Say("Key generated");
-    SayInt(Bytes.get_Len(key));
+    SayInt(Bytes.get_Length(key));
 
     // --- Encrypt / Decrypt with password ---
     Say("--- Encrypt / Decrypt (password) ---");
@@ -42,7 +42,7 @@ func start() {
     var salt = Rand.Bytes(16);
     var derived = Cipher.DeriveKey("password", salt);
     Say("Derived key length:");
-    SayInt(Bytes.get_Len(derived));
+    SayInt(Bytes.get_Length(derived));
 
     Say("=== Cipher Demo Complete ===");
 }

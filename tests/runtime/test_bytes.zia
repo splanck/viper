@@ -6,7 +6,7 @@ bind "./_support";
 // COVER: Viper.Collections.Bytes.New
 // COVER: Viper.Collections.Bytes.Get
 // COVER: Viper.Collections.Bytes.Set
-// COVER: Viper.Collections.Bytes.get_Len
+// COVER: Viper.Collections.Bytes.get_Length
 // COVER: Viper.Collections.Bytes.FromStr
 // COVER: Viper.Collections.Bytes.ToStr
 // COVER: Viper.Collections.Bytes.Slice
@@ -18,11 +18,11 @@ func testBytesNew() {
     setTest("BytesNew");
 
     var bytes = Viper.Collections.Bytes.New(16);
-    var len = Viper.Collections.Bytes.get_Len(bytes);
+    var len = Viper.Collections.Bytes.get_Length(bytes);
     assertEqInt(len, 16, "bytes created with length 16");
 
     var bytes2 = Viper.Collections.Bytes.New(0);
-    var len2 = Viper.Collections.Bytes.get_Len(bytes2);
+    var len2 = Viper.Collections.Bytes.get_Length(bytes2);
     assertEqInt(len2, 0, "empty bytes");
 }
 
@@ -50,18 +50,18 @@ func testBytesLen() {
     setTest("BytesLen");
 
     var bytes = Viper.Collections.Bytes.New(100);
-    var len = Viper.Collections.Bytes.get_Len(bytes);
+    var len = Viper.Collections.Bytes.get_Length(bytes);
     assertEqInt(len, 100, "bytes length 100");
 
     var small = Viper.Collections.Bytes.New(1);
-    assertEqInt(Viper.Collections.Bytes.get_Len(small), 1, "bytes length 1");
+    assertEqInt(Viper.Collections.Bytes.get_Length(small), 1, "bytes length 1");
 }
 
 func testBytesFromStr() {
     setTest("BytesFromStr");
 
     var bytes = Viper.Collections.Bytes.FromStr("Hello");
-    var len = Viper.Collections.Bytes.get_Len(bytes);
+    var len = Viper.Collections.Bytes.get_Length(bytes);
     assertEqInt(len, 5, "string bytes length");
 
     assertEqInt(Viper.Collections.Bytes.Get(bytes, 0), 72, "H = 72");
@@ -128,7 +128,7 @@ func testBytesHex() {
     assertEqStr(hex, "deadbeef", "bytes to hex");
 
     var parsed = Viper.Collections.Bytes.FromHex("cafebabe");
-    assertEqInt(Viper.Collections.Bytes.get_Len(parsed), 4, "hex parse length");
+    assertEqInt(Viper.Collections.Bytes.get_Length(parsed), 4, "hex parse length");
     assertEqInt(Viper.Collections.Bytes.Get(parsed, 0), 0xca, "hex byte 0");
     assertEqInt(Viper.Collections.Bytes.Get(parsed, 1), 0xfe, "hex byte 1");
     assertEqInt(Viper.Collections.Bytes.Get(parsed, 2), 0xba, "hex byte 2");

@@ -63,7 +63,7 @@ func start() {
 
     // RegionNames
     var names = Viper.Graphics.SpriteSheet.RegionNames(sheet);
-    var nlen = Viper.Collections.Seq.get_Len(names);
+    var nlen = Viper.Collections.Seq.get_Length(names);
     if (nlen != 4) {
         Say("FAIL: RegionNames should have 4 entries");
         return;

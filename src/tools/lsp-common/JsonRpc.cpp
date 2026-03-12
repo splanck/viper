@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tools/zia-server/JsonRpc.cpp
+// File: tools/lsp-common/JsonRpc.cpp
 // Purpose: JSON-RPC 2.0 message parsing and construction.
 // Key invariants:
 //   - All responses include "jsonrpc": "2.0"
@@ -13,11 +13,11 @@
 //   - Error responses have {code, message, data?} in the "error" field
 // Ownership/Lifetime:
 //   - All functions return owned strings
-// Links: tools/zia-server/JsonRpc.hpp
+// Links: tools/lsp-common/JsonRpc.hpp
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/zia-server/JsonRpc.hpp"
+#include "tools/lsp-common/JsonRpc.hpp"
 
 namespace viper::server
 {

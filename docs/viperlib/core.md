@@ -529,7 +529,7 @@ PRINT "hello".Flip()                   ' Output: "olleh"
 ' Split and join
 DIM parts AS Viper.Collections.Seq
 parts = "a,b,c".Split(",")
-PRINT parts.Len                        ' Output: 3
+PRINT parts.Length                        ' Output: 3
 PRINT Viper.String.Join("-", parts)   ' Output: "a-b-c"
 
 ' Comparison

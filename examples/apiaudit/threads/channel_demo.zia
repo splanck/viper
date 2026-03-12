@@ -25,7 +25,7 @@ func start() {
 
     // --- Len (initial) ---
     Say("--- Len (initial) ---");
-    Say("Len: " + Fmt.Int(ch.get_Len()));
+    Say("Len: " + Fmt.Int(ch.get_Length()));
 
     // --- IsEmpty (initial) ---
     Say("--- IsEmpty (initial) ---");
@@ -42,18 +42,18 @@ func start() {
     // --- Send ---
     Say("--- Send ---");
     ch.Send(Box.Str("hello"));
-    Say("Len after Send: " + Fmt.Int(ch.get_Len()));
+    Say("Len after Send: " + Fmt.Int(ch.get_Length()));
 
     // --- TrySend ---
     Say("--- TrySend ---");
     var ok1 = ch.TrySend(Box.Str("world"));
     Say("TrySend: " + Fmt.Bool(ok1));
-    Say("Len after TrySend: " + Fmt.Int(ch.get_Len()));
+    Say("Len after TrySend: " + Fmt.Int(ch.get_Length()));
 
     // --- Fill channel ---
     Say("--- Fill channel ---");
     ch.Send(Box.Str("third"));
-    Say("Len: " + Fmt.Int(ch.get_Len()));
+    Say("Len: " + Fmt.Int(ch.get_Length()));
     Say("IsFull: " + Fmt.Bool(ch.get_IsFull()));
 
     // --- TrySend on full ---
@@ -69,7 +69,7 @@ func start() {
     Say("--- Recv ---");
     var item1 = ch.Recv();
     Say("Recv: " + Box.ToStr(item1));
-    Say("Len after Recv: " + Fmt.Int(ch.get_Len()));
+    Say("Len after Recv: " + Fmt.Int(ch.get_Length()));
 
     // --- TryRecv ---
     Say("--- TryRecv ---");
@@ -80,7 +80,7 @@ func start() {
     Say("--- Drain remaining ---");
     var item3 = ch.Recv();
     Say("Recv: " + Box.ToStr(item3));
-    Say("Len: " + Fmt.Int(ch.get_Len()));
+    Say("Len: " + Fmt.Int(ch.get_Length()));
     Say("IsEmpty: " + Fmt.Bool(ch.get_IsEmpty()));
 
     // --- Close ---

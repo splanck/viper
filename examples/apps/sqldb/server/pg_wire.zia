@@ -167,18 +167,18 @@ entity PgMsg {
     // Write a null-terminated C string
     expose func writeCString(s: String) {
         var sBytes = Bytes.FromStr(s);
-        ensureCapacity(sBytes.Len + 1);
-        Bytes.Copy(buf, pos, sBytes, 0, sBytes.Len);
-        pos = pos + sBytes.Len;
+        ensureCapacity(sBytes.Length + 1);
+        Bytes.Copy(buf, pos, sBytes, 0, sBytes.Length);
+        pos = pos + sBytes.Length;
         buf.Set(pos, 0);
         pos = pos + 1;
     }
 
     // Write raw bytes
     expose func writeRawBytes(data: Bytes) {
-        ensureCapacity(data.Len);
-        Bytes.Copy(buf, pos, data, 0, data.Len);
-        pos = pos + data.Len;
+        ensureCapacity(data.Length);
+        Bytes.Copy(buf, pos, data, 0, data.Length);
+        pos = pos + data.Length;
     }
 
     // Get the built message as a trimmed Bytes object
@@ -241,7 +241,7 @@ func findNullTerminator(data: Bytes, startPos: Integer, dataLen: Integer) -> Int
 
 // Parse key-value pairs from a PG startup body into the info entity
 func parseStartupParams(body: Bytes, info: PgStartupInfo) {
-    var bodyLen = body.Len;
+    var bodyLen = body.Length;
     var pos = 4;  // Skip protocol version (4 bytes)
     var parsing = true;
     while pos < bodyLen && parsing {
@@ -347,7 +347,7 @@ func pgReadMessage(client: Ptr) -> PgClientMsg {
 func pgExtractQuery(body: Bytes) -> String {
     // Query body is: query_string\0
     var end = 0;
-    while end < body.Len && body.Get(end) != 0 {
+    while end < body.Length && body.Get(end) != 0 {
         end = end + 1;
     }
     if end == 0 { return ""; }
@@ -362,12 +362,12 @@ func pgExtractQuery(body: Bytes) -> String {
 // Send a complete PG message: type_byte + int32(length) + body
 func pgSendMsg(client: Ptr, msgType: Integer, body: PgMsg) {
     var bodyBytes = body.toBytes();
-    var msgLen = 1 + 4 + bodyBytes.Len;
+    var msgLen = 1 + 4 + bodyBytes.Length;
     var msg = Bytes.New(msgLen);
     msg.Set(0, msgType);
-    writeInt32BE(msg, 1, bodyBytes.Len + 4);  // length includes itself
-    if bodyBytes.Len > 0 {
-        Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Len);
+    writeInt32BE(msg, 1, bodyBytes.Length + 4);  // length includes itself
+    if bodyBytes.Length > 0 {
+        Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Length);
     }
     Network.Tcp.SendAll(client, msg);
 }
@@ -463,7 +463,7 @@ func pgSendDataRow(client: Ptr, values: List[String], nullFlags: List[Integer]) 
         } else {
             // Non-null: length + UTF-8 bytes (text format)
             var valBytes = Bytes.FromStr(values.get(i));
-            body.writeInt32(valBytes.Len);
+            body.writeInt32(valBytes.Length);
             body.writeRawBytes(valBytes);
         }
         i = i + 1;
@@ -636,7 +636,7 @@ entity PgParseMsg {
 func pgParseParse(body: Bytes) -> PgParseMsg {
     var msg = new PgParseMsg();
     msg.init();
-    var bodyLen = body.Len;
+    var bodyLen = body.Length;
     var pos = 0;
 
     // Read statement name (null-terminated)
@@ -683,7 +683,7 @@ entity PgBindMsg {
 func pgParseBind(body: Bytes) -> PgBindMsg {
     var msg = new PgBindMsg();
     msg.init();
-    var bodyLen = body.Len;
+    var bodyLen = body.Length;
     var pos = 0;
 
     // Read portal name
@@ -752,10 +752,10 @@ entity PgDescribeMsg {
 func pgParseDescribe(body: Bytes) -> PgDescribeMsg {
     var msg = new PgDescribeMsg();
     msg.init();
-    if body.Len >= 1 {
+    if body.Length >= 1 {
         msg.describeType = body.Get(0);
-        if body.Len > 1 {
-            msg.name = readCStringAt(body, 1, body.Len);
+        if body.Length > 1 {
+            msg.name = readCStringAt(body, 1, body.Length);
         }
     }
     return msg;
@@ -777,7 +777,7 @@ entity PgExecuteMsg {
 func pgParseExecute(body: Bytes) -> PgExecuteMsg {
     var msg = new PgExecuteMsg();
     msg.init();
-    var bodyLen = body.Len;
+    var bodyLen = body.Length;
 
     msg.portalName = readCStringAt(body, 0, bodyLen);
     var pos = findNullTerminator(body, 0, bodyLen) + 1;
@@ -805,10 +805,10 @@ entity PgCloseMsg {
 func pgParseClose(body: Bytes) -> PgCloseMsg {
     var msg = new PgCloseMsg();
     msg.init();
-    if body.Len >= 1 {
+    if body.Length >= 1 {
         msg.closeType = body.Get(0);
-        if body.Len > 1 {
-            msg.name = readCStringAt(body, 1, body.Len);
+        if body.Length > 1 {
+            msg.name = readCStringAt(body, 1, body.Length);
         }
     }
     return msg;

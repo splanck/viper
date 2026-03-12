@@ -14,7 +14,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var wm = WeakMap.New();
-    SayInt(wm.Len);       // 0
+    SayInt(wm.Length);       // 0
     SayBool(wm.IsEmpty);  // 1
 
     // --- Set / Len ---
@@ -25,7 +25,7 @@ func start() {
     wm.Set("key1", obj1);
     wm.Set("key2", obj2);
     wm.Set("key3", obj3);
-    SayInt(wm.Len);       // 3
+    SayInt(wm.Length);       // 3
     SayBool(wm.IsEmpty);  // 0
 
     // --- Get ---
@@ -44,18 +44,18 @@ func start() {
     var obj1b = Box.Str("VALUE1");
     wm.Set("key1", obj1b);
     Say(Box.ToStr(wm.Get("key1")));   // VALUE1
-    SayInt(wm.Len);                   // 3
+    SayInt(wm.Length);                   // 3
 
     // --- Keys ---
     Say("--- Keys ---");
     var keys = wm.Keys();
-    SayInt(keys.Len);                 // 3
+    SayInt(keys.Length);                 // 3
 
     // --- Remove ---
     Say("--- Remove ---");
     SayBool(wm.Remove("key2"));       // 1
     SayBool(wm.Has("key2"));          // 0
-    SayInt(wm.Len);                   // 2
+    SayInt(wm.Length);                   // 2
     SayBool(wm.Remove("key2"));       // 0
 
     // --- Compact ---
@@ -63,12 +63,12 @@ func start() {
     var removed = wm.Compact();
     // Compact removes stale entries (values collected by GC)
     // Since we still hold references, nothing should be removed
-    SayInt(wm.Len);                   // 2
+    SayInt(wm.Length);                   // 2
 
     // --- Clear ---
     Say("--- Clear ---");
     wm.Clear();
-    SayInt(wm.Len);                   // 0
+    SayInt(wm.Length);                   // 0
     SayBool(wm.IsEmpty);              // 1
 
     Say("=== WeakMap audit complete ===");

@@ -30,5 +30,5 @@ PRINT b3.ToHex()
 
 DIM lines AS Viper.Collections.Seq
 lines = Viper.IO.File.ReadAllLines(p2)
-PRINT lines.Len
+PRINT lines.Length
 PRINT Viper.String.Join("|", lines)

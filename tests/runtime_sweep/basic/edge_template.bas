@@ -7,7 +7,7 @@ data.Set("name", "Alice")
 data.Set("age", "30")
 
 PRINT "=== Debug Map Contents ==="
-PRINT "map.Len: "; data.Len
+PRINT "map.Length: "; data.Length
 PRINT "map.Has('name'): "; data.Has("name")
 PRINT "map.Has('age'): "; data.Has("age")
 
@@ -37,7 +37,7 @@ PRINT ""
 PRINT "=== Template Keys ==="
 DIM keys AS Viper.Collections.Bag
 keys = Viper.Text.Template.Keys("Hello {{name}}, you are {{age}}")
-PRINT "Keys count: "; keys.Len
+PRINT "Keys count: "; keys.Length
 
 ' Test with empty map
 PRINT ""

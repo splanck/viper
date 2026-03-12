@@ -15,7 +15,7 @@ func start() {
     // --- New (min-heap) ---
     Say("--- New (min-heap) ---");
     var h = Heap.New();
-    SayInt(h.Len);       // 0
+    SayInt(h.Length);       // 0
     SayBool(h.IsEmpty);  // 1
     SayBool(h.IsMax);    // 0
 
@@ -24,7 +24,7 @@ func start() {
     h.Push(3, Box.Str("low"));
     h.Push(1, Box.Str("urgent"));
     h.Push(2, Box.Str("medium"));
-    SayInt(h.Len);       // 3
+    SayInt(h.Length);       // 3
     SayBool(h.IsEmpty);  // 0
 
     // --- Peek (min-heap: lowest priority first) ---
@@ -34,11 +34,11 @@ func start() {
     // --- Pop (min-heap order) ---
     Say("--- Pop ---");
     Say(Box.ToStr(h.Pop()));    // urgent (priority 1)
-    SayInt(h.Len);              // 2
+    SayInt(h.Length);              // 2
     Say(Box.ToStr(h.Pop()));    // medium (priority 2)
-    SayInt(h.Len);              // 1
+    SayInt(h.Length);              // 1
     Say(Box.ToStr(h.Pop()));    // low (priority 3)
-    SayInt(h.Len);              // 0
+    SayInt(h.Length);              // 0
     SayBool(h.IsEmpty);         // 1
 
     // --- TryPeek / TryPop (safe on empty) ---
@@ -56,7 +56,7 @@ func start() {
     mh.Push(1, Box.Str("low"));
     mh.Push(5, Box.Str("high"));
     mh.Push(3, Box.Str("mid"));
-    SayInt(mh.Len);             // 3
+    SayInt(mh.Length);             // 3
 
     // Max-heap: highest priority first
     Say(Box.ToStr(mh.Pop()));   // high (priority 5)
@@ -72,7 +72,7 @@ func start() {
     h2.Push(2, Box.Str("b"));
     h2.Push(4, Box.Str("d"));
     var seq = h2.ToSeq();
-    SayInt(seq.Len);            // 5
+    SayInt(seq.Length);            // 5
     // ToSeq returns elements in priority order
     Say(Box.ToStr(seq.Get(0))); // a (priority 1)
     Say(Box.ToStr(seq.Get(4))); // e (priority 5)
@@ -82,9 +82,9 @@ func start() {
     var h3 = Heap.New();
     h3.Push(1, Box.Str("x"));
     h3.Push(2, Box.Str("y"));
-    SayInt(h3.Len);             // 2
+    SayInt(h3.Length);             // 2
     h3.Clear();
-    SayInt(h3.Len);             // 0
+    SayInt(h3.Length);             // 0
     SayBool(h3.IsEmpty);        // 1
 
     Say("=== Heap audit complete ===");

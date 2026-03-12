@@ -15,7 +15,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var ss = SortedSet.New();
-    SayInt(ss.Len);       // 0
+    SayInt(ss.Length);       // 0
     SayBool(ss.IsEmpty);  // 1
 
     // --- Put ---
@@ -26,7 +26,7 @@ func start() {
     SayBool(ss.Put("date"));     // 1 (new)
     SayBool(ss.Put("elderberry")); // 1 (new)
     SayBool(ss.Put("apple"));    // 0 (duplicate)
-    SayInt(ss.Len);              // 5
+    SayInt(ss.Length);              // 5
     SayBool(ss.IsEmpty);         // 0
 
     // --- Has ---
@@ -75,28 +75,28 @@ func start() {
     // --- Items ---
     Say("--- Items ---");
     var items = ss.Items();
-    SayInt(items.Len);  // 5
+    SayInt(items.Length);  // 5
 
     // --- Range ---
     Say("--- Range ---");
     var ranged = ss.Range("banana", "date");
-    SayInt(ranged.Len);  // 3 (banana, cherry, date)
+    SayInt(ranged.Length);  // 3 (banana, cherry, date)
 
     // --- Take ---
     Say("--- Take ---");
     var taken = ss.Take(3);
-    SayInt(taken.Len);  // 3
+    SayInt(taken.Length);  // 3
 
     // --- Skip ---
     Say("--- Skip ---");
     var skipped = ss.Skip(2);
-    SayInt(skipped.Len);  // 3
+    SayInt(skipped.Length);  // 3
 
     // --- Drop ---
     Say("--- Drop ---");
     SayBool(ss.Drop("banana"));  // 1 (removed)
     SayBool(ss.Has("banana"));   // 0
-    SayInt(ss.Len);              // 4
+    SayInt(ss.Length);              // 4
     SayBool(ss.Drop("banana"));  // 0 (already removed)
 
     // --- Merge ---
@@ -106,17 +106,17 @@ func start() {
     ss2.Put("fig");
     ss2.Put("grape");
     var merged = ss.Union(ss2);
-    SayInt(merged.Len);  // 6 (apple, cherry, date, elderberry, fig, grape)
+    SayInt(merged.Length);  // 6 (apple, cherry, date, elderberry, fig, grape)
 
     // --- Intersect ---
     Say("--- Intersect ---");
     var common = ss.Intersect(ss2);
-    SayInt(common.Len);  // 1 (apple)
+    SayInt(common.Length);  // 1 (apple)
 
     // --- Diff ---
     Say("--- Diff ---");
     var diff = ss.Diff(ss2);
-    SayInt(diff.Len);  // 3 (cherry, date, elderberry)
+    SayInt(diff.Length);  // 3 (cherry, date, elderberry)
 
     // --- IsSubset ---
     Say("--- IsSubset ---");
@@ -128,7 +128,7 @@ func start() {
     // --- Clear ---
     Say("--- Clear ---");
     ss.Clear();
-    SayInt(ss.Len);       // 0
+    SayInt(ss.Length);       // 0
     SayBool(ss.IsEmpty);  // 1
 
     Say("=== SortedSet audit complete ===");

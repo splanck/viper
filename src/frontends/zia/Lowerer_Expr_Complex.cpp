@@ -237,22 +237,22 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
         }
     }
 
-    // Handle Map.count, Map.size, and Map.length property
+    // Handle Map.Length, Map.Len, Map.Count, etc. property
     if (baseType->kind == TypeKindSem::Map)
     {
-        if (expr->field == "Count" || expr->field == "count" || expr->field == "size" ||
-            expr->field == "length" || expr->field == "Len")
+        if (expr->field == "Length" || expr->field == "length" || expr->field == "Len" ||
+            expr->field == "Count" || expr->field == "count" || expr->field == "size")
         {
             Value result = emitCallRet(Type(Type::Kind::I64), kMapCount, {base.value});
             return {result, Type(Type::Kind::I64)};
         }
     }
 
-    // Handle Set.count, Set.size, and Set.length property
+    // Handle Set.Length, Set.Len, Set.Count, etc. property
     if (baseType->kind == TypeKindSem::Set)
     {
-        if (expr->field == "Count" || expr->field == "count" || expr->field == "size" ||
-            expr->field == "length" || expr->field == "Len")
+        if (expr->field == "Length" || expr->field == "length" || expr->field == "Len" ||
+            expr->field == "Count" || expr->field == "count" || expr->field == "size")
         {
             Value result = emitCallRet(Type(Type::Kind::I64), kSetCount, {base.value});
             return {result, Type(Type::Kind::I64)};

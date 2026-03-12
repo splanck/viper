@@ -115,6 +115,9 @@ extern "C"
     /// @brief Print floating-point number without trailing newline.
     void rt_term_print_f64(double v);
 
+    /// @brief Print boolean as "true" or "false" without trailing newline.
+    void rt_term_print_bool(int8_t v);
+
     /// @brief Print prompt and read a line of input.
     rt_string rt_term_ask(rt_string prompt);
 

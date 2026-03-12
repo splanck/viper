@@ -502,19 +502,33 @@ target_link_libraries(zia
         viper_bytecode)
 install(TARGETS zia RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+#===----------------------------------------------------------------------===//
+# lsp_common_lib: Shared protocol infrastructure for language servers
+#===----------------------------------------------------------------------===//
+add_library(lsp_common_lib STATIC
+        tools/lsp-common/Json.cpp
+        tools/lsp-common/Transport.cpp
+        tools/lsp-common/JsonRpc.cpp
+        tools/lsp-common/DocumentStore.cpp
+        tools/lsp-common/LspHandler.cpp
+        tools/lsp-common/McpHandler.cpp
+        tools/lsp-common/TextUtils.cpp
+        tools/lsp-common/DiagnosticUtils.cpp
+        tools/lsp-common/ICompilerBridge.cpp)
+target_include_directories(lsp_common_lib PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_link_libraries(lsp_common_lib PUBLIC viper_common_opts il_runtime)
+
+#===----------------------------------------------------------------------===//
+# zia_server_lib: Zia-specific compiler bridge
+#===----------------------------------------------------------------------===//
 add_library(zia_server_lib STATIC
-        tools/zia-server/Json.cpp
-        tools/zia-server/Transport.cpp
-        tools/zia-server/JsonRpc.cpp
-        tools/zia-server/CompilerBridge.cpp
-        tools/zia-server/McpHandler.cpp
-        tools/zia-server/DocumentStore.cpp
-        tools/zia-server/LspHandler.cpp)
+        tools/zia-server/CompilerBridge.cpp)
 target_include_directories(zia_server_lib PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 target_link_libraries(zia_server_lib
         PUBLIC
-        viper_common_opts
+        lsp_common_lib
         fe_zia
         viper::il_full
         il_transform)
@@ -526,6 +540,28 @@ target_link_libraries(zia-server
         PRIVATE
         zia_server_lib)
 install(TARGETS zia-server RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+#===----------------------------------------------------------------------===//
+# vbasic_server_lib: BASIC-specific compiler bridge
+#===----------------------------------------------------------------------===//
+add_library(vbasic_server_lib STATIC
+        tools/vbasic-server/BasicCompilerBridge.cpp)
+target_include_directories(vbasic_server_lib PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_link_libraries(vbasic_server_lib
+        PUBLIC
+        lsp_common_lib
+        fe_basic
+        viper::il_full
+        il_transform)
+
+add_executable(vbasic-server
+        tools/vbasic-server/main.cpp)
+set_target_properties(vbasic-server PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/vbasic-server)
+target_link_libraries(vbasic-server
+        PRIVATE
+        vbasic_server_lib)
+install(TARGETS vbasic-server RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_executable(ilrun
         tools/ilrun/main.cpp

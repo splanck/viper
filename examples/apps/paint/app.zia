@@ -208,7 +208,7 @@ entity PaintApp {
     // Snapshot current canvas pixels for undo (call before each stroke)
     hide func snapshotForUndo() {
         undoStack.Push(canvas.getPixels().Clone());
-        while undoStack.Len > config.MAX_UNDO_LEVELS {
+        while undoStack.Length > config.MAX_UNDO_LEVELS {
             undoStack.RemoveAt(0);
         }
     }
@@ -407,7 +407,7 @@ entity PaintApp {
 
         // Undo with Ctrl+Z
         if gfx.KeyHeld( config.KEY_Z) == 1 and Viper.Input.Keyboard.Ctrl() {
-            if undoStack.Len > 0 {
+            if undoStack.Length > 0 {
                 var snapshot = undoStack.Pop();
                 canvas.restorePixels(snapshot);
                 statusMessage = "Undo";

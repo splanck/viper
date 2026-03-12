@@ -341,7 +341,9 @@ TEST(ReplErrors, SyntaxError)
 TEST(ReplErrors, TypeError)
 {
     ZiaReplAdapter adapter;
-    auto r = adapter.eval("Say(123)");
+    // Say(123) now succeeds due to auto-dispatch to SayInt.
+    // Use a genuine type error instead.
+    auto r = adapter.eval("var x: Integer = \"hello\"");
     EXPECT_FALSE(r.success);
 }
 

@@ -15,7 +15,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var list = List.New();
-    SayInt(List.get_Len(list));       // 0
+    SayInt(List.get_Length(list));       // 0
     SayBool(List.get_IsEmpty(list));   // 1
 
     // --- Push / Len ---
@@ -26,7 +26,7 @@ func start() {
     list.Push(a);
     list.Push(b);
     list.Push(c);
-    SayInt(List.get_Len(list));       // 3
+    SayInt(List.get_Length(list));       // 3
     SayBool(List.get_IsEmpty(list));   // 0
 
     // --- Get ---
@@ -57,20 +57,20 @@ func start() {
     Say("--- Insert ---");
     var e = Box.Str("elderberry");
     list.Insert(1, e);
-    SayInt(List.get_Len(list));              // 4
+    SayInt(List.get_Length(list));              // 4
     Say(Box.ToStr(list.Get(1)));   // elderberry
     Say(Box.ToStr(list.Get(2)));   // date
 
     // --- Remove (by reference) ---
     Say("--- Remove ---");
     SayBool(list.Remove(e));        // true
-    SayInt(List.get_Len(list));              // 3
+    SayInt(List.get_Length(list));              // 3
     SayBool(list.Remove(e));        // false (already removed)
 
     // --- RemoveAt ---
     Say("--- RemoveAt ---");
     list.RemoveAt(1);
-    SayInt(List.get_Len(list));              // 2
+    SayInt(List.get_Length(list));              // 2
     Say(Box.ToStr(list.Get(0)));   // apple
     Say(Box.ToStr(list.Get(1)));   // cherry
 
@@ -79,7 +79,7 @@ func start() {
     list.Push(Box.Str("fig"));
     list.Push(Box.Str("grape"));
     var sl = list.Slice(1, 3);
-    SayInt(List.get_Len(sl));                // 2
+    SayInt(List.get_Length(sl));                // 2
     Say(Box.ToStr(sl.Get(0)));     // cherry
     Say(Box.ToStr(sl.Get(1)));     // fig
 
@@ -93,12 +93,12 @@ func start() {
     Say("--- Pop ---");
     var popped = List.Pop(list);
     Say(Box.ToStr(popped));        // apple (last after flip)
-    SayInt(List.get_Len(list));              // 3
+    SayInt(List.get_Length(list));              // 3
 
     // --- Clear ---
     Say("--- Clear ---");
     List.Clear(list);
-    SayInt(List.get_Len(list));              // 0
+    SayInt(List.get_Length(list));              // 0
     SayBool(List.get_IsEmpty(list));          // 1
 
     Say("=== List audit complete ===");

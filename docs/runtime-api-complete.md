@@ -860,7 +860,7 @@ var dist = Viper.Math.Vec2.Dist(pos, target);
 
 // Normalize velocity
 var dir = Viper.Math.Vec2.Norm(vel);
-var speed = Viper.Math.Vec2.Len(vel);
+var speed = Viper.Math.Vec2.Length(vel);
 
 // Interpolation
 var midpoint = Viper.Math.Vec2.Lerp(pos, target, 0.5);
@@ -946,7 +946,7 @@ Raw byte array for binary data manipulation.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `New(size)` | `obj(i64)` | Create byte array of size |
-| `get_Len(bytes)` | `i64(obj)` | Get length |
+| `get_Length(bytes)` | `i64(obj)` | Get length |
 | `Get(bytes, idx)` | `i64(obj, i64)` | Get byte at index (0-255) |
 | `Set(bytes, idx, val)` | `void(obj, i64, i64)` | Set byte at index |
 | `Clone(bytes)` | `obj(obj)` | Deep copy |
@@ -973,7 +973,7 @@ Dynamic sequence (array list) that can hold any object type.
 | `First(seq)` | `obj(obj)` | Get first item |
 | `get_Cap(seq)` | `i64(obj)` | Get capacity |
 | `get_IsEmpty(seq)` | `i1(obj)` | Check if empty |
-| `get_Len(seq)` | `i64(obj)` | Get length |
+| `get_Length(seq)` | `i64(obj)` | Get length |
 | `Get(seq, idx)` | `obj(obj, i64)` | Get item at index |
 | `Has(seq, val)` | `i1(obj, obj)` | Check if contains |
 | `Insert(seq, idx, val)` | `void(obj, i64, obj)` | Insert at index |
@@ -1003,7 +1003,7 @@ Ordered list with value-semantics API.
 | `First(list)` | `obj(obj)` | Get first item |
 | `Flip(list)` | `void(obj)` | Reverse list in place |
 | `get_IsEmpty(list)` | `i1(obj)` | Check if list is empty |
-| `get_Len(list)` | `i64(obj)` | Get item count |
+| `get_Length(list)` | `i64(obj)` | Get item count |
 | `Get(list, idx)` | `obj(obj, i64)` | Get item at index |
 | `Has(list, val)` | `i1(obj, obj)` | Check if contains value |
 | `Insert(list, idx, val)` | `void(obj, i64, obj)` | Insert at index |
@@ -1034,7 +1034,7 @@ Hash map with string keys.
 | `GetStr(map, key)` | `str(obj, str)` | Get string value |
 | `GetStrOr(map, key, default)` | `str(obj, str, str)` | Get string or default |
 | `get_IsEmpty(map)` | `i1(obj)` | Check if empty |
-| `get_Len(map)` | `i64(obj)` | Get entry count |
+| `get_Length(map)` | `i64(obj)` | Get entry count |
 | `Has(map, key)` | `i1(obj, str)` | Check if key exists |
 | `Keys(map)` | `obj(obj)` | Get all keys as Seq |
 | `New()` | `obj()` | Create empty map |
@@ -1053,7 +1053,7 @@ LIFO (Last In, First Out) stack.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `New()` | `obj()` | Create empty stack |
-| `get_Len(stack)` | `i64(obj)` | Get size |
+| `get_Length(stack)` | `i64(obj)` | Get size |
 | `get_IsEmpty(stack)` | `bool(obj)` | Check if empty |
 | `Push(stack, val)` | `void(obj, obj)` | Push item |
 | `Pop(stack)` | `obj(obj)` | Pop and return top |
@@ -1067,7 +1067,7 @@ FIFO (First In, First Out) queue.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `New()` | `obj()` | Create empty queue |
-| `get_Len(queue)` | `i64(obj)` | Get size |
+| `get_Length(queue)` | `i64(obj)` | Get size |
 | `get_IsEmpty(queue)` | `bool(obj)` | Check if empty |
 | `Add(queue, val)` | `void(obj, obj)` | Enqueue item |
 | `Take(queue)` | `obj(obj)` | Dequeue and return front |
@@ -1081,7 +1081,7 @@ Fixed-capacity circular buffer.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `New(capacity)` | `obj(i64)` | Create with fixed capacity |
-| `get_Len(ring)` | `i64(obj)` | Get current size |
+| `get_Length(ring)` | `i64(obj)` | Get current size |
 | `get_Cap(ring)` | `i64(obj)` | Get capacity |
 | `get_IsEmpty(ring)` | `bool(obj)` | Check if empty |
 | `get_IsFull(ring)` | `bool(obj)` | Check if full |
@@ -1098,7 +1098,7 @@ Unordered set of unique strings.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `New()` | `obj()` | Create empty bag |
-| `get_Len(bag)` | `i64(obj)` | Get size |
+| `get_Length(bag)` | `i64(obj)` | Get size |
 | `get_IsEmpty(bag)` | `bool(obj)` | Check if empty |
 | `Put(bag, item)` | `bool(obj, str)` | Add item (returns false if existed) |
 | `Drop(bag, item)` | `bool(obj, str)` | Remove item |
@@ -1117,7 +1117,7 @@ Priority queue (min-heap or max-heap).
 |--------|-----------|-------------|
 | `New()` | `obj()` | Create min-heap |
 | `NewMax(isMax)` | `obj(bool)` | Create max-heap if true |
-| `get_Len(heap)` | `i64(obj)` | Get size |
+| `get_Length(heap)` | `i64(obj)` | Get size |
 | `get_IsEmpty(heap)` | `bool(obj)` | Check if empty |
 | `get_IsMax(heap)` | `bool(obj)` | Check if max-heap |
 | `Push(heap, priority, val)` | `void(obj, i64, obj)` | Add with priority |
@@ -1135,7 +1135,7 @@ Sorted map with string keys (red-black tree).
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `New()` | `obj()` | Create empty tree map |
-| `get_Len(map)` | `i64(obj)` | Get entry count |
+| `get_Length(map)` | `i64(obj)` | Get entry count |
 | `get_IsEmpty(map)` | `bool(obj)` | Check if empty |
 | `Get(map, key)` | `obj(obj, str)` | Get value |
 | `Set(map, key, val)` | `void(obj, str, obj)` | Set key-value pair |
@@ -1167,7 +1167,7 @@ var first = Viper.Collections.Seq.First(items);
 var numbers = Viper.Collections.List.New();
 Viper.Collections.List.Push(numbers, Viper.Core.Box.I64(1));
 Viper.Collections.List.Push(numbers, Viper.Core.Box.I64(2));
-var count = Viper.Collections.List.get_Len(numbers);
+var count = Viper.Collections.List.get_Length(numbers);
 
 // Map for key-value storage
 var config = Viper.Collections.Map.New();

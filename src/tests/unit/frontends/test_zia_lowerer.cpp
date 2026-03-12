@@ -196,7 +196,7 @@ func start() {
     items.Push(10);
     items.Push(20);
     items.Push(30);
-    var len = items.Len();
+    var len = items.Length();
     Viper.Terminal.SayInt(len);
 }
 )";
@@ -226,7 +226,7 @@ func start() {
     var items: List[String] = [];
     items.Push("Alice");
     items.Push("Bob");
-    Viper.Terminal.SayInt(items.Len());
+    Viper.Terminal.SayInt(items.Length());
 }
 )";
     auto result = compileAndAssert(source, sm);

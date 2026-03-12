@@ -139,7 +139,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | String interpolation | **Full** (`"Hello ${name}"`) | None | **Gap** — Zia only |
 | Auto-coerce to string | **Full** (left must be String) | **Full** (either side) | BASIC is more permissive |
 | Comparison operators | **Full** (case-sensitive) | **Full** (case-sensitive) | Same runtime functions |
-| LEN / length | Via `Str.Len(s)` | **Full** (`LEN(s)`) | Different syntax |
+| LEN / length | Via `Str.Length(s)` | **Full** (`LEN(s)`) | Different syntax |
 | Substring | Via `Str.Mid(s,pos,len)` | **Full** (`MID$(s,pos,len)`) | Both use 1-based positions |
 | Left/Right | Via runtime | **Full** (`LEFT$`/`RIGHT$`) | BASIC has direct builtins |
 | Trim | Via runtime | **Full** (`LTRIM$`/`RTRIM$`/`TRIM$`) | |

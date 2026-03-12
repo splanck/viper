@@ -14,7 +14,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var r = Ring.New(3);
-    SayInt(r.Len);       // 0
+    SayInt(r.Length);       // 0
     SayInt(r.Cap);       // 3
     SayBool(r.IsEmpty);  // 1
     SayBool(r.IsFull);   // 0
@@ -24,7 +24,7 @@ func start() {
     r.Push(Box.Str("a"));
     r.Push(Box.Str("b"));
     r.Push(Box.Str("c"));
-    SayInt(r.Len);       // 3
+    SayInt(r.Length);       // 3
     SayBool(r.IsFull);   // 1
     SayBool(r.IsEmpty);  // 0
 
@@ -41,7 +41,7 @@ func start() {
     // --- Push overflow (overwrites oldest) ---
     Say("--- Push overflow ---");
     r.Push(Box.Str("d"));
-    SayInt(r.Len);              // 3 (still at capacity)
+    SayInt(r.Length);              // 3 (still at capacity)
     Say(Box.ToStr(r.Peek()));   // b (a was overwritten)
     Say(Box.ToStr(r.Get(0)));   // b
     Say(Box.ToStr(r.Get(1)));   // c
@@ -50,16 +50,16 @@ func start() {
     // --- Pop (removes oldest, FIFO) ---
     Say("--- Pop ---");
     Say(Box.ToStr(r.Pop()));    // b
-    SayInt(r.Len);              // 2
+    SayInt(r.Length);              // 2
     Say(Box.ToStr(r.Pop()));    // c
-    SayInt(r.Len);              // 1
+    SayInt(r.Length);              // 1
     SayBool(r.IsFull);          // 0
 
     // --- Push after pop ---
     Say("--- Push after pop ---");
     r.Push(Box.Str("e"));
     r.Push(Box.Str("f"));
-    SayInt(r.Len);              // 3
+    SayInt(r.Length);              // 3
     SayBool(r.IsFull);          // 1
     Say(Box.ToStr(r.Get(0)));   // d
     Say(Box.ToStr(r.Get(1)));   // e
@@ -68,7 +68,7 @@ func start() {
     // --- Clear ---
     Say("--- Clear ---");
     r.Clear();
-    SayInt(r.Len);              // 0
+    SayInt(r.Length);              // 0
     SayBool(r.IsEmpty);         // 1
     SayInt(r.Cap);              // 3 (capacity unchanged)
 
@@ -77,7 +77,7 @@ func start() {
     var rd = Ring.NewDefault();
     SayBool(rd.IsEmpty);        // 1
     rd.Push(Box.I64(1));
-    SayInt(rd.Len);             // 1
+    SayInt(rd.Length);             // 1
 
     Say("=== Ring audit complete ===");
 }

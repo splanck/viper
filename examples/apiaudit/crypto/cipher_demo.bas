@@ -12,7 +12,7 @@ PRINT "--- GenerateKey ---"
 DIM key AS OBJECT
 key = Viper.Crypto.Cipher.GenerateKey()
 PRINT "Key generated"
-PRINT "Key length: "; Viper.Collections.Bytes.get_Len(key)
+PRINT "Key length: "; Viper.Collections.Bytes.get_Length(key)
 
 ' --- Encrypt / Decrypt with password ---
 PRINT "--- Encrypt / Decrypt (password) ---"
@@ -42,7 +42,7 @@ DIM salt AS OBJECT
 salt = Viper.Crypto.Rand.Bytes(16)
 DIM derived AS OBJECT
 derived = Viper.Crypto.Cipher.DeriveKey("password", salt)
-PRINT "Derived key length: "; Viper.Collections.Bytes.get_Len(derived)
+PRINT "Derived key length: "; Viper.Collections.Bytes.get_Length(derived)
 
 PRINT "=== Cipher Demo Complete ==="
 END

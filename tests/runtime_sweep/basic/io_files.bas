@@ -75,10 +75,10 @@ fileB = Viper.IO.Path.Join(base, "b.txt")
 Viper.IO.File.WriteLines(fileB, lines)
 DIM linesAll AS Viper.Collections.Seq
 linesAll = Viper.IO.File.ReadAllLines(fileB)
-Viper.Core.Diagnostics.AssertEq(linesAll.Len, 2, "file.readalllines")
+Viper.Core.Diagnostics.AssertEq(linesAll.Length, 2, "file.readalllines")
 DIM linesSeq AS Viper.Collections.Seq
 linesSeq = Viper.IO.File.ReadLines(fileB)
-Viper.Core.Diagnostics.AssertEq(linesSeq.Len, 2, "file.readlines")
+Viper.Core.Diagnostics.AssertEq(linesSeq.Length, 2, "file.readlines")
 
 DIM bytes AS Viper.Collections.Bytes
 bytes = NEW Viper.Collections.Bytes(3)
@@ -129,10 +129,10 @@ DIM dirs1 AS Viper.Collections.Seq
 dirs1 = Viper.IO.Dir.Dirs(base)
 DIM dirs2 AS Viper.Collections.Seq
 dirs2 = Viper.IO.Dir.DirsSeq(base)
-Viper.Core.Diagnostics.Assert(entries.Len >= 2, "dir.entries")
-Viper.Core.Diagnostics.Assert(list1.Len = list2.Len, "dir.list")
-Viper.Core.Diagnostics.Assert(files1.Len = files2.Len, "dir.files")
-Viper.Core.Diagnostics.Assert(dirs1.Len = dirs2.Len, "dir.dirs")
+Viper.Core.Diagnostics.Assert(entries.Length >= 2, "dir.entries")
+Viper.Core.Diagnostics.Assert(list1.Length = list2.Length, "dir.list")
+Viper.Core.Diagnostics.Assert(files1.Length = files2.Length, "dir.files")
+Viper.Core.Diagnostics.Assert(dirs1.Length = dirs2.Length, "dir.dirs")
 
 DIM baseMoved AS STRING
 baseMoved = Viper.IO.Path.Join(cwd, "tests/runtime_sweep/tmp_io_moved")

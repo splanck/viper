@@ -52,7 +52,7 @@ Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Codec.UrlDecode("hello%20world"), 
 
 DIM fields AS Viper.Collections.Seq
 fields = Viper.Text.Csv.ParseLine("a,b,c")
-Viper.Core.Diagnostics.AssertEq(fields.Len, 3, "csv.parseline.len")
+Viper.Core.Diagnostics.AssertEq(fields.Length, 3, "csv.parseline.len")
 Viper.Core.Diagnostics.AssertEqStr(fields.Get(1), "b", "csv.parseline.get")
 
 DIM row AS Viper.Collections.Seq
@@ -61,7 +61,7 @@ Viper.Core.Diagnostics.AssertEqStr(row.Get(0), "He said \"Hi\"", "csv.quotes")
 
 DIM rows AS Viper.Collections.Seq
 rows = Viper.Text.Csv.Parse("a,b" + Viper.String.Chr(10) + "c,d")
-Viper.Core.Diagnostics.AssertEq(rows.Len, 2, "csv.parse.len")
+Viper.Core.Diagnostics.AssertEq(rows.Length, 2, "csv.parse.len")
 DIM row0 AS Viper.Collections.Seq
 row0 = rows.Get(0)
 Viper.Core.Diagnostics.AssertEqStr(row0.Get(0), "a", "csv.parse.row0")
@@ -82,11 +82,11 @@ Viper.Core.Diagnostics.Assert(rowsOut2 <> "", "csv.formatwith")
 
 DIM fields2 AS Viper.Collections.Seq
 fields2 = Viper.Text.Csv.ParseLineWith("a|b|c", "|")
-Viper.Core.Diagnostics.AssertEq(fields2.Len, 3, "csv.parselinewith")
+Viper.Core.Diagnostics.AssertEq(fields2.Length, 3, "csv.parselinewith")
 
 DIM rows2 AS Viper.Collections.Seq
 rows2 = Viper.Text.Csv.ParseWith("a|b" + Viper.String.Chr(10) + "c|d", "|")
-Viper.Core.Diagnostics.AssertEq(rows2.Len, 2, "csv.parsewith")
+Viper.Core.Diagnostics.AssertEq(rows2.Length, 2, "csv.parsewith")
 
 DIM id AS STRING
 id = Viper.Text.Uuid.New()
@@ -107,12 +107,12 @@ Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Pattern.FindFrom("\\d+", text, 3),
 Viper.Core.Diagnostics.AssertEq(Viper.Text.Pattern.FindPos("World", "Hello World"), 6, "pat.findpos")
 DIM matches AS Viper.Collections.Seq
 matches = Viper.Text.Pattern.FindAll("\\d+", text)
-Viper.Core.Diagnostics.AssertEq(matches.Len, 2, "pat.findall")
+Viper.Core.Diagnostics.AssertEq(matches.Length, 2, "pat.findall")
 Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Pattern.Replace("\\d+", text, "X"), "abcXdefX", "pat.replace")
 Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Pattern.ReplaceFirst("\\d+", text, "X"), "abcXdef456", "pat.replacefirst")
 DIM parts AS Viper.Collections.Seq
 parts = Viper.Text.Pattern.Split("\\s+", "hello   world  test")
-Viper.Core.Diagnostics.AssertEq(parts.Len, 3, "pat.split")
+Viper.Core.Diagnostics.AssertEq(parts.Length, 3, "pat.split")
 Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Pattern.Escape("file.txt"), "file\\.txt", "pat.escape")
 
 DIM values AS Viper.Collections.Map

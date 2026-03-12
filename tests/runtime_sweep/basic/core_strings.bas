@@ -74,7 +74,7 @@ Viper.Core.Diagnostics.AssertEq(Viper.String.CmpNoCase("A", "a"), 0, "str.cmpnoc
 
 DIM parts AS Viper.Collections.Seq
 parts = Viper.String.Split("a,b,c", ",")
-Viper.Core.Diagnostics.AssertEq(parts.Len, 3, "str.split.len")
+Viper.Core.Diagnostics.AssertEq(parts.Length, 3, "str.split.len")
 Viper.Core.Diagnostics.AssertEqStr(parts.Get(0), "a", "str.split.get")
 
 DIM objA AS Viper.Collections.List

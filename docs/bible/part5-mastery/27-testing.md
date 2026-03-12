@@ -600,7 +600,7 @@ entity Stack[T] {
 test "new stack is empty" {
     var stack = new Stack[Integer]();
     assert stack.IsEmpty();
-    assertEqual(stack.Len, 0);
+    assertEqual(stack.Length, 0);
 }
 
 test "pop on empty stack returns null" {
@@ -613,7 +613,7 @@ test "stack with one element is not empty" {
     var stack = new Stack[Integer]();
     stack.Push(42);
     assert !stack.IsEmpty();
-    assertEqual(stack.Len, 1);
+    assertEqual(stack.Length, 1);
 }
 
 test "pop returns the single element" {

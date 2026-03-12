@@ -87,7 +87,7 @@ Viper.Core.Diagnostics.AssertEq(pixels.Get(0, 0), 0, "pixels.clear")
 
 DIM buf AS Viper.Collections.Bytes
 buf = clone.ToBytes()
-Viper.Core.Diagnostics.AssertEq(buf.Len, 4 * 3 * 4, "pixels.tobytes")
+Viper.Core.Diagnostics.AssertEq(buf.Length, 4 * 3 * 4, "pixels.tobytes")
 
 PRINT "RESULT: ok"
 END

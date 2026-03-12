@@ -666,7 +666,7 @@ list.Push("second");
 list.Push("third");
 
 Say(list.Get(0));             // "first"
-Say(Fmt.Int(list.Len));       // 3
+Say(Fmt.Int(list.Length));       // 3
 
 list.RemoveAt(0);             // Remove first element
 list.Insert(1, "inserted");   // Insert at position 1
@@ -691,7 +691,7 @@ scores.SetInt("Bob", 875);
 scores.SetInt("Charlie", 1200);
 
 Say(Fmt.Int(scores.GetInt("Alice")));  // 950
-Say(Fmt.Int(scores.Len));              // 3
+Say(Fmt.Int(scores.Length));              // 3
 
 if scores.Has("David") {
     Say("David is in the game");
@@ -702,7 +702,7 @@ if scores.Has("David") {
 // Iterate over all entries
 var keys = scores.Keys();
 var i = 0;
-while i < keys.Len {
+while i < keys.Length {
     var key = keys.Get(i);
     Say(key + ": " + Fmt.Int(scores.GetInt(key)));
     i = i + 1;
@@ -728,7 +728,7 @@ tags.Put("important");
 tags.Put("urgent");
 tags.Put("important");  // Ignored - already exists
 
-Say(Fmt.Int(tags.Len));       // 2
+Say(Fmt.Int(tags.Length));       // 2
 Say(Fmt.Bool(tags.Has("urgent")));  // true
 
 tags.Drop("urgent");
@@ -749,7 +749,7 @@ func countWords(text: String) -> Map {
     var words = text.ToLower().Split(" ");
 
     var i = 0;
-    while i < words.Len {
+    while i < words.Length {
         var word = words.Get(i).Trim();
         if word.Length > 0 {
             if frequency.Has(word) {
@@ -771,7 +771,7 @@ var counts = countWords(text);
 
 var keys = counts.Keys();
 var i = 0;
-while i < keys.Len {
+while i < keys.Length {
     var word = keys.Get(i);
     Say(word + ": " + Fmt.Int(counts.GetInt(word)));
     i = i + 1;
@@ -1079,7 +1079,7 @@ func start() {
     Say("Leaderboard:");
     var keys = scores.Keys();
     var j = 0;
-    while j < keys.Len {
+    while j < keys.Length {
         var name = keys.Get(j);
         Say("  " + name + ": " + Fmt.Int(scores.GetInt(name)) + " points");
         j = j + 1;
@@ -1191,7 +1191,7 @@ The official Viper documentation covers every module. Keep it bookmarked. Append
 ### 3. Guess Intelligently
 
 Standard libraries follow conventions:
-- `something.Len` or `something.Size()` for size
+- `something.Length` or `something.Size()` for size
 - `something.Contains()` or `something.Has()` for membership
 - `Fmt.Int(n)` or `Fmt.Num(x)` for number-to-string conversion
 

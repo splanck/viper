@@ -10,7 +10,7 @@ VM and native x86-64 codegen. All bugs found during hardening exercise.
 **Layer:** BASIC frontend (IL generation)
 **Severity:** Medium
 **Status:** FIXED
-**Repro:** `PRINT obj.Len` where `obj` is a collection (e.g. `List`, `Seq`)
+**Repro:** `PRINT obj.Length` where `obj` is a collection (e.g. `List`, `Seq`)
 **Error:** `call arg type mismatch: @Viper.Terminal.PrintI64 parameter 0 expects i64 but got ptr`
 **Root Cause:** `IoStatementLowerer.cpp:219-224` — the PRINT dispatcher calls `lowerScalarExpr()` on the value, which only handles numeric types (I1, I16, I32, I64, F64). Pointer-typed values pass through unchanged as `ptr`, but the emitted call to `@Viper.Terminal.PrintI64` expects `i64`, causing an IL type mismatch.
 **Fix:** Added a `Type::Kind::Ptr` check before the scalar fallthrough in `IoStatementLowerer.cpp`. When the value is Ptr type, it is first converted to a string via `Viper.Core.Object.ToString`, then printed with `kTerminalPrintStr`. The temporary string is released after printing.

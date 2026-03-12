@@ -2,7 +2,7 @@
 DIM bs AS Viper.Collections.BitSet
 bs = Viper.Collections.BitSet.New(64)
 PRINT "bs empty: "; bs.IsEmpty
-PRINT "bs len: "; bs.Len
+PRINT "bs len: "; bs.Length
 bs.Set(3)
 bs.Set(7)
 bs.Set(15)
@@ -37,7 +37,7 @@ PRINT "uf setsize 1: "; uf.SetSize(1)
 
 DIM by AS Viper.Collections.Bytes
 by = Viper.Collections.Bytes.New(8)
-PRINT "by len: "; by.Len
+PRINT "by len: "; by.Length
 by.Set(0, 65)
 by.Set(1, 66)
 PRINT "by get 0: "; by.Get(0)
@@ -53,12 +53,12 @@ PRINT "lru cap: "; lru.Cap
 lru.Put("a", "1")
 lru.Put("b", "2")
 lru.Put("c", "3")
-PRINT "lru len: "; lru.Len
+PRINT "lru len: "; lru.Length
 PRINT "lru has a: "; lru.Has("a")
 lru.Put("d", "4")
-PRINT "lru len after evict: "; lru.Len
+PRINT "lru len after evict: "; lru.Length
 lru.Remove("d")
-PRINT "lru len after remove: "; lru.Len
+PRINT "lru len after remove: "; lru.Length
 
 DIM mm AS Viper.Collections.MultiMap
 mm = Viper.Collections.MultiMap.New()
@@ -66,12 +66,12 @@ PRINT "mm empty: "; mm.IsEmpty
 mm.Put("color", "red")
 mm.Put("color", "blue")
 mm.Put("size", "large")
-PRINT "mm len: "; mm.Len
+PRINT "mm len: "; mm.Length
 PRINT "mm keycount: "; mm.KeyCount
 PRINT "mm countfor color: "; mm.CountFor("color")
 PRINT "mm has color: "; mm.Has("color")
 mm.RemoveAll("color")
-PRINT "mm len after removeall: "; mm.Len
+PRINT "mm len after removeall: "; mm.Length
 
 PRINT "done"
 END

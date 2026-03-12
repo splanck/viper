@@ -137,7 +137,7 @@ PRINT "Entries:"; arc.Count
 
 ' List all entries
 DIM names AS OBJECT = arc.Names
-FOR i = 0 TO names.Len - 1
+FOR i = 0 TO names.Length - 1
     PRINT names.Get(i)
 NEXT i
 
@@ -178,7 +178,7 @@ IF Viper.IO.Archive.IsZipBytes(zipData) THEN
 
     ' Process entries
     DIM names AS OBJECT = arc.Names
-    FOR i = 0 TO names.Len - 1
+    FOR i = 0 TO names.Length - 1
         DIM content AS OBJECT = arc.Read(names.Get(i))
         ProcessEntry(names.Get(i), content)
     NEXT i
@@ -301,9 +301,9 @@ DIM original AS OBJECT = Viper.Collections.Bytes.FromString("Hello, World!")
 DIM compressed AS OBJECT = Viper.IO.Compress.Deflate(original)
 DIM restored AS OBJECT = Viper.IO.Compress.Inflate(compressed)
 
-PRINT "Original:"; original.Len     ' Output: 13
-PRINT "Compressed:"; compressed.Len ' Output: varies
-PRINT "Restored:"; restored.Len     ' Output: 13
+PRINT "Original:"; original.Length     ' Output: 13
+PRINT "Compressed:"; compressed.Length ' Output: varies
+PRINT "Restored:"; restored.Length     ' Output: 13
 
 ' Compress with higher compression level
 DIM maxCompressed AS OBJECT = Viper.IO.Compress.DeflateLvl(original, 9)

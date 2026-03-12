@@ -280,7 +280,7 @@ PRINT "Client connected from "; client.Host; ":"; client.Port
 ' Echo loop
 DO WHILE client.IsOpen
     DIM data AS OBJECT = client.Recv(1024)
-    IF client.Available = 0 AND data.Len = 0 THEN
+    IF client.Available = 0 AND data.Length = 0 THEN
         EXIT DO  ' Connection closed
     END IF
     client.SendAll(data)  ' Echo back
@@ -469,7 +469,7 @@ PRINT "Listening for UDP on port "; server.Port
 
 ' Wait for a message
 DIM data AS OBJECT = server.RecvFrom(1024)
-PRINT "Received "; data.Len; " bytes from "; server.SenderHost(); ":"; server.SenderPort()
+PRINT "Received "; data.Length; " bytes from "; server.SenderHost(); ":"; server.SenderPort()
 
 ' Echo back
 server.SendTo(server.SenderHost(), server.SenderPort(), data)
@@ -491,8 +491,8 @@ sock.SendToStr("127.0.0.1", 9000, msg)
 sock.SetRecvTimeout(5000)  ' 5 seconds
 DIM response AS OBJECT = sock.Recv(1024)
 
-IF response.Len > 0 THEN
-    PRINT "Got response: "; response.Len; " bytes"
+IF response.Length > 0 THEN
+    PRINT "Got response: "; response.Length; " bytes"
 ELSE
     PRINT "No response (timeout)"
 END IF
@@ -523,7 +523,7 @@ sock.JoinGroup("239.1.2.3")
 ' Receive multicast messages
 DIM data AS OBJECT = sock.RecvFor(1024, 5000)
 IF data IS NOT NULL THEN
-    PRINT "Received multicast: "; data.Len; " bytes"
+    PRINT "Received multicast: "; data.Length; " bytes"
 END IF
 
 sock.LeaveGroup("239.1.2.3")
@@ -634,7 +634,7 @@ PRINT "example.com resolves to: "; ip
 ' Get all addresses for a hostname
 DIM addrs AS OBJECT = Viper.Network.Dns.ResolveAll("google.com")
 PRINT "Google.com addresses:"
-FOR i = 0 TO addrs.Len - 1
+FOR i = 0 TO addrs.Length - 1
     PRINT "  "; addrs.Get(i)
 NEXT i
 ```
@@ -665,7 +665,7 @@ PRINT "Local hostname: "; Viper.Network.Dns.LocalHost()
 ' Get all local IP addresses
 DIM localAddrs AS OBJECT = Viper.Network.Dns.LocalAddrs()
 PRINT "Local addresses:"
-FOR i = 0 TO localAddrs.Len - 1
+FOR i = 0 TO localAddrs.Length - 1
     DIM addr AS STRING = localAddrs.Get(i)
     IF Viper.Network.Dns.IsIPv4(addr) THEN
         PRINT "  IPv4: "; addr
@@ -922,7 +922,7 @@ END IF
 DIM headers AS OBJECT = res.Headers
 DIM keys AS OBJECT = headers.Keys()
 
-FOR i = 0 TO keys.Len - 1
+FOR i = 0 TO keys.Length - 1
     DIM key AS STRING = keys.Get(i)
     PRINT key; ": "; headers.Get(key)
 NEXT i
@@ -936,7 +936,7 @@ DIM res AS OBJECT = Viper.Network.HttpReq.New("GET", "http://example.com/image.p
 
 IF res.IsOk() THEN
     DIM data AS OBJECT = res.Body()
-    PRINT "Downloaded "; data.Len; " bytes"
+    PRINT "Downloaded "; data.Length; " bytes"
 
     ' Save to file
     Viper.IO.File.WriteBytes("/tmp/image.png", data)
@@ -1125,7 +1125,7 @@ url.DelQueryParam("a")
 
 ' Get all parameters as Map
 DIM params AS OBJECT = url.QueryMap()
-PRINT "Parameters: "; params.Len
+PRINT "Parameters: "; params.Length
 ```
 
 ### URL Resolution

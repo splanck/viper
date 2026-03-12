@@ -50,12 +50,12 @@ entity SettingsManager {
             return;
         }
         var lines = IO.File.ReadAllLines(settingsPath);
-        var n = Seq.get_Len(lines);
+        var n = Seq.get_Length(lines);
         var i = 0;
         while i < n {
             var line = Seq.Get(lines, i);
             var parts = Str.Split(line, "=");
-            if Seq.get_Len(parts) >= 2 {
+            if Seq.get_Length(parts) >= 2 {
                 var key = "" + Seq.Get(parts, 0);
                 var val = "" + Seq.Get(parts, 1);
                 if key == "fontSize" {

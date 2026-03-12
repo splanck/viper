@@ -89,10 +89,10 @@ func clientThread(args: List[Integer]) {
     body.writeCString("main");
     body.writeByte(0);
     var bodyBytes = body.toBytes();
-    var length = bodyBytes.Len + 4;
-    var startupMsg = Bytes.New(4 + bodyBytes.Len);
+    var length = bodyBytes.Length + 4;
+    var startupMsg = Bytes.New(4 + bodyBytes.Length);
     writeInt32BE(startupMsg, 0, length);
-    Bytes.Copy(startupMsg, 4, bodyBytes, 0, bodyBytes.Len);
+    Bytes.Copy(startupMsg, 4, bodyBytes, 0, bodyBytes.Length);
     Network.Tcp.SendAll(client, startupMsg);
     Terminal.Say("CLIENT: Startup sent");
 
@@ -105,7 +105,7 @@ func clientThread(args: List[Integer]) {
     Terminal.Say("CLIENT: Got len=" + Fmt.Int(msgLen));
     if msgLen > 4 {
         var bodyData: Bytes = Network.Tcp.RecvExact(client, msgLen - 4);
-        Terminal.Say("CLIENT: Got body len=" + Fmt.Int(bodyData.Len));
+        Terminal.Say("CLIENT: Got body len=" + Fmt.Int(bodyData.Length));
     }
 
     // Receive ParameterStatus
@@ -116,7 +116,7 @@ func clientThread(args: List[Integer]) {
     msgLen = readInt32BE(lenBuf, 0);
     if msgLen > 4 {
         var bodyData: Bytes = Network.Tcp.RecvExact(client, msgLen - 4);
-        Terminal.Say("CLIENT: Got param body len=" + Fmt.Int(bodyData.Len));
+        Terminal.Say("CLIENT: Got param body len=" + Fmt.Int(bodyData.Length));
     }
 
     // Receive ReadyForQuery

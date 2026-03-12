@@ -733,6 +733,14 @@ void rt_term_print_f64(double v)
     rt_output_flush();
 }
 
+/// @brief Print a boolean as "true" or "false" without a trailing newline.
+/// @param v Boolean value (0 = false, non-zero = true).
+void rt_term_print_bool(int8_t v)
+{
+    rt_output_str(v ? "true" : "false");
+    rt_output_flush();
+}
+
 /// @brief Print a prompt and read a line of input.
 /// @param prompt Runtime string to display before reading input.
 /// @return Newly allocated runtime string containing the user's input.

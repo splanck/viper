@@ -175,7 +175,7 @@ Variables serve several crucial purposes:
 ```rust
 bind Viper.Terminal;
 
-var name = ReadLine() ?? "";  // ReadLine() returns str? — guard null; remember what the user typed
+var name = InputLine();  // remember what the user typed
 // ... 50 lines of code later ...
 Say("Goodbye, " + name);  // Still remember their name!
 ```
@@ -937,7 +937,7 @@ bind Viper.Terminal;
 
 func start() {
     Print("What is your name? ");
-    var name = ReadLine() ?? "";  // ReadLine() returns str? — use ?? "" as a null guard
+    var name = InputLine();
 
     Say("Hello, " + name + "!");
 }
@@ -949,13 +949,7 @@ What is your name? Alice
 Hello, Alice!
 ```
 
-`ReadLine()` pauses the program, waits for the user to type something and press Enter, then returns what they typed. **Important:** `ReadLine()` returns `str?` — an optional (nullable) string. It returns `null` when the end of input (EOF) is reached or on error. Always guard against null with the `??` operator or a null check. If you want a simpler variant that always returns a non-null string, use `InputLine()` instead.
-
-```rust
-// Null-safe patterns for ReadLine():
-var line = ReadLine() ?? "";          // Provide a default if null
-var line2 = ReadLine() ?? "default";  // Custom default value
-```
+`InputLine()` pauses the program, waits for the user to type something and press Enter, then returns what they typed as a string.
 
 Note the difference between `Print()` and `Say()`:
 - `Say()` adds a newline at the end (cursor moves to next line)
@@ -965,7 +959,7 @@ We use `Print()` for the prompt so the user types on the same line as the questi
 
 ### Converting Input to Numbers
 
-`ReadLine()` returns `str?` (an optional string — it may be `null` on EOF). When you know you are in an interactive session, use `?? ""` to get a plain string before converting. But what if you need a number? You must convert it:
+`InputLine()` always returns a string. But what if you need a number? You must convert it:
 
 ```rust
 module Age;
@@ -973,7 +967,7 @@ bind Viper.Terminal;
 
 func start() {
     Print("How old are you? ");
-    var ageText = ReadLine() ?? "";  // ReadLine() returns str? — guard null with ?? ""
+    var ageText = InputLine();
     var age = Viper.Core.Convert.ToInt64(ageText);        // Convert to integer
 
     var nextYear = age + 1;
@@ -988,7 +982,7 @@ func start() {
 
 If you try to parse `"hello"` as a number, you'll get an error. In Chapter 7, we'll learn how to handle such errors gracefully. For now, we'll assume users type valid input.
 
-### Common Confusion: Input Is Always a String (and Optional)
+### Common Confusion: Input Is Always a String
 
 A very common beginner mistake:
 
@@ -996,11 +990,11 @@ A very common beginner mistake:
 bind Viper.Terminal;
 
 Print("Enter a number: ");
-var number = ReadLine() ?? "";  // ReadLine() returns str? — use ?? "" to get a plain string
+var number = InputLine();
 var doubled = number * 2;  // Error! Can't multiply a string
 ```
 
-Always remember: `ReadLine()` returns `str?` (an optional string), not a plain string. Use `?? ""` to provide a default. Even then, it is still a string — you must convert it with `Viper.Core.Convert.ToInt64()` if you want to do math. Use `InputLine()` as a simpler alternative when you want a plain non-optional string.
+Always remember: `InputLine()` returns a string, not a number. You must convert it with `Viper.Core.Convert.ToInt64()` if you want to do math.
 
 ---
 
@@ -1089,14 +1083,14 @@ var halfF = 1.0 / 2.0; // Result is 0.5
 ```
 Integer divided by integer gives integer. Use floats for fractional results.
 
-### 6. Forgetting to convert user input (and guard for null)
+### 6. Forgetting to convert user input
 ```rust
 bind Viper.Terminal;
 
-var age = ReadLine();  // This is str? — optional! May be null.
+var age = InputLine();  // This is a string, not a number!
 var nextYear = age + 1;  // Error or wrong result!
 ```
-`ReadLine()` returns `str?` (optional). First guard against null: `var age = ReadLine() ?? "";`. Then use `Viper.Core.Convert.ToInt64()` or `Viper.Core.Convert.ToDouble()` to convert the string to a number.
+`InputLine()` returns a string. Use `Viper.Core.Convert.ToInt64()` or `Viper.Core.Convert.ToDouble()` to convert it to a number.
 
 ### 7. Using var twice for the same variable
 ```rust
@@ -1129,10 +1123,10 @@ func start() {
     Say("================");
 
     Print("Enter first number: ");
-    var first = Viper.Core.Convert.ToDouble(ReadLine() ?? "0");  // ReadLine() returns str?
+    var first = Viper.Core.Convert.ToDouble(InputLine());
 
     Print("Enter second number: ");
-    var second = Viper.Core.Convert.ToDouble(ReadLine() ?? "0");  // ReadLine() returns str?
+    var second = Viper.Core.Convert.ToDouble(InputLine());
 
     var sum = first + second;
     var difference = first - second;
@@ -1141,10 +1135,10 @@ func start() {
 
     Say("");
     Say("Results:");
-    Say(first + " + " + second + " = " + sum);
-    Say(first + " - " + second + " = " + difference);
-    Say(first + " * " + second + " = " + product);
-    Say(first + " / " + second + " = " + quotient);
+    Say("" + first + " + " + second + " = " + sum);
+    Say("" + first + " - " + second + " = " + difference);
+    Say("" + first + " * " + second + " = " + product);
+    Say("" + first + " / " + second + " = " + quotient);
 }
 ```
 
@@ -1158,7 +1152,7 @@ Results:
 10 + 3 = 13
 10 - 3 = 7
 10 * 3 = 30
-10 / 3 = 3.333333
+10 / 3 = 3.33333333333333
 ```
 
 Let's trace through what this program does:
@@ -1204,7 +1198,7 @@ Every one of these chapters builds on what you've learned here. Values, types, v
 
 - Variables can change (that's why they're called variables). Use `=` to assign new values.
 
-- Use `ReadLine()` to get text input from users. Note that `ReadLine()` returns `str?` (optional — may be `null` on EOF); use `?? ""` as a null guard. Use `InputLine()` for a simpler non-optional variant. Use `Viper.Core.Convert.ToInt64()` or `Viper.Core.Convert.ToDouble()` to convert text to numbers.
+- Use `InputLine()` to get text input from users. It returns a string. Use `Viper.Core.Convert.ToInt64()` or `Viper.Core.Convert.ToDouble()` to convert text to numbers.
 
 - Choose descriptive variable names to make your code readable.
 

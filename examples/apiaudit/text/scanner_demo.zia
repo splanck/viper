@@ -17,7 +17,7 @@ func start() {
     var sc = Scanner.New("Hello, World! 42 3.14 \"quoted\"");
     SayInt(sc.Pos);         // 0
     SayBool(sc.IsEnd);      // 0
-    SayInt(sc.Len);         // string length
+    SayInt(sc.Length);         // string length
     SayInt(sc.Remaining);   // same as Len at start
 
     // --- Peek (returns char code at current position) ---

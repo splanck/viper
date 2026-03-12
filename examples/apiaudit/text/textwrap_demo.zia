@@ -16,7 +16,7 @@ func start() {
     // --- WrapLines ---
     Say("--- WrapLines ---");
     var lines = TW.WrapLines(longText, 40);
-    SayInt(Seq.get_Len(lines));
+    SayInt(Seq.get_Length(lines));
     Say(Obj.ToString(Seq.Get(lines, 0)));
     Say(Obj.ToString(Seq.Get(lines, 1)));
 

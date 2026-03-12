@@ -79,7 +79,7 @@ func readU32(data: Ptr, pos: Integer) -> Integer {
 
 // Simple checksum (sum of all bytes mod 2^32)
 func checksum(data: Ptr) -> Integer {
-    var len = Collections.Bytes.get_Len(data);
+    var len = Collections.Bytes.get_Length(data);
     var sum = 0;
     var i = 0;
     while (i < len) {
@@ -191,7 +191,7 @@ func createArchiveEx(archivePath: String, filePaths: Ptr, compress: Boolean, pas
         Collections.List.Push(allStored, storedData);
         Collections.List.Push(allOriginal, fileData);
 
-        var storedLen = Collections.Bytes.get_Len(storedData);
+        var storedLen = Collections.Bytes.get_Length(storedData);
         var pathLen = String.Length(filePath);
         totalSize = totalSize + ENT_HEADER_SIZE + pathLen + storedLen;
         i = i + 1;
@@ -219,11 +219,11 @@ func createArchiveEx(archivePath: String, filePaths: Ptr, compress: Boolean, pas
         var storedData = Collections.List.get_Item(allStored, i);
         var originalData = Collections.List.get_Item(allOriginal, i);
 
-        var storedLen = Collections.Bytes.get_Len(storedData);
-        var origLen = Collections.Bytes.get_Len(originalData);
+        var storedLen = Collections.Bytes.get_Length(storedData);
+        var origLen = Collections.Bytes.get_Length(originalData);
         var cs = checksum(originalData);
         var pathBytes = Collections.Bytes.FromStr(filePath);
-        var pathLen = Collections.Bytes.get_Len(pathBytes);
+        var pathLen = Collections.Bytes.get_Length(pathBytes);
 
         var ratio = 100;
         if (origLen > 0) {
@@ -268,7 +268,7 @@ func listArchive(archivePath: String) -> Boolean {
     }
 
     var archive = IO.File.ReadAllBytes(archivePath);
-    var archiveLen = Collections.Bytes.get_Len(archive);
+    var archiveLen = Collections.Bytes.get_Length(archive);
 
     if (archiveLen < HDR_SIZE) {
         Terminal.Say("Invalid archive: too small");
@@ -346,7 +346,7 @@ func testArchiveEx(archivePath: String, password: String) -> Boolean {
     }
 
     var archive = IO.File.ReadAllBytes(archivePath);
-    var archiveLen = Collections.Bytes.get_Len(archive);
+    var archiveLen = Collections.Bytes.get_Length(archive);
 
     if (archiveLen < HDR_SIZE) {
         Terminal.Say("FAIL: Archive too small");
@@ -425,7 +425,7 @@ func extractArchiveEx(archivePath: String, outputDir: String, password: String) 
     }
 
     var archive = IO.File.ReadAllBytes(archivePath);
-    var archiveLen = Collections.Bytes.get_Len(archive);
+    var archiveLen = Collections.Bytes.get_Length(archive);
 
     if (archiveLen < HDR_SIZE) {
         Terminal.Say("Invalid archive: too small");
@@ -533,7 +533,7 @@ func isArchiveEncrypted(archivePath: String) -> Boolean {
         return false;
     }
     var archive = IO.File.ReadAllBytes(archivePath);
-    var archiveLen = Collections.Bytes.get_Len(archive);
+    var archiveLen = Collections.Bytes.get_Length(archive);
     if (archiveLen < HDR_SIZE) {
         return false;
     }

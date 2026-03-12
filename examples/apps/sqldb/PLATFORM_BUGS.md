@@ -410,10 +410,10 @@ These need to be fixed in the platform itself.
 - **Status**: FIXED
 - **Severity**: High
 - **Component**: Zia frontend — `Sema_Expr_Advanced.cpp`, `Sema_Expr_Call.cpp`
-- **Symptom**: When a runtime function returns `obj` but the actual object belongs to a different class than the function's owning class (e.g., `Network.Tcp.RecvExact` returns a `Bytes` object, not a `Tcp` object), property access (`.Len`, `.Get()`) and method calls (`.Slice()`, `.ToStr()`) silently compile to 0/null or fail to resolve. Users must add explicit type annotations (e.g., `var x: Bytes = ...`) as a workaround.
+- **Symptom**: When a runtime function returns `obj` but the actual object belongs to a different class than the function's owning class (e.g., `Network.Tcp.RecvExact` returns a `Bytes` object, not a `Tcp` object), property access (`.Length`, `.Get()`) and method calls (`.Slice()`, `.ToStr()`) silently compile to 0/null or fail to resolve. Users must add explicit type annotations (e.g., `var x: Bytes = ...`) as a workaround.
 - **Root cause**: Three-stage type information loss:
   1. **Registration** (`Sema_Runtime.cpp:169-170`): When a class method returns `obj`, the heuristic infers the return type as the method's owning class. `Network.Tcp.RecvExact` gets typed as returning `Ptr("Viper.Network.Tcp")` instead of `Ptr("Viper.Collections.Bytes")`.
-  2. **Property resolution** (`Sema_Expr_Advanced.cpp:280-298`): Property access constructs `Viper.Network.Tcp.get_Len` and looks it up — not found, since `Len` is a Bytes property. Falls through to return `types::unknown()`.
+  2. **Property resolution** (`Sema_Expr_Advanced.cpp:280-298`): Property access constructs `Viper.Network.Tcp.get_Length` and looks it up — not found, since `Len` is a Bytes property. Falls through to return `types::unknown()`.
   3. **Method resolution** (`Sema_Expr_Call.cpp:622-680`): Same pattern — constructs `Viper.Network.Tcp.Slice` which doesn't exist.
 - **Fix**: Added cross-class fallback search in both property access (`Sema_Expr_Advanced.cpp`) and method call resolution (`Sema_Expr_Call.cpp`). When the primary class lookup fails, the sema searches the full `RuntimeRegistry` catalog across all runtime classes for a matching property getter or method. The fallback only triggers when the primary lookup fails, preserving existing behavior for correctly-typed objects.
 - **Verification**: All 1151 tests pass. Variables with cross-class Ptr types can access properties and call methods that belong to the actual runtime class.

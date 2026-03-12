@@ -5,7 +5,7 @@ bind "./_support";
 // EXPECT_OUT: RESULT: ok
 // COVER: Viper.Collections.Bytes.FromStr
 // COVER: Viper.Collections.Bytes.ToStr
-// COVER: Viper.Collections.Bytes.get_Len
+// COVER: Viper.Collections.Bytes.get_Length
 // COVER: Viper.Collections.Bytes.Get
 
 // Verify that Bytes.ToStr/FromStr preserve embedded null bytes (BUG-IO-001).
@@ -26,7 +26,7 @@ func testNullByteRoundtrip() {
     var b2 = Viper.Collections.Bytes.FromStr(s);
 
     // All 3 bytes must be preserved, including the embedded null at index 1.
-    assertEqInt(Viper.Collections.Bytes.get_Len(b2), 3, "null byte preserved in length");
+    assertEqInt(Viper.Collections.Bytes.get_Length(b2), 3, "null byte preserved in length");
     assertEqInt(Viper.Collections.Bytes.Get(b2, 0), 65, "byte[0] = 'A'");
     assertEqInt(Viper.Collections.Bytes.Get(b2, 1), 0,  "byte[1] = NUL preserved");
     assertEqInt(Viper.Collections.Bytes.Get(b2, 2), 67, "byte[2] = 'C' after NUL");
@@ -46,7 +46,7 @@ func testMultipleNullBytes() {
     var s = Viper.Collections.Bytes.ToStr(b);
     var b2 = Viper.Collections.Bytes.FromStr(s);
 
-    assertEqInt(Viper.Collections.Bytes.get_Len(b2), 5, "5 bytes preserved");
+    assertEqInt(Viper.Collections.Bytes.get_Length(b2), 5, "5 bytes preserved");
     assertEqInt(Viper.Collections.Bytes.Get(b2, 0), 0,  "byte[0] = NUL");
     assertEqInt(Viper.Collections.Bytes.Get(b2, 1), 0,  "byte[1] = NUL");
     assertEqInt(Viper.Collections.Bytes.Get(b2, 2), 65, "byte[2] = 'A'");
@@ -59,7 +59,7 @@ func testNonNullBytesUnaffected() {
 
     // Ensure the fix doesn't affect normal ASCII strings.
     var b = Viper.Collections.Bytes.FromStr("Hello");
-    assertEqInt(Viper.Collections.Bytes.get_Len(b), 5, "hello is 5 bytes");
+    assertEqInt(Viper.Collections.Bytes.get_Length(b), 5, "hello is 5 bytes");
     assertEqInt(Viper.Collections.Bytes.Get(b, 0), 72,  "H");
     assertEqInt(Viper.Collections.Bytes.Get(b, 4), 111, "o");
 }

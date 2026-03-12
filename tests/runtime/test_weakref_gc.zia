@@ -34,7 +34,7 @@ func start() {
     Viper.Collections.Seq.Push(val, 99);
     Viper.Collections.WeakMap.Set(wmap, "test_key", val);
 
-    var wmLen = Viper.Collections.WeakMap.get_Len(wmap);
+    var wmLen = Viper.Collections.WeakMap.get_Length(wmap);
     if (wmLen != 1) { Say("FAIL: WeakMap Len should be 1"); return; }
 
     var has = Viper.Collections.WeakMap.Has(wmap, "test_key");
@@ -48,20 +48,20 @@ func start() {
 
     // === Test 5: WeakMap keys ===
     var keys = Viper.Collections.WeakMap.Keys(wmap);
-    var kLen = Viper.Collections.Seq.get_Len(keys);
+    var kLen = Viper.Collections.Seq.get_Length(keys);
     if (kLen != 1) { Say("FAIL: WeakMap Keys should have 1 entry"); return; }
 
     // === Test 6: Multiple entries ===
     Viper.Collections.WeakMap.Set(wmap, "key2", Viper.Collections.Seq.New());
     Viper.Collections.WeakMap.Set(wmap, "key3", Viper.Collections.Seq.New());
-    wmLen = Viper.Collections.WeakMap.get_Len(wmap);
+    wmLen = Viper.Collections.WeakMap.get_Length(wmap);
     if (wmLen != 3) { Say("FAIL: WeakMap Len should be 3"); return; }
 
     // === Test 7: Remove ===
     var removed = Viper.Collections.WeakMap.Remove(wmap, "test_key");
     if (removed != 1) { Say("FAIL: WeakMap Remove should return 1"); return; }
 
-    wmLen = Viper.Collections.WeakMap.get_Len(wmap);
+    wmLen = Viper.Collections.WeakMap.get_Length(wmap);
     if (wmLen != 2) { Say("FAIL: WeakMap Len should be 2 after remove"); return; }
 
     // Remove non-existent
@@ -74,7 +74,7 @@ func start() {
 
     // === Test 9: Clear ===
     Viper.Collections.WeakMap.Clear(wmap);
-    wmLen = Viper.Collections.WeakMap.get_Len(wmap);
+    wmLen = Viper.Collections.WeakMap.get_Length(wmap);
     if (wmLen != 0) { Say("FAIL: WeakMap should be empty after Clear"); return; }
 
     isEmpty = Viper.Collections.WeakMap.get_IsEmpty(wmap);

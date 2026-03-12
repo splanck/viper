@@ -15,7 +15,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var bs = BitSet.New(8);
-    SayInt(bs.Len);        // 8
+    SayInt(bs.Length);        // 8
     SayInt(bs.Count);      // 0
     SayBool(bs.IsEmpty);   // 1
 

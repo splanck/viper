@@ -282,31 +282,31 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
         return types::unknown();
     }
 
-    // Handle built-in properties like .count on lists
+    // Handle built-in properties like .Length on lists
     if (baseType && baseType->kind == TypeKindSem::List)
     {
-        if (expr->field == "Count" || expr->field == "count" || expr->field == "size" ||
-            expr->field == "length")
+        if (expr->field == "Length" || expr->field == "length" || expr->field == "Len" ||
+            expr->field == "Count" || expr->field == "count" || expr->field == "size")
         {
             return types::integer();
         }
     }
 
-    // Handle built-in properties on maps (.count, .size, .length)
+    // Handle built-in properties on maps (.Length, .Len, .Count, etc.)
     if (baseType && baseType->kind == TypeKindSem::Map)
     {
-        if (expr->field == "Count" || expr->field == "count" || expr->field == "size" ||
-            expr->field == "length" || expr->field == "Len")
+        if (expr->field == "Length" || expr->field == "length" || expr->field == "Len" ||
+            expr->field == "Count" || expr->field == "count" || expr->field == "size")
         {
             return types::integer();
         }
     }
 
-    // Handle built-in properties on sets (.count, .size, .length)
+    // Handle built-in properties on sets (.Length, .Len, .Count, etc.)
     if (baseType && baseType->kind == TypeKindSem::Set)
     {
-        if (expr->field == "Count" || expr->field == "count" || expr->field == "size" ||
-            expr->field == "length" || expr->field == "Len")
+        if (expr->field == "Length" || expr->field == "length" || expr->field == "Len" ||
+            expr->field == "Count" || expr->field == "count" || expr->field == "size")
         {
             return types::integer();
         }

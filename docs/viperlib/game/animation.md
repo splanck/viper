@@ -338,7 +338,7 @@ func start() {
 
     // Region names list
     var names = sheet.RegionNames();
-    SayInt(Seq.get_Len(names));  // 4
+    SayInt(Seq.get_Length(names));  // 4
 
     // Remove a region
     sheet.RemoveRegion("jump");
@@ -380,7 +380,7 @@ DIM frame1 AS OBJECT = gridSheet.GetRegion("1")
 
 ' List all region names
 DIM names AS OBJECT = gridSheet.RegionNames()
-FOR i = 0 TO names.Len - 1
+FOR i = 0 TO names.Length - 1
     PRINT names.Get(i)
 NEXT
 ```

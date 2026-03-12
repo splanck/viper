@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tools/zia-server/DocumentStore.hpp
+// File: tools/lsp-common/DocumentStore.hpp
 // Purpose: In-memory document storage for LSP open files.
 // Key invariants:
 //   - URI → (version, content) mapping
@@ -13,7 +13,7 @@
 //   - Documents are only tracked while open (didOpen → didClose)
 // Ownership/Lifetime:
 //   - Owns document content strings
-// Links: tools/zia-server/LspHandler.hpp
+// Links: tools/lsp-common/LspHandler.hpp
 //
 //===----------------------------------------------------------------------===//
 

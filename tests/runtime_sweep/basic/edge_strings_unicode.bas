@@ -87,7 +87,7 @@ csvUnicode = "one→two→three"
 DIM parts AS Viper.Collections.Seq
 parts = Viper.String.Split(csvUnicode, "→")
 PRINT "Split 'one→two→three' by '→'"
-PRINT "Part count: "; parts.Len
+PRINT "Part count: "; parts.Length
 
 PRINT ""
 PRINT "=== Unicode/Long String Tests Complete ==="

@@ -31,9 +31,9 @@ func start() {
     // --- FindAll ---
     Say("--- FindAll ---");
     var matches = Pat.FindAll("a1b22c333", "[0-9]+");
-    SayInt(Seq.get_Len(matches));
+    SayInt(Seq.get_Length(matches));
     var mi = 0;
-    while mi < Seq.get_Len(matches) {
+    while mi < Seq.get_Length(matches) {
         Say(Obj.ToString(Seq.Get(matches, mi)));
         mi = mi + 1;
     }
@@ -50,9 +50,9 @@ func start() {
     // --- Split ---
     Say("--- Split ---");
     var parts = Pat.Split("one,two;;three,four", "[,;]+");
-    SayInt(Seq.get_Len(parts));
+    SayInt(Seq.get_Length(parts));
     var pi = 0;
-    while pi < Seq.get_Len(parts) {
+    while pi < Seq.get_Length(parts) {
         Say(Obj.ToString(Seq.Get(parts, pi)));
         pi = pi + 1;
     }

@@ -16,7 +16,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var tm = TreeMap.New();
-    SayInt(tm.Len);       // 0
+    SayInt(tm.Length);       // 0
     SayBool(tm.IsEmpty);  // 1
 
     // --- Set / Len ---
@@ -25,7 +25,7 @@ func start() {
     tm.Set("apple", Box.Str("green"));
     tm.Set("banana", Box.Str("yellow"));
     tm.Set("date", Box.Str("brown"));
-    SayInt(tm.Len);       // 4
+    SayInt(tm.Length);       // 4
     SayBool(tm.IsEmpty);  // 0
 
     // --- Get ---
@@ -43,7 +43,7 @@ func start() {
     Say("--- Set (update) ---");
     tm.Set("apple", Box.Str("red"));
     Say(Box.ToStr(tm.Get("apple")));   // red
-    SayInt(tm.Len);                    // 4 (no new entry)
+    SayInt(tm.Length);                    // 4 (no new entry)
 
     // --- First / Last ---
     Say("--- First / Last ---");
@@ -61,7 +61,7 @@ func start() {
     // --- Keys (sorted order) ---
     Say("--- Keys ---");
     var keys = tm.Keys();
-    SayInt(Seq.get_Len(keys));              // 4
+    SayInt(Seq.get_Length(keys));              // 4
     Say(Box.ToStr(Seq.Get(keys, 0)));   // apple
     Say(Box.ToStr(Seq.Get(keys, 1)));   // banana
     Say(Box.ToStr(Seq.Get(keys, 2)));   // cherry
@@ -70,7 +70,7 @@ func start() {
     // --- Values (key-sorted order) ---
     Say("--- Values ---");
     var vals = tm.Values();
-    SayInt(Seq.get_Len(vals));              // 4
+    SayInt(Seq.get_Length(vals));              // 4
     Say(Box.ToStr(Seq.Get(vals, 0)));   // red (apple's value)
     Say(Box.ToStr(Seq.Get(vals, 1)));   // yellow (banana's value)
 
@@ -78,13 +78,13 @@ func start() {
     Say("--- Remove ---");
     SayBool(tm.Remove("banana"));    // 1
     SayBool(tm.Has("banana"));       // 0
-    SayInt(tm.Len);                  // 3
+    SayInt(tm.Length);                  // 3
     SayBool(tm.Remove("banana"));    // 0 (already removed)
 
     // --- Clear ---
     Say("--- Clear ---");
     tm.Clear();
-    SayInt(tm.Len);                // 0
+    SayInt(tm.Length);                // 0
     SayBool(tm.IsEmpty);           // 1
 
     Say("=== TreeMap audit complete ===");

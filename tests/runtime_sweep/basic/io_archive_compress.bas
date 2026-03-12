@@ -75,12 +75,12 @@ Viper.Core.Diagnostics.Assert(arc2.Path <> "", "zip.path")
 Viper.Core.Diagnostics.Assert(arc2.Count >= 3, "zip.count")
 DIM names AS Viper.Collections.Seq
 names = arc2.Names
-Viper.Core.Diagnostics.Assert(names.Len >= 3, "zip.names")
+Viper.Core.Diagnostics.Assert(names.Length >= 3, "zip.names")
 Viper.Core.Diagnostics.Assert(arc2.Has("hello.txt"), "zip.has")
 Viper.Core.Diagnostics.AssertEqStr(arc2.ReadStr("hello.txt"), "hi", "zip.readstr")
 DIM bin AS Viper.Collections.Bytes
 bin = arc2.Read("data.bin")
-Viper.Core.Diagnostics.AssertEq(bin.Len, 4, "zip.read")
+Viper.Core.Diagnostics.AssertEq(bin.Length, 4, "zip.read")
 DIM info AS Viper.Collections.Map
 info = arc2.Info("hello.txt")
 Viper.Core.Diagnostics.Assert(info.Has("size"), "zip.info")

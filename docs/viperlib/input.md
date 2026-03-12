@@ -266,7 +266,7 @@ DO WHILE canvas.ShouldClose = 0
     pressed = Viper.Input.Keyboard.GetPressed()
 
     DIM i AS INTEGER
-    FOR i = 0 TO pressed.Len() - 1
+    FOR i = 0 TO pressed.Length() - 1
         DIM key AS INTEGER
         key = pressed.Get(i)
         PRINT "Pressed: "; Viper.Input.Keyboard.KeyName(key)

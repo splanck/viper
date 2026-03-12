@@ -1527,7 +1527,7 @@ map.Get(key)            // -> value? (nil if not found)
 map.Has(key)            // -> Boolean
 map.Delete(key)         // Remove a key
 map.Clear()             // Remove all entries
-map.Len                 // -> Integer (number of entries)
+map.Length                 // -> Integer (number of entries)
 map.Keys()              // -> [KeyType]
 map.Values()            // -> [ValueType]
 ```
@@ -1578,7 +1578,7 @@ set.Add(item)           // Add an item
 set.Contains(item)      // -> Boolean
 set.remove(item)        // Remove an item
 set.Clear()             // Remove all items
-set.Len                 // -> Integer
+set.Length                 // -> Integer
 
 // Set operations
 set.Union(other)        // -> Set (items in either set)
@@ -1595,7 +1595,7 @@ visitors.Add("alice");
 visitors.Add("bob");
 visitors.Add("alice");  // Duplicate ignored
 
-Terminal.Say("Unique visitors: " + visitors.Len);  // 2
+Terminal.Say("Unique visitors: " + visitors.Length);  // 2
 
 // Set operations
 var admins = new Set[String]();
@@ -1625,7 +1625,7 @@ queue.Push(item)        // Add to back
 queue.Pop()             // -> item? (remove from front, nil if empty)
 queue.Peek()            // -> item? (see front without removing)
 queue.IsEmpty()         // -> Boolean
-queue.Len               // -> Integer
+queue.Length               // -> Integer
 ```
 
 **Example:**
@@ -1663,7 +1663,7 @@ stack.Push(item)        // Add to top
 stack.Pop()             // -> item? (remove from top, nil if empty)
 stack.Peek()            // -> item? (see top without removing)
 stack.IsEmpty()         // -> Boolean
-stack.Len               // -> Integer
+stack.Length               // -> Integer
 ```
 
 **Example:**
@@ -1709,7 +1709,7 @@ heap.Push(priority, item)  // Add item with an Integer priority (lower number = 
 heap.Pop()                 // -> item? (remove highest-priority item, nil if empty)
 heap.Peek()                // -> item? (see highest-priority item without removing)
 heap.IsEmpty()             // -> Boolean
-heap.Len                   // -> Integer
+heap.Length                   // -> Integer
 ```
 
 **Note:** `Push` requires a priority integer as the **first** parameter, followed by the item.

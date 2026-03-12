@@ -5,47 +5,48 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tools/zia-server/McpHandler.hpp
+// File: tools/lsp-common/McpHandler.hpp
 // Purpose: MCP protocol handler — lifecycle, tool listing, and tool dispatch.
 // Key invariants:
 //   - Follows MCP 2024-11-05 protocol specification
-//   - All tool calls dispatch through the shared CompilerBridge
+//   - All tool calls dispatch through the shared ICompilerBridge
 //   - Notifications (no id) are acknowledged silently (no response)
+//   - Language-specific strings come from ServerConfig
 // Ownership/Lifetime:
-//   - McpHandler borrows a CompilerBridge (must outlive the handler)
-// Links: tools/zia-server/CompilerBridge.hpp, tools/zia-server/JsonRpc.hpp
+//   - McpHandler borrows an ICompilerBridge (must outlive the handler)
+// Links: tools/lsp-common/ICompilerBridge.hpp, tools/lsp-common/JsonRpc.hpp
 //
 //===----------------------------------------------------------------------===//
 
 #pragma once
 
-#include "tools/zia-server/Json.hpp"
-#include "tools/zia-server/JsonRpc.hpp"
+#include "tools/lsp-common/ICompilerBridge.hpp"
+#include "tools/lsp-common/Json.hpp"
+#include "tools/lsp-common/JsonRpc.hpp"
 
 #include <string>
 
 namespace viper::server
 {
 
-class CompilerBridge;
-
 /// @brief MCP protocol handler.
 ///
 /// Handles the MCP lifecycle methods (initialize, initialized) and dispatches
-/// tools/list and tools/call requests to the CompilerBridge.
+/// tools/list and tools/call requests to the ICompilerBridge.
 ///
 /// ## MCP Lifecycle
 ///
 /// 1. Client sends `initialize` → server returns capabilities + protocol version
 /// 2. Client sends `initialized` (notification) → no response
 /// 3. Client sends `tools/list` → server returns tool definitions
-/// 4. Client sends `tools/call` → server dispatches to CompilerBridge, returns result
+/// 4. Client sends `tools/call` → server dispatches to ICompilerBridge, returns result
 class McpHandler
 {
   public:
     /// @brief Construct a handler that dispatches to the given bridge.
     /// @param bridge The compiler bridge (must outlive this handler).
-    explicit McpHandler(CompilerBridge &bridge);
+    /// @param config Server configuration for language-specific strings.
+    McpHandler(ICompilerBridge &bridge, const ServerConfig &config);
 
     /// @brief Handle a JSON-RPC request and return a response string.
     /// @param req The parsed JSON-RPC request.
@@ -53,7 +54,8 @@ class McpHandler
     std::string handleRequest(const JsonRpcRequest &req);
 
   private:
-    CompilerBridge &bridge_;
+    ICompilerBridge &bridge_;
+    ServerConfig config_;
 
     std::string handleInitialize(const JsonRpcRequest &req);
     std::string handleToolsList(const JsonRpcRequest &req);
@@ -73,7 +75,7 @@ class McpHandler
     JsonValue callRuntimeSearch(const JsonValue &args);
 
     /// @brief Build the tool definitions for tools/list response.
-    static JsonValue buildToolDefinitions();
+    JsonValue buildToolDefinitions() const;
 };
 
 } // namespace viper::server

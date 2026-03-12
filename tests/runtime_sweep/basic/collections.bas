@@ -1,7 +1,7 @@
 ' EXPECT_OUT: RESULT: ok
 ' COVER: Viper.Collections.Bag.New
 ' COVER: Viper.Collections.Bag.IsEmpty
-' COVER: Viper.Collections.Bag.Len
+' COVER: Viper.Collections.Bag.Length
 ' COVER: Viper.Collections.Bag.Clear
 ' COVER: Viper.Collections.Bag.Intersect
 ' COVER: Viper.Collections.Bag.Diff
@@ -11,7 +11,7 @@
 ' COVER: Viper.Collections.Bag.Union
 ' COVER: Viper.Collections.Bag.Put
 ' COVER: Viper.Collections.Bytes.New
-' COVER: Viper.Collections.Bytes.Len
+' COVER: Viper.Collections.Bytes.Length
 ' COVER: Viper.Collections.Bytes.Clone
 ' COVER: Viper.Collections.Bytes.Copy
 ' COVER: Viper.Collections.Bytes.Fill
@@ -29,7 +29,7 @@
 ' COVER: Viper.Collections.Heap.NewMax
 ' COVER: Viper.Collections.Heap.IsEmpty
 ' COVER: Viper.Collections.Heap.IsMax
-' COVER: Viper.Collections.Heap.Len
+' COVER: Viper.Collections.Heap.Length
 ' COVER: Viper.Collections.Heap.Clear
 ' COVER: Viper.Collections.Heap.Peek
 ' COVER: Viper.Collections.Heap.Pop
@@ -38,7 +38,7 @@
 ' COVER: Viper.Collections.Heap.TryPeek
 ' COVER: Viper.Collections.Heap.TryPop
 ' COVER: Viper.Collections.List.New
-' COVER: Viper.Collections.List.Len
+' COVER: Viper.Collections.List.Length
 ' COVER: Viper.Collections.List.Push
 ' COVER: Viper.Collections.List.Clear
 ' COVER: Viper.Collections.List.Find
@@ -50,7 +50,7 @@
 ' COVER: Viper.Collections.List.Set
 ' COVER: Viper.Collections.Map.New
 ' COVER: Viper.Collections.Map.IsEmpty
-' COVER: Viper.Collections.Map.Len
+' COVER: Viper.Collections.Map.Length
 ' COVER: Viper.Collections.Map.Clear
 ' COVER: Viper.Collections.Map.Get
 ' COVER: Viper.Collections.Map.GetOr
@@ -62,7 +62,7 @@
 ' COVER: Viper.Collections.Map.Values
 ' COVER: Viper.Collections.Queue.New
 ' COVER: Viper.Collections.Queue.IsEmpty
-' COVER: Viper.Collections.Queue.Len
+' COVER: Viper.Collections.Queue.Length
 ' COVER: Viper.Collections.Queue.Push
 ' COVER: Viper.Collections.Queue.Clear
 ' COVER: Viper.Collections.Queue.Peek
@@ -71,7 +71,7 @@
 ' COVER: Viper.Collections.Ring.Cap
 ' COVER: Viper.Collections.Ring.IsEmpty
 ' COVER: Viper.Collections.Ring.IsFull
-' COVER: Viper.Collections.Ring.Len
+' COVER: Viper.Collections.Ring.Length
 ' COVER: Viper.Collections.Ring.Clear
 ' COVER: Viper.Collections.Ring.Get
 ' COVER: Viper.Collections.Ring.Peek
@@ -81,7 +81,7 @@
 ' COVER: Viper.Collections.Seq.WithCapacity
 ' COVER: Viper.Collections.Seq.Cap
 ' COVER: Viper.Collections.Seq.IsEmpty
-' COVER: Viper.Collections.Seq.Len
+' COVER: Viper.Collections.Seq.Length
 ' COVER: Viper.Collections.Seq.Clear
 ' COVER: Viper.Collections.Seq.Clone
 ' COVER: Viper.Collections.Seq.Find
@@ -101,14 +101,14 @@
 ' COVER: Viper.Collections.Seq.Slice
 ' COVER: Viper.Collections.Stack.New
 ' COVER: Viper.Collections.Stack.IsEmpty
-' COVER: Viper.Collections.Stack.Len
+' COVER: Viper.Collections.Stack.Length
 ' COVER: Viper.Collections.Stack.Clear
 ' COVER: Viper.Collections.Stack.Peek
 ' COVER: Viper.Collections.Stack.Pop
 ' COVER: Viper.Collections.Stack.Push
 ' COVER: Viper.Collections.TreeMap.New
 ' COVER: Viper.Collections.TreeMap.IsEmpty
-' COVER: Viper.Collections.TreeMap.Len
+' COVER: Viper.Collections.TreeMap.Length
 ' COVER: Viper.Collections.TreeMap.Ceil
 ' COVER: Viper.Collections.TreeMap.Clear
 ' COVER: Viper.Collections.TreeMap.Remove
@@ -127,10 +127,10 @@ Viper.Core.Diagnostics.Assert(bag.IsEmpty, "bag.empty")
 bag.Put("a")
 bag.Put("b")
 bag.Put("b")
-Viper.Core.Diagnostics.AssertEq(bag.Len, 2, "bag.len")
+Viper.Core.Diagnostics.AssertEq(bag.Length, 2, "bag.len")
 Viper.Core.Diagnostics.Assert(bag.Has("a"), "bag.has")
 bag.Drop("a")
-Viper.Core.Diagnostics.AssertEq(bag.Len, 1, "bag.drop")
+Viper.Core.Diagnostics.AssertEq(bag.Length, 1, "bag.drop")
 
 DIM bag2 AS Viper.Collections.Bag
 bag2 = NEW Viper.Collections.Bag()
@@ -138,16 +138,16 @@ bag2.Put("b")
 bag2.Put("c")
 DIM merged AS Viper.Collections.Bag
 merged = bag.Union(bag2)
-Viper.Core.Diagnostics.AssertEq(merged.Len, 2, "bag.union")
+Viper.Core.Diagnostics.AssertEq(merged.Length, 2, "bag.union")
 DIM common AS Viper.Collections.Bag
 common = bag.Intersect(bag2)
-Viper.Core.Diagnostics.AssertEq(common.Len, 1, "bag.intersect")
+Viper.Core.Diagnostics.AssertEq(common.Length, 1, "bag.intersect")
 DIM diff AS Viper.Collections.Bag
 diff = bag2.Diff(bag)
-Viper.Core.Diagnostics.AssertEq(diff.Len, 1, "bag.diff")
+Viper.Core.Diagnostics.AssertEq(diff.Length, 1, "bag.diff")
 DIM items AS Viper.Collections.Seq
 items = bag.Items()
-Viper.Core.Diagnostics.AssertEq(items.Len, 1, "bag.items")
+Viper.Core.Diagnostics.AssertEq(items.Length, 1, "bag.items")
 bag.Clear()
 Viper.Core.Diagnostics.Assert(bag.IsEmpty, "bag.clear")
 
@@ -157,13 +157,13 @@ bytes.Set(0, 222)
 bytes.Set(1, 173)
 bytes.Set(2, 190)
 bytes.Set(3, 239)
-Viper.Core.Diagnostics.AssertEq(bytes.Len, 4, "bytes.len")
+Viper.Core.Diagnostics.AssertEq(bytes.Length, 4, "bytes.len")
 Viper.Core.Diagnostics.AssertEq(bytes.Get(0), 222, "bytes.get")
 Viper.Core.Diagnostics.AssertEqStr(bytes.ToHex(), "deadbeef", "bytes.hex")
 Viper.Core.Diagnostics.AssertEq(bytes.Find(190), 2, "bytes.find")
 DIM slice AS Viper.Collections.Bytes
 slice = bytes.Slice(1, 3)
-Viper.Core.Diagnostics.AssertEq(slice.Len, 2, "bytes.slice")
+Viper.Core.Diagnostics.AssertEq(slice.Length, 2, "bytes.slice")
 DIM copy AS Viper.Collections.Bytes
 copy = NEW Viper.Collections.Bytes(4)
 copy.Fill(0)
@@ -200,7 +200,7 @@ maxHeap.Push(5, "high")
 Viper.Core.Diagnostics.AssertEqStr(maxHeap.Peek(), "high", "heap.newmax.peek")
 heap.Push(5, "high")
 heap.Push(1, "low")
-Viper.Core.Diagnostics.AssertEq(heap.Len, 2, "heap.len")
+Viper.Core.Diagnostics.AssertEq(heap.Length, 2, "heap.len")
 Viper.Core.Diagnostics.AssertEqStr(heap.Peek(), "low", "heap.peek")
     Viper.Core.Diagnostics.AssertEqStr(heap.Pop(), "low", "heap.pop")
     DIM tryPeek AS OBJECT
@@ -212,7 +212,7 @@ Viper.Core.Diagnostics.AssertEqStr(heap.Peek(), "low", "heap.peek")
 DIM heapSeq AS Viper.Collections.Seq
 heap.Push(3, "mid")
 heapSeq = heap.ToSeq()
-Viper.Core.Diagnostics.AssertEq(heapSeq.Len, 1, "heap.toseq")
+Viper.Core.Diagnostics.AssertEq(heapSeq.Length, 1, "heap.toseq")
 heap.Clear()
 Viper.Core.Diagnostics.Assert(heap.IsEmpty, "heap.clear")
 
@@ -229,23 +229,23 @@ list.Push(c)
 Viper.Core.Diagnostics.AssertEq(list.Find(a), 0, "list.find")
 Viper.Core.Diagnostics.Assert(list.Has(c), "list.has")
 list.Insert(1, b)
-Viper.Core.Diagnostics.AssertEq(list.Len, 3, "list.count")
+Viper.Core.Diagnostics.AssertEq(list.Length, 3, "list.count")
 Viper.Core.Diagnostics.Assert(Viper.Core.Object.RefEquals(list.Get(1), b), "list.get")
 list.Set(1, a)
 Viper.Core.Diagnostics.Assert(Viper.Core.Object.RefEquals(list.Get(1), a), "list.set")
 list.Remove(a)
-Viper.Core.Diagnostics.AssertEq(list.Len, 2, "list.remove")
+Viper.Core.Diagnostics.AssertEq(list.Length, 2, "list.remove")
 list.RemoveAt(0)
-Viper.Core.Diagnostics.AssertEq(list.Len, 1, "list.removeat")
+Viper.Core.Diagnostics.AssertEq(list.Length, 1, "list.removeat")
 list.Clear()
-Viper.Core.Diagnostics.AssertEq(list.Len, 0, "list.clear")
+Viper.Core.Diagnostics.AssertEq(list.Length, 0, "list.clear")
 
 DIM m AS Viper.Collections.Map
 m = NEW Viper.Collections.Map()
 Viper.Core.Diagnostics.Assert(m.IsEmpty, "map.empty")
 m.Set("a", a)
 m.Set("b", b)
-Viper.Core.Diagnostics.AssertEq(m.Len, 2, "map.len")
+Viper.Core.Diagnostics.AssertEq(m.Length, 2, "map.len")
 Viper.Core.Diagnostics.Assert(m.Has("a"), "map.has")
 Viper.Core.Diagnostics.Assert(Viper.Core.Object.RefEquals(m.Get("a"), a), "map.get")
 Viper.Core.Diagnostics.Assert(Viper.Core.Object.RefEquals(m.GetOr("z", c), c), "map.getor")
@@ -253,10 +253,10 @@ Viper.Core.Diagnostics.Assert(m.SetIfMissing("a", c) = 0, "map.setifmissing")
 Viper.Core.Diagnostics.Assert(m.Remove("b"), "map.remove")
 DIM keys AS Viper.Collections.Seq
 keys = m.Keys()
-Viper.Core.Diagnostics.AssertEq(keys.Len, 1, "map.keys")
+Viper.Core.Diagnostics.AssertEq(keys.Length, 1, "map.keys")
 DIM values AS Viper.Collections.Seq
 values = m.Values()
-Viper.Core.Diagnostics.AssertEq(values.Len, 1, "map.values")
+Viper.Core.Diagnostics.AssertEq(values.Length, 1, "map.values")
 m.Clear()
 Viper.Core.Diagnostics.Assert(m.IsEmpty, "map.clear")
 
@@ -265,7 +265,7 @@ q = NEW Viper.Collections.Queue()
 Viper.Core.Diagnostics.Assert(q.IsEmpty, "queue.empty")
 q.Push("a")
 q.Push("b")
-Viper.Core.Diagnostics.AssertEq(q.Len, 2, "queue.len")
+Viper.Core.Diagnostics.AssertEq(q.Length, 2, "queue.len")
 Viper.Core.Diagnostics.AssertEqStr(q.Peek(), "a", "queue.peek")
 Viper.Core.Diagnostics.AssertEqStr(q.Pop(), "a", "queue.take")
 q.Clear()
@@ -277,7 +277,7 @@ Viper.Core.Diagnostics.AssertEq(ring.Cap, 3, "ring.cap")
 Viper.Core.Diagnostics.Assert(ring.IsEmpty, "ring.empty")
 ring.Push("a")
 ring.Push("b")
-Viper.Core.Diagnostics.AssertEq(ring.Len, 2, "ring.len")
+Viper.Core.Diagnostics.AssertEq(ring.Length, 2, "ring.len")
 Viper.Core.Diagnostics.AssertEqStr(ring.Peek(), "a", "ring.peek")
 Viper.Core.Diagnostics.AssertEqStr(ring.Get(1), "b", "ring.get")
 Viper.Core.Diagnostics.AssertEqStr(ring.Pop(), "a", "ring.pop")
@@ -298,7 +298,7 @@ Viper.Core.Diagnostics.Assert(seq.IsEmpty, "seq.empty")
 seq.Push("a")
 seq.Push("b")
 seq.Push("c")
-Viper.Core.Diagnostics.AssertEq(seq.Len, 3, "seq.len")
+Viper.Core.Diagnostics.AssertEq(seq.Length, 3, "seq.len")
 Viper.Core.Diagnostics.AssertEqStr(seq.First(), "a", "seq.first")
 Viper.Core.Diagnostics.AssertEqStr(seq.Last(), "c", "seq.last")
 Viper.Core.Diagnostics.AssertEqStr(seq.Peek(), "c", "seq.peek")
@@ -309,21 +309,21 @@ seq.Insert(1, "x")
 Viper.Core.Diagnostics.AssertEqStr(seq.Get(1), "x", "seq.insert")
 seq.Set(1, "b")
 seq.Remove(1)
-Viper.Core.Diagnostics.AssertEq(seq.Len, 3, "seq.remove")
+Viper.Core.Diagnostics.AssertEq(seq.Length, 3, "seq.remove")
 DIM seq2 AS Viper.Collections.Seq
 seq2 = Viper.Collections.Seq.New()
 seq2.Push("d")
 seq2.Push("e")
 seq.PushAll(seq2)
-Viper.Core.Diagnostics.AssertEq(seq.Len, 5, "seq.pushall")
+Viper.Core.Diagnostics.AssertEq(seq.Length, 5, "seq.pushall")
 seq.Reverse()
 seq.Shuffle()
 DIM seqClone AS Viper.Collections.Seq
 seqClone = seq.Clone()
-Viper.Core.Diagnostics.AssertEq(seqClone.Len, seq.Len, "seq.clone")
+Viper.Core.Diagnostics.AssertEq(seqClone.Length, seq.Length, "seq.clone")
 DIM seqSlice AS Viper.Collections.Seq
 seqSlice = seq.Slice(0, 2)
-Viper.Core.Diagnostics.AssertEq(seqSlice.Len, 2, "seq.slice")
+Viper.Core.Diagnostics.AssertEq(seqSlice.Length, 2, "seq.slice")
 seq.Clear()
 Viper.Core.Diagnostics.Assert(seq.IsEmpty, "seq.clear")
 
@@ -332,7 +332,7 @@ st = NEW Viper.Collections.Stack()
 Viper.Core.Diagnostics.Assert(st.IsEmpty, "stack.empty")
 st.Push("a")
 st.Push("b")
-Viper.Core.Diagnostics.AssertEq(st.Len, 2, "stack.len")
+Viper.Core.Diagnostics.AssertEq(st.Length, 2, "stack.len")
 Viper.Core.Diagnostics.AssertEqStr(st.Peek(), "b", "stack.peek")
 Viper.Core.Diagnostics.AssertEqStr(st.Pop(), "b", "stack.pop")
 st.Clear()
@@ -344,7 +344,7 @@ Viper.Core.Diagnostics.Assert(tm.IsEmpty, "treemap.empty")
     tm.Set("a", "1")
     tm.Set("c", "3")
     tm.Set("e", "5")
-Viper.Core.Diagnostics.AssertEq(tm.Len, 3, "treemap.len")
+Viper.Core.Diagnostics.AssertEq(tm.Length, 3, "treemap.len")
     Viper.Core.Diagnostics.AssertEqStr(tm.First(), "a", "treemap.first")
     Viper.Core.Diagnostics.AssertEqStr(tm.Last(), "e", "treemap.last")
     Viper.Core.Diagnostics.AssertEqStr(tm.Ceil("b"), "c", "treemap.ceil")
@@ -357,8 +357,8 @@ DIM tmKeys AS Viper.Collections.Seq
 tmKeys = tm.Keys()
 DIM tmVals AS Viper.Collections.Seq
 tmVals = tm.Values()
-Viper.Core.Diagnostics.AssertEq(tmKeys.Len, 2, "treemap.keys")
-Viper.Core.Diagnostics.AssertEq(tmVals.Len, 2, "treemap.values")
+Viper.Core.Diagnostics.AssertEq(tmKeys.Length, 2, "treemap.keys")
+Viper.Core.Diagnostics.AssertEq(tmVals.Length, 2, "treemap.values")
 tm.Clear()
 Viper.Core.Diagnostics.Assert(tm.IsEmpty, "treemap.clear")
 

@@ -446,7 +446,7 @@ Over 170 individual bug fixes across all layers. Organized by subsystem:
   also released them — fixed with `consumeDeferred()` post-concat
 - **Entity field store**: Missing retain/release for string fields — added retain-new and
   release-old logic in `emitFieldStore()`
-- **List.Len/Length property**: `lowerField()` only handled Count/count/size/length — added
+- **List.Length/Length property**: `lowerField()` only handled Count/count/size/length — added
   Len and Length variants
 - **List.Pop() missing case**: Dispatch table had `pop→Pop` but `lowerListMethodCall` had
   no implementation — added case calling `kListPop`

@@ -42,7 +42,7 @@ func start() {
     if (got == 0) { Say("FAIL: Future.Get should return value"); return; }
 
     // Verify it's the same Seq
-    var gLen = Viper.Collections.Seq.get_Len(got);
+    var gLen = Viper.Collections.Seq.get_Length(got);
     if (gLen != 1) { Say("FAIL: retrieved Seq should have 1 element"); return; }
 
     // === Test 10: Future.Wait (should return immediately since done) ===

@@ -674,7 +674,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         }
 
         // Fallback: Map semantic collection types to runtime class methods.
-        // Handles runtime-specific methods (get_Len, Put, First, etc.) that aren't
+        // Handles runtime-specific methods (get_Length, Put, First, etc.) that aren't
         // in the built-in Zia-friendly method tables above.
         if (baseType && (baseType->kind == TypeKindSem::Set ||
                          baseType->kind == TypeKindSem::List || baseType->kind == TypeKindSem::Map))
@@ -714,13 +714,13 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
 
         // Emit a diagnostic for method calls on an untyped opaque pointer (plain 'obj').
         // This occurs when a runtime function that returns obj/ptr without a typed seq
-        // annotation is used as a method receiver. The typed Seq API (Seq.Get, Seq.get_Len)
+        // annotation is used as a method receiver. The typed Seq API (Seq.Get, Seq.get_Length)
         // must be used instead, or the runtime.def entry should be annotated with seq<T>.
         if (baseType && baseType->kind == TypeKindSem::Ptr && baseType->name.empty())
         {
             error(expr->loc,
                   "Cannot call method on an untyped object reference. "
-                  "Use Seq.Get/Seq.get_Len for sequence results, or check the runtime.def "
+                  "Use Seq.Get/Seq.get_Length for sequence results, or check the runtime.def "
                   "annotation for the function returning this value.");
             for (auto &arg : expr->args)
                 analyzeExpr(arg.value.get());

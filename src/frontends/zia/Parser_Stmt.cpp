@@ -662,9 +662,10 @@ StmtPtr Parser::parseMatchStmt()
             if (!arm.body)
                 return nullptr;
 
-            // Expect semicolon after expression body
-            if (!expect(TokenKind::Semicolon, ";"))
-                return nullptr;
+            // Accept semicolon, comma, or nothing after expression body
+            // (matches the flexibility of match-expression syntax)
+            if (!match(TokenKind::Semicolon))
+                match(TokenKind::Comma);
         }
 
         arms.push_back(std::move(arm));

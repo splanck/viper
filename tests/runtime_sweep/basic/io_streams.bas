@@ -26,7 +26,7 @@
 ' COVER: Viper.IO.LineWriter.WriteLn
 ' COVER: Viper.IO.MemStream.New
 ' COVER: Viper.IO.MemStream.Capacity
-' COVER: Viper.IO.MemStream.Len
+' COVER: Viper.IO.MemStream.Length
 ' COVER: Viper.IO.MemStream.Pos
 ' COVER: Viper.IO.MemStream.Clear
 ' COVER: Viper.IO.MemStream.ReadBytes
@@ -146,8 +146,8 @@ msBytes.Set(0, 7)
 msBytes.Set(1, 8)
 ms.WriteBytes(msBytes)
 
-Viper.Core.Diagnostics.Assert(ms.Len > 0, "ms.len")
-Viper.Core.Diagnostics.Assert(ms.Capacity >= ms.Len, "ms.capacity")
+Viper.Core.Diagnostics.Assert(ms.Length > 0, "ms.len")
+Viper.Core.Diagnostics.Assert(ms.Capacity >= ms.Length, "ms.capacity")
 
 ms.Seek(0)
 Viper.Core.Diagnostics.AssertEq(ms.ReadI8(), -5, "ms.readi8")
@@ -167,10 +167,10 @@ Viper.Core.Diagnostics.AssertEqStr(rb.ToHex(), "0708", "ms.readbytes")
 ms.Skip(0)
 DIM allBytes AS Viper.Collections.Bytes
 allBytes = ms.ToBytes()
-Viper.Core.Diagnostics.Assert(allBytes.Len >= 0, "ms.tobytes")
+Viper.Core.Diagnostics.Assert(allBytes.Length >= 0, "ms.tobytes")
 
 ms.Clear()
-Viper.Core.Diagnostics.AssertEq(ms.Len, 0, "ms.clear")
+Viper.Core.Diagnostics.AssertEq(ms.Length, 0, "ms.clear")
 Viper.Core.Diagnostics.AssertEq(ms.Pos, 0, "ms.pos0")
 
 Viper.IO.Dir.RemoveAll(base)

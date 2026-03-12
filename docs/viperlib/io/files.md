@@ -119,7 +119,7 @@ Viper.IO.File.WriteAllBytes("test.bin", data)
 ' Read binary file
 DIM loaded AS Bytes
 loaded = Viper.IO.File.ReadAllBytes("test.bin")
-PRINT "Size:"; loaded.Len()  ' Output: Size: 4
+PRINT "Size:"; loaded.Length()  ' Output: Size: 4
 ```
 
 ### Line-by-Line Example
@@ -136,7 +136,7 @@ Viper.IO.File.WriteLines("output.txt", lines)
 ' Read lines from file
 DIM readLines AS Seq
 readLines = Viper.IO.File.ReadAllLines("output.txt")
-FOR i = 0 TO readLines.Len() - 1
+FOR i = 0 TO readLines.Length() - 1
     PRINT readLines.Get(i)
 NEXT i
 
@@ -478,7 +478,7 @@ Viper.IO.Dir.MakeAll("/home/user/a/b/c/d")
 ' List all entries in a directory
 DIM entries AS Viper.Collections.Seq
 entries = Viper.IO.Dir.List("/home/user")
-FOR i = 0 TO entries.Len - 1
+FOR i = 0 TO entries.Length - 1
     PRINT entries.Get(i)
 NEXT i
 
@@ -543,7 +543,7 @@ Use the `*Seq` forms when a frontend or toolchain stage requires an object-typed
 ```basic
 DIM names AS Viper.Collections.Seq
 names = Viper.IO.Dir.ListSeq("/home/user")
-PRINT names.Len
+PRINT names.Length
 ```
 
 All listing functions exclude `.` and `..` entries. If the directory doesn't exist or can't be read, an empty sequence
@@ -736,17 +736,17 @@ PRINT Viper.IO.Glob.Match("readme.md", "read*")     ' Output: 1
 
 ' Find all .txt files in a directory
 DIM txtFiles AS OBJECT = Viper.IO.Glob.Files("/home/user/docs", "*.txt")
-FOR i = 0 TO txtFiles.Len - 1
+FOR i = 0 TO txtFiles.Length - 1
     PRINT txtFiles.Get(i)
 NEXT i
 
 ' Find all .bas files recursively
 DIM basFiles AS OBJECT = Viper.IO.Glob.FilesRecursive("/home/user/projects", "*.bas")
-PRINT "Found "; basFiles.Len; " BASIC files"
+PRINT "Found "; basFiles.Length; " BASIC files"
 
 ' Find all entries (files + dirs) matching a pattern
 DIM entries AS OBJECT = Viper.IO.Glob.Entries("/home/user", "test*")
-FOR i = 0 TO entries.Len - 1
+FOR i = 0 TO entries.Length - 1
     PRINT entries.Get(i)
 NEXT i
 ```

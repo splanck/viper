@@ -125,17 +125,17 @@ func testReplaceOps() {
 }
 
 func testSplitOps() {
-    // Split returns Seq - use Viper.Collections.Seq.get_Len to get count
+    // Split returns Seq - use Viper.Collections.Seq.get_Length to get count
     var parts = Viper.String.Split("a,b,c", ",");
-    assertEqInt(Viper.Collections.Seq.get_Len(parts), 3, "split count");
+    assertEqInt(Viper.Collections.Seq.get_Length(parts), 3, "split count");
 
     // Split with no delimiter
     var noSplit = Viper.String.Split("abc", ",");
-    assertEqInt(Viper.Collections.Seq.get_Len(noSplit), 1, "split no match count");
+    assertEqInt(Viper.Collections.Seq.get_Length(noSplit), 1, "split no match count");
 
     // Split empty string
     var emptySplit = Viper.String.Split("", ",");
-    assertEqInt(Viper.Collections.Seq.get_Len(emptySplit), 1, "split empty count");
+    assertEqInt(Viper.Collections.Seq.get_Length(emptySplit), 1, "split empty count");
 }
 
 func testFlipOps() {

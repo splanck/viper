@@ -15,7 +15,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var s = Set.New();
-    SayInt(s.Len);       // 0
+    SayInt(s.Length);       // 0
     SayBool(s.IsEmpty);  // 1
 
     // --- Add ---
@@ -27,7 +27,7 @@ func start() {
     SayBool(s.Add(b));   // 1 (new)
     SayBool(s.Add(c));   // 1 (new)
     SayBool(s.Add(a));   // 0 (duplicate)
-    SayInt(s.Len);       // 3
+    SayInt(s.Length);       // 3
     SayBool(s.IsEmpty);  // 0
 
     // --- Has ---
@@ -41,13 +41,13 @@ func start() {
     Say("--- Remove ---");
     SayBool(s.Remove(b)); // 1
     SayBool(s.Has(b));    // 0
-    SayInt(s.Len);        // 2
+    SayInt(s.Length);        // 2
     SayBool(s.Remove(b)); // 0 (already removed)
 
     // --- Items ---
     Say("--- Items ---");
     var items = s.Items();
-    SayInt(items.Len);    // 2
+    SayInt(items.Length);    // 2
 
     // --- Merge (union) ---
     Say("--- Merge ---");
@@ -66,17 +66,17 @@ func start() {
     s2.Add(w);
 
     var merged = s1.Union(s2);
-    SayInt(merged.Len);   // 4 (x, y, z, w)
+    SayInt(merged.Length);   // 4 (x, y, z, w)
 
     // --- Intersect ---
     Say("--- Intersect ---");
     var common = s1.Intersect(s2);
-    SayInt(common.Len);   // 2 (y, z)
+    SayInt(common.Length);   // 2 (y, z)
 
     // --- Diff ---
     Say("--- Diff ---");
     var diff = s1.Diff(s2);
-    SayInt(diff.Len);     // 1 (x)
+    SayInt(diff.Length);     // 1 (x)
 
     // --- IsSubset ---
     Say("--- IsSubset ---");
@@ -99,7 +99,7 @@ func start() {
     // --- Clear ---
     Say("--- Clear ---");
     s1.Clear();
-    SayInt(s1.Len);       // 0
+    SayInt(s1.Length);       // 0
     SayBool(s1.IsEmpty);  // 1
 
     Say("=== Set audit complete ===");

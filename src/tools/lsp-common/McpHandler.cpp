@@ -5,26 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tools/zia-server/McpHandler.cpp
+// File: tools/lsp-common/McpHandler.cpp
 // Purpose: Implementation of the MCP protocol handler.
 // Key invariants:
 //   - initialize must be called before tools/list or tools/call
 //   - tools/call validates tool name and argument presence
 //   - All text results are returned as MCP content arrays
+//   - Tool names are prefixed with config_.toolPrefix (e.g., "zia/", "basic/")
 // Ownership/Lifetime:
 //   - All returned JSON is fully owned
-// Links: tools/zia-server/McpHandler.hpp, tools/zia-server/CompilerBridge.hpp
+// Links: tools/lsp-common/McpHandler.hpp, tools/lsp-common/ICompilerBridge.hpp
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/zia-server/McpHandler.hpp"
-
-#include "tools/zia-server/CompilerBridge.hpp"
+#include "tools/lsp-common/McpHandler.hpp"
 
 namespace viper::server
 {
 
-McpHandler::McpHandler(CompilerBridge &bridge) : bridge_(bridge) {}
+McpHandler::McpHandler(ICompilerBridge &bridge, const ServerConfig &config)
+    : bridge_(bridge), config_(config)
+{
+}
 
 // --- Request dispatch ---
 
@@ -59,7 +61,8 @@ std::string McpHandler::handleInitialize(const JsonRpcRequest &req)
         {"protocolVersion", JsonValue("2024-11-05")},
         {"capabilities", JsonValue::object({{"tools", JsonValue::object({})}})},
         {"serverInfo",
-         JsonValue::object({{"name", JsonValue("zia-server")}, {"version", JsonValue("0.1.0")}})},
+         JsonValue::object({{"name", JsonValue(config_.serverName)},
+                            {"version", JsonValue(config_.version)}})},
     });
     return buildResponse(req.id, result);
 }
@@ -81,8 +84,8 @@ static JsonValue schemaProp(const char *type, const char *desc)
 }
 
 /// Build a complete tool definition object.
-static JsonValue toolDef(const char *name,
-                         const char *desc,
+static JsonValue toolDef(const std::string &name,
+                         const std::string &desc,
                          JsonValue::ObjectType properties,
                          std::vector<std::string> required = {})
 {
@@ -99,7 +102,6 @@ static JsonValue toolDef(const char *name,
     // Only add "required" if non-empty
     if (!reqArr.empty())
     {
-        // We need to add to the schema object — reconstruct with required
         auto schemaObj = schema.asObject();
         schemaObj.push_back({"required", JsonValue(std::move(reqArr))});
         schema = JsonValue(std::move(schemaObj));
@@ -112,96 +114,101 @@ static JsonValue toolDef(const char *name,
     });
 }
 
-JsonValue McpHandler::buildToolDefinitions()
+JsonValue McpHandler::buildToolDefinitions() const
 {
     JsonValue::ArrayType tools;
+    const std::string &prefix = config_.toolPrefix;
+    const std::string &lang = config_.langLabel;
+    std::string sourceDesc = lang + " source code";
 
-    // zia/check
-    tools.push_back(toolDef("zia/check",
-                            "Type-check Zia source code and return diagnostics",
+    // <prefix>/check
+    tools.push_back(toolDef(prefix + "/check",
+                            "Type-check " + lang + " source code and return diagnostics",
                             {
-                                {"source", schemaProp("string", "Zia source code")},
+                                {"source", schemaProp("string", sourceDesc.c_str())},
                                 {"path", schemaProp("string", "Virtual file path (optional)")},
                             },
                             {"source"}));
 
-    // zia/compile
-    tools.push_back(toolDef("zia/compile",
-                            "Compile Zia source code and return success status + diagnostics",
-                            {
-                                {"source", schemaProp("string", "Zia source code")},
-                                {"path", schemaProp("string", "Virtual file path (optional)")},
-                            },
-                            {"source"}));
+    // <prefix>/compile
+    tools.push_back(
+        toolDef(prefix + "/compile",
+                "Compile " + lang + " source code and return success status + diagnostics",
+                {
+                    {"source", schemaProp("string", sourceDesc.c_str())},
+                    {"path", schemaProp("string", "Virtual file path (optional)")},
+                },
+                {"source"}));
 
-    // zia/completions
-    tools.push_back(toolDef("zia/completions",
-                            "Get code completions at a cursor position in Zia source",
-                            {
-                                {"source", schemaProp("string", "Zia source code")},
-                                {"line", schemaProp("integer", "Cursor line (1-based)")},
-                                {"col", schemaProp("integer", "Cursor column (1-based)")},
-                                {"path", schemaProp("string", "Virtual file path (optional)")},
-                            },
-                            {"source", "line", "col"}));
+    // <prefix>/completions
+    tools.push_back(
+        toolDef(prefix + "/completions",
+                "Get code completions at a cursor position in " + lang + " source",
+                {
+                    {"source", schemaProp("string", sourceDesc.c_str())},
+                    {"line", schemaProp("integer", "Cursor line (1-based)")},
+                    {"col", schemaProp("integer", "Cursor column (1-based)")},
+                    {"path", schemaProp("string", "Virtual file path (optional)")},
+                },
+                {"source", "line", "col"}));
 
-    // zia/hover
-    tools.push_back(toolDef("zia/hover",
+    // <prefix>/hover
+    tools.push_back(toolDef(prefix + "/hover",
                             "Get type information for a symbol at a cursor position",
                             {
-                                {"source", schemaProp("string", "Zia source code")},
+                                {"source", schemaProp("string", sourceDesc.c_str())},
                                 {"line", schemaProp("integer", "Cursor line (1-based)")},
                                 {"col", schemaProp("integer", "Cursor column (1-based)")},
                                 {"path", schemaProp("string", "Virtual file path (optional)")},
                             },
                             {"source", "line", "col"}));
 
-    // zia/symbols
-    tools.push_back(toolDef("zia/symbols",
-                            "List all top-level declarations in Zia source",
+    // <prefix>/symbols
+    tools.push_back(toolDef(prefix + "/symbols",
+                            "List all top-level declarations in " + lang + " source",
                             {
-                                {"source", schemaProp("string", "Zia source code")},
+                                {"source", schemaProp("string", sourceDesc.c_str())},
                                 {"path", schemaProp("string", "Virtual file path (optional)")},
                             },
                             {"source"}));
 
-    // zia/dump-il
+    // <prefix>/dump-il
     tools.push_back(
-        toolDef("zia/dump-il",
-                "Dump the compiled IL (intermediate language) for Zia source",
+        toolDef(prefix + "/dump-il",
+                "Dump the compiled IL (intermediate language) for " + lang + " source",
                 {
-                    {"source", schemaProp("string", "Zia source code")},
+                    {"source", schemaProp("string", sourceDesc.c_str())},
                     {"path", schemaProp("string", "Virtual file path (optional)")},
                     {"optimized", schemaProp("boolean", "Apply O1 optimization (default: false)")},
                 },
                 {"source"}));
 
-    // zia/dump-ast
-    tools.push_back(toolDef("zia/dump-ast",
-                            "Dump the abstract syntax tree for Zia source",
+    // <prefix>/dump-ast
+    tools.push_back(toolDef(prefix + "/dump-ast",
+                            "Dump the abstract syntax tree for " + lang + " source",
                             {
-                                {"source", schemaProp("string", "Zia source code")},
+                                {"source", schemaProp("string", sourceDesc.c_str())},
                                 {"path", schemaProp("string", "Virtual file path (optional)")},
                             },
                             {"source"}));
 
-    // zia/dump-tokens
-    tools.push_back(toolDef("zia/dump-tokens",
-                            "Dump the token stream for Zia source",
+    // <prefix>/dump-tokens
+    tools.push_back(toolDef(prefix + "/dump-tokens",
+                            "Dump the token stream for " + lang + " source",
                             {
-                                {"source", schemaProp("string", "Zia source code")},
+                                {"source", schemaProp("string", sourceDesc.c_str())},
                                 {"path", schemaProp("string", "Virtual file path (optional)")},
                             },
                             {"source"}));
 
-    // zia/runtime-classes
-    tools.push_back(toolDef("zia/runtime-classes",
+    // <prefix>/runtime-classes
+    tools.push_back(toolDef(prefix + "/runtime-classes",
                             "List all Viper runtime classes with method and property counts",
                             {},
                             {}));
 
-    // zia/runtime-methods
-    tools.push_back(toolDef("zia/runtime-methods",
+    // <prefix>/runtime-methods
+    tools.push_back(toolDef(prefix + "/runtime-methods",
                             "List methods and properties for a specific Viper runtime class",
                             {
                                 {"className",
@@ -211,9 +218,9 @@ JsonValue McpHandler::buildToolDefinitions()
                             },
                             {"className"}));
 
-    // zia/runtime-search
+    // <prefix>/runtime-search
     tools.push_back(
-        toolDef("zia/runtime-search",
+        toolDef(prefix + "/runtime-search",
                 "Search Viper runtime APIs by keyword (case-insensitive substring match)",
                 {
                     {"keyword", schemaProp("string", "Search keyword")},
@@ -244,29 +251,32 @@ std::string McpHandler::handleToolsCall(const JsonRpcRequest &req)
     const auto *argsProp = req.params.get("arguments");
     JsonValue args = argsProp ? *argsProp : JsonValue::object({});
 
+    // Build expected tool names from config prefix
+    const std::string &p = config_.toolPrefix;
+
     JsonValue content;
 
-    if (name == "zia/check")
+    if (name == p + "/check")
         content = callCheck(args);
-    else if (name == "zia/compile")
+    else if (name == p + "/compile")
         content = callCompile(args);
-    else if (name == "zia/completions")
+    else if (name == p + "/completions")
         content = callCompletions(args);
-    else if (name == "zia/hover")
+    else if (name == p + "/hover")
         content = callHover(args);
-    else if (name == "zia/symbols")
+    else if (name == p + "/symbols")
         content = callSymbols(args);
-    else if (name == "zia/dump-il")
+    else if (name == p + "/dump-il")
         content = callDumpIL(args);
-    else if (name == "zia/dump-ast")
+    else if (name == p + "/dump-ast")
         content = callDumpAst(args);
-    else if (name == "zia/dump-tokens")
+    else if (name == p + "/dump-tokens")
         content = callDumpTokens(args);
-    else if (name == "zia/runtime-classes")
+    else if (name == p + "/runtime-classes")
         content = callRuntimeClasses(args);
-    else if (name == "zia/runtime-methods")
+    else if (name == p + "/runtime-methods")
         content = callRuntimeMembers(args);
-    else if (name == "zia/runtime-search")
+    else if (name == p + "/runtime-search")
         content = callRuntimeSearch(args);
     else
         return buildError(req.id, kMethodNotFound, "Unknown tool: " + name);
@@ -280,7 +290,8 @@ std::string McpHandler::handleToolsCall(const JsonRpcRequest &req)
 JsonValue McpHandler::callCheck(const JsonValue &args)
 {
     std::string source = args["source"].asString();
-    std::string path = args.has("path") ? args["path"].asString() : "untitled.zia";
+    std::string path =
+        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     auto diags = bridge_.check(source, path);
 
@@ -303,7 +314,8 @@ JsonValue McpHandler::callCheck(const JsonValue &args)
 JsonValue McpHandler::callCompile(const JsonValue &args)
 {
     std::string source = args["source"].asString();
-    std::string path = args.has("path") ? args["path"].asString() : "untitled.zia";
+    std::string path =
+        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     auto result = bridge_.compile(source, path);
 
@@ -331,7 +343,8 @@ JsonValue McpHandler::callCompletions(const JsonValue &args)
     std::string source = args["source"].asString();
     int line = static_cast<int>(args["line"].asInt());
     int col = static_cast<int>(args["col"].asInt());
-    std::string path = args.has("path") ? args["path"].asString() : "untitled.zia";
+    std::string path =
+        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     auto items = bridge_.completions(source, line, col, path);
 
@@ -355,7 +368,8 @@ JsonValue McpHandler::callHover(const JsonValue &args)
     std::string source = args["source"].asString();
     int line = static_cast<int>(args["line"].asInt());
     int col = static_cast<int>(args["col"].asInt());
-    std::string path = args.has("path") ? args["path"].asString() : "untitled.zia";
+    std::string path =
+        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     auto result = bridge_.hover(source, line, col, path);
     return textContent(result.empty() ? "(no type information)" : result);
@@ -364,7 +378,8 @@ JsonValue McpHandler::callHover(const JsonValue &args)
 JsonValue McpHandler::callSymbols(const JsonValue &args)
 {
     std::string source = args["source"].asString();
-    std::string path = args.has("path") ? args["path"].asString() : "untitled.zia";
+    std::string path =
+        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     auto syms = bridge_.symbols(source, path);
 
@@ -385,7 +400,8 @@ JsonValue McpHandler::callSymbols(const JsonValue &args)
 JsonValue McpHandler::callDumpIL(const JsonValue &args)
 {
     std::string source = args["source"].asString();
-    std::string path = args.has("path") ? args["path"].asString() : "untitled.zia";
+    std::string path =
+        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
     bool optimized = args.has("optimized") ? args["optimized"].asBool() : false;
 
     return textContent(bridge_.dumpIL(source, path, optimized));
@@ -394,7 +410,8 @@ JsonValue McpHandler::callDumpIL(const JsonValue &args)
 JsonValue McpHandler::callDumpAst(const JsonValue &args)
 {
     std::string source = args["source"].asString();
-    std::string path = args.has("path") ? args["path"].asString() : "untitled.zia";
+    std::string path =
+        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     return textContent(bridge_.dumpAst(source, path));
 }
@@ -402,7 +419,8 @@ JsonValue McpHandler::callDumpAst(const JsonValue &args)
 JsonValue McpHandler::callDumpTokens(const JsonValue &args)
 {
     std::string source = args["source"].asString();
-    std::string path = args.has("path") ? args["path"].asString() : "untitled.zia";
+    std::string path =
+        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     return textContent(bridge_.dumpTokens(source, path));
 }

@@ -42,9 +42,9 @@ PRINT "Has 'city': "; Viper.Text.Template.Has(tpl, "city")
 PRINT "--- Keys ---"
 DIM keys AS OBJECT
 keys = Viper.Text.Template.Keys(tpl)
-PRINT "Key count: "; Viper.Collections.Seq.get_Len(keys)
+PRINT "Key count: "; Viper.Collections.Seq.get_Length(keys)
 DIM ki AS INTEGER
-FOR ki = 0 TO Viper.Collections.Seq.get_Len(keys) - 1
+FOR ki = 0 TO Viper.Collections.Seq.get_Length(keys) - 1
     PRINT "Key: "; keys.Get(ki)
 NEXT ki
 

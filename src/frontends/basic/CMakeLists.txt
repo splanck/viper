@@ -142,6 +142,8 @@ target_sources(fe_basic PRIVATE
         Diag.cpp
         DiagnosticEmitter.cpp
         BasicCompiler.cpp
+        BasicAnalysis.cpp
+        BasicCompletion.cpp
         lower/oop/Lower_OOP_Expr.cpp
         lower/oop/Lower_OOP_Stmt.cpp
         lower/oop/Lower_OOP_Alloc.cpp

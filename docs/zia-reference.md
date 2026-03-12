@@ -1361,7 +1361,7 @@ Viper.Math.Random.NextInt(max);   // Random integer [0, max)
 list.add(value);                    // Add element
 list.get(index);                    // Get element
 list.set(index, value);             // Set element
-list.Len;                        // Get count
+list.Length;                        // Get count
 list.remove(index);                 // Remove element
 
 // Map operations (keys are String)
@@ -1376,7 +1376,7 @@ map.remove("key");                  // Remove entry
 map.clear();                        // Remove all entries
 map.keys();                         // Sequence of keys
 map.values();                       // Sequence of values
-map.Len;                         // Entry count
+map.Length;                         // Entry count
 ```
 
 For complete runtime documentation, see **[Runtime Library Reference](viperlib/README.md)**.

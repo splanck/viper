@@ -24,7 +24,7 @@ bind "./_support";
 // COVER: Viper.IO.BinaryBuffer.ReadStr
 // COVER: Viper.IO.BinaryBuffer.get_Pos
 // COVER: Viper.IO.BinaryBuffer.set_Pos
-// COVER: Viper.IO.BinaryBuffer.get_Len
+// COVER: Viper.IO.BinaryBuffer.get_Length
 // COVER: Viper.IO.BinaryBuffer.ToBytes
 // COVER: Viper.IO.BinaryBuffer.Reset
 
@@ -35,7 +35,7 @@ func testNewBuffer() {
     var pos = Viper.IO.BinaryBuffer.get_Pos(buf);
     assertEqInt(pos, 0, "new buffer pos is 0");
 
-    var len = Viper.IO.BinaryBuffer.get_Len(buf);
+    var len = Viper.IO.BinaryBuffer.get_Length(buf);
     assertEqInt(len, 0, "new buffer len is 0");
 }
 
@@ -156,7 +156,7 @@ func testFromBytes() {
     Viper.Collections.Bytes.Set(bytes, 3, 0x40);
 
     var buf = Viper.IO.BinaryBuffer.FromBytes(bytes);
-    var len = Viper.IO.BinaryBuffer.get_Len(buf);
+    var len = Viper.IO.BinaryBuffer.get_Length(buf);
     assertEqInt(len, 4, "from bytes len");
 
     var b1 = Viper.IO.BinaryBuffer.ReadByte(buf);
@@ -174,7 +174,7 @@ func testToBytes() {
     Viper.IO.BinaryBuffer.WriteByte(buf, 105); // i
 
     var bytes = Viper.IO.BinaryBuffer.ToBytes(buf);
-    var len = Viper.Collections.Bytes.get_Len(bytes);
+    var len = Viper.Collections.Bytes.get_Length(bytes);
     assertEqInt(len, 2, "toBytes len");
 
     assertEqInt(Viper.Collections.Bytes.Get(bytes, 0), 72, "toBytes byte 0");
@@ -194,7 +194,7 @@ func testReset() {
     Viper.IO.BinaryBuffer.Reset(buf);
 
     assertEqInt(Viper.IO.BinaryBuffer.get_Pos(buf), 0, "pos after reset");
-    assertEqInt(Viper.IO.BinaryBuffer.get_Len(buf), 0, "len after reset");
+    assertEqInt(Viper.IO.BinaryBuffer.get_Length(buf), 0, "len after reset");
 }
 
 func testPositionManagement() {
@@ -207,7 +207,7 @@ func testPositionManagement() {
 
     // Position should be at 12
     assertEqInt(Viper.IO.BinaryBuffer.get_Pos(buf), 12, "pos after 3 i32 writes");
-    assertEqInt(Viper.IO.BinaryBuffer.get_Len(buf), 12, "len is 12");
+    assertEqInt(Viper.IO.BinaryBuffer.get_Length(buf), 12, "len is 12");
 
     // Seek to second i32
     Viper.IO.BinaryBuffer.set_Pos(buf, 4);

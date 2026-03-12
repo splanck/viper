@@ -14,7 +14,7 @@ p2 = NEW Person()
 list.Push(p1)
 list.Push(p2)
 
-PRINT list.Len
+PRINT list.Length
 PRINT list.Get(0).ToString()
 PRINT list.Get(1).Equals(p2)
 

@@ -87,7 +87,7 @@ entity CompletionController {
         itemCount   = 0;
 
         // Parse serialised result: each line is   label\tinsertText\tkind\tdetail
-        // Manual forward-scan instead of Str.Split + Seq.get_Len (unreliable).
+        // Manual forward-scan instead of Str.Split + Seq.get_Length (unreliable).
         // Str.IndexOf and Str.MidLen are 1-based.
         var pos      = 1;
         var totalLen = Str.Length(result);

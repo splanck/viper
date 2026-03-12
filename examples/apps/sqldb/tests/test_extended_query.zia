@@ -48,10 +48,10 @@ func sendStartupMessage(client: Ptr, user: String, database: String) {
     body.writeByte(0);
 
     var bodyBytes = body.toBytes();
-    var length = bodyBytes.Len + 4;
-    var msg = Bytes.New(4 + bodyBytes.Len);
+    var length = bodyBytes.Length + 4;
+    var msg = Bytes.New(4 + bodyBytes.Length);
     writeInt32BE(msg, 0, length);
-    Bytes.Copy(msg, 4, bodyBytes, 0, bodyBytes.Len);
+    Bytes.Copy(msg, 4, bodyBytes, 0, bodyBytes.Length);
     Network.Tcp.SendAll(client, msg);
 }
 
@@ -60,11 +60,11 @@ func sendPassword(client: Ptr, password: String) {
     body.writeCString(password);
     var bodyBytes = body.toBytes();
 
-    var msgLen = 1 + 4 + bodyBytes.Len;
+    var msgLen = 1 + 4 + bodyBytes.Length;
     var msg = Bytes.New(msgLen);
     msg.Set(0, 112);
-    writeInt32BE(msg, 1, bodyBytes.Len + 4);
-    Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Len);
+    writeInt32BE(msg, 1, bodyBytes.Length + 4);
+    Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Length);
     Network.Tcp.SendAll(client, msg);
 }
 
@@ -73,11 +73,11 @@ func sendQuery(client: Ptr, query: String) {
     body.writeCString(query);
     var bodyBytes = body.toBytes();
 
-    var msgLen = 1 + 4 + bodyBytes.Len;
+    var msgLen = 1 + 4 + bodyBytes.Length;
     var msg = Bytes.New(msgLen);
     msg.Set(0, 81);
-    writeInt32BE(msg, 1, bodyBytes.Len + 4);
-    Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Len);
+    writeInt32BE(msg, 1, bodyBytes.Length + 4);
+    Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Length);
     Network.Tcp.SendAll(client, msg);
 }
 
@@ -105,11 +105,11 @@ func sendParse(client: Ptr, stmtName: String, query: String, paramOids: List[Int
         i = i + 1;
     }
     var bodyBytes = body.toBytes();
-    var msgLen = 1 + 4 + bodyBytes.Len;
+    var msgLen = 1 + 4 + bodyBytes.Length;
     var msg = Bytes.New(msgLen);
     msg.Set(0, 80);  // 'P'
-    writeInt32BE(msg, 1, bodyBytes.Len + 4);
-    Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Len);
+    writeInt32BE(msg, 1, bodyBytes.Length + 4);
+    Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Length);
     Network.Tcp.SendAll(client, msg);
 }
 
@@ -127,18 +127,18 @@ func sendBind(client: Ptr, portalName: String, stmtName: String, paramValues: Li
             body.writeInt32(-1);  // NULL
         } else {
             var valBytes = Bytes.FromStr(paramValues.get(i));
-            body.writeInt32(valBytes.Len);
+            body.writeInt32(valBytes.Length);
             body.writeRawBytes(valBytes);
         }
         i = i + 1;
     }
     body.writeInt16(0);  // 0 result format codes = all text
     var bodyBytes = body.toBytes();
-    var msgLen = 1 + 4 + bodyBytes.Len;
+    var msgLen = 1 + 4 + bodyBytes.Length;
     var msg = Bytes.New(msgLen);
     msg.Set(0, 66);  // 'B'
-    writeInt32BE(msg, 1, bodyBytes.Len + 4);
-    Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Len);
+    writeInt32BE(msg, 1, bodyBytes.Length + 4);
+    Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Length);
     Network.Tcp.SendAll(client, msg);
 }
 
@@ -149,11 +149,11 @@ func sendDescribe(client: Ptr, descType: Integer, name: String) {
     body.writeByte(descType);
     body.writeCString(name);
     var bodyBytes = body.toBytes();
-    var msgLen = 1 + 4 + bodyBytes.Len;
+    var msgLen = 1 + 4 + bodyBytes.Length;
     var msg = Bytes.New(msgLen);
     msg.Set(0, 68);  // 'D'
-    writeInt32BE(msg, 1, bodyBytes.Len + 4);
-    Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Len);
+    writeInt32BE(msg, 1, bodyBytes.Length + 4);
+    Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Length);
     Network.Tcp.SendAll(client, msg);
 }
 
@@ -164,11 +164,11 @@ func sendExecute(client: Ptr, portalName: String, maxRows: Integer) {
     body.writeCString(portalName);
     body.writeInt32(maxRows);
     var bodyBytes = body.toBytes();
-    var msgLen = 1 + 4 + bodyBytes.Len;
+    var msgLen = 1 + 4 + bodyBytes.Length;
     var msg = Bytes.New(msgLen);
     msg.Set(0, 69);  // 'E'
-    writeInt32BE(msg, 1, bodyBytes.Len + 4);
-    Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Len);
+    writeInt32BE(msg, 1, bodyBytes.Length + 4);
+    Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Length);
     Network.Tcp.SendAll(client, msg);
 }
 
@@ -188,11 +188,11 @@ func sendCloseMsg(client: Ptr, closeType: Integer, name: String) {
     body.writeByte(closeType);
     body.writeCString(name);
     var bodyBytes = body.toBytes();
-    var msgLen = 1 + 4 + bodyBytes.Len;
+    var msgLen = 1 + 4 + bodyBytes.Length;
     var msg = Bytes.New(msgLen);
     msg.Set(0, 67);  // 'C'
-    writeInt32BE(msg, 1, bodyBytes.Len + 4);
-    Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Len);
+    writeInt32BE(msg, 1, bodyBytes.Length + 4);
+    Bytes.Copy(msg, 5, bodyBytes, 0, bodyBytes.Length);
     Network.Tcp.SendAll(client, msg);
 }
 
@@ -258,7 +258,7 @@ func performStartup(client: Ptr, user: String, database: String, password: Strin
 
 func extractCString(data: Bytes, offset: Integer) -> String {
     var end = offset;
-    while end < data.Len && data.Get(end) != 0 {
+    while end < data.Length && data.Get(end) != 0 {
         end = end + 1;
     }
     if end == offset { return ""; }

@@ -5,31 +5,32 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tools/zia-server/LspHandler.hpp
+// File: tools/lsp-common/LspHandler.hpp
 // Purpose: LSP protocol handler — capability negotiation and request dispatch.
 // Key invariants:
 //   - Follows LSP 3.17 specification
 //   - Manages document state via DocumentStore
 //   - Publishes diagnostics asynchronously via Transport notifications
+//   - Parameterized via ICompilerBridge and ServerConfig for language reuse
 // Ownership/Lifetime:
-//   - LspHandler borrows CompilerBridge and Transport (must outlive handler)
+//   - LspHandler borrows ICompilerBridge and Transport (must outlive handler)
 //   - Owns the DocumentStore
-// Links: tools/zia-server/CompilerBridge.hpp, tools/zia-server/DocumentStore.hpp
+// Links: tools/lsp-common/ICompilerBridge.hpp, tools/lsp-common/DocumentStore.hpp
 //
 //===----------------------------------------------------------------------===//
 
 #pragma once
 
-#include "tools/zia-server/DocumentStore.hpp"
-#include "tools/zia-server/Json.hpp"
-#include "tools/zia-server/JsonRpc.hpp"
+#include "tools/lsp-common/DocumentStore.hpp"
+#include "tools/lsp-common/ICompilerBridge.hpp"
+#include "tools/lsp-common/Json.hpp"
+#include "tools/lsp-common/JsonRpc.hpp"
 
 #include <string>
 
 namespace viper::server
 {
 
-class CompilerBridge;
 class Transport;
 
 /// @brief LSP protocol handler.
@@ -37,25 +38,16 @@ class Transport;
 /// Handles the LSP lifecycle (initialize, shutdown, exit) and request/notification
 /// dispatch for editor features (completion, hover, diagnostics, document symbols).
 ///
-/// ## Capabilities
-///
-/// - textDocumentSync: Full (1) — client sends complete text on change
-/// - completionProvider: trigger on "."
-/// - hoverProvider: true
-/// - documentSymbolProvider: true
-///
-/// ## Diagnostic Publishing
-///
-/// Diagnostics are published via notifications on didOpen/didChange.
-/// The handler uses the Transport reference to send publishDiagnostics
-/// notifications outside of the normal request/response flow.
+/// Parameterized via ICompilerBridge (language-specific compiler) and ServerConfig
+/// (language-specific strings: server name, diagnostic source, etc.).
 class LspHandler
 {
   public:
     /// @brief Construct a handler that dispatches to the given bridge.
     /// @param bridge The compiler bridge (must outlive this handler).
     /// @param transport The transport for sending notifications (must outlive this handler).
-    LspHandler(CompilerBridge &bridge, Transport &transport);
+    /// @param config Server configuration for language-specific strings.
+    LspHandler(ICompilerBridge &bridge, Transport &transport, const ServerConfig &config);
 
     /// @brief Handle a JSON-RPC request and return a response string.
     /// @param req The parsed JSON-RPC request.
@@ -63,8 +55,9 @@ class LspHandler
     std::string handleRequest(const JsonRpcRequest &req);
 
   private:
-    CompilerBridge &bridge_;
+    ICompilerBridge &bridge_;
     Transport &transport_;
+    ServerConfig config_;
     DocumentStore store_;
     bool shutdownRequested_{false};
 

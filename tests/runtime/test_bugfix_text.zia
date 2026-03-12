@@ -22,7 +22,7 @@ func start() {
     // --- Bug #8: Csv.ParseLine().Count should return field count ---
     setTest("Bug8_CsvParseLineCount");
     var fields = Csv.ParseLine("Alice,30,NY");
-    assertEqInt(fields.Len, 3, "Csv.ParseLine field count via .Len");
+    assertEqInt(fields.Length, 3, "Csv.ParseLine field count via .Length");
     assertEqInt(fields.Count, 3, "Csv.ParseLine field count via .Count");
 
     // --- Bug #9: Csv.FormatLine with boxed strings ---

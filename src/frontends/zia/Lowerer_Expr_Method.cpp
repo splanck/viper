@@ -52,6 +52,10 @@ enum class CollectionMethod
     Len,
     Clear,
     Pop,
+    Sort,
+    SortDesc,
+    Reverse,
+    Shuffle,
     // Map methods
     Put,
     GetOr,
@@ -101,6 +105,10 @@ const std::unordered_map<std::string, CollectionMethod> &getMethodDispatchTable(
         {"length", CollectionMethod::Length},
         {"len", CollectionMethod::Len},
         {"clear", CollectionMethod::Clear},
+        {"sort", CollectionMethod::Sort},
+        {"sortdesc", CollectionMethod::SortDesc},
+        {"reverse", CollectionMethod::Reverse},
+        {"shuffle", CollectionMethod::Shuffle},
         // Map-specific methods
         {"put", CollectionMethod::Put},
         {"getor", CollectionMethod::GetOr},
@@ -272,6 +280,22 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             emitCall(kListClear, args);
             return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
         }
+
+        case CollectionMethod::Sort:
+            emitCall(kCollectionsListSort, {baseValue});
+            return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
+
+        case CollectionMethod::SortDesc:
+            emitCall(kCollectionsListSortDesc, {baseValue});
+            return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
+
+        case CollectionMethod::Reverse:
+            emitCall(kCollectionsListReverse, {baseValue});
+            return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
+
+        case CollectionMethod::Shuffle:
+            emitCall(kCollectionsListShuffle, {baseValue});
+            return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
 
         default:
             break;

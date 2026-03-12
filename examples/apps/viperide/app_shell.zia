@@ -337,7 +337,7 @@ entity AppShell {
             return;
         }
         var lines = Str.Split(output, "\n");
-        var n = Seq.get_Len(lines);
+        var n = Seq.get_Length(lines);
         var i = 0;
         while i < n {
             var line = Seq.Get(lines, i);

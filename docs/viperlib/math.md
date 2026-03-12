@@ -458,14 +458,14 @@ bind Viper.Fmt as Fmt;
 
 func start() {
     var a = V2.New(3.0, 4.0);
-    Say("Length: " + Fmt.NumFixed(V2.Len(a), 2));            // 5.00
+    Say("Length: " + Fmt.NumFixed(V2.Length(a), 2));            // 5.00
 
     var b = V2.New(1.0, 0.0);
     var c = V2.Add(a, b);
-    Say("Add length: " + Fmt.NumFixed(V2.Len(c), 4));        // 5.6569
+    Say("Add length: " + Fmt.NumFixed(V2.Length(c), 4));        // 5.6569
 
     var n = V2.Norm(a);
-    Say("Normalized: " + Fmt.NumFixed(V2.Len(n), 2));         // 1.00
+    Say("Normalized: " + Fmt.NumFixed(V2.Length(n), 2));         // 1.00
 }
 ```
 
@@ -488,7 +488,7 @@ PRINT "Distance to target: "; dist
 ' Normalize to get direction
 DIM dir AS OBJECT = vel.Norm()
 PRINT "Direction: ("; dir.X; ", "; dir.Y; ")"
-PRINT "Direction length: "; dir.Len()  ' Should be 1.0
+PRINT "Direction length: "; dir.Length()  ' Should be 1.0
 
 ' Rotate a vector 90 degrees
 DIM right AS OBJECT = Viper.Math.Vec2.New(1.0, 0.0)
@@ -570,15 +570,15 @@ bind Viper.Fmt as Fmt;
 
 func start() {
     var v = V3.New(1.0, 2.0, 3.0);
-    Say("Length: " + Fmt.NumFixed(V3.Len(v), 4));             // 3.7417
+    Say("Length: " + Fmt.NumFixed(V3.Length(v), 4));             // 3.7417
 
     var n = V3.Norm(v);
-    Say("Normalized: " + Fmt.NumFixed(V3.Len(n), 2));         // 1.00
+    Say("Normalized: " + Fmt.NumFixed(V3.Length(n), 2));         // 1.00
 
     var a = V3.New(1.0, 0.0, 0.0);
     var b = V3.New(0.0, 1.0, 0.0);
     var cross = V3.Cross(a, b);
-    Say("Cross len: " + Fmt.NumFixed(V3.Len(cross), 2));      // 1.00
+    Say("Cross len: " + Fmt.NumFixed(V3.Length(cross), 2));      // 1.00
 }
 ```
 
@@ -600,7 +600,7 @@ PRINT "Distance to target: "; dist
 
 ' Normalize to get direction
 DIM dir AS OBJECT = vel.Norm()
-PRINT "Direction length: "; dir.Len()  ' Should be 1.0
+PRINT "Direction length: "; dir.Length()  ' Should be 1.0
 
 ' Cross product for surface normals
 DIM edge1 AS OBJECT = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
@@ -702,7 +702,7 @@ func start() {
 
     // Interpolate (slerp)
     var halfway = id.Slerp(q90, 0.5);
-    SayNum(halfway.Len());  // 1.0
+    SayNum(halfway.Length());  // 1.0
 
     // Inverse (q * q^-1 = identity)
     var inv = q90.Inverse();
@@ -901,7 +901,7 @@ func start() {
     SayNum(len);  // 200.0
 
     var samples = Spline.Sample(lin, 5);
-    SayInt(Seq.get_Len(samples));  // 5
+    SayInt(Seq.get_Length(samples));  // 5
 
     // Bezier curve
     var bez = Spline.Bezier(
@@ -938,7 +938,7 @@ DIM spline AS OBJECT = Viper.Math.Spline.CatmullRom(points)
 
 ' Sample points along the spline
 DIM samples AS OBJECT = spline.Sample(20)
-FOR i = 0 TO samples.Len - 1
+FOR i = 0 TO samples.Length - 1
     DIM p AS OBJECT = samples.Get(i)
     PRINT "x="; p.X; " y="; p.Y
 NEXT

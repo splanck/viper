@@ -4,7 +4,7 @@ bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
 // COVER: Viper.Collections.IntMap.New
-// COVER: Viper.Collections.IntMap.get_Len
+// COVER: Viper.Collections.IntMap.get_Length
 // COVER: Viper.Collections.IntMap.get_IsEmpty
 // COVER: Viper.Collections.IntMap.Set
 // COVER: Viper.Collections.IntMap.Get
@@ -24,7 +24,7 @@ func testNewEmpty() {
     setTest("NewEmpty");
 
     var m = Viper.Collections.IntMap.New();
-    var len = Viper.Collections.IntMap.get_Len(m);
+    var len = Viper.Collections.IntMap.get_Length(m);
     assertEqInt(len, 0, "new intmap len is 0");
 
     var empty = Viper.Collections.IntMap.get_IsEmpty(m);
@@ -36,13 +36,13 @@ func testSetAndLen() {
 
     var m = Viper.Collections.IntMap.New();
     Viper.Collections.IntMap.Set(m, 1, "alpha");
-    assertEqInt(Viper.Collections.IntMap.get_Len(m), 1, "len after 1 set");
+    assertEqInt(Viper.Collections.IntMap.get_Length(m), 1, "len after 1 set");
 
     Viper.Collections.IntMap.Set(m, 2, "beta");
-    assertEqInt(Viper.Collections.IntMap.get_Len(m), 2, "len after 2 sets");
+    assertEqInt(Viper.Collections.IntMap.get_Length(m), 2, "len after 2 sets");
 
     Viper.Collections.IntMap.Set(m, 3, "gamma");
-    assertEqInt(Viper.Collections.IntMap.get_Len(m), 3, "len after 3 sets");
+    assertEqInt(Viper.Collections.IntMap.get_Length(m), 3, "len after 3 sets");
 
     assertFalse(Viper.Collections.IntMap.get_IsEmpty(m), "not empty after sets");
 }
@@ -65,10 +65,10 @@ func testOverwrite() {
 
     var m = Viper.Collections.IntMap.New();
     Viper.Collections.IntMap.Set(m, 10, "old");
-    assertEqInt(Viper.Collections.IntMap.get_Len(m), 1, "len after first set");
+    assertEqInt(Viper.Collections.IntMap.get_Length(m), 1, "len after first set");
 
     Viper.Collections.IntMap.Set(m, 10, "new");
-    assertEqInt(Viper.Collections.IntMap.get_Len(m), 1, "overwrite does not increase len");
+    assertEqInt(Viper.Collections.IntMap.get_Length(m), 1, "overwrite does not increase len");
     assertTrue(Viper.Collections.IntMap.Has(m, 10), "key still present after overwrite");
 }
 
@@ -96,12 +96,12 @@ func testRemove() {
     Viper.Collections.IntMap.Set(m, 2, "b");
     Viper.Collections.IntMap.Set(m, 3, "c");
 
-    assertEqInt(Viper.Collections.IntMap.get_Len(m), 3, "len before remove");
+    assertEqInt(Viper.Collections.IntMap.get_Length(m), 3, "len before remove");
 
     var removed = Viper.Collections.IntMap.Remove(m, 2);
     assertTrue(removed, "remove existing returns true");
 
-    assertEqInt(Viper.Collections.IntMap.get_Len(m), 2, "len after remove");
+    assertEqInt(Viper.Collections.IntMap.get_Length(m), 2, "len after remove");
     assertFalse(Viper.Collections.IntMap.Has(m, 2), "key 2 removed");
     assertTrue(Viper.Collections.IntMap.Has(m, 1), "key 1 still present");
     assertTrue(Viper.Collections.IntMap.Has(m, 3), "key 3 still present");
@@ -119,11 +119,11 @@ func testKeysValues() {
     Viper.Collections.IntMap.Set(m, 30, "thirty");
 
     var keys = Viper.Collections.IntMap.Keys(m);
-    var klen = Viper.Collections.Seq.get_Len(keys);
+    var klen = Viper.Collections.Seq.get_Length(keys);
     assertEqInt(klen, 3, "keys seq has 3 items");
 
     var vals = Viper.Collections.IntMap.Values(m);
-    var vlen = Viper.Collections.Seq.get_Len(vals);
+    var vlen = Viper.Collections.Seq.get_Length(vals);
     assertEqInt(vlen, 3, "values seq has 3 items");
 }
 
@@ -135,11 +135,11 @@ func testClear() {
     Viper.Collections.IntMap.Set(m, 2, "two");
     Viper.Collections.IntMap.Set(m, 3, "three");
 
-    assertEqInt(Viper.Collections.IntMap.get_Len(m), 3, "len before clear");
+    assertEqInt(Viper.Collections.IntMap.get_Length(m), 3, "len before clear");
 
     Viper.Collections.IntMap.Clear(m);
 
-    assertEqInt(Viper.Collections.IntMap.get_Len(m), 0, "len after clear");
+    assertEqInt(Viper.Collections.IntMap.get_Length(m), 0, "len after clear");
     assertTrue(Viper.Collections.IntMap.get_IsEmpty(m), "empty after clear");
     assertFalse(Viper.Collections.IntMap.Has(m, 1), "key 1 gone after clear");
     assertFalse(Viper.Collections.IntMap.Has(m, 2), "key 2 gone after clear");
@@ -154,7 +154,7 @@ func testNegativeKeys() {
     Viper.Collections.IntMap.Set(m, -100, "neg hundred");
     Viper.Collections.IntMap.Set(m, 0, "zero");
 
-    assertEqInt(Viper.Collections.IntMap.get_Len(m), 3, "len with negative keys");
+    assertEqInt(Viper.Collections.IntMap.get_Length(m), 3, "len with negative keys");
     assertTrue(Viper.Collections.IntMap.Has(m, -1), "has key -1");
     assertTrue(Viper.Collections.IntMap.Has(m, -100), "has key -100");
     assertTrue(Viper.Collections.IntMap.Has(m, 0), "has key 0");
@@ -170,7 +170,7 @@ func testLargeKeys() {
 
     assertTrue(Viper.Collections.IntMap.Has(m, 1000000), "has million");
     assertTrue(Viper.Collections.IntMap.Has(m, 999999999), "has near billion");
-    assertEqInt(Viper.Collections.IntMap.get_Len(m), 2, "len with large keys");
+    assertEqInt(Viper.Collections.IntMap.get_Length(m), 2, "len with large keys");
 }
 
 func testManyEntries() {
@@ -184,7 +184,7 @@ func testManyEntries() {
         i = i + 1;
     }
 
-    assertEqInt(Viper.Collections.IntMap.get_Len(m), 20, "len after 20 entries");
+    assertEqInt(Viper.Collections.IntMap.get_Length(m), 20, "len after 20 entries");
     assertTrue(Viper.Collections.IntMap.Has(m, 0), "has key 0 after resize");
     assertTrue(Viper.Collections.IntMap.Has(m, 19), "has key 19 after resize");
     assertFalse(Viper.Collections.IntMap.Has(m, 20), "no key 20");

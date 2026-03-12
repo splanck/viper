@@ -17,7 +17,7 @@ PRINT "New() created"
 ' --- Initial state ---
 PRINT "--- Initial state ---"
 PRINT "Pos: "; Viper.IO.MemStream.get_Pos(ms)
-PRINT "Len: "; Viper.IO.MemStream.get_Len(ms)
+PRINT "Len: "; Viper.IO.MemStream.get_Length(ms)
 PRINT "Capacity: "; Viper.IO.MemStream.get_Capacity(ms)
 
 ' --- WriteI8 / ReadI8 ---
@@ -49,7 +49,7 @@ PRINT "ReadI64: "; Viper.IO.MemStream.ReadI64(ms)
 PRINT "--- WriteStr / ReadStr ---"
 Viper.IO.MemStream.Clear(ms)
 Viper.IO.MemStream.WriteStr(ms, "Hello Viper")
-PRINT "Len after WriteStr: "; Viper.IO.MemStream.get_Len(ms)
+PRINT "Len after WriteStr: "; Viper.IO.MemStream.get_Length(ms)
 Viper.IO.MemStream.Seek(ms, 0)
 PRINT "ReadStr(11): "; Viper.IO.MemStream.ReadStr(ms, 11)
 
@@ -79,7 +79,7 @@ PRINT "Skip(2), ReadI8: "; Viper.IO.MemStream.ReadI8(ms)
 ' --- Clear ---
 PRINT "--- Clear ---"
 Viper.IO.MemStream.Clear(ms)
-PRINT "Len after clear: "; Viper.IO.MemStream.get_Len(ms)
+PRINT "Len after clear: "; Viper.IO.MemStream.get_Length(ms)
 PRINT "Pos after clear: "; Viper.IO.MemStream.get_Pos(ms)
 
 PRINT "=== MemStream Demo Complete ==="

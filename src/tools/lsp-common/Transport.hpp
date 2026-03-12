@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tools/zia-server/Transport.hpp
+// File: tools/lsp-common/Transport.hpp
 // Purpose: Message transport layer for MCP and LSP protocols over stdio.
 // Key invariants:
 //   - McpTransport: newline-delimited JSON (one JSON object per line)
@@ -13,7 +13,7 @@
 //   - Both read from FILE* for binary-safe I/O on Windows
 // Ownership/Lifetime:
 //   - Transports do not own the FILE* handles (stdin/stdout are global)
-// Links: tools/zia-server/Json.hpp, tools/zia-server/JsonRpc.hpp
+// Links: tools/lsp-common/Json.hpp, tools/lsp-common/JsonRpc.hpp
 //
 //===----------------------------------------------------------------------===//
 

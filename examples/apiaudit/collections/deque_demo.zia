@@ -14,7 +14,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var dq = Deque.New();
-    SayInt(dq.Len);       // 0
+    SayInt(dq.Length);       // 0
     SayBool(dq.IsEmpty);  // 1
 
     // --- PushBack / Len ---
@@ -22,13 +22,13 @@ func start() {
     dq.PushBack(Box.Str("a"));
     dq.PushBack(Box.Str("b"));
     dq.PushBack(Box.Str("c"));
-    SayInt(dq.Len);       // 3
+    SayInt(dq.Length);       // 3
     SayBool(dq.IsEmpty);  // 0
 
     // --- PushFront ---
     Say("--- PushFront ---");
     dq.PushFront(Box.Str("z"));
-    SayInt(dq.Len);       // 4
+    SayInt(dq.Length);       // 4
     // Order: z, a, b, c
 
     // --- PeekFront / PeekBack ---
@@ -51,13 +51,13 @@ func start() {
     // --- PopFront ---
     Say("--- PopFront ---");
     Say(Box.ToStr(dq.PopFront()));  // z
-    SayInt(dq.Len);                 // 3
+    SayInt(dq.Length);                 // 3
     Say(Box.ToStr(dq.PeekFront())); // A
 
     // --- PopBack ---
     Say("--- PopBack ---");
     Say(Box.ToStr(dq.PopBack()));   // c
-    SayInt(dq.Len);                 // 2
+    SayInt(dq.Length);                 // 2
     Say(Box.ToStr(dq.PeekBack()));  // b
 
     // --- Has ---
@@ -81,16 +81,16 @@ func start() {
     // --- Clone ---
     Say("--- Clone ---");
     var dq2 = dq.Clone();
-    SayInt(dq2.Len);                  // same as dq
+    SayInt(dq2.Length);                  // same as dq
     Say(Box.ToStr(dq2.PeekFront())); // y
 
     // --- Clear ---
     Say("--- Clear ---");
     dq.Clear();
-    SayInt(dq.Len);       // 0
+    SayInt(dq.Length);       // 0
     SayBool(dq.IsEmpty);  // 1
     // Clone should be unaffected
-    SayInt(dq2.Len);      // still 4
+    SayInt(dq2.Length);      // still 4
 
     Say("=== Deque audit complete ===");
 }

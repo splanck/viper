@@ -5,9 +5,9 @@ PRINT "cq empty: "; cq.IsEmpty
 cq.Enqueue("a")
 cq.Enqueue("b")
 cq.Enqueue("c")
-PRINT "cq len: "; cq.Len
+PRINT "cq len: "; cq.Length
 cq.Dequeue()
-PRINT "cq len after dequeue: "; cq.Len
+PRINT "cq len after dequeue: "; cq.Length
 cq.Clear()
 PRINT "cq empty after clear: "; cq.IsEmpty
 
@@ -16,11 +16,11 @@ cm = Viper.Threads.ConcurrentMap.New()
 PRINT "cmap empty: "; cm.IsEmpty
 cm.Set("x", "1")
 cm.Set("y", "2")
-PRINT "cmap len: "; cm.Len
+PRINT "cmap len: "; cm.Length
 PRINT "cmap has x: "; cm.Has("x")
 PRINT "cmap has z: "; cm.Has("z")
 cm.Remove("x")
-PRINT "cmap len after remove: "; cm.Len
+PRINT "cmap len after remove: "; cm.Length
 cm.Clear()
 PRINT "cmap empty after clear: "; cm.IsEmpty
 

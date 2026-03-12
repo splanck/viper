@@ -242,7 +242,7 @@ texts.Push("abc123def")
 texts.Push("foo456bar")
 texts.Push("no digits here")
 
-FOR i = 0 TO texts.Len - 1
+FOR i = 0 TO texts.Length - 1
     DIM text AS STRING = texts.Get(i)
     IF numberPattern.IsMatch(text) THEN
         PRINT "Found number: "; numberPattern.Find(text)
@@ -263,7 +263,7 @@ NEXT
 DIM datePattern AS OBJECT = NEW Viper.Text.CompiledPattern("(\d{4})-(\d{2})-(\d{2})")
 
 DIM groups AS OBJECT = datePattern.Captures("Today is 2024-01-15")
-IF groups.Len > 0 THEN
+IF groups.Length > 0 THEN
     PRINT "Full match: "; groups.Get(0)   ' Output: 2024-01-15
     PRINT "Year: "; groups.Get(1)         ' Output: 2024
     PRINT "Month: "; groups.Get(2)        ' Output: 01
@@ -273,7 +273,7 @@ END IF
 ' Email extraction
 DIM emailPattern AS OBJECT = NEW Viper.Text.CompiledPattern("(\w+)@(\w+)\.(\w+)")
 groups = emailPattern.Captures("Contact: user@example.com")
-IF groups.Len > 0 THEN
+IF groups.Length > 0 THEN
     PRINT "User: "; groups.Get(1)         ' Output: user
     PRINT "Domain: "; groups.Get(2)       ' Output: example
     PRINT "TLD: "; groups.Get(3)          ' Output: com
@@ -287,11 +287,11 @@ DIM commaPattern AS OBJECT = NEW Viper.Text.CompiledPattern(",")
 
 ' Split all
 DIM all AS OBJECT = commaPattern.Split("a,b,c,d,e")
-PRINT all.Len  ' Output: 5
+PRINT all.Length  ' Output: 5
 
 ' Split with limit (max 3 parts)
 DIM limited AS OBJECT = commaPattern.SplitN("a,b,c,d,e", 3)
-PRINT limited.Len        ' Output: 3
+PRINT limited.Length        ' Output: 3
 PRINT limited.Get(0)     ' Output: a
 PRINT limited.Get(1)     ' Output: b
 PRINT limited.Get(2)     ' Output: c,d,e (rest in last element)
@@ -414,7 +414,7 @@ PRINT rest         ' Output: "world"
 ' Check position and end state
 PRINT sc.IsEnd     ' Output: 1 (true)
 PRINT sc.Pos       ' Output: 14
-PRINT sc.Len       ' Output: 14
+PRINT sc.Length       ' Output: 14
 
 ' Reset and scan again
 sc.Reset()
@@ -500,7 +500,7 @@ func start() {
     var orig = "hello\nworld\nfoo";
     var modified = "hello\nthere\nfoo";
     var diff = Diff.Lines(orig, modified);
-    Say("Diff lines: " + Fmt.Int(diff.Len));
+    Say("Diff lines: " + Fmt.Int(diff.Length));
 
     var unified = Diff.Unified(orig, modified, 1);
     Say(unified);
@@ -524,7 +524,7 @@ PRINT changes  ' Output: 2
 DIM orig AS STRING = "hello" + CHR$(10) + "world" + CHR$(10) + "foo"
 DIM modified AS STRING = "hello" + CHR$(10) + "there" + CHR$(10) + "foo"
 DIM diff AS OBJECT = Viper.Text.Diff.Lines(orig, modified)
-PRINT diff.Len  ' Output: 4 (one unchanged, one removed, one added, one unchanged)
+PRINT diff.Length  ' Output: 4 (one unchanged, one removed, one added, one unchanged)
 
 ' Produce unified diff
 DIM unified AS STRING = Viper.Text.Diff.Unified(orig, modified, 1)

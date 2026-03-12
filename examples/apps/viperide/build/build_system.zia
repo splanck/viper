@@ -101,11 +101,11 @@ entity BuildSystem {
         // Split output into lines and scan for diagnostic entries
         var lines = Str.Split(buildOutput, "\n");
         var i = 0;
-        while i < Seq.get_Len(lines) {
+        while i < Seq.get_Length(lines) {
             var line = Seq.Get(lines, i);
 
             var caps = diagPat.Captures(line);
-            if Seq.get_Len(caps) >= 7 {
+            if Seq.get_Length(caps) >= 7 {
                 var diag = new Diagnostic();
                 diag.filePath = Obj.ToString(Seq.Get(caps, 1));
                 diag.line     = Convert.ToInt(Seq.Get(caps, 2));

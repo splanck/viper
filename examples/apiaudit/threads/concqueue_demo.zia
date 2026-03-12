@@ -24,7 +24,7 @@ func start() {
 
     // --- Len (initial) ---
     Say("--- Len (initial) ---");
-    Say("Len: " + Fmt.Int(q.get_Len()));
+    Say("Len: " + Fmt.Int(q.get_Length()));
 
     // --- Enqueue ---
     Say("--- Enqueue ---");
@@ -35,7 +35,7 @@ func start() {
 
     // --- Len (after enqueue) ---
     Say("--- Len (after enqueue) ---");
-    Say("Len: " + Fmt.Int(q.get_Len()));
+    Say("Len: " + Fmt.Int(q.get_Length()));
 
     // --- IsEmpty (after enqueue) ---
     Say("--- IsEmpty (after enqueue) ---");
@@ -50,13 +50,13 @@ func start() {
     Say("--- TryDequeue ---");
     var item1 = q.TryDequeue();
     Say("TryDequeue: " + Box.ToStr(item1));
-    Say("Len after TryDequeue: " + Fmt.Int(q.get_Len()));
+    Say("Len after TryDequeue: " + Fmt.Int(q.get_Length()));
 
     // --- Dequeue (blocking, but queue has items) ---
     Say("--- Dequeue ---");
     var item2 = q.Dequeue();
     Say("Dequeue: " + Box.ToStr(item2));
-    Say("Len after Dequeue: " + Fmt.Int(q.get_Len()));
+    Say("Len after Dequeue: " + Fmt.Int(q.get_Length()));
 
     // --- TryDequeue remaining ---
     Say("--- TryDequeue remaining ---");
@@ -73,9 +73,9 @@ func start() {
     q.Enqueue(Box.I64(10));
     q.Enqueue(Box.I64(20));
     q.Enqueue(Box.I64(30));
-    Say("Len before Clear: " + Fmt.Int(q.get_Len()));
+    Say("Len before Clear: " + Fmt.Int(q.get_Length()));
     q.Clear();
-    Say("Len after Clear: " + Fmt.Int(q.get_Len()));
+    Say("Len after Clear: " + Fmt.Int(q.get_Length()));
     Say("IsEmpty after Clear: " + Fmt.Bool(q.get_IsEmpty()));
 
     Say("=== ConcurrentQueue Audit Complete ===");

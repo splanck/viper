@@ -18,7 +18,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "tests/TestHarness.hpp"
-#include "tools/zia-server/Json.hpp"
+#include "tools/lsp-common/Json.hpp"
 
 #include <stdexcept>
 #include <string>

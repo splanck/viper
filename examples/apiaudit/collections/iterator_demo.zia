@@ -72,7 +72,7 @@ func start() {
     it.Next();  // consume a
     it.Next();  // consume b
     var rest = it.ToSeq();
-    SayInt(rest.Len);            // 3 (c, d, e)
+    SayInt(rest.Length);            // 3 (c, d, e)
     Say(Box.ToStr(rest.Get(0))); // c
     Say(Box.ToStr(rest.Get(1))); // d
     Say(Box.ToStr(rest.Get(2))); // e

@@ -57,7 +57,7 @@ bind Viper.Fmt as Fmt;
 func start() {
     // Encrypt a string with a password
     var ciphertext = Aes.EncryptStr("Hello, AES!", "my-password");
-    Say("Encrypted len: " + Fmt.Int(ciphertext.Len));
+    Say("Encrypted len: " + Fmt.Int(ciphertext.Length));
 
     // Decrypt it back
     var plaintext = Aes.DecryptStr(ciphertext, "my-password");
@@ -151,11 +151,11 @@ func start() {
     var plaintext = Bytes.FromStr("Secret message");
     var password = "my-secure-password";
     var ciphertext = Cipher.Encrypt(plaintext, password);
-    Say("Encrypted len: " + Fmt.Int(ciphertext.Len));
+    Say("Encrypted len: " + Fmt.Int(ciphertext.Length));
 
     // Generate a random encryption key
     var key = Cipher.GenerateKey();
-    Say("Key len: " + Fmt.Int(key.Len));
+    Say("Key len: " + Fmt.Int(key.Length));
 }
 ```
 
@@ -168,7 +168,7 @@ plaintext = Viper.Collections.Bytes.FromStr("Secret message")
 DIM password AS STRING = "my-secure-password"
 DIM ciphertext AS Viper.Collections.Bytes
 ciphertext = Viper.Crypto.Cipher.Encrypt(plaintext, password)
-PRINT "Encrypted len: "; ciphertext.Len
+PRINT "Encrypted len: "; ciphertext.Length
 
 ' Decrypt and verify round-trip
 DIM decrypted AS Viper.Collections.Bytes
@@ -178,7 +178,7 @@ PRINT "Decrypted: "; decrypted.ToStr()
 ' Generate a random encryption key
 DIM key AS Viper.Collections.Bytes
 key = Viper.Crypto.Cipher.GenerateKey()
-PRINT "Key len: "; key.Len
+PRINT "Key len: "; key.Length
 
 ' Key-based encrypt/decrypt
 DIM plain2 AS Viper.Collections.Bytes
@@ -744,7 +744,7 @@ IF conn.IsOpen THEN
 
     ' Receive binary response
     DIM response AS OBJECT = conn.Recv(1024)
-    PRINT "Received "; response.Len; " bytes"
+    PRINT "Received "; response.Length; " bytes"
     PRINT "Hex: "; response.ToHex()
 
     conn.Close()

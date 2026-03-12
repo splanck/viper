@@ -893,14 +893,14 @@ For backward compatibility, legacy `rt_*` function names are maintained as alias
 
 - `rt_print_str` → `Viper.Terminal.PrintStr`
 - `rt_print_i64` → `Viper.Terminal.PrintI64`
-- `rt_str_len` → `Viper.String.Len`
+- `rt_str_len` → `Viper.String.Length`
 
 New code should use the canonical `Viper.*` names.
 
 ### OOP Runtime vs Procedural Helpers
 
 The OOP `Viper.*` classes are the preferred surface for new code. The legacy procedural helpers (e.g.,
-`Viper.String.Len`, `Viper.IO.*`) remain available and are used internally by some lowering bridges for backwards
+`Viper.String.Length`, `Viper.IO.*`) remain available and are used internally by some lowering bridges for backwards
 compatibility. Migration is straightforward: replace procedural calls with equivalent class property/method calls as
 listed above.
 
@@ -961,7 +961,7 @@ In‑memory collections with List:
 DIM list AS Viper.Collections.List
 list = NEW Viper.Collections.List()
 list.Push(NEW App.C())
-PRINT list.Len
+PRINT list.Length
 PRINT list.Get(0).ToString()
 list.Set(0, list)
 list.RemoveAt(0)

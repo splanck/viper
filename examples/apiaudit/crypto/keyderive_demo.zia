@@ -16,13 +16,13 @@ func start() {
     var salt = Rand.Bytes(16);
     Say("Generated 16-byte salt");
     Say("Salt length:");
-    SayInt(Bytes.get_Len(salt));
+    SayInt(Bytes.get_Length(salt));
 
     // --- Pbkdf2SHA256 (returns obj/Bytes) ---
     Say("--- Pbkdf2SHA256 ---");
     var derived = KeyDerive.Pbkdf2SHA256("mypassword", salt, 1000, 32);
     Say("Derived key (bytes):");
-    SayInt(Bytes.get_Len(derived));
+    SayInt(Bytes.get_Length(derived));
 
     // --- Pbkdf2SHA256Str (returns hex string) ---
     Say("--- Pbkdf2SHA256Str ---");
@@ -57,7 +57,7 @@ func start() {
     Say("--- Different key length (64 bytes) ---");
     var derived64 = KeyDerive.Pbkdf2SHA256("mypassword", salt, 1000, 64);
     Say("Key length:");
-    SayInt(Bytes.get_Len(derived64));
+    SayInt(Bytes.get_Length(derived64));
 
     // --- Different iterations ---
     Say("--- Different iterations (2000) ---");

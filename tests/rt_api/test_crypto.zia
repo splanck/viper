@@ -18,7 +18,7 @@ func start() {
     SayBool(r1 < 101);
 
     var rb = Bytes(16);
-    SayInt(rb.Len);
+    SayInt(rb.Length);
 
     var pw = Hash("secret");
     SayBool(Viper.String.Has(pw, "$"));

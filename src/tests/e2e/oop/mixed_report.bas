@@ -18,7 +18,7 @@ list = NEW Viper.Collections.List()
 list.Push(s1)
 list.Push(s2)
 
-PRINT list.Len
+PRINT list.Length
 PRINT list.Get(0)
 PRINT list.Get(1)
 

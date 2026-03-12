@@ -16,12 +16,12 @@ PRINT "Rand.Int(1,100): "; Viper.Crypto.Rand.Int(1, 100)
 PRINT "--- Bytes ---"
 DIM b AS OBJECT
 b = Viper.Crypto.Rand.Bytes(8)
-PRINT "Length: "; Viper.Collections.Bytes.get_Len(b)
+PRINT "Length: "; Viper.Collections.Bytes.get_Length(b)
 PRINT "Hex: "; Viper.Collections.Bytes.ToHex(b)
 
 DIM b2 AS OBJECT
 b2 = Viper.Crypto.Rand.Bytes(32)
-PRINT "Length: "; Viper.Collections.Bytes.get_Len(b2)
+PRINT "Length: "; Viper.Collections.Bytes.get_Length(b2)
 PRINT "Hex: "; Viper.Collections.Bytes.ToHex(b2)
 
 PRINT "=== CryptoRand Demo Complete ==="

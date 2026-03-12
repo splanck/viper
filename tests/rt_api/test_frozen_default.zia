@@ -7,16 +7,16 @@ bind Viper.Terminal;
 func start() {
     // --- DefaultMap ---
     var dm = new Viper.Collections.DefaultMap("N/A");
-    SayInt(dm.Len);
+    SayInt(dm.Length);
     dm.Set("name", "viper");
     dm.Set("lang", "zia");
-    SayInt(dm.Len);
+    SayInt(dm.Length);
     SayBool(dm.Has("name"));
     SayBool(dm.Has("missing"));
     dm.Remove("lang");
-    SayInt(dm.Len);
+    SayInt(dm.Length);
     dm.Clear();
-    SayInt(dm.Len);
+    SayInt(dm.Length);
 
     // FrozenSet and FrozenMap skipped — can't use 'new' (BUG-012)
     Say("FrozenSet/FrozenMap: skipped (BUG-012)");

@@ -14,7 +14,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var bag = Bag.New();
-    SayInt(bag.Len);       // 0
+    SayInt(bag.Length);       // 0
     SayBool(bag.IsEmpty);  // 1
 
     // --- Put / Len ---
@@ -23,7 +23,7 @@ func start() {
     SayBool(bag.Put("banana"));  // 1 (new)
     SayBool(bag.Put("cherry")); // 1 (new)
     SayBool(bag.Put("apple"));  // 0 (duplicate)
-    SayInt(bag.Len);             // 3
+    SayInt(bag.Length);             // 3
     SayBool(bag.IsEmpty);        // 0
 
     // --- Has ---
@@ -36,13 +36,13 @@ func start() {
     Say("--- Drop ---");
     SayBool(bag.Drop("banana")); // 1
     SayBool(bag.Has("banana"));  // 0
-    SayInt(bag.Len);             // 2
+    SayInt(bag.Length);             // 2
     SayBool(bag.Drop("banana")); // 0 (already removed)
 
     // --- Items ---
     Say("--- Items ---");
     var items = bag.Items();
-    SayInt(items.Len);           // 2
+    SayInt(items.Length);           // 2
 
     // --- Merge (union) ---
     Say("--- Merge ---");
@@ -57,14 +57,14 @@ func start() {
     b2.Put("d");
 
     var merged = b1.Union(b2);
-    SayInt(merged.Len);          // 4 (a, b, c, d)
+    SayInt(merged.Length);          // 4 (a, b, c, d)
     SayBool(merged.Has("a"));    // 1
     SayBool(merged.Has("d"));    // 1
 
     // --- Intersect ---
     Say("--- Intersect ---");
     var common = b1.Intersect(b2);
-    SayInt(common.Len);          // 2 (b, c)
+    SayInt(common.Length);          // 2 (b, c)
     SayBool(common.Has("b"));    // 1
     SayBool(common.Has("c"));    // 1
     SayBool(common.Has("a"));    // 0
@@ -72,14 +72,14 @@ func start() {
     // --- Diff ---
     Say("--- Diff ---");
     var diff = b1.Diff(b2);
-    SayInt(diff.Len);            // 1 (a)
+    SayInt(diff.Length);            // 1 (a)
     SayBool(diff.Has("a"));      // 1
     SayBool(diff.Has("b"));      // 0
 
     // --- Clear ---
     Say("--- Clear ---");
     b1.Clear();
-    SayInt(b1.Len);              // 0
+    SayInt(b1.Length);              // 0
     SayBool(b1.IsEmpty);         // 1
 
     Say("=== Bag audit complete ===");

@@ -26,7 +26,7 @@ Viper.Core.Diagnostics.Assert(host <> "", "dns.localhost")
 
 DIM addrs AS Viper.Collections.Seq
 addrs = Viper.Network.Dns.LocalAddrs()
-Viper.Core.Diagnostics.Assert(addrs.Len >= 1, "dns.localaddrs")
+Viper.Core.Diagnostics.Assert(addrs.Length >= 1, "dns.localaddrs")
 
 DIM resolved AS STRING
 resolved = Viper.Network.Dns.Resolve("localhost")
@@ -42,7 +42,7 @@ Viper.Core.Diagnostics.Assert(Viper.Network.Dns.IsIPv6(resolved6), "dns.resolve6
 
 DIM all AS Viper.Collections.Seq
 all = Viper.Network.Dns.ResolveAll("localhost")
-Viper.Core.Diagnostics.Assert(all.Len >= 1, "dns.resolveall")
+Viper.Core.Diagnostics.Assert(all.Length >= 1, "dns.resolveall")
 
 DIM rev AS STRING
 rev = Viper.Network.Dns.Reverse(ip4)

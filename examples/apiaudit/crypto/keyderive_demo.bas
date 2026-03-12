@@ -9,12 +9,12 @@ PRINT "=== API Audit: Viper.Crypto.KeyDerive ==="
 ' Create a salt
 DIM salt AS OBJECT = Viper.Crypto.Rand.Bytes(16)
 PRINT "Generated 16-byte salt"
-PRINT "Salt length: "; Viper.Collections.Bytes.get_Len(salt)
+PRINT "Salt length: "; Viper.Collections.Bytes.get_Length(salt)
 
 ' --- Pbkdf2SHA256 (returns bytes) ---
 PRINT "--- Pbkdf2SHA256 ---"
 DIM derived AS OBJECT = Viper.Crypto.KeyDerive.Pbkdf2SHA256("mypassword", salt, 1000, 32)
-PRINT "Derived key length: "; Viper.Collections.Bytes.get_Len(derived)
+PRINT "Derived key length: "; Viper.Collections.Bytes.get_Length(derived)
 
 ' --- Pbkdf2SHA256Str (returns hex string) ---
 PRINT "--- Pbkdf2SHA256Str ---"
@@ -42,7 +42,7 @@ PRINT "Different from first: "; derivedStr <> derivedStr4
 ' --- Different key length ---
 PRINT "--- Different key length (64 bytes) ---"
 DIM derived64 AS OBJECT = Viper.Crypto.KeyDerive.Pbkdf2SHA256("mypassword", salt, 1000, 64)
-PRINT "Key length: "; Viper.Collections.Bytes.get_Len(derived64)
+PRINT "Key length: "; Viper.Collections.Bytes.get_Length(derived64)
 
 ' --- Different iterations ---
 PRINT "--- Different iterations (2000) ---"

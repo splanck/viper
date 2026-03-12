@@ -308,7 +308,7 @@ runtime does not check element types.
 
 Properties:
 
-- `Len: i64` → `Viper.Collections.List.get_Len(obj)`
+- `Len: i64` → `Viper.Collections.List.get_Length(obj)`
 
 Methods:
 
@@ -1157,7 +1157,7 @@ Examples:
 Conventions and semantics:
 
 - Properties and methods lower to canonical externs with the receiver as arg0.
-    - Examples: s.Length → call @Viper.String.Len(s);
+    - Examples: s.Length → call @Viper.String.Length(s);
       s.Substring(i,n) → call @Viper.String.Substring(s,i,n);
       s.Mid(i) → call @Viper.String.Mid(s,i);
       sb.ToString() → call @Viper.Text.StringBuilder.ToString(sb)

@@ -87,7 +87,7 @@ ms.Write(Viper.Collections.Bytes.FromString("In-memory data"))
 
 ' Get all data
 DIM allData AS OBJECT = ms.ToBytes()
-PRINT "Length:"; allData.Len
+PRINT "Length:"; allData.Length
 
 ms.Close()
 ```
@@ -254,7 +254,7 @@ func start() {
     ms.WriteF64(3.14159);     // 8 bytes
     ms.WriteStr("Hello");     // 5 bytes
 
-    Say("Length: " + Fmt.Int(ms.get_Len()));   // 17
+    Say("Length: " + Fmt.Int(ms.get_Length()));   // 17
 
     // Seek back to start and read
     ms.Seek(0);
@@ -264,11 +264,11 @@ func start() {
 
     // Clear and reuse
     ms.Clear();
-    Say("After clear: " + Fmt.Int(ms.get_Len()));  // 0
+    Say("After clear: " + Fmt.Int(ms.get_Length()));  // 0
 }
 ```
 
-> **Note:** MemStream properties (`Pos`, `Len`, `Capacity`) use the get_/set_ pattern; access them as `ms.get_Len()`, `ms.get_Pos()`, `ms.set_Pos(n)` in Zia.
+> **Note:** MemStream properties (`Pos`, `Len`, `Capacity`) use the get_/set_ pattern; access them as `ms.get_Length()`, `ms.get_Pos()`, `ms.set_Pos(n)` in Zia.
 
 ### BASIC Example
 
@@ -281,7 +281,7 @@ ms.WriteI32(12345)       ' 4 bytes
 ms.WriteF64(3.14159)     ' 8 bytes
 ms.WriteStr("Hello")     ' 5 bytes
 
-PRINT "Length:"; ms.Len  ' Output: 17
+PRINT "Length:"; ms.Length  ' Output: 17
 
 ' Seek back to start to read
 ms.Seek(0)
@@ -315,13 +315,13 @@ DIM headerEnd AS INTEGER = packet.Pos
 packet.WriteStr("Hello, World!")
 
 ' Calculate and update payload length
-DIM payloadLen AS INTEGER = packet.Len - headerEnd
+DIM payloadLen AS INTEGER = packet.Length - headerEnd
 packet.Seek(4)           ' Position of length field
 packet.WriteU32(payloadLen)
 
 ' Get final packet as bytes
 DIM data AS OBJECT = packet.ToBytes()
-PRINT "Packet size:"; data.Len  ' Output: 21
+PRINT "Packet size:"; data.Length  ' Output: 21
 ```
 
 ### FromBytes Example
@@ -348,14 +348,14 @@ NEXT i
 DIM ms AS OBJECT = Viper.IO.MemStream.NewCapacity(1024)
 
 PRINT "Initial capacity:"; ms.Capacity  ' Output: 1024
-PRINT "Initial length:"; ms.Len         ' Output: 0
+PRINT "Initial length:"; ms.Length         ' Output: 0
 
 ' Write data - no reallocation needed if under capacity
 FOR i AS INTEGER = 0 TO 99
     ms.WriteI32(i)
 NEXT i
 
-PRINT "Final length:"; ms.Len  ' Output: 400
+PRINT "Final length:"; ms.Length  ' Output: 400
 ```
 
 ### Use Cases
@@ -695,7 +695,7 @@ func start() {
     buf.WriteI32BE(67890);
     buf.WriteStr("Hello");
 
-    Say("Length: " + Fmt.Int(buf.get_Len()));
+    Say("Length: " + Fmt.Int(buf.get_Length()));
 
     // Seek back to start and read
     buf.set_Pos(0);
@@ -705,11 +705,11 @@ func start() {
 
     // Export to Bytes
     var data = buf.ToBytes();
-    Say("Exported len: " + Fmt.Int(data.Len));
+    Say("Exported len: " + Fmt.Int(data.Length));
 }
 ```
 
-> **Note:** BinaryBuffer properties (`Pos`, `Len`) use the get_/set_ pattern in Zia; access them as `buf.get_Len()`, `buf.get_Pos()`, `buf.set_Pos(n)`.
+> **Note:** BinaryBuffer properties (`Pos`, `Len`) use the get_/set_ pattern in Zia; access them as `buf.get_Length()`, `buf.get_Pos()`, `buf.set_Pos(n)`.
 
 ### BASIC Example
 
@@ -725,7 +725,7 @@ buf.WriteI64LE(9876543210)
 buf.WriteStr("Hello")
 buf.WriteBytes(Viper.Collections.Bytes.FromHex("deadbeef"))
 
-PRINT "Length:"; buf.Len
+PRINT "Length:"; buf.Length
 
 ' Seek back and read
 buf.Pos = 0
@@ -736,11 +736,11 @@ PRINT "I64LE:"; buf.ReadI64LE()     ' Output: 9876543210
 
 ' Export to Bytes
 DIM data AS OBJECT = buf.ToBytes()
-PRINT "Exported:"; data.Len
+PRINT "Exported:"; data.Length
 
 ' Reset and reuse
 buf.Reset()
-PRINT "After reset:"; buf.Len       ' Output: 0
+PRINT "After reset:"; buf.Length       ' Output: 0
 ```
 
 ### Preallocated Capacity Example

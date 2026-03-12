@@ -194,7 +194,7 @@
 
 ### A-013: BASIC — Vec3 class methods all return 0 ✅ FIXED
 
-**Repro:** Same as A-012 but for Vec3. `a.Add(b).X` → `0`, `a.Dot(b)` → `32` (correct!), but `a.Len()` → `3.74` (correct), yet `a.Add(b).X` → `0`.
+**Repro:** Same as A-012 but for Vec3. `a.Add(b).X` → `0`, `a.Dot(b)` → `32` (correct!), but `a.Length()` → `3.74` (correct), yet `a.Add(b).X` → `0`.
 **Root cause:** Same as A-012 — BASIC type tracking didn't propagate runtime class types for method return values.
 **Fix:** Same as A-009/A-012. The `findMethodReturnClassName()` fix applies to all runtime classes including Vec3.
 
@@ -303,7 +303,7 @@
 
 ### A-034: Zia — Uuid/TextWrapper static calls fail
 
-**Repro:** `SayInt(Viper.String.Len(Viper.Text.Uuid.New()));` → `Undefined identifier: Viper`
+**Repro:** `SayInt(Viper.String.Length(Viper.Text.Uuid.New()));` → `Undefined identifier: Viper`
 **Repro:** `Say(Viper.Text.TextWrapper.Truncate("Hello", 3));` → `Undefined identifier: Viper`
 **Note:** Extension of A-019 pattern. Both classes' functions are defined in runtime.def but the Zia frontend can't resolve the fully-qualified namespace path. BASIC works for Uuid but also fails for TextWrapper (A-039).
 **Root cause:** Same as A-019 — `lookupSymbol()` in Zia's Sema_Expr_Call.cpp fails for these qualified names. TextWrapper is a namespace with only static functions (like Easing), not a class with instances.
@@ -401,14 +401,14 @@
 
 ### A-026: BASIC VM — Deque RT_MAGIC assertion crash
 
-**Repro:** `d = NEW Viper.Collections.Deque(); d.PushBack("a"); d.PushBack("b"); d.PushFront("z"); PRINT d.Len`
+**Repro:** `d = NEW Viper.Collections.Deque(); d.PushBack("a"); d.PushBack("b"); d.PushFront("z"); PRINT d.Length`
 **Error:** `Assertion failed: (hdr->magic == RT_MAGIC), function rt_heap_validate_header, file rt_heap.c, line 66.`
 **Note:** Zia VM works perfectly. The BASIC frontend passes correct method names (PushBack/PushFront/Len/IsEmpty/Clear) matching RT_CLASS definition. The crash occurs immediately when any method is called on the Deque instance.
 **Root cause:** `rt_deque_new()` in `rt_deque.c` uses `malloc(sizeof(Deque))` instead of `rt_obj_new_i64()`. The allocated memory lacks the `rt_heap_hdr_t` prefix with RT_MAGIC (0x52504956). When BASIC's VM tries to retain/release the object, `payload_to_hdr()` reads garbage where the magic field should be and asserts. Zia VM doesn't crash because its object lifecycle differs.
 
 ### A-027: BASIC VM — SortedSet RT_MAGIC assertion crash
 
-**Repro:** `s = NEW Viper.Collections.SortedSet(); s.Put("c"); s.Put("a"); PRINT s.Len`
+**Repro:** `s = NEW Viper.Collections.SortedSet(); s.Put("c"); s.Put("a"); PRINT s.Length`
 **Error:** `Assertion failed: (hdr->magic == RT_MAGIC), function rt_heap_validate_header, file rt_heap.c, line 66.`
 **Note:** Zia VM works perfectly. Same RT_MAGIC crash pattern as Deque (A-026). Both Deque and SortedSet classes are defined later in runtime.def (lines 6823 and 3921 respectively). Crash occurs on first method call after construction.
 **Root cause:** `rt_sortedset_new()` in `rt_sortedset.c` uses `calloc(1, sizeof(...))` instead of `rt_obj_new_i64()`. Same missing RT_MAGIC header issue as A-026.
@@ -435,7 +435,7 @@
 
 ### A-049: BASIC — Stream methods silently fail (Len stays 0) ✅ FIXED
 
-**Repro:** `s = Viper.IO.Stream.OpenMemory(); s.WriteByte(65); PRINT s.Len` → 0
+**Repro:** `s = Viper.IO.Stream.OpenMemory(); s.WriteByte(65); PRINT s.Length` → 0
 **Root cause:** Same as A-009/A-012 — BASIC type tracking didn't propagate Stream class type from OpenMemory() factory method return.
 **Fix:** The `findMethodReturnClassName()` and `resolveObjectClass()` fixes for runtime class catalog lookup resolved this. Stream.WriteByte, Len, Pos all work correctly now (Len=2 after two WriteByte calls).
 

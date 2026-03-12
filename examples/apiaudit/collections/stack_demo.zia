@@ -14,7 +14,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var stk = Stack.New();
-    SayInt(stk.Len);       // 0
+    SayInt(stk.Length);       // 0
     SayBool(stk.IsEmpty);  // 1
 
     // --- Push / Len ---
@@ -22,7 +22,7 @@ func start() {
     stk.Push(Box.Str("first"));
     stk.Push(Box.Str("second"));
     stk.Push(Box.Str("third"));
-    SayInt(stk.Len);       // 3
+    SayInt(stk.Length);       // 3
     SayBool(stk.IsEmpty);  // 0
 
     // --- Peek (LIFO - returns top) ---
@@ -32,20 +32,20 @@ func start() {
     // --- Pop (LIFO order) ---
     Say("--- Pop ---");
     Say(Box.ToStr(stk.Pop()));    // third
-    SayInt(stk.Len);              // 2
+    SayInt(stk.Length);              // 2
     Say(Box.ToStr(stk.Pop()));    // second
-    SayInt(stk.Len);              // 1
+    SayInt(stk.Length);              // 1
     Say(Box.ToStr(stk.Peek()));   // first
 
     // --- Push more and verify ---
     Say("--- Push more ---");
     stk.Push(Box.I64(42));
     stk.Push(Box.I64(99));
-    SayInt(stk.Len);              // 3
+    SayInt(stk.Length);              // 3
     SayInt(Box.ToI64(stk.Pop())); // 99
     SayInt(Box.ToI64(stk.Pop())); // 42
     Say(Box.ToStr(stk.Pop()));    // first
-    SayInt(stk.Len);              // 0
+    SayInt(stk.Length);              // 0
     SayBool(stk.IsEmpty);         // 1
 
     // --- Clear ---
@@ -53,9 +53,9 @@ func start() {
     stk.Push(Box.Str("a"));
     stk.Push(Box.Str("b"));
     stk.Push(Box.Str("c"));
-    SayInt(stk.Len);              // 3
+    SayInt(stk.Length);              // 3
     stk.Clear();
-    SayInt(stk.Len);              // 0
+    SayInt(stk.Length);              // 0
     SayBool(stk.IsEmpty);         // 1
 
     Say("=== Stack audit complete ===");

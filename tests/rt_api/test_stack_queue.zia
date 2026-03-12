@@ -7,11 +7,11 @@ func start() {
     st.Push("a");
     st.Push("b");
     st.Push("c");
-    SayInt(st.Len);
+    SayInt(st.Length);
     Say(st.Peek());
     Say(st.Pop());
     Say(st.Pop());
-    SayInt(st.Len);
+    SayInt(st.Length);
     st.Clear();
     SayBool(st.IsEmpty);
 
@@ -20,11 +20,11 @@ func start() {
     q.Push("x");
     q.Push("y");
     q.Push("z");
-    SayInt(q.Len);
+    SayInt(q.Length);
     Say(q.Peek());
     Say(q.Pop());
     Say(q.Pop());
-    SayInt(q.Len);
+    SayInt(q.Length);
     q.Clear();
     SayBool(q.IsEmpty);
 
@@ -33,10 +33,10 @@ func start() {
     r.Push("1");
     r.Push("2");
     r.Push("3");
-    SayInt(r.Len);
+    SayInt(r.Length);
     Say(r.Peek());
     Say(r.Pop());
-    SayInt(r.Len);
+    SayInt(r.Length);
     Say(r.Get(0));
     r.Clear();
     SayBool(r.IsEmpty);
@@ -46,11 +46,11 @@ func start() {
     h.Push(3, "three");
     h.Push(1, "one");
     h.Push(2, "two");
-    SayInt(h.Len);
+    SayInt(h.Length);
     Say(h.Peek());
     Say(h.Pop());
     Say(h.Pop());
-    SayInt(h.Len);
+    SayInt(h.Length);
     h.Clear();
     SayBool(h.IsEmpty);
 

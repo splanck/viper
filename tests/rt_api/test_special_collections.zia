@@ -6,7 +6,7 @@ bind Viper.Terminal;
 func start() {
     var bs = new Viper.Collections.BitSet(64);
     SayBool(bs.IsEmpty);
-    SayInt(bs.Len);
+    SayInt(bs.Length);
     bs.Set(3);
     bs.Set(7);
     bs.Set(15);
@@ -38,7 +38,7 @@ func start() {
     SayInt(uf.SetSize(1));
 
     var by = new Viper.Collections.Bytes(8);
-    SayInt(by.Len);
+    SayInt(by.Length);
     by.Set(0, 65);
     by.Set(1, 66);
     SayInt(by.Get(0));
@@ -53,24 +53,24 @@ func start() {
     lru.Put("a", "1");
     lru.Put("b", "2");
     lru.Put("c", "3");
-    SayInt(lru.Len);
+    SayInt(lru.Length);
     SayBool(lru.Has("a"));
     lru.Put("d", "4");
-    SayInt(lru.Len);
+    SayInt(lru.Length);
     lru.Remove("d");
-    SayInt(lru.Len);
+    SayInt(lru.Length);
 
     var mm = new Viper.Collections.MultiMap();
     SayBool(mm.IsEmpty);
     mm.Put("color", "red");
     mm.Put("color", "blue");
     mm.Put("size", "large");
-    SayInt(mm.Len);
+    SayInt(mm.Length);
     SayInt(mm.KeyCount);
     SayInt(mm.CountFor("color"));
     SayBool(mm.Has("color"));
     mm.RemoveAll("color");
-    SayInt(mm.Len);
+    SayInt(mm.Length);
 
     Say("done");
 }

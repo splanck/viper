@@ -14,11 +14,11 @@ func main() {
     Viper.Collections.List.Push(list, Viper.Core.Box.I64(30));
 
     Viper.Terminal.Print("List count: ");
-    Viper.Terminal.SayInt(Viper.Collections.List.Len(list));
+    Viper.Terminal.SayInt(Viper.Collections.List.Length(list));
 
     Viper.Terminal.Say("List items:");
     var i = 0;
-    while (i < Viper.Collections.List.Len(list)) {
+    while (i < Viper.Collections.List.Length(list)) {
         var item = Viper.Collections.List.Get(list, i);
         Viper.Terminal.Print("  [");
         Viper.Terminal.Print(Viper.Fmt.Int(i));

@@ -15,7 +15,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var b = Bytes.New(4);
-    SayInt(b.Len);           // 4
+    SayInt(b.Length);           // 4
 
     // --- Set / Get ---
     Say("--- Set / Get ---");
@@ -31,7 +31,7 @@ func start() {
     // --- FromStr / ToStr ---
     Say("--- FromStr / ToStr ---");
     var hello = Bytes.FromStr("Hello");
-    SayInt(hello.Len);       // 5
+    SayInt(hello.Length);       // 5
     Say(hello.ToStr());      // Hello
     SayInt(hello.Get(0));    // 72 (H)
 
@@ -42,7 +42,7 @@ func start() {
     // --- FromHex ---
     Say("--- FromHex ---");
     var hex = Bytes.FromHex("deadbeef");
-    SayInt(hex.Len);         // 4
+    SayInt(hex.Length);         // 4
     SayInt(hex.Get(0));      // 222 (0xDE)
     SayInt(hex.Get(3));      // 239 (0xEF)
 
@@ -54,7 +54,7 @@ func start() {
     Say("--- FromBase64 ---");
     var decoded = Bytes.FromBase64("SGVsbG8=");
     Say(decoded.ToStr());    // Hello
-    SayInt(decoded.Len);     // 5
+    SayInt(decoded.Length);     // 5
 
     // --- Fill ---
     Say("--- Fill ---");
@@ -73,7 +73,7 @@ func start() {
     // --- Clone ---
     Say("--- Clone ---");
     var clone = hello.Clone();
-    SayInt(clone.Len);       // 5
+    SayInt(clone.Length);       // 5
     Say(clone.ToStr());      // Hello
     clone.Set(0, 74);        // Change to 'J'
     Say(clone.ToStr());      // Jello
@@ -82,7 +82,7 @@ func start() {
     // --- Slice ---
     Say("--- Slice ---");
     var sl = hello.Slice(1, 4);
-    SayInt(sl.Len);          // 3
+    SayInt(sl.Length);          // 3
     Say(sl.ToStr());         // ell
 
     // --- Copy ---

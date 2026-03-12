@@ -13,14 +13,14 @@ func start() {
     var s1 = Stream.OpenMemory();
     SayInt(s1.get_Type());
     SayInt(s1.get_Pos());
-    SayInt(s1.get_Len());
+    SayInt(s1.get_Length());
 
     // --- WriteByte / ReadByte ---
     Say("--- WriteByte / ReadByte ---");
     s1.WriteByte(65);
     s1.WriteByte(66);
     s1.WriteByte(67);
-    SayInt(s1.get_Len());
+    SayInt(s1.get_Length());
     s1.set_Pos(0);
     SayInt(s1.ReadByte());
     SayInt(s1.ReadByte());
@@ -35,10 +35,10 @@ func start() {
     data.Set(2, 33);
     data.Set(3, 10);
     s2.Write(data);
-    SayInt(s2.get_Len());
+    SayInt(s2.get_Length());
     s2.set_Pos(0);
     var rd = s2.Read(4);
-    SayInt(rd.get_Len());
+    SayInt(rd.get_Length());
 
     // --- Eof ---
     Say("--- Eof ---");
@@ -50,12 +50,12 @@ func start() {
     Say("--- ReadAll ---");
     s2.set_Pos(0);
     var all = s2.ReadAll();
-    SayInt(all.get_Len());
+    SayInt(all.get_Length());
 
     // --- ToBytes ---
     Say("--- ToBytes ---");
     var b = s1.ToBytes();
-    SayInt(b.get_Len());
+    SayInt(b.get_Length());
 
     // --- OpenFile ---
     Say("--- OpenFile ---");
@@ -64,7 +64,7 @@ func start() {
     var sf = Stream.OpenFile(tmpPath, "r");
     SayInt(sf.get_Type());
     var content = sf.ReadAll();
-    SayInt(content.get_Len());
+    SayInt(content.get_Length());
     sf.Close();
 
     // --- Flush and Close ---

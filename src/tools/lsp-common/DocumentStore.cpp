@@ -5,18 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tools/zia-server/DocumentStore.cpp
+// File: tools/lsp-common/DocumentStore.cpp
 // Purpose: Implementation of in-memory document storage for LSP.
 // Key invariants:
 //   - URI keys are stored verbatim (no normalization beyond uriToPath)
 //   - uriToPath handles file:// prefix and %XX URL decoding
 // Ownership/Lifetime:
 //   - All data fully owned
-// Links: tools/zia-server/DocumentStore.hpp
+// Links: tools/lsp-common/DocumentStore.hpp
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/zia-server/DocumentStore.hpp"
+#include "tools/lsp-common/DocumentStore.hpp"
 
 #include <cctype>
 

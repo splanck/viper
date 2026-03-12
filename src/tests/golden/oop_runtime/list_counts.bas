@@ -4,12 +4,12 @@ l = NEW Viper.Collections.List()
 ' Add an object; we use the list itself as a placeholder object reference.
 l.Push(l)
 l.Push(l)
-PRINT l.Len
+PRINT l.Length
 
 l.RemoveAt(0)
-PRINT l.Len
+PRINT l.Length
 
 l.Clear()
-PRINT l.Len
+PRINT l.Length
 
 END

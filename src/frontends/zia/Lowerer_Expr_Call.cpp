@@ -420,6 +420,50 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
     std::string runtimeCallee = sema_.runtimeCallee(expr);
     if (!runtimeCallee.empty())
     {
+        // Auto-dispatch Say/Print to typed variants based on argument type.
+        // This allows Say(42), Say(3.14), Say(true) to work without requiring
+        // explicit string conversion. The typed runtime functions (SayInt, SayNum,
+        // SayBool, PrintInt, PrintNum, PrintBool) already exist — we just redirect.
+        if (expr->args.size() == 1)
+        {
+            auto *argExpr = expr->args[0].value.get();
+            TypeRef argType = sema_.typeOf(argExpr);
+
+            if (argType && argType->kind != TypeKindSem::String)
+            {
+                std::string typedCallee;
+
+                if (runtimeCallee == kTerminalSay)
+                {
+                    if (argType->kind == TypeKindSem::Integer)
+                        typedCallee = kTerminalSayInt;
+                    else if (argType->kind == TypeKindSem::Number)
+                        typedCallee = kTerminalSayNum;
+                    else if (argType->kind == TypeKindSem::Boolean)
+                        typedCallee = kTerminalSayBool;
+                }
+                else if (runtimeCallee == kTerminalPrint)
+                {
+                    if (argType->kind == TypeKindSem::Integer)
+                        typedCallee = kTerminalPrintInt;
+                    else if (argType->kind == TypeKindSem::Number)
+                        typedCallee = kTerminalPrintNum;
+                    else if (argType->kind == TypeKindSem::Boolean)
+                        typedCallee = kTerminalPrintBool;
+                }
+
+                if (!typedCallee.empty())
+                {
+                    auto arg = lowerExpr(argExpr);
+                    Value argVal = arg.value;
+                    if (arg.type.kind == Type::Kind::I32)
+                        argVal = widenByteToInteger(argVal);
+                    emitCall(typedCallee, {argVal});
+                    return {Value::constInt(0), Type(Type::Kind::Void)};
+                }
+            }
+        }
+
         std::vector<Value> args;
 
         if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get()))

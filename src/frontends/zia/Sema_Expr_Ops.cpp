@@ -36,7 +36,13 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
             // Numeric operations
             if (leftType->kind == TypeKindSem::String && expr->op == BinaryOp::Add)
             {
-                // String concatenation
+                // String concatenation: "text" + value
+                return types::string();
+            }
+
+            if (rightType->kind == TypeKindSem::String && expr->op == BinaryOp::Add)
+            {
+                // String concatenation: value + "text"
                 return types::string();
             }
 

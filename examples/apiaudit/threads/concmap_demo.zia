@@ -26,7 +26,7 @@ func start() {
 
     // --- Len (initial) ---
     Say("--- Len (initial) ---");
-    Say("Len: " + Fmt.Int(m.get_Len()));
+    Say("Len: " + Fmt.Int(m.get_Length()));
 
     // --- Set ---
     Say("--- Set ---");
@@ -37,7 +37,7 @@ func start() {
 
     // --- Len (after set) ---
     Say("--- Len (after set) ---");
-    Say("Len: " + Fmt.Int(m.get_Len()));
+    Say("Len: " + Fmt.Int(m.get_Length()));
 
     // --- IsEmpty (after set) ---
     Say("--- IsEmpty (after set) ---");
@@ -80,12 +80,12 @@ func start() {
     // --- Keys ---
     Say("--- Keys ---");
     var keys = m.Keys();
-    Say("Keys count: " + Fmt.Int(Seq.get_Len(keys)));
+    Say("Keys count: " + Fmt.Int(Seq.get_Length(keys)));
 
     // --- Values ---
     Say("--- Values ---");
     var vals = m.Values();
-    Say("Values count: " + Fmt.Int(Seq.get_Len(vals)));
+    Say("Values count: " + Fmt.Int(Seq.get_Length(vals)));
 
     // --- Remove ---
     Say("--- Remove ---");
@@ -94,12 +94,12 @@ func start() {
     Say("Has(email) after remove: " + Fmt.Bool(m.Has("email")));
     var removeMissing = m.Remove("nonexistent");
     Say("Remove(nonexistent): " + Fmt.Bool(removeMissing));
-    Say("Len after remove: " + Fmt.Int(m.get_Len()));
+    Say("Len after remove: " + Fmt.Int(m.get_Length()));
 
     // --- Clear ---
     Say("--- Clear ---");
     m.Clear();
-    Say("Len after Clear: " + Fmt.Int(m.get_Len()));
+    Say("Len after Clear: " + Fmt.Int(m.get_Length()));
     Say("IsEmpty after Clear: " + Fmt.Bool(m.get_IsEmpty()));
 
     Say("=== ConcurrentMap Audit Complete ===");

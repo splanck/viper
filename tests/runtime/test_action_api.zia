@@ -88,7 +88,7 @@ func start() {
 
     // === Test 5: Action list ===
     var actions = Viper.Input.Action.List();
-    var alen = Viper.Collections.Seq.get_Len(actions);
+    var alen = Viper.Collections.Seq.get_Length(actions);
     if (alen != 2) {
         Say("FAIL: should have 2 actions");
         return;

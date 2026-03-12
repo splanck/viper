@@ -19,7 +19,7 @@ PRINT "Cap: "; Viper.Threads.Channel.get_Cap(ch)
 
 ' --- Len (initial) ---
 PRINT "--- Len (initial) ---"
-PRINT "Len: "; Viper.Threads.Channel.get_Len(ch)
+PRINT "Len: "; Viper.Threads.Channel.get_Length(ch)
 
 ' --- IsEmpty (initial) ---
 PRINT "--- IsEmpty (initial) ---"
@@ -36,18 +36,18 @@ PRINT "IsClosed: "; Viper.Threads.Channel.get_IsClosed(ch)
 ' --- Send ---
 PRINT "--- Send ---"
 Viper.Threads.Channel.Send(ch, Viper.Core.Box.Str("hello"))
-PRINT "Len after Send: "; Viper.Threads.Channel.get_Len(ch)
+PRINT "Len after Send: "; Viper.Threads.Channel.get_Length(ch)
 
 ' --- TrySend ---
 PRINT "--- TrySend ---"
 DIM ok1 AS INTEGER = Viper.Threads.Channel.TrySend(ch, Viper.Core.Box.Str("world"))
 PRINT "TrySend: "; ok1
-PRINT "Len after TrySend: "; Viper.Threads.Channel.get_Len(ch)
+PRINT "Len after TrySend: "; Viper.Threads.Channel.get_Length(ch)
 
 ' --- Fill channel ---
 PRINT "--- Fill channel ---"
 Viper.Threads.Channel.Send(ch, Viper.Core.Box.Str("third"))
-PRINT "Len: "; Viper.Threads.Channel.get_Len(ch)
+PRINT "Len: "; Viper.Threads.Channel.get_Length(ch)
 PRINT "IsFull: "; Viper.Threads.Channel.get_IsFull(ch)
 
 ' --- TrySend (full) ---
@@ -63,7 +63,7 @@ PRINT "IsEmpty: "; Viper.Threads.Channel.get_IsEmpty(ch)
 PRINT "--- Recv ---"
 DIM item1 AS OBJECT = Viper.Threads.Channel.Recv(ch)
 PRINT "Recv: "; Viper.Core.Box.ToStr(item1)
-PRINT "Len after Recv: "; Viper.Threads.Channel.get_Len(ch)
+PRINT "Len after Recv: "; Viper.Threads.Channel.get_Length(ch)
 
 ' --- Recv more ---
 DIM item2 AS OBJECT = Viper.Threads.Channel.Recv(ch)
@@ -73,7 +73,7 @@ PRINT "Recv: "; Viper.Core.Box.ToStr(item2)
 PRINT "--- Drain remaining ---"
 DIM item3 AS OBJECT = Viper.Threads.Channel.Recv(ch)
 PRINT "Recv: "; Viper.Core.Box.ToStr(item3)
-PRINT "Len: "; Viper.Threads.Channel.get_Len(ch)
+PRINT "Len: "; Viper.Threads.Channel.get_Length(ch)
 PRINT "IsEmpty: "; Viper.Threads.Channel.get_IsEmpty(ch)
 
 ' --- Close ---

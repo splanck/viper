@@ -488,6 +488,23 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 consumeDeferred(rightStr);
                 return {result, Type(Type::Kind::Str)};
             }
+            if (rightType && rightType->kind == TypeKindSem::String)
+            {
+                // String concatenation: value + "text" (convert left to string)
+                Value leftStr = left.value;
+                if (leftType && leftType->kind == TypeKindSem::Integer)
+                    leftStr = emitCallRet(Type(Type::Kind::Str), kStringFromInt, {left.value});
+                else if (leftType && leftType->kind == TypeKindSem::Number)
+                    leftStr = emitCallRet(Type(Type::Kind::Str), kStringFromNum, {left.value});
+                else if (leftType && leftType->kind == TypeKindSem::Boolean)
+                    leftStr = emitCallRet(Type(Type::Kind::Str), kFmtBool, {left.value});
+
+                Value result =
+                    emitCallRet(Type(Type::Kind::Str), kStringConcat, {leftStr, right.value});
+                consumeDeferred(leftStr);
+                consumeDeferred(right.value);
+                return {result, Type(Type::Kind::Str)};
+            }
             op = isFloat ? Opcode::FAdd : (options_.overflowChecks ? Opcode::IAddOvf : Opcode::Add);
             break;
 

@@ -80,7 +80,7 @@ func start() {
     }
 
     var collected = Viper.Collections.Iterator.ToSeq(it);
-    var clen = Viper.Collections.Seq.get_Len(collected);
+    var clen = Viper.Collections.Seq.get_Length(collected);
     if (clen != 3) {
         Say("FAIL: ToSeq should produce 3 elements");
         return;

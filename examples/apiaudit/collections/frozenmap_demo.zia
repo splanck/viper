@@ -15,7 +15,7 @@ func start() {
     // --- Empty ---
     Say("--- Empty ---");
     var empty = FrozenMap.Empty();
-    SayInt(empty.Len);       // 0
+    SayInt(empty.Length);       // 0
     SayBool(empty.IsEmpty);  // 1
 
     // --- FromSeqs ---
@@ -31,7 +31,7 @@ func start() {
     vals.Push(Box.Str("Boston"));
 
     var fm = FrozenMap.FromSeqs(keys, vals);
-    SayInt(fm.Len);          // 3
+    SayInt(fm.Length);          // 3
     SayBool(fm.IsEmpty);     // 0
 
     // --- Get ---
@@ -47,12 +47,12 @@ func start() {
     // --- Keys ---
     Say("--- Keys ---");
     var fmKeys = fm.Keys();
-    SayInt(fmKeys.Len);       // 3
+    SayInt(fmKeys.Length);       // 3
 
     // --- Values ---
     Say("--- Values ---");
     var fmVals = fm.Values();
-    SayInt(fmVals.Len);       // 3
+    SayInt(fmVals.Length);       // 3
 
     // --- GetOr ---
     Say("--- GetOr ---");
@@ -71,7 +71,7 @@ func start() {
 
     var fm2 = FrozenMap.FromSeqs(keys2, vals2);
     var merged = fm.Merge(fm2);
-    SayInt(merged.Len);                           // 4
+    SayInt(merged.Length);                           // 4
     Say(Box.ToStr(merged.Get("city")));           // NYC (fm2 wins)
     Say(Box.ToStr(merged.Get("email")));          // a@b.com
     Say(Box.ToStr(merged.Get("name")));           // Alice (from fm)

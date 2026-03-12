@@ -6,18 +6,22 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tools/zia-server/CompilerBridge.cpp
-// Purpose: Implementation of the protocol-agnostic compiler facade.
+// Purpose: Implementation of the protocol-agnostic Zia compiler facade.
 // Key invariants:
 //   - Each analysis call creates a fresh SourceManager (no cross-call state)
 //   - CompletionEngine persists for LRU cache benefits
-//   - Runtime queries use the singleton RuntimeRegistry
+//   - Runtime queries use default ICompilerBridge implementations
 // Ownership/Lifetime:
 //   - All returned data is fully owned
-// Links: tools/zia-server/CompilerBridge.hpp
+// Links: tools/zia-server/CompilerBridge.hpp, tools/lsp-common/TextUtils.hpp,
+//        tools/lsp-common/DiagnosticUtils.hpp
 //
 //===----------------------------------------------------------------------===//
 
 #include "tools/zia-server/CompilerBridge.hpp"
+
+#include "tools/lsp-common/DiagnosticUtils.hpp"
+#include "tools/lsp-common/TextUtils.hpp"
 
 #include "frontends/zia/Compiler.hpp"
 #include "frontends/zia/Lexer.hpp"
@@ -26,12 +30,9 @@
 #include "frontends/zia/ZiaAstPrinter.hpp"
 #include "frontends/zia/ZiaCompletion.hpp"
 #include "il/io/Serializer.hpp"
-#include "il/runtime/classes/RuntimeClasses.hpp"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 
-#include <algorithm>
-#include <cctype>
 #include <sstream>
 
 namespace viper::server
@@ -40,33 +41,6 @@ namespace viper::server
 using namespace il::frontends::zia;
 
 // --- Helpers ---
-
-static std::vector<DiagnosticInfo> extractDiagnostics(const il::support::DiagnosticEngine &diag)
-{
-    std::vector<DiagnosticInfo> result;
-    for (const auto &d : diag.diagnostics())
-    {
-        DiagnosticInfo info;
-        switch (d.severity)
-        {
-            case il::support::Severity::Note:
-                info.severity = 0;
-                break;
-            case il::support::Severity::Warning:
-                info.severity = 1;
-                break;
-            case il::support::Severity::Error:
-                info.severity = 2;
-                break;
-        }
-        info.message = d.message;
-        info.line = d.loc.line;
-        info.column = d.loc.column;
-        info.code = d.code;
-        result.push_back(std::move(info));
-    }
-    return result;
-}
 
 static std::string symbolKindStr(Symbol::Kind k)
 {
@@ -88,15 +62,6 @@ static std::string symbolKindStr(Symbol::Kind k)
             return "module";
     }
     return "unknown";
-}
-
-static std::string toLowerStr(const std::string &s)
-{
-    std::string lower;
-    lower.reserve(s.size());
-    for (char c : s)
-        lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return lower;
 }
 
 // --- Constructor / Destructor ---
@@ -130,14 +95,6 @@ CompileResult CompilerBridge::compile(const std::string &source, const std::stri
 
 // --- Hover helpers ---
 
-/// @brief Context extracted from cursor position for hover resolution.
-struct HoverContext
-{
-    std::string identifier; ///< The identifier under the cursor
-    std::string dotPrefix;  ///< Dot-chain prefix (e.g., "shell.app" for "shell.app.run")
-    bool valid{false};      ///< False if cursor is on whitespace/operator
-};
-
 /// @brief Resolved hover information for markdown formatting.
 struct HoverResult
 {
@@ -149,85 +106,6 @@ struct HoverResult
     bool isFinal{false};
     bool isExtern{false};
 };
-
-static bool isIdentChar(char c)
-{
-    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
-}
-
-/// @brief Extract the identifier and dot-chain prefix at a cursor position.
-/// Adapted from CompletionEngine::extractContext() but simplified for hover.
-static HoverContext extractIdentifierAtCursor(const std::string &source, int line, int col)
-{
-    HoverContext ctx;
-
-    // Find the start of the requested line (1-based).
-    size_t lineStart = 0;
-    int curLine = 1;
-    for (size_t i = 0; i < source.size() && curLine < line; ++i)
-    {
-        if (source[i] == '\n')
-        {
-            ++curLine;
-            lineStart = i + 1;
-        }
-    }
-
-    // Find line end.
-    size_t lineEnd = lineStart;
-    while (lineEnd < source.size() && source[lineEnd] != '\n')
-        ++lineEnd;
-
-    // col is 1-based; convert to 0-based offset within line.
-    size_t cursorOff = lineStart + static_cast<size_t>(col - 1);
-    if (cursorOff > lineEnd)
-        cursorOff = lineEnd;
-
-    // Expand left from cursor to find identifier start.
-    size_t idStart = cursorOff;
-    while (idStart > lineStart && isIdentChar(source[idStart - 1]))
-        --idStart;
-
-    // Expand right from cursor to find identifier end.
-    size_t idEnd = cursorOff;
-    while (idEnd < lineEnd && isIdentChar(source[idEnd]))
-        ++idEnd;
-
-    if (idStart == idEnd)
-        return ctx; // cursor on whitespace/operator
-
-    ctx.identifier = source.substr(idStart, idEnd - idStart);
-    ctx.valid = true;
-
-    // Scan left past dots to capture dot-chain prefix (e.g., "shell.app").
-    if (idStart > lineStart && source[idStart - 1] == '.')
-    {
-        size_t prefixEnd = idStart - 1; // position of the '.'
-        size_t prefixStart = prefixEnd;
-        // Walk backwards through identifiers and dots.
-        while (prefixStart > lineStart)
-        {
-            size_t p = prefixStart - 1;
-            if (isIdentChar(source[p]))
-            {
-                while (p > lineStart && isIdentChar(source[p - 1]))
-                    --p;
-                prefixStart = p;
-                if (p > lineStart && source[p - 1] == '.')
-                    prefixStart = p - 1;
-                else
-                    break;
-            }
-            else
-            {
-                break;
-            }
-        }
-        ctx.dotPrefix = source.substr(prefixStart, prefixEnd - prefixStart);
-    }
-
-    return ctx;
-}
 
 /// @brief Build a human-readable function signature from AST param names + semantic types.
 static std::string buildSignatureFromDecl(const std::vector<Param> &params,
@@ -273,7 +151,6 @@ static std::string buildSignatureFromType(const TypeRef &funcType)
 }
 
 /// @brief Resolve a hover target using Sema APIs.
-/// Adapted from CompletionEngine::resolveExprType().
 static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx,
                                       int line, int col)
 {
@@ -282,7 +159,6 @@ static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx,
     if (!ctx.dotPrefix.empty())
     {
         // ── Dotted expression: resolve prefix, then find member ──
-        // Split prefix on '.'
         std::vector<std::string> parts;
         std::string token;
         for (char c : ctx.dotPrefix)
@@ -331,19 +207,16 @@ static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx,
             std::string ns = sema.resolveModuleAlias(parts[0]);
             if (!ns.empty())
             {
-                // Reconstruct qualified name: ns + remaining parts + identifier
                 std::string fullQname = ns;
                 for (size_t i = 1; i < parts.size(); ++i)
                     fullQname += "." + parts[i];
 
-                // Check if prefix+identifier is a runtime class
                 std::string classQname = fullQname + "." + ctx.identifier;
                 auto classMembers = sema.getRuntimeMembers(classQname);
                 if (!classMembers.empty())
                 {
                     result.name = classQname;
                     result.kind = "runtime-class";
-                    // Count members
                     int methods = 0, props = 0;
                     for (const auto &m : classMembers)
                     {
@@ -357,21 +230,19 @@ static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx,
                     return result;
                 }
 
-                // Otherwise look for identifier as member of the resolved prefix
                 auto members = sema.getRuntimeMembers(fullQname);
                 if (!members.empty())
                     current = types::runtimeClass(fullQname);
             }
         }
 
-        // Handle Module type — expand namespace and continue.
+        // Handle Module type.
         if (current && current->kind == TypeKindSem::Module && !current->name.empty())
         {
             std::string fullQname = current->name;
             for (size_t i = 1; i < parts.size(); ++i)
                 fullQname += "." + parts[i];
 
-            // Check if it's a class
             std::string classQname = fullQname + "." + ctx.identifier;
             if (!sema.getRuntimeMembers(classQname).empty())
             {
@@ -412,7 +283,7 @@ static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx,
         if (!current)
             return result;
 
-        // Now search for the identifier in members of the resolved type.
+        // Search for the identifier in members of the resolved type.
         std::string ownerName;
         if (current->kind == TypeKindSem::Ptr && !current->name.empty())
             ownerName = current->name;
@@ -432,7 +303,6 @@ static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx,
                 result.isExtern = mem.isExtern;
                 if (mem.type && mem.type->kind == TypeKindSem::Function)
                 {
-                    // Try AST params for named parameters
                     if (mem.decl && mem.decl->kind == DeclKind::Method)
                     {
                         auto *md = static_cast<MethodDecl *>(mem.decl);
@@ -453,7 +323,7 @@ static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx,
 
     // ── No dot prefix: search position-based, then globals, types, module aliases ──
 
-    // 0. Position-based lookup (locals, parameters, entity fields).
+    // 0. Position-based lookup.
     {
         auto *scoped = sema.findSymbolAtPosition(
             ctx.identifier, static_cast<uint32_t>(line), static_cast<uint32_t>(col));
@@ -605,7 +475,6 @@ static std::string formatHoverMarkdown(const HoverResult &info)
     }
     else
     {
-        // Fallback
         md += "```zia\n" + info.name;
         if (!info.type.empty())
             md += ": " + info.type;
@@ -653,11 +522,11 @@ std::string CompilerBridge::hover(const std::string &source,
     if (!result->sema)
         return "";
 
-    auto hover = resolveHoverTarget(*result->sema, ctx, line, col);
-    if (hover.name.empty())
+    auto hoverResult = resolveHoverTarget(*result->sema, ctx, line, col);
+    if (hoverResult.name.empty())
         return "";
 
-    return formatHoverMarkdown(hover);
+    return formatHoverMarkdown(hoverResult);
 }
 
 std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source, const std::string &path)
@@ -666,8 +535,6 @@ std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source, const
     CompilerInput input{.source = source, .path = path};
     CompilerOptions opts{};
 
-    // Record the file ID assigned to the main source file so we can filter
-    // out symbols imported from bind targets (which get higher file IDs).
     uint32_t mainFileId = sm.addFile(std::string(path));
     input.fileId = mainFileId;
 
@@ -677,10 +544,6 @@ std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source, const
 
     std::vector<SymbolInfo> out;
 
-    // Only include symbols declared in the current file.  getGlobalSymbols()
-    // returns everything in the module scope including all symbols pulled in
-    // by bind statements.  We filter by checking the declaration's file_id
-    // against the main source file's ID.
     auto globals = result->sema->getGlobalSymbols();
     for (const auto &sym : globals)
     {
@@ -693,8 +556,6 @@ std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source, const
                        sym.isExtern});
     }
 
-    // Also include user-declared type names (entity, value, interface).
-    // getTypeNames() already returns only user-declared types.
     auto types = result->sema->getTypeNames();
     for (const auto &tn : types)
     {
@@ -764,83 +625,6 @@ std::string CompilerBridge::dumpTokens(const std::string &source, const std::str
         out += '\n';
     }
     return out;
-}
-
-// --- Runtime queries ---
-
-std::vector<RuntimeClassSummary> CompilerBridge::runtimeClasses()
-{
-    const auto &catalog = il::runtime::runtimeClassCatalog();
-    std::vector<RuntimeClassSummary> result;
-    result.reserve(catalog.size());
-    for (const auto &cls : catalog)
-    {
-        result.push_back({cls.qname,
-                          static_cast<int>(cls.properties.size()),
-                          static_cast<int>(cls.methods.size())});
-    }
-    return result;
-}
-
-std::vector<RuntimeMemberInfo> CompilerBridge::runtimeMembers(const std::string &className)
-{
-    const auto *cls = il::runtime::findRuntimeClassByQName(className);
-    if (!cls)
-        return {};
-
-    std::vector<RuntimeMemberInfo> result;
-    for (const auto &prop : cls->properties)
-    {
-        result.push_back({prop.name, "property", prop.type ? prop.type : ""});
-    }
-    for (const auto &method : cls->methods)
-    {
-        result.push_back({method.name, "method", method.signature ? method.signature : ""});
-    }
-    return result;
-}
-
-std::vector<RuntimeMemberInfo> CompilerBridge::runtimeSearch(const std::string &keyword)
-{
-    std::string lowerKw = toLowerStr(keyword);
-    const auto &catalog = il::runtime::runtimeClassCatalog();
-    std::vector<RuntimeMemberInfo> result;
-
-    for (const auto &cls : catalog)
-    {
-        std::string lowerName = toLowerStr(cls.qname);
-
-        // Check class name
-        if (lowerName.find(lowerKw) != std::string::npos)
-        {
-            result.push_back({cls.qname, "class", ""});
-        }
-
-        // Check methods
-        for (const auto &method : cls.methods)
-        {
-            std::string lowerMethod = toLowerStr(method.name);
-            if (lowerMethod.find(lowerKw) != std::string::npos)
-            {
-                result.push_back({std::string(cls.qname) + "." + method.name,
-                                  "method",
-                                  method.signature ? method.signature : ""});
-            }
-        }
-
-        // Check properties
-        for (const auto &prop : cls.properties)
-        {
-            std::string lowerProp = toLowerStr(prop.name);
-            if (lowerProp.find(lowerKw) != std::string::npos)
-            {
-                result.push_back({std::string(cls.qname) + "." + prop.name,
-                                  "property",
-                                  prop.type ? prop.type : ""});
-            }
-        }
-    }
-    return result;
 }
 
 } // namespace viper::server

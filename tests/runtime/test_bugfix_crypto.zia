@@ -16,8 +16,8 @@ func start() {
     // --- Bug #7: Crypto.Rand.Bytes returns proper Bytes type ---
     setTest("Bug7_CryptoRandBytesType");
     var randBytes = CRand.Bytes(16);
-    // Static call to Bytes.get_Len - this should work with the type fix
-    var randLen = Bytes.get_Len(randBytes);
+    // Static call to Bytes.get_Length - this should work with the type fix
+    var randLen = Bytes.get_Length(randBytes);
     assertEqInt(randLen, 16, "CRand.Bytes(16) has length 16");
 
     // Bug #5: Static Bytes.ToHex should work
@@ -27,7 +27,7 @@ func start() {
     // --- Bug #7: Cipher.GenerateKey returns proper Bytes type ---
     setTest("Bug7_CipherGenerateKeyType");
     var key = Cipher.GenerateKey();
-    var keyLen = Bytes.get_Len(key);
+    var keyLen = Bytes.get_Length(key);
     assertGtInt(keyLen, 0, "Cipher.GenerateKey() has positive length");
 
     // Static Bytes.ToHex on cipher key
@@ -38,7 +38,7 @@ func start() {
     setTest("Bug7_CipherEncryptType");
     var plaintext = Bytes.FromStr("Hello World");
     var encrypted = Cipher.EncryptWithKey(plaintext, key);
-    var encLen = Bytes.get_Len(encrypted);
+    var encLen = Bytes.get_Length(encrypted);
     assertGtInt(encLen, 0, "Cipher.EncryptWithKey() has positive length");
 
     // Decrypt should return Bytes with correct content
@@ -50,7 +50,7 @@ func start() {
     setTest("Bug7_KeyDeriveType");
     var salt = CRand.Bytes(16);
     var derived = KD.Pbkdf2SHA256("password", salt, 1000, 32);
-    assertEqInt(Bytes.get_Len(derived), 32, "Pbkdf2SHA256 returns 32 bytes");
+    assertEqInt(Bytes.get_Length(derived), 32, "Pbkdf2SHA256 returns 32 bytes");
 
     report();
 }

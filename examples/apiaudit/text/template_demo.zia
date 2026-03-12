@@ -42,10 +42,10 @@ func start() {
     // --- Keys ---
     Say("--- Keys ---");
     var keys = Tpl.Keys(tpl);
-    SayInt(Seq.get_Len(keys));
+    SayInt(Seq.get_Length(keys));
     // Print keys (order may vary)
     var i = 0;
-    while i < Seq.get_Len(keys) {
+    while i < Seq.get_Length(keys) {
         Say(Obj.ToString(Seq.Get(keys, i)));
         i = i + 1;
     }

@@ -9,7 +9,7 @@ func start() {
     Viper.Collections.List.Push(list, 100);
     Viper.Collections.List.Push(list, 200);
 
-    var count: Integer = Viper.Collections.List.Len(list);
+    var count: Integer = Viper.Collections.List.Length(list);
     Viper.Terminal.Say("Count: " + Viper.String.FromInt(count));
 
     var v0: Integer = Viper.Core.Box.ToI64(Viper.Collections.List.Get(list, 0));

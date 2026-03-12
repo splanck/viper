@@ -40,7 +40,7 @@ JSON values are returned as native Viper types:
 | number (int)| Integer (boxed)    | `Viper.Unbox.I64(value)`           |
 | number (dec)| Double (boxed)     | `Viper.Unbox.F64(value)`           |
 | string      | String (boxed)     | `Viper.Unbox.Str(value)`           |
-| array       | Seq                | `value.Get(index)`, `value.Len`    |
+| array       | Seq                | `value.Get(index)`, `value.Length`    |
 | object      | Map                | `value.Get(key)`, `value.Keys()`   |
 
 ### Zia Example
@@ -185,7 +185,7 @@ PRINT Viper.Unbox.Str(email)  ' Output: "unknown"
 DIM api AS STRING = "{""users"": [{""name"": ""Alice""}, {""name"": ""Bob""}]}"
 DIM apiData AS OBJECT = Viper.Text.Json.Parse(api)
 DIM names AS OBJECT = Viper.Text.JsonPath.Query(apiData, "users.*.name")
-PRINT names.Len     ' Output: 2
+PRINT names.Length     ' Output: 2
 ```
 
 ### Use Cases
@@ -369,7 +369,7 @@ bind Viper.Fmt as Fmt;
 func start() {
     // Parse a CSV line into fields
     var fields = Csv.ParseLine("name,age,city");
-    Say("Field count: " + Fmt.Int(fields.Len));
+    Say("Field count: " + Fmt.Int(fields.Length));
 
     // Format a CSV line with quoting
     var data = new Viper.Collections.Seq();
@@ -573,7 +573,7 @@ END IF
 
 ' List all sections
 DIM sections AS OBJECT = Viper.Text.Ini.Sections(doc)
-PRINT sections.Len  ' Output: 2
+PRINT sections.Length  ' Output: 2
 
 ' Modify and format back to INI text
 Viper.Text.Ini.Set(doc, "db", "port", "5432")
@@ -825,7 +825,7 @@ PRINT Viper.Data.Xml.FormatPretty(root, 2)
 DIM items AS STRING = "<items><item key=""a"" val=""1""/><item key=""b"" val=""2""/></items>"
 DIM ir AS OBJECT = Viper.Data.Xml.Parse(items)
 DIM allItems AS OBJECT = Viper.Data.Xml.ChildrenByTag(ir, "item")
-FOR i = 0 TO allItems.Len - 1
+FOR i = 0 TO allItems.Length - 1
     DIM it AS OBJECT = allItems.Get(i)
     PRINT Viper.Data.Xml.Attr(it, "key"); "="; Viper.Data.Xml.Attr(it, "val")
 NEXT

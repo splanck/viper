@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tools/zia-server/Transport.cpp
+// File: tools/lsp-common/Transport.cpp
 // Purpose: MCP and LSP transport implementations over stdio.
 // Key invariants:
 //   - MCP: one JSON line per message, \n terminated
@@ -13,11 +13,11 @@
 //   - Binary mode on Windows to prevent CR/LF corruption
 // Ownership/Lifetime:
 //   - FILE* handles are not owned (stdin/stdout are global)
-// Links: tools/zia-server/Transport.hpp
+// Links: tools/lsp-common/Transport.hpp
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/zia-server/Transport.hpp"
+#include "tools/lsp-common/Transport.hpp"
 
 #include <cstdlib>
 #include <cstring>

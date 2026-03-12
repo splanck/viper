@@ -60,7 +60,7 @@ func start() {
     // --- Names ---
     Say("--- Names ---");
     var names = arc2.get_Names();
-    SayInt(Seq.get_Len(names));
+    SayInt(Seq.get_Length(names));
 
     // --- Has ---
     Say("--- Has ---");

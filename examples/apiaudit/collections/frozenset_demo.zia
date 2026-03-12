@@ -15,7 +15,7 @@ func start() {
     // --- Empty ---
     Say("--- Empty ---");
     var empty = FrozenSet.Empty();
-    SayInt(empty.Len);       // 0
+    SayInt(empty.Length);       // 0
     SayBool(empty.IsEmpty);  // 1
 
     // --- FromSeq ---
@@ -26,7 +26,7 @@ func start() {
     items.Push(Box.Str("cherry"));
     items.Push(Box.Str("apple"));  // duplicate
     var fs = FrozenSet.FromSeq(items);
-    SayInt(fs.Len);          // 3 (duplicates removed)
+    SayInt(fs.Length);          // 3 (duplicates removed)
     SayBool(fs.IsEmpty);     // 0
 
     // --- Has ---
@@ -38,7 +38,7 @@ func start() {
     // --- Items ---
     Say("--- Items ---");
     var all = fs.Items();
-    SayInt(all.Len);            // 3
+    SayInt(all.Length);            // 3
 
     // --- Union ---
     Say("--- Union ---");
@@ -48,18 +48,18 @@ func start() {
     items2.Push(Box.Str("elderberry"));
     var fs2 = FrozenSet.FromSeq(items2);
     var united = fs.Union(fs2);
-    SayInt(united.Len);         // 5 (apple, banana, cherry, date, elderberry)
+    SayInt(united.Length);         // 5 (apple, banana, cherry, date, elderberry)
 
     // --- Intersect ---
     Say("--- Intersect ---");
     var inter = fs.Intersect(fs2);
-    SayInt(inter.Len);          // 1 (cherry)
+    SayInt(inter.Length);          // 1 (cherry)
     SayBool(inter.Has("cherry")); // 1
 
     // --- Diff ---
     Say("--- Diff ---");
     var diff = fs.Diff(fs2);
-    SayInt(diff.Len);           // 2 (apple, banana)
+    SayInt(diff.Length);           // 2 (apple, banana)
     SayBool(diff.Has("apple"));  // 1
     SayBool(diff.Has("cherry")); // 0
 

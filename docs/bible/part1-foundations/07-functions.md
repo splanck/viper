@@ -381,7 +381,7 @@ bind Viper.Terminal;
 var result = add(3, 4);
 
 // Use it directly in output
-Say(add(3, 4));           // prints 7
+Say(add(3, 4));      // prints 7
 
 // Use it in an expression
 var doubled = add(3, 4) * 2;             // 14
@@ -860,7 +860,7 @@ func fib(n: Integer) -> Integer {
 
 func start() {
     for i in 0..10 {
-        Print(fib(i) + " ");
+        Print("" + fib(i) + " ");
     }
 }
 ```
@@ -1247,7 +1247,7 @@ bind Viper.Terminal;
 // Returns -1 if user wants to finish
 func readGrade() -> Integer {
     Print("Grade: ");
-    return Viper.Core.Convert.ToInt64(ReadLine());
+    return Viper.Core.Convert.ToInt64(InputLine());
 }
 
 // Check if a grade is within valid range

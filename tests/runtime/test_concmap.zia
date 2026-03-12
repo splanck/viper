@@ -7,7 +7,7 @@ func start() {
     var cm = Viper.Threads.ConcurrentMap.New();
 
     // Empty initially
-    var len = Viper.Threads.ConcurrentMap.get_Len(cm);
+    var len = Viper.Threads.ConcurrentMap.get_Length(cm);
     if (len != 0) {
         Say("FAIL: initial len should be 0");
         return;
@@ -24,7 +24,7 @@ func start() {
     Viper.Threads.ConcurrentMap.Set(cm, "beta", 2);
     Viper.Threads.ConcurrentMap.Set(cm, "gamma", 3);
 
-    len = Viper.Threads.ConcurrentMap.get_Len(cm);
+    len = Viper.Threads.ConcurrentMap.get_Length(cm);
     if (len != 3) {
         Say("FAIL: len should be 3");
         return;
@@ -57,7 +57,7 @@ func start() {
         return;
     }
 
-    len = Viper.Threads.ConcurrentMap.get_Len(cm);
+    len = Viper.Threads.ConcurrentMap.get_Length(cm);
     if (len != 4) {
         Say("FAIL: len should be 4 after SetIfMissing");
         return;
@@ -70,7 +70,7 @@ func start() {
         return;
     }
 
-    len = Viper.Threads.ConcurrentMap.get_Len(cm);
+    len = Viper.Threads.ConcurrentMap.get_Length(cm);
     if (len != 3) {
         Say("FAIL: len should be 3 after Remove");
         return;
@@ -78,7 +78,7 @@ func start() {
 
     // Keys snapshot
     var keys = Viper.Threads.ConcurrentMap.Keys(cm);
-    var klen = Viper.Collections.Seq.get_Len(keys);
+    var klen = Viper.Collections.Seq.get_Length(keys);
     if (klen != 3) {
         Say("FAIL: Keys seq should have 3 items");
         return;
@@ -86,7 +86,7 @@ func start() {
 
     // Values snapshot
     var vals = Viper.Threads.ConcurrentMap.Values(cm);
-    var vlen = Viper.Collections.Seq.get_Len(vals);
+    var vlen = Viper.Collections.Seq.get_Length(vals);
     if (vlen != 3) {
         Say("FAIL: Values seq should have 3 items");
         return;
@@ -94,7 +94,7 @@ func start() {
 
     // Clear
     Viper.Threads.ConcurrentMap.Clear(cm);
-    len = Viper.Threads.ConcurrentMap.get_Len(cm);
+    len = Viper.Threads.ConcurrentMap.get_Length(cm);
     if (len != 0) {
         Say("FAIL: len should be 0 after Clear");
         return;

@@ -4,13 +4,13 @@
 DIM ms AS Viper.IO.MemStream
 ms = Viper.IO.MemStream.New()
 PRINT "ms pos: "; ms.Pos
-PRINT "ms len: "; ms.Len
+PRINT "ms len: "; ms.Length
 
 ms.WriteI8(42)
 ms.WriteI16(1000)
 ms.WriteI32(100000)
 ms.WriteI64(9999999999)
-PRINT "ms len after writes: "; ms.Len
+PRINT "ms len after writes: "; ms.Length
 
 ' Seek back to start and read
 ms.Seek(0)
@@ -22,7 +22,7 @@ PRINT "read i64: "; ms.ReadI64()
 ' --- MemStream: string read/write ---
 ms.Clear()
 ms.WriteStr("hello world")
-PRINT "ms len after str: "; ms.Len
+PRINT "ms len after str: "; ms.Length
 ms.Seek(0)
 PRINT "read str: "; ms.ReadStr(11)
 

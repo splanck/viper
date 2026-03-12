@@ -881,7 +881,7 @@ DIM inputs AS OBJECT = GetInputs()
 DIM outputs AS OBJECT = Viper.Threads.Parallel.Map(inputs, ADDR_OF Transform)
 
 ' outputs has same length and order as inputs
-FOR i = 0 TO outputs.Len - 1
+FOR i = 0 TO outputs.Length - 1
     PRINT "Result "; i; ": "; outputs.Get(i)
 NEXT i
 ```
@@ -995,7 +995,7 @@ DIM token AS OBJECT = Viper.Threads.CancelToken.New()
 
 ' Pass to a long-running operation
 SUB ProcessItems(items AS OBJECT, cancel AS OBJECT)
-    FOR i = 0 TO items.Len - 1
+    FOR i = 0 TO items.Length - 1
         ' Check for cancellation periodically
         IF cancel.IsCancelled THEN
             PRINT "Operation cancelled at item "; i
@@ -1224,7 +1224,7 @@ PRINT sched.Pending  ' Output: 2
 ' Poll for all due tasks in main loop
 DO
     DIM due AS OBJECT = sched.Poll()
-    FOR i = 0 TO due.Len - 1
+    FOR i = 0 TO due.Length - 1
         DIM taskName AS STRING = due.Get(i)
         SELECT CASE taskName
             CASE "save": DoSave()
@@ -1327,7 +1327,7 @@ func start() {
     // Set key-value pairs (values must be objects, use Box)
     m.Set("name", Box.Str("Alice"));
     m.Set("age", Box.I64(30));
-    Say("Len: " + Fmt.Int(m.get_Len()));
+    Say("Len: " + Fmt.Int(m.get_Length()));
 
     // Get values
     Say("name: " + Box.ToStr(m.Get("name")));
@@ -1344,7 +1344,7 @@ func start() {
 
     // Clear
     m.Clear();
-    Say("Len after Clear: " + Fmt.Int(m.get_Len()));
+    Say("Len after Clear: " + Fmt.Int(m.get_Length()));
 }
 ```
 
@@ -1357,7 +1357,7 @@ PRINT "Empty: "; m.IsEmpty
 ' Set key-value pairs (values are objects, use Box)
 m.Set("name", Viper.Core.Box.Str("Alice"))
 m.Set("age", Viper.Core.Box.I64(30))
-PRINT "Len: "; m.Len
+PRINT "Len: "; m.Length
 
 ' Get values - use static call form for obj-returning methods
 DIM nameVal AS OBJECT = Viper.Threads.ConcurrentMap.Get(m, "name")
@@ -1375,7 +1375,7 @@ PRINT "SetIfMissing name: "; m.SetIfMissing("name", Viper.Core.Box.Str("Bob"))
 ' Remove and Clear
 PRINT "Remove age: "; m.Remove("age")
 m.Clear()
-PRINT "Len after Clear: "; m.Len
+PRINT "Len after Clear: "; m.Length
 ```
 
 ---
@@ -1430,7 +1430,7 @@ func start() {
     q.Enqueue(Box.I64(10));
     q.Enqueue(Box.I64(20));
     q.Enqueue(Box.I64(30));
-    Say("Len: " + Fmt.Int(q.get_Len()));
+    Say("Len: " + Fmt.Int(q.get_Length()));
 
     // Peek (non-destructive)
     Say("Peek: " + Fmt.Int(Box.ToI64(q.Peek())));
@@ -1448,7 +1448,7 @@ func start() {
     // Clear
     q.Enqueue(Box.I64(99));
     q.Clear();
-    Say("Len after clear: " + Fmt.Int(q.get_Len()));
+    Say("Len after clear: " + Fmt.Int(q.get_Length()));
 }
 ```
 
@@ -1462,7 +1462,7 @@ PRINT "Empty: "; q.IsEmpty
 q.Enqueue(Viper.Core.Box.I64(10))
 q.Enqueue(Viper.Core.Box.I64(20))
 q.Enqueue(Viper.Core.Box.I64(30))
-PRINT "Len: "; q.Len
+PRINT "Len: "; q.Length
 
 ' Peek (non-destructive)
 PRINT "Peek: "; Viper.Core.Box.ToI64(q.Peek())
@@ -1480,7 +1480,7 @@ PRINT "Empty after all: "; q.IsEmpty
 ' Clear
 q.Enqueue(Viper.Core.Box.I64(99))
 q.Clear()
-PRINT "Len after clear: "; q.Len
+PRINT "Len after clear: "; q.Length
 ```
 
 ---
@@ -1544,7 +1544,7 @@ func start() {
     ch.Send(Box.I64(1));
     ch.Send(Box.I64(2));
     ch.Send(Box.I64(3));
-    Say("Len: " + Fmt.Int(ch.get_Len()));       // 3
+    Say("Len: " + Fmt.Int(ch.get_Length()));       // 3
 
     // Non-blocking send (returns false if full or closed)
     Say("TrySend: " + Fmt.Bool(ch.TrySend(Box.I64(4))));  // true
@@ -1588,7 +1588,7 @@ DIM i AS INTEGER
 FOR i = 1 TO 5
     ch.Send(Viper.Core.Box.I64(i * 10))
 NEXT i
-PRINT "Len: "; ch.Len     ' Output: 5
+PRINT "Len: "; ch.Length     ' Output: 5
 PRINT "IsFull: "; ch.IsFull  ' Output: 0 (cap 16, only 5 items)
 
 ' Non-blocking receive

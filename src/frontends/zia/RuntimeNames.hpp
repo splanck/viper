@@ -143,7 +143,7 @@ inline constexpr const char *kListGet = kCollectionsListGet;
 /// @brief Set the element at a given index. O(1).
 inline constexpr const char *kListSet = kCollectionsListSet;
 /// @brief Get the number of elements in the list. O(1).
-inline constexpr const char *kListCount = kCollectionsListGetLen;
+inline constexpr const char *kListCount = kCollectionsListGetLength;
 /// @brief Remove all elements from the list.
 inline constexpr const char *kListClear = kCollectionsListClear;
 /// @brief Remove the element at a given index, shifting subsequent elements.
@@ -170,7 +170,7 @@ inline constexpr const char *kListPop = kCollectionsListPop;
 /// @brief Create a new empty Set. Returns a heap-allocated set handle.
 inline constexpr const char *kSetNew = kCollectionsSetNew;
 /// @brief Get the number of elements in the set. O(1).
-inline constexpr const char *kSetCount = kCollectionsSetGetLen;
+inline constexpr const char *kSetCount = kCollectionsSetGetLength;
 /// @brief Check if the set contains a given value. O(1) average.
 inline constexpr const char *kSetHas = kCollectionsSetHas;
 /// @brief Add a value to the set. No effect if already present. O(1) average.
@@ -199,7 +199,7 @@ inline constexpr const char *kMapGetOr = kCollectionsMapGetOr;
 /// @brief Check if the map contains a given key. O(1) average.
 inline constexpr const char *kMapContainsKey = kCollectionsMapHas;
 /// @brief Get the number of key-value pairs in the map. O(1).
-inline constexpr const char *kMapCount = kCollectionsMapGetLen;
+inline constexpr const char *kMapCount = kCollectionsMapGetLength;
 /// @brief Remove a key-value pair by key.
 inline constexpr const char *kMapRemove = kCollectionsMapRemove;
 /// @brief Set a key-value pair only if the key is not already present.
@@ -219,7 +219,7 @@ inline constexpr const char *kMapValues = kCollectionsMapValues;
 //=============================================================================
 
 /// @brief Get the number of elements in the Seq. O(1).
-inline constexpr const char *kSeqLen = kCollectionsSeqGetLen;
+inline constexpr const char *kSeqLen = kCollectionsSeqGetLength;
 /// @brief Get the element at a given index in the Seq. O(1). Returns obj (Ptr).
 inline constexpr const char *kSeqGet = kCollectionsSeqGet;
 /// @brief Get a string element at a given index in a seq<str> Seq. Returns Str directly.

@@ -61,7 +61,7 @@ func start() {
     fruits.Put("apple");
     fruits.Put("banana");
     fruits.Put("cherry");
-    Say("Count: " + Fmt.Int(fruits.Len));              // 3
+    Say("Count: " + Fmt.Int(fruits.Length));              // 3
 
     // Membership testing
     Say("Has banana: " + Fmt.Bool(fruits.Has("banana")));  // true
@@ -72,7 +72,7 @@ func start() {
 
     // Remove
     fruits.Drop("banana");
-    Say("After drop: " + Fmt.Int(fruits.Len));             // 2
+    Say("After drop: " + Fmt.Int(fruits.Length));             // 2
 }
 ```
 
@@ -84,7 +84,7 @@ DIM fruits AS OBJECT = NEW Viper.Collections.Bag()
 fruits.Put("apple")
 fruits.Put("banana")
 fruits.Put("cherry")
-PRINT fruits.Len           ' Output: 3
+PRINT fruits.Length           ' Output: 3
 
 ' Duplicate add returns false
 DIM wasNew AS INTEGER = fruits.Put("apple")
@@ -112,19 +112,19 @@ bagB.Put("d")
 
 ' Union: elements in either bag
 DIM merged AS OBJECT = bagA.Union(bagB)
-PRINT merged.Len           ' Output: 4 (a, b, c, d)
+PRINT merged.Length           ' Output: 4 (a, b, c, d)
 
 ' Intersection: elements in both bags
 DIM common AS OBJECT = bagA.Intersect(bagB)
-PRINT common.Len           ' Output: 2 (b, c)
+PRINT common.Length           ' Output: 2 (b, c)
 
 ' Difference: elements in A but not B
 DIM diff AS OBJECT = bagA.Diff(bagB)
-PRINT diff.Len             ' Output: 1 (a only)
+PRINT diff.Length             ' Output: 1 (a only)
 
 ' Enumerate all elements
 DIM items AS OBJECT = fruits.Items()
-FOR i AS INTEGER = 0 TO items.Len - 1
+FOR i AS INTEGER = 0 TO items.Length - 1
     PRINT items.Get(i)
 NEXT
 ```
@@ -309,7 +309,7 @@ func start() {
     t.Put("card", Box.I64(3));
     t.Put("care", Box.I64(4));
     t.Put("dog", Box.I64(5));
-    SayInt(t.Len);                                 // 5
+    SayInt(t.Length);                                 // 5
 
     // Exact lookup
     SayInt(Box.ToI64(t.Get("cat")));               // 1
@@ -327,7 +327,7 @@ func start() {
 
     // All keys with prefix
     var carKeys = t.WithPrefix("car");
-    SayInt(carKeys.Len);                           // 3 (car, card, care)
+    SayInt(carKeys.Length);                           // 3 (car, card, care)
 
     // Remove
     t.Remove("card");
@@ -348,7 +348,7 @@ t.Put("car", Viper.Core.Box.I64(2))
 t.Put("card", Viper.Core.Box.I64(3))
 t.Put("care", Viper.Core.Box.I64(4))
 t.Put("dog", Viper.Core.Box.I64(5))
-PRINT t.Len                     ' 5
+PRINT t.Length                     ' 5
 
 ' Exact lookup
 PRINT Viper.Core.Box.ToI64(t.Get("cat"))   ' 1
@@ -369,16 +369,16 @@ PRINT t.LongestPrefix("dogs")       ' dog
 ' All keys with prefix
 DIM carKeys AS OBJECT
 carKeys = t.WithPrefix("car")
-PRINT carKeys.Len               ' 3 (car, card, care)
+PRINT carKeys.Length               ' 3 (car, card, care)
 
 DIM caKeys AS OBJECT
 caKeys = t.WithPrefix("ca")
-PRINT caKeys.Len                ' 4 (cat, car, card, care)
+PRINT caKeys.Length                ' 4 (cat, car, card, care)
 
 ' Update existing key
 t.Put("cat", Viper.Core.Box.I64(100))
 PRINT Viper.Core.Box.ToI64(t.Get("cat"))  ' 100
-PRINT t.Len                     ' 5 (no new entry)
+PRINT t.Length                     ' 5 (no new entry)
 
 ' Remove a key (does not affect siblings)
 PRINT t.Remove("card")          ' 1
@@ -591,7 +591,7 @@ func start() {
 
     // Binary representation
     Say("Binary: " + bs.ToString());
-    Say("Len: " + Fmt.Int(bs.Len));              // 8
+    Say("Len: " + Fmt.Int(bs.Length));              // 8
 
     // Bitwise operations
     var a = BitSet.New(8);
@@ -623,7 +623,7 @@ PRINT "Get(1): "; bs.Get(1)     ' Get(1): 0
 bs.Toggle(7)
 PRINT "After toggle Get(7): "; bs.Get(7)  ' After toggle Get(7): 0
 
-PRINT "Len: "; bs.Len           ' Len: 8
+PRINT "Len: "; bs.Length           ' Len: 8
 
 ' Binary representation
 PRINT bs.ToString()
@@ -715,7 +715,7 @@ bind Viper.Fmt as Fmt;
 func start() {
     // Create from string
     var data = Bytes.FromStr("Hello");
-    Say("Length: " + Fmt.Int(data.Len));        // 5
+    Say("Length: " + Fmt.Int(data.Length));        // 5
     Say("First byte: " + Fmt.Int(data.Get(0))); // 72 (ASCII 'H')
     Say("As string: " + data.ToStr());          // Hello
 
@@ -725,7 +725,7 @@ func start() {
 
     // Create from hex
     var hex = Bytes.FromHex("deadbeef");
-    Say("From hex len: " + Fmt.Int(hex.Len));   // 4
+    Say("From hex len: " + Fmt.Int(hex.Length));   // 4
 }
 ```
 
@@ -741,7 +741,7 @@ data.Set(2, &HBE)
 data.Set(3, &HEF)
 
 PRINT data.ToHex()  ' Output: "deadbeef"
-PRINT data.Len      ' Output: 4
+PRINT data.Length      ' Output: 4
 
 ' Create from hex string
 DIM copy AS Viper.Collections.Bytes
@@ -751,7 +751,7 @@ PRINT copy.Get(0)   ' Output: 202 (0xCA)
 ' Create from string
 DIM text AS Viper.Collections.Bytes
 text = Viper.Collections.Bytes.FromStr("Hello")
-PRINT text.Len      ' Output: 5
+PRINT text.Length      ' Output: 5
 PRINT text.Get(0)   ' Output: 72 (ASCII 'H')
 
 ' Base64 encode/decode (RFC 4648)
@@ -763,7 +763,7 @@ PRINT decoded.ToStr()  ' Output: "Hello"
 ' Slice and copy
 DIM slice AS Viper.Collections.Bytes
 slice = data.Slice(1, 3)  ' Bytes at indices 1 and 2
-PRINT slice.Len           ' Output: 2
+PRINT slice.Length           ' Output: 2
 
 ' Find a byte
 PRINT data.Find(&HBE)     ' Output: 2

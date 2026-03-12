@@ -1395,10 +1395,10 @@ module Test;
 bind Seq = Viper.Collections.Seq;
 
 // Viper.String.Split should now return Seq[String] (not untyped obj), allowing
-// Seq.get_Len / Seq.Get access and for-in iteration.
+// Seq.get_Length / Seq.Get access and for-in iteration.
 func start() {
     var parts = Viper.String.Split("a,b,c", ",");
-    var n = Seq.get_Len(parts);
+    var n = Seq.get_Length(parts);
     var i = 0;
     while i < n {
         var s = Seq.Get(parts, i);

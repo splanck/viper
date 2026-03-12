@@ -24,7 +24,7 @@ func start() {
     Say("Pos:");
     SayInt(MS.get_Pos(ms));
     Say("Len:");
-    SayInt(MS.get_Len(ms));
+    SayInt(MS.get_Length(ms));
     Say("Capacity:");
     SayInt(MS.get_Capacity(ms));
 
@@ -68,7 +68,7 @@ func start() {
     MS.WriteStr(ms, "Hello Viper");
     Say("Wrote string 'Hello Viper'");
     Say("Len after WriteStr:");
-    SayInt(MS.get_Len(ms));
+    SayInt(MS.get_Length(ms));
     MS.Seek(ms, 0);
     Say("ReadStr(11):");
     Say(MS.ReadStr(ms, 11));
@@ -95,7 +95,7 @@ func start() {
     Say("--- ToBytes ---");
     var all = MS.ToBytes(ms);
     Say("ToBytes length:");
-    SayInt(Bytes.get_Len(all));
+    SayInt(Bytes.get_Length(all));
 
     // --- NewCapacity ---
     Say("--- NewCapacity ---");
@@ -104,7 +104,7 @@ func start() {
     Say("Capacity:");
     SayInt(MS.get_Capacity(ms2));
     Say("Len:");
-    SayInt(MS.get_Len(ms2));
+    SayInt(MS.get_Length(ms2));
 
     // --- Skip ---
     Say("--- Skip ---");
@@ -122,7 +122,7 @@ func start() {
     MS.Clear(ms);
     Say("Clear done");
     Say("Len after clear:");
-    SayInt(MS.get_Len(ms));
+    SayInt(MS.get_Length(ms));
     Say("Pos after clear:");
     SayInt(MS.get_Pos(ms));
 

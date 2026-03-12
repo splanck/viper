@@ -30,7 +30,7 @@ TEST(RuntimeClassListBinding, EmitsListExterns)
 10 DIM l AS Viper.Collections.List
 20 l = NEW Viper.Collections.List()
 30 l.Push(l)
-40 PRINT l.Len
+40 PRINT l.Length
 50 l.RemoveAt(0)
 60 l.Clear()
 70 PRINT l.Get(0)
@@ -43,7 +43,7 @@ TEST(RuntimeClassListBinding, EmitsListExterns)
     ASSERT_TRUE(result.succeeded());
     EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.New"));
     EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.Push"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.get_Len"));
+    EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.get_Length"));
     EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.RemoveAt"));
     EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.Clear"));
     EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.Get"));

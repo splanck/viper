@@ -5,10 +5,10 @@ PRINT "stack empty: "; st.IsEmpty
 st.Push("a")
 st.Push("b")
 st.Push("c")
-PRINT "stack len: "; st.Len
+PRINT "stack len: "; st.Length
 st.Pop()
 st.Pop()
-PRINT "stack len after 2 pops: "; st.Len
+PRINT "stack len after 2 pops: "; st.Length
 st.Clear()
 PRINT "stack empty after clear: "; st.IsEmpty
 
@@ -18,10 +18,10 @@ PRINT "queue empty: "; q.IsEmpty
 q.Push("x")
 q.Push("y")
 q.Push("z")
-PRINT "queue len: "; q.Len
+PRINT "queue len: "; q.Length
 q.Pop()
 q.Pop()
-PRINT "queue len after 2 pops: "; q.Len
+PRINT "queue len after 2 pops: "; q.Length
 q.Clear()
 PRINT "queue empty after clear: "; q.IsEmpty
 
@@ -31,9 +31,9 @@ PRINT "ring empty: "; r.IsEmpty
 r.Push("1")
 r.Push("2")
 r.Push("3")
-PRINT "ring len: "; r.Len
+PRINT "ring len: "; r.Length
 r.Pop()
-PRINT "ring len after pop: "; r.Len
+PRINT "ring len after pop: "; r.Length
 r.Clear()
 PRINT "ring empty after clear: "; r.IsEmpty
 
@@ -43,10 +43,10 @@ PRINT "heap empty: "; h.IsEmpty
 h.Push(3, "three")
 h.Push(1, "one")
 h.Push(2, "two")
-PRINT "heap len: "; h.Len
+PRINT "heap len: "; h.Length
 h.Pop()
 h.Pop()
-PRINT "heap len after 2 pops: "; h.Len
+PRINT "heap len after 2 pops: "; h.Length
 h.Clear()
 PRINT "heap empty after clear: "; h.IsEmpty
 

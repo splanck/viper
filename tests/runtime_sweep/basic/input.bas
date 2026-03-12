@@ -318,10 +318,10 @@ wasReleased = Viper.Input.Keyboard.WasReleased(Viper.Input.Keyboard.KEY_A)
 Viper.Core.Diagnostics.Assert(IsBool(wasReleased), "key.wasreleased")
 DIM pressed AS Viper.Collections.Seq
 pressed = Viper.Input.Keyboard.GetPressed()
-Viper.Core.Diagnostics.Assert(pressed.Len >= 0, "key.getpressed")
+Viper.Core.Diagnostics.Assert(pressed.Length >= 0, "key.getpressed")
 DIM released AS Viper.Collections.Seq
 released = Viper.Input.Keyboard.GetReleased()
-Viper.Core.Diagnostics.Assert(released.Len >= 0, "key.getreleased")
+Viper.Core.Diagnostics.Assert(released.Length >= 0, "key.getreleased")
 Viper.Input.Keyboard.EnableTextInput()
 canvas.Poll()
 DIM text AS STRING

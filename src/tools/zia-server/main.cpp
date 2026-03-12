@@ -13,22 +13,31 @@
 //   - Default: auto-detect from first byte of input
 // Ownership/Lifetime:
 //   - Process lifetime; single-threaded event loop
-// Links: tools/zia-server/McpHandler.hpp, tools/zia-server/LspHandler.hpp
+// Links: tools/lsp-common/LspHandler.hpp, tools/lsp-common/McpHandler.hpp
 //
 //===----------------------------------------------------------------------===//
 
 #include "tools/zia-server/CompilerBridge.hpp"
-#include "tools/zia-server/Json.hpp"
-#include "tools/zia-server/JsonRpc.hpp"
-#include "tools/zia-server/LspHandler.hpp"
-#include "tools/zia-server/McpHandler.hpp"
-#include "tools/zia-server/Transport.hpp"
+#include "tools/lsp-common/Json.hpp"
+#include "tools/lsp-common/JsonRpc.hpp"
+#include "tools/lsp-common/LspHandler.hpp"
+#include "tools/lsp-common/McpHandler.hpp"
+#include "tools/lsp-common/Transport.hpp"
 
 #include <cstdio>
 #include <cstring>
 #include <memory>
 
 using namespace viper::server;
+
+static const ServerConfig kZiaConfig{
+    "zia-server", // serverName
+    "0.1.0",      // version
+    "zia",        // sourceName
+    "zia",        // toolPrefix
+    ".zia",       // defaultExt
+    "Zia",        // langLabel
+};
 
 static void printUsage()
 {
@@ -58,7 +67,7 @@ enum class Mode
 /// @brief Main event loop: read messages, dispatch, write responses.
 static int runMcpServer(Transport &transport, CompilerBridge &bridge)
 {
-    McpHandler handler(bridge);
+    McpHandler handler(bridge, kZiaConfig);
     RawMessage msg;
 
     while (transport.readMessage(msg))
@@ -91,7 +100,7 @@ static int runMcpServer(Transport &transport, CompilerBridge &bridge)
 /// @brief Main event loop for LSP protocol.
 static int runLspServer(Transport &transport, CompilerBridge &bridge)
 {
-    LspHandler handler(bridge, transport);
+    LspHandler handler(bridge, transport, kZiaConfig);
     RawMessage msg;
 
     std::fprintf(stderr, "[zia-server] LSP server started\n");

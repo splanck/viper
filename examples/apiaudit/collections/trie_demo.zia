@@ -15,7 +15,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var t = Trie.New();
-    SayInt(t.Len);       // 0
+    SayInt(t.Length);       // 0
     SayBool(t.IsEmpty);  // 1
 
     // --- Put / Len ---
@@ -25,7 +25,7 @@ func start() {
     t.Put("card", Box.I64(3));
     t.Put("care", Box.I64(4));
     t.Put("dog", Box.I64(5));
-    SayInt(t.Len);       // 5
+    SayInt(t.Length);       // 5
     SayBool(t.IsEmpty);  // 0
 
     // --- Get ---
@@ -58,28 +58,28 @@ func start() {
     // --- WithPrefix ---
     Say("--- WithPrefix ---");
     var carKeys = t.WithPrefix("car");
-    SayInt(carKeys.Len);                // 3 (car, card, care)
+    SayInt(carKeys.Length);                // 3 (car, card, care)
     var caKeys = t.WithPrefix("ca");
-    SayInt(caKeys.Len);                 // 4 (cat, car, card, care)
+    SayInt(caKeys.Length);                 // 4 (cat, car, card, care)
     var dKeys = t.WithPrefix("dog");
-    SayInt(dKeys.Len);                  // 1 (dog)
+    SayInt(dKeys.Length);                  // 1 (dog)
 
     // --- Keys ---
     Say("--- Keys ---");
     var keys = t.Keys();
-    SayInt(keys.Len);                   // 5
+    SayInt(keys.Length);                   // 5
 
     // --- Put (update existing) ---
     Say("--- Put (update) ---");
     t.Put("cat", Box.I64(100));
     SayInt(Box.ToI64(t.Get("cat")));    // 100
-    SayInt(t.Len);                      // 5 (no new entry)
+    SayInt(t.Length);                      // 5 (no new entry)
 
     // --- Remove ---
     Say("--- Remove ---");
     SayBool(t.Remove("card"));          // 1
     SayBool(t.Has("card"));             // 0
-    SayInt(t.Len);                      // 4
+    SayInt(t.Length);                      // 4
     SayBool(t.Remove("card"));          // 0 (already removed)
     SayBool(t.Has("car"));              // 1 (not affected)
     SayBool(t.Has("care"));             // 1 (not affected)
@@ -87,7 +87,7 @@ func start() {
     // --- Clear ---
     Say("--- Clear ---");
     t.Clear();
-    SayInt(t.Len);                      // 0
+    SayInt(t.Length);                      // 0
     SayBool(t.IsEmpty);                 // 1
 
     Say("=== Trie audit complete ===");

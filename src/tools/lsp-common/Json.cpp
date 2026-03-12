@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tools/zia-server/Json.cpp
+// File: tools/lsp-common/Json.cpp
 // Purpose: JSON value type implementation — parser and emitter.
 // Key invariants:
 //   - Parser is recursive descent, handles all JSON types per RFC 8259
@@ -13,11 +13,11 @@
 //   - Numbers: integers stored as int64_t, floats as double
 // Ownership/Lifetime:
 //   - All allocations via std::string/std::vector (RAII)
-// Links: tools/zia-server/Json.hpp
+// Links: tools/lsp-common/Json.hpp
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/zia-server/Json.hpp"
+#include "tools/lsp-common/Json.hpp"
 
 #include <cctype>
 #include <cmath>

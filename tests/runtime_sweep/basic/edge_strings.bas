@@ -43,8 +43,8 @@ PRINT "Substring('', 0, 5): '"; result; "'"
 PRINT "Split('', ','): testing..."
 DIM parts AS Viper.Collections.Seq
 parts = Viper.String.Split("", ",")
-PRINT "Split('', ',') length: "; parts.Len
-IF parts.Len = 1 THEN PRINT "NOTE: Split('', ',') returns 1 element (empty string) - is this correct?"
+PRINT "Split('', ',') length: "; parts.Length
+IF parts.Length = 1 THEN PRINT "NOTE: Split('', ',') returns 1 element (empty string) - is this correct?"
 
 ' Viper.String.Join with empty seq
 DIM emptySeq AS Viper.Collections.Seq

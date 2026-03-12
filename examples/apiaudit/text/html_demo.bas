@@ -42,9 +42,9 @@ PRINT Viper.Text.Html.StripTags("No tags here")
 PRINT "--- ExtractLinks ---"
 DIM links AS OBJECT
 links = Viper.Text.Html.ExtractLinks(html)
-PRINT "Link count: "; Viper.Collections.Seq.get_Len(links)
+PRINT "Link count: "; Viper.Collections.Seq.get_Length(links)
 DIM li AS INTEGER
-FOR li = 0 TO Viper.Collections.Seq.get_Len(links) - 1
+FOR li = 0 TO Viper.Collections.Seq.get_Length(links) - 1
     PRINT "Link: "; links.Get(li)
 NEXT li
 
@@ -52,16 +52,16 @@ NEXT li
 PRINT "--- ExtractText ---"
 DIM texts AS OBJECT
 texts = Viper.Text.Html.ExtractText(html, "p")
-PRINT "P tag count: "; Viper.Collections.Seq.get_Len(texts)
+PRINT "P tag count: "; Viper.Collections.Seq.get_Length(texts)
 DIM ti AS INTEGER
-FOR ti = 0 TO Viper.Collections.Seq.get_Len(texts) - 1
+FOR ti = 0 TO Viper.Collections.Seq.get_Length(texts) - 1
     PRINT "P text: "; texts.Get(ti)
 NEXT ti
 
 ' Extract h1 tags
 DIM h1s AS OBJECT
 h1s = Viper.Text.Html.ExtractText(html, "h1")
-PRINT "H1 count: "; Viper.Collections.Seq.get_Len(h1s)
+PRINT "H1 count: "; Viper.Collections.Seq.get_Length(h1s)
 PRINT "H1 text: "; h1s.Get(0)
 
 PRINT "=== Html Demo Complete ==="

@@ -52,9 +52,9 @@ PRINT "Has nonexistent: "; Viper.Text.Ini.HasSection(cfg, "nonexistent")
 PRINT "--- Sections ---"
 DIM sections AS OBJECT
 sections = Viper.Text.Ini.Sections(cfg)
-PRINT "Section count: "; Viper.Collections.Seq.get_Len(sections)
+PRINT "Section count: "; Viper.Collections.Seq.get_Length(sections)
 DIM si AS INTEGER
-FOR si = 0 TO Viper.Collections.Seq.get_Len(sections) - 1
+FOR si = 0 TO Viper.Collections.Seq.get_Length(sections) - 1
     PRINT "Section: "; sections.Get(si)
 NEXT si
 

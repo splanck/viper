@@ -11,7 +11,7 @@ func start() {
     Viper.Collections.Seq.Push(s, "hello");
     Viper.Terminal.Say("Pushed element");
 
-    var len = Viper.Collections.Seq.get_Len(s);
+    var len = Viper.Collections.Seq.get_Length(s);
     Viper.Terminal.Say("Len: " + Viper.String.FromInt(len));
 
     if (len == 1) {

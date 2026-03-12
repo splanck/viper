@@ -74,7 +74,7 @@ entity ColorManager {
 
     // Get palette color by index
     expose func getPaletteColor(index: Integer) -> Integer {
-        if index >= 0 and index < palette.Len {
+        if index >= 0 and index < palette.Length {
             return palette.Get(index);
         }
         return 0;
@@ -82,7 +82,7 @@ entity ColorManager {
 
     // Get recent color by index (0 = most recent)
     expose func getRecentColor(index: Integer) -> Integer {
-        if index >= 0 and index < recent.Len {
+        if index >= 0 and index < recent.Length {
             return recent.Get(index);
         }
         return 0;
@@ -90,14 +90,14 @@ entity ColorManager {
 
     // Add color to recent list (prepend, cap at 8)
     expose func addRecent(color: Integer) {
-        if recent.Len > 0 and recent.Get(0) == color {
+        if recent.Length > 0 and recent.Get(0) == color {
             return;
         }
         recent.Insert(0, color);
-        if recent.Len > 8 {
+        if recent.Length > 8 {
             recent.RemoveAt(8);
         }
-        recentCount = recent.Len;
+        recentCount = recent.Length;
     }
 
     // Get red component (0-255) from foreground (0x00RRGGBB format)

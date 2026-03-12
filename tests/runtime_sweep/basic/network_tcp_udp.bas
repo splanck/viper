@@ -108,12 +108,12 @@ Viper.Core.Diagnostics.Assert(avail >= 4, "tcp.available")
 
 DIM recvBytes AS Viper.Collections.Bytes
 recvBytes = serverConn2.Recv(4)
-Viper.Core.Diagnostics.AssertEq(recvBytes.Len, 4, "tcp.recv")
+Viper.Core.Diagnostics.AssertEq(recvBytes.Length, 4, "tcp.recv")
 
 sent = client2.Send(payload)
 DIM recvExact AS Viper.Collections.Bytes
 recvExact = serverConn2.RecvExact(4)
-Viper.Core.Diagnostics.AssertEq(recvExact.Len, 4, "tcp.recvexact")
+Viper.Core.Diagnostics.AssertEq(recvExact.Length, 4, "tcp.recvexact")
 
 client2.SendStr("line\n")
 DIM line AS STRING
@@ -128,7 +128,7 @@ Viper.Core.Diagnostics.AssertEqStr(word, "word", "tcp.recvstr")
 serverConn2.SendAll(payload)
 DIM back AS Viper.Collections.Bytes
 back = client2.RecvExact(4)
-Viper.Core.Diagnostics.AssertEq(back.Len, 4, "tcp.sendall")
+Viper.Core.Diagnostics.AssertEq(back.Length, 4, "tcp.sendall")
 
 client2.Close()
 serverConn2.Close()

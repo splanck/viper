@@ -19,11 +19,11 @@
 
 #include "tests/TestHarness.hpp"
 #include "tools/zia-server/CompilerBridge.hpp"
-#include "tools/zia-server/DocumentStore.hpp"
-#include "tools/zia-server/Json.hpp"
-#include "tools/zia-server/JsonRpc.hpp"
-#include "tools/zia-server/LspHandler.hpp"
-#include "tools/zia-server/Transport.hpp"
+#include "tools/lsp-common/DocumentStore.hpp"
+#include "tools/lsp-common/Json.hpp"
+#include "tools/lsp-common/JsonRpc.hpp"
+#include "tools/lsp-common/LspHandler.hpp"
+#include "tools/lsp-common/Transport.hpp"
 
 #include <cstdio>
 #include <string>
@@ -80,7 +80,7 @@ TEST(LspHandler, Initialize)
 {
     CompilerBridge bridge;
     MockTransport transport;
-    LspHandler handler(bridge, transport);
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
     auto resp = parseResponse(handler.handleRequest(makeReq("initialize")));
     EXPECT_EQ(resp["jsonrpc"].asString(), "2.0");
@@ -99,7 +99,7 @@ TEST(LspHandler, InitializedNotification)
 {
     CompilerBridge bridge;
     MockTransport transport;
-    LspHandler handler(bridge, transport);
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
     auto resp = handler.handleRequest(makeNotif("initialized"));
     EXPECT_TRUE(resp.empty());
@@ -109,7 +109,7 @@ TEST(LspHandler, Shutdown)
 {
     CompilerBridge bridge;
     MockTransport transport;
-    LspHandler handler(bridge, transport);
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
     auto resp = parseResponse(handler.handleRequest(makeReq("shutdown")));
     EXPECT_EQ(resp["id"].asInt(), 1);
@@ -121,7 +121,7 @@ TEST(LspHandler, UnknownMethod)
 {
     CompilerBridge bridge;
     MockTransport transport;
-    LspHandler handler(bridge, transport);
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
     auto resp = parseResponse(handler.handleRequest(makeReq("nonexistent/method")));
     EXPECT_TRUE(resp.has("error"));
@@ -133,7 +133,7 @@ TEST(LspHandler, DidOpenPublishesDiagnostics)
 {
     CompilerBridge bridge;
     MockTransport transport;
-    LspHandler handler(bridge, transport);
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
     auto params = JsonValue::object({
         {"textDocument",
@@ -157,7 +157,7 @@ TEST(LspHandler, DidChangeUpdatesDiagnostics)
 {
     CompilerBridge bridge;
     MockTransport transport;
-    LspHandler handler(bridge, transport);
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
     // First open the document
     auto openParams = JsonValue::object({
@@ -198,7 +198,7 @@ TEST(LspHandler, DidCloseClearsDiagnostics)
 {
     CompilerBridge bridge;
     MockTransport transport;
-    LspHandler handler(bridge, transport);
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
     // Open
     auto openParams = JsonValue::object({
@@ -231,7 +231,7 @@ TEST(LspHandler, CompletionAfterDot)
 {
     CompilerBridge bridge;
     MockTransport transport;
-    LspHandler handler(bridge, transport);
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
     // Open document with "Viper." to trigger completions
     std::string source = "module Test;\nfunc start() {\n    Viper.\n}\n";
@@ -264,7 +264,7 @@ TEST(LspHandler, CompletionOnClosedDoc)
 {
     CompilerBridge bridge;
     MockTransport transport;
-    LspHandler handler(bridge, transport);
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
     // Request completions without opening — should return empty
     auto compParams = JsonValue::object({
@@ -282,7 +282,7 @@ TEST(LspHandler, HoverOnClosedDoc)
 {
     CompilerBridge bridge;
     MockTransport transport;
-    LspHandler handler(bridge, transport);
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
     auto hoverParams = JsonValue::object({
         {"textDocument", JsonValue::object({{"uri", JsonValue("file:///nonexistent.zia")}})},
@@ -298,7 +298,7 @@ TEST(LspHandler, HoverReturnsMarkdownContent)
 {
     CompilerBridge bridge;
     MockTransport transport;
-    LspHandler handler(bridge, transport);
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
     std::string source = "module Test;\nfunc start() {\n    var x = 42;\n}\n";
     auto openParams = JsonValue::object({
@@ -330,7 +330,7 @@ TEST(LspHandler, HoverOnLocalVariableViaLsp)
 {
     CompilerBridge bridge;
     MockTransport transport;
-    LspHandler handler(bridge, transport);
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
     std::string source = "module Test;\nfunc start() {\n    var x = 42;\n}\n";
     auto openParams = JsonValue::object({
@@ -362,7 +362,7 @@ TEST(LspHandler, HoverOnWhitespaceReturnsNull)
 {
     CompilerBridge bridge;
     MockTransport transport;
-    LspHandler handler(bridge, transport);
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
     std::string source = "module Test;\nfunc start() {\n    var x = 42;\n}\n";
     auto openParams = JsonValue::object({
@@ -393,7 +393,7 @@ TEST(LspHandler, DocumentSymbolsListsFunctions)
 {
     CompilerBridge bridge;
     MockTransport transport;
-    LspHandler handler(bridge, transport);
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
     // Open document
     auto openParams = JsonValue::object({

@@ -15,7 +15,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var m = Map.New();
-    SayInt(m.Len);       // 0
+    SayInt(m.Length);       // 0
     SayBool(m.IsEmpty);  // 1
 
     // --- Set / Len ---
@@ -23,7 +23,7 @@ func start() {
     m.Set("name", Box.Str("Alice"));
     m.Set("age", Box.I64(30));
     m.Set("city", Box.Str("Boston"));
-    SayInt(m.Len);       // 3
+    SayInt(m.Length);       // 3
     SayBool(m.IsEmpty);  // 0
 
     // --- Get ---
@@ -49,35 +49,35 @@ func start() {
     Say(Box.ToStr(m.Get("name")));                      // Alice (unchanged)
     SayBool(m.SetIfMissing("email", Box.Str("a@b.c"))); // 1 (inserted)
     Say(Box.ToStr(m.Get("email")));                     // a@b.c
-    SayInt(m.Len);                                      // 4
+    SayInt(m.Length);                                      // 4
 
     // --- Set (update existing) ---
     Say("--- Set (update) ---");
     m.Set("age", Box.I64(31));
     SayInt(Box.ToI64(m.Get("age")));  // 31
-    SayInt(m.Len);                    // 4 (no new entry)
+    SayInt(m.Length);                    // 4 (no new entry)
 
     // --- Remove ---
     Say("--- Remove ---");
     SayBool(m.Remove("city"));   // 1
     SayBool(m.Has("city"));      // 0
-    SayInt(m.Len);               // 3
+    SayInt(m.Length);               // 3
     SayBool(m.Remove("city"));   // 0 (already gone)
 
     // --- Keys ---
     Say("--- Keys ---");
     var keys = m.Keys();
-    SayInt(keys.Len);            // 3
+    SayInt(keys.Length);            // 3
 
     // --- Values ---
     Say("--- Values ---");
     var vals = m.Values();
-    SayInt(vals.Len);            // 3
+    SayInt(vals.Length);            // 3
 
     // --- Clear ---
     Say("--- Clear ---");
     m.Clear();
-    SayInt(m.Len);               // 0
+    SayInt(m.Length);               // 0
     SayBool(m.IsEmpty);          // 1
 
     Say("=== Map audit complete ===");

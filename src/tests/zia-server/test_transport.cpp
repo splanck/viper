@@ -18,9 +18,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "tests/TestHarness.hpp"
-#include "tools/zia-server/Json.hpp"
-#include "tools/zia-server/JsonRpc.hpp"
-#include "tools/zia-server/Transport.hpp"
+#include "tools/lsp-common/Json.hpp"
+#include "tools/lsp-common/JsonRpc.hpp"
+#include "tools/lsp-common/Transport.hpp"
 
 #include <cstdio>
 #include <cstring>

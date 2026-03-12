@@ -144,7 +144,7 @@ END IF
 
 ' Get all placeholder keys (as a Bag - unique values)
 DIM keys AS OBJECT = Viper.Text.Template.Keys(template)
-PRINT keys.Len()  ' Output: 3
+PRINT keys.Length()  ' Output: 3
 
 ' Iterate over keys (order not guaranteed)
 ' Contains: "name", "count", "sender"
@@ -337,7 +337,7 @@ PRINT wrapped
 
 ' Get wrapped lines as a Seq
 DIM lines AS OBJECT = Viper.Text.TextWrapper.WrapLines(text, 20)
-PRINT lines.Len  ' Output: 4
+PRINT lines.Length  ' Output: 4
 
 ' Text alignment
 PRINT "["; Viper.Text.TextWrapper.Left("hello", 20); "]"    ' Output: [hello               ]
@@ -755,14 +755,14 @@ PRINT plain  ' Output: "Price: <$10>"
 ' Extract all links from HTML
 DIM page AS STRING = "<a href=""https://example.com"">Link 1</a><a href=""/about"">About</a>"
 DIM links AS OBJECT = Viper.Text.Html.ExtractLinks(page)
-PRINT links.Len     ' Output: 2
+PRINT links.Length     ' Output: 2
 PRINT links.Get(0)  ' Output: "https://example.com"
 PRINT links.Get(1)  ' Output: "/about"
 
 ' Extract text from specific tags
 DIM doc AS STRING = "<h1>Title</h1><p>Body</p><h1>Another</h1>"
 DIM headings AS OBJECT = Viper.Text.Html.ExtractText(doc, "h1")
-PRINT headings.Len     ' Output: 2
+PRINT headings.Length     ' Output: 2
 PRINT headings.Get(0)  ' Output: "Title"
 
 ' Parse HTML into a navigable tree
@@ -844,13 +844,13 @@ PRINT plain  ' Output: Hello This is bold and italic.
 ' Extract all links
 DIM doc AS STRING = "Visit [Google](https://google.com) or [GitHub](https://github.com)"
 DIM links AS OBJECT = Viper.Text.Markdown.ExtractLinks(doc)
-PRINT links.Len     ' Output: 2
+PRINT links.Length     ' Output: 2
 PRINT links.Get(0)  ' Output: "https://google.com"
 
 ' Extract headings for table of contents
 DIM article AS STRING = "# Introduction" + CHR$(10) + "## Background" + CHR$(10) + "## Methods"
 DIM headings AS OBJECT = Viper.Text.Markdown.ExtractHeadings(article)
-PRINT headings.Len     ' Output: 3
+PRINT headings.Length     ' Output: 3
 PRINT headings.Get(0)  ' Output: "Introduction"
 ```
 

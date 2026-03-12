@@ -16,13 +16,13 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var s = Seq.New();
-    SayInt(s.Len);       // 0
+    SayInt(s.Length);       // 0
     SayBool(s.IsEmpty);  // 1
 
     // --- WithCapacity ---
     Say("--- WithCapacity ---");
     var sc = Seq.WithCapacity(10);
-    SayInt(sc.Len);      // 0
+    SayInt(sc.Length);      // 0
     SayInt(sc.Cap);      // 10
 
     // --- Push / Len / Cap ---
@@ -30,7 +30,7 @@ func start() {
     s.Push(Box.I64(10));
     s.Push(Box.I64(20));
     s.Push(Box.I64(30));
-    SayInt(s.Len);       // 3
+    SayInt(s.Length);       // 3
     SayBool(s.IsEmpty);  // 0
 
     // --- Get ---
@@ -60,7 +60,7 @@ func start() {
     // --- Insert ---
     Say("--- Insert ---");
     s.Insert(1, Box.I64(15));
-    SayInt(s.Len);                  // 4
+    SayInt(s.Length);                  // 4
     SayInt(Box.ToI64(s.Get(1)));    // 15
     SayInt(Box.ToI64(s.Get(2)));    // 25
 
@@ -68,18 +68,18 @@ func start() {
     Say("--- Remove ---");
     var removed = s.Remove(1);
     SayInt(Box.ToI64(removed));     // 15
-    SayInt(s.Len);                  // 3
+    SayInt(s.Length);                  // 3
 
     // --- Pop ---
     Say("--- Pop ---");
     var popped = s.Pop();
     SayInt(Box.ToI64(popped));      // 30
-    SayInt(s.Len);                  // 2
+    SayInt(s.Length);                  // 2
 
     // --- Clone ---
     Say("--- Clone ---");
     var c = s.Clone();
-    SayInt(c.Len);                  // 2
+    SayInt(c.Length);                  // 2
     SayInt(Box.ToI64(c.Get(0)));    // 10
     SayInt(Box.ToI64(c.Get(1)));    // 25
 
@@ -88,7 +88,7 @@ func start() {
     s.Push(Box.I64(30));
     s.Push(Box.I64(40));
     var sl = s.Slice(1, 3);
-    SayInt(sl.Len);                 // 2
+    SayInt(sl.Length);                 // 2
     SayInt(Box.ToI64(sl.Get(0)));   // 25
     SayInt(Box.ToI64(sl.Get(1)));   // 30
 
@@ -113,19 +113,19 @@ func start() {
     // --- Shuffle ---
     Say("--- Shuffle ---");
     s.Shuffle();
-    SayInt(s.Len);                  // 4 (length preserved)
+    SayInt(s.Length);                  // 4 (length preserved)
 
     // --- Take ---
     Say("--- Take ---");
     s.Sort();
     var t = s.Take(2);
-    SayInt(t.Len);                  // 2
+    SayInt(t.Length);                  // 2
     SayInt(Box.ToI64(t.Get(0)));    // 10
 
     // --- Drop ---
     Say("--- Drop ---");
     var d = s.Drop(2);
-    SayInt(d.Len);                  // 2
+    SayInt(d.Length);                  // 2
     SayInt(Box.ToI64(d.Get(0)));    // 30
 
     // --- PushAll ---
@@ -137,14 +137,14 @@ func start() {
     b.Push(Box.I64(3));
     b.Push(Box.I64(4));
     a.PushAll(b);
-    SayInt(a.Len);                  // 4
+    SayInt(a.Length);                  // 4
     SayInt(Box.ToI64(a.Get(2)));    // 3
     SayInt(Box.ToI64(a.Get(3)));    // 4
 
     // --- Clear ---
     Say("--- Clear ---");
     a.Clear();
-    SayInt(a.Len);                  // 0
+    SayInt(a.Length);                  // 0
     SayBool(a.IsEmpty);             // 1
 
     Say("=== Seq audit complete ===");

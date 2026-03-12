@@ -5,28 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tools/zia-server/LspHandler.cpp
+// File: tools/lsp-common/LspHandler.cpp
 // Purpose: Implementation of the LSP protocol handler.
 // Key invariants:
 //   - textDocumentSync is Full (1) — always receives complete document text
 //   - Diagnostics published on didOpen and didChange
 //   - shutdown sets flag; exit returns appropriate code
+//   - Language-specific strings come from ServerConfig
 // Ownership/Lifetime:
 //   - All returned JSON is fully owned
-// Links: tools/zia-server/LspHandler.hpp, tools/zia-server/CompilerBridge.hpp
+// Links: tools/lsp-common/LspHandler.hpp, tools/lsp-common/ICompilerBridge.hpp
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/zia-server/LspHandler.hpp"
+#include "tools/lsp-common/LspHandler.hpp"
 
-#include "tools/zia-server/CompilerBridge.hpp"
-#include "tools/zia-server/Transport.hpp"
+#include "tools/lsp-common/Transport.hpp"
 
 namespace viper::server
 {
 
-LspHandler::LspHandler(CompilerBridge &bridge, Transport &transport)
-    : bridge_(bridge), transport_(transport)
+LspHandler::LspHandler(ICompilerBridge &bridge, Transport &transport, const ServerConfig &config)
+    : bridge_(bridge), transport_(transport), config_(config)
 {
 }
 
@@ -96,7 +96,8 @@ std::string LspHandler::handleInitialize(const JsonRpcRequest &req)
     auto result = JsonValue::object({
         {"capabilities", std::move(capabilities)},
         {"serverInfo",
-         JsonValue::object({{"name", JsonValue("zia-server")}, {"version", JsonValue("0.1.0")}})},
+         JsonValue::object({{"name", JsonValue(config_.serverName)},
+                            {"version", JsonValue(config_.version)}})},
     });
 
     return buildResponse(req.id, result);
@@ -156,7 +157,7 @@ std::string LspHandler::handleCompletion(const JsonRpcRequest &req)
 {
     std::string uri = req.params["textDocument"]["uri"].asString();
     int line = static_cast<int>(req.params["position"]["line"].asInt()) + 1;     // LSP is 0-based
-    int col = static_cast<int>(req.params["position"]["character"].asInt()) + 1; // Zia is 1-based
+    int col = static_cast<int>(req.params["position"]["character"].asInt()) + 1; // Bridge is 1-based
 
     const std::string *content = store_.getContent(uri);
     if (!content)
@@ -226,7 +227,6 @@ std::string LspHandler::handleDocumentSymbol(const JsonRpcRequest &req)
     arr.reserve(syms.size());
     for (const auto &s : syms)
     {
-        // LSP SymbolInformation (simpler than DocumentSymbol)
         arr.push_back(JsonValue::object({
             {"name", JsonValue(s.name)},
             {"kind", JsonValue(symbolKindToLsp(s.kind))},
@@ -279,7 +279,6 @@ void LspHandler::publishDiagnostics(const std::string &uri)
                 break;
         }
 
-        // LSP positions are 0-based
         int line = d.line > 0 ? static_cast<int>(d.line) - 1 : 0;
         int col = d.column > 0 ? static_cast<int>(d.column) - 1 : 0;
 
@@ -292,7 +291,7 @@ void LspHandler::publishDiagnostics(const std::string &uri)
         auto diag = JsonValue::object({
             {"range", std::move(range)},
             {"severity", JsonValue(lspSeverity)},
-            {"source", JsonValue("zia")},
+            {"source", JsonValue(config_.sourceName)},
             {"message", JsonValue(d.message)},
         });
 
@@ -317,12 +316,6 @@ void LspHandler::publishDiagnostics(const std::string &uri)
 
 int LspHandler::completionKindToLsp(int kind)
 {
-    // Zia CompletionKind → LSP CompletionItemKind
-    // Zia: Keyword=0, Snippet=1, Variable=2, Parameter=3, Field=4,
-    //      Method=5, Function=6, Entity=7, Value=8, Interface=9,
-    //      Module=10, RuntimeClass=11, Property=12
-    // LSP: Text=1, Method=2, Function=3, Field=5, Variable=6, Class=7,
-    //      Interface=8, Module=9, Property=10, Value=12, Keyword=14, Snippet=15
     switch (kind)
     {
         case 0:
@@ -358,9 +351,6 @@ int LspHandler::completionKindToLsp(int kind)
 
 int LspHandler::symbolKindToLsp(const std::string &kind)
 {
-    // LSP SymbolKind: File=1, Module=2, Namespace=3, Package=4, Class=5,
-    //                 Method=6, Property=7, Field=8, Constructor=9,
-    //                 Function=12, Variable=13, String=15
     if (kind == "function")
         return 12;
     if (kind == "method")
@@ -372,10 +362,10 @@ int LspHandler::symbolKindToLsp(const std::string &kind)
     if (kind == "field")
         return 8;
     if (kind == "type")
-        return 5; // Class
+        return 5;
     if (kind == "module")
         return 2;
-    return 13; // Default: Variable
+    return 13;
 }
 
 } // namespace viper::server

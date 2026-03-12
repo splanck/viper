@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tools/zia-server/Json.hpp
+// File: tools/lsp-common/Json.hpp
 // Purpose: Minimal JSON value type, parser, and emitter for protocol use.
 // Key invariants:
 //   - Objects preserve insertion order (vector of pairs)
@@ -14,7 +14,7 @@
 // Ownership/Lifetime:
 //   - JsonValue is a self-contained value type (copyable, movable)
 //   - No external memory references
-// Links: tools/zia-server/JsonRpc.hpp, tools/zia-server/Transport.hpp
+// Links: tools/lsp-common/JsonRpc.hpp, tools/lsp-common/Transport.hpp
 //
 //===----------------------------------------------------------------------===//
 

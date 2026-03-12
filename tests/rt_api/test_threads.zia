@@ -9,9 +9,9 @@ func start() {
     cq.Enqueue("a");
     cq.Enqueue("b");
     cq.Enqueue("c");
-    SayInt(cq.Len);
+    SayInt(cq.Length);
     cq.Dequeue();
-    SayInt(cq.Len);
+    SayInt(cq.Length);
     cq.Clear();
     SayBool(cq.IsEmpty);
 
@@ -19,11 +19,11 @@ func start() {
     SayBool(cm.IsEmpty);
     cm.Set("x", "1");
     cm.Set("y", "2");
-    SayInt(cm.Len);
+    SayInt(cm.Length);
     SayBool(cm.Has("x"));
     SayBool(cm.Has("z"));
     cm.Remove("x");
-    SayInt(cm.Len);
+    SayInt(cm.Length);
     cm.Clear();
     SayBool(cm.IsEmpty);
 

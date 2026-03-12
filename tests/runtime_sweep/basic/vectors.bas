@@ -8,7 +8,7 @@
 ' COVER: Viper.Math.Vec2.Dist
 ' COVER: Viper.Math.Vec2.Div
 ' COVER: Viper.Math.Vec2.Dot
-' COVER: Viper.Math.Vec2.Len
+' COVER: Viper.Math.Vec2.Length
 ' COVER: Viper.Math.Vec2.LenSq
 ' COVER: Viper.Math.Vec2.Lerp
 ' COVER: Viper.Math.Vec2.Mul
@@ -25,7 +25,7 @@
 ' COVER: Viper.Math.Vec3.Dist
 ' COVER: Viper.Math.Vec3.Div
 ' COVER: Viper.Math.Vec3.Dot
-' COVER: Viper.Math.Vec3.Len
+' COVER: Viper.Math.Vec3.Length
 ' COVER: Viper.Math.Vec3.LenSq
 ' COVER: Viper.Math.Vec3.Lerp
 ' COVER: Viper.Math.Vec3.Mul
@@ -51,7 +51,7 @@ DIM v4 AS Viper.Vec2
 v1 = NEW Viper.Vec2(3.0, 4.0)
 v2 = NEW Viper.Vec2(1.0, 2.0)
 
-Viper.Core.Diagnostics.AssertEqNum(v1.Len(), 5.0, "vec2.len")
+Viper.Core.Diagnostics.AssertEqNum(v1.Length(), 5.0, "vec2.len")
 Viper.Core.Diagnostics.AssertEqNum(v1.LenSq(), 25.0, "vec2.lensq")
 
 v3 = v1.Add(v2)
@@ -79,7 +79,7 @@ Viper.Core.Diagnostics.AssertEqNum(v3.X, 2.0, "vec2.lerp.x")
 Viper.Core.Diagnostics.AssertEqNum(v3.Y, 3.0, "vec2.lerp.y")
 
 v4 = v1.Norm()
-AssertApprox(v4.Len(), 1.0, 0.0001, "vec2.norm.len")
+AssertApprox(v4.Length(), 1.0, 0.0001, "vec2.norm.len")
 
 DIM angle AS DOUBLE
 angle = v2.Angle()
@@ -106,7 +106,7 @@ a = NEW Viper.Vec3(1.0, 2.0, 3.0)
 b = NEW Viper.Vec3(2.0, 0.0, 1.0)
 
 Viper.Core.Diagnostics.AssertEqNum(a.LenSq(), 14.0, "vec3.lensq")
-AssertApprox(a.Len(), Viper.Math.Sqrt(14.0), 0.0001, "vec3.len")
+AssertApprox(a.Length(), Viper.Math.Sqrt(14.0), 0.0001, "vec3.len")
 
 c = a.Add(b)
 Viper.Core.Diagnostics.AssertEqNum(c.X, 3.0, "vec3.add.x")
@@ -143,7 +143,7 @@ Viper.Core.Diagnostics.AssertEqNum(c.Y, 1.0, "vec3.lerp.y")
 Viper.Core.Diagnostics.AssertEqNum(c.Z, 2.0, "vec3.lerp.z")
 
 c = a.Norm()
-AssertApprox(c.Len(), 1.0, 0.0001, "vec3.norm")
+AssertApprox(c.Length(), 1.0, 0.0001, "vec3.norm")
 
 c = a.Neg()
 Viper.Core.Diagnostics.AssertEqNum(c.X, -1.0, "vec3.neg.x")

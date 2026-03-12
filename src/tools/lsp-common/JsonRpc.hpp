@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tools/zia-server/JsonRpc.hpp
+// File: tools/lsp-common/JsonRpc.hpp
 // Purpose: JSON-RPC 2.0 request/response types and helpers.
 // Key invariants:
 //   - Conforms to JSON-RPC 2.0 specification
@@ -13,13 +13,13 @@
 //   - Standard error codes from -32700 to -32603
 // Ownership/Lifetime:
 //   - All types are value types (owned data)
-// Links: tools/zia-server/Json.hpp
+// Links: tools/lsp-common/Json.hpp
 //
 //===----------------------------------------------------------------------===//
 
 #pragma once
 
-#include "tools/zia-server/Json.hpp"
+#include "tools/lsp-common/Json.hpp"
 
 #include <string>
 

@@ -14,7 +14,7 @@ PRINT r1 < 101
 
 DIM rb AS OBJECT
 LET rb = Viper.Crypto.Rand.Bytes(16)
-PRINT rb.Len
+PRINT rb.Length
 
 DIM pw AS STRING
 LET pw = Viper.Crypto.Password.Hash("secret")

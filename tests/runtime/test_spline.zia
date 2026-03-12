@@ -92,7 +92,7 @@ func start() {
 
     // === Test 5: Sample ===
     var samples = Viper.Math.Spline.Sample(linear, 5);
-    var sLen = Viper.Collections.Seq.get_Len(samples);
+    var sLen = Viper.Collections.Seq.get_Length(samples);
     if (sLen != 5) { Say("FAIL: Sample(5) should return 5 points"); return; }
 
     // === Test 6: Catmull-Rom ===

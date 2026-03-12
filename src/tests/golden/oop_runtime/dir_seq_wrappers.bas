@@ -24,7 +24,7 @@ list = Viper.IO.Dir.ListSeq(base)
 DIM list_join AS STRING
 list_join = "|" + Viper.String.Join("|", list) + "|"
 
-PRINT list.Len
+PRINT list.Length
 PRINT list_join.Has("|subdir|")
 PRINT list_join.Has("|file1.txt|")
 PRINT list_join.Has("|file2.txt|")
@@ -35,7 +35,7 @@ files = Viper.IO.Dir.FilesSeq(base)
 DIM files_join AS STRING
 files_join = "|" + Viper.String.Join("|", files) + "|"
 
-PRINT files.Len
+PRINT files.Length
 PRINT files_join.Has("|file1.txt|")
 PRINT files_join.Has("|file2.txt|")
 
@@ -45,7 +45,7 @@ dirs = Viper.IO.Dir.DirsSeq(base)
 DIM dirs_join AS STRING
 dirs_join = "|" + Viper.String.Join("|", dirs) + "|"
 
-PRINT dirs.Len
+PRINT dirs.Length
 PRINT dirs_join.Has("|subdir|")
 
 Viper.IO.Dir.RemoveAll(base)

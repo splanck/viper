@@ -68,13 +68,13 @@ FillBytes(saltStr, saltBytes)
 
 DIM pbBytes AS Viper.Collections.Bytes
 pbBytes = Viper.Crypto.KeyDerive.Pbkdf2SHA256("password", saltBytes, 1000, 32)
-Viper.Core.Diagnostics.AssertEq(pbBytes.Len, 32, "pbkdf2.len")
+Viper.Core.Diagnostics.AssertEq(pbBytes.Length, 32, "pbkdf2.len")
 Viper.Core.Diagnostics.AssertEqStr(pbBytes.ToHex(), "632c2812e46d4604102ba7618e9d6d7d2f8128f6266b4a03264d2a0460b7dcb3", "pbkdf2.hex")
 Viper.Core.Diagnostics.AssertEqStr(Viper.Crypto.KeyDerive.Pbkdf2SHA256Str("password", saltBytes, 1000, 32), "632c2812e46d4604102ba7618e9d6d7d2f8128f6266b4a03264d2a0460b7dcb3", "pbkdf2.str")
 
 DIM randBytes AS Viper.Collections.Bytes
 randBytes = Viper.Crypto.Rand.Bytes(16)
-Viper.Core.Diagnostics.AssertEq(randBytes.Len, 16, "rand.bytes")
+Viper.Core.Diagnostics.AssertEq(randBytes.Length, 16, "rand.bytes")
 
 DIM r AS INTEGER
 r = Viper.Crypto.Rand.Int(1, 6)

@@ -210,7 +210,7 @@ Stem: Ext:
 ### Bug #8: `Csv.ParseLine()` returns empty sequence (opaque Ptr)
 
 **Severity:** Medium — `.Count` on opaque `Ptr` resolves to `constInt(0)`.
-**Note:** Doc example avoids this by using `fields.Len` property directly.
+**Note:** Doc example avoids this by using `fields.Length` property directly.
 
 ### Bug #9: `Csv.FormatLine()` box/raw string mismatch
 
@@ -296,4 +296,4 @@ Bugs #13-17 resolved. All 56 demos now compile and link on ARM64.
 - `Fmt.Num(30.0)` outputs `"30"` not `"30.0"` — consistent between VM and native, likely by design
 - `Toml.IsValid("= bad")` returns `true` — possible validation bug, VM and native agree
 - Static call workaround (`Bytes.ToHex(x)` instead of `x.ToHex()`) used in doc examples to avoid Bug #5
-- Doc examples use `new Seq()` / `seq.Len` syntax (property access) which works correctly, unlike the older `Seq.New()` / `seq.Len()` method-call syntax which triggered Bug #4
+- Doc examples use `new Seq()` / `seq.Length` syntax (property access) which works correctly, unlike the older `Seq.New()` / `seq.Length()` method-call syntax which triggered Bug #4

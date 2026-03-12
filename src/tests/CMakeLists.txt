@@ -73,6 +73,27 @@ viper_add_test(test_zia_server_mcp ${_ZIA_SERVER_TEST_DIR}/test_mcp_handler.cpp
 viper_add_test(test_zia_server_lsp ${_ZIA_SERVER_TEST_DIR}/test_lsp_handler.cpp
         LIBS zia_server_lib)
 
+# ── BASIC Language Server tests ───────────────────────────────────────────
+set(_VBASIC_SERVER_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vbasic-server)
+
+viper_add_test(test_vbasic_server_bridge ${_VBASIC_SERVER_TEST_DIR}/test_basic_compiler_bridge.cpp
+        LIBS vbasic_server_lib)
+
+viper_add_test(test_vbasic_server_mcp ${_VBASIC_SERVER_TEST_DIR}/test_basic_server_mcp.cpp
+        LIBS vbasic_server_lib)
+
+viper_add_test(test_vbasic_server_lsp ${_VBASIC_SERVER_TEST_DIR}/test_basic_server_lsp.cpp
+        LIBS vbasic_server_lib)
+
+# ── BASIC Analysis & Completion tests ─────────────────────────────────────
+viper_add_test(test_basic_analysis
+        ${CMAKE_CURRENT_SOURCE_DIR}/basic/test_basic_analysis.cpp
+        LIBS fe_basic viper::il_full)
+
+viper_add_test(test_basic_completion
+        ${CMAKE_CURRENT_SOURCE_DIR}/basic/test_basic_completion.cpp
+        LIBS fe_basic viper::il_full)
+
 # ── Fuzz harnesses (opt-in, not registered as ctest targets) ────────────────
 if (VIPER_ENABLE_FUZZ)
     add_subdirectory(fuzz)
@@ -505,7 +526,7 @@ foreach (TEST_NAME IN LISTS ALL_TESTS)
         set_tests_properties(${TEST_NAME} PROPERTIES LABELS tui)
     elseif (TEST_NAME MATCHES "^perf_")
         set_tests_properties(${TEST_NAME} PROPERTIES LABELS perf)
-    elseif (TEST_NAME MATCHES "^test_cli_" OR TEST_NAME MATCHES "^NoAssertFalseGuard$" OR TEST_NAME MATCHES "^test_tools_")
+    elseif (TEST_NAME MATCHES "^test_cli_" OR TEST_NAME MATCHES "^NoAssertFalseGuard$" OR TEST_NAME MATCHES "^test_tools_" OR TEST_NAME MATCHES "^test_vbasic_" OR TEST_NAME MATCHES "^test_zia_server_")
         set_tests_properties(${TEST_NAME} PROPERTIES LABELS tools)
     elseif (TEST_NAME MATCHES "^test_shift_conformance$" OR TEST_NAME MATCHES "^test_subwidth_arith$" OR TEST_NAME MATCHES "^test_crosslayer_arith$" OR TEST_NAME MATCHES "^test_zia_arith_conformance$" OR TEST_NAME MATCHES "^basic_arith_")
         set_tests_properties(${TEST_NAME} PROPERTIES LABELS conformance)

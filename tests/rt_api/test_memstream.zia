@@ -7,13 +7,13 @@ func start() {
     // --- MemStream: integer read/write ---
     var ms = new Viper.IO.MemStream();
     SayInt(ms.Pos);
-    SayInt(ms.Len);
+    SayInt(ms.Length);
 
     ms.WriteI8(42);
     ms.WriteI16(1000);
     ms.WriteI32(100000);
     ms.WriteI64(9999999999);
-    SayInt(ms.Len);
+    SayInt(ms.Length);
 
     ms.Seek(0);
     SayInt(ms.ReadI8());
@@ -24,7 +24,7 @@ func start() {
     // --- MemStream: string read/write ---
     ms.Clear();
     ms.WriteStr("hello world");
-    SayInt(ms.Len);
+    SayInt(ms.Length);
     ms.Seek(0);
     Say(ms.ReadStr(11));
 

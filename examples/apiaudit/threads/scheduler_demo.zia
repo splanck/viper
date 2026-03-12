@@ -47,7 +47,7 @@ func start() {
     // --- Poll (returns due tasks) ---
     Say("--- Poll ---");
     var due = s.Poll();
-    Say("Poll returned tasks: " + Fmt.Int(Seq.get_Len(due)));
+    Say("Poll returned tasks: " + Fmt.Int(Seq.get_Length(due)));
     Say("Pending after poll: " + Fmt.Int(s.get_Pending()));
 
     // --- Schedule more and Clear ---
@@ -70,7 +70,7 @@ func start() {
     Say("--- Poll on empty ---");
     s.Clear();
     var emptyPoll = s.Poll();
-    Say("Poll on empty: " + Fmt.Int(Seq.get_Len(emptyPoll)));
+    Say("Poll on empty: " + Fmt.Int(Seq.get_Length(emptyPoll)));
 
     Say("=== Scheduler Audit Complete ===");
 }

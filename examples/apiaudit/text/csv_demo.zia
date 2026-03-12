@@ -10,21 +10,21 @@ func start() {
     // --- ParseLine ---
     Say("--- ParseLine ---");
     var row = Csv.ParseLine("Alice,30,Boston");
-    SayInt(Seq.get_Len(row));
+    SayInt(Seq.get_Length(row));
     Say(Obj.ToString(Seq.Get(row, 0)));
     Say(Obj.ToString(Seq.Get(row, 1)));
     Say(Obj.ToString(Seq.Get(row, 2)));
 
     // Quoted fields
     var row2 = Csv.ParseLine("\"hello, world\",42,\"quoted\"");
-    SayInt(Seq.get_Len(row2));
+    SayInt(Seq.get_Length(row2));
     Say(Obj.ToString(Seq.Get(row2, 0)));
     Say(Obj.ToString(Seq.Get(row2, 1)));
 
     // --- ParseLineWith (custom delimiter) ---
     Say("--- ParseLineWith ---");
     var row3 = Csv.ParseLineWith("one;two;three", ";");
-    SayInt(Seq.get_Len(row3));
+    SayInt(Seq.get_Length(row3));
     Say(Obj.ToString(Seq.Get(row3, 0)));
     Say(Obj.ToString(Seq.Get(row3, 1)));
     Say(Obj.ToString(Seq.Get(row3, 2)));
@@ -33,13 +33,13 @@ func start() {
     Say("--- Parse ---");
     var csv = "name,age,city\nAlice,30,Boston\nBob,25,NYC";
     var rows = Csv.Parse(csv);
-    SayInt(Seq.get_Len(rows));
+    SayInt(Seq.get_Length(rows));
 
     // --- ParseWith (multi-line, custom delimiter) ---
     Say("--- ParseWith ---");
     var csv2 = "a|b|c\n1|2|3\n4|5|6";
     var rows2 = Csv.ParseWith(csv2, "|");
-    SayInt(Seq.get_Len(rows2));
+    SayInt(Seq.get_Length(rows2));
 
     // --- FormatLine ---
     Say("--- FormatLine ---");
