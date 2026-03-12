@@ -81,7 +81,7 @@ var y = arr[10];  // Index 10 doesn't exist
 var text: String = null;
 var len = text.Length;  // Can't access properties of null
 
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 var num = Convert.ToInt64("hello");  // "hello" is not a number
 ```
 
@@ -249,17 +249,17 @@ Done
 
 Step 2 and Step 3 never execute. The moment division by zero is attempted, execution jumps directly to the catch block.
 
-### Multiple Types of Errors
+### Multiple Things Can Fail
 
 A single try block might have multiple things that could go wrong:
 
 ```rust
-bind Viper.File;
-bind Viper.Convert as Convert;
+bind File = Viper.IO.File;
+bind Convert = Viper.Core.Convert;
 bind Viper.Terminal;
 
 try {
-    var content = readText(filename);  // Could fail: file missing
+    var content = File.ReadAllText(filename);  // Could fail: file missing
     var value = Convert.ToInt64(content);        // Could fail: not a number
     var result = 1000 / value;         // Could fail: zero
     Say("Result: " + result);
@@ -268,30 +268,55 @@ try {
 }
 ```
 
-If *any* of these three operations fails, the catch block runs. But which one failed? You can check:
+If *any* of these three operations fails, the catch block runs. Since Zia uses a single generic `catch` clause (there are no typed catch blocks), you can inspect the error message to understand what went wrong:
 
 ```rust
-bind Viper.File;
-bind Viper.Convert as Convert;
+bind File = Viper.IO.File;
+bind Convert = Viper.Core.Convert;
 bind Viper.Terminal;
 
 try {
-    var content = readText(filename);
+    var content = File.ReadAllText(filename);
     var value = Convert.ToInt64(content);
     var result = 1000 / value;
     Say("Result: " + result);
-} catch e: FileNotFound {
-    Say("File doesn't exist: " + filename);
-} catch e: ParseError {
-    Say("File doesn't contain a valid number");
-} catch e: DivisionByZero {
-    Say("The file contained zero");
 } catch e {
-    Say("Unexpected error: " + e.message);
+    Say("Something went wrong: " + e.message);
 }
 ```
 
-Catch blocks are checked in order. Use specific types first, and a general catch-all last.
+Because there is only one catch clause, if you need to respond differently to different failure modes, consider structuring your code so that each risky operation is in its own try-catch:
+
+```rust
+bind File = Viper.IO.File;
+bind Convert = Viper.Core.Convert;
+bind Viper.Terminal;
+
+var content = "";
+try {
+    content = File.ReadAllText(filename);
+} catch e {
+    Say("File doesn't exist: " + filename);
+    return;
+}
+
+var value = 0;
+try {
+    value = Convert.ToInt64(content);
+} catch e {
+    Say("File doesn't contain a valid number");
+    return;
+}
+
+if value == 0 {
+    Say("The file contained zero");
+} else {
+    var result = 1000 / value;
+    Say("Result: " + result);
+}
+```
+
+This pattern gives you fine-grained control over each failure point.
 
 ### When to Use try-catch
 
@@ -357,7 +382,7 @@ func divide(a: Integer, b: Integer) -> Integer {
     return a / b;  // Error: division by zero
 }
 
-func computeAverage(numbers: [Integer]) -> Integer {
+func computeAverage(numbers: List[Integer]) -> Integer {
     var sum = 0;
     for n in numbers {
         sum += n;
@@ -437,30 +462,27 @@ When your code encounters a situation it can't handle, throw an error. This:
 - Sends the error up the call stack until something catches it
 - Provides information about what went wrong
 
-### Custom Error Types
+### Descriptive Error Messages
 
-You can create specific error types for different situations:
+Since Zia uses a single `Error` type, write clear, descriptive messages that explain what went wrong:
 
 ```rust
-throw FileNotFound("config.txt");
-throw ParseError("Expected number, got: " + input);
-throw ValidationError("Email address is invalid");
+throw Error("File not found: config.txt");
+throw Error("Expected number, got: " + input);
+throw Error("Email address is invalid");
 ```
 
-Custom types help callers handle specific errors differently:
+Include relevant context in the message so the caller knows what happened:
 
 ```rust
 bind Viper.Terminal;
 
 try {
     loadConfiguration();
-} catch e: FileNotFound {
-    Say("Config file missing, using defaults");
+} catch e {
+    Say("Configuration error: " + e.message);
+    Say("Using defaults instead");
     useDefaults();
-} catch e: ParseError {
-    Say("Config file is corrupted");
-    // Can't recover from this
-    throw e;
 }
 ```
 
@@ -544,13 +566,13 @@ Handle error cases at the top of functions, then proceed with the main logic:
 
 ```rust
 func processFile(filename: String) {
-    bind Viper.File;
+    bind File = Viper.IO.File;
     // Guard clauses handle all the edge cases
     if filename.Length == 0 {
         throw Error("Filename cannot be empty");
     }
 
-    if !exists(filename) {
+    if !File.Exists(filename) {
         throw Error("File does not exist: " + filename);
     }
 
@@ -559,7 +581,7 @@ func processFile(filename: String) {
     }
 
     // Main logic — we know the file is valid
-    var content = readText(filename);
+    var content = File.ReadAllText(filename);
     // ...
 }
 ```
@@ -584,14 +606,14 @@ Catch an error when:
 - You're at the top level and need to report to the user
 
 ```rust
-bind Viper.File;
+bind File = Viper.IO.File;
 
 // Recovery: try a backup file
 func loadData() -> String {
     try {
-        return readText("data.txt");
-    } catch e: FileNotFound {
-        return readText("data.backup.txt");
+        return File.ReadAllText("data.txt");
+    } catch e {
+        return File.ReadAllText("data.backup.txt");
     }
 }
 
@@ -599,8 +621,8 @@ func loadData() -> String {
 func getUser(id: Integer) -> User {
     try {
         return database.query("SELECT * FROM users WHERE id = " + id);
-    } catch e: DatabaseError {
-        throw ServiceError("Unable to load user " + id);
+    } catch e {
+        throw Error("Unable to load user " + id + ": " + e.message);
     }
 }
 
@@ -624,12 +646,12 @@ Let errors propagate when:
 - It's a programming error (bug) that should crash
 
 ```rust
-bind Viper.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
 // Can't handle it — let it propagate
 func loadConfig() -> Config {
-    var content = readText("config.txt");  // Might fail
+    var content = File.ReadAllText("config.txt");  // Might fail
     return parseConfig(content);  // Might fail
     // If either fails, we can't proceed — let it bubble up
 }
@@ -639,10 +661,8 @@ func start() {
     try {
         var config = loadConfig();
         runApplication(config);
-    } catch e: FileNotFound {
-        Say("Please create config.txt first");
-    } catch e: ParseError {
-        Say("Config file is invalid: " + e.message);
+    } catch e {
+        Say("Failed to start: " + e.message);
     }
 }
 ```
@@ -662,7 +682,7 @@ The simplest and most widely used technique: add print statements to see what's 
 ```rust
 bind Viper.Terminal;
 
-func mysteriouslyWrongResult(data: [Integer]) -> Integer {
+func mysteriouslyWrongResult(data: List[Integer]) -> Integer {
     Say("DEBUG: Input data, length = " + data.Length);
 
     var sum = 0;
@@ -756,7 +776,7 @@ If a bug is hard to find in complex code, create a simpler version that still sh
 
 ```rust
 // Complex original
-func processTransactions(accounts: [Account], transactions: [Transaction]) -> Report {
+func processTransactions(accounts: List[Account], transactions: List[Transaction]) -> Report {
     // 200 lines of code
     // Bug is somewhere in here
 }
@@ -794,7 +814,7 @@ func fetchUserData(userId: Integer) -> UserData {
     for attempt in 1..maxRetries+1 {
         try {
             return HttpClient.Get("https://api.example.com/users/" + userId);
-        } catch e: NetworkError {
+        } catch e {
             if attempt < maxRetries {
                 Say("Network error, retrying in " + retryDelay + "ms...");
                 Time.Clock.Sleep(retryDelay);
@@ -819,12 +839,12 @@ Users will enter invalid data. Always. Count on it.
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 func getValidAge() -> Integer {
     while true {
         Print("Enter your age: ");
-        var input = ReadLine().Trim();
+        var input = InputLine().Trim();
 
         // Try to parse
         try {
@@ -837,7 +857,7 @@ func getValidAge() -> Integer {
             }
 
             return age;
-        } catch e: ParseError {
+        } catch e {
             Say("That's not a valid number. Please try again.");
         }
     }
@@ -855,7 +875,7 @@ Principles for user input:
 Programs can run out of resources: memory, disk space, file handles, network connections.
 
 ```rust
-bind Viper.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
 func processLargeFile(filename: String) {
@@ -867,7 +887,7 @@ func processLargeFile(filename: String) {
 
             try {
                 processChunk(chunk);
-            } catch e: OutOfMemory {
+            } catch e {
                 Say("Memory low, pausing to free resources...");
                 gc();  // Force garbage collection
                 processChunk(chunk);  // Try again
@@ -890,7 +910,7 @@ Resource management tips:
 Programs often depend on files that might not exist:
 
 ```rust
-bind Viper.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
 func loadConfiguration() -> Config {
@@ -901,16 +921,16 @@ func loadConfiguration() -> Config {
         maxRetries: 3
     );
 
-    if !exists(CONFIG_FILE) {
+    if !File.Exists(CONFIG_FILE) {
         Say("Config file not found, creating default...");
-        writeText(CONFIG_FILE, DEFAULT_CONFIG.toJson());
+        File.WriteAllText(CONFIG_FILE, DEFAULT_CONFIG.toJson());
         return DEFAULT_CONFIG;
     }
 
     try {
-        var content = readText(CONFIG_FILE);
+        var content = File.ReadAllText(CONFIG_FILE);
         return Config.fromJson(content);
-    } catch e: ParseError {
+    } catch e {
         Say("Config file is corrupted, using defaults");
         return DEFAULT_CONFIG;
     }
@@ -932,10 +952,10 @@ Let's put it all together with a program that demonstrates comprehensive error h
 ```rust
 module DataProcessor;
 
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 bind Viper.Time;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 final LOG_FILE = "processor.log";
 
@@ -945,24 +965,24 @@ func log(message: String) {
     var entry = "[" + timestamp + "] " + message + "\n";
 
     try {
-        appendText(LOG_FILE, entry);
+        File.Append(LOG_FILE, entry);
     } catch e {
         // If we can't log, print to console at least
         Say("LOG: " + message);
     }
 }
 
-func readDataFile(filename: String) -> [Integer] {
+func readDataFile(filename: String) -> List[Integer] {
     if filename.Length == 0 {
         throw Error("Filename cannot be empty");
     }
 
-    if !exists(filename) {
-        throw FileNotFound("Data file not found: " + filename);
+    if !File.Exists(filename) {
+        throw Error("Data file not found: " + filename);
     }
 
-    var lines = readLines(filename);
-    var numbers: [Integer] = [];
+    var lines = File.ReadAllLines(filename);
+    var numbers: List[Integer] = [];
     var lineNum = 0;
 
     for line in lines {
@@ -977,7 +997,7 @@ func readDataFile(filename: String) -> [Integer] {
         try {
             var num = Convert.ToInt64(trimmed);
             numbers.Push(num);
-        } catch e: ParseError {
+        } catch e {
             log("Warning: skipping invalid number on line " + lineNum + ": " + trimmed);
         }
     }
@@ -989,7 +1009,7 @@ func readDataFile(filename: String) -> [Integer] {
     return numbers;
 }
 
-func calculateStats(numbers: [Integer]) -> Stats {
+func calculateStats(numbers: List[Integer]) -> Stats {
     if numbers.Length == 0 {
         throw Error("Cannot calculate stats on empty array");
     }
@@ -1033,19 +1053,10 @@ func processFile(filename: String) {
 
         log("Successfully processed " + filename);
 
-    } catch e: FileNotFound {
-        Say("Error: " + e.message);
-        Say("Please check that the file exists and try again.");
-        log("File not found: " + filename);
-
-    } catch e: ParseError {
-        Say("Error: The file contains invalid data");
-        Say(e.message);
-        log("Parse error in " + filename + ": " + e.message);
-
     } catch e {
-        Say("Unexpected error: " + e.message);
-        log("Unexpected error processing " + filename + ": " + e.message);
+        Say("Error: " + e.message);
+        Say("Please check the file and try again.");
+        log("Error processing " + filename + ": " + e.message);
     }
 }
 
@@ -1056,7 +1067,7 @@ func start() {
 
     while true {
         Print("Enter filename (or 'quit' to exit): ");
-        var input = ReadLine().Trim();
+        var input = InputLine().Trim();
 
         if input.ToLower() == "quit" {
             Say("Goodbye!");
@@ -1073,7 +1084,7 @@ This program demonstrates:
 - **Input validation:** Checking for empty filenames, verifying files exist
 - **Graceful degradation:** Skipping invalid lines instead of failing entirely
 - **Logging:** Recording what happens for later analysis
-- **Specific error handling:** Different responses for different error types
+- **Error handling:** Catching errors and reporting them clearly
 - **User feedback:** Clear messages about what went wrong
 - **Defensive programming:** Checking for empty arrays before processing
 
@@ -1087,8 +1098,6 @@ bind Viper.Terminal;
 
 try {
     riskyOperation();
-} catch e: FileNotFound {
-    Say("File not found");
 } catch e {
     Say("Error: " + e.message);
 } finally {
@@ -1146,7 +1155,7 @@ try {
 
 ### Catching Too Broadly
 
-Catching everything can hide bugs:
+Catching everything in one block can hide which operation failed:
 
 ```rust
 bind Viper.Terminal;
@@ -1160,24 +1169,26 @@ try {
 }
 ```
 
-Better:
+Better -- separate the operations so you know which one failed:
 
 ```rust
 bind Viper.Terminal;
 
+var result = complexOperation(data);  // Let validation errors propagate
+
 try {
-    var result = complexOperation(data);
     saveResult(result);
-    sendNotification(result);
-} catch e: ValidationError {
-    Say("Invalid data: " + e.message);
-} catch e: StorageError {
+} catch e {
     Say("Could not save: " + e.message);
-} catch e: NetworkError {
+    return;
+}
+
+try {
+    sendNotification(result);
+} catch e {
     log("Notification failed: " + e.message);
     // Notification failure is not fatal, continue
 }
-// Other errors propagate — they're bugs we want to fix
 ```
 
 ### Using Exceptions for Control Flow
@@ -1189,10 +1200,10 @@ Exceptions should be exceptional — not a normal part of logic:
 func findUser(name: String) -> User {
     for user in users {
         if user.name == name {
-            throw Found(user);  // Abuse!
+            throw Error("found");  // Abuse!
         }
     }
-    throw NotFound();
+    throw Error("not found");
 }
 
 // GOOD: Normal control flow
@@ -1238,7 +1249,7 @@ try {
 - **try-catch handles errors gracefully:** Prevents crashes, allows recovery
 - **finally ensures cleanup:** Runs no matter what happens
 - **throw signals errors from your code:** When your code encounters the impossible
-- **Catch specific types when you can:** Different errors deserve different responses
+- **Separate risky operations:** Use individual try-catch blocks when you need different responses for different failures
 - **Propagate errors you can't handle:** Let the caller deal with it
 - **Validate inputs early:** Fail fast with clear messages
 - **Debug systematically:** Print statements, rubber duck, binary search, scientific method

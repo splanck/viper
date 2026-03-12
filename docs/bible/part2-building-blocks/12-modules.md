@@ -31,14 +31,14 @@ func healPlayer(amount: Integer) { ... }
 func renderPlayer() { ... }
 
 // Enemy stuff
-var enemies: [Enemy] = [];
+var enemies: List[Enemy] = [];
 
 func spawnEnemy(x: Number, y: Number) { ... }
 func updateEnemies() { ... }
 func renderEnemies() { ... }
 
 // Item stuff
-var items: [Item] = [];
+var items: List[Item] = [];
 
 func spawnItem(x: Number, y: Number, type: String) { ... }
 func checkItemPickup() { ... }
@@ -115,7 +115,7 @@ Without modules, you're forced into awkward solutions:
 ```rust
 // Without modules: ugly prefixed names
 func mathAdd(a: Integer, b: Integer) -> Integer { ... }
-func listAdd(list: [Integer], item: Integer) { ... }
+func listAdd(list: List[Integer], item: Integer) { ... }
 func databaseAddUser(user: User) { ... }
 ```
 
@@ -201,18 +201,6 @@ This binds only `square` and `PI`, and you can use them without the module prefi
 Sometimes you want to rename a binding. Maybe the name is too long, or maybe it conflicts with something else:
 
 ```rust
-bind MathUtils { square as sq, PI as pi };
-bind Viper.Terminal;
-
-func start() {
-    Say(sq(5.0));
-    Say(pi);
-}
-```
-
-You can also alias the entire module:
-
-```rust
 bind MathUtils as M;
 bind Viper.Terminal;
 
@@ -223,6 +211,20 @@ func start() {
 ```
 
 This is useful when module names are long or when two modules have the same name from different packages.
+
+You can also bind specific items from a module without the prefix:
+
+```rust
+bind MathUtils { square, PI };
+bind Viper.Terminal;
+
+func start() {
+    Say(square(5.0));  // No prefix needed
+    Say(PI);
+}
+```
+
+This binds only `square` and `PI`, and you can use them without the module prefix. It's convenient when you use certain functions frequently, but be careful — if another module has a `square` function, you'll get a conflict.
 
 ### Choosing the Right Style
 
@@ -251,9 +253,9 @@ bind Viper.Math as Math;
 var x = Math.Sqrt(a) + Math.Sin(b) + Math.Cos(c);
 
 // Good: Specific bind for frequently used items
-bind Viper.Terminal { Say, ReadLine };
+bind Viper.Terminal { Say, InputLine };
 Say("Enter name: ");
-var name = ReadLine();
+var name = InputLine();
 
 // Good: Alias for clarity
 bind Physics.Collision as Collision;
@@ -661,7 +663,7 @@ bind Config;
 // Lower dependency: receives what it needs
 module Report;
 
-export func generate(data: [Record], format: Formatter) -> String {
+export func generate(data: List[Record], format: Formatter) -> String {
     // No database binding — data is passed in
     // No email binding — report is returned, caller sends it
     // ...
@@ -795,7 +797,7 @@ export func isAlive(player: Player) -> Boolean {
 export func move(player: Player, direction: Vec2.Vec2) -> Player {
     return Player {
         name: player.name,
-        position: Vec2.Add(player.position, direction),
+        position: Vec2.add(player.position, direction),
         health: player.health,
         maxHealth: player.maxHealth,
         score: player.score
@@ -867,7 +869,7 @@ export func moveToward(enemy: Enemy, target: Vec2.Vec2) -> Enemy {
     var movement = Vec2.scale(normalized, enemy.speed);
 
     return Enemy {
-        position: Vec2.Add(enemy.position, movement),
+        position: Vec2.add(enemy.position, movement),
         damage: enemy.damage,
         speed: enemy.speed
     };
@@ -1054,7 +1056,7 @@ bind Viper.Test;
 test "add combines vectors" {
     var a = Vec2.create(1.0, 2.0);
     var b = Vec2.create(3.0, 4.0);
-    var result = Vec2.Add(a, b);
+    var result = Vec2.add(a, b);
 
     assert result.x == 4.0;
     assert result.y == 6.0;
@@ -1132,7 +1134,7 @@ export func hello() { ... }
 // Binding
 bind MyModule;
 bind MyModule { hello };
-bind OtherModule { something as alias };
+bind OtherModule as O;
 ```
 
 **BASIC**
@@ -1159,7 +1161,7 @@ CALL Hello()
 // Bad: Everything is public
 module User;
 
-export var users: [User] = [];  // Internal data exposed
+export var users: List[User] = [];  // Internal data exposed
 export var nextId: Integer = 1;     // Implementation detail exposed
 
 export func createUser(name: String) -> User { ... }
@@ -1171,7 +1173,7 @@ export func generateId() -> Integer { ... }  // Internal helper exposed
 // Good: Minimal public interface
 module User;
 
-var users: [User] = [];  // Private
+var users: List[User] = [];  // Private
 var nextId: Integer = 1;     // Private
 
 export func createUser(name: String) -> User { ... }
@@ -1275,7 +1277,7 @@ export func divide(a: Integer, b: Integer) -> Integer { return a / b; }
 - `module Name;` declares a module
 - `bind ModuleName;` brings in another module
 - `bind ModuleName { item };` binds specific items
-- `bind ModuleName { item as alias };` binds with renaming
+- `bind ModuleName as Alias;` binds with renaming
 - `export` marks functions and value types as public
 - Items without `export` are private (internal only)
 - Modules create namespaces, preventing name collisions

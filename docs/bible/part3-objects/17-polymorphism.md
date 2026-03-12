@@ -81,7 +81,7 @@ The cashier's checkout code doesn't care which specific payment method you use:
 ```rust
 bind Viper.Terminal;
 
-func checkout(items: [Item], payment: PaymentMethod) {
+func checkout(items: List[Item], payment: PaymentMethod) {
     var total = calculateTotal(items);
     if payment.pay(total) {
         Say("Transaction complete!");
@@ -270,7 +270,7 @@ entity Printer {
         Say(Fmt.Num(number));
     }
 
-    func print(items: [String]) {
+    func print(items: List[String]) {
         for item in items {
             Say(item);
         }
@@ -291,7 +291,7 @@ var p = Printer();
 p.Print("hello");           // Calls print(text: String)
 p.Print(42);                // Calls print(number: Integer)
 p.Print(3.14);              // Calls print(number: Number)
-p.Print(["a", "b", "c"]);   // Calls print(items: [String])
+p.Print(["a", "b", "c"]);   // Calls print(items: List[String])
 p.Print("hi", 3);           // Calls print(item: String, times: Integer)
 ```
 
@@ -302,7 +302,7 @@ This is *static polymorphism* or *early binding* — the decision is made at com
 There's a third kind of polymorphism you'll encounter later: generics (parametric polymorphism). This lets you write code that works with any type:
 
 ```rust
-func first[T](items: [T]) -> T {
+func first[T](items: List[T]) -> T {
     return items[0];
 }
 
@@ -364,7 +364,7 @@ entity AnimatedDecoration implements Updatable {
 Now the game loop becomes beautifully simple:
 
 ```rust
-var entities: [Updatable] = [];
+var entities: List[Updatable] = [];
 
 // Add all kinds of things
 entities.Push(Player());
@@ -425,7 +425,7 @@ entity UIOverlay implements Drawable {
 ```
 
 ```rust
-var scene: [Drawable] = [ui, foreground, player, enemy, ground, background];
+var scene: List[Drawable] = [ui, foreground, player, enemy, ground, background];
 
 // Sort by depth
 scene.sortBy(func(a, b) { return a.getDepth() - b.getDepth(); });
@@ -482,7 +482,7 @@ The export menu:
 bind Viper.Terminal;
 
 entity ExportMenu {
-    exporters: [Exporter];
+    exporters: List[Exporter];
 
     expose func init() {
         self.exporters = [
@@ -546,7 +546,7 @@ interface Plugin {
 }
 
 entity PluginManager {
-    plugins: [Plugin];
+    plugins: List[Plugin];
 
     func loadPlugin(plugin: Plugin) {
         self.plugins.Push(plugin);
@@ -679,7 +679,7 @@ entity ResizeHandler implements EventHandler {
 }
 
 entity EventDispatcher {
-    handlers: [EventHandler];
+    handlers: List[EventHandler];
 
     func dispatch(event: Event) {
         for handler in self.handlers {
@@ -742,8 +742,8 @@ entity DeleteTextCommand implements Command {
 }
 
 entity CommandHistory {
-    executed: [Command];
-    undone: [Command];
+    executed: List[Command];
+    undone: List[Command];
 
     func execute(command: Command) {
         command.execute();
@@ -931,9 +931,9 @@ entity Enemy extends GameEntity implements Attackable, Drawable, Movable {
 Now you have maximum flexibility:
 
 ```rust
-var drawables: [Drawable] = [player, tree1, tree2, enemy1, enemy2];
-var attackables: [Attackable] = [player, enemy1, enemy2];
-var movables: [Movable] = [player, enemy1, enemy2];
+var drawables: List[Drawable] = [player, tree1, tree2, enemy1, enemy2];
+var attackables: List[Attackable] = [player, enemy1, enemy2];
+var movables: List[Movable] = [player, enemy1, enemy2];
 
 // Each collection serves a different purpose
 for d in drawables { d.draw(); }        // Render everything
@@ -1050,7 +1050,7 @@ entity Text implements Drawable {
 
 // Group of drawables - demonstrates the Composite Pattern
 entity Group implements Drawable {
-    children: [Drawable];
+    children: List[Drawable];
     name: String;
 
     expose func init(name: String) {
@@ -1094,7 +1094,7 @@ entity Group implements Drawable {
 }
 
 // Function that works with any Drawable - demonstrates polymorphism
-func findItemAt(items: [Drawable], x: Number, y: Number) -> Drawable? {
+func findItemAt(items: List[Drawable], x: Number, y: Number) -> Drawable? {
     for item in items {
         if item.getBounds().Contains(x, y) {
             return item;
@@ -1132,7 +1132,7 @@ func start() {
     Say("Scene bounds: " + bounds.width + "x" + bounds.height);
 
     // Find item at click position - works with any Drawable
-    var allItems: [Drawable] = [rect, circle, label];
+    var allItems: List[Drawable] = [rect, circle, label];
     var clicked = findItemAt(allItems, 50.0, 30.0);
     if clicked != null {
         Say("Clicked on something!");
@@ -1166,7 +1166,7 @@ entity Cat implements Animal {
     }
 }
 
-var animals: [Animal] = [Dog(), Cat()];
+var animals: List[Animal] = [Dog(), Cat()];
 for a in animals {
     a.speak();  // Polymorphism: right method called for each
 }

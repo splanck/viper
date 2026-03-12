@@ -994,7 +994,7 @@ Let's see structures in action with several complete examples.
 ### Example: Playing Cards
 
 ```rust
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 bind Viper.Terminal;
 
 value Card {
@@ -1016,8 +1016,8 @@ value Card {
     }
 }
 
-func createDeck() -> [Card] {
-    var deck: [Card] = [];
+func createDeck() -> List[Card] {
+    var deck: List[Card] = [];
     var suits = ["Hearts", "Diamonds", "Clubs", "Spades"];
     var ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 
@@ -1127,7 +1127,7 @@ bind Viper.Terminal;
 
 value Student {
     name: String;
-    grades: [Integer];
+    grades: List[Integer];
 
     func average() -> Number {
         if self.grades.Length == 0 {
@@ -1226,7 +1226,7 @@ value Item {
 }
 
 value Inventory {
-    items: [Item];
+    items: List[Item];
     maxWeight: Number;
 
     func currentWeight() -> Number {

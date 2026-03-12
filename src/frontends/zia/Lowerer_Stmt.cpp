@@ -381,8 +381,33 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
     auto slotsBackup = slots_;
     auto localTypesBackup = localTypes_;
 
-    // For now, only support range iteration
-    auto *rangeExpr = dynamic_cast<RangeExpr *>(stmt->iterable.get());
+    // Unwrap .rev() and .step(n) modifier calls to find the underlying RangeExpr
+    Expr *iterable = stmt->iterable.get();
+    bool reversed = false;
+    Expr *stepArgExpr = nullptr;
+
+    while (iterable->kind == ExprKind::Call)
+    {
+        auto *call = static_cast<CallExpr *>(iterable);
+        if (call->callee->kind != ExprKind::Field)
+            break;
+        auto *field = static_cast<FieldExpr *>(call->callee.get());
+        if (field->field == "rev" && call->args.empty())
+        {
+            reversed = !reversed;
+            iterable = field->base.get();
+            continue;
+        }
+        if (field->field == "step" && call->args.size() == 1)
+        {
+            stepArgExpr = call->args[0].value.get();
+            iterable = field->base.get();
+            continue;
+        }
+        break;
+    }
+
+    auto *rangeExpr = dynamic_cast<RangeExpr *>(iterable);
     if (rangeExpr)
     {
         size_t condIdx = createBlock("forin_cond");
@@ -396,26 +421,61 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         auto startResult = lowerExpr(rangeExpr->start.get());
         auto endResult = lowerExpr(rangeExpr->end.get());
 
+        // Lower step value (default 1)
+        Value stepVal = Value::constInt(1);
+        if (stepArgExpr)
+        {
+            auto stepResult = lowerExpr(stepArgExpr);
+            stepVal = stepResult.value;
+        }
+
         // Create slot-based loop variable (alloca + initial store)
-        // This enables proper SSA across basic block boundaries
         createSlot(stmt->variable, Type(Type::Kind::I64));
-        storeToSlot(stmt->variable, startResult.value, Type(Type::Kind::I64));
         localTypes_[stmt->variable] = types::integer();
 
-        // Also store the end value in a slot so it's available in other blocks
         std::string endVar = stmt->variable + "_end";
         createSlot(endVar, Type(Type::Kind::I64));
-        storeToSlot(endVar, endResult.value, Type(Type::Kind::I64));
+
+        std::string stepVar = stmt->variable + "_step";
+        createSlot(stepVar, Type(Type::Kind::I64));
+        storeToSlot(stepVar, stepVal, Type(Type::Kind::I64));
+
+        if (reversed)
+        {
+            // .rev(): iterate from end toward start
+            // For exclusive (0..10).rev(): init i = end - 1, bound = start, cond i >= bound
+            // For inclusive (0..=10).rev(): init i = end, bound = start, cond i >= bound
+            Value initVal = endResult.value;
+            if (!rangeExpr->inclusive)
+            {
+                Opcode subOp = options_.overflowChecks ? Opcode::ISubOvf : Opcode::Sub;
+                initVal =
+                    emitBinary(subOp, Type(Type::Kind::I64), endResult.value, Value::constInt(1));
+            }
+            storeToSlot(stmt->variable, initVal, Type(Type::Kind::I64));
+            storeToSlot(endVar, startResult.value, Type(Type::Kind::I64));
+        }
+        else
+        {
+            // Forward: init i = start, bound = end
+            storeToSlot(stmt->variable, startResult.value, Type(Type::Kind::I64));
+            storeToSlot(endVar, endResult.value, Type(Type::Kind::I64));
+        }
 
         // Branch to condition
         emitBr(condIdx);
 
-        // Condition: i < end (or <= for inclusive)
+        // Condition block
         setBlock(condIdx);
         Value loopVar = loadFromSlot(stmt->variable, Type(Type::Kind::I64));
         Value endVal = loadFromSlot(endVar, Type(Type::Kind::I64));
         Value cond;
-        if (rangeExpr->inclusive)
+        if (reversed)
+        {
+            // Reversed: i >= bound
+            cond = emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), loopVar, endVal);
+        }
+        else if (rangeExpr->inclusive)
         {
             cond = emitBinary(Opcode::SCmpLE, Type(Type::Kind::I1), loopVar, endVal);
         }
@@ -433,11 +493,16 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
             emitBr(updateIdx);
         }
 
-        // Update: i = i + 1
+        // Update: i = i +/- step
         setBlock(updateIdx);
         Value currentVal = loadFromSlot(stmt->variable, Type(Type::Kind::I64));
-        Opcode addOp = options_.overflowChecks ? Opcode::IAddOvf : Opcode::Add;
-        Value nextVal = emitBinary(addOp, Type(Type::Kind::I64), currentVal, Value::constInt(1));
+        Value currentStep = loadFromSlot(stepVar, Type(Type::Kind::I64));
+        Opcode updateOp;
+        if (reversed)
+            updateOp = options_.overflowChecks ? Opcode::ISubOvf : Opcode::Sub;
+        else
+            updateOp = options_.overflowChecks ? Opcode::IAddOvf : Opcode::Add;
+        Value nextVal = emitBinary(updateOp, Type(Type::Kind::I64), currentVal, currentStep);
         storeToSlot(stmt->variable, nextVal, Type(Type::Kind::I64));
         emitBr(condIdx);
 
@@ -447,6 +512,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         // Clean up slots
         removeSlot(stmt->variable);
         removeSlot(endVar);
+        removeSlot(stepVar);
         locals_ = std::move(localsBackup);
         slots_ = std::move(slotsBackup);
         localTypes_ = std::move(localTypesBackup);

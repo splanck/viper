@@ -913,7 +913,7 @@ module MessyStats;
 bind Viper.Terminal;
 
 func start() {
-    var numbers: [Integer] = [4, 8, 15, 16, 23, 42];
+    var numbers: List[Integer] = [4, 8, 15, 16, 23, 42];
 
     // Calculate sum
     var sum = 0;
@@ -981,7 +981,7 @@ module CleanStats;
 bind Viper.Terminal;
 
 // Calculate the sum of an array of numbers
-func sum(numbers: [Integer]) -> Integer {
+func sum(numbers: List[Integer]) -> Integer {
     var total = 0;
     for n in numbers {
         total = total + n;
@@ -990,12 +990,12 @@ func sum(numbers: [Integer]) -> Integer {
 }
 
 // Calculate the average of an array of numbers
-func average(numbers: [Integer]) -> Integer {
+func average(numbers: List[Integer]) -> Integer {
     return sum(numbers) / numbers.Length;
 }
 
 // Find the minimum value in an array
-func minimum(numbers: [Integer]) -> Integer {
+func minimum(numbers: List[Integer]) -> Integer {
     var min = numbers[0];
     for n in numbers {
         if n < min {
@@ -1006,7 +1006,7 @@ func minimum(numbers: [Integer]) -> Integer {
 }
 
 // Find the maximum value in an array
-func maximum(numbers: [Integer]) -> Integer {
+func maximum(numbers: List[Integer]) -> Integer {
     var max = numbers[0];
     for n in numbers {
         if n > max {
@@ -1017,12 +1017,12 @@ func maximum(numbers: [Integer]) -> Integer {
 }
 
 // Calculate the range (max - min)
-func range(numbers: [Integer]) -> Integer {
+func range(numbers: List[Integer]) -> Integer {
     return maximum(numbers) - minimum(numbers);
 }
 
 // Print all statistics for an array
-func printStats(numbers: [Integer]) {
+func printStats(numbers: List[Integer]) {
     Say("Sum: " + sum(numbers));
     Say("Average: " + average(numbers));
     Say("Minimum: " + minimum(numbers));
@@ -1031,7 +1031,7 @@ func printStats(numbers: [Integer]) {
 }
 
 func start() {
-    var numbers: [Integer] = [4, 8, 15, 16, 23, 42];
+    var numbers: List[Integer] = [4, 8, 15, 16, 23, 42];
     printStats(numbers);
 }
 ```
@@ -1075,7 +1075,7 @@ bind Viper.Terminal;
 bind Viper.IO;
 
 // Bad: Does three things
-func processGrades(grades: [Integer]) {
+func processGrades(grades: List[Integer]) {
     var sum = 0;
     for g in grades { sum = sum + g; }
     var avg = sum / grades.Length;
@@ -1084,7 +1084,7 @@ func processGrades(grades: [Integer]) {
 }
 
 // Good: Each function does one thing
-func calculateAverage(grades: [Integer]) -> Integer {
+func calculateAverage(grades: List[Integer]) -> Integer {
     var sum = 0;
     for g in grades { sum = sum + g; }
     return sum / grades.Length;
@@ -1098,7 +1098,7 @@ func saveAverage(avg: Integer) {
     IO.File.WriteAllText("grades.txt", "Average: " + avg);
 }
 
-func processGrades(grades: [Integer]) {
+func processGrades(grades: List[Integer]) {
     var avg = calculateAverage(grades);
     displayAverage(avg);
     saveAverage(avg);
@@ -1256,8 +1256,8 @@ func isValidGrade(grade: Integer) -> Boolean {
 }
 
 // Read all grades from user until they enter -1
-func readAllGrades() -> [Integer] {
-    var grades: [Integer] = [];
+func readAllGrades() -> List[Integer] {
+    var grades: List[Integer] = [];
 
     Say("Enter grades (0-100). Enter -1 to finish.");
     Say("");
@@ -1284,7 +1284,7 @@ func readAllGrades() -> [Integer] {
 // ============================================
 
 // Calculate the sum of all grades
-func sum(grades: [Integer]) -> Integer {
+func sum(grades: List[Integer]) -> Integer {
     var total = 0;
     for grade in grades {
         total = total + grade;
@@ -1293,7 +1293,7 @@ func sum(grades: [Integer]) -> Integer {
 }
 
 // Calculate the average grade
-func average(grades: [Integer]) -> Integer {
+func average(grades: List[Integer]) -> Integer {
     if grades.Length == 0 {
         return 0;
     }
@@ -1301,7 +1301,7 @@ func average(grades: [Integer]) -> Integer {
 }
 
 // Find the lowest grade
-func minimum(grades: [Integer]) -> Integer {
+func minimum(grades: List[Integer]) -> Integer {
     var min = grades[0];
     for grade in grades {
         if grade < min {
@@ -1312,7 +1312,7 @@ func minimum(grades: [Integer]) -> Integer {
 }
 
 // Find the highest grade
-func maximum(grades: [Integer]) -> Integer {
+func maximum(grades: List[Integer]) -> Integer {
     var max = grades[0];
     for grade in grades {
         if grade > max {
@@ -1332,8 +1332,8 @@ func letterGrade(grade: Integer) -> String {
 }
 
 // Count how many grades fall into each letter category
-func countLetterGrades(grades: [Integer]) -> [Integer] {
-    var counts: [Integer] = [0, 0, 0, 0, 0];  // A, B, C, D, F
+func countLetterGrades(grades: List[Integer]) -> List[Integer] {
+    var counts: List[Integer] = [0, 0, 0, 0, 0];  // A, B, C, D, F
 
     for grade in grades {
         var letter = letterGrade(grade);
@@ -1357,7 +1357,7 @@ func printSeparator() {
 }
 
 // Print the main statistics
-func printStatistics(grades: [Integer]) {
+func printStatistics(grades: List[Integer]) {
     Say("Number of grades: " + grades.Length);
     Say("Sum of grades:    " + sum(grades));
     Say("Average grade:    " + average(grades));
@@ -1367,7 +1367,7 @@ func printStatistics(grades: [Integer]) {
 }
 
 // Print the grade distribution
-func printDistribution(grades: [Integer]) {
+func printDistribution(grades: List[Integer]) {
     var counts = countLetterGrades(grades);
     Say("");
     Say("Grade Distribution:");
@@ -1379,7 +1379,7 @@ func printDistribution(grades: [Integer]) {
 }
 
 // Print the complete grade report
-func printReport(grades: [Integer]) {
+func printReport(grades: List[Integer]) {
     Say("");
     printSeparator();
     Say("       GRADE REPORT            ");
@@ -1514,7 +1514,7 @@ func start() {
 **Creating functions that do too much:**
 ```rust
 // Bad: One function doing everything
-func doEverything(numbers: [Integer]) {
+func doEverything(numbers: List[Integer]) {
     // 50 lines of reading input
     // 30 lines of validation
     // 40 lines of calculation
@@ -1523,9 +1523,9 @@ func doEverything(numbers: [Integer]) {
 }  // Hard to test, hard to understand, hard to modify
 
 // Good: Small, focused functions
-func readNumbers() -> [Integer] { ... }
-func validateNumbers(numbers: [Integer]) -> Boolean { ... }
-func calculateStatistics(numbers: [Integer]) -> Statistics { ... }
+func readNumbers() -> List[Integer] { ... }
+func validateNumbers(numbers: List[Integer]) -> Boolean { ... }
+func calculateStatistics(numbers: List[Integer]) -> Statistics { ... }
 func formatReport(stats: Statistics) -> String { ... }
 func printReport(report: String) { ... }
 ```

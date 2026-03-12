@@ -97,6 +97,18 @@ void rt_canvas_plot(void *canvas_ptr, int64_t x, int64_t y, int64_t color)
         vgfx_pset(canvas->gfx_win, (int32_t)x, (int32_t)y, (vgfx_color_t)color);
 }
 
+// Color constants — packed 0x00RRGGBB
+int64_t rt_color_red(void) { return 0xFF0000; }
+int64_t rt_color_green(void) { return 0x00FF00; }
+int64_t rt_color_blue(void) { return 0x0000FF; }
+int64_t rt_color_white(void) { return 0xFFFFFF; }
+int64_t rt_color_black(void) { return 0x000000; }
+int64_t rt_color_yellow(void) { return 0xFFFF00; }
+int64_t rt_color_cyan(void) { return 0x00FFFF; }
+int64_t rt_color_magenta(void) { return 0xFF00FF; }
+int64_t rt_color_gray(void) { return 0x808080; }
+int64_t rt_color_orange(void) { return 0xFFA500; }
+
 int64_t rt_color_rgb(int64_t r, int64_t g, int64_t b)
 {
     uint8_t r8 = (r < 0) ? 0 : (r > 255) ? 255 : (uint8_t)r;

@@ -132,7 +132,7 @@ func countUppercase(text: String) -> Integer {
     var count = 0;
     for i in 0..text.Length {
         var c = text[i];
-        if c.code() >= 'A'.code() && c.code() <= 'Z'.code() {
+        if c.Asc() >= "A".Asc() && c.Asc() <= "Z".Asc() {
             count += 1;
         }
     }
@@ -172,9 +172,9 @@ func lettersOnly(text: String) -> String {
     var result = "";
     for i in 0..text.Length {
         var c = text[i];
-        var code = c.code();
-        var isLower = code >= 'a'.code() && code <= 'z'.code();
-        var isUpper = code >= 'A'.code() && code <= 'Z'.code();
+        var code = c.Asc();
+        var isLower = code >= "a".Asc() && code <= "z".Asc();
+        var isUpper = code >= "A".Asc() && code <= "Z".Asc();
         if isLower || isUpper {
             result = result + c;
         }
@@ -264,7 +264,7 @@ Here's a crucial concept that surprises many beginners: **strings are immutable*
 
 ```rust
 var text = "Hello";
-text[0] = 'J';  // Error! Cannot modify string characters
+text[0] = "J";  // Error! Cannot modify string characters
 ```
 
 This isn't a limitation — it's a deliberate design choice with important benefits:
@@ -595,7 +595,7 @@ func isSecureUrl(url: String) -> Boolean {
 `indexOf` only finds the first occurrence. To find all:
 
 ```rust
-func findAll(text: String, search: String) -> [Integer] {
+func findAll(text: String, search: String) -> List[Integer] {
     var positions = [];
     var pos = 0;
 
@@ -726,7 +726,7 @@ For numeric comparison, convert to numbers:
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 var a = "9";
 var b = "10";
@@ -812,6 +812,7 @@ Say(capitalize("ALICE"));  // Alice
 bind Viper.Terminal;
 
 func titleCase(text: String) -> String {
+    bind Str = Viper.String;
     var words = text.Split(" ");
     var result = [];
 
@@ -819,7 +820,7 @@ func titleCase(text: String) -> String {
         result.Push(capitalize(word));
     }
 
-    return result.Join(" ");
+    return Str.Join(" ", result);
 }
 
 Say(titleCase("the quick brown fox"));
@@ -870,7 +871,7 @@ Always trim user input before processing:
 bind Viper.Terminal;
 
 Say("Enter your name:");
-var name = ReadLine().Trim();
+var name = InputLine().Trim();
 
 if name.Length == 0 {
     Say("Name cannot be empty");
@@ -1062,7 +1063,7 @@ CSV (Comma-Separated Values) is extremely common:
 ```rust
 bind Viper.Terminal;
 
-func parseCSVLine(line: String) -> [String] {
+func parseCSVLine(line: String) -> List[String] {
     return line.Split(",");
 }
 
@@ -1106,21 +1107,23 @@ The reverse of splitting — combining an array into a single string:
 
 ```rust
 bind Viper.Terminal;
+bind Str = Viper.String;
 
 var words = ["Hello", "World"];
-var sentence = words.Join(" ");
+var sentence = Str.Join(" ", words);
 Say(sentence);  // Hello World
 ```
 
-The argument is what to put between elements:
+The first argument is what to put between elements, and the second is the list:
 
 ```rust
 bind Viper.Terminal;
+bind Str = Viper.String;
 
 var numbers = ["1", "2", "3"];
-Say(numbers.Join(", "));  // 1, 2, 3
-Say(numbers.Join("-"));   // 1-2-3
-Say(numbers.Join(""));    // 123
+Say(Str.Join(", ", numbers));  // 1, 2, 3
+Say(Str.Join("-", numbers));   // 1-2-3
+Say(Str.Join("", numbers));    // 123
 ```
 
 ### Split and Join Together
@@ -1128,14 +1131,17 @@ Say(numbers.Join(""));    // 123
 Split and join are complementary operations:
 
 ```rust
+bind Str = Viper.String;
+
 var text = "Hello, World!";
 var parts = text.Split(", ");  // ["Hello", "World!"]
-var rejoined = parts.Join(", "); // "Hello, World!"
+var rejoined = Str.Join(", ", parts); // "Hello, World!"
 ```
 
 **Transform and rejoin:**
 ```rust
 bind Viper.Terminal;
+bind Str = Viper.String;
 
 // Capitalize each word
 func titleCase(text: String) -> String {
@@ -1149,7 +1155,7 @@ func titleCase(text: String) -> String {
         }
     }
 
-    return capitalized.Join(" ");
+    return Str.Join(" ", capitalized);
 }
 
 Say(titleCase("the QUICK brown FOX"));
@@ -1159,10 +1165,11 @@ Say(titleCase("the QUICK brown FOX"));
 **Change delimiter:**
 ```rust
 bind Viper.Terminal;
+bind Str = Viper.String;
 
 // Convert paths between systems
 func windowsToUnix(path: String) -> String {
-    return path.Split("\\").Join("/");
+    return Str.Join("/", path.Split("\\"));
 }
 
 Say(windowsToUnix("C:\\Users\\Alice\\Documents"));
@@ -1230,7 +1237,7 @@ bind Viper.Text.StringBuilder as SB;
 bind Viper.Time;
 bind Viper.Fmt as Fmt;
 
-func generateReport(data: [Record]) -> String {
+func generateReport(data: List[Record]) -> String {
     var sb = new SB();
 
     sb.Append("=== Report ===\n");
@@ -1260,7 +1267,7 @@ Another efficient pattern is to collect pieces in an array and join at the end:
 bind Viper.Terminal;
 bind Viper.String as Str;
 
-func buildList(items: [String]) -> String {
+func buildList(items: List[String]) -> String {
     var lines = [];
 
     for i in 0..items.Length {
@@ -1285,7 +1292,7 @@ This avoids repeated concatenation and is often cleaner than StringBuilder.
 
 **String to number:**
 ```rust
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 var text = "42";
 var num = Convert.ToInt64(text);     // 42 (integer)
@@ -1312,7 +1319,7 @@ Be careful — `"5" + 3` is `"53"`, not `8`:
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 var input = "5";
 Say(input + 3);  // "53" (string concatenation!)
@@ -1326,7 +1333,7 @@ If you want arithmetic, convert to numbers first.
 What if the string isn't a valid number?
 
 ```rust
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 var result = Convert.ToInt64("abc");  // Error or NaN
 
@@ -1335,7 +1342,7 @@ func safeParseInt(text: String) -> Integer {
     // Check if string contains only digits
     for i in 0..text.Length {
         var c = text[i];
-        if c.code() < '0'.code() || c.code() > '9'.code() {
+        if c.Asc() < "0".Asc() || c.Asc() > "9".Asc() {
             return -1;  // Invalid
         }
     }
@@ -1350,8 +1357,10 @@ func safeParseInt(text: String) -> Integer {
 Every character has a numeric code. The common encoding is ASCII/UTF-8, where 'A' is 65, 'a' is 97, '0' is 48, and so on.
 
 ```rust
-var code = 'A'.code();        // 65
-var char = Char.fromCode(65); // 'A'
+bind Str = Viper.String;
+
+var code = "A".Asc();        // 65
+var ch = Str.Chr(65);        // "A"
 ```
 
 ### Essential ASCII Values
@@ -1372,23 +1381,23 @@ Notice the patterns:
 ### Character Classification
 
 ```rust
-func isDigit(c: Char) -> Boolean {
-    return c.code() >= '0'.code() && c.code() <= '9'.code();
+func isDigit(c: String) -> Boolean {
+    return c.Asc() >= "0".Asc() && c.Asc() <= "9".Asc();
 }
 
-func isUppercase(c: Char) -> Boolean {
-    return c.code() >= 'A'.code() && c.code() <= 'Z'.code();
+func isUppercase(c: String) -> Boolean {
+    return c.Asc() >= "A".Asc() && c.Asc() <= "Z".Asc();
 }
 
-func isLowercase(c: Char) -> Boolean {
-    return c.code() >= 'a'.code() && c.code() <= 'z'.code();
+func isLowercase(c: String) -> Boolean {
+    return c.Asc() >= "a".Asc() && c.Asc() <= "z".Asc();
 }
 
-func isLetter(c: Char) -> Boolean {
+func isLetter(c: String) -> Boolean {
     return isUppercase(c) || isLowercase(c);
 }
 
-func isAlphanumeric(c: Char) -> Boolean {
+func isAlphanumeric(c: String) -> Boolean {
     return isLetter(c) || isDigit(c);
 }
 ```
@@ -1396,16 +1405,18 @@ func isAlphanumeric(c: Char) -> Boolean {
 ### Character Conversion
 
 ```rust
-func toUpper(c: Char) -> Char {
-    if c.code() >= 'a'.code() && c.code() <= 'z'.code() {
-        return Char.fromCode(c.code() - 32);
+bind Str = Viper.String;
+
+func toUpper(c: String) -> String {
+    if c.Asc() >= "a".Asc() && c.Asc() <= "z".Asc() {
+        return Str.Chr(c.Asc() - 32);
     }
     return c;
 }
 
-func toLower(c: Char) -> Char {
-    if c.code() >= 'A'.code() && c.code() <= 'Z'.code() {
-        return Char.fromCode(c.code() + 32);
+func toLower(c: String) -> String {
+    if c.Asc() >= "A".Asc() && c.Asc() <= "Z".Asc() {
+        return Str.Chr(c.Asc() + 32);
     }
     return c;
 }
@@ -1415,68 +1426,53 @@ func toLower(c: Char) -> Char {
 
 ```rust
 // Get numeric value of a digit character
-func digitValue(c: Char) -> Integer {
-    if c.code() >= '0'.code() && c.code() <= '9'.code() {
-        return c.code() - '0'.code();
+func digitValue(c: String) -> Integer {
+    if c.Asc() >= "0".Asc() && c.Asc() <= "9".Asc() {
+        return c.Asc() - "0".Asc();
     }
     return -1;  // Not a digit
 }
 
 bind Viper.Terminal;
 
-Say(digitValue('7'));  // 7
-Say(digitValue('a'));  // -1
+Say(digitValue("7"));  // 7
+Say(digitValue("a"));  // -1
 ```
 
 ---
 
 ## String Formatting
 
-For complex output, string formatting is cleaner than concatenation:
+For complex output, string concatenation is the primary approach:
 
 ```rust
-bind Viper.Fmt;
+bind Viper.Terminal;
+bind Convert = Viper.Core.Convert;
 
 var name = "Alice";
 var score = 95;
-var message = format("Player {} scored {} points!", name, score);
+var message = "Player " + name + " scored " + Convert.ToString(score) + " points!";
 // "Player Alice scored 95 points!"
 ```
 
-The `{}` placeholders are replaced by the arguments in order.
+When mixing strings and numbers, the `+` operator automatically converts numbers. For explicit control, use `Convert.ToString()`.
 
-### Format Specifiers
+### Padding and Alignment
 
-You can control formatting:
+For formatted number output, use `Viper.Fmt`:
 
 ```rust
 bind Viper.Terminal;
 bind Viper.Fmt;
 
-var pi = 3.14159265;
-Say(format("Pi is approximately {:.2}", pi));
-// "Pi is approximately 3.14"
-```
-
-The `:.2` means "2 decimal places." We'll explore formatting options more in Chapter 13 when we cover the standard library in depth.
-
-### Padding and Alignment
-
-```rust
-bind Viper.Fmt;
-
-// Right-align in 10 characters
-format("{:>10}", "hi");  // "        hi"
-
-// Left-align in 10 characters
-format("{:<10}", "hi");  // "hi        "
-
-// Center in 10 characters
-format("{:^10}", "hi");  // "    hi    "
-
 // Pad with zeros
-format("{:05}", 42);     // "00042"
+Say(Fmt.IntPad(42, 5, "0"));     // "00042"
+
+// Format integers
+Say(Fmt.Int(1000));               // "1000"
 ```
+
+We'll explore formatting options more in Chapter 13 when we cover the standard library in depth.
 
 ---
 
@@ -1530,6 +1526,7 @@ Say(isValidEmail("two@@signs.com"));     // false
 bind Viper.Terminal;
 
 func formatName(fullName: String) -> String {
+    bind Str = Viper.String;
     var trimmed = fullName.Trim();
 
     // Handle empty input
@@ -1555,7 +1552,7 @@ func formatName(fullName: String) -> String {
         formatted.Push(cap);
     }
 
-    return formatted.Join(" ");
+    return Str.Join(" ", formatted);
 }
 
 Say(formatName("  john   SMITH  "));  // John Smith
@@ -1565,29 +1562,31 @@ Say(formatName("bob jones jr"));      // Bob Jones Jr
 
 ### Parsing Key-Value Data
 
+Since Zia doesn't have a built-in Map type, we can parse key-value pairs using parallel lists:
+
 ```rust
-func parseKeyValue(text: String) -> Map[String, String] {
-    var result = new Map();
-    var pairs = text.Split("&");
+bind Viper.Terminal;
+
+func findValue(data: String, key: String) -> String {
+    var pairs = data.Split("&");
 
     for pair in pairs {
         var eqPos = pair.IndexOf("=");
         if eqPos != -1 {
-            var key = pair.left(eqPos).Trim();
-            var value = pair.skip(eqPos + 1).Trim();
-            result.Set(key, value);
+            var k = pair.left(eqPos).Trim();
+            var v = pair.skip(eqPos + 1).Trim();
+            if k == key {
+                return v;
+            }
         }
     }
 
-    return result;
+    return "";
 }
 
-bind Viper.Terminal;
-
 var data = "name=Alice&age=30&city=Boston";
-var parsed = parseKeyValue(data);
-Say(parsed.Get("name"));  // Alice
-Say(parsed.Get("age"));   // 30
+Say(findValue(data, "name"));  // Alice
+Say(findValue(data, "age"));   // 30
 ```
 
 ### Cleaning User Input
@@ -1612,6 +1611,8 @@ Say(cleanInput("  hello    world  "));  // "hello world"
 ### Password Strength Checker
 
 ```rust
+bind Str = Viper.String;
+
 func checkPasswordStrength(password: String) -> String {
     var score = 0;
     var feedback = [];
@@ -1635,13 +1636,13 @@ func checkPasswordStrength(password: String) -> String {
 
     for i in 0..password.Length {
         var c = password[i];
-        var code = c.code();
+        var code = c.Asc();
 
-        if code >= 'A'.code() && code <= 'Z'.code() {
+        if code >= "A".Asc() && code <= "Z".Asc() {
             hasUpper = true;
-        } else if code >= 'a'.code() && code <= 'z'.code() {
+        } else if code >= "a".Asc() && code <= "z".Asc() {
             hasLower = true;
-        } else if code >= '0'.code() && code <= '9'.code() {
+        } else if code >= "0".Asc() && code <= "9".Asc() {
             hasDigit = true;
         } else {
             hasSpecial = true;
@@ -1676,9 +1677,9 @@ func checkPasswordStrength(password: String) -> String {
     if score >= 5 {
         return "Strong";
     } else if score >= 3 {
-        return "Moderate - needs: " + feedback.Join(", ");
+        return "Moderate - needs: " + Str.Join(", ", feedback);
     } else {
-        return "Weak - needs: " + feedback.Join(", ");
+        return "Weak - needs: " + Str.Join(", ", feedback);
     }
 }
 
@@ -1725,19 +1726,19 @@ func debugString(text: String) {
 
     // Show character codes
     for i in 0..text.Length {
-        Say("  [" + i + "]: '" + text[i] + "' = " + text[i].code());
+        Say("  [" + i + "]: " + text[i] + " = " + text[i].Asc());
     }
 }
 
 debugString("hello ");
 // [hello ]
 // Length: 6
-//   [0]: 'h' = 104
-//   [1]: 'e' = 101
-//   [2]: 'l' = 108
-//   [3]: 'l' = 108
-//   [4]: 'o' = 111
-//   [5]: ' ' = 32     <- There's the extra space!
+//   [0]: h = 104
+//   [1]: e = 101
+//   [2]: l = 108
+//   [3]: l = 108
+//   [4]: o = 111
+//   [5]:   = 32     <- There's the extra space!
 ```
 
 ### Common Invisible Characters
@@ -1869,7 +1870,7 @@ func countVowels(text: String) -> Integer {
 
 func start() {
     Say("Enter some text:");
-    var text = ReadLine();
+    var text = InputLine();
 
     Say("");
     Say("=== Analysis ===");
@@ -1904,6 +1905,7 @@ Lowercase: hello world from viper
 **Zia**
 ```rust
 bind Viper.Terminal;
+bind Str = Viper.String;
 
 var text = "Hello, World!";
 
@@ -1917,11 +1919,11 @@ var sub = text.Substring(0, 5);
 var pos = text.IndexOf("World");
 
 // Replace
-var new = text.Replace("World", "Viper");
+var replaced = text.Replace("World", "Viper");
 
 // Split and join
 var parts = text.Split(", ");
-var joined = parts.Join(" - ");
+var joined = Str.Join(" - ", parts);
 
 // Case
 var upper = text.ToUpper();
@@ -1969,7 +1971,7 @@ var last = text[text.Length - 1];  // Correct: index 4 is 'o'
 **Forgetting strings are immutable:**
 ```rust
 var text = "Hello";
-text[0] = 'J';  // Error in many languages!
+text[0] = "J";  // Error in many languages!
 var text = "J" + text.Substring(1);  // Create a new string instead
 ```
 
@@ -1999,7 +2001,7 @@ if text.Length == 0 {    // Check if empty
 **Confusing string concatenation with arithmetic:**
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 var a = "5";
 var b = "3";
@@ -2013,7 +2015,7 @@ Say(Convert.ToInt64(a) + Convert.ToInt64(b));  // 8
 ```rust
 bind Viper.Terminal;
 
-var input = ReadLine();
+var input = InputLine();
 // User might type "  yes  " with spaces
 
 if input == "yes" {  // Fails!
@@ -2041,7 +2043,7 @@ if input.Trim() == "yes" {  // Works
 - `split` breaks into arrays; `join` combines arrays
 - String comparison is case-sensitive and uses character codes
 - `Viper.Core.Convert.ToInt64/ToDouble` convert strings to numbers
-- `Viper.Fmt.format` creates formatted strings
+- `Viper.Fmt.Int/IntPad` format numbers as strings
 - Always check for empty strings and off-by-one errors
 - Use `trim()` on user input before processing
 

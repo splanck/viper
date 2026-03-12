@@ -27,7 +27,7 @@ Think of it this way:
 Imagine you're building a game engine. You want to draw things on screen. Without interfaces, you might write code like this:
 
 ```rust
-func drawEverything(dogs: [Dog], spaceships: [Spaceship], trees: [Tree]) {
+func drawEverything(dogs: List[Dog], spaceships: List[Spaceship], trees: List[Tree]) {
     for dog in dogs {
         dog.draw();
     }
@@ -85,7 +85,7 @@ When companies hire, job postings list requirements: "Must know Python, SQL, and
 ```rust
 interface SoftwareEngineer {
     func writeCode(language: String) -> String;
-    func reviewCode(pr: PullRequest) -> [Comment];
+    func reviewCode(pr: PullRequest) -> List[Comment];
     func debugIssue(bug: Bug) -> Fix;
 }
 ```
@@ -229,12 +229,12 @@ entity FileStore implements DataStore {
 
     func save(key: String, value: String) {
         var path = self.basePath + "/" + key + ".txt";
-        Viper.Files.Write(path, value);
+        File.WriteAllText(path, value);
     }
 
     func load(key: String) -> String {
         var path = self.basePath + "/" + key + ".txt";
-        return Viper.Files.Read(path);
+        return File.ReadAllText(path);
     }
 }
 
@@ -268,7 +268,7 @@ Three completely different implementations, one interface. Code that uses DataSt
 The power comes from treating different entities uniformly:
 
 ```rust
-func renderScene(items: [Drawable]) {
+func renderScene(items: List[Drawable]) {
     for item in items {
         item.draw();
     }
@@ -277,7 +277,7 @@ func renderScene(items: [Drawable]) {
 var circle = Circle { radius: 5.0 };
 var rect = Rectangle { width: 10.0, height: 3.0 };
 
-var scene: [Drawable] = [circle, rect];
+var scene: List[Drawable] = [circle, rect];
 renderScene(scene);
 // Drawing a circle with radius 5
 // Drawing a rectangle 10x3
@@ -307,7 +307,7 @@ func createDrawable(type: String) -> Drawable {
 }
 
 // In collections
-var items: [Drawable] = [];
+var items: List[Drawable] = [];
 items.Push(Circle { radius: 2.0 });
 items.Push(Rectangle { width: 4.0, height: 3.0 });
 ```
@@ -452,8 +452,8 @@ entity Button implements Drawable, Movable, Clickable {
 The Button is Drawable AND Movable AND Clickable. It can be used anywhere any of those interfaces is expected:
 
 ```rust
-func drawAll(items: [Drawable]) { ... }
-func moveAll(items: [Movable]) { ... }
+func drawAll(items: List[Drawable]) { ... }
+func moveAll(items: List[Movable]) { ... }
 func handleClick(item: Clickable) { ... }
 
 var btn = Button { x: 0.0, y: 0.0, label: "OK" };
@@ -778,7 +778,7 @@ entity SmtpEmailSender implements EmailSender {
 
 // Fake implementation for testing
 entity FakeEmailSender implements EmailSender {
-    sentEmails: [Email];
+    sentEmails: List[Email];
 
     expose func init() {
         self.sentEmails = [];
@@ -790,7 +790,7 @@ entity FakeEmailSender implements EmailSender {
     }
 
     // Helper method for tests
-    func getSentEmails() -> [Email] {
+    func getSentEmails() -> List[Email] {
         return self.sentEmails;
     }
 }
@@ -976,7 +976,7 @@ interface UserRepository {
     func getUser(id: Integer) -> User;
     func saveUser(user: User);
     func deleteUser(id: Integer);
-    func findUsersByName(name: String) -> [User];
+    func findUsersByName(name: String) -> List[User];
 }
 ```
 
@@ -1063,7 +1063,7 @@ entity RepeatPlugin implements Plugin {
 
 // Plugin manager doesn't need to know about specific plugins
 entity PluginManager {
-    plugins: [Plugin];
+    plugins: List[Plugin];
 
     expose func init() {
         self.plugins = [];
@@ -1156,32 +1156,32 @@ The strategy pattern lets you swap algorithms at runtime:
 
 ```rust
 interface SortStrategy {
-    func sort(items: [Integer]) -> [Integer];
+    func sort(items: List[Integer]) -> List[Integer];
 }
 
 entity QuickSort implements SortStrategy {
-    func sort(items: [Integer]) -> [Integer] {
+    func sort(items: List[Integer]) -> List[Integer] {
         // Quick sort implementation
         ...
     }
 }
 
 entity MergeSort implements SortStrategy {
-    func sort(items: [Integer]) -> [Integer] {
+    func sort(items: List[Integer]) -> List[Integer] {
         // Merge sort implementation
         ...
     }
 }
 
 entity BubbleSort implements SortStrategy {
-    func sort(items: [Integer]) -> [Integer] {
+    func sort(items: List[Integer]) -> List[Integer] {
         // Bubble sort implementation (slow but simple)
         ...
     }
 }
 
 // Use any sorting strategy
-func processData(data: [Integer], strategy: SortStrategy) {
+func processData(data: List[Integer], strategy: SortStrategy) {
     var sorted = strategy.Sort(data);
     ...
 }
@@ -1205,7 +1205,7 @@ interface Observer {
 }
 
 entity Subject {
-    observers: [Observer];
+    observers: List[Observer];
 
     expose func init() {
         self.observers = [];
@@ -1216,7 +1216,7 @@ entity Subject {
     }
 
     func unsubscribe(obs: Observer) {
-        self.observers.remove(obs);
+        self.observers.Remove(obs);
     }
 
     func notify(event: String) {
@@ -1259,7 +1259,7 @@ interface UserRepository {
     func findByEmail(email: String) -> User;
     func save(user: User);
     func delete(id: Integer);
-    func findAll() -> [User];
+    func findAll() -> List[User];
 }
 
 // In-memory implementation for development/testing
@@ -1289,10 +1289,10 @@ entity InMemoryUserRepository implements UserRepository {
     }
 
     func delete(id: Integer) {
-        self.users.remove(id);
+        self.users.Remove(id);
     }
 
-    func findAll() -> [User] {
+    func findAll() -> List[User] {
         return self.users.Values();
     }
 }

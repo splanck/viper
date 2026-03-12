@@ -570,7 +570,7 @@ Let's apply ZOMBIES to testing a stack:
 
 ```rust
 entity Stack[T] {
-    hide items: [T];
+    hide items: List[T];
 
     expose func init() {
         self.items = [];
@@ -822,7 +822,7 @@ A mock records how it was called, letting you verify interactions:
 
 ```rust
 entity MockEmailService implements IEmailService {
-    hide sentEmails: [Email];
+    hide sentEmails: List[Email];
 
     expose func init() {
         self.sentEmails = [];
@@ -1054,7 +1054,7 @@ The algorithm works but is slow. Let's optimize:
 
 ```rust
 bind Viper.Math as Math;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 func isPrime(n: Integer) -> Boolean {
     if n < 2 { return false; }
@@ -1618,7 +1618,7 @@ func add(numbers: String) -> Integer {
 
     var normalized = numbers.Replace("\n", ",");
     var parts = normalized.Split(",");
-    var negatives: [Integer] = [];
+    var negatives: List[Integer] = [];
     var sum = 0;
 
     for part in parts {
@@ -1655,7 +1655,7 @@ entity StringCalculator {
 
         var normalized = numbers.Replace("\n", ",");
         var parts = normalized.Split(",");
-        var negatives: [Integer] = [];
+        var negatives: List[Integer] = [];
         var sum = 0;
 
         for part in parts {
@@ -1728,7 +1728,7 @@ Tests should not share state or depend on execution order:
 
 ```rust
 // Bad: Tests share state
-var sharedList: [Integer] = [];
+var sharedList: List[Integer] = [];
 
 test "add to list" {
     sharedList.Push(1);
@@ -1742,13 +1742,13 @@ test "list has item" {
 
 // Good: Each test creates its own state
 test "add to list" {
-    var list: [Integer] = [];
+    var list: List[Integer] = [];
     list.Push(1);
     assertEqual(list.Length, 1);
 }
 
 test "list contains added item" {
-    var list: [Integer] = [];
+    var list: List[Integer] = [];
     list.Push(1);
     assertEqual(list[0], 1);
 }

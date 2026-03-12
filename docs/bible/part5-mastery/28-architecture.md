@@ -309,7 +309,7 @@ This entity changes if data sources change, business rules change, HTML design c
 ```rust
 // Good: Single responsibility each
 entity ReportDataGatherer {
-    func gather(sources: [DataSource]) -> RawData { ... }
+    func gather(sources: List[DataSource]) -> RawData { ... }
 }
 
 entity ReportCalculator {
@@ -325,7 +325,7 @@ entity PdfReportFormatter {
 }
 
 entity ReportEmailer {
-    func send(report: String, recipients: [String]) { ... }
+    func send(report: String, recipients: List[String]) { ... }
 }
 
 entity ReportFileSaver {
@@ -433,10 +433,10 @@ interface IEmployee {
     func getSalary() -> Number;
     func getOfficeLocation() -> String;
     func getRemoteWorkSchedule() -> Schedule;
-    func getEquipmentAssigned() -> [Equipment];
+    func getEquipmentAssigned() -> List[Equipment];
     func getParkingSpot() -> String;
     func getHealthBenefits() -> Benefits;
-    func getStockOptions() -> [StockGrant];
+    func getStockOptions() -> List[StockGrant];
 }
 ```
 
@@ -461,7 +461,7 @@ interface ILocatable {
 
 interface IBenefited {
     func getHealthBenefits() -> Benefits;
-    func getStockOptions() -> [StockGrant];
+    func getStockOptions() -> List[StockGrant];
 }
 
 // Payroll only needs what it uses
@@ -583,12 +583,12 @@ MVC separates user interface applications into three components:
 **Controller** handles user input and coordinates between model and view. It translates user actions into model updates and triggers view refreshes.
 
 ```rust
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 bind Viper.Fmt as Fmt;
 
 // Model: Business logic and data
 entity TodoList {
-    hide items: [TodoItem];
+    hide items: List[TodoItem];
     hide nextId: Integer;
 
     expose func init() {
@@ -616,7 +616,7 @@ entity TodoList {
         self.items = self.items.Filter(item => item.id != id);
     }
 
-    func getItems() -> [TodoItem] {
+    func getItems() -> List[TodoItem] {
         return self.items.clone();
     }
 
@@ -631,7 +631,7 @@ entity TodoView {
     hide inputElement: HTMLInputElement;
     hide countElement: HTMLElement;
 
-    func render(items: [TodoItem], activeCount: Integer) {
+    func render(items: List[TodoItem], activeCount: Integer) {
         self.listElement.Clear();
 
         for item in items {
@@ -754,8 +754,8 @@ The repository pattern abstracts data access behind a collection-like interface:
 ```rust
 interface IProductRepository {
     func findById(id: String) -> Product?;
-    func findByCategory(category: String) -> [Product];
-    func findAll() -> [Product];
+    func findByCategory(category: String) -> List[Product];
+    func findAll() -> List[Product];
     func save(product: Product);
     func delete(id: String);
 }
@@ -783,7 +783,7 @@ entity SqlProductRepository implements IProductRepository {
         return self.mapRowToProduct(row);
     }
 
-    func findByCategory(category: String) -> [Product] {
+    func findByCategory(category: String) -> List[Product] {
         var rows = self.db.query(
             "SELECT * FROM products WHERE category = ?",
             [category]
@@ -830,12 +830,12 @@ entity InMemoryProductRepository implements IProductRepository {
         return self.products.Get(id);
     }
 
-    func findByCategory(category: String) -> [Product] {
+    func findByCategory(category: String) -> List[Product] {
         return self.products.Values()
             .Filter(p => p.category == category);
     }
 
-    func findAll() -> [Product] {
+    func findAll() -> List[Product] {
         return self.products.Values();
     }
 
@@ -884,7 +884,7 @@ entity OrderService {
         self.inventoryService = inventoryService;
     }
 
-    func placeOrder(customerId: String, items: [OrderItem]) -> OrderResult {
+    func placeOrder(customerId: String, items: List[OrderItem]) -> OrderResult {
         // Load customer
         var customer = self.customerRepo.findById(customerId);
         if customer == null {
@@ -1482,7 +1482,7 @@ entity BookRepository {
         );
     }
 
-    func findAll() -> [Book] {
+    func findAll() -> List[Book] {
         var rows = self.db.query("SELECT * FROM books");
         return rows.Map(row => Book(
             isbn: row.getString("isbn"),
@@ -1650,7 +1650,7 @@ entity LibraryService {
         return Result.success(true);
     }
 
-    func listBooks() -> [Book] {
+    func listBooks() -> List[Book] {
         return self.bookRepo.findAll();
     }
 }
@@ -1763,7 +1763,7 @@ Finally, extract interfaces so we can test without a database:
 // domain/IBookRepository.zia
 interface IBookRepository {
     func findByIsbn(isbn: String) -> Book?;
-    func findAll() -> [Book];
+    func findAll() -> List[Book];
     func save(book: Book);
 }
 
@@ -1802,7 +1802,7 @@ entity InMemoryBookRepository implements IBookRepository {
         return self.books.Get(isbn);
     }
 
-    func findAll() -> [Book] {
+    func findAll() -> List[Book] {
         return self.books.Values();
     }
 
@@ -1987,7 +1987,7 @@ Using patterns that do not fit your problem:
 ```rust
 // Using event sourcing for a simple CRUD app
 entity UserEventStore {
-    events: [UserEvent];
+    events: List[UserEvent];
 
     func apply(event: UserEvent) {
         self.events.Push(event);
@@ -2263,7 +2263,7 @@ Write tests for your implementation.
 **Exercise 28.8 (Refactoring Journey)**: Take this starter code and refactor it step by step:
 
 ```rust
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 func main() {
     var items = [];

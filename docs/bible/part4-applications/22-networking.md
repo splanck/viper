@@ -326,7 +326,7 @@ var users = Http.Get("https://api.example.com/users");
 
 ```rust
 // POST - send data to create something new
-var newUser = Http.post("https://api.example.com/users", {
+var newUser = Http.Post("https://api.example.com/users", {
     body: '{"name": "Alice", "email": "alice@example.com"}',
     headers: { "Content-Type": "application/json" }
 });
@@ -336,7 +336,7 @@ var newUser = Http.post("https://api.example.com/users", {
 
 ```rust
 // PUT - update existing data
-var updated = Http.put("https://api.example.com/users/123", {
+var updated = Http.Put("https://api.example.com/users/123", {
     body: '{"name": "Alice Smith"}',
     headers: { "Content-Type": "application/json" }
 });
@@ -364,7 +364,7 @@ Most modern web APIs exchange data in JSON (JavaScript Object Notation) format. 
 
 ```rust
 bind Viper.Network;
-bind Viper.JSON;
+bind Json = Viper.Text.Json;
 bind Viper.Terminal;
 
 value Weather {
@@ -389,7 +389,7 @@ func fetchWeather(city: String) -> Weather? {
     // Parse the JSON response
     // The response body might look like:
     // {"temp": 72.5, "conditions": "Sunny", "humidity": 45.0}
-    var data = JSON.Parse(response.body);
+    var data = Json.Parse(response.body);
 
     // Extract the fields we need
     return Weather {
@@ -418,7 +418,7 @@ Let's trace through the JSON parsing:
 Server Response (text):
 {"temp": 72.5, "conditions": "Sunny", "humidity": 45.0}
 
-After JSON.Parse():
+After Json.Parse():
 data is now a JSON object where:
   data["temp"] is a JSON number containing 72.5
   data["conditions"] is a JSON string containing "Sunny"
@@ -449,7 +449,7 @@ bind Viper.Terminal;
 func start() {
     // Connect to a server
     // This is like dialing a phone number
-    var socket = TcpSocket.connect("example.com", 80);
+    var socket = Tcp.Connect("example.com", 80);
 
     // Check if connection succeeded
     if socket == null {
@@ -477,7 +477,7 @@ func start() {
 Let's trace through what happens:
 
 ```text
-Step 1: TcpSocket.connect("example.com", 80)
+Step 1: Tcp.Connect("example.com", 80)
    - DNS lookup: "example.com" -> 93.184.216.34
    - Create a socket (OS allocates resources)
    - TCP three-way handshake with 93.184.216.34:80
@@ -513,7 +513,7 @@ bind Viper.Terminal;
 func start() {
     // Create a server socket that listens on port 8080
     // This is like setting up a phone line that can receive calls
-    var server = TcpServer.listen(8080);
+    var server = TcpServer.Listen(8080);
     Terminal.Say("Server listening on port 8080");
 
     // Server loop: accept and handle connections forever
@@ -521,7 +521,7 @@ func start() {
         // Wait for a client to connect
         // This is like waiting for the phone to ring, then answering
         Terminal.Say("Waiting for client...");
-        var client = server.accept();
+        var client = server.Accept();
 
         Terminal.Say("Client connected from " + client.remoteAddress());
 
@@ -545,13 +545,13 @@ The server's lifecycle:
 ```text
                 +-------------------+
                 |   TcpServer.      |
-                |   listen(8080)    |
+                |   Listen(8080)    |
                 +--------+----------+
                          |
                          v
                 +--------+----------+
                 |                   |
-                |   server.accept() |<--+
+                |   server.Accept() |<--+
                 |   (waits...)      |   |
                 +--------+----------+   |
                          |              |
@@ -612,14 +612,14 @@ entity ChatServer {
     hide server: TcpServer;
 
     // List of all connected clients
-    hide clients: [TcpSocket];
+    hide clients: List[TcpSocket];
 
     // Flag to control the server loop
     hide running: Boolean;
 
     expose func init(port: Integer) {
         // Start listening on the specified port
-        self.server = TcpServer.listen(port);
+        self.server = TcpServer.Listen(port);
         self.clients = [];
         self.running = true;
         Terminal.Say("Chat server started on port " + port);
@@ -629,9 +629,9 @@ entity ChatServer {
     func run() {
         while self.running {
             // Step 1: Check for new clients trying to connect
-            // acceptNonBlocking returns null immediately if no one is waiting
-            // (blocking accept would freeze the server until someone connects)
-            var newClient = self.server.acceptNonBlocking();
+            // AcceptFor with a short timeout returns null if no one is waiting
+            // (blocking Accept would freeze the server until someone connects)
+            var newClient = self.server.AcceptFor(100);
 
             if newClient != null {
                 // A new client connected!
@@ -742,7 +742,7 @@ Time 0:30 - Alice sends "/quit"
 module ChatClient;
 
 bind Viper.Network;
-bind Viper.Threading;
+bind Viper.Threads;
 bind Viper.Terminal;
 bind Viper.Time;
 
@@ -756,7 +756,7 @@ entity ChatClient {
         self.running = true;
 
         // Connect to the server
-        self.socket = TcpSocket.connect(host, port);
+        self.socket = Tcp.Connect(host, port);
 
         if self.socket == null {
             Terminal.Say("Could not connect to server at " + host + ":" + port);
@@ -905,7 +905,7 @@ Games often need to send player state many times per second. Lost packets don't 
 ```rust
 bind Viper.Network;
 bind Viper.Time;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 // Player state that we'll send frequently
 value PlayerState {
@@ -938,8 +938,8 @@ entity GameNetwork {
     }
 
     // Receive states of other players from the server
-    func receiveStates() -> [PlayerState] {
-        var states: [PlayerState] = [];
+    func receiveStates() -> List[PlayerState] {
+        var states: List[PlayerState] = [];
 
         // Process all available packets (non-blocking)
         while self.socket.hasData() {
@@ -1078,7 +1078,7 @@ bind Viper.Terminal;
 func demonstrateFailures() {
     // Failure 1: Cannot connect
     // Server might be down, address might be wrong
-    var socket = TcpSocket.connect("nonexistent.example.com", 80);
+    var socket = Tcp.Connect("nonexistent.example.com", 80);
     if socket == null {
         Terminal.Say("Could not connect - server unreachable");
     }
@@ -1195,7 +1195,7 @@ var response = Http.Get(url);  // Dangerous!
 var response = Http.Get(url, { timeout: 5000 });
 
 // For sockets, set timeouts explicitly
-var socket = TcpSocket.connect(host, port, { timeout: 3000 });
+var socket = Tcp.Connect(host, port, { timeout: 3000 });
 socket.setReadTimeout(10000);   // 10 seconds to read
 socket.setWriteTimeout(5000);   // 5 seconds to write
 ```
@@ -1218,7 +1218,7 @@ Every open connection uses system resources. Leaking connections will eventually
 ```rust
 // BAD: Connection leak!
 func fetchData(host: String, port: Integer) -> String {
-    var socket = TcpSocket.connect(host, port);
+    var socket = Tcp.Connect(host, port);
     var data = socket.readAll();
     return data;  // Socket never closed!
 }
@@ -1226,7 +1226,7 @@ func fetchData(host: String, port: Integer) -> String {
 
 // GOOD: Always close
 func fetchData(host: String, port: Integer) -> String {
-    var socket = TcpSocket.connect(host, port);
+    var socket = Tcp.Connect(host, port);
     var data = socket.readAll();
     socket.Close();  // Clean up!
     return data;
@@ -1234,7 +1234,7 @@ func fetchData(host: String, port: Integer) -> String {
 
 // EVEN BETTER: Handle errors too
 func fetchData(host: String, port: Integer) -> String? {
-    var socket = TcpSocket.connect(host, port);
+    var socket = Tcp.Connect(host, port);
 
     if socket == null {
         return null;
@@ -1380,7 +1380,7 @@ func reliableConnection(host: String, port: Integer) {
         // Connect if needed
         if socket == null {
             Terminal.Say("Connecting...");
-            socket = TcpSocket.connect(host, port);
+            socket = Tcp.Connect(host, port);
 
             if socket == null {
                 Terminal.Say("Connection failed, retrying in 5 seconds");
@@ -1419,13 +1419,13 @@ HTTP sends data in plain text. Anyone on the network path can read it. HTTPS enc
 
 ```rust
 // BAD: Password sent in plain text!
-Http.post("http://example.com/login", {
+Http.Post("http://example.com/login", {
     body: '{"username": "alice", "password": "secret123"}'
 });
 // Anyone on the network can see "secret123"
 
 // GOOD: Encrypted connection
-Http.post("https://example.com/login", {
+Http.Post("https://example.com/login", {
     body: '{"username": "alice", "password": "secret123"}'
 });
 // Data is encrypted, observers see gibberish
@@ -1587,7 +1587,7 @@ Network communication involves multiple layers. Test each one:
 ```rust
 bind Viper.Terminal;
 
-var socket = TcpSocket.connect(host, port, { timeout: 3000 });
+var socket = Tcp.Connect(host, port, { timeout: 3000 });
 if socket == null {
     Terminal.Say("Cannot connect to " + host + ":" + port);
     Terminal.Say("Check: Is the server running? Is the address correct?");
@@ -1669,7 +1669,7 @@ Let's tie everything together with a complete, well-structured networking applic
 module WeatherDashboard;
 
 bind Viper.Network;
-bind Viper.JSON;
+bind Json = Viper.Text.Json;
 bind Viper.Time;
 bind Viper.Terminal;
 
@@ -1729,7 +1729,7 @@ entity WeatherService {
                 return null;
             }
 
-            var data = JSON.Parse(response.body);
+            var data = Json.Parse(response.body);
 
             var weather = CityWeather {
                 city: city,
@@ -1839,7 +1839,7 @@ if response.ok {
 }
 
 // TCP client
-var socket = TcpSocket.connect("example.com", 80);
+var socket = Tcp.Connect("example.com", 80);
 socket.Write("Hello\n");
 var reply = socket.ReadLine();
 socket.Close();

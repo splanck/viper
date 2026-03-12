@@ -341,5 +341,71 @@ func start() {
     }
     assertEqInt(searchVal, 8, "complex_termination");
 
+    //=========================================================================
+    // Test 21: Range .step()
+    //=========================================================================
+    sum = 0;
+    for i in (0..10).step(2) {
+        sum = sum + i;
+    }
+    assertEqInt(sum, 20, "range_step");  // 0+2+4+6+8 = 20
+
+    //=========================================================================
+    // Test 22: Range .step() inclusive
+    //=========================================================================
+    sum = 0;
+    for i in (0..=10).step(2) {
+        sum = sum + i;
+    }
+    assertEqInt(sum, 30, "range_step_incl");  // 0+2+4+6+8+10 = 30
+
+    //=========================================================================
+    // Test 23: Range .rev() exclusive
+    //=========================================================================
+    var revFirst: Integer = -1;
+    for i in (0..5).rev() {
+        if (revFirst == -1) { revFirst = i; }
+    }
+    assertEqInt(revFirst, 4, "range_rev_first");
+
+    sum = 0;
+    for i in (0..5).rev() {
+        sum = sum + i;
+    }
+    assertEqInt(sum, 10, "range_rev_sum");  // 4+3+2+1+0 = 10
+
+    //=========================================================================
+    // Test 24: Range .rev() inclusive
+    //=========================================================================
+    revFirst = -1;
+    for i in (0..=5).rev() {
+        if (revFirst == -1) { revFirst = i; }
+    }
+    assertEqInt(revFirst, 5, "range_rev_incl_first");
+
+    sum = 0;
+    for i in (0..=5).rev() {
+        sum = sum + i;
+    }
+    assertEqInt(sum, 15, "range_rev_incl_sum");  // 5+4+3+2+1+0 = 15
+
+    //=========================================================================
+    // Test 25: Range .rev().step() combined
+    //=========================================================================
+    sum = 0;
+    for i in (0..=10).rev().step(3) {
+        sum = sum + i;
+    }
+    assertEqInt(sum, 22, "range_rev_step");  // 10+7+4+1 = 22
+
+    //=========================================================================
+    // Test 26: Range .step().rev() (order reversed)
+    //=========================================================================
+    sum = 0;
+    for i in (0..=10).step(3).rev() {
+        sum = sum + i;
+    }
+    assertEqInt(sum, 22, "range_step_rev");  // same result: 10+7+4+1 = 22
+
     report();
 }

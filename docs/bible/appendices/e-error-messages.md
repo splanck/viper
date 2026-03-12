@@ -354,7 +354,7 @@ var count: Integer = 42;
 var count: String = "hello";
 
 // Solution 3: Convert the value (if appropriate)
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 var count: Integer = Convert.ToInt64("42");
 ```
 
@@ -483,7 +483,7 @@ var b = "3";
 var sum = a + b;  // Results in "53", not 8!
 
 // Solution: Convert to numbers first
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 var a = Convert.ToInt64("5");
 var b = Convert.ToInt64("3");
 var sum = a + b;  // 8
@@ -511,7 +511,7 @@ Error: TypeError at main.zia:15:12
 
 ```rust
 // Problem: Parsing non-number
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 bind Viper.Terminal;
 
 var num = Convert.ToInt64("hello");  // Error: "hello" is not a number
@@ -532,7 +532,7 @@ try {
 
 ```rust
 // Problem: Trailing characters
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 var num = Convert.ToInt64("42abc");  // Error or unexpected result
 
@@ -907,7 +907,7 @@ var result = add(1, 0);  // OK
 
 ```rust
 // If you need variable arguments, use an array
-func sum(numbers: [Integer]) -> Integer {
+func sum(numbers: List[Integer]) -> Integer {
     var total = 0;
     for n in numbers {
         total = total + n;
@@ -1301,7 +1301,7 @@ for item in items {
 
 ```rust
 // Problem: Not checking for empty array
-var scores: [Integer] = [];
+var scores: List[Integer] = [];
 var first = scores[0];  // Error: array is empty
 
 // Solution: Check length first
@@ -1588,14 +1588,14 @@ Error: FileError at main.zia:10:5
 
 ```rust
 // Problem: Writing to protected location
-bind Viper.File;
+bind File = Viper.IO.File;
 bind Viper.OS;
 
-writeText("/etc/config.txt", data);  // Permission denied
+File.WriteAllText("/etc/config.txt", data);  // Permission denied
 
 // Solution: Write to allowed location
-writeText("./config.txt", data);  // Local directory
-writeText(homeDir() + "/config.txt", data);  // User's home
+File.WriteAllText("./config.txt", data);  // Local directory
+File.WriteAllText(homeDir() + "/config.txt", data);  // User's home
 ```
 
 **Prevention:**
@@ -1618,29 +1618,29 @@ Error: FileError at main.zia:15:5
 
 ```rust
 // Problem: File exists in exclusive mode
-bind Viper.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 bind Viper.Time;
 
 createNew("output.txt", data);  // Error if exists
 
 // Solution 1: Use overwrite mode
-writeText("output.txt", data);  // Overwrites if exists
+File.WriteAllText("output.txt", data);  // Overwrites if exists
 
 // Solution 2: Check and decide
-if exists("output.txt") {
+if File.Exists("output.txt") {
     Print("File exists. Overwrite? (y/n): ");
-    if ReadLine() == "y" {
-        writeText("output.txt", data);
+    if InputLine() == "y" {
+        File.WriteAllText("output.txt", data);
     }
 } else {
-    writeText("output.txt", data);
+    File.WriteAllText("output.txt", data);
 }
 
 // Solution 3: Generate unique name
 // Generate unique name using a tick counter
 var filename = "output_" + Convert.ToString_Int(Time.Clock.Ticks()) + ".txt";
-writeText(filename, data);
+File.WriteAllText(filename, data);
 ```
 
 ---
@@ -1719,9 +1719,9 @@ func processLargeData(source: DataSource) {
 
 ```rust
 // Problem: Loading huge file into memory
-bind Viper.File;
+bind File = Viper.IO.File;
 
-var content = readText("huge_file.txt");  // Out of memory
+var content = File.ReadAllText("huge_file.txt");  // Out of memory
 
 // Solution: Read line by line
 var reader = openReader("huge_file.txt");

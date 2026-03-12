@@ -117,11 +117,11 @@ Notice Windows uses backslashes (`\`), but since backslash is also the escape ch
 **Good news:** Viper handles this automatically. You can use forward slashes everywhere, and Viper will convert them appropriately for the operating system:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
 // This works on ALL operating systems
 var path = "C:/Users/Alice/Documents/report.txt";
-var content = readText(path);
+var content = File.ReadAllText(path);
 ```
 
 ### Relative Paths
@@ -276,9 +276,9 @@ When you open a file, you specify what you intend to do with it. This is called 
 Read mode opens an existing file for reading. The file must already exist — if it doesn't, you'll get an error.
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
-var content = readText("data.txt");
+var content = File.ReadAllText("data.txt");
 ```
 
 The file is opened, read from beginning to end, and then closed automatically. Your program receives the contents as a string.
@@ -288,9 +288,9 @@ The file is opened, read from beginning to end, and then closed automatically. Y
 Write mode creates a new file or overwrites an existing one. This is destructive — if the file exists, its contents are erased and replaced.
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
-writeText("output.txt", "Hello, World!");
+File.WriteAllText("output.txt", "Hello, World!");
 ```
 
 **Be careful!** Write mode doesn't ask for confirmation. If `output.txt` contained your life's work, it's now gone forever (unless you have backups).
@@ -300,9 +300,9 @@ writeText("output.txt", "Hello, World!");
 Append mode adds data to the end of an existing file, or creates a new file if it doesn't exist. Existing content is preserved.
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
-appendText("log.txt", "New entry\n");
+File.Append("log.txt", "New entry\n");
 ```
 
 Each call adds to the end. The file grows over time. This is perfect for logs, history files, and accumulating data.
@@ -311,11 +311,11 @@ Each call adds to the end. The file grows over time. This is perfect for logs, h
 
 | Scenario | Mode | Function |
 |----------|------|----------|
-| Reading a configuration file | Read | `readText` |
-| Saving user data | Write | `writeText` |
-| Adding to a log | Append | `appendText` |
-| Replacing a corrupted file | Write | `writeText` |
-| Recording each transaction | Append | `appendText` |
+| Reading a configuration file | Read | `File.ReadAllText` |
+| Saving user data | Write | `File.WriteAllText` |
+| Adding to a log | Append | `File.Append` |
+| Replacing a corrupted file | Write | `File.WriteAllText` |
+| Recording each transaction | Append | `File.Append` |
 
 ---
 
@@ -328,10 +328,10 @@ Let's explore file reading in detail, from simple to advanced techniques.
 The simplest approach loads the entire file into memory:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
-var content = readText("message.txt");
+var content = File.ReadAllText("message.txt");
 Say(content);
 ```
 
@@ -351,10 +351,10 @@ Say(content);
 Often you want to process a file line by line. `readLines` returns an array of strings:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
-var lines = readLines("data.txt");
+var lines = File.ReadAllLines("data.txt");
 
 Say("File has " + lines.Length + " lines");
 
@@ -426,11 +426,11 @@ Writing is where things can go wrong in ways that lose data. Let's understand ho
 ### Simple Writing
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
 var content = "Hello, File!\nThis is line two.\nAnd line three.";
-writeText("output.txt", content);
+File.WriteAllText("output.txt", content);
 Say("File written!");
 ```
 
@@ -446,11 +446,11 @@ The `\n` creates line breaks. Without them, everything would be on one line.
 ### Appending Data
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
-appendText("log.txt", "Event 1 occurred\n");
-appendText("log.txt", "Event 2 occurred\n");
-appendText("log.txt", "Event 3 occurred\n");
+File.Append("log.txt", "Event 1 occurred\n");
+File.Append("log.txt", "Event 2 occurred\n");
+File.Append("log.txt", "Event 3 occurred\n");
 ```
 
 After these three calls, `log.txt` contains:
@@ -540,17 +540,17 @@ If you open a binary file in Notepad, you see gibberish — because the bytes ar
 A simple example — storing numbers efficiently:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
 // Store the number 1000000 as text: needs 7 bytes ("1000000")
 // Store the number 1000000 as binary: needs 4 bytes (the actual bits)
 
 // Write binary data
-var data: [byte] = [0x40, 0x42, 0x0F, 0x00];  // 1000000 in little-endian
-writeBytes("number.bin", data);
+var data: List[byte] = [0x40, 0x42, 0x0F, 0x00];  // 1000000 in little-endian
+File.WriteAllBytes("number.bin", data);
 
 // Read binary data
-var bytes = readBytes("number.bin");
+var bytes = File.ReadAllBytes("number.bin");
 ```
 
 ### When to Use Each
@@ -570,15 +570,15 @@ var bytes = readBytes("number.bin");
 ### Working with Binary Files
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
 // Writing binary data
-var data: [byte] = [0x89, 0x50, 0x4E, 0x47];  // PNG header bytes
-writeBytes("header.bin", data);
+var data: List[byte] = [0x89, 0x50, 0x4E, 0x47];  // PNG header bytes
+File.WriteAllBytes("header.bin", data);
 
 // Reading binary data
-var bytes = readBytes("image.png");
+var bytes = File.ReadAllBytes("image.png");
 Say("File size: " + bytes.Length + " bytes");
 
 // Check for PNG signature
@@ -596,11 +596,11 @@ Binary file handling is more complex and usually requires understanding the spec
 Before reading, you might want to check if a file exists:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
-if exists("config.txt") {
-    var config = readText("config.txt");
+if File.Exists("config.txt") {
+    var config = File.ReadAllText("config.txt");
     Say("Loaded config");
 } else {
     Say("No config file found, using defaults");
@@ -612,11 +612,11 @@ if exists("config.txt") {
 There's a subtle issue with check-then-read:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
-if exists("data.txt") {
+if File.Exists("data.txt") {
     // Another program could delete the file RIGHT HERE
-    var content = readText("data.txt");  // Might fail!
+    var content = File.ReadAllText("data.txt");  // Might fail!
 }
 ```
 
@@ -625,11 +625,11 @@ Between checking and reading, another program (or user) could delete the file. T
 For critical code, consider using try-catch instead:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
 try {
-    var content = readText("data.txt");
+    var content = File.ReadAllText("data.txt");
     // Process content...
 } catch e: FileNotFound {
     Say("File not found, using defaults");
@@ -721,46 +721,46 @@ Files are a major source of errors. The file might not exist. You might not have
 
 **File not found:**
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
 // The file doesn't exist
-var content = readText("nonexistent.txt");
+var content = File.ReadAllText("nonexistent.txt");
 // Error: File not found: nonexistent.txt
 ```
 
 **Permission denied:**
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
 // You don't have permission to read/write this file
-var content = readText("/etc/shadow");
+var content = File.ReadAllText("/etc/shadow");
 // Error: Permission denied: /etc/shadow
 ```
 
 **Disk full:**
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
 // No space left on the storage device
-writeText("huge.txt", massiveData);
+File.WriteAllText("huge.txt", massiveData);
 // Error: No space left on device
 ```
 
 **Path is a directory:**
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
 // Trying to read a directory as a file
-var content = readText("my_folder");
+var content = File.ReadAllText("my_folder");
 // Error: Is a directory: my_folder
 ```
 
 **Invalid path:**
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
 // Path contains invalid characters or is malformed
-var content = readText("file\0name.txt");
+var content = File.ReadAllText("file\0name.txt");
 // Error: Invalid path
 ```
 
@@ -769,16 +769,16 @@ var content = readText("file\0name.txt");
 Never let file errors crash your program unexpectedly. Handle them:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
 func loadConfig() -> String {
     try {
-        return readText("config.txt");
+        return File.ReadAllText("config.txt");
     } catch e: FileNotFound {
         Say("Config file not found, creating default...");
         var defaultConfig = "theme=light\nvolume=50";
-        writeText("config.txt", defaultConfig);
+        File.WriteAllText("config.txt", defaultConfig);
         return defaultConfig;
     } catch e: PermissionDenied {
         Say("Cannot read config file: permission denied");
@@ -796,12 +796,12 @@ func loadConfig() -> String {
 Don't show raw error messages to users. Translate them:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
 func openUserFile(path: String) -> String {
     try {
-        return readText(path);
+        return File.ReadAllText(path);
     } catch e: FileNotFound {
         Say("Sorry, the file '" + path + "' doesn't exist.");
         Say("Please check the filename and try again.");
@@ -827,10 +827,10 @@ Writing files is risky. If something goes wrong mid-write, you might end up with
 ### The Danger of Direct Overwriting
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
 // Dangerous: if this fails mid-write, data.txt is corrupted
-writeText("data.txt", newData);
+File.WriteAllText("data.txt", newData);
 ```
 
 If power fails, or your program crashes, or the disk has an error during the write, `data.txt` might be left in a broken state.
@@ -840,17 +840,17 @@ If power fails, or your program crashes, or the disk has an error during the wri
 The professional approach:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
 func safeWrite(filename: String, content: String) {
     var tempFile = filename + ".tmp";
 
     // Step 1: Write to a temporary file
-    writeText(tempFile, content);
+    File.WriteAllText(tempFile, content);
 
     // Step 2: Delete the old file (if it exists)
-    if exists(filename) {
-        delete(filename);
+    if File.Exists(filename) {
+        File.Delete(filename);
     }
 
     // Step 3: Rename temp file to real name
@@ -868,17 +868,17 @@ Why is this safer?
 For critical data, keep a backup:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
 func writeWithBackup(filename: String, content: String) {
     // Create backup of existing file
-    if exists(filename) {
+    if File.Exists(filename) {
         var backupName = filename + ".backup";
         copy(filename, backupName);
     }
 
     // Now write the new content
-    writeText(filename, content);
+    File.WriteAllText(filename, content);
 }
 ```
 
@@ -888,32 +888,32 @@ If something goes wrong, the user still has their `.backup` file.
 
 **Confirm before overwriting:**
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
 func saveFile(filename: String, content: String) {
-    if exists(filename) {
+    if File.Exists(filename) {
         Print("File exists. Overwrite? (y/n): ");
-        var response = ReadLine().Trim().ToLower();
+        var response = InputLine().Trim().ToLower();
         if response != "y" {
             Say("Save cancelled.");
             return;
         }
     }
-    writeText(filename, content);
+    File.WriteAllText(filename, content);
     Say("File saved.");
 }
 ```
 
 **Generate unique names:**
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
 func uniqueFilename(base: String, ext: String) -> String {
     var filename = base + ext;
     var counter = 1;
 
-    while exists(filename) {
+    while File.Exists(filename) {
         filename = base + "_" + counter + ext;
         counter += 1;
     }
@@ -938,8 +938,8 @@ Programs often store settings in configuration files:
 ```rust
 module Config;
 
-bind Viper.IO.File;
-bind Viper.Convert as Convert;
+bind File = Viper.IO.File;
+bind Convert = Viper.Core.Convert;
 bind Viper.Terminal;
 
 final CONFIG_FILE = "settings.cfg";
@@ -948,11 +948,11 @@ final CONFIG_FILE = "settings.cfg";
 func loadConfig() -> Map[String, String] {
     var config = new Map[String, String]();
 
-    if !exists(CONFIG_FILE) {
+    if !File.Exists(CONFIG_FILE) {
         return config;  // Empty config if file doesn't exist
     }
 
-    var lines = readLines(CONFIG_FILE);
+    var lines = File.ReadAllLines(CONFIG_FILE);
 
     for line in lines {
         line = line.Trim();
@@ -974,7 +974,7 @@ func loadConfig() -> Map[String, String] {
 }
 
 func saveConfig(config: Map[String, String]) {
-    var lines: [String] = [];
+    var lines: List[String] = [];
     lines.Push("# Application settings");
     lines.Push("# Edit with care!");
     lines.Push("");
@@ -984,7 +984,7 @@ func saveConfig(config: Map[String, String]) {
     }
 
     var content = lines.Join("\n");
-    writeText(CONFIG_FILE, content);
+    File.WriteAllText(CONFIG_FILE, content);
 }
 
 // Usage
@@ -1022,7 +1022,7 @@ Recording events for debugging and auditing:
 module Logger;
 
 bind Viper.Time;
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
 final LOG_FILE = "application.log";
 
@@ -1030,7 +1030,7 @@ func log(level: String, message: String) {
     var ts = Time.DateTime.Now();
     var timestamp = Time.DateTime.Format(ts, "%Y-%m-%d %H:%M:%S");
     var entry = "[" + timestamp + "] [" + level + "] " + message + "\n";
-    appendText(LOG_FILE, entry);
+    File.Append(LOG_FILE, entry);
 }
 
 func info(message: String) {
@@ -1077,9 +1077,9 @@ module GameSave;
 
 bind Viper.IO.Dir;
 bind Viper.IO.Path;
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 final SAVE_DIR = "saves";
 
@@ -1088,7 +1088,7 @@ struct SaveData {
     level: Integer,
     score: Integer,
     health: Integer,
-    inventory: [String],
+    inventory: List[String],
     posX: Number,
     posY: Number
 }
@@ -1101,7 +1101,7 @@ func save(data: SaveData, slot: Integer) {
 
     var filename = join(SAVE_DIR, "save_" + slot + ".dat");
 
-    var lines: [String] = [];
+    var lines: List[String] = [];
     lines.Push("name=" + data.playerName);
     lines.Push("level=" + data.level);
     lines.Push("score=" + data.score);
@@ -1109,19 +1109,19 @@ func save(data: SaveData, slot: Integer) {
     lines.Push("inventory=" + data.inventory.Join(","));
     lines.Push("position=" + data.posX + "," + data.posY);
 
-    writeText(filename, lines.Join("\n"));
+    File.WriteAllText(filename, lines.Join("\n"));
     Say("Game saved to slot " + slot);
 }
 
 func load(slot: Integer) -> SaveData? {
     var filename = join(SAVE_DIR, "save_" + slot + ".dat");
 
-    if !exists(filename) {
+    if !File.Exists(filename) {
         Say("No save found in slot " + slot);
         return null;
     }
 
-    var lines = readLines(filename);
+    var lines = File.ReadAllLines(filename);
     var data = SaveData();
 
     for line in lines {
@@ -1147,8 +1147,8 @@ func load(slot: Integer) -> SaveData? {
     return data;
 }
 
-func listSaves() -> [Integer] {
-    var saves: [Integer] = [];
+func listSaves() -> List[Integer] {
+    var saves: List[Integer] = [];
 
     if !exists(SAVE_DIR) {
         return saves;
@@ -1171,11 +1171,11 @@ func listSaves() -> [Integer] {
 Exporting data for spreadsheets or other programs:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
-func exportToCSV(filename: String, headers: [String], rows: [[String]]) {
-    var lines: [String] = [];
+func exportToCSV(filename: String, headers: List[String], rows: List[List[String]]) {
+    var lines: List[String] = [];
 
     // Header row
     lines.Push(headers.Join(","));
@@ -1183,7 +1183,7 @@ func exportToCSV(filename: String, headers: [String], rows: [[String]]) {
     // Data rows
     for row in rows {
         // Escape commas and quotes in values
-        var escapedRow: [String] = [];
+        var escapedRow: List[String] = [];
         for value in row {
             if value.Contains(",") || value.Contains("\"") {
                 value = "\"" + value.Replace("\"", "\"\"") + "\"";
@@ -1193,7 +1193,7 @@ func exportToCSV(filename: String, headers: [String], rows: [[String]]) {
         lines.Push(escapedRow.Join(","));
     }
 
-    writeText(filename, lines.Join("\n"));
+    File.WriteAllText(filename, lines.Join("\n"));
     Say("Exported " + rows.Length + " rows to " + filename);
 }
 
@@ -1213,12 +1213,12 @@ exportToCSV("people.csv", headers, data);
 Reading data from CSV files:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
-func importFromCSV(filename: String) -> [[String]] {
-    var rows: [[String]] = [];
-    var lines = readLines(filename);
+func importFromCSV(filename: String) -> List[List[String]] {
+    var rows: List[List[String]] = [];
+    var lines = File.ReadAllLines(filename);
 
     for line in lines {
         if line.Trim().Length == 0 { continue; }
@@ -1248,22 +1248,22 @@ Let's build a full application that demonstrates proper file handling:
 ```rust
 module NoteKeeper;
 
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
 final NOTES_FILE = "notes.txt";
 final BACKUP_FILE = "notes.txt.backup";
 
 // Load notes from file
-func loadNotes() -> [String] {
-    if !exists(NOTES_FILE) {
+func loadNotes() -> List[String] {
+    if !File.Exists(NOTES_FILE) {
         return [];
     }
 
     try {
-        var lines = readLines(NOTES_FILE);
+        var lines = File.ReadAllLines(NOTES_FILE);
         // Filter out empty lines
-        var notes: [String] = [];
+        var notes: List[String] = [];
         for line in lines {
             if line.Trim().Length > 0 {
                 notes.Push(line);
@@ -1274,10 +1274,10 @@ func loadNotes() -> [String] {
         Say("Warning: Could not load notes: " + e.message);
 
         // Try backup
-        if exists(BACKUP_FILE) {
+        if File.Exists(BACKUP_FILE) {
             Say("Attempting to load from backup...");
             try {
-                return readLines(BACKUP_FILE);
+                return File.ReadAllLines(BACKUP_FILE);
             } catch e2 {
                 Say("Backup also failed.");
             }
@@ -1288,9 +1288,9 @@ func loadNotes() -> [String] {
 }
 
 // Save notes to file (with backup)
-func saveNotes(notes: [String]) -> Boolean {
+func saveNotes(notes: List[String]) -> Boolean {
     // Create backup of existing file
-    if exists(NOTES_FILE) {
+    if File.Exists(NOTES_FILE) {
         try {
             copy(NOTES_FILE, BACKUP_FILE);
         } catch e {
@@ -1302,11 +1302,11 @@ func saveNotes(notes: [String]) -> Boolean {
     var tempFile = NOTES_FILE + ".tmp";
     try {
         var content = notes.Join("\n");
-        writeText(tempFile, content);
+        File.WriteAllText(tempFile, content);
 
         // Delete old file and rename temp to real
-        if exists(NOTES_FILE) {
-            delete(NOTES_FILE);
+        if File.Exists(NOTES_FILE) {
+            File.Delete(NOTES_FILE);
         }
         rename(tempFile, NOTES_FILE);
 
@@ -1315,8 +1315,8 @@ func saveNotes(notes: [String]) -> Boolean {
         Say("Error saving notes: " + e.message);
 
         // Clean up temp file if it exists
-        if exists(tempFile) {
-            delete(tempFile);
+        if File.Exists(tempFile) {
+            File.Delete(tempFile);
         }
 
         return false;
@@ -1324,7 +1324,7 @@ func saveNotes(notes: [String]) -> Boolean {
 }
 
 // Display all notes
-func displayNotes(notes: [String]) {
+func displayNotes(notes: List[String]) {
     if notes.Length == 0 {
         Say("No notes yet.");
         Say("Use 'add' to create your first note!");
@@ -1368,7 +1368,7 @@ func start() {
 
     while true {
         Print("> ");
-        var command = ReadLine().Trim().ToLower();
+        var command = InputLine().Trim().ToLower();
 
         if command == "quit" || command == "exit" {
             Say("Goodbye!");
@@ -1382,7 +1382,7 @@ func start() {
 
         } else if command == "add" {
             Print("Enter note: ");
-            var note = ReadLine().Trim();
+            var note = InputLine().Trim();
 
             if note.Length == 0 {
                 Say("Note cannot be empty.");
@@ -1399,7 +1399,7 @@ func start() {
             } else {
                 displayNotes(notes);
                 Print("Delete which number? (0 to cancel): ");
-                var input = ReadLine().Trim();
+                var input = InputLine().Trim();
 
                 try {
                     var num = Convert.ToInt64(input);
@@ -1425,7 +1425,7 @@ func start() {
             } else {
                 displayNotes(notes);
                 Print("Edit which number? (0 to cancel): ");
-                var input = ReadLine().Trim();
+                var input = InputLine().Trim();
 
                 try {
                     var num = Convert.ToInt64(input);
@@ -1434,7 +1434,7 @@ func start() {
                     } else if num >= 1 && num <= notes.Length {
                         Say("Current: " + notes[num - 1]);
                         Print("New text: ");
-                        var newNote = ReadLine().Trim();
+                        var newNote = InputLine().Trim();
 
                         if newNote.Length == 0 {
                             Say("Note cannot be empty. Use 'delete' to remove.");
@@ -1457,7 +1457,7 @@ func start() {
                 Say("Already empty.");
             } else {
                 Print("Delete ALL " + notes.Length + " notes? (yes/no): ");
-                var confirm = ReadLine().Trim().ToLower();
+                var confirm = InputLine().Trim().ToLower();
 
                 if confirm == "yes" {
                     notes = [];
@@ -1495,22 +1495,22 @@ This program demonstrates:
 
 **Zia**
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
 // Read
-var content = readText("file.txt");
+var content = File.ReadAllText("file.txt");
 
 // Write
-writeText("file.txt", "Hello!");
+File.WriteAllText("file.txt", "Hello!");
 
 // Append
-appendText("file.txt", "More text\n");
+File.Append("file.txt", "More text\n");
 
 // Check existence
-if exists("file.txt") { ... }
+if File.Exists("file.txt") { ... }
 
 // Read lines
-var lines = readLines("file.txt");
+var lines = File.ReadAllLines("file.txt");
 
 // Stream reading
 var reader = openRead("file.txt");
@@ -1552,20 +1552,20 @@ BASIC uses file numbers (#1, #2, etc.) and requires explicit OPEN/CLOSE. The FOR
 
 **Forgetting the file might not exist:**
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
 // Crashes if file doesn't exist
-var content = readText("maybe.txt");
+var content = File.ReadAllText("maybe.txt");
 
 // Better: check first
-if exists("maybe.txt") {
-    var content = readText("maybe.txt");
+if File.Exists("maybe.txt") {
+    var content = File.ReadAllText("maybe.txt");
 }
 
 // Or: use try-catch
 try {
-    var content = readText("maybe.txt");
+    var content = File.ReadAllText("maybe.txt");
 } catch e: FileNotFound {
     Say("File not found");
 }
@@ -1573,14 +1573,14 @@ try {
 
 **Overwriting when you meant to append:**
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
-writeText("log.txt", "Entry 1\n");
-writeText("log.txt", "Entry 2\n");  // Oops! Entry 1 is gone
+File.WriteAllText("log.txt", "Entry 1\n");
+File.WriteAllText("log.txt", "Entry 2\n");  // Oops! Entry 1 is gone
 
 // Correct: use append for logs
-writeText("log.txt", "Entry 1\n");
-appendText("log.txt", "Entry 2\n");  // Both entries preserved
+File.WriteAllText("log.txt", "Entry 1\n");
+File.Append("log.txt", "Entry 2\n");  // Both entries preserved
 ```
 
 **Hardcoding paths:**
@@ -1656,7 +1656,7 @@ var path = join("data", "files", "scores.txt");
 - **Handle errors gracefully** — files can fail in many ways
 - **Use temporary files and backups** for safe writing
 - **Text files are human-readable; binary files store raw data**
-- `readText/writeText/appendText` for simple operations
+- `File.ReadAllText/File.WriteAllText/File.Append` for simple operations
 - `openRead/openWrite` for streaming large files
 - `Dir` module for working with directories
 - `Path` module for manipulating paths safely and portably

@@ -40,7 +40,7 @@ Viper's standard library is organized into modules under the `Viper` namespace. 
 | Module | Purpose | You'll Use It For |
 |--------|---------|-------------------|
 | `Viper.Collections` | Data structures | Lists, maps, sets |
-| `Viper.Convert` | String-to-number conversion | Processing user input |
+| `Viper.Core.Convert` | String-to-number conversion | Processing user input |
 | `Viper.Crypto` | Hashing and encoding | Security, verification |
 | `Viper.Environment` | System information | Config, command-line args |
 | `Viper.Fmt` | String formatting | Creating output messages |
@@ -72,7 +72,7 @@ bind Viper.Terminal;
 
 Say("Hello!");              // Print with newline
 Print("No newline here");   // Print without newline
-var input = ReadLine();     // Read a line of text
+var input = InputLine();     // Read a line of text
 var char = GetKey();        // Read a single keypress
 ```
 
@@ -80,7 +80,7 @@ var char = GetKey();        // Read a single keypress
 
 - **`Say()`**: Most output. Each message on its own line.
 - **`Print()`**: When you want to build up a line piece by piece, or when prompting for input on the same line.
-- **`ReadLine()`**: Getting text input from users.
+- **`InputLine()`**: Getting text input from users.
 - **`GetKey()`**: Games, menus, or "press any key" prompts.
 
 ### Terminal Control
@@ -103,7 +103,7 @@ These are essential for building text-based games, progress bars, or any program
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 func showMenu() -> Integer {
     Clear();
@@ -114,7 +114,7 @@ func showMenu() -> Integer {
     Say("4. Quit");
     Print("Choose (1-4): ");
 
-    var choice = ReadLine().Trim();
+    var choice = InputLine().Trim();
     return Convert.ToInt64(choice);
 }
 ```
@@ -417,11 +417,11 @@ bind Viper.Fmt as Fmt;
 
 func stopwatch() {
     Say("Press Enter to start...");
-    ReadLine();
+    InputLine();
 
     var start = Time.Clock.Ticks();
     Say("Stopwatch running. Press Enter to stop.");
-    ReadLine();
+    InputLine();
 
     var elapsed = Time.Clock.Ticks() - start;
     var seconds = elapsed * 1.0 / 1000.0;
@@ -476,14 +476,14 @@ for i in 0..count {
 Operating systems have configuration through environment variables:
 
 ```rust
-bind Viper.Environment;
+bind Env = Viper.Environment;
 
-var home = GetVariable("HOME");       // /Users/alice
-var path = GetVariable("PATH");       // System PATH
-var editor = GetVariable("EDITOR");   // Preferred text editor
+var home = Env.GetVariable("HOME");       // /Users/alice
+var path = Env.GetVariable("PATH");       // System PATH
+var editor = Env.GetVariable("EDITOR");   // Preferred text editor
 
 // Check if a variable exists
-if HasVariable("DEBUG") {
+if Env.HasVariable("DEBUG") {
     // Debug mode is enabled
     enableVerboseLogging();
 }
@@ -492,22 +492,22 @@ if HasVariable("DEBUG") {
 ### System Information
 
 ```rust
-bind Viper.Environment;
+bind Env = Viper.Environment;
 bind Viper.Machine;
 
 var osName = GetOS();         // "windows", "macos", or "linux"
-var home = GetVariable("HOME");  // User's home directory
+var home = Env.GetVariable("HOME");  // User's home directory
 ```
 
 ### Practical Example: Cross-Platform Configuration
 
 ```rust
-bind Viper.Environment;
+bind Env = Viper.Environment;
 bind Viper.IO.Path;
 
 func getConfigPath() -> String {
-    var osName = GetVariable("OS");
-    var home = GetVariable("HOME");
+    var osName = Env.GetVariable("OS");
+    var home = Env.GetVariable("HOME");
 
     if osName == "windows" {
         return join(home, "AppData", "Local", "MyApp", "config.json");
@@ -568,7 +568,7 @@ Fmt.Oct(8);                  // "10"
 bind Viper.Terminal;
 bind Viper.Fmt as Fmt;
 
-func printScoreboard(players: [Player]) {
+func printScoreboard(players: List[Player]) {
     Say("Name            Score");
     Say("--------------------------");
 
@@ -740,7 +740,7 @@ tags.Drop("urgent");
 
 ```rust
 bind Viper.Collections;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 bind Viper.Terminal;
 bind Viper.Fmt as Fmt;
 
@@ -786,14 +786,14 @@ while i < keys.Length {
 
 ---
 
-## Viper.Convert: Parsing Values
+## Viper.Core.Convert: Parsing Values
 
 Converting strings to other types is so common it gets its own module.
 
 ### Basic Parsing
 
 ```rust
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 Convert.ToInt64("42");        // 42
 Convert.ToDouble("3.14");     // 3.14
@@ -806,7 +806,7 @@ Convert.ToString_Double(3.14); // "3.14"
 Parsing can fail. Handle it gracefully:
 
 ```rust
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 bind Viper.Terminal;
 
 try {
@@ -820,12 +820,12 @@ try {
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 func getNumber(prompt: String) -> Integer {
     while true {
         Print(prompt);
-        var input = ReadLine().Trim();
+        var input = InputLine().Trim();
 
         try {
             return Convert.ToInt64(input);
@@ -848,25 +848,25 @@ We covered file operations in Chapter 9, but let's review the key patterns.
 ### File Operations
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
 // Reading
-var content = readText("data.txt");
-var lines = readLines("data.txt");
-var bytes = readBytes("image.png");
+var content = File.ReadAllText("data.txt");
+var lines = File.ReadAllLines("data.txt");
+var bytes = File.ReadAllBytes("image.png");
 
 // Writing
-writeText("output.txt", "Hello, World!");
-appendText("log.txt", "New entry\n");
-writeBytes("copy.png", bytes);
+File.WriteAllText("output.txt", "Hello, World!");
+File.Append("log.txt", "New entry\n");
+File.WriteAllBytes("copy.png", bytes);
 
 // Checking
-if exists("config.json") {
+if File.Exists("config.json") {
     // Load configuration
 }
 
 // Deleting
-delete("temp.txt");
+File.Delete("temp.txt");
 ```
 
 ### Directory Operations
@@ -954,15 +954,15 @@ var sha = Hash.SHA256("hello");    // 64-character hex string
 
 ### Encoding
 
-Base64 encoding converts binary data to text. This lives in `Viper.Codec`:
+Base64 encoding converts binary data to text. This lives in `Viper.Text.Codec`:
 
 ```rust
-bind Viper.Codec;
+bind Codec = Viper.Text.Codec;
 
-var encoded = Base64Encode("Hello, World!");
+var encoded = Codec.Base64Enc("Hello, World!");
 // "SGVsbG8sIFdvcmxkIQ=="
 
-var decoded = Base64Decode(encoded);
+var decoded = Codec.Base64Dec(encoded);
 // "Hello, World!"
 ```
 
@@ -976,9 +976,9 @@ var decoded = Base64Decode(encoded);
 GUIDs (Globally Unique Identifiers) are guaranteed-unique strings:
 
 ```rust
-bind Viper.Guid;
+bind Uuid = Viper.Text.Uuid;
 
-var id = New();
+var id = Uuid.New();
 // "550e8400-e29b-41d4-a716-446655440000"
 ```
 
@@ -994,7 +994,7 @@ var id = New();
 
 ```rust
 bind Viper.Crypto.Hash as Hash;
-bind Viper.Guid;
+bind Uuid = Viper.Text.Uuid;
 bind Viper.Terminal;
 
 func hashPassword(password: String, salt: String) -> String {
@@ -1029,7 +1029,7 @@ Here's a complete program using multiple standard library modules:
 module StdlibDemo;
 
 bind Viper.Terminal;
-bind Viper.Environment;
+bind Env = Viper.Environment;
 bind Viper.Time;
 bind Viper.Math as Math;
 bind Viper.Fmt as Fmt;
@@ -1043,7 +1043,7 @@ func start() {
 
     // Environment
     Say("System Information:");
-    Say("  Home: " + GetVariable("HOME"));
+    Say("  Home: " + Env.GetVariable("HOME"));
     Say("");
 
     // Time
@@ -1217,12 +1217,12 @@ When you encounter a new standard library module:
 Don't try to learn every function. Start with the most common operations:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
 // For File, start with:
-readText()
-writeText()
-exists()
+File.ReadAllText()
+File.WriteAllText()
+File.Exists()
 
 // Learn the advanced stuff when you need it
 ```
@@ -1276,13 +1276,13 @@ Some standard library patterns appear constantly. Learn these by heart.
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 func getInt(prompt: String) -> Integer {
     while true {
         Print(prompt);
         try {
-            return Convert.ToInt64(ReadLine().Trim());
+            return Convert.ToInt64(InputLine().Trim());
         } catch e {
             Say("Invalid input. Please enter a number.");
         }
@@ -1293,11 +1293,11 @@ func getInt(prompt: String) -> Integer {
 ### Pattern: Read Config with Default
 
 ```rust
-bind Viper.Environment;
+bind Env = Viper.Environment;
 
 func getConfig(key: String, defaultValue: String) -> String {
-    if HasVariable(key) {
-        var envValue = GetVariable(key);
+    if Env.HasVariable(key) {
+        var envValue = Env.GetVariable(key);
         if envValue.Length > 0 {
             return envValue;
         }
@@ -1309,16 +1309,16 @@ func getConfig(key: String, defaultValue: String) -> String {
 ### Pattern: Safe File Read
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
 func readFileSafe(path: String) -> String {
-    if !exists(path) {
+    if !File.Exists(path) {
         return "";
     }
 
     try {
-        return readText(path);
+        return File.ReadAllText(path);
     } catch e {
         Say("Error reading " + path + ": " + e.message);
         return "";
@@ -1350,7 +1350,7 @@ timed("Sort", func() {
 
 ```rust
 bind Viper.IO.Path;
-bind Viper.Environment;
+bind Env = Viper.Environment;
 bind Viper.Time;
 bind Viper.Fmt as Fmt;
 
@@ -1360,7 +1360,7 @@ var dateStr = Fmt.IntPad(Time.DateTime.Year(dt), 4, "0") + "-" +
               Fmt.IntPad(Time.DateTime.Day(dt), 2, "0");
 
 var logFile = join(
-    GetVariable("HOME"),
+    Env.GetVariable("HOME"),
     ".myapp",
     "logs",
     dateStr + ".log"
@@ -1375,12 +1375,12 @@ The Viper standard library provides:
 
 | Category | Modules | Key Functions |
 |----------|---------|---------------|
-| I/O | Terminal, IO.File, IO.Dir, IO.Path | Say, ReadLine, readText, join |
+| I/O | Terminal, IO.File, IO.Dir, IO.Path | Say, InputLine, File.ReadAllText, join |
 | Numbers | Math, Math.Random, Convert | Math.Sqrt, Math.Sin, Random.Range, Convert.ToInt64 |
 | Text | String, Fmt | String.Trim, String.Split, Fmt.Int, Fmt.NumFixed |
 | Time | Time | Time.DateTime.Now, Time.Clock.Ticks, Time.Clock.Sleep |
 | Data | Collections | List.Push, Map.SetInt, Bag.Put |
-| System | Environment | GetArgument, GetVariable, GetOS |
+| System | Environment | GetArgument, Env.GetVariable, GetOS |
 | Security | Crypto.Hash, Codec, Guid | Hash.SHA256, Hash.MD5, New |
 
 The standard library is your first resort when you need functionality. It's tested, optimized, and familiar to other programmers. Learning it is as important as learning the language syntax.

@@ -203,6 +203,53 @@ func testForInLoops() {
     }
     check("For-in range 0..=5", sum, 15);
 
+    // Range .step()
+    sum = 0;
+    for i in (0..10).step(2) {
+        sum = sum + i;
+    }
+    check("For-in (0..10).step(2)", sum, 20);
+
+    // Range .step() inclusive
+    sum = 0;
+    for i in (0..=10).step(2) {
+        sum = sum + i;
+    }
+    check("For-in (0..=10).step(2)", sum, 30);
+
+    // Range .rev() exclusive
+    var first: Integer = -1;
+    for i in (0..5).rev() {
+        if (first == -1) { first = i; }
+    }
+    check("For-in (0..5).rev() first", first, 4);
+
+    sum = 0;
+    for i in (0..5).rev() {
+        sum = sum + i;
+    }
+    check("For-in (0..5).rev() sum", sum, 10);
+
+    // Range .rev() inclusive
+    first = -1;
+    for i in (0..=5).rev() {
+        if (first == -1) { first = i; }
+    }
+    check("For-in (0..=5).rev() first", first, 5);
+
+    sum = 0;
+    for i in (0..=5).rev() {
+        sum = sum + i;
+    }
+    check("For-in (0..=5).rev() sum", sum, 15);
+
+    // Range .rev().step() combined
+    sum = 0;
+    for i in (0..=10).rev().step(3) {
+        sum = sum + i;
+    }
+    check("For-in (0..=10).rev().step(3)", sum, 22);
+
     // NOTE: for-in with runtime Lists doesn't work - "Expression is not iterable"
     // This is a limitation - for-in only works with ranges, not runtime collections
 }

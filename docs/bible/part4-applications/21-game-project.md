@@ -123,7 +123,7 @@ This is why we use delta time. If your game runs slower on an old computer (say,
 
 Some things in games are states: the frog is alive, the player is pressing right, the game is paused. States are continuously true or false. Other things are events: the player just pressed space, the frog just died, the level just completed. Events happen at a specific moment and then are over.
 
-Treating these differently prevents bugs. If you check `Input.isKeyDown(Key.SPACE)` for jumping, the frog will jump every frame the spacebar is held, bouncing constantly. You want `Input.wasKeyPressed(Key.SPACE)`, which is true only on the frame the key transitioned from up to down. That is an event check, not a state check.
+Treating these differently prevents bugs. If you check `Keyboard.IsDown(KEY_SPACE)` for jumping, the frog will jump every frame the spacebar is held, bouncing constantly. You want `Keyboard.IsPressed(KEY_SPACE)`, which is true only on the frame the key transitioned from up to down. That is an event check, not a state check.
 
 ### The Coordinate Dance
 
@@ -509,9 +509,9 @@ bind Platform;
 
 expose value GameState {
     frog: Frog.Frog;                    // The player
-    vehicles: [Vehicle.Vehicle];        // All cars and trucks
-    platforms: [Platform.Platform];     // All logs and turtles
-    homesOccupied: [Boolean];              // Which home slots are filled
+    vehicles: List[Vehicle.Vehicle];        // All cars and trucks
+    platforms: List[Platform.Platform];     // All logs and turtles
+    homesOccupied: List[Boolean];              // Which home slots are filled
     score: Integer;                         // Current score
     lives: Integer;                         // Remaining lives
     level: Integer;                         // Current level (affects speed)
@@ -590,18 +590,18 @@ func setupLevel(state: GameState) -> GameState {
 
     // Row 1-6: alternating logs (brown) and turtles (green)
     // Logs are long and safe, turtles are short and may submerge (future feature)
-    s.platforms.Push(Platform.create(1, 50 * speedMod, 120, Color(139, 69, 19)));
-    s.platforms.Push(Platform.create(1, 50 * speedMod, 120, Color(139, 69, 19)));
-    s.platforms.Push(Platform.create(2, -40 * speedMod, 80, Color(0, 100, 0)));
-    s.platforms.Push(Platform.create(2, -40 * speedMod, 80, Color(0, 100, 0)));
-    s.platforms.Push(Platform.create(2, -40 * speedMod, 80, Color(0, 100, 0)));
-    s.platforms.Push(Platform.create(3, 60 * speedMod, 160, Color(139, 69, 19)));
-    s.platforms.Push(Platform.create(4, -70 * speedMod, 100, Color(0, 100, 0)));
-    s.platforms.Push(Platform.create(4, -70 * speedMod, 100, Color(0, 100, 0)));
-    s.platforms.Push(Platform.create(5, 45 * speedMod, 140, Color(139, 69, 19)));
-    s.platforms.Push(Platform.create(5, 45 * speedMod, 140, Color(139, 69, 19)));
-    s.platforms.Push(Platform.create(6, -55 * speedMod, 90, Color(0, 100, 0)));
-    s.platforms.Push(Platform.create(6, -55 * speedMod, 90, Color(0, 100, 0)));
+    s.platforms.Push(Platform.create(1, 50 * speedMod, 120, Color.RGB(139, 69, 19)));
+    s.platforms.Push(Platform.create(1, 50 * speedMod, 120, Color.RGB(139, 69, 19)));
+    s.platforms.Push(Platform.create(2, -40 * speedMod, 80, Color.RGB(0, 100, 0)));
+    s.platforms.Push(Platform.create(2, -40 * speedMod, 80, Color.RGB(0, 100, 0)));
+    s.platforms.Push(Platform.create(2, -40 * speedMod, 80, Color.RGB(0, 100, 0)));
+    s.platforms.Push(Platform.create(3, 60 * speedMod, 160, Color.RGB(139, 69, 19)));
+    s.platforms.Push(Platform.create(4, -70 * speedMod, 100, Color.RGB(0, 100, 0)));
+    s.platforms.Push(Platform.create(4, -70 * speedMod, 100, Color.RGB(0, 100, 0)));
+    s.platforms.Push(Platform.create(5, 45 * speedMod, 140, Color.RGB(139, 69, 19)));
+    s.platforms.Push(Platform.create(5, 45 * speedMod, 140, Color.RGB(139, 69, 19)));
+    s.platforms.Push(Platform.create(6, -55 * speedMod, 90, Color.RGB(0, 100, 0)));
+    s.platforms.Push(Platform.create(6, -55 * speedMod, 90, Color.RGB(0, 100, 0)));
 
     // Spread platforms out
     for i in 0..s.platforms.Length {
@@ -818,8 +818,7 @@ bind Viper.Graphics;
 
 expose func render(canvas: Canvas, state: Game.GameState) {
     // Clear the canvas
-    canvas.setColor(Color.BLACK);
-    canvas.fillRect(0, 0, Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT);
+    canvas.Clear(Color.BLACK);
 
     // Draw the world zones (background)
     drawBackground(canvas);
@@ -829,20 +828,17 @@ expose func render(canvas: Canvas, state: Game.GameState) {
 
     // Draw all platforms (logs and turtles)
     for platform in state.platforms {
-        canvas.setColor(platform.color);
-        canvas.fillRect(platform.x, platform.y, platform.width, Config.TILE_SIZE - 4);
+        canvas.Box(platform.x, platform.y, platform.width, Config.TILE_SIZE - 4, platform.color);
     }
 
     // Draw all vehicles
     for vehicle in state.vehicles {
-        canvas.setColor(vehicle.color);
-        canvas.fillRect(vehicle.x, vehicle.y, vehicle.width, Config.TILE_SIZE - 4);
+        canvas.Box(vehicle.x, vehicle.y, vehicle.width, Config.TILE_SIZE - 4, vehicle.color);
     }
 
     // Draw the frog (only if alive)
     if state.frog.alive {
-        canvas.setColor(Color(0, 255, 0));  // Bright green
-        canvas.fillRect(state.frog.x - 15, state.frog.y, 30, 35);
+        canvas.Box(state.frog.x - 15, state.frog.y, 30, 35, Color.RGB(0, 255, 0));
     }
 
     // Draw the user interface (score, lives, level)
@@ -855,60 +851,57 @@ Notice the drawing order. Background first, then platforms, then vehicles, then 
 ```rust
 func drawBackground(canvas: Canvas) {
     // Home zone at the top
-    canvas.setColor(Color(50, 50, 100));  // Dark blue-gray
-    canvas.fillRect(0, 0, Config.SCREEN_WIDTH, Config.TILE_SIZE);
+    canvas.Box(0, 0, Config.SCREEN_WIDTH, Config.TILE_SIZE, Color.RGB(50, 50, 100));
 
     // River (dangerous water)
-    canvas.setColor(Color(0, 0, 150));  // Deep blue
-    canvas.fillRect(0, Config.RIVER_START * Config.TILE_SIZE,
-                   Config.SCREEN_WIDTH,
-                   (Config.RIVER_END - Config.RIVER_START + 1) * Config.TILE_SIZE);
+    canvas.Box(0, Config.RIVER_START * Config.TILE_SIZE,
+               Config.SCREEN_WIDTH,
+               (Config.RIVER_END - Config.RIVER_START + 1) * Config.TILE_SIZE,
+               Color.RGB(0, 0, 150));
 
     // Safe zone in the middle (rest area)
-    canvas.setColor(Color(100, 50, 150));  // Purple
-    canvas.fillRect(0, Config.SAFE_ZONE * Config.TILE_SIZE,
-                   Config.SCREEN_WIDTH, Config.TILE_SIZE);
+    canvas.Box(0, Config.SAFE_ZONE * Config.TILE_SIZE,
+               Config.SCREEN_WIDTH, Config.TILE_SIZE,
+               Color.RGB(100, 50, 150));
 
     // Road
-    canvas.setColor(Color(50, 50, 50));  // Dark gray
-    canvas.fillRect(0, Config.ROAD_START * Config.TILE_SIZE,
-                   Config.SCREEN_WIDTH,
-                   (Config.ROAD_END - Config.ROAD_START + 1) * Config.TILE_SIZE);
+    canvas.Box(0, Config.ROAD_START * Config.TILE_SIZE,
+               Config.SCREEN_WIDTH,
+               (Config.ROAD_END - Config.ROAD_START + 1) * Config.TILE_SIZE,
+               Color.RGB(50, 50, 50));
 
     // Draw lane divider lines on the road
-    canvas.setColor(Color.YELLOW);
     for row in Config.ROAD_START..Config.ROAD_END {
         var y = row * Config.TILE_SIZE + Config.TILE_SIZE / 2;
         // Dashed lines
         for x in 0..(Config.SCREEN_WIDTH / 50) {
-            canvas.fillRect(x * 50, y - 2, 30, 4);
+            canvas.Box(x * 50, y - 2, 30, 4, Color.YELLOW);
         }
     }
 
     // Starting area at the bottom
-    canvas.setColor(Color(100, 50, 150));  // Purple (same as safe zone)
-    canvas.fillRect(0, Config.START_ROW * Config.TILE_SIZE,
-                   Config.SCREEN_WIDTH, Config.TILE_SIZE);
+    canvas.Box(0, Config.START_ROW * Config.TILE_SIZE,
+               Config.SCREEN_WIDTH, Config.TILE_SIZE,
+               Color.RGB(100, 50, 150));
 }
 ```
 
 The background creates the visual context. Blue water tells players "danger, stay on platforms." Gray road with yellow lines reads instantly as "traffic area." The safe zones (purple) provide visual breathing room.
 
 ```rust
-func drawHomes(canvas: Canvas, occupied: [Boolean]) {
+func drawHomes(canvas: Canvas, occupied: List[Boolean]) {
     var positions = [2, 6, 10, 14, 18];
 
     for i in 0..5 {
         var x = positions[i] * Config.TILE_SIZE;
 
         // Green if filled, darker green if empty
+        var homeColor = Color.RGB(0, 100, 0);  // Dark green = target
         if occupied[i] {
-            canvas.setColor(Color(0, 255, 0));  // Bright green = success
-        } else {
-            canvas.setColor(Color(0, 100, 0));  // Dark green = target
+            homeColor = Color.RGB(0, 255, 0);  // Bright green = success
         }
 
-        canvas.fillRect(x, 2, Config.TILE_SIZE * 2, Config.TILE_SIZE - 4);
+        canvas.Box(x, 2, Config.TILE_SIZE * 2, Config.TILE_SIZE - 4, homeColor);
     }
 }
 ```
@@ -917,23 +910,15 @@ Filled homes glow bright green, celebrating the player's progress. Empty homes a
 
 ```rust
 func drawUI(canvas: Canvas, state: Game.GameState) {
-    canvas.setColor(Color.WHITE);
-    canvas.setFont("Arial", 20);
-
     // Display current stats at the bottom
-    canvas.drawText(10, Config.SCREEN_HEIGHT - 10, "Score: " + state.score);
-    canvas.drawText(200, Config.SCREEN_HEIGHT - 10, "Lives: " + state.lives);
-    canvas.drawText(350, Config.SCREEN_HEIGHT - 10, "Level: " + state.level);
+    canvas.Text(10, Config.SCREEN_HEIGHT - 10, "Score: " + state.score, Color.WHITE);
+    canvas.Text(200, Config.SCREEN_HEIGHT - 10, "Lives: " + state.lives, Color.WHITE);
+    canvas.Text(350, Config.SCREEN_HEIGHT - 10, "Level: " + state.level, Color.WHITE);
 
     // Game over screen
     if state.gameOver {
-        canvas.setFont("Arial", 48);
-        canvas.setColor(Color.RED);
-        canvas.drawText(300, 300, "GAME OVER");
-
-        canvas.setFont("Arial", 24);
-        canvas.setColor(Color.WHITE);
-        canvas.drawText(280, 350, "Press ENTER to restart");
+        canvas.Text(300, 300, "GAME OVER", Color.RED);
+        canvas.Text(280, 350, "Press ENTER to restart", Color.WHITE);
     }
 }
 ```
@@ -954,13 +939,12 @@ bind Config;
 bind Game;
 bind Renderer;
 bind Viper.Graphics;
-bind Viper.Input;
+bind Keyboard = Viper.Input.Keyboard;
 bind Viper.Time;
 
 func start() {
     // Create the game window
-    var canvas = Canvas(Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT);
-    canvas.setTitle("Frogger");
+    var canvas = Canvas.New("Frogger", Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT);
 
     // Initialize game state
     var state = Game.create();
@@ -969,7 +953,9 @@ func start() {
     var lastTime = Time.Clock.Ticks();
 
     // The game loop
-    while canvas.isOpen() {
+    while !canvas.ShouldClose {
+        canvas.Poll();
+
         // Calculate how much time passed since last frame
         var now = Time.Clock.Ticks();
         var dt = (now - lastTime) / 1000.0;  // Convert to seconds
@@ -978,27 +964,27 @@ func start() {
         // === INPUT PHASE ===
         if state.gameOver {
             // Only accept restart input when game is over
-            if Input.wasKeyPressed(Key.ENTER) {
+            if Keyboard.IsPressed(KEY_ENTER) {
                 state = Game.create();  // Fresh game
             }
         } else {
             // Normal gameplay input
-            if Input.wasKeyPressed(Key.UP) || Input.wasKeyPressed(Key.W) {
+            if Keyboard.IsPressed(KEY_UP) || Keyboard.IsPressed(KEY_W) {
                 state = Game.moveFrog(state, 0, -1);
             }
-            if Input.wasKeyPressed(Key.DOWN) || Input.wasKeyPressed(Key.S) {
+            if Keyboard.IsPressed(KEY_DOWN) || Keyboard.IsPressed(KEY_S) {
                 state = Game.moveFrog(state, 0, 1);
             }
-            if Input.wasKeyPressed(Key.LEFT) || Input.wasKeyPressed(Key.A) {
+            if Keyboard.IsPressed(KEY_LEFT) || Keyboard.IsPressed(KEY_A) {
                 state = Game.moveFrog(state, -1, 0);
             }
-            if Input.wasKeyPressed(Key.RIGHT) || Input.wasKeyPressed(Key.D) {
+            if Keyboard.IsPressed(KEY_RIGHT) || Keyboard.IsPressed(KEY_D) {
                 state = Game.moveFrog(state, 1, 0);
             }
         }
 
         // Escape always quits
-        if Input.wasKeyPressed(Key.ESCAPE) {
+        if Keyboard.IsPressed(KEY_ESCAPE) {
             break;
         }
 
@@ -1007,7 +993,7 @@ func start() {
 
         // === RENDER PHASE ===
         Renderer.render(canvas, state);
-        canvas.show();
+        canvas.Flip();
 
         // === TIMING ===
         // Sleep to target approximately 60 FPS
@@ -1024,7 +1010,7 @@ This is the complete game loop in action:
 4. **Render** the new state
 5. **Sleep** to maintain frame rate
 
-Notice the use of `wasKeyPressed` rather than `isKeyDown` for movement. Frogger is a grid-based game where the frog moves one tile per button press. Using `isKeyDown` would make the frog zip across the screen while a key is held; `wasKeyPressed` requires discrete presses.
+Notice the use of `Keyboard.IsPressed` rather than `Keyboard.IsDown` for movement. Frogger is a grid-based game where the frog moves one tile per button press. Using `IsDown` would make the frog zip across the screen while a key is held; `IsPressed` requires discrete presses.
 
 Also notice the support for both arrow keys and WASD. Many players prefer WASD, especially for left-handed play or if they are used to modern games. Supporting both costs almost nothing and improves accessibility.
 
@@ -1077,7 +1063,7 @@ Without delta time, your game runs twice as fast on a 120 FPS machine as on a 60
 **Wrong:**
 ```rust
 // This fires every frame the key is held!
-if Input.isKeyDown(Key.SPACE) {
+if Keyboard.IsDown(KEY_SPACE) {
     fireBullet();
 }
 ```
@@ -1085,12 +1071,12 @@ if Input.isKeyDown(Key.SPACE) {
 **Right:**
 ```rust
 // This fires once per key press
-if Input.wasKeyPressed(Key.SPACE) {
+if Keyboard.IsPressed(KEY_SPACE) {
     fireBullet();
 }
 ```
 
-Use `wasKeyPressed` for discrete actions (jump, fire, menu select) and `isKeyDown` for continuous actions (moving, aiming).
+Use `Keyboard.IsPressed` for discrete actions (jump, fire, menu select) and `Keyboard.IsDown` for continuous actions (moving, aiming).
 
 ### Mistake 3: Order-Dependent Collision Bugs
 
@@ -1176,7 +1162,7 @@ Add a debug mode that runs at 1/10 speed:
 ```rust
 var debugSlowMotion = false;
 
-if Input.wasKeyPressed(Key.F1) {
+if Keyboard.IsPressed(KEY_F1) {
     debugSlowMotion = !debugSlowMotion;
 }
 
@@ -1191,11 +1177,10 @@ Now you can see exactly what happens during collisions or fast movements.
 
 Draw rectangles showing where collision detection thinks objects are:
 ```rust
-func debugDrawBounds(canvas: Canvas, vehicles: [Vehicle]) {
-    canvas.setColor(Color(255, 0, 0, 128));  // Semi-transparent red
+func debugDrawBounds(canvas: Canvas, vehicles: List[Vehicle]) {
     for v in vehicles {
         var bounds = Vehicle.getBounds(v);
-        canvas.drawRect(bounds.x, bounds.y, bounds.width, bounds.height);
+        canvas.Frame(bounds.x, bounds.y, bounds.width, bounds.height, Color.RGB(255, 0, 0));
     }
 }
 ```
@@ -1221,11 +1206,11 @@ Add the ability to pause the game and advance one frame at a time:
 var paused = false;
 var stepOneFrame = false;
 
-if Input.wasKeyPressed(Key.P) {
+if Keyboard.IsPressed(KEY_P) {
     paused = !paused;
 }
 
-if Input.wasKeyPressed(Key.N) {  // Next frame
+if Keyboard.IsPressed(KEY_N) {  // Next frame
     stepOneFrame = true;
 }
 
@@ -1279,12 +1264,14 @@ if deathByVehicle {
 
 ### Animated Sprites
 
-Replace colored rectangles with proper artwork. Load sprite images and draw them instead of `fillRect`:
+Replace colored rectangles with proper artwork. Load sprite images and draw them instead of `Box`:
 
 ```rust
-var frogSprite = Image.load("frog.png");
-var frogLeft = Image.load("frog_left.png");
-var frogRight = Image.load("frog_right.png");
+bind Sprite = Viper.Graphics.Sprite;
+
+var frogSprite = Sprite.Load("frog.png");
+var frogLeft = Sprite.Load("frog_left.png");
+var frogRight = Sprite.Load("frog_right.png");
 
 // Track facing direction
 value Frog {
@@ -1296,7 +1283,7 @@ value Frog {
 var sprite = frogSprite;
 if frog.facing == Direction.LEFT { sprite = frogLeft; }
 if frog.facing == Direction.RIGHT { sprite = frogRight; }
-canvas.drawImage(sprite, frog.x - 20, frog.y);
+canvas.Blit(sprite, frog.x - 20, frog.y);
 ```
 
 ### High Score System
@@ -1304,7 +1291,7 @@ canvas.drawImage(sprite, frog.x - 20, frog.y);
 Save the highest score to a file so players can compete with themselves:
 
 ```rust
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 bind Viper.Fmt as Fmt;
 
 func loadHighScore() -> Integer {
@@ -1351,8 +1338,8 @@ if s.timeRemaining <= 0 {
 }
 
 // In rendering:
-canvas.drawText(500, Config.SCREEN_HEIGHT - 10,
-               "Time: " + Convert.NumToInt(Math.Floor(state.timeRemaining)));
+canvas.Text(500, Config.SCREEN_HEIGHT - 10,
+            "Time: " + Convert.NumToInt(Math.Floor(state.timeRemaining)), Color.WHITE);
 ```
 
 ### Submerging Turtles

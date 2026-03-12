@@ -181,7 +181,7 @@ No matter how many times you call `getInstance()`, you get the same engine. The 
 
 ```rust
 bind Viper.Terminal;
-bind Viper.File;
+bind File = Viper.IO.File;
 
 entity Config {
     hide static instance: Config? = null;
@@ -432,8 +432,8 @@ entity EnemyFactory {
     }
 
     // Create multiple enemies
-    static func createWave(count: Integer, level: Integer) -> [Enemy] {
-        var enemies: [Enemy] = [];
+    static func createWave(count: Integer, level: Integer) -> List[Enemy] {
+        var enemies: List[Enemy] = [];
         for i in 0..count {
             var x = Math.random() * 800.0;
             var y = Math.random() * 600.0;
@@ -814,13 +814,13 @@ The Strategy pattern defines a family of algorithms, encapsulates each one, and 
 bind Viper.Terminal;
 
 interface RouteStrategy {
-    func calculateRoute(start: Point, end: Point) -> [Point];
+    func calculateRoute(start: Point, end: Point) -> List[Point];
     func getName() -> String;
     func getEstimatedTime(distance: Number) -> Number;
 }
 
 entity DrivingStrategy implements RouteStrategy {
-    func calculateRoute(start: Point, end: Point) -> [Point] {
+    func calculateRoute(start: Point, end: Point) -> List[Point] {
         Say("Calculating driving route...");
         // Prefer highways, avoid pedestrian zones
         // Returns list of waypoints
@@ -837,7 +837,7 @@ entity DrivingStrategy implements RouteStrategy {
 }
 
 entity WalkingStrategy implements RouteStrategy {
-    func calculateRoute(start: Point, end: Point) -> [Point] {
+    func calculateRoute(start: Point, end: Point) -> List[Point] {
         Say("Calculating walking route...");
         // Use sidewalks, can cut through parks
         return [start, end];
@@ -853,7 +853,7 @@ entity WalkingStrategy implements RouteStrategy {
 }
 
 entity BikingStrategy implements RouteStrategy {
-    func calculateRoute(start: Point, end: Point) -> [Point] {
+    func calculateRoute(start: Point, end: Point) -> List[Point] {
         Say("Calculating biking route...");
         // Use bike lanes, avoid steep hills
         return [start, end];
@@ -869,7 +869,7 @@ entity BikingStrategy implements RouteStrategy {
 }
 
 entity TransitStrategy implements RouteStrategy {
-    func calculateRoute(start: Point, end: Point) -> [Point] {
+    func calculateRoute(start: Point, end: Point) -> List[Point] {
         Say("Calculating transit route...");
         // Follow bus and train routes
         return [start, end];
@@ -907,7 +907,7 @@ entity Navigator {
         Say("Estimated time: " + time + " hours");
     }
 
-    hide func calculateDistance(route: [Point]) -> Number {
+    hide func calculateDistance(route: List[Point]) -> Number {
         // Sum distances between waypoints
         return 10.0;  // Simplified
     }
@@ -938,7 +938,7 @@ func start() {
     // Estimated time: 0.67 hours
 
     // Compare all options
-    var strategies: [RouteStrategy] = [
+    var strategies: List[RouteStrategy] = [
         DrivingStrategy(),
         WalkingStrategy(),
         BikingStrategy(),
@@ -967,12 +967,12 @@ func start() {
 
 ```rust
 interface SortStrategy {
-    func sort(items: [Integer]) -> [Integer];
+    func sort(items: List[Integer]) -> List[Integer];
     func getName() -> String;
 }
 
 entity BubbleSort implements SortStrategy {
-    func sort(items: [Integer]) -> [Integer] {
+    func sort(items: List[Integer]) -> List[Integer] {
         // Bubble sort implementation
         var result = items.copy();
         var n = result.Length;
@@ -992,7 +992,7 @@ entity BubbleSort implements SortStrategy {
 }
 
 entity QuickSort implements SortStrategy {
-    func sort(items: [Integer]) -> [Integer] {
+    func sort(items: List[Integer]) -> List[Integer] {
         // Quick sort implementation (simplified)
         if items.Length <= 1 {
             return items;
@@ -1015,7 +1015,7 @@ entity DataProcessor {
         self.sortStrategy = strategy;
     }
 
-    func processData(data: [Integer]) -> [Integer] {
+    func processData(data: List[Integer]) -> List[Integer] {
         Say("Sorting with " + self.sortStrategy.getName());
         return self.sortStrategy.Sort(data);
     }
@@ -1063,7 +1063,7 @@ interface Observer {
 }
 
 entity Subject {
-    hide observers: [Observer];
+    hide observers: List[Observer];
 
     expose func init() {
         self.observers = [];
@@ -1075,7 +1075,7 @@ entity Subject {
 
     func unsubscribe(observer: Observer) {
         // Remove observer from list
-        var newList: [Observer] = [];
+        var newList: List[Observer] = [];
         for obs in self.observers {
             if obs != observer {
                 newList.Push(obs);
@@ -1491,8 +1491,8 @@ entity ReplaceCommand implements Command {
 
 // Command history manager
 entity CommandHistory {
-    hide commands: [Command];
-    hide undoneCommands: [Command];  // For redo
+    hide commands: List[Command];
+    hide undoneCommands: List[Command];  // For redo
 
     expose func init() {
         self.commands = [];
@@ -1585,7 +1585,7 @@ Commands can be grouped and replayed:
 
 ```rust
 entity MacroCommand implements Command {
-    hide commands: [Command];
+    hide commands: List[Command];
     hide name: String;
 
     expose func init(name: String) {
@@ -2209,11 +2209,11 @@ entity EncryptionDecorator implements DataStream {
 
     func write(data: String) {
         var encrypted = self.encrypt(data);
-        self.stream.Write(encrypted);
+        self.stream.write(encrypted);
     }
 
     func read() -> String {
-        var encrypted = self.stream.Read();
+        var encrypted = self.stream.read();
         return self.decrypt(encrypted);
     }
 
@@ -2244,11 +2244,11 @@ entity CompressionDecorator implements DataStream {
 
     func write(data: String) {
         var compressed = self.compress(data);
-        self.stream.Write(compressed);
+        self.stream.write(compressed);
     }
 
     func read() -> String {
-        var compressed = self.stream.Read();
+        var compressed = self.stream.read();
         return self.decompress(compressed);
     }
 
@@ -2272,11 +2272,11 @@ entity LoggingDecorator implements DataStream {
 
     func write(data: String) {
         Say("Writing " + data.Length + " bytes");
-        self.stream.Write(data);
+        self.stream.write(data);
     }
 
     func read() -> String {
-        var data = self.stream.Read();
+        var data = self.stream.read();
         Say("Read " + data.Length + " bytes");
         return data;
     }
@@ -2297,11 +2297,11 @@ func start() {
     stream = LoggingDecorator(stream);
 
     // Now writing goes through: logging -> compression -> encryption -> file
-    stream.Write("Secret message");
+    stream.write("Secret message");
     // Writing 14 bytes
 
     // Reading goes through: file -> decryption -> decompression -> logging
-    var message = stream.Read();
+    var message = stream.read();
     // Read 14 bytes
     Say(message);  // Secret message
 }
@@ -2341,7 +2341,7 @@ interface GameObserver {
 
 entity GameEvents {
     hide static instance: GameEvents? = null;
-    hide observers: [GameObserver];
+    hide observers: List[GameObserver];
 
     hide func init() {
         self.observers = [];

@@ -146,25 +146,25 @@ This gives us 256 * 256 * 256 = 16,777,216 possible colors. That's over 16 milli
 
 ```rust
 // Primary colors: one channel at maximum, others off
-var red = Color(255, 0, 0);      // Full red, no green, no blue
-var green = Color(0, 255, 0);    // No red, full green, no blue
-var blue = Color(0, 0, 255);     // No red, no green, full blue
+var red = Color.RGB(255, 0, 0);      // Full red, no green, no blue
+var green = Color.RGB(0, 255, 0);    // No red, full green, no blue
+var blue = Color.RGB(0, 0, 255);     // No red, no green, full blue
 
 // Secondary colors: mixing two primaries
-var yellow = Color(255, 255, 0);   // Red + Green = Yellow
-var cyan = Color(0, 255, 255);     // Green + Blue = Cyan
-var magenta = Color(255, 0, 255);  // Red + Blue = Magenta
+var yellow = Color.RGB(255, 255, 0);   // Red + Green = Yellow
+var cyan = Color.RGB(0, 255, 255);     // Green + Blue = Cyan
+var magenta = Color.RGB(255, 0, 255);  // Red + Blue = Magenta
 
 // Neutrals: all channels equal
-var white = Color(255, 255, 255);  // All at maximum
-var black = Color(0, 0, 0);        // All off
-var gray = Color(128, 128, 128);   // All at half
+var white = Color.RGB(255, 255, 255);  // All at maximum
+var black = Color.RGB(0, 0, 0);        // All off
+var gray = Color.RGB(128, 128, 128);   // All at half
 
 // Custom colors
-var orange = Color(255, 165, 0);   // Lots of red, some green
-var purple = Color(128, 0, 255);   // Some red, full blue
-var pink = Color(255, 192, 203);   // High red, medium green and blue
-var brown = Color(139, 69, 19);    // More red than green, less blue
+var orange = Color.RGB(255, 165, 0);   // Lots of red, some green
+var purple = Color.RGB(128, 0, 255);   // Some red, full blue
+var pink = Color.RGB(255, 192, 203);   // High red, medium green and blue
+var brown = Color.RGB(139, 69, 19);    // More red than green, less blue
 ```
 
 ### The Color Mixing Intuition
@@ -203,39 +203,37 @@ Now that we understand the concepts, let's write code. Everything starts with cr
 bind Viper.Graphics;
 
 func start() {
-    var canvas = Canvas(800, 600);  // 800 pixels wide, 600 tall
-    canvas.setTitle("My First Window");
+    var canvas = Canvas.New("My First Window", 800, 600);  // 800 pixels wide, 600 tall
 
     // Draw something
-    canvas.setColor(Color.RED);
-    canvas.fillRect(100, 100, 200, 150);
+    canvas.Box(100, 100, 200, 150, Color.RED);
 
     // Show the result
-    canvas.show();
+    canvas.Flip();
 
     // Keep window open until user closes it
-    canvas.waitForClose();
+    while !canvas.ShouldClose {
+        canvas.Poll();
+        canvas.Flip();
+    }
 }
 ```
 
 Let's trace through what happens when this program runs:
 
-1. **`Canvas(800, 600)`** — Create a window 800 pixels wide and 600 pixels tall. At this point, the window exists but nothing is drawn on it yet. The frame buffer is allocated in memory, initially filled with black (or whatever the default background is).
+1. **`Canvas.New("My First Window", 800, 600)`** — Create a window 800 pixels wide and 600 pixels tall, with the given title. At this point, the window exists but nothing is drawn on it yet. The frame buffer is allocated in memory, initially filled with black (or whatever the default background is).
 
-2. **`canvas.setTitle("My First Window")`** — Set the text that appears in the window's title bar. This doesn't affect the drawing area.
-
-3. **`canvas.setColor(Color.RED)`** — Set the "current drawing color" to red. This is like dipping your paintbrush in red paint. It doesn't draw anything yet — it just prepares for subsequent drawing operations.
-
-4. **`canvas.fillRect(100, 100, 200, 150)`** — Draw a filled rectangle. The parameters mean:
+2. **`canvas.Box(100, 100, 200, 150, Color.RED)`** — Draw a filled rectangle in red. The parameters mean:
    - Start at x=100, y=100 (the top-left corner of the rectangle)
    - Width of 200 pixels
    - Height of 150 pixels
+   - Color is red
 
-   After this call, the frame buffer contains a red rectangle, but the screen hasn't been updated yet.
+   Notice that the color is passed directly to the draw call. There is no separate "set color" step — each drawing function takes the color as its last argument. After this call, the frame buffer contains a red rectangle, but the screen hasn't been updated yet.
 
-5. **`canvas.show()`** — Copy the frame buffer to the screen. Now you can see the rectangle!
+3. **`canvas.Flip()`** — Copy the frame buffer to the screen. Now you can see the rectangle!
 
-6. **`canvas.waitForClose()`** — Pause the program and wait until the user closes the window. Without this, the program would end immediately and the window would disappear.
+4. **`while !canvas.ShouldClose { canvas.Poll(); canvas.Flip(); }`** — Keep the window open by continuously polling for events and flipping the display. `canvas.ShouldClose` becomes true when the user clicks the window's close button. `canvas.Poll()` processes window events (like close requests). Without this loop, the program would end immediately and the window would disappear.
 
 ### Visualizing the Rectangle
 
@@ -277,18 +275,16 @@ Rectangles are the workhorse of graphics — fast to draw and useful for backgro
 
 ```rust
 // Filled rectangle (solid color)
-canvas.setColor(Color.BLUE);
-canvas.fillRect(x, y, width, height);
+canvas.Box(x, y, width, height, Color.BLUE);
 
 // Outline only (just the border)
-canvas.setColor(Color.WHITE);
-canvas.drawRect(x, y, width, height);
+canvas.Frame(x, y, width, height, Color.WHITE);
 ```
 
-The difference between `fillRect` and `drawRect`:
+The difference between `Box` and `Frame`:
 
 ```text
-fillRect(50, 50, 100, 80)         drawRect(50, 50, 100, 80)
+Box(50, 50, 100, 80, color)       Frame(50, 50, 100, 80, color)
   ┌───────────────┐                  ┌───────────────┐
   │███████████████│                  │               │
   │███████████████│                  │               │
@@ -301,44 +297,40 @@ fillRect(50, 50, 100, 80)         drawRect(50, 50, 100, 80)
 ### Circles and Ellipses
 
 ```rust
-// Circle: specify center and radius
-canvas.setColor(Color.YELLOW);
-canvas.fillCircle(centerX, centerY, radius);
-canvas.drawCircle(centerX, centerY, radius);
+// Filled circle: specify center, radius, and color
+canvas.Disc(centerX, centerY, radius, Color.YELLOW);
 
-// Ellipse (oval): specify bounding box
-canvas.fillEllipse(x, y, width, height);
-canvas.drawEllipse(x, y, width, height);
+// Circle outline: specify center, radius, and color
+canvas.Ring(centerX, centerY, radius, Color.YELLOW);
 ```
 
-For circles, you specify where the *center* is and how big the radius is. For ellipses, you specify a bounding rectangle, and the ellipse fills it.
+For circles, you specify where the *center* is, how big the radius is, and what color to use. `Disc` draws a filled circle; `Ring` draws just the outline.
 
 ```text
-fillCircle(200, 150, 50)          fillEllipse(100, 100, 120, 60)
+Disc(200, 150, 50, color)        Ring(200, 150, 50, color)
 
-         ●●●●●●                        ●●●●●●●●●●●●●●
-       ●●●●●●●●●●                    ●●●●●●●●●●●●●●●●●●
-      ●●●●●●●●●●●●                  ●●●●●●●●●●●●●●●●●●●●
-      ●●●●●●●●●●●●                   ●●●●●●●●●●●●●●●●●●
-       ●●●●●●●●●●                      ●●●●●●●●●●●●●●
-         ●●●●●●                           ●●●●●●●●
+         ●●●●●●                        ●●●●●●
+       ●●●●●●●●●●                    ●●      ●●
+      ●●●●●●●●●●●●                  ●●          ●●
+      ●●●●●●●●●●●●                  ●●          ●●
+       ●●●●●●●●●●                    ●●      ●●
+         ●●●●●●                        ●●●●●●
 
-    center: (200, 150)              bounds: (100,100) to (220,160)
-    radius: 50                      width: 120, height: 60
+    center: (200, 150)              center: (200, 150)
+    radius: 50                      radius: 50
 ```
 
 ### Lines
 
 ```rust
 // Draw a line from point 1 to point 2
-canvas.setColor(Color.GREEN);
-canvas.drawLine(x1, y1, x2, y2);
+canvas.Line(x1, y1, x2, y2, Color.GREEN);
 ```
 
 Lines connect two points. There's no "filled" version — a line is inherently just a path.
 
 ```text
-drawLine(50, 50, 200, 150)
+Line(50, 50, 200, 150, color)
 
   (50,50)
      \
@@ -355,8 +347,7 @@ drawLine(50, 50, 200, 150)
 Sometimes you need to color a single pixel:
 
 ```rust
-canvas.setColor(Color.WHITE);
-canvas.setPixel(x, y);
+canvas.Plot(x, y, Color.WHITE);
 ```
 
 This is the most fundamental drawing operation — everything else is built from it. Drawing a line is really just setting many pixels in a row; drawing a rectangle is setting pixels in a grid pattern.
@@ -366,24 +357,16 @@ This is the most fundamental drawing operation — everything else is built from
 For arbitrary shapes, define a series of points and connect them:
 
 ```rust
-// Triangle
-var triangle = [(100, 200), (150, 100), (200, 200)];
-canvas.setColor(Color.RED);
-canvas.fillPolygon(triangle);
-canvas.drawPolygon(triangle);  // Outline version
+// Triangle — draw using three Line calls
+canvas.Line(100, 200, 150, 100, Color.RED);
+canvas.Line(150, 100, 200, 200, Color.RED);
+canvas.Line(200, 200, 100, 200, Color.RED);
 
-// Pentagon
-var pentagon = [
-    (200, 100),
-    (250, 140),
-    (230, 200),
-    (170, 200),
-    (150, 140)
-];
-canvas.fillPolygon(pentagon);
+// For filled polygons, build them from Box/Disc primitives
+// or draw them line-by-line (scanline fill)
 ```
 
-The points define the vertices (corners) of the shape. The graphics system connects them in order, and the last point connects back to the first.
+For polygon outlines, connect the vertices with `Line` calls. The last point connects back to the first.
 
 ```text
 Triangle from [(100,200), (150,100), (200,200)]:
@@ -404,15 +387,13 @@ Triangle from [(100,200), (150,100), (200,200)]:
 Text is rendered as graphics too — each character is drawn as a pattern of pixels in the font's defined shape.
 
 ```rust
-canvas.setColor(Color.BLACK);
-canvas.setFont("Arial", 24);  // Font name and size in pixels
-canvas.drawText(100, 100, "Hello, Graphics!");
+canvas.Text(100, 100, "Hello, Graphics!", Color.BLACK);
 ```
 
 The coordinates (100, 100) specify where the text starts — specifically, the left edge at the text's *baseline*. The baseline is the line that letters sit on (think of the bottom of letters like 'a' or 'x', but letters like 'g' and 'y' extend below it).
 
 ```text
-canvas.drawText(100, 100, "Hello, y")
+canvas.Text(100, 100, "Hello, y", color)
 
          ___         ___  ___
         |   |       |   ||   |
@@ -439,51 +420,45 @@ module DrawingDemo;
 bind Viper.Graphics;
 
 func start() {
-    var canvas = Canvas(640, 480);
-    canvas.setTitle("Drawing Demo");
+    var canvas = Canvas.New("Drawing Demo", 640, 480);
 
     // Step 1: Sky background
-    canvas.setColor(Color(135, 206, 235));  // Sky blue
-    canvas.fillRect(0, 0, 640, 480);
+    canvas.Box(0, 0, 640, 480, Color.RGB(135, 206, 235));  // Sky blue
 
     // Step 2: Ground
-    canvas.setColor(Color(34, 139, 34));  // Forest green
-    canvas.fillRect(0, 350, 640, 130);
+    canvas.Box(0, 350, 640, 130, Color.RGB(34, 139, 34));  // Forest green
 
     // Step 3: Sun
-    canvas.setColor(Color.YELLOW);
-    canvas.fillCircle(550, 80, 50);
+    canvas.Disc(550, 80, 50, Color.YELLOW);
 
     // Step 4: House body
-    canvas.setColor(Color(139, 69, 19));  // Brown
-    canvas.fillRect(200, 250, 200, 150);
+    canvas.Box(200, 250, 200, 150, Color.RGB(139, 69, 19));  // Brown
 
-    // Step 5: Roof
-    canvas.setColor(Color(128, 0, 0));  // Dark red
-    var roofPoints = [(180, 250), (300, 150), (420, 250)];
-    canvas.fillPolygon(roofPoints);
+    // Step 5: Roof (draw as lines forming a triangle)
+    var roofColor = Color.RGB(128, 0, 0);  // Dark red
+    canvas.Line(180, 250, 300, 150, roofColor);
+    canvas.Line(300, 150, 420, 250, roofColor);
+    canvas.Line(420, 250, 180, 250, roofColor);
 
     // Step 6: Door
-    canvas.setColor(Color(101, 67, 33));  // Dark brown
-    canvas.fillRect(270, 320, 60, 80);
+    canvas.Box(270, 320, 60, 80, Color.RGB(101, 67, 33));  // Dark brown
 
     // Step 7: Window
-    canvas.setColor(Color(173, 216, 230));  // Light blue
-    canvas.fillRect(320, 280, 50, 50);
+    canvas.Box(320, 280, 50, 50, Color.RGB(173, 216, 230));  // Light blue
 
     // Step 8: Window frame
-    canvas.setColor(Color.WHITE);
-    canvas.drawRect(320, 280, 50, 50);
-    canvas.drawLine(345, 280, 345, 330);
-    canvas.drawLine(320, 305, 370, 305);
+    canvas.Frame(320, 280, 50, 50, Color.WHITE);
+    canvas.Line(345, 280, 345, 330, Color.WHITE);
+    canvas.Line(320, 305, 370, 305, Color.WHITE);
 
     // Step 9: Label
-    canvas.setColor(Color.WHITE);
-    canvas.setFont("Arial", 20);
-    canvas.drawText(250, 450, "Home Sweet Home");
+    canvas.Text(250, 450, "Home Sweet Home", Color.WHITE);
 
-    canvas.show();
-    canvas.waitForClose();
+    canvas.Flip();
+    while !canvas.ShouldClose {
+        canvas.Poll();
+        canvas.Flip();
+    }
 }
 ```
 
@@ -557,11 +532,12 @@ Then repeat, dozens of times per second.
 ### The Loop in Code
 
 ```rust
-while running {
-    handleInput();   // Read keyboard/mouse
-    updateState();   // Move things, check collisions
-    render();        // Draw everything
-    wait();          // Control frame rate
+while !canvas.ShouldClose {
+    canvas.Poll();       // Read keyboard/mouse events
+    updateState();       // Move things, check collisions
+    render();            // Draw everything
+    canvas.Flip();       // Show the frame
+    wait();              // Control frame rate
 }
 ```
 
@@ -578,8 +554,7 @@ bind Viper.Graphics;
 bind Viper.Time;
 
 func start() {
-    var canvas = Canvas(800, 600);
-    canvas.setTitle("Bouncing Ball");
+    var canvas = Canvas.New("Bouncing Ball", 800, 600);
 
     // Ball state: position and velocity
     var x = 400.0;     // Start in center
@@ -589,7 +564,9 @@ func start() {
     var radius = 20.0;
 
     // Game loop
-    while canvas.isOpen() {
+    while !canvas.ShouldClose {
+        canvas.Poll();
+
         // === UPDATE STATE ===
 
         // Move the ball
@@ -619,15 +596,13 @@ func start() {
         // === RENDER ===
 
         // Clear screen (draw black background)
-        canvas.setColor(Color.BLACK);
-        canvas.fillRect(0, 0, 800, 600);
+        canvas.Clear(Color.BLACK);
 
         // Draw ball at new position
-        canvas.setColor(Color.RED);
-        canvas.fillCircle(x, y, radius);
+        canvas.Disc(x, y, radius, Color.RED);
 
         // Show the result
-        canvas.show();
+        canvas.Flip();
 
         // === WAIT ===
         Time.Clock.Sleep(16);  // ~60 FPS (1000ms / 60 = ~16ms)
@@ -718,7 +693,9 @@ bind Viper.Time;
 
 var lastTime = Time.Clock.Ticks();
 
-while canvas.isOpen() {
+while !canvas.ShouldClose {
+    canvas.Poll();
+
     // Calculate delta time
     var now = Time.Clock.Ticks();
     var dt = (now - lastTime) / 1000.0;  // Convert to seconds
@@ -728,7 +705,7 @@ while canvas.isOpen() {
     x += speed * dt;  // speed is now "pixels per second"
 
     render();
-    canvas.show();
+    canvas.Flip();
 }
 ```
 
@@ -760,7 +737,9 @@ var speedY = 150.0;  // 150 pixels per second
 
 var lastTime = Time.Clock.Ticks();
 
-while canvas.isOpen() {
+while !canvas.ShouldClose {
+    canvas.Poll();
+
     var now = Time.Clock.Ticks();
     var dt = (now - lastTime) / 1000.0;
     lastTime = now;
@@ -772,11 +751,9 @@ while canvas.isOpen() {
     // ... collision checks using the same dt logic ...
 
     // Render
-    canvas.setColor(Color.BLACK);
-    canvas.fillRect(0, 0, 800, 600);
-    canvas.setColor(Color.RED);
-    canvas.fillCircle(x, y, 20);
-    canvas.show();
+    canvas.Clear(Color.BLACK);
+    canvas.Disc(x, y, 20, Color.RED);
+    canvas.Flip();
 
     Time.Clock.Sleep(16);
 }
@@ -816,16 +793,17 @@ The swap is nearly instantaneous, so the monitor never sees a half-finished draw
 ### Using Double Buffering
 
 ```rust
-var canvas = Canvas(800, 600, { doubleBuffered: true });
+var canvas = Canvas.New("My App", 800, 600);
 
-while running {
-    canvas.Clear();       // Clear the back buffer
-    drawEverything();     // Draw to back buffer
-    canvas.flip();        // Swap buffers - back becomes front
+while !canvas.ShouldClose {
+    canvas.Poll();
+    canvas.Clear(Color.BLACK);  // Clear the back buffer
+    drawEverything();            // Draw to back buffer
+    canvas.Flip();               // Swap buffers — back becomes front
 }
 ```
 
-Most modern graphics systems handle double buffering automatically. The `canvas.show()` function in our examples typically does this swap for you. But understanding the concept helps you debug visual glitches if they occur.
+Most modern graphics systems handle double buffering automatically. The `canvas.Flip()` function in our examples does this swap for you. But understanding the concept helps you debug visual glitches if they occur.
 
 ---
 
@@ -914,9 +892,8 @@ entity GameObject {
     }
 
     func draw(canvas: Canvas) {
-        canvas.setColor(self.color);
-        canvas.fillRect(self.position.x, self.position.y,
-                       self.size.x, self.size.y);
+        canvas.Box(self.position.x, self.position.y,
+                   self.size.x, self.size.y, self.color);
     }
 
     func collidesWith(other: GameObject) -> Boolean {
@@ -930,13 +907,12 @@ entity GameObject {
 
 entity Game {
     canvas: Canvas;
-    objects: [GameObject];
+    objects: List[GameObject];
     running: Boolean;
     lastTime: Integer;
 
     expose func init(width: Integer, height: Integer, title: String) {
-        self.canvas = Canvas(width, height);
-        self.canvas.setTitle(title);
+        self.canvas = Canvas.New(title, width, height);
         self.objects = [];
         self.running = true;
         self.lastTime = Time.Clock.Ticks();
@@ -947,7 +923,9 @@ entity Game {
     }
 
     func run() {
-        while self.running && self.canvas.isOpen() {
+        while self.running && !self.canvas.ShouldClose {
+            self.canvas.Poll();
+
             // Calculate delta time
             var now = Time.Clock.Ticks();
             var dt = (now - self.lastTime) / 1000.0;
@@ -974,15 +952,14 @@ entity Game {
 
     func render() {
         // Clear screen
-        self.canvas.setColor(Color.BLACK);
-        self.canvas.fillRect(0, 0, 800, 600);
+        self.canvas.Clear(Color.BLACK);
 
         // Draw all objects
         for obj in self.objects {
             obj.draw(self.canvas);
         }
 
-        self.canvas.show();
+        self.canvas.Flip();
     }
 }
 
@@ -1013,10 +990,10 @@ Graphics programming has some classic pitfalls. Learn from others' mistakes!
 
 **The bug:**
 ```rust
-var canvas = Canvas(800, 600);
+var canvas = Canvas.New("Demo", 800, 600);
 // Later...
-canvas.fillRect(0, 0, 800, 600);  // This is correct
-canvas.fillCircle(800, 600, 10);  // Bug! (800, 600) is outside the canvas
+canvas.Box(0, 0, 800, 600, Color.BLACK);  // This is correct
+canvas.Disc(800, 600, 10, Color.RED);     // Bug! (800, 600) is outside the canvas
 ```
 
 **Why it's wrong:** A 800x600 canvas has coordinates from (0,0) to (799, 599). Position (800, 600) is one pixel beyond the right and bottom edges.
@@ -1024,21 +1001,21 @@ canvas.fillCircle(800, 600, 10);  // Bug! (800, 600) is outside the canvas
 **The fix:**
 ```rust
 // The bottom-right corner is at (width-1, height-1)
-canvas.fillCircle(799, 599, 10);
+canvas.Disc(799, 599, 10, Color.RED);
 
 // Or calculate from canvas size:
-canvas.fillCircle(width - 1, height - 1, 10);
+canvas.Disc(width - 1, height - 1, 10, Color.RED);
 ```
 
 ### Mistake 2: Forgetting to Clear the Screen
 
 **The bug:**
 ```rust
-while running {
+while !canvas.ShouldClose {
+    canvas.Poll();
     x += 5;
-    canvas.setColor(Color.RED);
-    canvas.fillCircle(x, 100, 20);  // No clear before this!
-    canvas.show();
+    canvas.Disc(x, 100, 20, Color.RED);  // No clear before this!
+    canvas.Flip();
 }
 ```
 
@@ -1046,16 +1023,15 @@ while running {
 
 **The fix:**
 ```rust
-while running {
+while !canvas.ShouldClose {
+    canvas.Poll();
     x += 5;
 
     // Clear first!
-    canvas.setColor(Color.BLACK);
-    canvas.fillRect(0, 0, 800, 600);
+    canvas.Clear(Color.BLACK);
 
-    canvas.setColor(Color.RED);
-    canvas.fillCircle(x, 100, 20);
-    canvas.show();
+    canvas.Disc(x, 100, 20, Color.RED);
+    canvas.Flip();
 }
 ```
 
@@ -1063,10 +1039,8 @@ while running {
 
 **The bug:**
 ```rust
-canvas.setColor(Color.RED);
-canvas.fillCircle(100, 100, 50);  // Draw player
-canvas.setColor(Color.BLUE);
-canvas.fillRect(0, 0, 800, 600);  // Draw background
+canvas.Disc(100, 100, 50, Color.RED);     // Draw player
+canvas.Box(0, 0, 800, 600, Color.BLUE);   // Draw background
 ```
 
 **What happens:** The background covers the player because it's drawn second.
@@ -1074,12 +1048,10 @@ canvas.fillRect(0, 0, 800, 600);  // Draw background
 **The fix:** Draw back-to-front (painter's algorithm):
 ```rust
 // Background first (farthest back)
-canvas.setColor(Color.BLUE);
-canvas.fillRect(0, 0, 800, 600);
+canvas.Box(0, 0, 800, 600, Color.BLUE);
 
 // Then foreground elements (closer to viewer)
-canvas.setColor(Color.RED);
-canvas.fillCircle(100, 100, 50);
+canvas.Disc(100, 100, 50, Color.RED);
 ```
 
 ### Mistake 4: Integer vs. Float Precision
@@ -1099,25 +1071,24 @@ var x = 100.0;  // Float
 x = x + 0.5;    // Now x = 100.5
 
 // When drawing, convert to integer:
-canvas.fillCircle(x as Integer, y as Integer, 20);
+canvas.Disc(x as Integer, y as Integer, 20, Color.RED);
 ```
 
-### Mistake 5: Forgetting show() or flip()
+### Mistake 5: Forgetting Flip()
 
 **The bug:**
 ```rust
-while running {
-    canvas.setColor(Color.BLACK);
-    canvas.fillRect(0, 0, 800, 600);
-    canvas.setColor(Color.RED);
-    canvas.fillCircle(x, y, 20);
-    // Forgot canvas.show()!
+while !canvas.ShouldClose {
+    canvas.Poll();
+    canvas.Clear(Color.BLACK);
+    canvas.Disc(x, y, 20, Color.RED);
+    // Forgot canvas.Flip()!
 }
 ```
 
 **What happens:** You draw to the back buffer but never swap it to the front. The window stays blank or frozen.
 
-**The fix:** Always call `canvas.show()` (or `canvas.flip()`) after you're done drawing each frame.
+**The fix:** Always call `canvas.Flip()` after you're done drawing each frame.
 
 ### Mistake 6: Not Accounting for Object Size in Collisions
 
@@ -1164,17 +1135,14 @@ Make the invisible visible:
 
 ```rust
 // Draw bounding boxes around objects
-canvas.setColor(Color.WHITE);
-canvas.drawRect(player.x, player.y, player.width, player.height);
+canvas.Frame(player.x, player.y, player.width, player.height, Color.WHITE);
 
 // Draw collision points
-canvas.setColor(Color.YELLOW);
-canvas.fillCircle(player.x, player.y, 3);  // Top-left corner
-canvas.fillCircle(player.x + player.width, player.y + player.height, 3);  // Bottom-right
+canvas.Disc(player.x, player.y, 3, Color.YELLOW);  // Top-left corner
+canvas.Disc(player.x + player.width, player.y + player.height, 3, Color.YELLOW);  // Bottom-right
 
 // Draw velocity vectors
-canvas.setColor(Color.GREEN);
-canvas.drawLine(player.x, player.y, player.x + player.dx * 10, player.y + player.dy * 10);
+canvas.Line(player.x, player.y, player.x + player.dx * 10, player.y + player.dy * 10, Color.GREEN);
 ```
 
 ### Step 3: Slow Down Time
@@ -1199,11 +1167,13 @@ x += dx * speedMultiplier;
 Simplify until it works:
 
 ```rust
-// Remove the game loop - just draw once
-canvas.setColor(Color.RED);
-canvas.fillRect(100, 100, 50, 50);
-canvas.show();
-canvas.waitForClose();
+// Remove the game loop — just draw once
+canvas.Box(100, 100, 50, 50, Color.RED);
+canvas.Flip();
+while !canvas.ShouldClose {
+    canvas.Poll();
+    canvas.Flip();
+}
 ```
 
 Does a simple rectangle appear? Yes? The basic setup works. Add complexity back piece by piece until you find what breaks.
@@ -1213,21 +1183,19 @@ Does a simple rectangle appear? Yes? The basic setup works. Add complexity back 
 Draw a grid to understand your coordinate space:
 
 ```rust
-canvas.setColor(Color(50, 50, 50));  // Dark gray
+var gridColor = Color.RGB(50, 50, 50);  // Dark gray
 for i in 0..=8 {
     var x = i * 100;
-    canvas.drawLine(x, 0, x, 600);  // Vertical lines
+    canvas.Line(x, 0, x, 600, gridColor);  // Vertical lines
 }
 for i in 0..=6 {
     var y = i * 100;
-    canvas.drawLine(0, y, 800, y);  // Horizontal lines
+    canvas.Line(0, y, 800, y, gridColor);  // Horizontal lines
 }
 
 // Label some coordinates
-canvas.setColor(Color.WHITE);
-canvas.setFont("Arial", 12);
-canvas.drawText(5, 15, "(0,0)");
-canvas.drawText(405, 315, "(400,300)");
+canvas.Text(5, 15, "(0,0)", Color.WHITE);
+canvas.Text(405, 315, "(400,300)", Color.WHITE);
 ```
 
 ---
@@ -1238,10 +1206,9 @@ canvas.drawText(405, 315, "(400,300)");
 ```rust
 bind Viper.Graphics;
 
-var canvas = Canvas(800, 600);
-canvas.setColor(Color.RED);
-canvas.fillRect(100, 100, 200, 150);
-canvas.show();
+var canvas = Canvas.New("Demo", 800, 600);
+canvas.Box(100, 100, 200, 150, Color.RED);
+canvas.Flip();
 ```
 
 **BASIC**
@@ -1261,7 +1228,7 @@ The concepts are identical across both languages — only the syntax differs. A 
 - The **canvas** is your drawing surface — a grid of pixels addressable by (x, y) coordinates
 - **(0,0) is the top-left corner**; Y increases *downward* (opposite of math class)
 - **Colors use RGB** — three values from 0-255 for red, green, and blue light
-- **Draw primitives** with functions like `fillRect`, `fillCircle`, `drawLine`, `fillPolygon`
+- **Draw primitives** with functions like `Box`, `Disc`, `Line`, `Ring`, `Frame`, `Text`, and `Plot`
 - **Drawing order matters** — later drawings cover earlier ones (painter's algorithm)
 - **Animation uses a game loop**: input -> update -> render, repeated many times per second
 - **Delta time** ensures consistent speed regardless of frame rate

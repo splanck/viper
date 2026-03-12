@@ -445,6 +445,32 @@ extern "C"
     /// @return Response body as string (typically empty or CORS info).
     rt_string rt_http_options(rt_string url);
 
+    /// @brief HTTP PUT request with string body.
+    /// @param url Full URL (http://host/path).
+    /// @param body Request body as string.
+    /// @return Response body as string.
+    /// @note Traps on connection error, invalid URL, or HTTP error.
+    rt_string rt_http_put(rt_string url, rt_string body);
+
+    /// @brief HTTP PUT request with bytes body.
+    /// @param url Full URL (http://host/path).
+    /// @param body Request body as Bytes.
+    /// @return Response body as Bytes.
+    /// @note Traps on connection error, invalid URL, or HTTP error.
+    void *rt_http_put_bytes(rt_string url, void *body);
+
+    /// @brief HTTP DELETE request, return body as string.
+    /// @param url Full URL (http://host/path).
+    /// @return Response body as string.
+    /// @note Traps on connection error, invalid URL, or HTTP error.
+    rt_string rt_http_delete(rt_string url);
+
+    /// @brief HTTP DELETE request, return body as bytes.
+    /// @param url Full URL (http://host/path).
+    /// @return Response body as Bytes.
+    /// @note Traps on connection error, invalid URL, or HTTP error.
+    void *rt_http_delete_bytes(rt_string url);
+
     //=========================================================================
     // HttpReq - Request Builder (Instance Class)
     //=========================================================================

@@ -524,7 +524,7 @@ bind Viper.Terminal;
 var password = "";
 while password != "secret" {
     Print("Password: ");
-    password = ReadLine();
+    password = InputLine();
 }
 Say("Access granted!");
 ```
@@ -626,7 +626,7 @@ bind Viper.Terminal;
 
 while true {
     Print("Enter a command (quit to exit): ");
-    var command = ReadLine();
+    var command = InputLine();
 
     if command == "quit" {
         Say("Goodbye!");
@@ -1077,7 +1077,7 @@ var age = 0;
 
 while !valid {
     Print("Enter your age (0-120): ");
-    age = Viper.Core.Convert.ToInt64(ReadLine());
+    age = Viper.Core.Convert.ToInt64(InputLine());
 
     if age >= 0 && age <= 120 {
         valid = true;
@@ -1337,7 +1337,7 @@ func start() {
         var triesLeft = MAX_TRIES - tries;
 
         Print("Guess #" + tries + ": ");
-        var guess = Viper.Core.Convert.ToInt64(ReadLine());
+        var guess = Viper.Core.Convert.ToInt64(InputLine());
 
         if guess == SECRET {
             Say("");

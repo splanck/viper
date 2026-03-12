@@ -19,7 +19,7 @@ value Player {
     name: String;
     level: Integer;
     health: Number;
-    inventory: [String];
+    inventory: List[String];
     position: Position;
 }
 
@@ -274,19 +274,19 @@ This single JSON document represents complex, deeply nested data:
 
 ### Parsing JSON in Zia
 
-> **Note:** The examples in this chapter use a simplified, pedagogical JSON API (`Viper.JSON`) to make the concepts clear. The production API is `Viper.Text.Json` (bind as `Json`), which uses `Json.Parse()`, `Json.Format()`, and `Viper.Unbox.Str()` / `Viper.Unbox.I64()` / `Viper.Unbox.F64()` for value extraction. See Appendix D for the complete runtime reference.
+> **Note:** The examples in this chapter use `bind Json = Viper.Text.Json;` for JSON operations. For value extraction, use `Viper.Unbox.Str()` / `Viper.Unbox.I64()` / `Viper.Unbox.F64()`. See Appendix D for the complete runtime reference.
 
 Parsing means reading JSON text and creating program data structures from it:
 
 ```rust
-bind Viper.JSON;
+bind Json = Viper.Text.Json;
 bind Viper.Terminal;
 
 func start() {
     var jsonText = '{"name": "Alice", "score": 100, "active": true}';
 
     // Parse the JSON text into a JSONValue
-    var data = JSON.Parse(jsonText);
+    var data = Json.Parse(jsonText);
 
     // Extract values with type conversions
     var name = data["name"].asString();
@@ -301,7 +301,7 @@ func start() {
 
 Let us trace through this step by step:
 
-1. **`JSON.Parse(jsonText)`**: Takes the raw text and builds a tree structure representing the JSON. This returns a `JSONValue`, which is a generic container that could hold any JSON type.
+1. **`Json.Parse(jsonText)`**: Takes the raw text and builds a tree structure representing the JSON. This returns a `JSONValue`, which is a generic container that could hold any JSON type.
 
 2. **`data["name"]`**: Accesses the value associated with the key `"name"`. This returns another `JSONValue`.
 
@@ -319,12 +319,12 @@ The `.as*` methods perform type conversions:
 To save program data as JSON, you build a JSON structure programmatically:
 
 ```rust
-bind Viper.JSON;
+bind Json = Viper.Text.Json;
 bind Viper.Terminal;
 
 func start() {
     // Create a JSON object
-    var player = JSON.object();
+    var player = Json.Object();
 
     // Add simple values
     player.Set("name", "Hero");
@@ -333,14 +333,14 @@ func start() {
     player.Set("alive", true);
 
     // Create and add an array
-    var inventory = JSON.array();
+    var inventory = Json.Array();
     inventory.Add("sword");
     inventory.Add("shield");
     inventory.Add("potion");
     player.Set("inventory", inventory);
 
     // Create and add a nested object
-    var position = JSON.object();
+    var position = Json.Object();
     position.Set("x", 100.0);
     position.Set("y", 200.0);
     player.Set("position", position);
@@ -397,24 +397,24 @@ entity Player {
     name: String;
     level: Integer;
     health: Number;
-    inventory: [String];
+    inventory: List[String];
     x: Number;
     y: Number;
 
     // Convert this Player to a JSON representation
     func toJSON() -> JSONValue {
-        var obj = JSON.object();
+        var obj = Json.Object();
         obj.Set("name", self.name);
         obj.Set("level", self.level);
         obj.Set("health", self.health);
 
-        var inv = JSON.array();
+        var inv = Json.Array();
         for item in self.inventory {
             inv.Add(item);
         }
         obj.Set("inventory", inv);
 
-        var pos = JSON.object();
+        var pos = Json.Object();
         pos.Set("x", self.x);
         pos.Set("y", self.y);
         obj.Set("position", pos);
@@ -445,18 +445,18 @@ entity Player {
 Usage becomes elegant:
 
 ```rust
-bind Viper.File;
+bind File = Viper.IO.File;
 
 // Save a player
 func saveGame(player: Player, filename: String) {
     var json = player.toJSON().toPrettyString();
-    writeText(filename, json);
+    File.WriteAllText(filename, json);
 }
 
 // Load a player
 func loadGame(filename: String) -> Player {
-    var json = readText(filename);
-    var data = JSON.Parse(json);
+    var json = File.ReadAllText(filename);
+    var data = Json.Parse(json);
     return Player.fromJSON(data);
 }
 ```
@@ -466,11 +466,11 @@ Let us trace through saving and loading:
 **Saving:**
 1. `player.toJSON()` creates a JSONValue representing the player
 2. `.toPrettyString()` converts that to formatted text
-3. `File.writeText()` writes the text to disk
+3. `File.WriteAllText()` writes the text to disk
 
 **Loading:**
-1. `File.readText()` reads the raw text from disk
-2. `JSON.Parse()` parses the text into a JSONValue tree
+1. `File.ReadAllText()` reads the raw text from disk
+2. `Json.Parse()` parses the text into a JSONValue tree
 3. `Player.fromJSON()` extracts values and constructs a Player
 
 ### When to Use JSON
@@ -524,12 +524,12 @@ But CSV has significant limitations:
 ### Reading CSV
 
 ```rust
-bind Viper.CSV;
+bind Csv = Viper.Text.Csv;
 bind Viper.Terminal;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 func start() {
-    var csv = CSV.load("players.csv");
+    var csv = Csv.Load("players.csv");
 
     for row in csv.rows() {
         var name = row["name"];
@@ -542,7 +542,7 @@ func start() {
 ```
 
 Step by step:
-1. `CSV.load()` reads the file and parses it
+1. `Csv.Load()` reads the file and parses it
 2. `.rows()` returns an iterator over data rows (skipping the header)
 3. Each row is a dictionary-like object where you access columns by name
 4. String values like `level` must be explicitly converted to integers
@@ -550,11 +550,11 @@ Step by step:
 ### Writing CSV
 
 ```rust
-bind Viper.CSV;
+bind Csv = Viper.Text.Csv;
 
 func start() {
     // Create a CSV with column headers
-    var csv = CSV.create(["name", "level", "health", "x", "y"]);
+    var csv = Csv.Create(["name", "level", "health", "x", "y"]);
 
     // Add rows as arrays of strings
     csv.addRow(["Hero", "5", "87.5", "100.0", "200.0"]);
@@ -717,7 +717,7 @@ Now the reverse. We have this JSON text:
 }
 ```
 
-We call `JSON.Parse(jsonText)`:
+We call `Json.Parse(jsonText)`:
 
 **Step 1**: The parser reads the opening `{` and knows this is an object. It creates an empty JSONValue of object type.
 
@@ -853,8 +853,8 @@ Let us build a complete application that manages contacts, demonstrating seriali
 ```rust
 module ContactManager;
 
-bind Viper.JSON;
-bind Viper.File;
+bind Json = Viper.Text.Json;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
 // ============================================
@@ -867,7 +867,7 @@ entity Contact {
     email: String;
 
     func toJSON() -> JSONValue {
-        var obj = JSON.object();
+        var obj = Json.Object();
         obj.Set("name", self.name);
         obj.Set("phone", self.phone);
         obj.Set("email", self.email);
@@ -884,7 +884,7 @@ entity Contact {
 }
 
 entity ContactBook {
-    hide contacts: [Contact];
+    hide contacts: List[Contact];
     hide filename: String;
 
     expose func init(filename: String) {
@@ -900,8 +900,8 @@ entity ContactBook {
     }
 
     // Find contacts by name (partial match)
-    func search(query: String) -> [Contact] {
-        var results: [Contact] = [];
+    func search(query: String) -> List[Contact] {
+        var results: List[Contact] = [];
         var lowerQuery = query.ToLower();
 
         for contact in self.contacts {
@@ -915,7 +915,7 @@ entity ContactBook {
 
     // Remove a contact by name (exact match)
     func remove(name: String) -> Boolean {
-        var newContacts: [Contact] = [];
+        var newContacts: List[Contact] = [];
         var found = false;
 
         for contact in self.contacts {
@@ -935,19 +935,19 @@ entity ContactBook {
     }
 
     // List all contacts
-    func all() -> [Contact] {
+    func all() -> List[Contact] {
         return self.contacts;
     }
 
     // Persist to disk
     hide func save() {
-        var arr = JSON.array();
+        var arr = Json.Array();
         for contact in self.contacts {
             arr.Add(contact.toJSON());
         }
 
         var json = arr.toPrettyString();
-        File.writeText(self.filename, json);
+        File.WriteAllText(self.filename, json);
     }
 
     // Load from disk
@@ -956,8 +956,8 @@ entity ContactBook {
             return;  // No file yet, start empty
         }
 
-        var json = File.readText(self.filename);
-        var arr = JSON.Parse(json);
+        var json = File.ReadAllText(self.filename);
+        var arr = Json.Parse(json);
 
         for item in arr.asArray() {
             self.contacts.Push(Contact.fromJSON(item));
@@ -1169,7 +1169,7 @@ var bytes = File.ReadAllBytes(filename);
 // bytes.ToString() is not a valid conversion — use File.ReadAllText instead
 
 // SOLUTION: Specify encoding explicitly
-var text = File.readText(filename, Encoding.UTF8);
+var text = File.ReadAllText(filename, Encoding.UTF8);
 ```
 
 Modern systems generally use UTF-8, but legacy files might use Latin-1, Windows-1252, or other encodings. If your data contains non-ASCII characters (accented letters, emoji, characters from other languages), encoding matters.
@@ -1178,20 +1178,20 @@ Modern systems generally use UTF-8, but legacy files might use Latin-1, Windows-
 
 ```rust
 // CRASH: What if the file doesn't exist?
-var json = File.readText("config.json");
-var data = JSON.Parse(json);
+var json = File.ReadAllText("config.json");
+var data = Json.Parse(json);
 ```
 
 Always check:
 
 ```rust
 if File.Exists("config.json") {
-    var json = File.readText("config.json");
-    var data = JSON.Parse(json);
+    var json = File.ReadAllText("config.json");
+    var data = Json.Parse(json);
     // Use data
 } else {
     // Use defaults
-    var data = JSON.object();
+    var data = Json.Object();
 }
 ```
 
@@ -1257,7 +1257,7 @@ What if someone gives you invalid JSON?
 
 ```rust
 // CRASH: Invalid JSON causes parse to fail
-var data = JSON.Parse("this is { not valid json");
+var data = Json.Parse("this is { not valid json");
 ```
 
 Handle parse errors:
@@ -1265,7 +1265,7 @@ Handle parse errors:
 ```rust
 bind Viper.Terminal;
 
-var result = JSON.tryParse(jsonText);
+var result = Json.TryParse(jsonText);
 if result.isError() {
     Terminal.Say("Invalid JSON: " + result.errorMessage());
     return;
@@ -1309,12 +1309,12 @@ Before parsing, see exactly what you received:
 ```rust
 bind Viper.Terminal;
 
-var jsonText = File.readText("data.json");
+var jsonText = File.ReadAllText("data.json");
 Terminal.Say("=== RAW JSON ===");
 Terminal.Say(jsonText);
 Terminal.Say("================");
 
-var data = JSON.Parse(jsonText);
+var data = Json.Parse(jsonText);
 ```
 
 Often you will spot the problem immediately: missing quotes, trailing commas, or completely unexpected content.
@@ -1376,7 +1376,7 @@ original.level = 5;
 // ... set all fields
 
 var json = original.toJSON().toString();
-var parsed = JSON.Parse(json);
+var parsed = Json.Parse(json);
 var restored = Player.fromJSON(parsed);
 
 // Compare
@@ -1404,8 +1404,8 @@ func loadPlayerSafe(filename: String) -> Player? {
         return null;
     }
 
-    var json = File.readText(filename);
-    var parseResult = JSON.tryParse(json);
+    var json = File.ReadAllText(filename);
+    var parseResult = Json.TryParse(json);
 
     if parseResult.isError() {
         Terminal.Say("Warning: Invalid save file format");
@@ -1440,12 +1440,12 @@ func start() {
 
 **Zia**
 ```rust
-bind Viper.JSON;
+bind Json = Viper.Text.Json;
 
-var data = JSON.Parse('{"name": "test", "value": 42}');
+var data = Json.Parse('{"name": "test", "value": 42}');
 var name = data["name"].asString();
 
-var obj = JSON.object();
+var obj = Json.Object();
 obj.Set("score", 100);
 var json = obj.toString();
 ```
@@ -1510,7 +1510,7 @@ value GameSave {
     health: Number;
     x: Number;
     y: Number;
-    inventory: [String];
+    inventory: List[String];
 }
 
 final MAGIC = 0x56535631;  // "VSV1"
@@ -1589,8 +1589,8 @@ Here is a production-quality configuration system that demonstrates everything w
 ```rust
 module ConfigSystem;
 
-bind Viper.JSON;
-bind Viper.File;
+bind Json = Viper.Text.Json;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
 entity Config {
@@ -1604,15 +1604,15 @@ entity Config {
         self.dirty = false;
 
         if File.Exists(filename) {
-            var result = JSON.tryParse(File.readText(filename));
+            var result = Json.TryParse(File.ReadAllText(filename));
             if result.isError() {
                 Terminal.Say("Warning: Config file invalid, using defaults");
-                self.data = JSON.object();
+                self.data = Json.Object();
             } else {
                 self.data = result.value();
             }
         } else {
-            self.data = JSON.object();
+            self.data = Json.Object();
         }
     }
 
@@ -1640,7 +1640,7 @@ entity Config {
         for i in 0..(parts.Length - 1) {
             var part = parts[i];
             if !current.Has(part) {
-                current.Set(part, JSON.object());
+                current.Set(part, Json.Object());
             }
             current = current[part];
         }
@@ -1685,26 +1685,26 @@ entity Config {
 
     // Set values
     func setString(key: String, value: String) {
-        self.setPath(key, JSON.string(value));
+        self.setPath(key, Json.String(value));
     }
 
     func setInt(key: String, value: Integer) {
-        self.setPath(key, JSON.number(value));
+        self.setPath(key, Json.Number(value));
     }
 
     func setFloat(key: String, value: Number) {
-        self.setPath(key, JSON.number(value));
+        self.setPath(key, Json.Number(value));
     }
 
     func setBool(key: String, value: Boolean) {
-        self.setPath(key, JSON.bool(value));
+        self.setPath(key, Json.Bool(value));
     }
 
     // Save to disk only if there are unsaved changes
     func save() {
         if self.dirty {
             var text = self.data.toPrettyString();
-            File.writeText(self.filename, text);
+            File.WriteAllText(self.filename, text);
             self.dirty = false;
         }
     }
@@ -1712,7 +1712,7 @@ entity Config {
     // Force reload from disk, discarding unsaved changes
     func reload() {
         if File.Exists(self.filename) {
-            var result = JSON.tryParse(File.readText(self.filename));
+            var result = Json.TryParse(File.ReadAllText(self.filename));
             if !result.isError() {
                 self.data = result.value();
             }

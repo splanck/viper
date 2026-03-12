@@ -117,7 +117,7 @@ You can time individual sections:
 bind Viper.Time;
 bind Viper.Terminal;
 
-func processData(data: [Record]) {
+func processData(data: List[Record]) {
     var t0 = Time.Clock.Ticks();
 
     var parsed = parseRecords(data);
@@ -169,7 +169,7 @@ func timed[T](name: String, work: func() -> T) -> T {
 }
 
 // Usage
-func processData(data: [Record]) {
+func processData(data: List[Record]) {
     var parsed = timed("Parse", func() {
         return parseRecords(data);
     });
@@ -196,68 +196,42 @@ This keeps your code clean while still providing timing information.
 
 Manual timing works for small programs, but for larger ones, you need a *profiler*. A profiler automatically measures where your program spends time.
 
-### Using Viper's Built-in Profiler
+### Using Viper's Diagnostic Flags
+
+> **Planned Feature:** A built-in profiler (`--profile`) is a planned feature not yet available
+> in Viper. The diagnostic flags below are currently available for inspecting your program's
+> compilation. For runtime profiling, use the manual timing techniques shown earlier in this
+> chapter.
+
+Viper provides diagnostic flags to inspect the compiled representation of your program:
 
 ```bash
-zia --profile myprogram.zia
+# Dump the IL (intermediate language) representation
+zia --dump-il myprogram.zia
+
+# Dump the optimized IL after optimization passes
+zia --dump-il-opt myprogram.zia
 ```
 
-After your program finishes, you'll see output like:
+The `--dump-il` flag shows the raw IL your code compiles to, while `--dump-il-opt` shows the IL after Viper's optimizer has run. Comparing the two helps you understand what the optimizer does and whether your code structure helps or hinders optimization.
 
-```text
-Function                  Calls      Time (ms)    % Total    Avg (ms)
-───────────────────────────────────────────────────────────────────────
-processImage              1000       4500         45.0%      4.50
-readFile                  1000       3200         32.0%      3.20
-calculateChecksum         1000       1500         15.0%      1.50
-saveFile                  1000       600          6.0%       0.60
-parseHeader               5000       150          1.5%       0.03
-validateFormat            1000       50           0.5%       0.05
-───────────────────────────────────────────────────────────────────────
-Total:                               10000        100%
-```
+### Reading IL Output for Performance Clues
 
-### Reading Profiler Output
+When examining `--dump-il-opt` output, look for:
+- **Loops that weren't optimized**: If you see redundant operations inside loop bodies, the optimizer couldn't hoist them out
+- **Excessive allocations**: Many `alloca` or object creation instructions in hot paths
+- **Missed constant folding**: Arithmetic on values the compiler should have computed at compile time
+- **Redundant loads/stores**: The same value being loaded from memory multiple times
 
-Focus on the top rows. In this example:
-- `processImage` takes 45% of total time. This is your primary target.
-- `readFile` takes 32%. Worth investigating.
-- `calculateChecksum` takes 15%. Maybe worth optimizing.
-- Everything else is noise. Optimizing `parseHeader` or `validateFormat` won't help noticeably.
+### Future Profiling (Planned)
 
-The "Calls" column matters too. If a function is called a million times, even tiny improvements compound. If it's called once, only dramatic improvements matter.
+A full profiling system is planned for Viper that will provide:
+- Per-function call counts and timing
+- Sampling and instrumentation modes
+- Memory allocation profiling
+- These will be accessible via `--profile` flags once implemented
 
-### Sampling vs. Instrumentation Profilers
-
-**Sampling profilers** periodically check where your program is executing. They have low overhead but might miss very fast functions.
-
-**Instrumentation profilers** record every function entry and exit. They're more accurate but slow your program down, which can distort results.
-
-Viper's `--profile` uses sampling by default. For detailed analysis:
-
-```bash
-zia --profile=instrument myprogram.zia
-```
-
-### Memory Profiling
-
-Sometimes the bottleneck isn't CPU time but memory:
-
-```bash
-zia --profile=memory myprogram.zia
-```
-
-Output shows allocations:
-```text
-Type                Allocations    Total Size    % Memory
-─────────────────────────────────────────────────────────
-String              50000          4.5 MB        45%
-[Integer]               25000          3.2 MB        32%
-Image               1000           1.5 MB        15%
-Map[String, Integer]    500            0.8 MB        8%
-```
-
-High allocation counts often indicate unnecessary object creation inside loops.
+For now, use the manual timing approach with `Time.Clock.Ticks()` and `Time.Clock.TicksUs()` shown in the previous section to identify bottlenecks in your code.
 
 ---
 
@@ -272,7 +246,7 @@ Big O describes how the work required grows as input size grows. It answers: "If
 Consider searching for a name in a list:
 
 ```rust
-func findPerson(people: [String], name: String) -> Integer {
+func findPerson(people: List[String], name: String) -> Integer {
     for i in 0..people.Length {
         if people[i] == name {
             return i;
@@ -322,7 +296,7 @@ The differences are dramatic at large scales:
 The work doesn't depend on input size. Array indexing is O(1):
 
 ```rust
-func getFirst(items: [Integer]) -> Integer {
+func getFirst(items: List[Integer]) -> Integer {
     return items[0];  // Same speed whether array has 10 or 10 million items
 }
 ```
@@ -332,7 +306,7 @@ func getFirst(items: [Integer]) -> Integer {
 Each step eliminates half the remaining work. Binary search is O(log n):
 
 ```rust
-func binarySearch(sorted: [Integer], target: Integer) -> Integer {
+func binarySearch(sorted: List[Integer], target: Integer) -> Integer {
     var low = 0;
     var high = sorted.Length - 1;
 
@@ -356,7 +330,7 @@ func binarySearch(sorted: [Integer], target: Integer) -> Integer {
 Examine each item once. Summing an array is O(n):
 
 ```rust
-func sum(items: [Integer]) -> Integer {
+func sum(items: List[Integer]) -> Integer {
     var total = 0;
     for item in items {
         total += item;
@@ -380,7 +354,7 @@ Nested loops over the same data. Each item interacts with every other item:
 
 ```rust
 // Check all pairs
-func findClosestPair(points: [Point]) -> (Point, Point) {
+func findClosestPair(points: List[Point]) -> (Point, Point) {
     var closest = (points[0], points[1]);
     var minDist = distance(closest.0, closest.1);
 
@@ -411,7 +385,7 @@ To determine Big O, count loops:
 But watch for hidden loops:
 
 ```rust
-func sneakyQuadratic(items: [String]) {
+func sneakyQuadratic(items: List[String]) {
     for item in items {
         if items.Contains(item.reversed()) {  // contains() is O(n)!
             Terminal.Say("Found palindrome pair");
@@ -430,7 +404,7 @@ Let's see Big O in action with a real problem: checking if a list has any duplic
 ### Approach 1: Check Every Pair (O(n²))
 
 ```rust
-func hasDuplicates_slow(items: [Integer]) -> Boolean {
+func hasDuplicates_slow(items: List[Integer]) -> Boolean {
     for i in 0..items.Length {
         for j in (i+1)..items.Length {
             if items[i] == items[j] {
@@ -450,7 +424,7 @@ With 1,000,000 items: ~500,000,000,000 comparisons (could take minutes)
 ### Approach 2: Sort First (O(n log n))
 
 ```rust
-func hasDuplicates_medium(items: [Integer]) -> Boolean {
+func hasDuplicates_medium(items: List[Integer]) -> Boolean {
     var sorted = items.sorted();  // O(n log n)
 
     for i in 0..(sorted.Length - 1) {  // O(n)
@@ -470,7 +444,7 @@ With 1,000,000 items: ~20,000,000 comparisons (milliseconds)
 ### Approach 3: Use a Set (O(n))
 
 ```rust
-func hasDuplicates_fast(items: [Integer]) -> Boolean {
+func hasDuplicates_fast(items: List[Integer]) -> Boolean {
     var seen = new Set[Integer]();
 
     for item in items {
@@ -577,7 +551,7 @@ Using the wrong data structure can turn O(1) operations into O(n):
 
 **Slow: Searching a List**
 ```rust
-var users: [User] = [];
+var users: List[User] = [];
 
 func findUser(id: Integer) -> User? {
     for user in users {          // O(n) - checks every user
@@ -602,7 +576,7 @@ Similarly for membership testing:
 
 **Slow:**
 ```rust
-var seen: [String] = [];
+var seen: List[String] = [];
 if !contains(seen, item) {       // O(n) each time
     seen.Push(item);
 }
@@ -660,7 +634,7 @@ Don't compute the same thing twice:
 
 **Slow:**
 ```rust
-func processExpensiveData(items: [Item]) {
+func processExpensiveData(items: List[Item]) {
     for item in items {
         if computeExpensiveValue(item) > threshold {
             Terminal.Say("High: " + computeExpensiveValue(item));  // Computing twice!
@@ -671,7 +645,7 @@ func processExpensiveData(items: [Item]) {
 
 **Fast:**
 ```rust
-func processExpensiveData(items: [Item]) {
+func processExpensiveData(items: List[Item]) {
     for item in items {
         var value = computeExpensiveValue(item);  // Compute once
         if value > threshold {
@@ -762,7 +736,7 @@ Copying large data structures is expensive:
 
 **Slow:**
 ```rust
-func processData(data: [Integer]) -> [Integer] {
+func processData(data: List[Integer]) -> List[Integer] {
     var result = data.clone();  // Copies entire array!
     for i in 0..result.Length {
         result[i] *= 2;
@@ -775,7 +749,7 @@ If the caller doesn't need the original, modify in place:
 
 **Fast:**
 ```rust
-func processData(data: [Integer]) {
+func processData(data: List[Integer]) {
     for i in 0..data.Length {
         data[i] *= 2;
     }
@@ -907,7 +881,7 @@ var data3 = Http.Get(url3);  // Wait 200ms
 // Total: 600ms
 ```
 
-**Fast: Parallel**
+**Fast: Parallel** *(Thread.spawn is a planned feature -- see [Chapter 24](../part4-applications/24-concurrency.md))*
 ```rust
 var tasks = [
     Thread.spawn(func() { return Http.Get(url1); }),
@@ -1107,7 +1081,7 @@ Always let measurements guide you.
 
 ```rust
 // "Optimized" code that's actually broken
-func fastSum(items: [Integer]) -> Integer {
+func fastSum(items: List[Integer]) -> Integer {
     // Skip null check for speed
     var total = items[0];  // Crashes if empty!
     for i in 1..items.Length {
@@ -1258,13 +1232,15 @@ func reproduceSlowness() {
 }
 ```
 
-### Step 2: Profile to Find the Hotspot
+### Step 2: Find the Hotspot
+
+Use manual timing (as shown earlier) or inspect the compiled output with `--dump-il-opt` to understand where time is spent:
 
 ```bash
-zia --profile slowprogram.zia
+zia --dump-il-opt slowprogram.zia
 ```
 
-Look at the top functions. Is it what you expected? Often it's not.
+Add `Time.Clock.Ticks()` measurements around suspect sections. Is the hotspot what you expected? Often it's not.
 
 ### Step 3: Narrow Down
 
@@ -1273,7 +1249,7 @@ If the profiler points to a large function, add internal timing:
 ```rust
 bind Viper.Terminal;
 
-func processData(data: [Record]) {
+func processData(data: List[Record]) {
     var t0 = Time.Clock.Ticks();
 
     // Section A
@@ -1411,7 +1387,7 @@ Remember:
 
 **Exercise 26.1 (Measure)**: Take any program you've written previously. Add timing measurements to find where it spends time. Did the results match your expectations?
 
-**Exercise 26.2 (Profile)**: Use `zia --profile` on a program that processes a file. Identify the top 3 time-consuming functions. Which one would you optimize first and why?
+**Exercise 26.2 (Profile)**: Add `Time.Clock.Ticks()` timing measurements to a program that processes a file. Identify the top 3 time-consuming sections. Which one would you optimize first and why? Use `zia --dump-il-opt` to examine the optimized IL and look for missed optimizations.
 
 **Exercise 26.3 (Big O)**: What is the time complexity of each function?
 
@@ -1448,8 +1424,8 @@ func mystery3(n: Integer) -> Integer {
 **Exercise 26.4 (Data Structure)**: Rewrite this slow code to use appropriate data structures:
 
 ```rust
-func findCommon(list1: [Integer], list2: [Integer]) -> [Integer] {
-    var common: [Integer] = [];
+func findCommon(list1: List[Integer], list2: List[Integer]) -> List[Integer] {
+    var common: List[Integer] = [];
     for item in list1 {
         for other in list2 {
             if item == other && !contains(common, item) {
@@ -1466,7 +1442,7 @@ Benchmark both versions with lists of 10,000 items.
 **Exercise 26.5 (Memory)**: This code creates too many objects. Rewrite it to minimize allocations:
 
 ```rust
-func generateReport(records: [Record]) -> String {
+func generateReport(records: List[Record]) -> String {
     var output = "";
     for record in records {
         output += "ID: " + record.id + "\n";
@@ -1481,8 +1457,8 @@ func generateReport(records: [Record]) -> String {
 **Exercise 26.6 (I/O)**: Convert this sequential code to parallel:
 
 ```rust
-func fetchAllData(urls: [String]) -> [String] {
-    var results: [String] = [];
+func fetchAllData(urls: List[String]) -> List[String] {
+    var results: List[String] = [];
     for url in urls {
         var data = Http.Get(url);
         results.Push(data);

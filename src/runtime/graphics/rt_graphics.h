@@ -467,6 +467,18 @@ extern "C"
     //=========================================================================
 
     /// @brief Construct a color from RGB components.
+    // Color constants — packed 0x00RRGGBB
+    int64_t rt_color_red(void);
+    int64_t rt_color_green(void);
+    int64_t rt_color_blue(void);
+    int64_t rt_color_white(void);
+    int64_t rt_color_black(void);
+    int64_t rt_color_yellow(void);
+    int64_t rt_color_cyan(void);
+    int64_t rt_color_magenta(void);
+    int64_t rt_color_gray(void);
+    int64_t rt_color_orange(void);
+
     /// @param r Red component (0-255).
     /// @param g Green component (0-255).
     /// @param b Blue component (0-255).

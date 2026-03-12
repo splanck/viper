@@ -694,7 +694,7 @@ Dynamic arrays that grow as needed.
 ```rust
 // Creation
 var numbers = [1, 2, 3, 4, 5];
-var empty: [Integer] = [];
+var empty: List[Integer] = [];
 var sized = [Integer](100);       // Array of 100 zeros
 var filled = [Integer](100, 42);  // Array of 100 forty-twos
 
@@ -1347,7 +1347,7 @@ func render(item: Drawable) {
 }
 
 // Array of mixed types implementing same interface
-var drawables: [Drawable] = [
+var drawables: List[Drawable] = [
     Button(0, 0, 100, 30, "OK"),
     Circle(50, 50, 25),
     Rectangle(10, 10, 80, 60)
@@ -1565,7 +1565,7 @@ func process[T: Printable](item: T) {
 }
 
 // Multiple type parameters, each with optional constraint
-func combine[T, U](items: [T], transform: func(T) -> U) -> [U] {
+func combine[T, U](items: List[T], transform: func(T) -> U) -> List[U] {
     // ...
 }
 ```
@@ -1580,7 +1580,7 @@ interface Container[T] {
 }
 
 entity Stack[T] implements Container[T] {
-    hide items: [T];
+    hide items: List[T];
 
     expose func init() {
         self.items = [];
@@ -1963,7 +1963,7 @@ assertThrows<SpecificError>(func() { ... });// Must throw specific error type
 ### Setup and Teardown
 
 ```rust
-var testData: [String];
+var testData: List[String];
 
 setup {
     // Runs before each test

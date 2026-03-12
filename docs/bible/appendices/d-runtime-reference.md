@@ -102,7 +102,7 @@ Displays a prompt and waits for the user to type a line of input. Returns when t
 **Example:**
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 var name = Terminal.Ask("What is your name? ");
 var ageStr = Terminal.Ask("How old are you? ");
@@ -132,7 +132,7 @@ Reads a line of input from the user without displaying a prompt. Returns when th
 **Example:**
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
 Terminal.Print("Enter your name: ");
 var name = Terminal.ReadLine();
@@ -368,9 +368,9 @@ Terminal.Say("");  // Newline when done
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Convert as Convert;
+bind Convert = Viper.Core.Convert;
 
-func showMenu(options: [String]) -> Integer {
+func showMenu(options: List[String]) -> Integer {
     loop {
         Terminal.Clear();
         Terminal.Say("Select an option:");
@@ -446,7 +446,7 @@ Terminal.Say("File contents: " + content);
 #### ReadAllBytes
 
 ```rust
-func ReadAllBytes(path: String) -> [Byte]
+func ReadAllBytes(path: String) -> List[Byte]
 ```
 
 Reads the entire contents of a file as raw bytes.
@@ -472,7 +472,7 @@ Terminal.Say("File size: " + bytes.Length + " bytes");
 #### ReadAllLines
 
 ```rust
-func ReadAllLines(path: String) -> [String]
+func ReadAllLines(path: String) -> List[String]
 ```
 
 Reads a text file and returns an array where each element is one line.
@@ -531,7 +531,7 @@ IO.File.WriteAllText("person.txt", data);
 #### WriteAllBytes
 
 ```rust
-func WriteAllBytes(path: String, data: [Byte]) -> void
+func WriteAllBytes(path: String, data: List[Byte]) -> void
 ```
 
 Writes raw bytes to a file.
@@ -747,7 +747,7 @@ Directory operations use the `IO.Dir` prefix (part of `bind Viper.IO`).
 #### IO.Dir.List
 
 ```rust
-func List(path: String) -> [String]
+func List(path: String) -> List[String]
 ```
 
 Lists all files and subdirectories in a directory.
@@ -1528,8 +1528,8 @@ map.Has(key)            // -> Boolean
 map.Delete(key)         // Remove a key
 map.Clear()             // Remove all entries
 map.Length                 // -> Integer (number of entries)
-map.Keys()              // -> [KeyType]
-map.Values()            // -> [ValueType]
+map.Keys()              // -> List[KeyType]
+map.Values()            // -> List[ValueType]
 ```
 
 **Example:**
@@ -1753,8 +1753,8 @@ Simple HTTP client for web requests. Bind as `bind Viper.Network;` and use `Netw
 ```rust
 func Get(url: String) -> String    // Returns response body as text
 func Post(url: String, body: String) -> String
-func GetBytes(url: String) -> [Byte]
-func PostBytes(url: String, body: [Byte]) -> [Byte]
+func GetBytes(url: String) -> List[Byte]
+func PostBytes(url: String, body: List[Byte]) -> List[Byte]
 func Download(url: String, destPath: String) -> Boolean
 ```
 
@@ -1866,9 +1866,9 @@ receiver.Close();
 
 ---
 
-## Viper.JSON
+## Viper.Text.Json
 
-> **Note:** This section documents a simplified pedagogical JSON API used in Chapter 23. The production API is `Viper.Text.Json` — use `bind Viper.Text.Json as Json;` and call `Json.Parse()`, `Json.Format()`, `Json.FormatPretty()`, with `Viper.Unbox.Str()` / `Viper.Unbox.I64()` / `Viper.Unbox.F64()` for value extraction.
+> **Note:** Use `bind Json = Viper.Text.Json;` and call `Json.Parse()`, `Json.Format()`, `Json.FormatPretty()`, with `Viper.Unbox.Str()` / `Viper.Unbox.I64()` / `Viper.Unbox.F64()` for value extraction.
 
 JSON parsing and generation for data interchange.
 
@@ -1879,7 +1879,7 @@ JSON parsing and generation for data interchange.
 ### Parsing
 
 ```rust
-func JSON.Parse(jsonString: String) -> JsonValue
+func Json.Parse(jsonString: String) -> JsonValue
 ```
 
 Parses a JSON String into a `JsonValue` object.
@@ -1890,7 +1890,7 @@ value.asString() -> String
 value.asInt() -> Integer
 value.asFloat() -> Number
 value.asBool() -> Boolean
-value.asArray() -> [JsonValue]
+value.asArray() -> List[JsonValue]
 value.asObject() -> Map[String, JsonValue]
 value[key] -> JsonValue           // Object property access
 value[index] -> JsonValue         // Array index access
@@ -1908,7 +1908,7 @@ var json = `{
     }
 }`;
 
-var data = JSON.Parse(json);
+var data = Json.Parse(json);
 
 var name = data["name"].asString();           // "Alice"
 var age = data["age"].asInt();                // 30
@@ -1926,8 +1926,8 @@ var city = data["address"]["city"].asString();   // "Boston"
 ### Creating JSON
 
 ```rust
-func JSON.object() -> JsonObject
-func JSON.array() -> JsonArray
+func Json.Object() -> JsonObject
+func Json.Array() -> JsonArray
 ```
 
 **JsonObject methods:**
@@ -1947,11 +1947,11 @@ arr.toPrettyString() -> String
 **Example:**
 ```rust
 // Building JSON programmatically
-var user = JSON.object();
+var user = Json.Object();
 user.Set("name", "Bob");
 user.Set("age", 25);
 
-var hobbies = JSON.array();
+var hobbies = Json.Array();
 hobbies.Add("sports");
 hobbies.Add("music");
 user.Set("hobbies", hobbies);
@@ -1988,11 +1988,11 @@ var name = getStringOr(data, "nickname", "Anonymous");
 func loadConfig(path: String) -> JsonValue {
     if IO.File.Exists(path) {
         var content = IO.File.ReadAllText(path);
-        return JSON.Parse(content);
+        return Json.Parse(content);
     }
 
     // Return default config
-    var defaults = JSON.object();
+    var defaults = Json.Object();
     defaults.Set("theme", "light");
     defaults.Set("volume", 80);
     return defaults;
@@ -2001,7 +2001,7 @@ func loadConfig(path: String) -> JsonValue {
 
 ---
 
-## Viper.Threading
+## Viper.Threads
 
 Concurrency primitives for parallel execution.
 
@@ -2237,26 +2237,28 @@ Drawing and window management for visual applications.
 The drawing surface and window.
 
 ```rust
-var canvas = Canvas(width: Integer, height: Integer) -> Canvas
+var canvas = Canvas.New(title: String, width: Integer, height: Integer) -> Canvas
 
-canvas.setTitle(title: String) -> void
-canvas.isOpen() -> Boolean
-canvas.show() -> void              // Display buffer contents
-canvas.waitForClose() -> void      // Block until window closed
-canvas.Clear() -> void             // Clear with current color
+canvas.ShouldClose -> Boolean      // Read-only: true when window should close
+canvas.Poll() -> void              // Process window events
+canvas.Flip() -> void              // Display buffer contents
+canvas.Clear(color: Color) -> void // Clear with specified color
+canvas.HasFocus() -> Boolean       // Whether the window is focused
 ```
 
 **Example:**
 ```rust
-var canvas = Canvas(800, 600);
-canvas.setTitle("My Application");
+bind Viper.Graphics;
 
-while canvas.isOpen() {
-    canvas.Clear();
+var canvas = Canvas.New("My Application", 800, 600);
+
+while !canvas.ShouldClose {
+    canvas.Poll();
+    canvas.Clear(Color.BLACK);
 
     // Draw frame...
 
-    canvas.show();
+    canvas.Flip();
     Time.Clock.Sleep(16);  // ~60 FPS
 }
 ```
@@ -2266,62 +2268,48 @@ while canvas.isOpen() {
 ### Colors
 
 ```rust
-canvas.setColor(color: Color) -> void
-
 // Color constructors
-Color(r: Integer, g: Integer, b: Integer)          // RGB (0-255 each)
-Color(r: Integer, g: Integer, b: Integer, a: Integer)  // RGBA with alpha
+Color.RGB(r: Integer, g: Integer, b: Integer) -> Color           // RGB (0-255 each)
+Color.RGBA(r: Integer, g: Integer, b: Integer, a: Integer) -> Color  // RGBA with alpha
 
-// Predefined colors
+// Predefined color constants
 Color.RED, Color.GREEN, Color.BLUE
 Color.WHITE, Color.BLACK
 Color.YELLOW, Color.CYAN, Color.MAGENTA
+Color.GRAY, Color.ORANGE
 ```
+
+Colors are passed directly to draw calls rather than set as canvas state.
 
 ---
 
 ### Drawing Shapes
 
 ```rust
-// Rectangles
-canvas.fillRect(x: Number, y: Number, width: Number, height: Number) -> void
-canvas.drawRect(x: Number, y: Number, width: Number, height: Number) -> void
+// Rectangles (filled and outline)
+canvas.Box(x: Number, y: Number, width: Number, height: Number, color: Color) -> void
+canvas.Frame(x: Number, y: Number, width: Number, height: Number, color: Color) -> void
 
-// Circles
-canvas.fillCircle(centerX: Number, centerY: Number, radius: Number) -> void
-canvas.drawCircle(centerX: Number, centerY: Number, radius: Number) -> void
+// Circles (filled and outline)
+canvas.Disc(centerX: Number, centerY: Number, radius: Number, color: Color) -> void
+canvas.Ring(centerX: Number, centerY: Number, radius: Number, color: Color) -> void
 
-// Ellipses
-canvas.fillEllipse(x: Number, y: Number, width: Number, height: Number) -> void
-
-// Lines and polygons
-canvas.drawLine(x1: Number, y1: Number, x2: Number, y2: Number) -> void
-canvas.drawPolygon(points: [(Number, Number)]) -> void
-canvas.fillPolygon(points: [(Number, Number)]) -> void
+// Lines
+canvas.Line(x1: Number, y1: Number, x2: Number, y2: Number, color: Color) -> void
 
 // Pixels
-canvas.setPixel(x: Integer, y: Integer) -> void
+canvas.Plot(x: Integer, y: Integer, color: Color) -> void
 ```
 
 **Example:**
 ```rust
+bind Viper.Graphics;
+
 // Draw a simple scene
-canvas.setColor(Color(135, 206, 235));  // Sky blue
-canvas.fillRect(0, 0, 800, 400);
-
-canvas.setColor(Color(34, 139, 34));    // Forest green
-canvas.fillRect(0, 400, 800, 200);
-
-canvas.setColor(Color.YELLOW);
-canvas.fillCircle(700, 80, 50);         // Sun
-
-canvas.setColor(Color(139, 69, 19));    // Brown
-canvas.fillRect(350, 350, 100, 150);    // House body
-
-canvas.setColor(Color.RED);
-canvas.fillPolygon([
-    (300, 350), (400, 250), (500, 350)  // Roof
-]);
+canvas.Box(0, 0, 800, 400, Color.RGB(135, 206, 235));      // Sky blue
+canvas.Box(0, 400, 800, 200, Color.RGB(34, 139, 34));       // Forest green
+canvas.Disc(700, 80, 50, Color.YELLOW);                      // Sun
+canvas.Box(350, 350, 100, 150, Color.RGB(139, 69, 19));     // House body (brown)
 ```
 
 ---
@@ -2329,37 +2317,38 @@ canvas.fillPolygon([
 ### Text
 
 ```rust
-canvas.setFont(name: String, size: Integer) -> void
-canvas.drawText(x: Number, y: Number, text: String) -> void
+canvas.Text(x: Number, y: Number, text: String, color: Color) -> void
 ```
 
 **Example:**
 ```rust
-canvas.setFont("Arial", 24);
-canvas.setColor(Color.WHITE);
-canvas.drawText(10, 30, "Score: " + score);
+canvas.Text(10, 30, "Score: " + score, Color.WHITE);
 ```
 
 ---
 
-### Images
+### Images / Sprites
 
 ```rust
-var image = Image.load(path: String) -> Image
+bind Sprite = Viper.Graphics.Sprite;
 
-canvas.drawImage(image: Image, x: Number, y: Number) -> void
-canvas.drawImageScaled(image: Image, x: Number, y: Number, width: Number, height: Number) -> void
+var sprite = Sprite.Load(path: String) -> Sprite
+
+canvas.Blit(sprite: Sprite, x: Number, y: Number) -> void
+canvas.BlitScaled(sprite: Sprite, x: Number, y: Number, width: Number, height: Number) -> void
 ```
 
 **Example:**
 ```rust
-var playerSprite = Image.load("assets/player.png");
+bind Sprite = Viper.Graphics.Sprite;
+
+var playerSprite = Sprite.Load("assets/player.png");
 
 // Draw at position
-canvas.drawImage(playerSprite, playerX, playerY);
+canvas.Blit(playerSprite, playerX, playerY);
 
 // Draw scaled
-canvas.drawImageScaled(playerSprite, 100, 100, 64, 64);
+canvas.BlitScaled(playerSprite, 100, 100, 64, 64);
 ```
 
 ---
@@ -2889,43 +2878,50 @@ Input handling for interactive and game applications.
 ### Keyboard
 
 ```rust
-Input.isKeyDown(key: Key) -> Boolean           // Currently held
-Input.wasKeyPressed(key: Key) -> Boolean       // Just pressed this frame
-Input.wasKeyReleased(key: Key) -> Boolean      // Just released this frame
+bind Keyboard = Viper.Input.Keyboard;
+
+Keyboard.IsDown(key: Integer) -> Boolean       // Currently held
+Keyboard.IsPressed(key: Integer) -> Boolean    // Just pressed this frame
+Keyboard.IsReleased(key: Integer) -> Boolean   // Just released this frame
 ```
 
 **Key constants:**
-- Letters: `Key.A` through `Key.Z`
-- Numbers: `Key.NUM_0` through `Key.NUM_9`
-- Arrows: `Key.UP`, `Key.DOWN`, `Key.LEFT`, `Key.RIGHT`
-- Special: `Key.SPACE`, `Key.ENTER`, `Key.ESCAPE`, `Key.TAB`, `Key.BACKSPACE`
-- Modifiers: `Key.SHIFT`, `Key.CTRL`, `Key.ALT`
-- Function keys: `Key.F1` through `Key.F12`
+- Letters: `KEY_A` through `KEY_Z`
+- Numbers: `KEY_0` through `KEY_9`
+- Arrows: `KEY_UP`, `KEY_DOWN`, `KEY_LEFT`, `KEY_RIGHT`
+- Special: `KEY_SPACE`, `KEY_ENTER`, `KEY_ESCAPE`, `KEY_TAB`, `KEY_BACKSPACE`
+- Modifiers: `KEY_SHIFT`, `KEY_CTRL`, `KEY_ALT`
+- Function keys: `KEY_F1` through `KEY_F12`
 
 **Example:**
 ```rust
+bind Viper.Graphics;
+bind Keyboard = Viper.Input.Keyboard;
+
 // Game loop input
-while canvas.isOpen() {
+while !canvas.ShouldClose {
+    canvas.Poll();
+
     // Movement
-    if Input.isKeyDown(Key.LEFT) {
+    if Keyboard.IsDown(KEY_LEFT) {
         playerX -= 5;
     }
-    if Input.isKeyDown(Key.RIGHT) {
+    if Keyboard.IsDown(KEY_RIGHT) {
         playerX += 5;
     }
 
     // Jump (only on initial press)
-    if Input.wasKeyPressed(Key.SPACE) and onGround {
+    if Keyboard.IsPressed(KEY_SPACE) and onGround {
         playerVelocityY = -15;
         onGround = false;
     }
 
     // Pause toggle
-    if Input.wasKeyPressed(Key.ESCAPE) {
+    if Keyboard.IsPressed(KEY_ESCAPE) {
         isPaused = !isPaused;
     }
 
-    canvas.show();
+    canvas.Flip();
 }
 ```
 
@@ -2934,26 +2930,30 @@ while canvas.isOpen() {
 ### Mouse
 
 ```rust
-Input.mouseX() -> Number
-Input.mouseY() -> Number
-Input.isMouseDown(button: MouseButton) -> Boolean
-Input.wasMousePressed(button: MouseButton) -> Boolean
-Input.wasMouseReleased(button: MouseButton) -> Boolean
-Input.mouseScroll() -> Number                  // Wheel delta
+bind Mouse = Viper.Input.Mouse;
+
+Mouse.X() -> Number
+Mouse.Y() -> Number
+Mouse.IsDown(button: Integer) -> Boolean       // 0=left, 1=right, 2=middle
+Mouse.IsClicked(button: Integer) -> Boolean    // Just clicked this frame
+Mouse.IsReleased(button: Integer) -> Boolean   // Just released this frame
+Mouse.Scroll() -> Number                       // Wheel delta
 ```
 
-**MouseButton constants:** `MouseButton.LEFT`, `MouseButton.RIGHT`, `MouseButton.MIDDLE`
+**Button indices:** `0` (left), `1` (right), `2` (middle)
 
 **Example:**
 ```rust
+bind Mouse = Viper.Input.Mouse;
+
 // Drawing application
-if Input.isMouseDown(MouseButton.LEFT) {
-    canvas.setPixel(Input.mouseX(), Input.mouseY());
+if Mouse.IsDown(0) {
+    canvas.Plot(Mouse.X(), Mouse.Y(), Color.BLACK);
 }
 
 // Zoom with scroll wheel
 var zoom = 1.0;
-zoom = zoom + Input.mouseScroll() * 0.1;
+zoom = zoom + Mouse.Scroll() * 0.1;
 zoom = Math.Clamp(zoom, 0.1, 5.0);
 ```
 
@@ -3026,7 +3026,7 @@ Terminal.Say("Hash: " + hash);
 ### Random Bytes
 
 ```rust
-func Crypto.Rand.Bytes(length: Integer) -> [Byte]
+func Crypto.Rand.Bytes(length: Integer) -> List[Byte]
 func Crypto.Rand.Int(min: Integer, max: Integer) -> Integer
 ```
 
@@ -3175,7 +3175,7 @@ var phonePattern = Regex.compile("\\d{3}-\\d{3}-\\d{4}");
 ```rust
 regex.matches(text: String) -> Boolean
 regex.Find(text: String) -> Match?        // First match
-regex.findAll(text: String) -> [Match]    // All matches
+regex.findAll(text: String) -> List[Match]    // All matches
 ```
 
 **Match properties:**
@@ -3183,7 +3183,7 @@ regex.findAll(text: String) -> [Match]    // All matches
 match.value      // The matched text
 match.start      // Start index in original String
 match.end        // End index
-match.groups     // [String] - capture groups
+match.groups     // List[String] - capture groups
 ```
 
 **Example:**
@@ -3225,7 +3225,7 @@ var cleaned = Pattern.Replace("bad|ugly|wrong", input, "****");
 ### Splitting
 
 ```rust
-regex.Split(text: String) -> [String]
+regex.Split(text: String) -> List[String]
 ```
 
 **Example:**
@@ -3271,8 +3271,8 @@ Running and controlling external processes.
 ### Simple Execution
 
 ```rust
-func Process.run(command: String, args: [String]) -> ProcessResult
-func Process.run(command: String, args: [String], options: ProcessOptions) -> ProcessResult
+func Process.run(command: String, args: List[String]) -> ProcessResult
+func Process.run(command: String, args: List[String], options: ProcessOptions) -> ProcessResult
 ```
 
 **ProcessResult fields:**
@@ -3313,7 +3313,7 @@ var result = Process.run("npm", ["install"], {
 ### Background Processes
 
 ```rust
-func Process.spawn(command: String, args: [String]) -> Process
+func Process.spawn(command: String, args: List[String]) -> Process
 
 process.Write(input: String) -> void
 process.Read() -> String
@@ -3474,7 +3474,7 @@ str.Length                        // Property -> Integer (built-in, no bind need
 String.Trim(str)                  // -> String
 String.TrimStart(str)             // -> String
 String.TrimEnd(str)               // -> String
-String.Split(str, delimiter)      // -> [String]
+String.Split(str, delimiter)      // -> List[String]
 String.Has(str, substring)        // -> Boolean
 String.StartsWith(str, prefix)    // -> Boolean
 String.EndsWith(str, suffix)      // -> Boolean

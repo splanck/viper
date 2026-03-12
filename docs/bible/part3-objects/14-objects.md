@@ -409,7 +409,7 @@ entity GameCharacter {
     maxHealth: Integer;
     level: Integer;
     experience: Integer;
-    inventory: [String];
+    inventory: List[String];
 
     expose func init(name: String) {
         self.name = name;
@@ -1155,7 +1155,7 @@ entity BankAccount {
     hide accountNumber: String;
     hide ownerName: String;
     hide balance: Number;
-    hide transactions: [String];
+    hide transactions: List[String];
     hide dateOpened: String;
 
     // Main initializer with full information
@@ -1226,7 +1226,7 @@ entity BankAccount {
         return self.ownerName;
     }
 
-    expose func getTransactionHistory() -> [String] {
+    expose func getTransactionHistory() -> List[String] {
         // Return a copy so external code can't modify our history
         return self.transactions.copy();
     }
@@ -1352,7 +1352,7 @@ entity TodoItem {
 }
 
 entity TodoList {
-    hide items: [TodoItem];
+    hide items: List[TodoItem];
     hide name: String;
 
     expose func init(name: String) {
@@ -1422,7 +1422,7 @@ entity TodoList {
     }
 
     expose func clearCompleted() {
-        var remaining: [TodoItem] = [];
+        var remaining: List[TodoItem] = [];
         for item in self.items {
             if !item.isDone() {
                 remaining.Push(item);
@@ -1535,7 +1535,7 @@ An entity should have one primary responsibility. If an entity is doing too many
 // Too much responsibility
 entity Game {
     player: Player;
-    enemies: [Enemy];
+    enemies: List[Enemy];
     graphics: GraphicsSystem;
     sound: SoundSystem;
     input: InputHandler;

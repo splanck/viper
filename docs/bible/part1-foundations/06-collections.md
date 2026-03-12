@@ -287,11 +287,11 @@ The array's type is inferred from the values. An array of strings, an array of i
 Sometimes you want to start with nothing and add items later:
 
 ```rust
-var numbers: [Integer] = [];  // Empty array of integers
-var words: [String] = []; // Empty array of strings
+var numbers: List[Integer] = [];  // Empty array of integers
+var words: List[String] = []; // Empty array of strings
 ```
 
-When creating an empty array, you must specify the type because Viper can't infer it from non-existent values. The `: [Integer]` part says "this will hold 64-bit integers."
+When creating an empty array, you must specify the type because Viper can't infer it from non-existent values. The `: List[Integer]` part says "this will hold 64-bit integers."
 
 ### Repeating a Value
 
@@ -320,7 +320,7 @@ Say(names.Length);  // 3
 var primes = [2, 3, 5, 7, 11, 13, 17, 19];
 Say(primes.Length);  // 8
 
-var empty: [Integer] = [];
+var empty: List[Integer] = [];
 Say(empty.Length);   // 0
 ```
 
@@ -419,7 +419,7 @@ Pop is like detaching the last car from a train — the train gets shorter, and 
 **Warning:** Calling `pop` on an empty array is an error — there's nothing to remove!
 
 ```rust
-var empty: [Integer] = [];
+var empty: List[Integer] = [];
 var x = empty.Pop();  // Error! Can't pop from empty array
 ```
 
@@ -439,12 +439,12 @@ These operations let you build arrays piece by piece:
 ```rust
 bind Viper.Terminal;
 
-var userInputs: [Integer] = [];
+var userInputs: List[Integer] = [];
 
 Say("Enter numbers (0 to stop):");
 
 while true {
-    var num = Viper.Core.Convert.ToInt64(ReadLine());
+    var num = Viper.Core.Convert.ToInt64(InputLine());
     if num == 0 {
         break;
     }
@@ -815,7 +815,7 @@ var last = arr[arr.Length - 1];  // Correct: gets arr[4] = 5
 
 **Empty array access:**
 ```rust
-var empty: [Integer] = [];
+var empty: List[Integer] = [];
 var x = empty[0];  // Error! Array is empty, no index 0
 ```
 
@@ -837,7 +837,7 @@ for i in 0..arr.Length {   // Correct! 0.. excludes the endpoint
 bind Viper.Terminal;
 
 var arr = [10, 20, 30];
-var userInput = Viper.Core.Convert.ToInt64(ReadLine());
+var userInput = Viper.Core.Convert.ToInt64(InputLine());
 var value = arr[userInput];  // Dangerous! User might enter 999
 ```
 
@@ -1033,7 +1033,7 @@ var board = [
 ];
 
 // Print the board nicely
-func printBoard(board: [[String]]) {
+func printBoard(board: List[List[String]]) {
     for row in 0..board.Length {
         Print(" ");
         for col in 0..board[row].Length {
@@ -1067,10 +1067,10 @@ Output:
 bind Viper.Terminal;
 
 // Create a 10x10 multiplication table
-var table: [[Integer]] = [];
+var table: List[List[Integer]] = [];
 
 for i in 1..11 {
-    var row: [Integer] = [];
+    var row: List[Integer] = [];
     for j in 1..11 {
         row.Push(i * j);
     }
@@ -1144,8 +1144,8 @@ module TodoList;
 bind Viper.Terminal;
 
 func start() {
-    var tasks: [String] = [];
-    var completed: [Boolean] = [];  // Parallel array tracking completion
+    var tasks: List[String] = [];
+    var completed: List[Boolean] = [];  // Parallel array tracking completion
 
     Say("=== Todo List Manager ===");
     Say("Commands: add, done, list, remove, quit");
@@ -1153,14 +1153,14 @@ func start() {
 
     while true {
         Print("> ");
-        var input = ReadLine();
+        var input = InputLine();
 
         if input == "quit" {
             Say("Goodbye!");
             break;
         } else if input == "add" {
             Print("Task: ");
-            var task = ReadLine();
+            var task = InputLine();
             tasks.Push(task);
             completed.Push(false);
             Say("Added: " + task);
@@ -1179,7 +1179,7 @@ func start() {
             }
         } else if input == "done" {
             Print("Task number to mark done: ");
-            var num = Viper.Core.Convert.ToInt64(ReadLine());
+            var num = Viper.Core.Convert.ToInt64(InputLine());
             if num >= 1 && num <= tasks.Length {
                 completed[num - 1] = true;  // Convert to zero-based index
                 Say("Marked done: " + tasks[num - 1]);
@@ -1188,11 +1188,11 @@ func start() {
             }
         } else if input == "remove" {
             Print("Task number to remove: ");
-            var num = Viper.Core.Convert.ToInt64(ReadLine());
+            var num = Viper.Core.Convert.ToInt64(InputLine());
             if num >= 1 && num <= tasks.Length {
                 // Rebuild arrays without this task
-                var newTasks: [String] = [];
-                var newCompleted: [Boolean] = [];
+                var newTasks: List[String] = [];
+                var newCompleted: List[Boolean] = [];
                 for i in 0..tasks.Length {
                     if i != num - 1 {
                         newTasks.Push(tasks[i]);
@@ -1262,8 +1262,8 @@ module Inventory;
 bind Viper.Terminal;
 
 func start() {
-    var items: [String] = [];
-    var quantities: [Integer] = [];
+    var items: List[String] = [];
+    var quantities: List[Integer] = [];
     var maxSlots = 10;
 
     Say("=== Inventory System ===");
@@ -1273,7 +1273,7 @@ func start() {
 
     while true {
         Print("Command> ");
-        var cmd = ReadLine();
+        var cmd = InputLine();
 
         if cmd == "quit" {
             break;
@@ -1281,21 +1281,21 @@ func start() {
             showInventory(items, quantities);
         } else if cmd == "pickup" {
             Print("Item name: ");
-            var item = ReadLine();
+            var item = InputLine();
             Print("Quantity: ");
-            var qty = Viper.Core.Convert.ToInt64(ReadLine());
+            var qty = Viper.Core.Convert.ToInt64(InputLine());
 
             pickupItem(items, quantities, item, qty, maxSlots);
         } else if cmd == "drop" {
             Print("Item name: ");
-            var item = ReadLine();
+            var item = InputLine();
             Print("Quantity: ");
-            var qty = Viper.Core.Convert.ToInt64(ReadLine());
+            var qty = Viper.Core.Convert.ToInt64(InputLine());
 
             dropItem(items, quantities, item, qty);
         } else if cmd == "use" {
             Print("Item name: ");
-            var item = ReadLine();
+            var item = InputLine();
 
             useItem(items, quantities, item);
         } else {
@@ -1306,7 +1306,7 @@ func start() {
     }
 }
 
-func findItem(items: [String], name: String): Integer {
+func findItem(items: List[String], name: String): Integer {
     for i in 0..items.Length {
         if items[i] == name {
             return i;
@@ -1315,7 +1315,7 @@ func findItem(items: [String], name: String): Integer {
     return -1;  // Not found
 }
 
-func showInventory(items: [String], quantities: [Integer]) {
+func showInventory(items: List[String], quantities: List[Integer]) {
     if items.Length == 0 {
         Say("Inventory is empty.");
         return;
@@ -1328,7 +1328,7 @@ func showInventory(items: [String], quantities: [Integer]) {
     Say("Slots used: " + items.Length);
 }
 
-func pickupItem(items: [String], quantities: [Integer], name: String, qty: Integer, maxSlots: Integer) {
+func pickupItem(items: List[String], quantities: List[Integer], name: String, qty: Integer, maxSlots: Integer) {
     var existing = findItem(items, name);
 
     if existing >= 0 {
@@ -1347,7 +1347,7 @@ func pickupItem(items: [String], quantities: [Integer], name: String, qty: Integ
     }
 }
 
-func dropItem(items: [String], quantities: [Integer], name: String, qty: Integer) {
+func dropItem(items: List[String], quantities: List[Integer], name: String, qty: Integer) {
     var idx = findItem(items, name);
 
     if idx < 0 {
@@ -1359,8 +1359,8 @@ func dropItem(items: [String], quantities: [Integer], name: String, qty: Integer
         // Drop all - remove from inventory
         Say("Dropped all " + name);
         // Remove by shifting elements (simplified)
-        var newItems: [String] = [];
-        var newQty: [Integer] = [];
+        var newItems: List[String] = [];
+        var newQty: List[Integer] = [];
         for i in 0..items.Length {
             if i != idx {
                 newItems.Push(items[i]);
@@ -1374,7 +1374,7 @@ func dropItem(items: [String], quantities: [Integer], name: String, qty: Integer
     }
 }
 
-func useItem(items: [String], quantities: [Integer], name: String) {
+func useItem(items: List[String], quantities: List[Integer], name: String) {
     var idx = findItem(items, name);
 
     if idx < 0 {
@@ -1414,9 +1414,9 @@ func start() {
     // Add a new score
     Say("");
     Print("Enter your name: ");
-    var playerName = ReadLine();
+    var playerName = InputLine();
     Print("Enter your score: ");
-    var playerScore = Viper.Core.Convert.ToInt64(ReadLine());
+    var playerScore = Viper.Core.Convert.ToInt64(InputLine());
 
     // Find where to insert
     var insertPos = -1;
@@ -1429,8 +1429,8 @@ func start() {
 
     if insertPos >= 0 {
         // Insert new score
-        var newNames: [String] = [];
-        var newScores: [Integer] = [];
+        var newNames: List[String] = [];
+        var newScores: List[Integer] = [];
 
         for i in 0..insertPos {
             newNames.Push(names[i]);
@@ -1467,7 +1467,7 @@ func start() {
     displayScores(names, scores);
 }
 
-func displayScores(names: [String], scores: [Integer]) {
+func displayScores(names: List[String], scores: List[Integer]) {
     Say("  RANK  NAME          SCORE");
     Say("  ----  ----          -----");
 
@@ -1570,7 +1570,7 @@ When using indices, programmers say "0, 1, 2..."
 ### Empty Array Access
 
 ```rust
-var arr: [Integer] = [];
+var arr: List[Integer] = [];
 var x = arr[0];  // Error! No elements exist
 
 // Always check first
@@ -1619,7 +1619,7 @@ bind Viper.Terminal;
 
 var items = ["Sword", "Shield", "Potion"];
 Print("Choose item (1-3): ");
-var choice = Viper.Core.Convert.ToInt64(ReadLine());
+var choice = Viper.Core.Convert.ToInt64(InputLine());
 
 // WRONG: User might enter 0, 99, or -5
 var item = items[choice - 1];
@@ -1644,7 +1644,7 @@ module GradeTracker;
 bind Viper.Terminal;
 
 func start() {
-    var grades: [Integer] = [];
+    var grades: List[Integer] = [];
 
     Say("=== Student Grade Tracker ===");
     Say("Enter grades (enter -1 to finish):");
@@ -1653,7 +1653,7 @@ func start() {
     // Collect grades with validation
     while true {
         Print("Grade: ");
-        var input = Viper.Core.Convert.ToInt64(ReadLine());
+        var input = Viper.Core.Convert.ToInt64(InputLine());
 
         if input == -1 {
             break;
@@ -1819,7 +1819,7 @@ Arrays are one of the most fundamental and widely-used concepts in programming. 
 
 **Creating Arrays:**
 - With values: `[1, 2, 3]`
-- Empty: `var arr: [Type] = []`
+- Empty: `var arr: List[Type] = []`
 - Repeated value: `[0; 10]` (ten zeros)
 
 **Accessing and Modifying:**

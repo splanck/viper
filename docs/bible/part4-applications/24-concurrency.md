@@ -8,6 +8,10 @@ This is not acceptable. Modern users expect applications that stay responsive, t
 
 This chapter teaches you to write programs that do many things at once. This is *concurrency* — one of the most powerful and challenging topics in programming.
 
+> **Implementation Status:** This chapter describes Viper's planned concurrency model.
+> Currently available: `Viper.Threads.ConcurrentQueue` and `Viper.Threads.ConcurrentMap`
+> for safe data sharing. Thread spawning, atomics, and futures are planned features.
+
 ---
 
 ## Why Concurrency Matters
@@ -156,10 +160,10 @@ func applyFilter(image: Image, filter: Filter) {
 Some computations can be split across multiple cores. Sorting a million numbers is faster if four cores each sort 250,000, then merge results. Processing 1000 images finishes in a quarter of the time with four parallel workers.
 
 ```rust
-func parallelSum(numbers: [Integer]) -> Integer {
+func parallelSum(numbers: List[Integer]) -> Integer {
     var numCores = 4;
     var chunkSize = numbers.Length / numCores;
-    var threads: [Thread<Integer>] = [];
+    var threads: List[Thread<Integer>] = [];
 
     // Launch parallel workers
     for i in 0..numCores {
@@ -302,12 +306,15 @@ The locks prevent data corruption, but there's a window between unlocking `from`
 
 ## Threads: Parallel Execution
 
+> **Planned Feature:** `Thread.spawn`, `Thread.Join`, and `thread.result()` are planned APIs
+> not yet available in Viper. The examples below illustrate the intended design.
+
 Now let's learn to write concurrent code, starting with threads.
 
 A *thread* is an independent sequence of execution. Your program starts with one thread (the main thread). You can create more.
 
 ```rust
-bind Viper.Threading;
+bind Viper.Threads;
 bind Viper.Terminal;
 bind Viper.Time;
 
@@ -383,7 +390,7 @@ Terminal.Say("Sum: " + result);
 Here's a practical example — computing a sum in parallel:
 
 ```rust
-func processChunk(data: [Integer], start: Integer, end: Integer) -> Integer {
+func processChunk(data: List[Integer], start: Integer, end: Integer) -> Integer {
     var sum = 0;
     for i in start..end {
         sum += data[i];
@@ -391,10 +398,10 @@ func processChunk(data: [Integer], start: Integer, end: Integer) -> Integer {
     return sum;
 }
 
-func parallelSum(data: [Integer]) -> Integer {
+func parallelSum(data: List[Integer]) -> Integer {
     var numThreads = 4;
     var chunkSize = data.Length / numThreads;
-    var threads: [Thread<Integer>] = [];
+    var threads: List[Thread<Integer>] = [];
 
     // Launch threads
     for i in 0..numThreads {
@@ -429,7 +436,7 @@ When threads must share mutable data, you need *synchronization* — mechanisms 
 A *mutex* (mutual exclusion) ensures only one thread accesses a protected resource at a time. Think of it as a bathroom lock. When someone's inside, the door is locked, and others must wait.
 
 ```rust
-bind Viper.Threading;
+bind Viper.Threads;
 
 var counter = 0;
 var mutex = Mutex.create();
@@ -538,12 +545,15 @@ Each thread acquires its own lock, so they run simultaneously. You must use the 
 
 ## Atomic Operations: Lock-Free Speed
 
+> **Planned Feature:** `Atomic[T]` is a planned API not yet available in Viper.
+> The examples below illustrate the intended design.
+
 For simple operations like incrementing a counter, mutexes have overhead. *Atomic operations* provide thread-safe operations without locks.
 
 An atomic operation completes as an indivisible unit. No thread can see it "half done." The hardware guarantees this.
 
 ```rust
-bind Viper.Threading;
+bind Viper.Threads;
 
 var counter = new Atomic[Integer](0);
 
@@ -602,10 +612,14 @@ accountMutex.synchronized(func() {
 
 ## Thread-Safe Collections
 
+> **Partially Available:** Viper currently provides `Viper.Threads.ConcurrentQueue` and
+> `Viper.Threads.ConcurrentMap` for thread-safe data sharing. The `ConcurrentList` shown
+> below is a planned addition.
+
 Viper provides collections that handle synchronization internally:
 
 ```rust
-bind Viper.Threading;
+bind Viper.Threads;
 
 var safeList = new ConcurrentList[String]();
 
@@ -634,12 +648,15 @@ The collection protects individual operations, not sequences of operations. For 
 
 ## Communication: Channels
 
+> **Planned Feature:** `Channel[T]` is a planned API not yet available in Viper. For current
+> thread-safe data passing, use `Viper.Threads.ConcurrentQueue`.
+
 There's a philosophy in concurrent programming: "Don't communicate by sharing memory; share memory by communicating."
 
 Instead of multiple threads accessing shared data (with all the synchronization complexity), have threads send messages to each other. This is what *channels* provide.
 
 ```rust
-bind Viper.Threading;
+bind Viper.Threads;
 bind Viper.Terminal;
 bind Viper.Time;
 
@@ -719,10 +736,13 @@ This doesn't make race conditions impossible (you can still have logic races), b
 
 ## Semaphores: Counting Locks
 
+> **Planned Feature:** `Semaphore` is a planned API not yet available in Viper.
+> The examples below illustrate the intended design.
+
 A mutex allows one thread in. A *semaphore* allows N threads in. Think of it as a limited parking lot with N spaces.
 
 ```rust
-bind Viper.Threading;
+bind Viper.Threads;
 
 // Allow at most 3 concurrent database connections
 var dbSemaphore = Semaphore.create(3);
@@ -752,10 +772,13 @@ Even if 100 threads call `queryDatabase`, only 3 will be inside the database sec
 
 ## Thread Pools: Efficient Thread Reuse
 
+> **Planned Feature:** `ThreadPool` and `Future<T>` are planned APIs not yet available in Viper.
+> The examples below illustrate the intended design.
+
 Creating threads has overhead. For many small tasks, a *thread pool* is more efficient. The pool maintains a fixed number of worker threads and assigns tasks to them.
 
 ```rust
-bind Viper.Threading;
+bind Viper.Threads;
 bind Viper.Terminal;
 
 func start() {
@@ -783,7 +806,7 @@ Instead of creating 100 threads (expensive), the pool's 4 workers process tasks 
 ```rust
 var pool = ThreadPool.create(4);
 
-var futures: [Future<Integer>] = [];
+var futures: List[Future<Integer>] = [];
 for i in 0..10 {
     var future = pool.submitWithResult(func() -> Integer {
         return expensiveCalculation(i);
@@ -804,6 +827,9 @@ A `Future` represents a value that will be available later. `future.Get()` block
 
 ## Async/Await: Simpler I/O Concurrency
 
+> **Planned Feature:** `async`/`await` syntax and `Viper.Async` are planned features not yet
+> available in Viper. The examples below illustrate the intended design.
+
 For I/O-bound work (network, files), async/await offers a cleaner model than manual threads:
 
 ```rust
@@ -814,7 +840,7 @@ async func fetchData(url: String) -> String {
     return response.body;
 }
 
-async func processUrls(urls: [String]) {
+async func processUrls(urls: List[String]) {
     // Fetch all in parallel
     var tasks = [];
     for url in urls {
@@ -1098,7 +1124,7 @@ Run your program under heavy load. More threads, more operations, more chaos. Bu
 ```rust
 func stressTest() {
     for trial in 0..1000 {
-        var threads: [Thread<void>] = [];
+        var threads: List[Thread<void>] = [];
         for i in 0..100 {
             threads.Push(Thread.spawn(func() {
                 // Run the suspicious code
@@ -1191,9 +1217,9 @@ Let's put it all together with a real application:
 ```rust
 module ImageProcessor;
 
-bind Viper.Threading;
+bind Viper.Threads;
 bind Viper.Graphics;
-bind Viper.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 bind Viper.Time;
 
@@ -1213,9 +1239,9 @@ entity ParallelProcessor {
         self.totalCount = 0;
     }
 
-    func process(tasks: [ImageTask]) {
+    func process(tasks: List[ImageTask]) {
         self.totalCount = tasks.Length;
-        var futures: [Future<Boolean>] = [];
+        var futures: List[Future<Boolean>] = [];
 
         for task in tasks {
             var future = self.pool.submitWithResult(func() -> Boolean {
@@ -1285,7 +1311,7 @@ func applyResize(image: Image, width: Integer, height: Integer) -> Image {
 
 func start() {
     var files = File.listDir("input_images/");
-    var tasks: [ImageTask] = [];
+    var tasks: List[ImageTask] = [];
 
     for file in files {
         if file.EndsWith(".jpg") || file.EndsWith(".png") {
@@ -1328,7 +1354,7 @@ This example demonstrates several best practices:
 
 **Zia**
 ```rust
-bind Viper.Threading;
+bind Viper.Threads;
 bind Viper.Terminal;
 
 var thread = Thread.spawn(func() {

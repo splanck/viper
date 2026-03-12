@@ -610,6 +610,18 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         // Handle List methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::List)
         {
+            // Range modifier methods — .rev() and .step(n) return same type
+            if (fieldExpr->field == "rev" && expr->args.empty())
+            {
+                return baseType;
+            }
+            if (fieldExpr->field == "step" && expr->args.size() == 1)
+            {
+                TypeRef argType = analyzeExpr(expr->args[0].value.get());
+                if (argType && !argType->isIntegral())
+                    error(expr->args[0].value->loc, "step() argument must be an integer");
+                return baseType;
+            }
             if (auto *method = findMethod(listMethods, fieldExpr->field))
             {
                 // Special handling for remove/contains type checking

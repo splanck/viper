@@ -802,7 +802,7 @@ entity Car extends Engine {
 entity Car {
     engine: Engine;
     transmission: Transmission;
-    wheels: [Wheel];
+    wheels: List[Wheel];
 
     func start() {
         self.engine.ignite();
@@ -892,32 +892,32 @@ Should a Stack extend Array? After all, a stack uses array-like storage...
 // Tempting but WRONG
 entity Stack extends Array {
     func push(item) {
-        self.Append(item);
+        self.Push(item);
     }
 
     func pop() {
-        return self.removeLast();
+        return self.Pop();
     }
 }
 ```
 
-This seems convenient, but now Stack inherits ALL of Array's methods. Users can call `stack.insertAt(index)` or `stack.RemoveAt(index)`, which violates how stacks work. A stack is not an array - it just uses an array internally.
+This seems convenient, but now Stack inherits ALL of Array's methods. Users can call `stack.InsertAt(index)` or `stack.RemoveAt(index)`, which violates how stacks work. A stack is not an array - it just uses an array internally.
 
 ```rust
 // RIGHT: Stack contains an array
 entity Stack {
-    items: [any];
+    items: List[any];
 
     expose func init() {
         self.items = [];
     }
 
     func push(item) {
-        self.items.Append(item);
+        self.items.Push(item);
     }
 
     func pop() {
-        return self.items.removeLast();
+        return self.items.Pop();
     }
 
     func peek() {

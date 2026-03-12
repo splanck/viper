@@ -1459,6 +1459,153 @@ rt_string rt_http_options(rt_string url)
     return result;
 }
 
+rt_string rt_http_put(rt_string url, rt_string body)
+{
+    const char *url_str = rt_string_cstr(url);
+    const char *body_str = rt_string_cstr(body);
+
+    if (!url_str || *url_str == '\0')
+        rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+
+    rt_http_req_t req = {0};
+    req.method = strdup("PUT");
+    req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
+
+    if (parse_url(url_str, &req.url) < 0)
+        rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+
+    if (body_str)
+    {
+        req.body_len = strlen(body_str);
+        req.body = (uint8_t *)malloc(req.body_len);
+        if (!req.body)
+            rt_trap("HTTP: memory allocation failed");
+        memcpy(req.body, body_str, req.body_len);
+    }
+
+    if (req.body_len > 0)
+        add_header(&req, "Content-Type", "text/plain; charset=utf-8");
+
+    rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
+    free(req.method);
+    free(req.body);
+    free_parsed_url(&req.url);
+    free_headers(req.headers);
+
+    if (!res)
+        rt_trap_net("HTTP: request failed", Err_NetworkError);
+
+    rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
+
+    if (rt_obj_release_check0(res))
+        rt_obj_free(res);
+
+    return result;
+}
+
+void *rt_http_put_bytes(rt_string url, void *body)
+{
+    const char *url_str = rt_string_cstr(url);
+
+    if (!url_str || *url_str == '\0')
+        rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+
+    rt_http_req_t req = {0};
+    req.method = strdup("PUT");
+    req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
+
+    if (parse_url(url_str, &req.url) < 0)
+        rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+
+    if (body)
+    {
+        int64_t body_len = rt_bytes_len(body);
+        uint8_t *body_ptr = bytes_data(body);
+        req.body = body_ptr;
+        req.body_len = (size_t)body_len;
+    }
+
+    if (req.body_len > 0)
+        add_header(&req, "Content-Type", "application/octet-stream");
+
+    rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
+    free(req.method);
+    free_parsed_url(&req.url);
+    free_headers(req.headers);
+
+    if (!res)
+        rt_trap_net("HTTP: request failed", Err_NetworkError);
+
+    void *result = rt_bytes_new((int64_t)res->body_len);
+    uint8_t *result_ptr = bytes_data(result);
+    if (res->body && res->body_len > 0)
+        memcpy(result_ptr, res->body, res->body_len);
+
+    if (rt_obj_release_check0(res))
+        rt_obj_free(res);
+
+    return result;
+}
+
+rt_string rt_http_delete(rt_string url)
+{
+    const char *url_str = rt_string_cstr(url);
+    if (!url_str || *url_str == '\0')
+        rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+
+    rt_http_req_t req = {0};
+    req.method = strdup("DELETE");
+    req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
+
+    if (parse_url(url_str, &req.url) < 0)
+        rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+
+    rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
+    free(req.method);
+    free_parsed_url(&req.url);
+
+    if (!res)
+        rt_trap_net("HTTP: request failed", Err_NetworkError);
+
+    rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
+
+    if (rt_obj_release_check0(res))
+        rt_obj_free(res);
+
+    return result;
+}
+
+void *rt_http_delete_bytes(rt_string url)
+{
+    const char *url_str = rt_string_cstr(url);
+    if (!url_str || *url_str == '\0')
+        rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+
+    rt_http_req_t req = {0};
+    req.method = strdup("DELETE");
+    req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
+
+    if (parse_url(url_str, &req.url) < 0)
+        rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+
+    rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
+    free(req.method);
+    free_parsed_url(&req.url);
+
+    if (!res)
+        rt_trap_net("HTTP: request failed", Err_NetworkError);
+
+    void *result = rt_bytes_new((int64_t)res->body_len);
+    uint8_t *result_ptr = bytes_data(result);
+    if (res->body && res->body_len > 0)
+        memcpy(result_ptr, res->body, res->body_len);
+
+    if (rt_obj_release_check0(res))
+        rt_obj_free(res);
+
+    return result;
+}
+
 //=============================================================================
 // HttpReq Instance Class Implementation
 //=============================================================================
