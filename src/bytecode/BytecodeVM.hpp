@@ -62,17 +62,32 @@ using NativeHandler = std::function<void(BCSlot *, uint32_t, BCSlot *)>;
 /// @details When the VM encounters an exceptional condition, it raises a trap
 ///          with one of these kinds. Exception handlers can inspect the kind
 ///          to determine the appropriate recovery strategy.
+///
+///          Values 0-11 are aligned with il::vm::TrapKind (vm/Trap.hpp) so that
+///          the TRAP_KIND bytecode opcode can use a direct cast instead of a
+///          translation table. BytecodeVM-specific kinds live at 100+.
 enum class TrapKind : uint8_t
 {
-    None = 0,         ///< No trap (normal execution).
-    Overflow,         ///< Integer arithmetic overflow.
-    InvalidCast,      ///< Invalid type conversion (e.g., out-of-range float-to-int).
-    DivisionByZero,   ///< Division or remainder by zero.
-    IndexOutOfBounds, ///< Array or bounds-check index violation.
-    NullPointer,      ///< Null pointer dereference.
-    StackOverflow,    ///< Call stack depth exceeded kMaxCallDepth.
-    InvalidOpcode,    ///< Unrecognized or unsupported opcode.
-    RuntimeError      ///< Generic runtime error (e.g., from native code).
+    // --- Aligned with il::vm::TrapKind (vm/Trap.hpp) ---
+    DivideByZero = 0,     ///< Division or remainder by zero.
+    Overflow = 1,         ///< Integer arithmetic overflow.
+    InvalidCast = 2,      ///< Invalid type conversion (e.g., out-of-range float-to-int).
+    DomainError = 3,      ///< Semantic domain violation or user trap.
+    Bounds = 4,           ///< Array or bounds-check index violation.
+    FileNotFound = 5,     ///< File system open on a path that does not exist.
+    EndOfFile = 6,        ///< End-of-file reached while input still expected.
+    IOError = 7,          ///< Generic I/O failure.
+    InvalidOperation = 8, ///< Operation outside the allowed state machine.
+    RuntimeError = 9,     ///< Generic runtime error (e.g., from native code).
+    Interrupt = 10,       ///< Program interrupted by Ctrl-C or requestInterrupt().
+    NetworkError = 11,    ///< Network I/O failure (connection, DNS, TLS, etc.).
+
+    // --- BytecodeVM-specific kinds ---
+    NullPointer = 100,    ///< Null pointer dereference.
+    StackOverflow = 101,  ///< Call stack depth exceeded kMaxCallDepth.
+    InvalidOpcode = 102,  ///< Unrecognized or unsupported opcode.
+
+    None = 255            ///< No trap (sentinel for normal execution).
 };
 
 /// @brief VM execution state.

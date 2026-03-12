@@ -231,17 +231,9 @@ void Lowerer::lowerTryStmt(TryStmt *stmt)
         Value expectedVal = Value::constInt(static_cast<int64_t>(expectedKind));
         Value match = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), kindI64Val, expectedVal);
 
-        // Pop the current handler from the EH stack before the branch.
-        // This prevents the rethrow path from re-entering this same handler
-        // (which would cause an infinite loop). The standard VM's prepareTrap
-        // does NOT pop the handler, so this eh.pop is the only cleanup.
-        {
-            il::core::Instr ehPopInstr;
-            ehPopInstr.op = Opcode::EhPop;
-            ehPopInstr.type = Type(Type::Kind::Void);
-            ehPopInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(std::move(ehPopInstr));
-        }
+        // No explicit eh.pop needed here — both prepareTrap() and dispatchTrap()
+        // auto-pop the handler from the EH stack when dispatching. The handler
+        // block always starts with a clean stack.
 
         // cbr %match, ^catch_body(%err, %tok), ^rethrow(%kind_i32)
         // Manual CBr construction to pass branch arguments

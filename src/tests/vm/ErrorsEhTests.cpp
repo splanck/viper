@@ -430,12 +430,9 @@ Module buildResumeSameModule()
     tryBlock.instructions.push_back(retNormal);
     tryBlock.terminated = true;
 
-    // inner_handler: pop self from EH stack, then resume.same to rethrow
+    // inner_handler: resume.same to rethrow to outer handler.
+    // No explicit eh.pop needed — prepareTrap() auto-pops the handler on dispatch.
     builder.setInsertPoint(innerHandler);
-    Instr popSelf;
-    popSelf.op = Opcode::EhPop;
-    popSelf.type = Type(Type::Kind::Void);
-    innerHandler.instructions.push_back(popSelf);
 
     Instr resumeSame;
     resumeSame.op = Opcode::ResumeSame;

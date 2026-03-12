@@ -1161,6 +1161,12 @@ bool VM::prepareTrap(VmError &error)
             st->ip = 0;
             st->skipBreakOnce = false;
 
+            // Auto-pop the handler from the EH stack before transferring control.
+            // Handler blocks always start with a clean stack — if catch body
+            // throws, the trap propagates to the next outer handler rather than
+            // re-entering the same one.
+            fr.ehStack.pop_back();
+
             vm_clear_trap_token();
             throwForTrap(st);
             return true; // Unreachable but silences control-path warnings.

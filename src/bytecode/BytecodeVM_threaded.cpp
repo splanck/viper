@@ -520,9 +520,9 @@ L_SDIV_I64_CHK:
     {
         SYNC_STATE();
         sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivisionByZero))
+        if (!dispatchTrap(TrapKind::DivideByZero))
         {
-            trap(TrapKind::DivisionByZero, "division by zero");
+            trap(TrapKind::DivideByZero, "division by zero");
             return;
         }
         RELOAD_STATE();
@@ -537,9 +537,9 @@ L_UDIV_I64_CHK:
     {
         SYNC_STATE();
         sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivisionByZero))
+        if (!dispatchTrap(TrapKind::DivideByZero))
         {
-            trap(TrapKind::DivisionByZero, "division by zero");
+            trap(TrapKind::DivideByZero, "division by zero");
             return;
         }
         RELOAD_STATE();
@@ -555,9 +555,9 @@ L_SREM_I64_CHK:
     {
         SYNC_STATE();
         sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivisionByZero))
+        if (!dispatchTrap(TrapKind::DivideByZero))
         {
-            trap(TrapKind::DivisionByZero, "division by zero");
+            trap(TrapKind::DivideByZero, "division by zero");
             return;
         }
         RELOAD_STATE();
@@ -572,9 +572,9 @@ L_UREM_I64_CHK:
     {
         SYNC_STATE();
         sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivisionByZero))
+        if (!dispatchTrap(TrapKind::DivideByZero))
         {
-            trap(TrapKind::DivisionByZero, "division by zero");
+            trap(TrapKind::DivideByZero, "division by zero");
             return;
         }
         RELOAD_STATE();
@@ -593,7 +593,7 @@ L_IDX_CHK:
     if (idx < lo || idx >= hi)
     {
         SYNC_STATE();
-        trap(TrapKind::IndexOutOfBounds, "index out of bounds");
+        trap(TrapKind::Bounds, "index out of bounds");
         return;
     }
     sp -= 2;
@@ -1419,30 +1419,11 @@ L_RESUME_LABEL:
 
 L_TRAP_KIND:
 {
-    // Push the current trap kind, mapped to the IL-level TrapKind enum
-    // (vm/Trap.hpp) used by the frontend lowerer for typed-catch comparisons.
-    int64_t ilKind;
-    switch (trapKind_)
-    {
-        case TrapKind::DivisionByZero:
-            ilKind = 0;
-            break;
-        case TrapKind::Overflow:
-            ilKind = 1;
-            break;
-        case TrapKind::InvalidCast:
-            ilKind = 2;
-            break;
-        case TrapKind::IndexOutOfBounds:
-            ilKind = 4;
-            break;
-        case TrapKind::NullPointer:
-            ilKind = 3;
-            break;
-        default:
-            ilKind = 9;
-            break;
-    }
+    // Push the current trap kind as an I64 for typed-catch comparison.
+    // Values 0-11 are aligned with il::vm::TrapKind (vm/Trap.hpp).
+    // BC-specific kinds (100+) map to RuntimeError(9) as catch-all.
+    uint8_t raw = static_cast<uint8_t>(trapKind_);
+    int64_t ilKind = (raw <= 11) ? static_cast<int64_t>(raw) : 9;
     sp->i64 = ilKind;
     sp++;
     DISPATCH();

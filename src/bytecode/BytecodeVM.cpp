@@ -536,9 +536,9 @@ void BytecodeVM::run()
             case BCOpcode::SDIV_I64_CHK:
                 if (sp_[-1].i64 == 0)
                 {
-                    if (!dispatchTrap(TrapKind::DivisionByZero))
+                    if (!dispatchTrap(TrapKind::DivideByZero))
                     {
-                        trap(TrapKind::DivisionByZero, "division by zero");
+                        trap(TrapKind::DivideByZero, "division by zero");
                     }
                     break;
                 }
@@ -549,9 +549,9 @@ void BytecodeVM::run()
             case BCOpcode::UDIV_I64_CHK:
                 if (sp_[-1].i64 == 0)
                 {
-                    if (!dispatchTrap(TrapKind::DivisionByZero))
+                    if (!dispatchTrap(TrapKind::DivideByZero))
                     {
-                        trap(TrapKind::DivisionByZero, "division by zero");
+                        trap(TrapKind::DivideByZero, "division by zero");
                     }
                     break;
                 }
@@ -563,9 +563,9 @@ void BytecodeVM::run()
             case BCOpcode::SREM_I64_CHK:
                 if (sp_[-1].i64 == 0)
                 {
-                    if (!dispatchTrap(TrapKind::DivisionByZero))
+                    if (!dispatchTrap(TrapKind::DivideByZero))
                     {
-                        trap(TrapKind::DivisionByZero, "division by zero");
+                        trap(TrapKind::DivideByZero, "division by zero");
                     }
                     break;
                 }
@@ -576,9 +576,9 @@ void BytecodeVM::run()
             case BCOpcode::UREM_I64_CHK:
                 if (sp_[-1].i64 == 0)
                 {
-                    if (!dispatchTrap(TrapKind::DivisionByZero))
+                    if (!dispatchTrap(TrapKind::DivideByZero))
                     {
-                        trap(TrapKind::DivisionByZero, "division by zero");
+                        trap(TrapKind::DivideByZero, "division by zero");
                     }
                     break;
                 }
@@ -595,9 +595,9 @@ void BytecodeVM::run()
                 int64_t idx = sp_[-3].i64;
                 if (idx < lo || idx >= hi)
                 {
-                    if (!dispatchTrap(TrapKind::IndexOutOfBounds))
+                    if (!dispatchTrap(TrapKind::Bounds))
                     {
-                        trap(TrapKind::IndexOutOfBounds, "index out of bounds");
+                        trap(TrapKind::Bounds, "index out of bounds");
                     }
                     break;
                 }
@@ -1420,32 +1420,11 @@ void BytecodeVM::run()
 
             case BCOpcode::TRAP_KIND:
             {
-                // Push the current trap kind, mapped to the IL-level TrapKind
-                // enum (vm/Trap.hpp) which the frontend lowerer uses for
-                // typed-catch comparisons. The BytecodeVM's own TrapKind enum
-                // has different numbering, so we translate here.
-                int64_t ilKind;
-                switch (trapKind_)
-                {
-                    case TrapKind::DivisionByZero:
-                        ilKind = 0;
-                        break; // il::vm::TrapKind::DivideByZero
-                    case TrapKind::Overflow:
-                        ilKind = 1;
-                        break; // il::vm::TrapKind::Overflow
-                    case TrapKind::InvalidCast:
-                        ilKind = 2;
-                        break; // il::vm::TrapKind::InvalidCast
-                    case TrapKind::IndexOutOfBounds:
-                        ilKind = 4;
-                        break; // il::vm::TrapKind::Bounds
-                    case TrapKind::NullPointer:
-                        ilKind = 3;
-                        break; // il::vm::TrapKind::DomainError
-                    default:
-                        ilKind = 9;
-                        break; // il::vm::TrapKind::RuntimeError
-                }
+                // Push the current trap kind as an I64 for typed-catch comparison.
+                // Values 0-11 are aligned with il::vm::TrapKind (vm/Trap.hpp).
+                // BC-specific kinds (100+) map to RuntimeError(9) as catch-all.
+                uint8_t raw = static_cast<uint8_t>(trapKind_);
+                int64_t ilKind = (raw <= 11) ? static_cast<int64_t>(raw) : 9;
                 sp_->i64 = ilKind;
                 sp_++;
                 break;
@@ -1680,13 +1659,14 @@ void BytecodeVM::popExceptionHandler()
 /// to the handler. Returns false if the trap propagates to the top level.
 bool BytecodeVM::dispatchTrap(TrapKind kind)
 {
-    // Search for a handler. We do NOT pop the handler here — the handler's
-    // own eh.pop instruction is responsible for cleanup. This matches the
-    // standard VM's prepareTrap semantics and is required for typed-catch
-    // rethrow to propagate correctly to outer handlers.
+    // Search for a handler and auto-pop it from the EH stack on dispatch.
+    // Handler blocks always start with a clean EH stack — if catch body throws,
+    // the trap propagates to the next outer handler rather than re-entering
+    // the same one. Normal-path cleanup uses explicit eh.pop in IL.
     while (!ehStack_.empty())
     {
         BCExceptionHandler eh = ehStack_.back();
+        ehStack_.pop_back();
 
         // Unwind call stack to the frame where handler was registered
         while (callStack_.size() > eh.frameIndex + 1)
@@ -1704,13 +1684,13 @@ bool BytecodeVM::dispatchTrap(TrapKind kind)
             // Map trap kind to BASIC error code
             switch (kind)
             {
-                case TrapKind::DivisionByZero:
+                case TrapKind::DivideByZero:
                     currentErrorCode_ = 11;
                     break; // BASIC: Division by zero
                 case TrapKind::Overflow:
                     currentErrorCode_ = 6;
                     break; // BASIC: Overflow
-                case TrapKind::IndexOutOfBounds:
+                case TrapKind::Bounds:
                     currentErrorCode_ = 9;
                     break; // BASIC: Subscript out of range
                 case TrapKind::NullPointer:
@@ -1734,8 +1714,7 @@ bool BytecodeVM::dispatchTrap(TrapKind kind)
             return true;
         }
 
-        // Frame for this handler no longer exists — discard and try next
-        ehStack_.pop_back();
+        // Frame for this handler no longer exists — already popped above, try next
     }
 
     // No handler found - trap propagates to top level
