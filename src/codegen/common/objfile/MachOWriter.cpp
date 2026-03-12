@@ -456,19 +456,25 @@ bool MachOWriter::write(const std::string &path,
         uint64_t value;
     };
     std::vector<FinalSym> allSyms(nsyms);
-    auto emitSyms = [&](const std::vector<PendingSym> &syms)
+    auto emitSyms = [&](const std::vector<PendingSym> &syms, bool skipIfDefined)
     {
         for (const auto &ps : syms)
         {
             uint32_t idx = (ps.fromText)
                 ? textSymMap[ps.encoderIdx]
                 : rodataSymMap[ps.encoderIdx];
+            // When an undefined symbol in text duplicates a defined symbol in
+            // rodata, the defined version must win (they share the same Mach-O
+            // index). Skip the undefined overwrite when the slot already holds
+            // a defined symbol.
+            if (skipIfDefined && allSyms[idx].type != 0)
+                continue;
             allSyms[idx] = FinalSym{ps.strx, ps.type, ps.sect, ps.value};
         }
     };
-    emitSyms(pendingLocals);
-    emitSyms(pendingExtDef);
-    emitSyms(pendingUndef);
+    emitSyms(pendingLocals, false);
+    emitSyms(pendingExtDef, false);
+    emitSyms(pendingUndef, true);
 
     // --- 4. Build relocation entries for __text ---
     struct MachoReloc
@@ -518,12 +524,10 @@ bool MachOWriter::write(const std::string &path,
     size_t constAddr = constFileOff - textFileOff; // virtual address of __const
 
     size_t segFileOff = textFileOff;
-    size_t segFileSize = (rodataSize > 0)
-        ? (constFileOff + rodataSize - textFileOff)
-        : textSize;
-    size_t segVmSize = (rodataSize > 0)
-        ? (constAddr + rodataSize)
-        : textSize;
+    // Segment size must encompass the __const section's aligned address even
+    // when rodata is empty, because the section header is always emitted.
+    size_t segFileSize = constFileOff + rodataSize - textFileOff;
+    size_t segVmSize = constAddr + rodataSize;
 
     size_t textRelocOff = constFileOff + rodataSize;
     uint32_t nTextRelocs = static_cast<uint32_t>(textRelocs.size());
@@ -608,7 +612,14 @@ bool MachOWriter::write(const std::string &path,
 
     // --- Symbol table ---
     for (const auto &sym : allSyms)
-        writeNlist(file, sym.strx, sym.type, sym.sect, 0, sym.value);
+    {
+        uint64_t value = sym.value;
+        // Rodata symbols store offsets within the __const section. Mach-O nlist
+        // values are segment-relative, so add the __const section's base address.
+        if (sym.sect == kSectConst)
+            value += constAddr;
+        writeNlist(file, sym.strx, sym.type, sym.sect, 0, value);
+    }
 
     // --- String table ---
     {

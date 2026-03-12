@@ -31,6 +31,7 @@ add_library(viper_codegen_x86_64 STATIC
         passes/LegalizePass.cpp
         passes/RegAllocPass.cpp
         passes/EmitPass.cpp
+        passes/BinaryEmitPass.cpp
 )
 
 target_include_directories(viper_codegen_x86_64 PUBLIC

@@ -79,6 +79,8 @@ Documentation for the Viper compiler toolchain: two language frontends (Zia and 
 - [VM Guide](vm.md) — VM design, dispatch, profiling, and runtime ABI
 - [Threading and Globals](threading-and-globals.md) — VM threading model
 - [Backend Guide](backend.md) — x86-64 and ARM64 native code generation
+- [Native Assembler](codegen/native-assembler.md) — Binary encoders and object file writers (x86_64/AArch64 × ELF/Mach-O/COFF)
+- [Native Linker](codegen/native-linker.md) — Archive reading, symbol resolution, relocation, and executable output
 - [Generated Files](generated-files.md) — Auto-generated C++ sources
 - [Contributor Guide](contributor-guide.md) — Style guide and contribution process
 
@@ -91,6 +93,8 @@ Documentation for the Viper compiler toolchain: two language frontends (Zia and 
 - [abi/object-layout.md](abi/object-layout.md) — Object layout, vtable, call ABI
 - [codegen/aarch64.md](codegen/aarch64.md) — AArch64 backend status
 - [codegen/x86_64.md](codegen/x86_64.md) — x86-64 SysV ABI reference
+- [codegen/native-assembler.md](codegen/native-assembler.md) — Native binary encoder and .o writer specification
+- [codegen/native-linker.md](codegen/native-linker.md) — Native linker and executable writer specification
 
 ---
 

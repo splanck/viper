@@ -19,6 +19,7 @@
 
 #include "codegen/common/Diagnostics.hpp"
 #include "codegen/common/PassManager.hpp"
+#include "codegen/common/objfile/CodeSection.hpp"
 #include "codegen/x86_64/Backend.hpp"
 #include "il/core/Module.hpp"
 
@@ -35,6 +36,10 @@ struct Module
     bool legalised = false;                     ///< Flag toggled once legalisation completes.
     bool registersAllocated = false;            ///< Flag toggled once register allocation runs.
     std::optional<CodegenResult> codegenResult; ///< Backend assembly emission artefacts.
+
+    /// Binary emission artefacts (populated by BinaryEmitPass instead of EmitPass).
+    std::optional<objfile::CodeSection> binaryText;   ///< Machine code bytes + relocations.
+    std::optional<objfile::CodeSection> binaryRodata; ///< Read-only data section.
 };
 
 // Backward-compatible aliases — consumers continue to use these names unchanged.

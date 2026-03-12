@@ -4,8 +4,21 @@ add_library(viper_codegen_common STATIC
         objfile/ObjectFileWriter.cpp
         objfile/ElfWriter.cpp
         objfile/MachOWriter.cpp
+        objfile/CoffWriter.cpp
         objfile/StringTable.cpp
-        objfile/SymbolTable.cpp)
+        objfile/SymbolTable.cpp
+        linker/ArchiveReader.cpp
+        linker/ObjFileReader.cpp
+        linker/ElfReader.cpp
+        linker/MachOReader.cpp
+        linker/CoffReader.cpp
+        linker/SymbolResolver.cpp
+        linker/SectionMerger.cpp
+        linker/RelocApplier.cpp
+        linker/ElfExeWriter.cpp
+        linker/MachOExeWriter.cpp
+        linker/PeExeWriter.cpp
+        linker/NativeLinker.cpp)
 target_include_directories(viper_codegen_common PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)

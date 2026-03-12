@@ -79,6 +79,18 @@ class AsmEmitter
         /// \brief Determine whether the pool currently holds any literals.
         [[nodiscard]] bool empty() const noexcept;
 
+        /// \brief Number of string literals in the pool.
+        [[nodiscard]] std::size_t stringCount() const noexcept { return stringLiterals_.size(); }
+
+        /// \brief Number of f64 literals in the pool.
+        [[nodiscard]] std::size_t f64Count() const noexcept { return f64Literals_.size(); }
+
+        /// \brief Retrieve the raw bytes for a stored string literal.
+        [[nodiscard]] const std::string &stringBytes(int index) const { return stringLiterals_[static_cast<std::size_t>(index)]; }
+
+        /// \brief Retrieve the double value for a stored f64 literal.
+        [[nodiscard]] double f64Value(int index) const { return f64Literals_[static_cast<std::size_t>(index)]; }
+
       private:
         std::vector<std::string> stringLiterals_{};
         std::vector<std::size_t> stringLengths_{};

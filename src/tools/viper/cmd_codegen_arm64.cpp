@@ -20,6 +20,8 @@
 
 #include "codegen/aarch64/CodegenPipeline.hpp"
 #include "codegen/common/LinkerSupport.hpp"
+#include "codegen/common/linker/NativeLinker.hpp"
+#include "codegen/common/objfile/ObjectFileWriter.hpp"
 #include "common/RunProcess.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
@@ -36,6 +38,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace viper::tools::ilc
@@ -56,7 +59,8 @@ using il::core::Opcode;
 ///          can emit a single source of truth for help and diagnostics.
 constexpr std::string_view kUsage =
     "usage: ilc codegen arm64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n"
-    "       [--dump-mir-before-ra] [--dump-mir-after-ra] [--dump-mir-full]\n";
+    "       [--dump-mir-before-ra] [--dump-mir-after-ra] [--dump-mir-full]\n"
+    "       [--native-asm|--system-asm] [--native-link|--system-link] [-O0|-O1|-O2]\n";
 
 // Use shared ArgvView from tools/common
 using viper::tools::ArgvView;
@@ -73,6 +77,8 @@ struct Options
     bool run_native = false;             ///< True when -run-native requests execution.
     bool dump_mir_before_ra = false;     ///< Emit MIR before register allocation to stderr.
     bool dump_mir_after_ra = false;      ///< Emit MIR after register allocation to stderr.
+    bool use_native_asm = false;         ///< Use native binary encoder instead of system assembler.
+    bool use_native_link = false;        ///< Use native linker instead of system linker.
     int optimize = 0;                    ///< IL optimization level: 0=none, 1=O1, 2=O2.
 };
 
@@ -155,6 +161,26 @@ std::optional<Options> parseArgs(const ArgvView &args)
             opts.optimize = tok[2] - '0';
             continue;
         }
+        if (tok == "--native-asm")
+        {
+            opts.use_native_asm = true;
+            continue;
+        }
+        if (tok == "--system-asm")
+        {
+            opts.use_native_asm = false;
+            continue;
+        }
+        if (tok == "--native-link")
+        {
+            opts.use_native_link = true;
+            continue;
+        }
+        if (tok == "--system-link")
+        {
+            opts.use_native_link = false;
+            continue;
+        }
         std::cerr << "error: unknown flag '" << tok << "'\n" << kUsage;
         return std::nullopt;
     }
@@ -224,6 +250,63 @@ static int linkToExe(const std::string &asmPath,
     appendAudioLibs(ctx, linkCmd);
 
     // C++ runtime archives (e.g. Threads) need the C++ standard library.
+    if (hasComponent(ctx, codegen::RtComponent::Threads))
+        linkCmd.push_back("-lc++");
+
+#if defined(__APPLE__)
+    linkCmd.push_back("-Wl,-dead_strip");
+#elif !defined(_WIN32)
+    linkCmd.push_back("-Wl,--gc-sections");
+    if (hasComponent(ctx, codegen::RtComponent::Threads))
+        linkCmd.push_back("-pthread");
+#endif
+
+    linkCmd.push_back("-o");
+    linkCmd.push_back(exePath);
+
+    const RunResult rr = run_process(linkCmd);
+    if (rr.exit_code == -1)
+    {
+        err << "error: failed to launch system linker command\n";
+        return -1;
+    }
+    if (!rr.out.empty())
+        out << rr.out;
+#if defined(_WIN32)
+    if (!rr.err.empty())
+        err << rr.err;
+#endif
+    return rr.exit_code == 0 ? 0 : 1;
+}
+
+/// @brief Link a pre-assembled .o file into an executable using a pre-resolved LinkContext.
+/// @details Used by the native assembler path where symbols are already known from the
+///          CodeSection — no assembly file scanning needed.
+static int linkObjToExe(const std::string &objPath,
+                        const std::string &exePath,
+                        const viper::codegen::common::LinkContext &ctx,
+                        std::ostream &out,
+                        std::ostream &err)
+{
+    using namespace viper::codegen::common;
+
+#if defined(__APPLE__)
+    std::vector<std::string> linkCmd = {"cc", "-arch", "arm64", objPath};
+#elif defined(_WIN32)
+    std::vector<std::string> linkCmd = {"clang", "--target=aarch64-pc-windows-msvc", objPath};
+#else
+    std::vector<std::string> linkCmd = {"cc", objPath};
+#endif
+    appendArchives(ctx, linkCmd);
+    {
+        std::vector<std::string> frameworks;
+#if defined(__APPLE__)
+        frameworks = {"Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers"};
+#endif
+        appendGraphicsLibs(ctx, linkCmd, frameworks);
+    }
+    appendAudioLibs(ctx, linkCmd);
+
     if (hasComponent(ctx, codegen::RtComponent::Threads))
         linkCmd.push_back("-lc++");
 
@@ -343,6 +426,7 @@ int emitAndMaybeLink(const Options &opts)
     PipelineOptions pipeOpts;
     pipeOpts.dumpMirBeforeRA = opts.dump_mir_before_ra;
     pipeOpts.dumpMirAfterRA = opts.dump_mir_after_ra;
+    pipeOpts.useBinaryEmit = opts.use_native_asm;
 
     if (!runCodegenPipeline(pipelineModule, pipeOpts))
         return 1;
@@ -443,17 +527,152 @@ int emitAndMaybeLink(const Options &opts)
     }
 #endif
 
-    if (!writeTextFile(asmPath, asmText, std::cerr))
-        return 1;
+    // Always write assembly text if -S was explicitly requested.
+    if (opts.emit_asm)
+    {
+        if (!writeTextFile(asmPath, asmText, std::cerr))
+            return 1;
+    }
 
     // If only -S requested and no -o/-run-native, stop here.
     if (!opts.output_o && !opts.run_native)
+    {
+        // Write assembly even when -S wasn't explicit (legacy: always write .s).
+        if (!opts.emit_asm)
+        {
+            if (!writeTextFile(asmPath, asmText, std::cerr))
+                return 1;
+        }
         return 0;
+    }
 
-    // If -o is provided and not run_native, assemble to object/exe depending on suffix
+    // ========== Native assembler path ==========
+    if (opts.use_native_asm && pipelineModule.binaryText)
+    {
+        // Derive .o path for the native binary output.
+        std::filesystem::path objPath;
+        bool outputIsObj = false;
+        if (opts.output_o && std::filesystem::path(*opts.output_o).extension() == ".o")
+        {
+            objPath = *opts.output_o;
+            outputIsObj = true;
+        }
+        else
+        {
+            objPath = std::filesystem::path(opts.input_il).replace_extension(".o");
+        }
+
+        // Write .o via ObjectFileWriter.
+        {
+            using namespace viper::codegen::objfile;
+            auto writer = createObjectFileWriter(detectHostFormat(), ObjArch::AArch64);
+            if (!writer->write(objPath.string(),
+                               *pipelineModule.binaryText,
+                               *pipelineModule.binaryRodata,
+                               std::cerr))
+            {
+                std::cerr << "error: failed to write object file '" << objPath.string() << "'\n";
+                return 1;
+            }
+        }
+
+        // If output is .o, we're done.
+        if (outputIsObj)
+            return 0;
+
+        // Extract external symbols for link context resolution.
+        std::unordered_set<std::string> extSymbols;
+        for (const auto &sym : pipelineModule.binaryText->symbols())
+        {
+            if (sym.binding == viper::codegen::objfile::SymbolBinding::External)
+                extSymbols.insert(sym.name);
+        }
+
+        viper::codegen::common::LinkContext ctx;
+        if (const int rc = viper::codegen::common::prepareLinkContextFromSymbols(
+                extSymbols, ctx, std::cout, std::cerr);
+            rc != 0)
+        {
+            return 1;
+        }
+
+        // Determine executable path.
+        std::filesystem::path exe = opts.output_o
+                                        ? std::filesystem::path(*opts.output_o)
+                                        : std::filesystem::path(opts.input_il).replace_extension("");
+
+        int lrc = 0;
+        if (opts.use_native_link)
+        {
+            // Use the native linker (zero external tool dependencies).
+            // Include ALL runtime archives — the iterative resolution algorithm
+            // only pulls in members that satisfy undefined symbols, so extras
+            // cost nothing. This handles cross-archive transitive dependencies
+            // that the component scanner doesn't detect.
+            viper::codegen::linker::NativeLinkerOptions linkOpts;
+            linkOpts.objPath = objPath.string();
+            linkOpts.exePath = exe.string();
+            using viper::codegen::RtComponent;
+            using viper::codegen::archiveNameForComponent;
+            using viper::codegen::common::runtimeArchivePath;
+            using viper::codegen::common::fileExists;
+            static constexpr RtComponent allComponents[] = {
+                RtComponent::Network, RtComponent::Threads, RtComponent::Audio,
+                RtComponent::Graphics, RtComponent::Exec, RtComponent::IoFs,
+                RtComponent::Text, RtComponent::Collections, RtComponent::Arrays,
+                RtComponent::Oop, RtComponent::Base,
+            };
+            for (auto comp : allComponents)
+            {
+                auto arPath = runtimeArchivePath(ctx.buildDir, archiveNameForComponent(comp));
+                if (fileExists(arPath))
+                    linkOpts.archivePaths.push_back(arPath.string());
+            }
+
+            // Add platform-specific libraries (GUI, graphics, audio).
+            // These are separate from the runtime component archives.
+            auto addIfExists = [&](const std::filesystem::path &p)
+            {
+                if (fileExists(p))
+                    linkOpts.archivePaths.push_back(p.string());
+            };
+            addIfExists(ctx.buildDir / "src" / "lib" / "gui" / "libvipergui.a");
+            addIfExists(ctx.buildDir / "lib" / "libvipergfx.a");
+            addIfExists(ctx.buildDir / "lib" / "libviperaud.a");
+
+            lrc = viper::codegen::linker::nativeLink(linkOpts, std::cout, std::cerr);
+        }
+        else
+        {
+            lrc = linkObjToExe(objPath.string(), exe.string(), ctx, std::cout, std::cerr);
+        }
+
+        // Clean up intermediate .o unless it was the requested output.
+        if (!outputIsObj)
+        {
+            std::error_code ec;
+            std::filesystem::remove(objPath, ec);
+        }
+
+        if (lrc != 0)
+            return 1;
+
+        if (!opts.run_native)
+            return 0;
+        const int rc = viper::codegen::common::runExecutable(exe.string(), std::cout, std::cerr);
+        return rc == -1 ? 1 : rc;
+    }
+
+    // ========== System assembler path (default) ==========
+    // Write assembly text to disk for the system assembler.
+    if (!opts.emit_asm)
+    {
+        if (!writeTextFile(asmPath, asmText, std::cerr))
+            return 1;
+    }
+
     if (opts.output_o && !opts.run_native)
     {
-        // If output ends with .o, assemble to object; else produce an executable
         const std::string &outPath = *opts.output_o;
         if (std::filesystem::path(outPath).extension() == ".o")
         {
@@ -472,18 +691,14 @@ int emitAndMaybeLink(const Options &opts)
         return lrc == 0 ? 0 : 1;
     }
 
-    // Otherwise, link to a default executable path and run (or just link if run_native=false)
+    // Link to a default executable path and optionally run.
     std::filesystem::path exe = opts.output_o
                                     ? std::filesystem::path(*opts.output_o)
                                     : std::filesystem::path(opts.input_il).replace_extension("");
-    if (exe.extension().empty())
-    {
-        // Keep as derived without extension
-    }
+
     if (linkToExe(asmPath, exe.string(), std::cout, std::cerr) != 0)
         return 1;
 
-    // Clean up intermediate assembly file after successful linking.
     if (!opts.emit_asm)
     {
         std::error_code ec;

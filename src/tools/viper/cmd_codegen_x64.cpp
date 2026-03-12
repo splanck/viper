@@ -38,7 +38,7 @@ namespace
 {
 
 constexpr std::string_view kUsage = "usage: ilc codegen x64 <file.il> [-S <file.s>] [-o <a.out>] "
-                                    "[-run-native] [--stack-size=SIZE]\n";
+                                    "[-run-native] [--stack-size=SIZE] [--native-asm|--system-asm]\n";
 
 // Use shared ArgvView from tools/common
 using viper::tools::ArgvView;
@@ -131,6 +131,16 @@ ParseOutcome parseCompileArgs(const ArgvView &args)
                 return outcome;
             }
             opts.stack_size = static_cast<std::size_t>(size);
+            continue;
+        }
+        if (arg == "--native-asm")
+        {
+            opts.assembler_mode = viper::codegen::x64::CodegenPipeline::AssemblerMode::Native;
+            continue;
+        }
+        if (arg == "--system-asm")
+        {
+            opts.assembler_mode = viper::codegen::x64::CodegenPipeline::AssemblerMode::System;
             continue;
         }
 

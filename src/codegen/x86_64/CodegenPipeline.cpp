@@ -24,6 +24,8 @@
 #include "codegen/x86_64/CodegenPipeline.hpp"
 
 #include "codegen/common/LinkerSupport.hpp"
+#include "codegen/common/objfile/ObjectFileWriter.hpp"
+#include "codegen/x86_64/passes/BinaryEmitPass.hpp"
 #include "codegen/x86_64/passes/EmitPass.hpp"
 #include "codegen/x86_64/passes/LegalizePass.hpp"
 #include "codegen/x86_64/passes/LoweringPass.hpp"
@@ -39,6 +41,7 @@
 #include <optional>
 #include <sstream>
 #include <string_view>
+#include <unordered_set>
 
 #if !defined(_WIN32)
 #include <sys/wait.h>
@@ -218,6 +221,91 @@ int invokeAssembler(const std::filesystem::path &asmPath,
     return exitCode;
 }
 
+/// @brief Run the system linker with a pre-resolved link context (non-Windows).
+/// @details Builds the cc command using the input file path and resolved archive
+///          paths from the LinkContext, then executes it. Works with both .s and .o inputs.
+/// @param inputPath Path to the input file (.s or .o) to pass to the linker.
+/// @param exePath Desired output executable path.
+/// @param stackSize Stack size in bytes (0 = default 8MB).
+/// @param ctx Pre-resolved link context containing archive paths.
+/// @param out Stream receiving the linker's standard output.
+/// @param err Stream receiving the linker's standard error.
+/// @return Normalised linker exit code (-1 when the command could not start).
+int linkWithContext(const std::filesystem::path &inputPath,
+                   const std::filesystem::path &exePath,
+                   std::size_t stackSize,
+                   const common::LinkContext &ctx,
+                   std::ostream &out,
+                   std::ostream &err)
+{
+    using RtComponent = viper::codegen::RtComponent;
+
+    std::vector<std::string> cmd = {kCcCommand};
+#if defined(__APPLE__)
+    // Explicitly target x86_64 on macOS — required when the host is arm64
+    // (Apple Silicon) so cc doesn't default to the wrong architecture.
+    cmd.push_back("-arch");
+    cmd.push_back("x86_64");
+#endif
+    cmd.push_back(inputPath.string());
+    common::appendArchives(ctx, cmd);
+    {
+        std::vector<std::string> frameworks;
+#if defined(__APPLE__)
+        frameworks.push_back("Cocoa");
+        frameworks.push_back("IOKit");
+        frameworks.push_back("CoreFoundation");
+        frameworks.push_back("UniformTypeIdentifiers");
+#endif
+        common::appendGraphicsLibs(ctx, cmd, frameworks);
+    }
+    common::appendAudioLibs(ctx, cmd);
+
+#if defined(__APPLE__)
+    cmd.push_back("-Wl,-dead_strip");
+    const std::size_t effStack = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);
+    std::ostringstream stackArg;
+    stackArg << "-Wl,-stack_size,0x" << std::hex << effStack;
+    cmd.push_back(stackArg.str());
+#elif !defined(_WIN32)
+    cmd.push_back("-Wl,--gc-sections");
+    cmd.push_back("-pie");
+    if (common::hasComponent(ctx, RtComponent::Threads))
+        cmd.push_back("-pthread");
+    cmd.push_back("-lm");
+    const std::size_t effStack = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);
+    cmd.push_back("-Wl,-z,stack-size=" + std::to_string(effStack));
+#endif
+
+    cmd.push_back("-o");
+    cmd.push_back(exePath.string());
+
+    const RunResult link = run_process(cmd);
+    if (link.exit_code == -1)
+    {
+        err << "error: failed to launch system linker command\n";
+        return -1;
+    }
+
+    if (!link.out.empty())
+    {
+        out << link.out;
+    }
+#if defined(_WIN32)
+    if (!link.err.empty())
+    {
+        err << link.err;
+    }
+#endif
+
+    const int exitCode = normaliseStatus(link.exit_code);
+    if (exitCode != 0)
+    {
+        err << "error: " << kCcCommand << " exited with status " << exitCode << "\n";
+    }
+    return exitCode;
+}
+
 /// @brief Link the emitted assembly into an executable.
 /// @details Invokes the system C compiler, forwarding stdout/stderr to the
 ///          provided streams and normalising the resulting exit code.
@@ -232,11 +320,9 @@ int invokeLinker(const std::filesystem::path &asmPath,
                  std::ostream &out,
                  std::ostream &err)
 {
-    // Use common runtime component classification
-    using RtComponent = viper::codegen::RtComponent;
-
 #if defined(_WIN32)
-    // Windows: Simple approach - find build dir and link all runtime libraries
+    // Windows: Simple approach - find build dir and link all runtime libraries.
+    // Windows does not use LinkContext/symbol scanning — it links ALL archives.
     auto fileExists = [](const std::filesystem::path &path) -> bool
     {
         std::error_code ec;
@@ -398,48 +484,6 @@ int invokeLinker(const std::filesystem::path &asmPath,
     cmd.push_back(toNativePath(exePath));
 
     const RunResult link = run_process(cmd);
-#else
-    using namespace viper::codegen::common;
-
-    LinkContext ctx;
-    if (const int rc = prepareLinkContext(asmPath.string(), ctx, out, err); rc != 0)
-        return rc;
-
-    std::vector<std::string> cmd = {kCcCommand, asmPath.string()};
-    appendArchives(ctx, cmd);
-    {
-        std::vector<std::string> frameworks;
-#if defined(__APPLE__)
-        frameworks.push_back("Cocoa");
-        frameworks.push_back("IOKit");
-        frameworks.push_back("CoreFoundation");
-        frameworks.push_back("UniformTypeIdentifiers");
-#endif
-        appendGraphicsLibs(ctx, cmd, frameworks);
-    }
-    appendAudioLibs(ctx, cmd);
-
-#if defined(__APPLE__)
-    cmd.push_back("-Wl,-dead_strip");
-    const std::size_t effStack = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);
-    std::ostringstream stackArg;
-    stackArg << "-Wl,-stack_size,0x" << std::hex << effStack;
-    cmd.push_back(stackArg.str());
-#else
-    cmd.push_back("-Wl,--gc-sections");
-    cmd.push_back("-pie");
-    if (hasComponent(ctx, RtComponent::Threads))
-        cmd.push_back("-pthread");
-    cmd.push_back("-lm");
-    const std::size_t effStack = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);
-    cmd.push_back("-Wl,-z,stack-size=" + std::to_string(effStack));
-#endif
-
-    cmd.push_back("-o");
-    cmd.push_back(exePath.string());
-
-    const RunResult link = run_process(cmd);
-#endif
     if (link.exit_code == -1)
     {
         err << "error: failed to launch system linker command\n";
@@ -450,12 +494,10 @@ int invokeLinker(const std::filesystem::path &asmPath,
     {
         out << link.out;
     }
-#if defined(_WIN32)
     if (!link.err.empty())
     {
         err << link.err;
     }
-#endif
 
     const int exitCode = normaliseStatus(link.exit_code);
     if (exitCode != 0)
@@ -463,6 +505,16 @@ int invokeLinker(const std::filesystem::path &asmPath,
         err << "error: " << kCcCommand << " exited with status " << exitCode << "\n";
     }
     return exitCode;
+#else
+    // Non-Windows: scan assembly text for runtime symbols, then link.
+    using namespace viper::codegen::common;
+
+    LinkContext ctx;
+    if (const int rc = prepareLinkContext(asmPath.string(), ctx, out, err); rc != 0)
+        return rc;
+
+    return linkWithContext(asmPath, exePath, stackSize, ctx, out, err);
+#endif
 }
 
 /// @brief Execute a freshly linked binary and capture its output.
@@ -587,15 +639,29 @@ PipelineResult CodegenPipeline::run()
     passes::Module pipelineModule{};
     pipelineModule.il = std::move(module);
 
+    const bool useNativeAsm = (opts_.assembler_mode == AssemblerMode::Native);
+
     passes::Diagnostics diagnostics{};
     passes::PassManager manager{};
     manager.addPass(std::make_unique<passes::LoweringPass>());
     manager.addPass(std::make_unique<passes::LegalizePass>());
     manager.addPass(std::make_unique<passes::RegAllocPass>());
 
-    CodegenOptions codegenOpts{};
-    codegenOpts.optimizeLevel = opts_.optimize;
-    manager.addPass(std::make_unique<passes::EmitPass>(codegenOpts));
+    if (useNativeAsm)
+    {
+#if defined(__APPLE__)
+        constexpr bool isDarwin = true;
+#else
+        constexpr bool isDarwin = false;
+#endif
+        manager.addPass(std::make_unique<passes::BinaryEmitPass>(isDarwin));
+    }
+    else
+    {
+        CodegenOptions codegenOpts{};
+        codegenOpts.optimizeLevel = opts_.optimize;
+        manager.addPass(std::make_unique<passes::EmitPass>(codegenOpts));
+    }
 
     if (!manager.run(pipelineModule, diagnostics))
     {
@@ -608,6 +674,147 @@ PipelineResult CodegenPipeline::run()
 
     diagnostics.flush(err);
 
+    // --- Native assembler path: write .o directly via ObjectFileWriter ---
+    if (useNativeAsm)
+    {
+        if (!pipelineModule.binaryText)
+        {
+            err << "error: binary emit pass did not produce machine code\n";
+            result.exit_code = 1;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+
+        // If user requested assembly text output via -S, we still need text emit.
+        // Fall through to the text path by also running text emit.
+        if (opts_.emit_asm && !opts_.output_asm_path.empty())
+        {
+            // For -S with --native-asm, we don't produce .s — just stop after .o.
+            // Users should use --system-asm if they want assembly text.
+            err << "warning: -S is not supported with --native-asm; ignoring -S\n";
+        }
+
+        // Determine object file path.
+        auto looksLikeObjectFile = [](const std::string &path) -> bool
+        {
+            const std::size_t dotPos = path.rfind('.');
+            if (dotPos == std::string::npos)
+                return false;
+            const std::string ext = path.substr(dotPos);
+            return ext == ".o" || ext == ".obj";
+        };
+
+        const bool wantsObjectOnly = !opts_.output_obj_path.empty() && !opts_.run_native &&
+                                     looksLikeObjectFile(opts_.output_obj_path);
+
+        // Derive .o path from IL path.
+        std::filesystem::path objPath;
+        if (wantsObjectOnly)
+        {
+            objPath = opts_.output_obj_path;
+        }
+        else
+        {
+            objPath = std::filesystem::path(opts_.input_il_path);
+            objPath.replace_extension(".o");
+        }
+
+        // Write the object file using the native writer for x86_64.
+        // Must specify ObjArch::X86_64 explicitly — createHostObjectFileWriter()
+        // would pick the host arch (e.g. arm64 on Apple Silicon).
+        auto writer = objfile::createObjectFileWriter(
+            objfile::detectHostFormat(), objfile::ObjArch::X86_64);
+        if (!writer)
+        {
+            err << "error: no native object file writer for this platform\n";
+            result.exit_code = 1;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+
+        if (!writer->write(objPath.string(), *pipelineModule.binaryText,
+                           *pipelineModule.binaryRodata, err))
+        {
+            result.exit_code = 1;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+
+        if (wantsObjectOnly)
+        {
+            result.exit_code = 0;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+
+        // Link: use system linker with .o file and symbol-based context resolution.
+        // Extract external symbols from the CodeSection to determine which runtime
+        // archives are needed — avoids reading assembly text (which doesn't exist).
+        const std::filesystem::path exePath = opts_.output_obj_path.empty()
+                                                  ? deriveExecutablePath(opts_)
+                                                  : std::filesystem::path(opts_.output_obj_path);
+
+        int linkExit = 0;
+#if defined(_WIN32)
+        // Windows: invokeLinker handles .o files fine (no symbol scanning needed).
+        linkExit = invokeLinker(objPath, exePath, opts_.stack_size, out, err);
+#else
+        {
+            std::unordered_set<std::string> extSymbols;
+            for (const auto &sym : pipelineModule.binaryText->symbols())
+            {
+                if (sym.binding == objfile::SymbolBinding::External)
+                    extSymbols.insert(sym.name);
+            }
+
+            common::LinkContext ctx;
+            if (const int rc =
+                    common::prepareLinkContextFromSymbols(extSymbols, ctx, out, err);
+                rc != 0)
+            {
+                result.exit_code = 1;
+                result.stdout_text = out.str();
+                result.stderr_text = err.str();
+                return result;
+            }
+
+            linkExit = linkWithContext(objPath, exePath, opts_.stack_size, ctx, out, err);
+        }
+#endif
+        if (linkExit != 0)
+        {
+            result.exit_code = linkExit == -1 ? 1 : linkExit;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+
+        // Clean up intermediate .o file.
+        {
+            std::error_code ec;
+            std::filesystem::remove(objPath, ec);
+        }
+
+        if (!opts_.run_native)
+        {
+            result.exit_code = 0;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+
+        const int runExit = runExecutable(exePath, out, err);
+        result.exit_code = (runExit == -1) ? 1 : runExit;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
+
+    // --- System assembler path (existing): text assembly → cc -c → .o ---
     if (!pipelineModule.codegenResult)
     {
         err << "error: emit pass did not produce assembly output\n";

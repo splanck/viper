@@ -168,19 +168,14 @@ bool hasComponent(const LinkContext &ctx, RtComponent c)
     return false;
 }
 
-int prepareLinkContext(const std::string &asmPath,
-                       LinkContext &ctx,
-                       std::ostream &out,
-                       std::ostream &err)
+/// @brief Common implementation: resolve components, discover archives, rebuild missing.
+/// @details Shared by both prepareLinkContext (file-based) and
+///          prepareLinkContextFromSymbols (symbol-set-based).
+static int resolveAndBuildArchives(const std::unordered_set<std::string> &symbols,
+                                    LinkContext &ctx,
+                                    std::ostream &out,
+                                    std::ostream &err)
 {
-    std::string asmText;
-    if (!readFileToString(asmPath, asmText))
-    {
-        err << "error: unable to read '" << asmPath << "' for runtime library selection\n";
-        return 1;
-    }
-
-    const std::unordered_set<std::string> symbols = parseRuntimeSymbols(asmText);
     ctx.requiredComponents = resolveRequiredComponents(symbols);
 
     const std::optional<std::filesystem::path> buildDirOpt = findBuildDir();
@@ -230,6 +225,30 @@ int prepareLinkContext(const std::string &asmPath,
     }
 
     return 0;
+}
+
+int prepareLinkContext(const std::string &asmPath,
+                       LinkContext &ctx,
+                       std::ostream &out,
+                       std::ostream &err)
+{
+    std::string asmText;
+    if (!readFileToString(asmPath, asmText))
+    {
+        err << "error: unable to read '" << asmPath << "' for runtime library selection\n";
+        return 1;
+    }
+
+    const std::unordered_set<std::string> symbols = parseRuntimeSymbols(asmText);
+    return resolveAndBuildArchives(symbols, ctx, out, err);
+}
+
+int prepareLinkContextFromSymbols(const std::unordered_set<std::string> &symbols,
+                                   LinkContext &ctx,
+                                   std::ostream &out,
+                                   std::ostream &err)
+{
+    return resolveAndBuildArchives(symbols, ctx, out, err);
 }
 
 void appendArchives(const LinkContext &ctx, std::vector<std::string> &cmd)

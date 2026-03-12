@@ -35,6 +35,7 @@ add_library(il_codegen_aarch64 STATIC
         passes/RegAllocPass.cpp
         passes/PeepholePass.cpp
         passes/EmitPass.cpp
+        passes/BinaryEmitPass.cpp
         passes/SchedulerPass.cpp
         passes/BlockLayoutPass.cpp
         CodegenPipeline.cpp

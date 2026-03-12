@@ -38,6 +38,7 @@ struct PipelineOptions
 {
     bool dumpMirBeforeRA = false;
     bool dumpMirAfterRA = false;
+    bool useBinaryEmit = false; ///< When true, also run BinaryEmitPass after EmitPass.
 };
 
 /// @brief Run the full AArch64 code-generation pipeline.

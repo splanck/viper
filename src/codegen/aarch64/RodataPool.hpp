@@ -46,6 +46,13 @@ class RodataPool
         return nameToLabel_;
     }
 
+    /// @brief Get the ordered (label, content) pairs for binary emission.
+    /// @return Const reference to the insertion-ordered pool entries.
+    const std::vector<std::pair<std::string, std::string>> &entries() const noexcept
+    {
+        return ordered_;
+    }
+
     /// @brief Scan an IL module's globals and pool all string constants.
     /// @details Iterates over all globals in @p mod, identifies string constants,
     ///          deduplicates by content, and records the IL name to label mapping.

@@ -34,10 +34,12 @@
 #include "Peephole.hpp"
 #include "RegAllocLinear.hpp"
 #include "TargetX64.hpp"
+#include "binenc/X64BinaryEncoder.hpp"
 
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstring>
 #include <sstream>
 #include <string_view>
 #include <vector>
@@ -124,6 +126,8 @@ void lowerPendingCalls(MFunction &func,
     assert(planIndex == plans.size() && "call plan count mismatch");
 }
 
+} // close anonymous namespace
+
 /// @brief Execute the per-function Phase A code-generation pipeline.
 ///
 /// @details Converts an IL function into Machine IR, lowers complex operations,
@@ -131,14 +135,7 @@ void lowerPendingCalls(MFunction &func,
 ///          prologue/epilogue code before optionally running peephole
 ///          optimisations.  The resulting Machine IR is ready for assembly
 ///          emission and the frame summary reflects the required stack layout.
-///
-/// @param ilFunc IL function being translated.
-/// @param lowering Shared lowering context reused across functions.
-/// @param target Target description supplying register orderings and ABI facts.
-/// @param options Backend options controlling optimisation behaviour.
-/// @param frame Output parameter that records frame layout requirements.
-/// @param machineFunc Output parameter receiving the transformed Machine IR.
-void runFunctionPipeline(const ILFunction &ilFunc,
+static void runFunctionPipeline(const ILFunction &ilFunc,
                          LowerILToMIR &lowering,
                          const TargetInfo &target,
                          const CodegenOptions &options,
@@ -185,8 +182,8 @@ void runFunctionPipeline(const ILFunction &ilFunc,
 /// @param functions IL functions to translate.
 /// @param options Backend configuration supplied by the caller.
 /// @return Result structure containing assembly text and diagnostic messages.
-CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
-                             const CodegenOptions &options)
+static CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
+                                     const CodegenOptions &options)
 {
     CodegenResult result{};
 
@@ -235,8 +232,6 @@ CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
 
     return result;
 }
-
-} // namespace
 
 /// @brief Convenience wrapper that emits assembly for a single IL function.
 ///
@@ -291,6 +286,62 @@ CodegenResult emitFunctionToAssembly(const ILFunction &func, const CodegenOption
 CodegenResult emitModuleToAssembly(const ILModule &mod, const CodegenOptions &options)
 {
     return emitModuleImpl(mod.funcs, options);
+}
+
+BinaryEmitResult emitModuleToBinary(const ILModule &mod,
+                                     const CodegenOptions &opt,
+                                     bool isDarwin)
+{
+    BinaryEmitResult result{};
+    std::ostringstream errorStream{};
+
+    if (const auto warning = syntaxWarning(opt); !warning.empty())
+    {
+        // Syntax warnings don't apply to binary emission, but keep parity.
+    }
+
+    const TargetInfo &target = hostTarget();
+    AsmEmitter::RoDataPool roData{};
+    LowerILToMIR lowering{target, roData};
+    binenc::X64BinaryEncoder encoder{};
+
+    for (const auto &func : mod.funcs)
+    {
+        FrameInfo frame{};
+        MFunction machineFunc{};
+        runFunctionPipeline(func, lowering, target, opt, frame, machineFunc);
+
+        encoder.encodeFunction(machineFunc, result.text, result.rodata, isDarwin);
+    }
+
+    // Emit rodata: string literals and f64 constants from RoDataPool into the
+    // rodata CodeSection so they can be referenced via RIP-relative LEA.
+    for (int i = 0; i < static_cast<int>(roData.stringCount()); ++i)
+    {
+        std::string label = roData.stringLabel(i);
+        if (isDarwin)
+            label = "_" + label;
+        result.rodata.defineSymbol(label, objfile::SymbolBinding::Local, objfile::SymbolSection::Rodata);
+        const auto &bytes = roData.stringBytes(i);
+        result.rodata.emitBytes(bytes.data(), bytes.size());
+    }
+    // Align to 8 before f64 constants.
+    if (roData.f64Count() > 0)
+        result.rodata.alignTo(8);
+    for (int i = 0; i < static_cast<int>(roData.f64Count()); ++i)
+    {
+        std::string label = roData.f64Label(i);
+        if (isDarwin)
+            label = "_" + label;
+        result.rodata.defineSymbol(label, objfile::SymbolBinding::Local, objfile::SymbolSection::Rodata);
+        double val = roData.f64Value(i);
+        uint64_t bits;
+        std::memcpy(&bits, &val, sizeof(bits));
+        result.rodata.emit64LE(bits);
+    }
+
+    result.errors = errorStream.str();
+    return result;
 }
 
 } // namespace viper::codegen::x64

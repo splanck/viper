@@ -805,8 +805,19 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         emit32(kFCmpRR | (hwFPR(getReg(mi.ops[1])) << 16) | (hwFPR(getReg(mi.ops[0])) << 5), cs);
         return;
     case MOpcode::FMovRR:
-        emit32(encode2Reg(kFMovRR, hwFPR(getReg(mi.ops[0])), hwFPR(getReg(mi.ops[1]))), cs);
+    {
+        PhysReg src = getReg(mi.ops[1]);
+        if (static_cast<uint32_t>(src) <= static_cast<uint32_t>(PhysReg::SP))
+        {
+            // Source is a GPR — emit fmov Dd, Xn (GPR→FPR bit transfer) instead.
+            emit32(encode2Reg(kFMovGR, hwFPR(getReg(mi.ops[0])), hwGPR(src)), cs);
+        }
+        else
+        {
+            emit32(encode2Reg(kFMovRR, hwFPR(getReg(mi.ops[0])), hwFPR(src)), cs);
+        }
         return;
+    }
     case MOpcode::FRintN:
         emit32(encode2Reg(kFRintN, hwFPR(getReg(mi.ops[0])), hwFPR(getReg(mi.ops[1]))), cs);
         return;

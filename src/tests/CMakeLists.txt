@@ -214,6 +214,7 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
             test_aarch64_global_liveness
             test_codegen_arm64_il_opt
             test_codegen_arm64_leaf_func
+            test_codegen_arm64_native_asm
     )
     foreach (_test IN LISTS _AARCH64_CMD_TESTS)
         _aarch64_add_test(${_test}

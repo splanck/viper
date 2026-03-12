@@ -25,6 +25,7 @@
 #include "codegen/aarch64/CodegenPipeline.hpp"
 
 #include "codegen/aarch64/MachineIR.hpp"
+#include "codegen/aarch64/passes/BinaryEmitPass.hpp"
 #include "codegen/aarch64/passes/EmitPass.hpp"
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 #include "codegen/aarch64/passes/PeepholePass.hpp"
@@ -130,6 +131,17 @@ bool runCodegenPipeline(passes::AArch64Module &module, const PipelineOptions &op
     // Phase 5: Assembly Emission
     {
         passes::EmitPass pass;
+        if (!pass.run(module, diags))
+        {
+            diags.flush(std::cerr);
+            return false;
+        }
+    }
+
+    // Phase 6 (optional): Binary Emission
+    if (opts.useBinaryEmit)
+    {
+        passes::BinaryEmitPass pass;
         if (!pass.run(module, diags))
         {
             diags.flush(std::cerr);

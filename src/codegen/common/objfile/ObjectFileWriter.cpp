@@ -16,6 +16,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
+#include "codegen/common/objfile/CoffWriter.hpp"
 #include "codegen/common/objfile/ElfWriter.hpp"
 #include "codegen/common/objfile/MachOWriter.hpp"
 
@@ -31,8 +32,7 @@ std::unique_ptr<ObjectFileWriter> createObjectFileWriter(ObjFormat format, ObjAr
     case ObjFormat::MachO:
         return std::make_unique<MachOWriter>(arch);
     case ObjFormat::COFF:
-        // Phase 6: CoffWriter
-        return nullptr;
+        return std::make_unique<CoffWriter>(arch);
     }
     return nullptr;
 }

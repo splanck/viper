@@ -37,6 +37,13 @@ namespace viper::codegen::x64
 class CodegenPipeline
 {
   public:
+    /// \brief Assembler mode selection.
+    enum class AssemblerMode
+    {
+        System, ///< Use system assembler (cc -c) — default.
+        Native  ///< Use native binary encoder + ObjectFileWriter.
+    };
+
     /// \brief User-configurable options controlling pipeline behaviour.
     struct Options
     {
@@ -48,6 +55,7 @@ class CodegenPipeline
         int optimize = 1; ///< Optimization level: 0 = none, 1 = standard (peephole), 2+ reserved.
         bool run_native = false;    ///< Execute the produced binary after linking when true.
         std::size_t stack_size = 0; ///< Stack size in bytes; 0 means use system default (8MB).
+        AssemblerMode assembler_mode = AssemblerMode::System; ///< Binary encoder vs system assembler.
     };
 
     /// \brief Construct a pipeline configured with @p opts.

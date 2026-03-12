@@ -103,6 +103,19 @@ int prepareLinkContext(const std::string &asmPath,
                        std::ostream &out,
                        std::ostream &err);
 
+/// @brief Prepare a link context from a pre-resolved set of external symbol names.
+/// @details Used by the native assembler path, which already has the symbol table
+///          from the CodeSection. Skips the assembly-scanning step.
+/// @param symbols Set of external symbol names (e.g., "rt_print_i64").
+/// @param ctx Output link context to populate.
+/// @param out Standard output stream for progress messages.
+/// @param err Standard error stream for error messages.
+/// @return 0 on success, non-zero on failure.
+int prepareLinkContextFromSymbols(const std::unordered_set<std::string> &symbols,
+                                   LinkContext &ctx,
+                                   std::ostream &out,
+                                   std::ostream &err);
+
 /// @brief Append required archive paths to a linker command in reverse dependency order.
 /// @param ctx The link context containing resolved archive paths.
 /// @param cmd The command-line vector to append archive paths to.

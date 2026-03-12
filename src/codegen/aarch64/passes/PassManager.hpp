@@ -22,8 +22,10 @@
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/common/Diagnostics.hpp"
 #include "codegen/common/PassManager.hpp"
+#include "codegen/common/objfile/CodeSection.hpp"
 #include "il/core/Module.hpp"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -44,6 +46,10 @@ struct AArch64Module
     std::vector<MFunction> mir;              ///< MIR functions, populated by LoweringPass.
     RodataPool rodataPool;                   ///< Rodata pool, populated by LoweringPass.
     std::string assembly;                    ///< Final assembly text, populated by EmitPass.
+
+    // Binary emission output (populated by BinaryEmitPass).
+    std::optional<objfile::CodeSection> binaryText;   ///< Machine code bytes + relocations.
+    std::optional<objfile::CodeSection> binaryRodata; ///< Read-only data section.
 };
 
 // Backward-compatible aliases — consumers use these names unchanged.

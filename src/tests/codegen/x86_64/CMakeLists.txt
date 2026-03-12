@@ -40,7 +40,8 @@ set(_viper_codegen_x86_64_tests
 list(APPEND _viper_codegen_x86_64_tests
         e2e_bitwise_cli
         e2e_fdiv_cli
-        object_only_cli)
+        object_only_cli
+        native_asm)
 
 foreach (_viper_codegen_case IN LISTS _viper_codegen_x86_64_tests)
     set(_viper_codegen_target test_codegen_x86_64_${_viper_codegen_case})

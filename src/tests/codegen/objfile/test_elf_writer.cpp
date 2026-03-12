@@ -343,9 +343,9 @@ static void testFactory()
     auto writer3 = createObjectFileWriter(ObjFormat::MachO, ObjArch::X86_64);
     CHECK(writer3 != nullptr);
 
-    // COFF not yet implemented
+    // COFF writer (Phase 6)
     auto writer4 = createObjectFileWriter(ObjFormat::COFF, ObjArch::X86_64);
-    CHECK(writer4 == nullptr);
+    CHECK(writer4 != nullptr);
 }
 
 // =============================================================================
