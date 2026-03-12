@@ -288,6 +288,16 @@ static void printPattern(const MatchArm::Pattern &pat, Printer &p)
                 p.line("<null>");
             p.pop();
             break;
+        case MatchArm::Pattern::Kind::Or:
+            p.line("OrPattern");
+            if (!pat.subpatterns.empty())
+            {
+                p.push();
+                for (const auto &sub : pat.subpatterns)
+                    printPattern(sub, p);
+                p.pop();
+            }
+            break;
     }
     if (pat.guard)
     {

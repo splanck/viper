@@ -1107,7 +1107,12 @@ struct MatchArm
 
             /// @brief Expression pattern: evaluates expression and matches if true.
             /// Used for guard-style matching: `match (true) { x > 0 => ... }`
-            Expression
+            Expression,
+
+            /// @brief OR pattern: matches if any subpattern matches.
+            /// Syntax: `1 | 2 | 3 => ...`
+            /// Subpatterns stored in `subpatterns`. No bindings allowed.
+            Or
         };
 
         /// @brief The pattern kind.

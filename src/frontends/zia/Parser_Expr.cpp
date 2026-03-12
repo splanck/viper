@@ -65,13 +65,36 @@ MatchArm::Pattern Parser::parseMatchPattern()
     MatchArm::Pattern pattern;
 
     // Speculatively parse a non-expression pattern and ensure it is followed by
-    // either a guard or the fat arrow, otherwise fall back to expression pattern.
+    // either a pipe (OR), a guard, or the fat arrow; otherwise fall back to expression pattern.
     {
         Speculation speculative(*this);
         MatchArm::Pattern candidate;
-        if (parsePatternCore(candidate) && (check(TokenKind::KwIf) || check(TokenKind::FatArrow)))
+        if (parsePatternCore(candidate) &&
+            (check(TokenKind::KwIf) || check(TokenKind::FatArrow) || check(TokenKind::Pipe)))
         {
             speculative.commit();
+
+            // Check for OR pattern: `pat1 | pat2 | pat3`
+            if (check(TokenKind::Pipe))
+            {
+                MatchArm::Pattern orPattern;
+                orPattern.kind = MatchArm::Pattern::Kind::Or;
+                orPattern.subpatterns.push_back(std::move(candidate));
+
+                while (match(TokenKind::Pipe))
+                {
+                    MatchArm::Pattern alt;
+                    if (!parsePatternCore(alt))
+                    {
+                        error("expected pattern after '|'");
+                        break;
+                    }
+                    orPattern.subpatterns.push_back(std::move(alt));
+                }
+
+                return orPattern;
+            }
+
             return candidate;
         }
     }

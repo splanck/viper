@@ -804,6 +804,24 @@ bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
             }
             return true;
         }
+
+        case MatchArm::Pattern::Kind::Or:
+        {
+            // OR pattern: validate each alternative against the scrutinee type.
+            // No bindings are allowed in OR patterns (ambiguous which alternative bound).
+            for (const auto &subpattern : pattern.subpatterns)
+            {
+                std::unordered_map<std::string, TypeRef> subBindings;
+                analyzeMatchPattern(subpattern, scrutineeType, coverage, subBindings);
+
+                if (!subBindings.empty())
+                {
+                    error(subpattern.literal ? subpattern.literal->loc : SourceLoc{},
+                          "Bindings are not allowed in OR patterns");
+                }
+            }
+            return true;
+        }
     }
 
     return false;

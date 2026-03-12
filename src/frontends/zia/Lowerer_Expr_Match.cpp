@@ -291,6 +291,24 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
             }
             return;
         }
+
+        case MatchArm::Pattern::Kind::Or:
+        {
+            // OR pattern: chain test blocks — each subpattern's failure jumps to
+            // the next subpattern's test. Any subpattern's success jumps to the
+            // shared success block. Last subpattern's failure jumps to failureBlock.
+            for (size_t i = 0; i < pattern.subpatterns.size(); ++i)
+            {
+                bool isLast = (i + 1 == pattern.subpatterns.size());
+                size_t nextAltBlock = isLast ? failureBlock : createBlock("match_or_" + std::to_string(i + 1));
+                emitPatternTest(pattern.subpatterns[i], scrutinee, successBlock, nextAltBlock);
+                if (!isLast)
+                {
+                    setBlock(nextAltBlock);
+                }
+            }
+            return;
+        }
     }
 }
 
@@ -360,6 +378,10 @@ void Lowerer::emitPatternBindings(const MatchArm::Pattern &pattern, const Patter
             }
             return;
         }
+
+        case MatchArm::Pattern::Kind::Or:
+            // OR patterns don't introduce bindings (sema enforces this).
+            return;
 
         default:
             return;
