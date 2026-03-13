@@ -567,7 +567,7 @@ int emitAndMaybeLink(const Options &opts)
             using namespace viper::codegen::objfile;
             auto writer = createObjectFileWriter(detectHostFormat(), ObjArch::AArch64);
             if (!writer->write(objPath.string(),
-                               *pipelineModule.binaryText,
+                               pipelineModule.binaryTextSections,
                                *pipelineModule.binaryRodata,
                                std::cerr))
             {
@@ -597,9 +597,9 @@ int emitAndMaybeLink(const Options &opts)
         }
 
         // Determine executable path.
-        std::filesystem::path exe = opts.output_o
-                                        ? std::filesystem::path(*opts.output_o)
-                                        : std::filesystem::path(opts.input_il).replace_extension("");
+        std::filesystem::path exe =
+            opts.output_o ? std::filesystem::path(*opts.output_o)
+                          : std::filesystem::path(opts.input_il).replace_extension("");
 
         int lrc = 0;
         if (opts.use_native_link)
@@ -612,15 +612,22 @@ int emitAndMaybeLink(const Options &opts)
             viper::codegen::linker::NativeLinkerOptions linkOpts;
             linkOpts.objPath = objPath.string();
             linkOpts.exePath = exe.string();
-            using viper::codegen::RtComponent;
             using viper::codegen::archiveNameForComponent;
-            using viper::codegen::common::runtimeArchivePath;
+            using viper::codegen::RtComponent;
             using viper::codegen::common::fileExists;
+            using viper::codegen::common::runtimeArchivePath;
             static constexpr RtComponent allComponents[] = {
-                RtComponent::Network, RtComponent::Threads, RtComponent::Audio,
-                RtComponent::Graphics, RtComponent::Exec, RtComponent::IoFs,
-                RtComponent::Text, RtComponent::Collections, RtComponent::Arrays,
-                RtComponent::Oop, RtComponent::Base,
+                RtComponent::Network,
+                RtComponent::Threads,
+                RtComponent::Audio,
+                RtComponent::Graphics,
+                RtComponent::Exec,
+                RtComponent::IoFs,
+                RtComponent::Text,
+                RtComponent::Collections,
+                RtComponent::Arrays,
+                RtComponent::Oop,
+                RtComponent::Base,
             };
             for (auto comp : allComponents)
             {

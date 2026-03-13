@@ -26,6 +26,7 @@
 #include <memory>
 #include <ostream>
 #include <string>
+#include <vector>
 
 namespace viper::codegen::objfile
 {
@@ -48,7 +49,7 @@ enum class ObjFormat : uint8_t
 /// Abstract base for object file writers.
 class ObjectFileWriter
 {
-public:
+  public:
     virtual ~ObjectFileWriter() = default;
 
     /// Write a complete .o file to disk.
@@ -61,6 +62,15 @@ public:
                        const CodeSection &text,
                        const CodeSection &rodata,
                        std::ostream &err) = 0;
+
+    /// Write a .o file with per-function text sections.
+    /// Each CodeSection in @p textSections becomes a separate `.text.funcname`
+    /// section in the output, enabling per-function dead stripping at link time.
+    /// Default implementation merges all text sections and calls single-section write().
+    virtual bool write(const std::string &path,
+                       const std::vector<CodeSection> &textSections,
+                       const CodeSection &rodata,
+                       std::ostream &err);
 };
 
 /// Detect the host object file format at compile time.

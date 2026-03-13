@@ -31,7 +31,7 @@ namespace viper::codegen::objfile
 /// ELF object file writer for Linux (x86_64 and AArch64).
 class ElfWriter : public ObjectFileWriter
 {
-public:
+  public:
     explicit ElfWriter(ObjArch arch) : arch_(arch) {}
 
     bool write(const std::string &path,
@@ -39,7 +39,12 @@ public:
                const CodeSection &rodata,
                std::ostream &err) override;
 
-private:
+    bool write(const std::string &path,
+               const std::vector<CodeSection> &textSections,
+               const CodeSection &rodata,
+               std::ostream &err) override;
+
+  private:
     ObjArch arch_;
 };
 

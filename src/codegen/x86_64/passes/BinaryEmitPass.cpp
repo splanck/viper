@@ -52,6 +52,7 @@ bool BinaryEmitPass::run(Module &module, Diagnostics &diags)
 
     module.binaryText = std::move(result.text);
     module.binaryRodata = std::move(result.rodata);
+    module.binaryTextSections = std::move(result.textSections);
     return true;
 }
 

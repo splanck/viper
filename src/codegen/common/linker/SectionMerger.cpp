@@ -17,21 +17,19 @@
 
 #include "codegen/common/linker/SectionMerger.hpp"
 
+#include "codegen/common/linker/AlignUtil.hpp"
+
 #include <algorithm>
 #include <map>
 
 namespace viper::codegen::linker
 {
 
-static size_t alignUp(size_t val, size_t align)
-{
-    if (align == 0)
-        return val;
-    return (val + align - 1) & ~(align - 1);
-}
-
-bool mergeSections(const std::vector<ObjFile> &objects, LinkPlatform platform, LinkArch arch,
-                   LinkLayout &layout, std::ostream & /*err*/)
+bool mergeSections(const std::vector<ObjFile> &objects,
+                   LinkPlatform platform,
+                   LinkArch arch,
+                   LinkLayout &layout,
+                   std::ostream & /*err*/)
 {
     // Determine page size.
     if (platform == LinkPlatform::macOS && arch == LinkArch::AArch64)
@@ -47,6 +45,7 @@ bool mergeSections(const std::vector<ObjFile> &objects, LinkPlatform platform, L
         SectionClass cls;
         uint32_t alignment;
     };
+
     std::vector<PendingChunk> pending;
 
     for (size_t oi = 0; oi < objects.size(); ++oi)
@@ -65,9 +64,20 @@ bool mergeSections(const std::vector<ObjFile> &objects, LinkPlatform platform, L
         }
     }
 
+    // Sort chunks by alignment descending within each class to minimize padding.
+    // Higher-alignment chunks placed first reduce wasted inter-chunk padding.
+    std::stable_sort(pending.begin(),
+                     pending.end(),
+                     [](const PendingChunk &a, const PendingChunk &b)
+                     {
+                         if (a.cls != b.cls)
+                             return false; // Preserve inter-class ordering.
+                         return a.alignment > b.alignment;
+                     });
+
     // Create output sections in order.
-    auto addOutputSection = [&](SectionClass cls, const char *name, bool exec, bool write,
-                                bool tls) -> OutputSection &
+    auto addOutputSection =
+        [&](SectionClass cls, const char *name, bool exec, bool write, bool tls) -> OutputSection &
     {
         layout.sections.push_back({});
         auto &out = layout.sections.back();
@@ -244,16 +254,16 @@ bool mergeSections(const std::vector<ObjFile> &objects, LinkPlatform platform, L
     uint64_t baseAddr;
     switch (platform)
     {
-    case LinkPlatform::macOS:
-        baseAddr = 0x100000000ULL;
-        break;
-    case LinkPlatform::Windows:
-        baseAddr = 0x140000000ULL;
-        break;
-    case LinkPlatform::Linux:
-    default:
-        baseAddr = 0x400000ULL;
-        break;
+        case LinkPlatform::macOS:
+            baseAddr = 0x100000000ULL;
+            break;
+        case LinkPlatform::Windows:
+            baseAddr = 0x140000000ULL;
+            break;
+        case LinkPlatform::Linux:
+        default:
+            baseAddr = 0x400000ULL;
+            break;
     }
 
     uint64_t currentAddr = baseAddr;

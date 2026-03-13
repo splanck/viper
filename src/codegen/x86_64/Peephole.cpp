@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace viper::codegen::x64
@@ -52,12 +53,16 @@ struct PeepholeStats
     std::size_t branchesToNextRemoved{0};
     std::size_t deadCodeEliminated{0};
     std::size_t coldBlocksMoved{0};
+    std::size_t branchesInverted{0};
+    std::size_t blocksReordered{0};
+    std::size_t branchChainsEliminated{0};
 
     [[nodiscard]] std::size_t total() const noexcept
     {
         return movZeroToXor + cmpZeroToTest + arithmeticIdentities + strengthReductions +
                identityMovesRemoved + consecutiveMovsFolded + branchesToNextRemoved +
-               deadCodeEliminated + coldBlocksMoved;
+               deadCodeEliminated + coldBlocksMoved + branchesInverted + blocksReordered +
+               branchChainsEliminated;
     }
 };
 
@@ -545,6 +550,33 @@ void rewriteToTest(MInstr &instr, Operand regOperand)
                     return false;
                 ++stats.arithmeticIdentities;
                 return true;
+            }
+            break;
+
+        case MOpcode::ORri:
+        case MOpcode::XORri:
+            // or reg, #0 -> no-op | xor reg, #0 -> no-op (but sets flags)
+            if (instr.operands.size() == 2 && isZeroImm(instr.operands[1]))
+            {
+                if (nextInstrReadsFlags(instrs, idx))
+                    return false;
+                ++stats.arithmeticIdentities;
+                return true;
+            }
+            break;
+
+        case MOpcode::ANDri:
+            // and reg, #-1 -> no-op (AND with all-ones is identity, but sets flags)
+            if (instr.operands.size() == 2)
+            {
+                const auto *imm = std::get_if<OpImm>(&instr.operands[1]);
+                if (imm && imm->val == -1)
+                {
+                    if (nextInstrReadsFlags(instrs, idx))
+                        return false;
+                    ++stats.arithmeticIdentities;
+                    return true;
+                }
             }
             break;
 
@@ -1149,7 +1181,87 @@ std::size_t runPeepholes(MFunction &fn)
         runBlockDCE(instrs, stats);
     }
 
-    // Pass 6: Block layout optimization - move cold blocks to the end
+    // Pass 6: Greedy trace block layout — follow JMP targets to maximize fall-through
+    // This creates longer straight-line traces so that Pass 9's fallthrough JMP elimination
+    // can remove more branches. Entry block always stays first.
+    if (fn.blocks.size() > 2)
+    {
+        const auto n = fn.blocks.size();
+
+        // Build label → index map.
+        std::unordered_map<std::string, std::size_t> nameToIdx;
+        nameToIdx.reserve(n);
+        for (std::size_t i = 0; i < n; ++i)
+            nameToIdx[fn.blocks[i].label] = i;
+
+        std::vector<bool> placed(n, false);
+        std::vector<std::size_t> order;
+        order.reserve(n);
+
+        // Seed with entry block.
+        std::size_t cur = 0;
+        while (order.size() < n)
+        {
+            if (!placed[cur])
+            {
+                placed[cur] = true;
+                order.push_back(cur);
+
+                // Follow unconditional JMP target to extend the trace.
+                const auto &instrs = fn.blocks[cur].instructions;
+                if (!instrs.empty() && instrs.back().opcode == MOpcode::JMP)
+                {
+                    const auto *lbl = std::get_if<OpLabel>(&instrs.back().operands[0]);
+                    if (lbl)
+                    {
+                        auto it = nameToIdx.find(lbl->name);
+                        if (it != nameToIdx.end() && !placed[it->second])
+                        {
+                            cur = it->second;
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            // Find next unplaced block.
+            bool found = false;
+            for (std::size_t i = 0; i < n; ++i)
+            {
+                if (!placed[i])
+                {
+                    cur = i;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                break;
+        }
+
+        // Check if reordering changed anything.
+        bool changed = false;
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            if (order[i] != i)
+            {
+                changed = true;
+                break;
+            }
+        }
+
+        if (changed)
+        {
+            std::vector<MBasicBlock> reordered;
+            reordered.reserve(n);
+            for (std::size_t idx : order)
+                reordered.push_back(std::move(fn.blocks[idx]));
+            fn.blocks = std::move(reordered);
+            stats.blocksReordered += n;
+        }
+    }
+
+    // Pass 7: Block layout optimization - move cold blocks to the end
     // Cold blocks are those containing UD2 (trap) or with labels suggesting error handling
     if (fn.blocks.size() > 2)
     {
@@ -1215,7 +1327,126 @@ std::size_t runPeepholes(MFunction &fn)
         }
     }
 
-    // Pass 7: Remove jumps to the immediately following block
+    // Pass 8: Branch chain elimination
+    // If JMP .L1 where .L1 is a single-JMP block targeting .L2, retarget to .L2.
+    // Same for JCC targets. Resolves chains up to 8 hops to avoid infinite loops.
+    {
+        // Build forwarding map: label → ultimate JMP target for single-JMP blocks.
+        std::unordered_map<std::string, std::string> forwarding;
+        for (const auto &block : fn.blocks)
+        {
+            if (block.instructions.size() == 1 && block.instructions[0].opcode == MOpcode::JMP)
+            {
+                const auto *lbl = std::get_if<OpLabel>(&block.instructions[0].operands[0]);
+                if (lbl)
+                    forwarding[block.label] = lbl->name;
+            }
+        }
+
+        // Resolve chains (limit hops to avoid cycles from self-loops).
+        for (auto &[label, target] : forwarding)
+        {
+            for (int hops = 0; hops < 8; ++hops)
+            {
+                auto it = forwarding.find(target);
+                if (it == forwarding.end() || it->second == target)
+                    break;
+                target = it->second;
+            }
+        }
+
+        // Retarget branches.
+        if (!forwarding.empty())
+        {
+            for (auto &block : fn.blocks)
+            {
+                if (block.instructions.empty())
+                    continue;
+                auto &last = block.instructions.back();
+                if (last.opcode == MOpcode::JMP)
+                {
+                    auto *lbl = std::get_if<OpLabel>(&last.operands[0]);
+                    if (lbl)
+                    {
+                        auto it = forwarding.find(lbl->name);
+                        if (it != forwarding.end() && it->second != lbl->name)
+                        {
+                            lbl->name = it->second;
+                            ++stats.branchChainsEliminated;
+                        }
+                    }
+                }
+                else if (last.opcode == MOpcode::JCC && last.operands.size() >= 2)
+                {
+                    auto *lbl = std::get_if<OpLabel>(&last.operands[1]);
+                    if (lbl)
+                    {
+                        auto it = forwarding.find(lbl->name);
+                        if (it != forwarding.end() && it->second != lbl->name)
+                        {
+                            lbl->name = it->second;
+                            ++stats.branchChainsEliminated;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Pass 9: Conditional branch inversion (from Phase 3)
+    // Pattern:  JCC(cc, label_skip) / JMP(label_exit) where label_skip is the next block
+    // Rewrite:  JCC(invert(cc), label_exit) — saves 5 bytes (eliminates JMP)
+    for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi)
+    {
+        auto &block = fn.blocks[bi];
+        const auto &nextBlock = fn.blocks[bi + 1];
+
+        if (block.instructions.size() < 2)
+            continue;
+
+        auto &secondToLast = block.instructions[block.instructions.size() - 2];
+        auto &last = block.instructions[block.instructions.size() - 1];
+
+        // Check: second-to-last is JCC, last is JMP.
+        if (secondToLast.opcode != MOpcode::JCC || last.opcode != MOpcode::JMP)
+            continue;
+
+        // JCC operands: {OpImm(cc), OpLabel(target)}
+        if (secondToLast.operands.size() < 2 || last.operands.size() < 1)
+            continue;
+
+        // Check: JCC target is the next block's label (i.e., it skips over the JMP).
+        const auto *jccLabel = std::get_if<OpLabel>(&secondToLast.operands[1]);
+        if (!jccLabel || jccLabel->name != nextBlock.label)
+            continue;
+
+        // Get the JMP target — this becomes the inverted JCC target.
+        const auto *jmpLabel = std::get_if<OpLabel>(&last.operands[0]);
+        if (!jmpLabel)
+            continue;
+
+        // Invert the condition code.
+        const auto *ccImm = std::get_if<OpImm>(&secondToLast.operands[0]);
+        if (!ccImm)
+            continue;
+
+        // Viper CC inversion table:
+        //  0 (eq) <-> 1 (ne), 2 (lt) <-> 5 (ge), 3 (le) <-> 4 (gt)
+        //  6 (a)  <-> 9 (be), 7 (ae) <-> 8 (b),  10 (p) <-> 11 (np)
+        //  12 (o) <-> 13 (no)
+        constexpr int kInvertTable[] = {1, 0, 5, 4, 3, 2, 9, 8, 7, 6, 11, 10, 13, 12};
+        int cc = static_cast<int>(ccImm->val);
+        if (cc < 0 || cc > 13)
+            continue;
+
+        // Rewrite: JCC(invCC, jmpTarget)
+        secondToLast.operands[0] = OpImm{kInvertTable[cc]};
+        secondToLast.operands[1] = *jmpLabel;
+        block.instructions.pop_back(); // Remove JMP.
+        ++stats.branchesInverted;
+    }
+
+    // Pass 10: Remove jumps to the immediately following block
     for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi)
     {
         auto &block = fn.blocks[bi];

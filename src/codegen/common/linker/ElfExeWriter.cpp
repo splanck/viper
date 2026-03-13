@@ -18,6 +18,8 @@
 
 #include "codegen/common/linker/ElfExeWriter.hpp"
 
+#include "codegen/common/linker/AlignUtil.hpp"
+
 #include <cstring>
 #include <fstream>
 
@@ -94,16 +96,11 @@ struct Elf64_Shdr
     uint64_t sh_entsize = 0;
 };
 
-size_t alignUp(size_t val, size_t align)
-{
-    if (align == 0)
-        return val;
-    return (val + align - 1) & ~(align - 1);
-}
-
 } // anonymous namespace
 
-bool writeElfExe(const std::string &path, const LinkLayout &layout, LinkArch arch,
+bool writeElfExe(const std::string &path,
+                 const LinkLayout &layout,
+                 LinkArch arch,
                  std::ostream &err)
 {
     std::ofstream f(path, std::ios::binary);
@@ -131,8 +128,8 @@ bool writeElfExe(const std::string &path, const LinkLayout &layout, LinkArch arc
     const size_t ehdrSize = sizeof(Elf64_Ehdr);
     const size_t phdrTableSize = numPhdrs * sizeof(Elf64_Phdr);
 
-    // Section headers: null + each output section + .shstrtab.
-    const uint16_t numShdrs = static_cast<uint16_t>(layout.sections.size() + 2);
+    // Section headers: null + each output section + .note.GNU-stack + .shstrtab.
+    const uint16_t numShdrs = static_cast<uint16_t>(layout.sections.size() + 3);
 
     // Compute file offsets for each segment.
     struct SegmentInfo
@@ -144,6 +141,7 @@ bool writeElfExe(const std::string &path, const LinkLayout &layout, LinkArch arc
         size_t memSize;
         uint32_t flags;
     };
+
     std::vector<SegmentInfo> segments;
 
     size_t filePos = alignUp(ehdrSize + phdrTableSize, pageSize);
@@ -153,13 +151,22 @@ bool writeElfExe(const std::string &path, const LinkLayout &layout, LinkArch arc
         const auto &sec = layout.sections[idx];
         filePos = alignUp(filePos, pageSize);
 
+        // W^X: reject sections that are both writable and executable.
+        if (sec.executable && sec.writable)
+        {
+            err << "error: section '" << sec.name
+                << "' is both writable and executable (W^X violation)\n";
+            return false;
+        }
+
         uint32_t flags = PF_R;
         if (sec.executable)
             flags |= PF_X;
         if (sec.writable)
             flags |= PF_W;
 
-        segments.push_back({idx, filePos, sec.virtualAddr, sec.data.size(), sec.data.size(), flags});
+        segments.push_back(
+            {idx, filePos, sec.virtualAddr, sec.data.size(), sec.data.size(), flags});
         filePos += sec.data.size();
     }
 
@@ -173,6 +180,9 @@ bool writeElfExe(const std::string &path, const LinkLayout &layout, LinkArch arc
         shstrtab += sec.name;
         shstrtab.push_back('\0');
     }
+    const uint32_t gnuStackNameOff = static_cast<uint32_t>(shstrtab.size());
+    shstrtab += ".note.GNU-stack";
+    shstrtab.push_back('\0');
     const uint32_t shstrtabNameOff = static_cast<uint32_t>(shstrtab.size());
     shstrtab += ".shstrtab";
     shstrtab.push_back('\0');
@@ -296,6 +306,15 @@ bool writeElfExe(const std::string &path, const LinkLayout &layout, LinkArch arc
         f.write(reinterpret_cast<const char *>(&shdr), sizeof(shdr));
     }
 
+    // .note.GNU-stack section header (marks non-executable stack).
+    {
+        Elf64_Shdr shdr{};
+        shdr.sh_name = gnuStackNameOff;
+        shdr.sh_type = SHT_PROGBITS;
+        shdr.sh_addralign = 1;
+        f.write(reinterpret_cast<const char *>(&shdr), sizeof(shdr));
+    }
+
     // .shstrtab section header.
     {
         Elf64_Shdr shdr{};
@@ -316,12 +335,13 @@ bool writeElfExe(const std::string &path, const LinkLayout &layout, LinkArch arc
     // Make executable on Unix.
 #if !defined(_WIN32)
     std::error_code ec;
-    std::filesystem::permissions(path,
-                                 std::filesystem::perms::owner_exec | std::filesystem::perms::owner_read |
-                                     std::filesystem::perms::owner_write | std::filesystem::perms::group_read |
-                                     std::filesystem::perms::group_exec | std::filesystem::perms::others_read |
-                                     std::filesystem::perms::others_exec,
-                                 ec);
+    std::filesystem::permissions(
+        path,
+        std::filesystem::perms::owner_exec | std::filesystem::perms::owner_read |
+            std::filesystem::perms::owner_write | std::filesystem::perms::group_read |
+            std::filesystem::perms::group_exec | std::filesystem::perms::others_read |
+            std::filesystem::perms::others_exec,
+        ec);
 #endif
 
     return true;

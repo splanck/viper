@@ -18,6 +18,8 @@
 
 #include "codegen/common/linker/PeExeWriter.hpp"
 
+#include "codegen/common/linker/AlignUtil.hpp"
+
 #include <cstring>
 #include <fstream>
 
@@ -30,12 +32,13 @@ namespace
 static constexpr uint16_t IMAGE_FILE_MACHINE_AMD64 = 0x8664;
 static constexpr uint16_t IMAGE_FILE_MACHINE_ARM64 = 0xAA64;
 
-size_t alignUp(size_t val, size_t align)
-{
-    if (align == 0)
-        return val;
-    return (val + align - 1) & ~(align - 1);
-}
+// DllCharacteristics flags (PE Optional Header).
+static constexpr uint16_t kDllCharHighEntropyVA = 0x0020;
+static constexpr uint16_t kDllCharDynamicBase = 0x0040;
+static constexpr uint16_t kDllCharNXCompat = 0x0100;
+static constexpr uint16_t kDllCharTermServerAware = 0x8000;
+static constexpr uint16_t kDllCharacteristics =
+    kDllCharHighEntropyVA | kDllCharDynamicBase | kDllCharNXCompat | kDllCharTermServerAware;
 
 void write16(std::vector<uint8_t> &buf, uint16_t v)
 {
@@ -64,8 +67,11 @@ void writePad(std::vector<uint8_t> &buf, size_t count)
 
 } // anonymous namespace
 
-bool writePeExe(const std::string &path, const LinkLayout &layout, LinkArch arch,
-                const std::vector<DllImport> & /*imports*/, std::ostream &err)
+bool writePeExe(const std::string &path,
+                const LinkLayout &layout,
+                LinkArch arch,
+                const std::vector<DllImport> & /*imports*/,
+                std::ostream &err)
 {
     const uint16_t machine =
         (arch == LinkArch::AArch64) ? IMAGE_FILE_MACHINE_ARM64 : IMAGE_FILE_MACHINE_AMD64;
@@ -97,10 +103,10 @@ bool writePeExe(const std::string &path, const LinkLayout &layout, LinkArch arch
 
     write16(file, machine);
     write16(file, numSections);
-    write32(file, 0); // TimeDateStamp
-    write32(file, 0); // PointerToSymbolTable
-    write32(file, 0); // NumberOfSymbols
-    write16(file, 240); // SizeOfOptionalHeader (PE32+)
+    write32(file, 0);      // TimeDateStamp
+    write32(file, 0);      // PointerToSymbolTable
+    write32(file, 0);      // NumberOfSymbols
+    write16(file, 240);    // SizeOfOptionalHeader (PE32+)
     write16(file, 0x0022); // Characteristics: EXECUTABLE_IMAGE | LARGE_ADDRESS_AWARE
 
     // === Optional Header (PE32+, 240 bytes) ===
@@ -142,7 +148,7 @@ bool writePeExe(const std::string &path, const LinkLayout &layout, LinkArch arch
         if (sec.data.empty())
             continue;
         uint32_t secEnd = static_cast<uint32_t>(sec.virtualAddr - imageBase +
-                                                 alignUp(sec.data.size(), sectionAlignment));
+                                                alignUp(sec.data.size(), sectionAlignment));
         if (secEnd > sizeOfImage)
             sizeOfImage = secEnd;
     }
@@ -153,15 +159,16 @@ bool writePeExe(const std::string &path, const LinkLayout &layout, LinkArch arch
     const uint32_t sizeOfHeaders = static_cast<uint32_t>(alignUp(headersEnd, fileAlignment));
     write32(file, sizeOfHeaders);
 
-    write32(file, 0); // CheckSum
-    write16(file, 3); // Subsystem: IMAGE_SUBSYSTEM_WINDOWS_CUI
-    write16(file, 0x8160); // DllCharacteristics: DYNAMIC_BASE | NX_COMPAT | TERMINAL_SERVER_AWARE | HIGH_ENTROPY_VA
-    write64(file, 0x100000); // SizeOfStackReserve (1MB)
-    write64(file, 0x1000);   // SizeOfStackCommit
-    write64(file, 0x100000); // SizeOfHeapReserve
-    write64(file, 0x1000);   // SizeOfHeapCommit
-    write32(file, 0);        // LoaderFlags
-    write32(file, 16);       // NumberOfRvaAndSizes
+    write32(file, 0);                   // CheckSum
+    write16(file, 3);                   // Subsystem: IMAGE_SUBSYSTEM_WINDOWS_CUI
+    write16(file, kDllCharacteristics); // HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT |
+                                        // TERMINAL_SERVER_AWARE
+    write64(file, 0x100000);            // SizeOfStackReserve (1MB)
+    write64(file, 0x1000);              // SizeOfStackCommit
+    write64(file, 0x100000);            // SizeOfHeapReserve
+    write64(file, 0x1000);              // SizeOfHeapCommit
+    write32(file, 0);                   // LoaderFlags
+    write32(file, 16);                  // NumberOfRvaAndSizes
 
     // Data directories (16 entries × 8 bytes = 128 bytes).
     for (int i = 0; i < 16; ++i)
@@ -180,6 +187,7 @@ bool writePeExe(const std::string &path, const LinkLayout &layout, LinkArch arch
         uint32_t pointerToRawData;
         uint32_t characteristics;
     };
+
     std::vector<PeSection> peSections;
 
     uint32_t currentFileOff = sizeOfHeaders;

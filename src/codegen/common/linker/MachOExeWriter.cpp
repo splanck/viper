@@ -19,11 +19,20 @@
 //   - LC_DYLD_INFO_ONLY: non-lazy bind opcodes for GOT entries
 //   - Section addresses match SectionMerger-assigned VAs exactly
 //   - Page alignment: 16KB for arm64, 4KB for x86_64
+// Security features:
+//   - MH_PIE: ASLR — kernel randomizes load address on each execution
+//   - __PAGEZERO: null-pointer dereference guard (4GB unmapped region)
+//   - CS_LINKER_SIGNED: ad-hoc code signature (arm64) — required by AMFI
+//   - W^X: __TEXT is R+X, __DATA is R+W — no segment is both writable
+//     and executable
+//   - Non-lazy binding: GOT entries resolved by dyld before main() runs
 // Links: codegen/common/linker/MachOExeWriter.hpp
 //
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/linker/MachOExeWriter.hpp"
+
+#include "codegen/common/linker/AlignUtil.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -89,13 +98,6 @@ static constexpr uint8_t BIND_OPCODE_SET_TYPE_IMM = 0x50;
 static constexpr uint8_t BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB = 0x70;
 static constexpr uint8_t BIND_OPCODE_DO_BIND = 0x90;
 static constexpr uint8_t BIND_TYPE_POINTER = 1;
-
-size_t alignUp(size_t val, size_t align)
-{
-    if (align == 0)
-        return val;
-    return (val + align - 1) & ~(align - 1);
-}
 
 void writeLE32(std::vector<uint8_t> &buf, uint32_t v)
 {
@@ -177,10 +179,10 @@ void sha256(const uint8_t *data, size_t len, uint8_t out[32])
 /// The CS_LINKER_SIGNED flag is critical: macOS AMFI rejects ad-hoc binaries
 /// without it. Only linkers are supposed to set this flag (codesign doesn't).
 std::vector<uint8_t> buildCodeSignature(const std::vector<uint8_t> &file,
-                                         size_t codeLimit,
-                                         const std::string &identifier,
-                                         uint64_t textSegFileOff,
-                                         uint64_t textSegFileSize)
+                                        size_t codeLimit,
+                                        const std::string &identifier,
+                                        uint64_t textSegFileOff,
+                                        uint64_t textSegFileSize)
 {
     // CodeDirectory constants (all big-endian in output).
     static constexpr uint32_t CSMAGIC_EMBEDDED_SIGNATURE = 0xFADE0CC0;
@@ -193,7 +195,7 @@ std::vector<uint8_t> buildCodeSignature(const std::vector<uint8_t> &file,
 
     const uint32_t nCodeSlots = static_cast<uint32_t>((codeLimit + 4095) / 4096);
     const size_t identLen = identifier.size() + 1; // including NUL
-    const uint32_t cdHeaderSize = 88; // version 0x20400 struct size
+    const uint32_t cdHeaderSize = 88;              // version 0x20400 struct size
     const uint32_t hashOffset = static_cast<uint32_t>(cdHeaderSize + identLen);
     const uint32_t cdSize = hashOffset + nCodeSlots * 32;
 
@@ -204,22 +206,22 @@ std::vector<uint8_t> buildCodeSignature(const std::vector<uint8_t> &file,
     writeBE32(cd, cdSize);
     writeBE32(cd, CD_VERSION);
     writeBE32(cd, CS_ADHOC | CS_LINKER_SIGNED);
-    writeBE32(cd, hashOffset);         // hashOffset
-    writeBE32(cd, cdHeaderSize);       // identOffset
-    writeBE32(cd, 0);                  // nSpecialSlots
+    writeBE32(cd, hashOffset);   // hashOffset
+    writeBE32(cd, cdHeaderSize); // identOffset
+    writeBE32(cd, 0);            // nSpecialSlots
     writeBE32(cd, nCodeSlots);
     writeBE32(cd, static_cast<uint32_t>(codeLimit));
-    cd.push_back(32);                  // hashSize (SHA-256)
-    cd.push_back(2);                   // hashType (SHA-256)
-    cd.push_back(0);                   // platform
-    cd.push_back(12);                  // pageSize (log2 4096)
-    writeBE32(cd, 0);                  // spare2
-    writeBE32(cd, 0);                  // scatterOffset (v >= 0x20100)
-    writeBE32(cd, 0);                  // teamOffset (v >= 0x20200)
-    writeBE32(cd, 0);                  // spare3 (v >= 0x20300)
-    writeBE64(cd, codeLimit);          // codeLimit64
-    writeBE64(cd, textSegFileOff);     // execSegBase (v >= 0x20400)
-    writeBE64(cd, textSegFileSize);    // execSegLimit
+    cd.push_back(32);                      // hashSize (SHA-256)
+    cd.push_back(2);                       // hashType (SHA-256)
+    cd.push_back(0);                       // platform
+    cd.push_back(12);                      // pageSize (log2 4096)
+    writeBE32(cd, 0);                      // spare2
+    writeBE32(cd, 0);                      // scatterOffset (v >= 0x20100)
+    writeBE32(cd, 0);                      // teamOffset (v >= 0x20200)
+    writeBE32(cd, 0);                      // spare3 (v >= 0x20300)
+    writeBE64(cd, codeLimit);              // codeLimit64
+    writeBE64(cd, textSegFileOff);         // execSegBase (v >= 0x20400)
+    writeBE64(cd, textSegFileSize);        // execSegLimit
     writeBE64(cd, CS_EXECSEG_MAIN_BINARY); // execSegFlags
 
     // Identifier string.
@@ -391,9 +393,12 @@ void buildSymtab(std::vector<uint8_t> &symtabData,
 
 } // anonymous namespace
 
-bool writeMachOExe(const std::string &path, const LinkLayout &layout, LinkArch arch,
+bool writeMachOExe(const std::string &path,
+                   const LinkLayout &layout,
+                   LinkArch arch,
                    const std::vector<DylibImport> &dylibs,
-                   const std::unordered_set<std::string> & /*dynSyms*/, std::ostream &err)
+                   const std::unordered_set<std::string> & /*dynSyms*/,
+                   std::ostream &err)
 {
     const size_t pageSize = layout.pageSize;
     const bool isArm64 = (arch == LinkArch::AArch64);
@@ -477,48 +482,60 @@ bool writeMachOExe(const std::string &path, const LinkLayout &layout, LinkArch a
     uint32_t ncmds = 0;
     uint32_t sizeofcmds = 0;
 
-    ncmds++; sizeofcmds += 72; // __PAGEZERO
+    ncmds++;
+    sizeofcmds += 72; // __PAGEZERO
 
     const uint32_t textSecCount = static_cast<uint32_t>(textSections.size());
-    ncmds++; sizeofcmds += 72 + textSecCount * 80; // __TEXT
+    ncmds++;
+    sizeofcmds += 72 + textSecCount * 80; // __TEXT
 
     const uint32_t dataSecCount = static_cast<uint32_t>(dataSections.size());
     if (!dataSections.empty())
     {
-        ncmds++; sizeofcmds += 72 + dataSecCount * 80; // __DATA
+        ncmds++;
+        sizeofcmds += 72 + dataSecCount * 80; // __DATA
     }
 
-    ncmds++; sizeofcmds += 72; // __LINKEDIT
+    ncmds++;
+    sizeofcmds += 72; // __LINKEDIT
 
     const char *dylinkerPath = "/usr/lib/dyld";
     const size_t dylinkerCmdSize = alignUp(12 + std::strlen(dylinkerPath) + 1, 8);
-    ncmds++; sizeofcmds += static_cast<uint32_t>(dylinkerCmdSize); // LC_LOAD_DYLINKER
+    ncmds++;
+    sizeofcmds += static_cast<uint32_t>(dylinkerCmdSize); // LC_LOAD_DYLINKER
 
-    ncmds++; sizeofcmds += 24; // LC_MAIN
+    ncmds++;
+    sizeofcmds += 24; // LC_MAIN
 
     std::vector<size_t> dylibCmdSizes;
     for (const auto &dl : dylibs)
     {
         size_t cmdSize = alignUp(24 + dl.path.size() + 1, 8);
         dylibCmdSizes.push_back(cmdSize);
-        ncmds++; sizeofcmds += static_cast<uint32_t>(cmdSize);
+        ncmds++;
+        sizeofcmds += static_cast<uint32_t>(cmdSize);
     }
 
-    ncmds++; sizeofcmds += 24; // LC_SYMTAB
-    ncmds++; sizeofcmds += 80; // LC_DYSYMTAB
+    ncmds++;
+    sizeofcmds += 24; // LC_SYMTAB
+    ncmds++;
+    sizeofcmds += 80; // LC_DYSYMTAB
 
     if (hasDynamic)
     {
-        ncmds++; sizeofcmds += 48; // LC_DYLD_INFO_ONLY
+        ncmds++;
+        sizeofcmds += 48; // LC_DYLD_INFO_ONLY
     }
 
-    ncmds++; sizeofcmds += 24; // LC_BUILD_VERSION
+    ncmds++;
+    sizeofcmds += 24; // LC_BUILD_VERSION
 
     // LC_CODE_SIGNATURE (arm64 macOS requires ad-hoc code signing).
     const bool needsCodeSign = isArm64;
     if (needsCodeSign)
     {
-        ncmds++; sizeofcmds += 16; // LC_CODE_SIGNATURE
+        ncmds++;
+        sizeofcmds += 16; // LC_CODE_SIGNATURE
     }
 
     const size_t headerSize = 32;
@@ -592,12 +609,11 @@ bool writeMachOExe(const std::string &path, const LinkLayout &layout, LinkArch a
         codeSignSize = 28 + cdSize + 12; // SuperBlob(28) + CodeDirectory + Requirements(12)
     }
 
-    const size_t linkeditTotalSize = needsCodeSign
-        ? (codeSignOff - linkeditFileOff + codeSignSize)
-        : linkeditDataSize;
+    const size_t linkeditTotalSize =
+        needsCodeSign ? (codeSignOff - linkeditFileOff + codeSignSize) : linkeditDataSize;
     const size_t linkeditFileSize = alignUp(linkeditTotalSize, pageSize);
-    const uint64_t linkeditVmAddr = textSegVmAddr + textSegVmSize +
-                                     (dataSections.empty() ? 0 : dataSegVmSize);
+    const uint64_t linkeditVmAddr =
+        textSegVmAddr + textSegVmSize + (dataSections.empty() ? 0 : dataSegVmSize);
     const uint64_t linkeditVmSize = alignUp(linkeditTotalSize, pageSize);
 
     // Offsets within __LINKEDIT.
@@ -650,8 +666,10 @@ bool writeMachOExe(const std::string &path, const LinkLayout &layout, LinkArch a
     writeLE64(file, pagezeroSize);
     writeLE64(file, 0);
     writeLE64(file, 0);
-    writeLE32(file, 0); writeLE32(file, 0);
-    writeLE32(file, 0); writeLE32(file, 0);
+    writeLE32(file, 0);
+    writeLE32(file, 0);
+    writeLE32(file, 0);
+    writeLE32(file, 0);
 
     // --- __TEXT ---
     writeLE32(file, LC_SEGMENT_64);
@@ -695,10 +713,13 @@ bool writeMachOExe(const std::string &path, const LinkLayout &layout, LinkArch a
         writeLE64(file, sec.data.size());
         writeLE32(file, secFileOff);
         writeLE32(file, 0); // align (log2)
-        writeLE32(file, 0); writeLE32(file, 0); // reloff, nreloc
+        writeLE32(file, 0);
+        writeLE32(file, 0); // reloff, nreloc
         uint32_t flags = sec.executable ? 0x80000400u : 0u;
         writeLE32(file, flags);
-        writeLE32(file, 0); writeLE32(file, 0); writeLE32(file, 0); // reserved
+        writeLE32(file, 0);
+        writeLE32(file, 0);
+        writeLE32(file, 0); // reserved
     }
 
     // --- __DATA ---
@@ -719,8 +740,8 @@ bool writeMachOExe(const std::string &path, const LinkLayout &layout, LinkArch a
         for (size_t idx : dataSections)
         {
             const auto &sec = layout.sections[idx];
-            uint32_t secFileOff = static_cast<uint32_t>(
-                dataFileOff + (sec.virtualAddr - dataSegVmAddr));
+            uint32_t secFileOff =
+                static_cast<uint32_t>(dataFileOff + (sec.virtualAddr - dataSegVmAddr));
 
             // Choose section name and type flags.
             std::string machoSecName = "__data";
@@ -764,9 +785,12 @@ bool writeMachOExe(const std::string &path, const LinkLayout &layout, LinkArch a
             writeLE64(file, sec.data.size());
             writeLE32(file, isZerofill ? 0 : secFileOff);
             writeLE32(file, 0); // align
-            writeLE32(file, 0); writeLE32(file, 0); // reloff, nreloc
+            writeLE32(file, 0);
+            writeLE32(file, 0); // reloff, nreloc
             writeLE32(file, secFlags);
-            writeLE32(file, 0); writeLE32(file, 0); writeLE32(file, 0); // reserved
+            writeLE32(file, 0);
+            writeLE32(file, 0);
+            writeLE32(file, 0); // reserved
         }
     }
 
@@ -780,7 +804,8 @@ bool writeMachOExe(const std::string &path, const LinkLayout &layout, LinkArch a
     writeLE64(file, linkeditFileSize);
     writeLE32(file, VM_PROT_READ);
     writeLE32(file, VM_PROT_READ);
-    writeLE32(file, 0); writeLE32(file, 0);
+    writeLE32(file, 0);
+    writeLE32(file, 0);
 
     // --- LC_LOAD_DYLINKER ---
     writeLE32(file, LC_LOAD_DYLINKER);
@@ -830,9 +855,12 @@ bool writeMachOExe(const std::string &path, const LinkLayout &layout, LinkArch a
     // --- LC_DYSYMTAB ---
     writeLE32(file, LC_DYSYMTAB);
     writeLE32(file, 80);
-    writeLE32(file, 0); writeLE32(file, 0); // ilocalsym, nlocalsym
-    writeLE32(file, 0); writeLE32(file, nExtDef); // iextdefsym, nextdefsym
-    writeLE32(file, nExtDef); writeLE32(file, nUndef); // iundefsym, nundefsym
+    writeLE32(file, 0);
+    writeLE32(file, 0); // ilocalsym, nlocalsym
+    writeLE32(file, 0);
+    writeLE32(file, nExtDef); // iextdefsym, nextdefsym
+    writeLE32(file, nExtDef);
+    writeLE32(file, nUndef); // iundefsym, nundefsym
     for (int i = 0; i < 12; ++i)
         writeLE32(file, 0); // remaining fields (toc, modtab, extref, indirect, extrel, locrel)
 
@@ -841,12 +869,16 @@ bool writeMachOExe(const std::string &path, const LinkLayout &layout, LinkArch a
     {
         writeLE32(file, LC_DYLD_INFO_ONLY);
         writeLE32(file, 48);
-        writeLE32(file, 0); writeLE32(file, 0); // rebase
+        writeLE32(file, 0);
+        writeLE32(file, 0); // rebase
         writeLE32(file, bindOff);
         writeLE32(file, static_cast<uint32_t>(bindData.size())); // bind
-        writeLE32(file, 0); writeLE32(file, 0); // weak_bind
-        writeLE32(file, 0); writeLE32(file, 0); // lazy_bind
-        writeLE32(file, 0); writeLE32(file, 0); // export
+        writeLE32(file, 0);
+        writeLE32(file, 0); // weak_bind
+        writeLE32(file, 0);
+        writeLE32(file, 0); // lazy_bind
+        writeLE32(file, 0);
+        writeLE32(file, 0); // export
     }
 
     // --- LC_BUILD_VERSION ---
@@ -911,8 +943,8 @@ bool writeMachOExe(const std::string &path, const LinkLayout &layout, LinkArch a
             writePad(file, codeSignOff - file.size());
 
         // Build linker-signed ad-hoc code signature with CS_LINKER_SIGNED flag.
-        auto sig = buildCodeSignature(file, codeSignOff, codeSignIdent,
-                                       textSegFileOff, textSegFileSize);
+        auto sig =
+            buildCodeSignature(file, codeSignOff, codeSignIdent, textSegFileOff, textSegFileSize);
         file.insert(file.end(), sig.begin(), sig.end());
     }
 
@@ -941,12 +973,13 @@ bool writeMachOExe(const std::string &path, const LinkLayout &layout, LinkArch a
 
 #if !defined(_WIN32)
     std::error_code ec;
-    std::filesystem::permissions(path,
-                                 std::filesystem::perms::owner_exec | std::filesystem::perms::owner_read |
-                                     std::filesystem::perms::owner_write | std::filesystem::perms::group_read |
-                                     std::filesystem::perms::group_exec | std::filesystem::perms::others_read |
-                                     std::filesystem::perms::others_exec,
-                                 ec);
+    std::filesystem::permissions(
+        path,
+        std::filesystem::perms::owner_exec | std::filesystem::perms::owner_read |
+            std::filesystem::perms::owner_write | std::filesystem::perms::group_read |
+            std::filesystem::perms::group_exec | std::filesystem::perms::others_read |
+            std::filesystem::perms::others_exec,
+        ec);
 #endif
 
     return true;

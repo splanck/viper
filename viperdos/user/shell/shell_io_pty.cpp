@@ -58,9 +58,9 @@ void shell_print(const char *s) {
             chunk, nullptr, 0);
 
         if (r == VERR_WOULD_BLOCK) {
-            // Backpressure - retry with brief sleeps
-            for (int retry = 0; retry < 50 && r == VERR_WOULD_BLOCK; retry++) {
-                sys::sleep(1);
+            // Backpressure — wait for terminal to drain output channel
+            for (int retry = 0; retry < 500 && r == VERR_WOULD_BLOCK; retry++) {
+                sys::sleep(2);
                 r = sys::channel_send(
                     g_output_channel,
                     reinterpret_cast<const uint8_t *>(s) + offset,
@@ -81,8 +81,8 @@ void shell_print_char(char c) {
         return;
     int64_t r = sys::channel_send(g_output_channel, &c, 1, nullptr, 0);
     if (r == VERR_WOULD_BLOCK) {
-        for (int retry = 0; retry < 20 && r == VERR_WOULD_BLOCK; retry++) {
-            sys::sleep(1);
+        for (int retry = 0; retry < 200 && r == VERR_WOULD_BLOCK; retry++) {
+            sys::sleep(2);
             r = sys::channel_send(g_output_channel, &c, 1, nullptr, 0);
         }
     }

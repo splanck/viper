@@ -67,7 +67,6 @@ void EmbeddedShell::handle_char(char c) {
             if (m_buffer)
                 m_buffer->begin_batch();
             execute_command();
-            sys::print("[consoled] cmd complete\n");
             m_command_ran = true;
         }
 
@@ -78,11 +77,9 @@ void EmbeddedShell::handle_char(char c) {
         // Don't print prompt if we just entered foreground mode
         if (!is_foreground()) {
             print_prompt();
-            sys::print("[consoled] prompt done\n");
         }
         if (m_buffer)
             m_buffer->end_batch();
-        sys::print("[consoled] batch done\n");
         return;
     }
 

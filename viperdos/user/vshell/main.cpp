@@ -87,8 +87,9 @@ class TerminalApp {
             return false;
         }
 
-        // Initial present - show window immediately
-        gui_present(m_window);
+        // Initial present - show window immediately (async to avoid blocking
+        // when displayd's channel is full from another vshell instance)
+        gui_present_async(m_window);
 
         sys::print("[vshell] Ready.\n");
         return true;
@@ -98,21 +99,28 @@ class TerminalApp {
         m_running = true;
 
         while (m_running) {
-            // 1. Poll GUI events
-            gui_event_t event;
-            if (gui_poll_event(m_window, &event) == 0) {
-                processGuiEvent(event);
+            bool needsPresent = false;
+
+            // 1. Drain ALL pending GUI events (up to 16 per iteration)
+            for (int ev_i = 0; ev_i < 16; ev_i++) {
+                gui_event_t event;
+                if (gui_poll_event(m_window, &event) != 0)
+                    break;
+                if (processGuiEvent(event))
+                    needsPresent = true;
             }
 
             // 2. Read shell output (non-blocking)
-            drainShellOutput();
+            if (drainShellOutput())
+                needsPresent = true;
 
-            // 3. Always present — avoids timing windows where content
-            //    is rendered to SHM but never composited to screen
-            gui_present(m_window);
+            // 3. Present only when content changed (async — no blocking)
+            if (needsPresent) {
+                gui_present_async(m_window);
+            }
 
-            // 4. Sleep 5ms (~100Hz) — gives shell process CPU time
-            sys::sleep(5);
+            // 4. Sleep briefly to avoid flooding displayd with presents
+            sys::sleep(2);
         }
     }
 
@@ -290,8 +298,11 @@ class TerminalApp {
     bool drainShellOutput() {
         bool didWork = false;
 
-        // Read up to 32 messages per loop iteration
-        for (int i = 0; i < 32; i++) {
+        // Read up to 4 messages per loop iteration — keep batch small so we
+        // return to polling GUI events quickly during heavy output (e.g. edit.prg
+        // drawing its full-screen UI).
+        m_textBuffer.begin_batch();
+        for (int i = 0; i < 4; i++) {
             uint8_t buf[4096];
             uint32_t hcount = 0;
             int64_t n = sys::channel_recv(m_outputRecv, buf, sizeof(buf),
@@ -305,6 +316,7 @@ class TerminalApp {
             m_ansiParser.write(reinterpret_cast<const char *>(buf),
                                static_cast<size_t>(n));
         }
+        m_textBuffer.end_batch();
 
         return didWork;
     }

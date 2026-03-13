@@ -20,10 +20,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "codegen/x86_64/binenc/X64BinaryEncoder.hpp"
-#include "codegen/x86_64/binenc/X64Encoding.hpp"
 #include "codegen/common/objfile/CodeSection.hpp"
 #include "codegen/x86_64/MachineIR.hpp"
+#include "codegen/x86_64/binenc/X64BinaryEncoder.hpp"
+#include "codegen/x86_64/binenc/X64Encoding.hpp"
 
 #include <cstdlib>
 #include <cstring>
@@ -65,16 +65,15 @@ static Operand imm(int64_t val)
 
 static Operand mem(PhysReg base, int32_t disp)
 {
-    return makeMemOperand(
-        makePhysReg(RegClass::GPR, static_cast<uint16_t>(base)), disp);
+    return makeMemOperand(makePhysReg(RegClass::GPR, static_cast<uint16_t>(base)), disp);
 }
 
 static Operand memIdx(PhysReg base, PhysReg index, uint8_t scale, int32_t disp)
 {
-    return makeMemOperand(
-        makePhysReg(RegClass::GPR, static_cast<uint16_t>(base)),
-        makePhysReg(RegClass::GPR, static_cast<uint16_t>(index)),
-        scale, disp);
+    return makeMemOperand(makePhysReg(RegClass::GPR, static_cast<uint16_t>(base)),
+                          makePhysReg(RegClass::GPR, static_cast<uint16_t>(index)),
+                          scale,
+                          disp);
 }
 
 static Operand label(const std::string &name)
@@ -431,8 +430,7 @@ int main()
     // SIB = 11 001 000 = C8
     {
         auto bytes = encodeOne(MOpcode::MOVmr,
-                               {gpr(PhysReg::RDX),
-                                memIdx(PhysReg::RAX, PhysReg::RCX, 8, 0)});
+                               {gpr(PhysReg::RDX), memIdx(PhysReg::RAX, PhysReg::RCX, 8, 0)});
         CHECK(bytes.size() == 4);
         CHECK(bytesMatch(bytes, {0x48, 0x8B, 0x14, 0xC8}));
     }
@@ -457,8 +455,7 @@ int main()
         fn.name = "test";
         MBasicBlock bb;
         bb.label = ".Ltest";
-        bb.append(MInstr::make(MOpcode::LEA,
-                               {gpr(PhysReg::RDI), ripLabel(".LC_str_0")}));
+        bb.append(MInstr::make(MOpcode::LEA, {gpr(PhysReg::RDI), ripLabel(".LC_str_0")}));
         fn.addBlock(std::move(bb));
 
         X64BinaryEncoder enc;
@@ -626,23 +623,21 @@ int main()
         CodeSection text, rodata;
         enc.encodeFunction(fn, text, rodata, false);
 
-        // Block 0: E9 xx xx xx xx  (5 bytes, offset 0)
+        // Block 0: E9 xx xx xx xx  (5 bytes, offset 0) — forward JMP (near)
         // Block 1: C3              (1 byte, offset 5)
-        // Block 2: E9 xx xx xx xx  (5 bytes, offset 6)
-        CHECK(text.bytes().size() == 11);
-        CHECK(text.bytes()[0] == 0xE9);  // JMP
-        CHECK(text.bytes()[5] == 0xC3);  // RET
-        CHECK(text.bytes()[6] == 0xE9);  // JMP
+        // Block 2: EB xx           (2 bytes, offset 6) — backward JMP (short, rel8)
+        CHECK(text.bytes().size() == 8);
+        CHECK(text.bytes()[0] == 0xE9); // JMP near (forward)
+        CHECK(text.bytes()[5] == 0xC3); // RET
+        CHECK(text.bytes()[6] == 0xEB); // JMP short (backward)
 
         // Forward: target=6, patch=1, rel = 6-(1+4) = 1
         int32_t fwd_rel;
         std::memcpy(&fwd_rel, text.bytes().data() + 1, 4);
         CHECK(fwd_rel == 1);
 
-        // Backward: target=5, patch=7, rel = 5-(7+4) = -6
-        int32_t bwd_rel;
-        std::memcpy(&bwd_rel, text.bytes().data() + 7, 4);
-        CHECK(bwd_rel == -6);
+        // Backward short: target=5, disp = 5-(6+2) = -3
+        CHECK(static_cast<int8_t>(text.bytes()[7]) == -3);
     }
 
     // ================================================================

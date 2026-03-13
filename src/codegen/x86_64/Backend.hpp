@@ -22,6 +22,7 @@
 #include "codegen/common/objfile/CodeSection.hpp"
 
 #include <string>
+#include <vector>
 
 namespace viper::codegen::x64
 {
@@ -50,9 +51,13 @@ struct CodegenResult
 /// \brief Result of binary emission: machine code in CodeSections.
 struct BinaryEmitResult
 {
-    objfile::CodeSection text{};   ///< Machine code bytes + relocations.
+    objfile::CodeSection text{};   ///< Machine code bytes + relocations (merged).
     objfile::CodeSection rodata{}; ///< Read-only data (.rodata / __TEXT,__const).
     std::string errors{};          ///< Diagnostics; empty on success.
+
+    /// Per-function text sections for function-level dead stripping.
+    /// Each CodeSection contains exactly one function's machine code.
+    std::vector<objfile::CodeSection> textSections{};
 };
 
 /// \brief Lower an IL module to binary machine code via X64BinaryEncoder.
@@ -60,7 +65,7 @@ struct BinaryEmitResult
 /// @param opt     Backend options (optimization level, etc.).
 /// @param isDarwin If true, symbol names get underscore-prefixed (Mach-O convention).
 [[nodiscard]] BinaryEmitResult emitModuleToBinary(const ILModule &mod,
-                                                   const CodegenOptions &opt,
-                                                   bool isDarwin);
+                                                  const CodegenOptions &opt,
+                                                  bool isDarwin);
 
 } // namespace viper::codegen::x64

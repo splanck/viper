@@ -27,6 +27,7 @@
 #include "codegen/common/linker/PeExeWriter.hpp"
 #include "codegen/common/linker/RelocApplier.hpp"
 #include "codegen/common/linker/SectionMerger.hpp"
+#include "codegen/common/linker/StringDedup.hpp"
 #include "codegen/common/linker/SymbolResolver.hpp"
 
 #include <algorithm>
@@ -40,8 +41,7 @@ namespace viper::codegen::linker
 ///   - Branches (tail-call) to objc_msgSend
 /// The selector string and reference pointer are synthesized in the stub object.
 /// objc_msgSend itself must also be a dynamic symbol (resolved by dyld).
-static ObjFile generateObjcSelectorStubsAArch64(
-    std::unordered_set<std::string> &dynamicSyms)
+static ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynamicSyms)
 {
     ObjFile stubObj;
     stubObj.name = "<objc-stubs>";
@@ -136,8 +136,8 @@ static ObjFile generateObjcSelectorStubsAArch64(
     // plus the stub entry points (in text).
     for (size_t i = 0; i < selectorSyms.size(); ++i)
     {
-        const size_t stubOff = i * 12;    // 3 instructions per stub
-        const size_t selrefOff = i * 8;   // 8 bytes per selref pointer
+        const size_t stubOff = i * 12;  // 3 instructions per stub
+        const size_t selrefOff = i * 8; // 8 bytes per selref pointer
 
         // Symbol for the selector string in rodata (section 3).
         const uint32_t strSymIdx = static_cast<uint32_t>(stubObj.symbols.size());
@@ -216,7 +216,7 @@ static ObjFile generateObjcSelectorStubsAArch64(
     {
         ObjReloc bReloc;
         bReloc.offset = i * 12 + 8; // 3rd instruction in each stub
-        bReloc.type = 282; // R_AARCH64_JUMP26
+        bReloc.type = 282;          // R_AARCH64_JUMP26
         bReloc.symIndex = msgSendSymIdx;
         bReloc.addend = 0;
         textSec.relocs.push_back(bReloc);
@@ -235,8 +235,7 @@ static ObjFile generateObjcSelectorStubsAArch64(
 ///   - ELF-format relocations so the standard reloc applier patches the stubs
 /// The stub symbol "foo" overrides the Dynamic entry in globalSyms, so all
 /// call-site relocations naturally resolve to the stub address.
-static ObjFile generateDynStubsAArch64(
-    const std::unordered_set<std::string> &dynamicSyms)
+static ObjFile generateDynStubsAArch64(const std::unordered_set<std::string> &dynamicSyms)
 {
     ObjFile stubObj;
     stubObj.name = "<dyld-stubs>";
@@ -429,6 +428,29 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     // User objects (index 0) are always live; archive extracts are GC'd.
     deadStrip(allObjects, initialObjects.size(), globalSyms, opts.entrySymbol, err);
 
+    // Step 3.5d: Deduplicate identical rodata strings across object files.
+    deduplicateStrings(allObjects, globalSyms);
+
+    // Step 3.5e: Remove global symbols that reference stripped (empty) sections.
+    // After dead stripping, sections with cleared data are skipped by the merger,
+    // so symbols pointing to them would resolve to invalid addresses.
+    {
+        std::vector<std::string> deadSyms;
+        for (const auto &[name, entry] : globalSyms)
+        {
+            if (entry.binding == GlobalSymEntry::Dynamic)
+                continue; // Dynamic symbols have no section reference.
+            if (entry.objIndex < allObjects.size() &&
+                entry.secIndex < allObjects[entry.objIndex].sections.size() &&
+                allObjects[entry.objIndex].sections[entry.secIndex].data.empty())
+            {
+                deadSyms.push_back(name);
+            }
+        }
+        for (const auto &name : deadSyms)
+            globalSyms.erase(name);
+    }
+
     // Step 4: Merge sections and compute layout.
     LinkLayout layout;
     layout.globalSyms = std::move(globalSyms);
@@ -470,91 +492,98 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             layout.gotEntries.push_back(std::move(ge));
         }
     }
-    std::sort(layout.gotEntries.begin(), layout.gotEntries.end(),
+    std::sort(layout.gotEntries.begin(),
+              layout.gotEntries.end(),
               [](const GotEntry &a, const GotEntry &b) { return a.symbolName < b.symbolName; });
 
     // Step 7: Write executable.
     bool writeOk = false;
     switch (opts.platform)
     {
-    case LinkPlatform::Linux:
-        writeOk = writeElfExe(opts.exePath, layout, opts.arch, err);
-        break;
-    case LinkPlatform::macOS:
-    {
-        std::vector<DylibImport> dylibs;
-        // Always link libSystem.B.dylib on macOS.
-        dylibs.push_back({"/usr/lib/libSystem.B.dylib"});
-
-        // Detect required frameworks from dynamic symbol names.
-        // macOS frameworks are discovered from the dyld shared cache at load time;
-        // the paths here are conventional and dyld intercepts them.
-        bool needCoreFoundation = false;
-        bool needCocoa = false;
-        bool needAppKit = false;
-        bool needCoreGraphics = false;
-        bool needFoundation = false;
-        bool needIOKit = false;
-        bool needObjC = false;
-        bool needUTI = false;
-        bool needAudioToolbox = false;
-
-        for (const auto &sym : dynamicSyms)
+        case LinkPlatform::Linux:
+            writeOk = writeElfExe(opts.exePath, layout, opts.arch, err);
+            break;
+        case LinkPlatform::macOS:
         {
-            if (sym.find("CF") == 0 || sym.find("kCF") == 0)
-                needCoreFoundation = true;
-            if (sym.find("NS") == 0 && sym.find("NSS") != 0)  // NS* but not NSS* (NSURL etc.)
-                needCocoa = true;
-            if (sym.find("NSApp") == 0 || sym.find("NSWindow") == 0 || sym.find("NSView") == 0 ||
-                sym.find("NSColor") == 0 || sym.find("NSEvent") == 0 || sym.find("NSCursor") == 0 ||
-                sym.find("NSGraphicsContext") == 0 || sym.find("NSOpenGL") == 0 ||
-                sym.find("NSApplication") == 0)
-                needAppKit = true;
-            if (sym.find("CG") == 0)
-                needCoreGraphics = true;
-            if (sym.find("NSLog") == 0 || sym.find("NSSearchPathForDirectories") == 0)
-                needFoundation = true;
-            if (sym.find("IOKit") == 0 || sym.find("IOHID") == 0 || sym.find("IOService") == 0 ||
-                sym.find("IORegistryEntry") == 0)
-                needIOKit = true;
-            if (sym.find("objc_") == 0 || sym.find("OBJC_") == 0 || sym == "sel_registerName" ||
-                sym == "sel_getName")
-                needObjC = true;
-            if (sym.find("UTType") == 0 || sym.find("UTCopy") == 0)
-                needUTI = true;
-            if (sym.find("AudioQueue") == 0 || sym.find("AudioServices") == 0)
-                needAudioToolbox = true;
+            std::vector<DylibImport> dylibs;
+            // Always link libSystem.B.dylib on macOS.
+            dylibs.push_back({"/usr/lib/libSystem.B.dylib"});
+
+            // Detect required frameworks from dynamic symbol names.
+            // macOS frameworks are discovered from the dyld shared cache at load time;
+            // the paths here are conventional and dyld intercepts them.
+            bool needCoreFoundation = false;
+            bool needCocoa = false;
+            bool needAppKit = false;
+            bool needCoreGraphics = false;
+            bool needFoundation = false;
+            bool needIOKit = false;
+            bool needObjC = false;
+            bool needUTI = false;
+            bool needAudioToolbox = false;
+
+            for (const auto &sym : dynamicSyms)
+            {
+                if (sym.find("CF") == 0 || sym.find("kCF") == 0)
+                    needCoreFoundation = true;
+                if (sym.find("NS") == 0 && sym.find("NSS") != 0) // NS* but not NSS* (NSURL etc.)
+                    needCocoa = true;
+                if (sym.find("NSApp") == 0 || sym.find("NSWindow") == 0 ||
+                    sym.find("NSView") == 0 || sym.find("NSColor") == 0 ||
+                    sym.find("NSEvent") == 0 || sym.find("NSCursor") == 0 ||
+                    sym.find("NSGraphicsContext") == 0 || sym.find("NSOpenGL") == 0 ||
+                    sym.find("NSApplication") == 0)
+                    needAppKit = true;
+                if (sym.find("CG") == 0)
+                    needCoreGraphics = true;
+                if (sym.find("NSLog") == 0 || sym.find("NSSearchPathForDirectories") == 0)
+                    needFoundation = true;
+                if (sym.find("IOKit") == 0 || sym.find("IOHID") == 0 ||
+                    sym.find("IOService") == 0 || sym.find("IORegistryEntry") == 0)
+                    needIOKit = true;
+                if (sym.find("objc_") == 0 || sym.find("OBJC_") == 0 || sym == "sel_registerName" ||
+                    sym == "sel_getName")
+                    needObjC = true;
+                if (sym.find("UTType") == 0 || sym.find("UTCopy") == 0)
+                    needUTI = true;
+                if (sym.find("AudioQueue") == 0 || sym.find("AudioServices") == 0)
+                    needAudioToolbox = true;
+            }
+
+            if (needCocoa)
+                dylibs.push_back({"/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa"});
+            if (needIOKit)
+                dylibs.push_back({"/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit"});
+            if (needCoreFoundation)
+                dylibs.push_back({"/System/Library/Frameworks/CoreFoundation.framework/Versions/A/"
+                                  "CoreFoundation"});
+            if (needUTI)
+                dylibs.push_back({"/System/Library/Frameworks/UniformTypeIdentifiers.framework/"
+                                  "Versions/A/UniformTypeIdentifiers"});
+            if (needAppKit)
+                dylibs.push_back({"/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit"});
+            if (needCoreGraphics)
+                dylibs.push_back(
+                    {"/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics"});
+            if (needFoundation)
+                dylibs.push_back(
+                    {"/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation"});
+            if (needObjC)
+                dylibs.push_back({"/usr/lib/libobjc.A.dylib"});
+            if (needAudioToolbox)
+                dylibs.push_back(
+                    {"/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox"});
+
+            writeOk = writeMachOExe(opts.exePath, layout, opts.arch, dylibs, dynamicSyms, err);
+            break;
         }
-
-        if (needCocoa)
-            dylibs.push_back({"/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa"});
-        if (needIOKit)
-            dylibs.push_back({"/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit"});
-        if (needCoreFoundation)
-            dylibs.push_back({"/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation"});
-        if (needUTI)
-            dylibs.push_back({"/System/Library/Frameworks/UniformTypeIdentifiers.framework/Versions/A/UniformTypeIdentifiers"});
-        if (needAppKit)
-            dylibs.push_back({"/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit"});
-        if (needCoreGraphics)
-            dylibs.push_back({"/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics"});
-        if (needFoundation)
-            dylibs.push_back({"/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation"});
-        if (needObjC)
-            dylibs.push_back({"/usr/lib/libobjc.A.dylib"});
-        if (needAudioToolbox)
-            dylibs.push_back({"/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox"});
-
-        writeOk = writeMachOExe(opts.exePath, layout, opts.arch, dylibs, dynamicSyms, err);
-        break;
-    }
-    case LinkPlatform::Windows:
-    {
-        std::vector<DllImport> imports;
-        imports.push_back({"kernel32.dll", {"ExitProcess"}});
-        writeOk = writePeExe(opts.exePath, layout, opts.arch, imports, err);
-        break;
-    }
+        case LinkPlatform::Windows:
+        {
+            std::vector<DllImport> imports;
+            imports.push_back({"kernel32.dll", {"ExitProcess"}});
+            writeOk = writePeExe(opts.exePath, layout, opts.arch, imports, err);
+            break;
+        }
     }
 
     if (!writeOk)

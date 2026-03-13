@@ -24,6 +24,7 @@
 #include "il/core/Module.hpp"
 
 #include <optional>
+#include <vector>
 
 namespace viper::codegen::x64::passes
 {
@@ -38,8 +39,9 @@ struct Module
     std::optional<CodegenResult> codegenResult; ///< Backend assembly emission artefacts.
 
     /// Binary emission artefacts (populated by BinaryEmitPass instead of EmitPass).
-    std::optional<objfile::CodeSection> binaryText;   ///< Machine code bytes + relocations.
-    std::optional<objfile::CodeSection> binaryRodata; ///< Read-only data section.
+    std::optional<objfile::CodeSection> binaryText;       ///< Machine code bytes + relocations.
+    std::optional<objfile::CodeSection> binaryRodata;     ///< Read-only data section.
+    std::vector<objfile::CodeSection> binaryTextSections; ///< Per-function text sections.
 };
 
 // Backward-compatible aliases — consumers continue to use these names unchanged.

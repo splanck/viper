@@ -382,26 +382,18 @@ void cmd_list(const char *path) {
         list_kernel_directory(normalized, &file_count, &dir_count, false);
     }
 
-    sys::print("[consoled] list: entries done\n");
-
     shell_print("\n");
     shell_put_num(static_cast<int64_t>(file_count));
-    shell_print(" file");
     if (file_count != 1)
-        shell_print("s");
-    shell_print(", ");
-    shell_put_num(static_cast<int64_t>(dir_count));
-    sys::print("[consoled] list: before director\n");
-    shell_print(" director");
-    sys::print("[consoled] list: after director\n");
-    if (dir_count != 1)
-        shell_print("ies");
+        shell_print(" files, ");
     else
-        shell_print("y");
-    sys::print("[consoled] list: after suffix\n");
-    shell_print("\n");
+        shell_print(" file, ");
+    shell_put_num(static_cast<int64_t>(dir_count));
+    if (dir_count != 1)
+        shell_print(" directories\n");
+    else
+        shell_print(" directory\n");
 
-    sys::print("[consoled] list: complete\n");
     s_last_rc = 0;
 }
 

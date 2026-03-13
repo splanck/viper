@@ -48,8 +48,9 @@ struct AArch64Module
     std::string assembly;                    ///< Final assembly text, populated by EmitPass.
 
     // Binary emission output (populated by BinaryEmitPass).
-    std::optional<objfile::CodeSection> binaryText;   ///< Machine code bytes + relocations.
-    std::optional<objfile::CodeSection> binaryRodata; ///< Read-only data section.
+    std::optional<objfile::CodeSection> binaryText;       ///< Machine code bytes + relocations.
+    std::optional<objfile::CodeSection> binaryRodata;     ///< Read-only data section.
+    std::vector<objfile::CodeSection> binaryTextSections; ///< Per-function text sections.
 };
 
 // Backward-compatible aliases — consumers use these names unchanged.

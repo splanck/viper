@@ -232,11 +232,11 @@ int invokeAssembler(const std::filesystem::path &asmPath,
 /// @param err Stream receiving the linker's standard error.
 /// @return Normalised linker exit code (-1 when the command could not start).
 int linkWithContext(const std::filesystem::path &inputPath,
-                   const std::filesystem::path &exePath,
-                   std::size_t stackSize,
-                   const common::LinkContext &ctx,
-                   std::ostream &out,
-                   std::ostream &err)
+                    const std::filesystem::path &exePath,
+                    std::size_t stackSize,
+                    const common::LinkContext &ctx,
+                    std::ostream &out,
+                    std::ostream &err)
 {
     using RtComponent = viper::codegen::RtComponent;
 
@@ -723,8 +723,8 @@ PipelineResult CodegenPipeline::run()
         // Write the object file using the native writer for x86_64.
         // Must specify ObjArch::X86_64 explicitly — createHostObjectFileWriter()
         // would pick the host arch (e.g. arm64 on Apple Silicon).
-        auto writer = objfile::createObjectFileWriter(
-            objfile::detectHostFormat(), objfile::ObjArch::X86_64);
+        auto writer =
+            objfile::createObjectFileWriter(objfile::detectHostFormat(), objfile::ObjArch::X86_64);
         if (!writer)
         {
             err << "error: no native object file writer for this platform\n";
@@ -734,8 +734,10 @@ PipelineResult CodegenPipeline::run()
             return result;
         }
 
-        if (!writer->write(objPath.string(), *pipelineModule.binaryText,
-                           *pipelineModule.binaryRodata, err))
+        if (!writer->write(objPath.string(),
+                           pipelineModule.binaryTextSections,
+                           *pipelineModule.binaryRodata,
+                           err))
         {
             result.exit_code = 1;
             result.stdout_text = out.str();
@@ -772,8 +774,7 @@ PipelineResult CodegenPipeline::run()
             }
 
             common::LinkContext ctx;
-            if (const int rc =
-                    common::prepareLinkContextFromSymbols(extSymbols, ctx, out, err);
+            if (const int rc = common::prepareLinkContextFromSymbols(extSymbols, ctx, out, err);
                 rc != 0)
             {
                 result.exit_code = 1;

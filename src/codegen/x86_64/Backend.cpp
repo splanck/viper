@@ -126,7 +126,7 @@ void lowerPendingCalls(MFunction &func,
     assert(planIndex == plans.size() && "call plan count mismatch");
 }
 
-} // close anonymous namespace
+} // namespace
 
 /// @brief Execute the per-function Phase A code-generation pipeline.
 ///
@@ -136,11 +136,11 @@ void lowerPendingCalls(MFunction &func,
 ///          optimisations.  The resulting Machine IR is ready for assembly
 ///          emission and the frame summary reflects the required stack layout.
 static void runFunctionPipeline(const ILFunction &ilFunc,
-                         LowerILToMIR &lowering,
-                         const TargetInfo &target,
-                         const CodegenOptions &options,
-                         FrameInfo &frame,
-                         MFunction &machineFunc)
+                                LowerILToMIR &lowering,
+                                const TargetInfo &target,
+                                const CodegenOptions &options,
+                                FrameInfo &frame,
+                                MFunction &machineFunc)
 {
     machineFunc = lowering.lower(ilFunc);
 
@@ -183,7 +183,7 @@ static void runFunctionPipeline(const ILFunction &ilFunc,
 /// @param options Backend configuration supplied by the caller.
 /// @return Result structure containing assembly text and diagnostic messages.
 static CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
-                                     const CodegenOptions &options)
+                                    const CodegenOptions &options)
 {
     CodegenResult result{};
 
@@ -288,9 +288,7 @@ CodegenResult emitModuleToAssembly(const ILModule &mod, const CodegenOptions &op
     return emitModuleImpl(mod.funcs, options);
 }
 
-BinaryEmitResult emitModuleToBinary(const ILModule &mod,
-                                     const CodegenOptions &opt,
-                                     bool isDarwin)
+BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &opt, bool isDarwin)
 {
     BinaryEmitResult result{};
     std::ostringstream errorStream{};
@@ -311,6 +309,13 @@ BinaryEmitResult emitModuleToBinary(const ILModule &mod,
         MFunction machineFunc{};
         runFunctionPipeline(func, lowering, target, opt, frame, machineFunc);
 
+        // Emit each function into its own CodeSection for per-function dead stripping.
+        result.textSections.emplace_back();
+        binenc::X64BinaryEncoder funcEncoder;
+        funcEncoder.encodeFunction(
+            machineFunc, result.textSections.back(), result.rodata, isDarwin);
+
+        // Also emit into merged text for backward compatibility (symbol extraction).
         encoder.encodeFunction(machineFunc, result.text, result.rodata, isDarwin);
     }
 
@@ -321,7 +326,8 @@ BinaryEmitResult emitModuleToBinary(const ILModule &mod,
         std::string label = roData.stringLabel(i);
         if (isDarwin)
             label = "_" + label;
-        result.rodata.defineSymbol(label, objfile::SymbolBinding::Local, objfile::SymbolSection::Rodata);
+        result.rodata.defineSymbol(
+            label, objfile::SymbolBinding::Local, objfile::SymbolSection::Rodata);
         const auto &bytes = roData.stringBytes(i);
         result.rodata.emitBytes(bytes.data(), bytes.size());
     }
@@ -333,7 +339,8 @@ BinaryEmitResult emitModuleToBinary(const ILModule &mod,
         std::string label = roData.f64Label(i);
         if (isDarwin)
             label = "_" + label;
-        result.rodata.defineSymbol(label, objfile::SymbolBinding::Local, objfile::SymbolSection::Rodata);
+        result.rodata.defineSymbol(
+            label, objfile::SymbolBinding::Local, objfile::SymbolSection::Rodata);
         double val = roData.f64Value(i);
         uint64_t bits;
         std::memcpy(&bits, &val, sizeof(bits));

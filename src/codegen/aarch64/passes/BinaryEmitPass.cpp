@@ -52,7 +52,15 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags)
     binenc::A64BinaryEncoder encoder;
 
     for (const auto &fn : module.mir)
+    {
+        // Emit each function into its own CodeSection for per-function dead stripping.
+        module.binaryTextSections.emplace_back();
+        binenc::A64BinaryEncoder funcEncoder;
+        funcEncoder.encodeFunction(fn, module.binaryTextSections.back(), rodata, abi);
+
+        // Also emit into merged text for backward compatibility (symbol extraction).
         encoder.encodeFunction(fn, text, rodata, abi);
+    }
 
     // Emit rodata pool entries as raw bytes into the rodata CodeSection.
     // Each entry is a NUL-terminated string (matching .asciz assembly semantics).

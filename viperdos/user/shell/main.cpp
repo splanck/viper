@@ -47,6 +47,12 @@ struct ShellInput {
 
 static int32_t g_input_recv = -1;
 static int32_t g_output_send = -1;
+static int32_t g_consoled_recv = -1; // Receive CON_WRITE from child processes
+
+// CON_WRITE message type (from console_protocol.hpp)
+static constexpr uint32_t CON_WRITE_TYPE = 0x1001;
+// WriteRequest header is 16 bytes: type(4) + request_id(4) + length(4) + reserved(4)
+static constexpr size_t WRITE_REQ_HEADER = 16;
 
 // ============================================================================
 // Bootstrap
@@ -85,6 +91,52 @@ static bool receive_bootstrap_channels() {
 }
 
 // ============================================================================
+// CONSOLED Service — proxy child process output to vshell
+// ============================================================================
+
+/// Register this shell as the CONSOLED service so child processes'
+/// libc stdout/stderr routes through us to the terminal emulator.
+static void register_consoled_service() {
+    auto ch = sys::channel_create();
+    if (ch.error != 0)
+        return;
+
+    int32_t send_ch = static_cast<int32_t>(ch.val0);
+    g_consoled_recv = static_cast<int32_t>(ch.val1);
+
+    int64_t r = sys::assign_set("CONSOLED", static_cast<uint32_t>(send_ch));
+    if (r < 0) {
+        // Another CONSOLED already registered — clean up
+        sys::channel_close(send_ch);
+        sys::channel_close(g_consoled_recv);
+        g_consoled_recv = -1;
+    }
+}
+
+/// Drain CON_WRITE messages from child processes and forward text to vshell.
+static void drain_consoled_output() {
+    if (g_consoled_recv < 0)
+        return;
+
+    uint8_t buf[4097]; // Extra byte for null terminator
+    for (int i = 0; i < 32; i++) {
+        uint32_t hcount = 0;
+        int64_t n = sys::channel_recv(g_consoled_recv, buf, 4096, nullptr, &hcount);
+        if (n <= 0)
+            break;
+
+        if (static_cast<size_t>(n) < WRITE_REQ_HEADER)
+            continue; // Too small for WriteRequest header
+
+        uint32_t msg_type = *reinterpret_cast<uint32_t *>(buf);
+        if (msg_type == CON_WRITE_TYPE) {
+            buf[n] = '\0'; // Null-terminate the text payload
+            shell_print(reinterpret_cast<const char *>(buf + WRITE_REQ_HEADER));
+        }
+    }
+}
+
+// ============================================================================
 // Main Entry Point
 // ============================================================================
 
@@ -98,22 +150,28 @@ extern "C" int main() {
     }
     sys::print("[shell] Bootstrap complete\n");
 
-    // 2. Initialize shell I/O to write output via channel
+    // 2. Register as CONSOLED service so child processes' output routes here
+    register_consoled_service();
+
+    // 3. Initialize shell I/O to write output via channel
     shell_io_init_pty(g_output_send);
 
-    // 3. Initialize shell in PTY mode (no TextBuffer/AnsiParser)
+    // 4. Initialize shell in PTY mode (no TextBuffer/AnsiParser)
     EmbeddedShell shell;
     shell.init_pty();
     shell_set_instance(&shell);
 
-    // 4. Print banner and initial prompt
+    // 5. Print banner and initial prompt
     shell.print_banner();
     shell.print_prompt();
 
     sys::print("[shell] Ready\n");
 
-    // 5. Main loop: read input from terminal, execute commands
+    // 6. Main loop: read input from terminal, execute commands
     while (true) {
+        // Drain child process output (CONSOLED service → PTY → vshell)
+        drain_consoled_output();
+
         ShellInput input;
         uint32_t hcount = 0;
         int64_t n = sys::channel_recv(g_input_recv, &input, sizeof(input),
