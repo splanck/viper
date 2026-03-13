@@ -51,7 +51,7 @@
 /// @brief Internal XML node structure.
 typedef struct xml_node
 {
-    XmlNodeType type;        ///< Node type
+    rt_xml_node_type_t type;        ///< Node type
     rt_string tag;           ///< Tag name (elements only)
     rt_string content;       ///< Text content (text/comment/cdata)
     void *attributes;        ///< Map of attributes (elements only)
@@ -67,7 +67,7 @@ static _Thread_local char xml_last_error[256] = {0};
 //=============================================================================
 
 static void xml_node_finalizer(void *obj);
-static void *xml_node_new(XmlNodeType type);
+static void *xml_node_new(rt_xml_node_type_t type);
 static void *parse_document(const char *input, size_t len);
 
 //=============================================================================
@@ -138,7 +138,7 @@ static void xml_node_finalizer(void *obj)
     // Note: parent is a weak reference, don't release
 }
 
-static void *xml_node_new(XmlNodeType type)
+static void *xml_node_new(rt_xml_node_type_t type)
 {
     xml_node *node = (xml_node *)rt_obj_new_i64(0, sizeof(xml_node));
     if (!node)

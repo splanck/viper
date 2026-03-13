@@ -20,6 +20,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -62,7 +63,7 @@ extern "C"
 
     /// @brief Check if batch mode is currently active.
     /// @return Non-zero if batch mode is active, zero otherwise.
-    int rt_output_is_batch_mode(void);
+    int8_t rt_output_is_batch_mode(void);
 
     /// @brief Flush output only if not in batch mode.
     /// @details Used by terminal control functions to conditionally flush.

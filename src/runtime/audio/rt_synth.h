@@ -19,7 +19,7 @@
 //
 // Ownership/Lifetime:
 //   - Returned Sound objects are GC-managed with refcount 1.
-//   - Caller owns the reference and must release via Sound.Free.
+//   - Caller owns the reference and must release via Sound.Destroy.
 //
 // Links: rt_audio.h (sound playback), rt_soundbank.h (named registry)
 //
@@ -33,19 +33,23 @@ extern "C"
 {
 #endif
 
-/// @brief Waveform type constants.
-#define RT_WAVE_SINE 0
-#define RT_WAVE_SQUARE 1
-#define RT_WAVE_SAWTOOTH 2
-#define RT_WAVE_TRIANGLE 3
+/// Waveform type constants.
+typedef enum {
+    RT_WAVE_SINE     = 0,
+    RT_WAVE_SQUARE   = 1,
+    RT_WAVE_SAWTOOTH = 2,
+    RT_WAVE_TRIANGLE = 3,
+} rt_wave_type_t;
 
-/// @brief SFX preset type constants.
-#define RT_SFX_JUMP 0
-#define RT_SFX_COIN 1
-#define RT_SFX_HIT 2
-#define RT_SFX_EXPLOSION 3
-#define RT_SFX_POWERUP 4
-#define RT_SFX_LASER 5
+/// SFX preset type constants.
+typedef enum {
+    RT_SFX_JUMP      = 0,
+    RT_SFX_COIN      = 1,
+    RT_SFX_HIT       = 2,
+    RT_SFX_EXPLOSION = 3,
+    RT_SFX_POWERUP   = 4,
+    RT_SFX_LASER     = 5,
+} rt_sfx_preset_t;
 
     /// @brief Generate a tone at a fixed frequency.
     /// @param freq_hz Frequency in Hz (20-20000).

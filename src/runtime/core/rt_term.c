@@ -161,7 +161,7 @@ void rt_term_disable_raw_mode(void)
 }
 
 /// @brief Check if raw mode caching is currently active.
-int rt_term_is_raw_mode(void)
+int8_t rt_term_is_raw_mode(void)
 {
     return g_raw_mode_active;
 }
@@ -172,7 +172,7 @@ void rt_term_enable_raw_mode(void) {}
 
 void rt_term_disable_raw_mode(void) {}
 
-int rt_term_is_raw_mode(void)
+int8_t rt_term_is_raw_mode(void)
 {
     return 0;
 }

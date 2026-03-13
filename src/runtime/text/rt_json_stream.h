@@ -43,7 +43,7 @@ extern "C"
         RT_JSON_TOK_NULL = 9,
         RT_JSON_TOK_ERROR = 10,
         RT_JSON_TOK_END = 11
-    } rt_json_tok_type;
+    } rt_json_tok_type_t;
 
     /// @brief Create a new streaming JSON parser from a string.
     /// @param json JSON string to parse.

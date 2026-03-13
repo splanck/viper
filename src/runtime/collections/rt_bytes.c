@@ -299,6 +299,16 @@ int64_t rt_bytes_len(void *obj)
     return ((rt_bytes_impl *)obj)->len;
 }
 
+/// @brief Check if the byte array is empty (length 0).
+/// @param obj Bytes object pointer.
+/// @return 1 if empty or NULL, 0 otherwise.
+int8_t rt_bytes_is_empty(void *obj)
+{
+    if (!obj)
+        return 1;
+    return ((rt_bytes_impl *)obj)->len == 0 ? 1 : 0;
+}
+
 /// @brief Gets the byte value at the specified index.
 ///
 /// Retrieves a single byte from the Bytes object. The returned value is

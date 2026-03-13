@@ -188,7 +188,7 @@ static inline size_t rt_string_safe_len(rt_string s)
 /// @param sb String builder to free on error.
 /// @param op_name Name of the operation for error message.
 /// @param status Error status from string builder operation.
-static void rt_sb_check_status(rt_string_builder *sb, const char *op_name, rt_sb_status status)
+static void rt_sb_check_status(rt_string_builder *sb, const char *op_name, rt_sb_status_t status)
 {
     if (status == RT_SB_OK)
         return;
@@ -243,7 +243,7 @@ void rt_print_i64(int64_t v)
 {
     rt_string_builder sb;
     rt_sb_init(&sb);
-    rt_sb_status status = rt_sb_append_int(&sb, v);
+    rt_sb_status_t status = rt_sb_append_int(&sb, v);
     rt_sb_check_status(&sb, "rt_print_i64", status);
 
     if (sb.len > 0)
@@ -271,7 +271,7 @@ void rt_print_f64(double v)
 /// @param buf [in,out] Pointer to the buffer pointer to grow.
 /// @param cap [in,out] Pointer to the capacity counter associated with @p buf.
 /// @return Result enumerator describing whether the buffer was resized.
-rt_input_grow_result rt_input_try_grow(char **buf, size_t *cap)
+rt_input_grow_result_t rt_input_try_grow(char **buf, size_t *cap)
 {
     if (!buf || !cap || !*buf)
         return RT_INPUT_GROW_ALLOC_FAILED;
@@ -321,7 +321,7 @@ rt_string rt_input_line(void)
             break;
         if (len + 1 >= cap)
         {
-            rt_input_grow_result grow = rt_input_try_grow(&buf, &cap);
+            rt_input_grow_result_t grow = rt_input_try_grow(&buf, &cap);
             if (grow == RT_INPUT_GROW_OVERFLOW)
             {
                 free(buf);

@@ -531,7 +531,7 @@ void rt_sprite_update(void *sprite_ptr)
     }
 }
 
-bool rt_sprite_overlaps(void *sprite_ptr, void *other_ptr)
+int8_t rt_sprite_overlaps(void *sprite_ptr, void *other_ptr)
 {
     if (!sprite_ptr || !other_ptr)
         return false;
@@ -557,7 +557,7 @@ bool rt_sprite_overlaps(void *sprite_ptr, void *other_ptr)
     return (x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2);
 }
 
-bool rt_sprite_contains(void *sprite_ptr, int64_t px, int64_t py)
+int8_t rt_sprite_contains(void *sprite_ptr, int64_t px, int64_t py)
 {
     if (!sprite_ptr)
         return false;
@@ -633,7 +633,7 @@ int rt_sprite_animator_add_clip(rt_sprite_animator_t *animator,
     return 1;
 }
 
-int rt_sprite_animator_play(rt_sprite_animator_t *animator, const char *name)
+int8_t rt_sprite_animator_play(rt_sprite_animator_t *animator, const char *name)
 {
     if (!animator || !name)
         return 0;
@@ -716,7 +716,7 @@ void rt_sprite_animator_update(rt_sprite_animator_t *animator, void *sprite_ptr)
     rt_sprite_set_frame(sprite_ptr, abs_frame);
 }
 
-int rt_sprite_animator_is_playing(rt_sprite_animator_t *animator)
+int8_t rt_sprite_animator_is_playing(rt_sprite_animator_t *animator)
 {
     return (animator && animator->playing) ? 1 : 0;
 }

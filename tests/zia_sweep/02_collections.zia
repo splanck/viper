@@ -74,19 +74,19 @@ func testBag() {
     assertEqInt(Viper.Collections.Bag.get_Length(b), 0, "bag new empty");
 
     // Put/Has
-    assertTrue(Viper.Collections.Bag.Put(b, "x"), "bag put new");
-    assertFalse(Viper.Collections.Bag.Put(b, "x"), "bag put duplicate");
+    assertTrue(Viper.Collections.Bag.Add(b, "x"), "bag put new");
+    assertFalse(Viper.Collections.Bag.Add(b, "x"), "bag put duplicate");
     assertTrue(Viper.Collections.Bag.Has(b, "x"), "bag has");
     assertEqInt(Viper.Collections.Bag.get_Length(b), 1, "bag put len");
 
     // Add more
-    Viper.Collections.Bag.Put(b, "y");
-    Viper.Collections.Bag.Put(b, "z");
+    Viper.Collections.Bag.Add(b, "y");
+    Viper.Collections.Bag.Add(b, "z");
     assertEqInt(Viper.Collections.Bag.get_Length(b), 3, "bag multi len");
 
     // Drop
-    assertTrue(Viper.Collections.Bag.Drop(b, "y"), "bag drop existing");
-    assertFalse(Viper.Collections.Bag.Drop(b, "missing"), "bag drop missing");
+    assertTrue(Viper.Collections.Bag.Remove(b, "y"), "bag drop existing");
+    assertFalse(Viper.Collections.Bag.Remove(b, "missing"), "bag drop missing");
     assertEqInt(Viper.Collections.Bag.get_Length(b), 2, "bag drop len");
 
     // Clear

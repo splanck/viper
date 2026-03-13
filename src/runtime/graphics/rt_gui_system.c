@@ -272,7 +272,7 @@ void rt_shortcuts_clear_triggered(void)
 
 // Check if a key event matches any registered shortcut.
 // Returns 1 if a shortcut was triggered, 0 otherwise.
-int rt_shortcuts_check_key(int key, int mods)
+int8_t rt_shortcuts_check_key(int key, int mods)
 {
     RT_ASSERT_MAIN_THREAD();
     if (!g_shortcuts_global_enabled)
@@ -728,7 +728,7 @@ int64_t rt_shortcuts_was_triggered(rt_string id)
 
 void rt_shortcuts_clear_triggered(void) {}
 
-int rt_shortcuts_check_key(int key, int mods)
+int8_t rt_shortcuts_check_key(int key, int mods)
 {
     (void)key;
     (void)mods;

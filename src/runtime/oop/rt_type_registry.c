@@ -331,7 +331,7 @@ int rt_typeid_of(void *obj)
 
 /// @brief Check class inheritance (is-a) by type id.
 /// @return 1 when @p type_id equals or derives from @p test_type_id; 0 otherwise.
-int rt_type_is_a(int type_id, int test_type_id)
+int8_t rt_type_is_a(int type_id, int test_type_id)
 {
     if (type_id == test_type_id)
         return 1;
@@ -347,7 +347,7 @@ int rt_type_is_a(int type_id, int test_type_id)
 
 /// @brief Check whether a class implements an interface by id.
 /// @return 1 if implemented by the class or any ancestor; 0 otherwise.
-int rt_type_implements(int type_id, int iface_id)
+int8_t rt_type_implements(int type_id, int iface_id)
 {
     // Check the exact type first.
     if (find_binding(type_id, iface_id) != NULL)

@@ -47,7 +47,7 @@ typedef struct
     const char *input;
     size_t len;
     size_t pos;
-    rt_json_tok_type current_type;
+    rt_json_tok_type_t current_type;
     char *str_buf;
     size_t str_buf_len;
     size_t str_buf_cap;

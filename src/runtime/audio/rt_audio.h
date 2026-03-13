@@ -10,7 +10,7 @@
 //   - Looping and channel multiplexing are managed by the underlying ViperAUD backend.
 //
 // Ownership/Lifetime:
-//   - Sounds must be freed via rt_sound_free; music via rt_music_free.
+//   - Sounds must be freed via rt_sound_destroy; music via rt_music_destroy.
 //   - Caller owns all handles returned by factory functions.
 //
 // Links: src/lib/audio/include/vaud.h (underlying audio backend), src/runtime/core/rt_string.h
@@ -74,7 +74,7 @@ extern "C"
 
     /// @brief Free a loaded sound effect.
     /// @param sound Sound handle from rt_sound_load.
-    void rt_sound_free(void *sound);
+    void rt_sound_destroy(void *sound);
 
     /// @brief Play a sound effect with default settings.
     /// @param sound Sound handle.
@@ -125,7 +125,7 @@ extern "C"
 
     /// @brief Free a loaded music stream.
     /// @param music Music handle from rt_music_load.
-    void rt_music_free(void *music);
+    void rt_music_destroy(void *music);
 
     /// @brief Start music playback.
     /// @param music Music handle.

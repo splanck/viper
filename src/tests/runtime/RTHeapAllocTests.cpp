@@ -58,8 +58,8 @@ static void test_sortedset_heap()
     void *s = rt_sortedset_new();
     test_result("SortedSet created", s != NULL);
 
-    rt_sortedset_put(s, rt_const_cstr("hello"));
-    rt_sortedset_put(s, rt_const_cstr("world"));
+    rt_sortedset_add(s, rt_const_cstr("hello"));
+    rt_sortedset_add(s, rt_const_cstr("world"));
     test_result("SortedSet len is 2", rt_sortedset_len(s) == 2);
     test_result("Has hello", rt_sortedset_has(s, rt_const_cstr("hello")) == 1);
     printf("\n");

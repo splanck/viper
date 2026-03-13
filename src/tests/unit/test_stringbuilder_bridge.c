@@ -21,7 +21,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "rt_ns_bridge.h"
+#include "rt_sb_bridge.h"
 #include "rt_string_builder.h"
 
 // Runtime initialization not needed for these tests
@@ -98,7 +98,7 @@ void test_new_and_initial_state(void)
 {
     TEST_START("new and initial state");
 
-    void *sb = rt_ns_stringbuilder_new();
+    void *sb = rt_sb_new();
     ASSERT_TRUE(sb != NULL);
     ASSERT_EQ(0, rt_text_sb_get_length(sb));
 
@@ -117,7 +117,7 @@ void test_append_single(void)
 {
     TEST_START("append single string");
 
-    void *sb = rt_ns_stringbuilder_new();
+    void *sb = rt_sb_new();
     rt_string hello = make_string("Hello");
 
     void *ret = rt_text_sb_append(sb, hello);
@@ -135,7 +135,7 @@ void test_append_multiple(void)
 {
     TEST_START("append multiple strings");
 
-    void *sb = rt_ns_stringbuilder_new();
+    void *sb = rt_sb_new();
 
     rt_text_sb_append(sb, make_string("Hello"));
     rt_text_sb_append(sb, make_string(", "));
@@ -155,7 +155,7 @@ void test_append_line(void)
 {
     TEST_START("append line");
 
-    void *sb = rt_ns_stringbuilder_new();
+    void *sb = rt_sb_new();
 
     void *ret = rt_text_sb_append_line(sb, make_string("a"));
     ASSERT_TRUE(ret == sb);
@@ -175,7 +175,7 @@ void test_clear(void)
 {
     TEST_START("clear operation");
 
-    void *sb = rt_ns_stringbuilder_new();
+    void *sb = rt_sb_new();
     rt_text_sb_append(sb, make_string("Test content"));
 
     ASSERT_EQ(12, rt_text_sb_get_length(sb));
@@ -201,7 +201,7 @@ void test_capacity_growth(void)
 {
     TEST_START("capacity growth");
 
-    void *sb = rt_ns_stringbuilder_new();
+    void *sb = rt_sb_new();
     int64_t initial_cap = rt_text_sb_get_capacity(sb);
 
     // Append enough to force growth
@@ -224,7 +224,7 @@ void test_empty_append(void)
 {
     TEST_START("append empty string");
 
-    void *sb = rt_ns_stringbuilder_new();
+    void *sb = rt_sb_new();
     rt_text_sb_append(sb, make_string("Start"));
 
     rt_string empty = rt_str_empty();
@@ -242,7 +242,7 @@ void test_method_chaining(void)
 {
     TEST_START("method chaining");
 
-    void *sb = rt_ns_stringbuilder_new();
+    void *sb = rt_sb_new();
 
     // Chain multiple appends
     void *result = rt_text_sb_append(
@@ -262,7 +262,7 @@ void test_toString_preserves_state(void)
 {
     TEST_START("ToString preserves builder state");
 
-    void *sb = rt_ns_stringbuilder_new();
+    void *sb = rt_sb_new();
     rt_text_sb_append(sb, make_string("Test"));
 
     // First ToString

@@ -14,6 +14,11 @@
 //   - Set objects are heap-allocated; caller is responsible for lifetime management.
 //   - Elements are retained by the set while stored.
 //
+// Error conventions:
+//   - Allocation failure → returns NULL
+//   - Membership (Has) → returns 1 (found) or 0 (not found)
+//   - Removal (Remove) → returns 1 (removed) or 0 (not found)
+//
 // Links: src/runtime/collections/rt_set.c (implementation)
 //
 //===----------------------------------------------------------------------===//
@@ -44,13 +49,13 @@ extern "C"
     /// @param obj Set pointer.
     /// @param elem Element to add (retained if new).
     /// @return 1 if element was new (added), 0 if already present.
-    int8_t rt_set_put(void *obj, void *elem);
+    int8_t rt_set_add(void *obj, void *elem);
 
     /// @brief Remove an element from the set.
     /// @param obj Set pointer.
     /// @param elem Element to remove.
     /// @return 1 if removed, 0 if not found.
-    int8_t rt_set_drop(void *obj, void *elem);
+    int8_t rt_set_remove(void *obj, void *elem);
 
     /// @brief Check if element exists in set.
     /// @param obj Set pointer.
@@ -102,6 +107,11 @@ extern "C"
     /// @param other Other set pointer.
     /// @return 1 if no elements in common, 0 otherwise.
     int8_t rt_set_is_disjoint(void *obj, void *other);
+
+    /// @brief Create a shallow copy of the set.
+    /// @param obj Source Set pointer.
+    /// @return New set with same elements.
+    void *rt_set_clone(void *obj);
 
 #ifdef __cplusplus
 }

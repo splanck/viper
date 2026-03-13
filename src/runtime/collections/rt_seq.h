@@ -14,6 +14,10 @@
 //   - Seq objects are heap-allocated opaque pointers.
 //   - Caller is responsible for lifetime management.
 //
+// Error conventions:
+//   - Out-of-bounds index → rt_trap()
+//   - Allocation failure → returns NULL
+//
 // Links: src/runtime/collections/rt_seq.c (implementation)
 //
 //===----------------------------------------------------------------------===//

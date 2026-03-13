@@ -799,13 +799,13 @@ value Stack[T] {
     }
 
     func pop() -> T {
-        var last = items.get(items.Count - 1);
-        items.remove(items.Count - 1);
+        var last = items.get(items.Length - 1);
+        items.remove(items.Length - 1);
         return last;
     }
 
     func isEmpty() -> Boolean {
-        return items.Count == 0;
+        return items.Length == 0;
     }
 }
 

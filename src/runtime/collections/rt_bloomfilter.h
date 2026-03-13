@@ -9,7 +9,7 @@
 //   - The filter cannot remove elements once added.
 //   - Optimal bit array size and hash count are computed from expected_items and
 //   false_positive_rate.
-//   - rt_bloomfilter_contains returns 1 for possible membership, 0 for definite absence.
+//   - rt_bloomfilter_might_contain returns 1 for possible membership, 0 for definite absence.
 //
 // Ownership/Lifetime:
 //   - Filter objects are GC-managed opaque pointers.

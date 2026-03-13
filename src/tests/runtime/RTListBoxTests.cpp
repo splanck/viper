@@ -30,7 +30,7 @@ static void test_list_find_boxed_strings()
 {
     printf("Testing List.Find/Has with boxed strings:\n");
 
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
 
     void *apple1 = rt_box_str(rt_const_cstr("apple"));
     void *banana = rt_box_str(rt_const_cstr("banana"));
@@ -68,7 +68,7 @@ static void test_list_find_boxed_integers()
 {
     printf("Testing List.Find/Has with boxed integers:\n");
 
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
 
     void *i42a = rt_box_i64(42);
     void *i99 = rt_box_i64(99);
@@ -100,7 +100,7 @@ static void test_list_find_boxed_floats()
 {
     printf("Testing List.Find/Has with boxed floats:\n");
 
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
 
     void *f1a = rt_box_f64(3.14);
     void *f2 = rt_box_f64(2.718);
@@ -126,7 +126,7 @@ static void test_list_remove_boxed()
 {
     printf("Testing List.Remove with boxed values:\n");
 
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
 
     void *i10 = rt_box_i64(10);
     void *i20 = rt_box_i64(20);
@@ -165,7 +165,7 @@ static void test_list_find_boxed_booleans()
 {
     printf("Testing List.Find/Has with boxed booleans:\n");
 
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
 
     void *btrue1 = rt_box_i1(1);
     rt_list_push(list, btrue1);

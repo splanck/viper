@@ -1379,7 +1379,7 @@ The Viper standard library provides:
 | Numbers | Math, Math.Random, Convert | Math.Sqrt, Math.Sin, Random.Range, Convert.ToInt64 |
 | Text | String, Fmt | String.Trim, String.Split, Fmt.Int, Fmt.NumFixed |
 | Time | Time | Time.DateTime.Now, Time.Clock.Ticks, Time.Clock.Sleep |
-| Data | Collections | List.Push, Map.SetInt, Bag.Put |
+| Data | Collections | List.Push, Map.SetInt, Bag.Add |
 | System | Environment | GetArgument, Env.GetVariable, GetOS |
 | Security | Crypto.Hash, Codec, Guid | Hash.SHA256, Hash.MD5, New |
 

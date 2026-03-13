@@ -159,7 +159,7 @@ int8_t rt_set_is_empty(void *obj)
     return set->count == 0 ? 1 : 0;
 }
 
-int8_t rt_set_put(void *obj, void *elem)
+int8_t rt_set_add(void *obj, void *elem)
 {
     if (!obj)
         return 0;
@@ -180,7 +180,7 @@ int8_t rt_set_put(void *obj, void *elem)
     // Create new entry
     rt_set_entry *entry = malloc(sizeof(rt_set_entry));
     if (!entry)
-        rt_trap("Set.Put: memory allocation failed");
+        rt_trap("Set.Add: memory allocation failed");
 
     entry->elem = elem;
     entry->next = set->buckets[idx];
@@ -193,7 +193,7 @@ int8_t rt_set_put(void *obj, void *elem)
     return 1;
 }
 
-int8_t rt_set_drop(void *obj, void *elem)
+int8_t rt_set_remove(void *obj, void *elem)
 {
     if (!obj)
         return 0;
@@ -289,7 +289,7 @@ void *rt_set_union(void *obj, void *other)
         {
             for (rt_set_entry *e = set->buckets[i]; e; e = e->next)
             {
-                rt_set_put(result, e->elem);
+                rt_set_add(result, e->elem);
             }
         }
     }
@@ -302,7 +302,7 @@ void *rt_set_union(void *obj, void *other)
         {
             for (rt_set_entry *e = set2->buckets[i]; e; e = e->next)
             {
-                rt_set_put(result, e->elem);
+                rt_set_add(result, e->elem);
             }
         }
     }
@@ -326,7 +326,7 @@ void *rt_set_intersect(void *obj, void *other)
         {
             if (rt_set_has(other, e->elem))
             {
-                rt_set_put(result, e->elem);
+                rt_set_add(result, e->elem);
             }
         }
     }
@@ -350,7 +350,7 @@ void *rt_set_diff(void *obj, void *other)
         {
             if (!other || !rt_set_has(other, e->elem))
             {
-                rt_set_put(result, e->elem);
+                rt_set_add(result, e->elem);
             }
         }
     }
@@ -397,4 +397,28 @@ int8_t rt_set_is_disjoint(void *obj, void *other)
         }
     }
     return 1;
+}
+
+/// @brief Create a shallow copy of the set.
+///
+/// Allocates a new Set and adds all elements from the source set.
+/// Elements are shared (not deep-copied) between the original and clone.
+///
+/// @param obj Source Set pointer (may be NULL).
+/// @return New Set containing the same elements, or empty set if NULL.
+void *rt_set_clone(void *obj)
+{
+    void *result = rt_set_new();
+    if (!obj)
+        return result;
+
+    rt_set_impl *set = (rt_set_impl *)obj;
+    for (size_t i = 0; i < set->capacity; ++i)
+    {
+        for (rt_set_entry *e = set->buckets[i]; e; e = e->next)
+        {
+            rt_set_add(result, e->elem);
+        }
+    }
+    return result;
 }

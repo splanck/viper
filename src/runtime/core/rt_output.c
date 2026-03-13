@@ -116,7 +116,7 @@ void rt_output_end_batch(void)
     }
 }
 
-int rt_output_is_batch_mode(void)
+int8_t rt_output_is_batch_mode(void)
 {
     return __atomic_load_n(&g_batch_mode_depth, __ATOMIC_ACQUIRE) > 0;
 }

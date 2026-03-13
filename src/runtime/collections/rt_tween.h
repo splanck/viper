@@ -5,7 +5,7 @@
 // supporting double and int64 value types, play/pause/stop lifecycle, and static lerp helpers.
 //
 // Key invariants:
-//   - Duration must be >= 1 frame; easing type must be a valid rt_ease_type.
+//   - Duration must be >= 1 frame; easing type must be a valid rt_ease_type_t.
 //   - Progress is in [0, 100]; value equals 'from' at start and 'to' at completion.
 //   - rt_tween_update must be called once per frame.
 //   - Static lerp and easing functions are pure and allocation-free.
@@ -28,7 +28,7 @@ extern "C"
 #endif
 
     /// Easing function types.
-    typedef enum rt_ease_type
+    typedef enum
     {
         RT_EASE_LINEAR = 0,    ///< Linear interpolation (no easing)
         RT_EASE_IN_QUAD,       ///< Quadratic ease-in
@@ -50,7 +50,7 @@ extern "C"
         RT_EASE_OUT_BOUNCE,    ///< Bounce ease-out
         RT_EASE_IN_OUT_BOUNCE, ///< Bounce ease-in-out
         RT_EASE_COUNT          ///< Number of easing types
-    } rt_ease_type;
+    } rt_ease_type_t;
 
     /// Opaque handle to a Tween instance.
     typedef struct rt_tween_impl *rt_tween;
@@ -72,7 +72,7 @@ extern "C"
     /// @param from Starting value of the interpolation.
     /// @param to Ending value of the interpolation.
     /// @param duration Total duration in game frames. Must be >= 1.
-    /// @param ease_type Easing function to apply, as an rt_ease_type value
+    /// @param ease_type Easing function to apply, as an rt_ease_type_t value
     ///   (0 = linear, up to RT_EASE_COUNT-1).
     void rt_tween_start(
         rt_tween tween, double from, double to, int64_t duration, int64_t ease_type);
@@ -85,7 +85,7 @@ extern "C"
     /// @param from Starting integer value.
     /// @param to Ending integer value.
     /// @param duration Total duration in game frames. Must be >= 1.
-    /// @param ease_type Easing function to apply, as an rt_ease_type value.
+    /// @param ease_type Easing function to apply, as an rt_ease_type_t value.
     void rt_tween_start_i64(
         rt_tween tween, int64_t from, int64_t to, int64_t duration, int64_t ease_type);
 
@@ -177,7 +177,7 @@ extern "C"
 
     /// @brief Applies an easing function to a normalized progress value.
     /// @param t Linear progress from 0.0 to 1.0.
-    /// @param ease_type Easing function to apply, as an rt_ease_type value
+    /// @param ease_type Easing function to apply, as an rt_ease_type_t value
     ///   (0 = linear, up to RT_EASE_COUNT-1).
     /// @return The eased progress value. For most easing types the result is
     ///   in [0, 1], but back and elastic types may overshoot.

@@ -310,7 +310,7 @@ void *rt_sound_load_mem(const void *data, int64_t size)
     return wrapper;
 }
 
-void rt_sound_free(void *sound)
+void rt_sound_destroy(void *sound)
 {
     if (!sound)
         return;
@@ -466,7 +466,7 @@ void *rt_music_load(rt_string path)
     return wrapper;
 }
 
-void rt_music_free(void *music)
+void rt_music_destroy(void *music)
 {
     if (!music)
         return;
@@ -644,7 +644,7 @@ void *rt_sound_load_mem(const void *data, int64_t size)
     return NULL;
 }
 
-void rt_sound_free(void *sound)
+void rt_sound_destroy(void *sound)
 {
     (void)sound;
 }
@@ -700,7 +700,7 @@ void *rt_music_load(rt_string path)
     return NULL;
 }
 
-void rt_music_free(void *music)
+void rt_music_destroy(void *music)
 {
     (void)music;
 }

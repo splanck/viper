@@ -164,7 +164,7 @@ int8_t rt_trie_is_empty(void *obj)
     return rt_trie_len(obj) == 0;
 }
 
-void rt_trie_put(void *obj, rt_string key, void *value)
+void rt_trie_set(void *obj, rt_string key, void *value)
 {
     if (!obj)
         return;

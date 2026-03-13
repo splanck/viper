@@ -122,7 +122,7 @@ extern "C"
     /// @param a First element (may be NULL).
     /// @param b Second element (may be NULL).
     /// @return 1 if equal, 0 otherwise.
-    int rt_box_equal(void *a, void *b);
+    int8_t rt_box_equal(void *a, void *b);
 
 #ifdef __cplusplus
 }

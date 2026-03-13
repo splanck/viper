@@ -14,6 +14,11 @@
 //   - Ring objects are heap-allocated; caller is responsible for lifetime management.
 //   - No reference counting; explicit destruction is required.
 //
+// Error conventions:
+//   - Allocation failure → returns NULL
+//   - Pop on empty → returns NULL
+//   - Membership (Has) → returns 1 (found) or 0 (not found)
+//
 // Links: src/runtime/collections/rt_ring.c (implementation)
 //
 //===----------------------------------------------------------------------===//
@@ -57,8 +62,8 @@ extern "C"
 
     /// @brief Push element to ring (overwrites oldest if full).
     /// @param obj Ring pointer.
-    /// @param item Element to push (will be retained).
-    void rt_ring_push(void *obj, void *item);
+    /// @param elem Element to push (will be retained).
+    void rt_ring_push(void *obj, void *elem);
 
     /// @brief Pop oldest element from ring.
     /// @param obj Ring pointer.
@@ -79,6 +84,31 @@ extern "C"
     /// @brief Remove all elements from ring.
     /// @param obj Ring pointer.
     void rt_ring_clear(void *obj);
+
+    /// @brief Check if the ring contains an element (pointer equality).
+    /// @param obj Ring pointer.
+    /// @param elem Element to search for.
+    /// @return 1 if found, 0 otherwise.
+    int8_t rt_ring_has(void *obj, void *elem);
+
+    /// @brief Get the oldest element (same as peek).
+    /// @param obj Ring pointer.
+    /// @return Oldest element, or NULL if empty.
+    void *rt_ring_first(void *obj);
+
+    /// @brief Get the newest element.
+    /// @param obj Ring pointer.
+    /// @return Newest element, or NULL if empty.
+    void *rt_ring_last(void *obj);
+
+    /// @brief Reverse the elements in the ring in place.
+    /// @param obj Ring pointer.
+    void rt_ring_reverse(void *obj);
+
+    /// @brief Create a shallow copy of the ring.
+    /// @param obj Source Ring pointer.
+    /// @return New ring with same elements and capacity.
+    void *rt_ring_clone(void *obj);
 
 #ifdef __cplusplus
 }

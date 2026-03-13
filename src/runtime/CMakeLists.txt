@@ -59,7 +59,7 @@ set(RT_OOP_SOURCES
         oop/rt_object.c
         oop/rt_oop_dispatch.c
         oop/rt_type_registry.c
-        oop/rt_ns_bridge.c
+        oop/rt_sb_bridge.c
         oop/rt_exc.c
         oop/rt_result.c
         oop/rt_option.c
@@ -279,7 +279,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_output.h
         ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_modvar.h
         ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_args.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/oop/rt_ns_bridge.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/oop/rt_sb_bridge.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_font.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_graphics.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_gui.h

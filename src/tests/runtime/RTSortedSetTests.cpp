@@ -52,12 +52,12 @@ static void test_sortedset_put_has()
     rt_string cherry = rt_const_cstr("cherry");
 
     // Add elements
-    test_result("Put apple returns 1 (new)", rt_sortedset_put(set, apple) == 1);
-    test_result("Put cherry returns 1 (new)", rt_sortedset_put(set, cherry) == 1);
-    test_result("Put banana returns 1 (new)", rt_sortedset_put(set, banana) == 1);
+    test_result("Put apple returns 1 (new)", rt_sortedset_add(set, apple) == 1);
+    test_result("Put cherry returns 1 (new)", rt_sortedset_add(set, cherry) == 1);
+    test_result("Put banana returns 1 (new)", rt_sortedset_add(set, banana) == 1);
 
     // Duplicate
-    test_result("Put apple again returns 0 (exists)", rt_sortedset_put(set, apple) == 0);
+    test_result("Put apple again returns 0 (exists)", rt_sortedset_add(set, apple) == 0);
 
     test_result("Has apple", rt_sortedset_has(set, apple) == 1);
     test_result("Has banana", rt_sortedset_has(set, banana) == 1);
@@ -76,9 +76,9 @@ static void test_sortedset_order()
     void *set = rt_sortedset_new();
 
     // Add in reverse order
-    rt_sortedset_put(set, rt_const_cstr("zebra"));
-    rt_sortedset_put(set, rt_const_cstr("apple"));
-    rt_sortedset_put(set, rt_const_cstr("mango"));
+    rt_sortedset_add(set, rt_const_cstr("zebra"));
+    rt_sortedset_add(set, rt_const_cstr("apple"));
+    rt_sortedset_add(set, rt_const_cstr("mango"));
 
     // Check ordering
     rt_string first = rt_sortedset_first(set);
@@ -100,16 +100,16 @@ static void test_sortedset_drop()
     printf("Testing SortedSet Drop:\n");
 
     void *set = rt_sortedset_new();
-    rt_sortedset_put(set, rt_const_cstr("a"));
-    rt_sortedset_put(set, rt_const_cstr("b"));
-    rt_sortedset_put(set, rt_const_cstr("c"));
+    rt_sortedset_add(set, rt_const_cstr("a"));
+    rt_sortedset_add(set, rt_const_cstr("b"));
+    rt_sortedset_add(set, rt_const_cstr("c"));
 
     test_result("Length is 3", rt_sortedset_len(set) == 3);
-    test_result("Drop b returns 1", rt_sortedset_drop(set, rt_const_cstr("b")) == 1);
+    test_result("Drop b returns 1", rt_sortedset_remove(set, rt_const_cstr("b")) == 1);
     test_result("Length is 2", rt_sortedset_len(set) == 2);
     test_result("No longer has b", rt_sortedset_has(set, rt_const_cstr("b")) == 0);
     test_result("Still has a and c", rt_sortedset_has(set, rt_const_cstr("a")) == 1);
-    test_result("Drop nonexistent returns 0", rt_sortedset_drop(set, rt_const_cstr("x")) == 0);
+    test_result("Drop nonexistent returns 0", rt_sortedset_remove(set, rt_const_cstr("x")) == 0);
 
     printf("\n");
 }
@@ -123,9 +123,9 @@ static void test_sortedset_floor_ceil()
     printf("Testing SortedSet Floor/Ceil:\n");
 
     void *set = rt_sortedset_new();
-    rt_sortedset_put(set, rt_const_cstr("b"));
-    rt_sortedset_put(set, rt_const_cstr("d"));
-    rt_sortedset_put(set, rt_const_cstr("f"));
+    rt_sortedset_add(set, rt_const_cstr("b"));
+    rt_sortedset_add(set, rt_const_cstr("d"));
+    rt_sortedset_add(set, rt_const_cstr("f"));
 
     // Floor: greatest element <= given
     test_result("Floor(d) is d",
@@ -151,9 +151,9 @@ static void test_sortedset_lower_higher()
     printf("Testing SortedSet Lower/Higher:\n");
 
     void *set = rt_sortedset_new();
-    rt_sortedset_put(set, rt_const_cstr("b"));
-    rt_sortedset_put(set, rt_const_cstr("d"));
-    rt_sortedset_put(set, rt_const_cstr("f"));
+    rt_sortedset_add(set, rt_const_cstr("b"));
+    rt_sortedset_add(set, rt_const_cstr("d"));
+    rt_sortedset_add(set, rt_const_cstr("f"));
 
     // Lower: greatest element < given (strictly)
     test_result("Lower(d) is b",
@@ -183,9 +183,9 @@ static void test_sortedset_items()
     printf("Testing SortedSet Items:\n");
 
     void *set = rt_sortedset_new();
-    rt_sortedset_put(set, rt_const_cstr("c"));
-    rt_sortedset_put(set, rt_const_cstr("a"));
-    rt_sortedset_put(set, rt_const_cstr("b"));
+    rt_sortedset_add(set, rt_const_cstr("c"));
+    rt_sortedset_add(set, rt_const_cstr("a"));
+    rt_sortedset_add(set, rt_const_cstr("b"));
 
     void *items = rt_sortedset_items(set);
     test_result("Items returns Seq", items != NULL);
@@ -212,12 +212,12 @@ static void test_sortedset_union()
     printf("Testing SortedSet Union:\n");
 
     void *set1 = rt_sortedset_new();
-    rt_sortedset_put(set1, rt_const_cstr("a"));
-    rt_sortedset_put(set1, rt_const_cstr("b"));
+    rt_sortedset_add(set1, rt_const_cstr("a"));
+    rt_sortedset_add(set1, rt_const_cstr("b"));
 
     void *set2 = rt_sortedset_new();
-    rt_sortedset_put(set2, rt_const_cstr("b"));
-    rt_sortedset_put(set2, rt_const_cstr("c"));
+    rt_sortedset_add(set2, rt_const_cstr("b"));
+    rt_sortedset_add(set2, rt_const_cstr("c"));
 
     void *merged = rt_sortedset_union(set1, set2);
     test_result("Union set has 3 elements", rt_sortedset_len(merged) == 3);
@@ -233,14 +233,14 @@ static void test_sortedset_intersect()
     printf("Testing SortedSet Intersect:\n");
 
     void *set1 = rt_sortedset_new();
-    rt_sortedset_put(set1, rt_const_cstr("a"));
-    rt_sortedset_put(set1, rt_const_cstr("b"));
-    rt_sortedset_put(set1, rt_const_cstr("c"));
+    rt_sortedset_add(set1, rt_const_cstr("a"));
+    rt_sortedset_add(set1, rt_const_cstr("b"));
+    rt_sortedset_add(set1, rt_const_cstr("c"));
 
     void *set2 = rt_sortedset_new();
-    rt_sortedset_put(set2, rt_const_cstr("b"));
-    rt_sortedset_put(set2, rt_const_cstr("c"));
-    rt_sortedset_put(set2, rt_const_cstr("d"));
+    rt_sortedset_add(set2, rt_const_cstr("b"));
+    rt_sortedset_add(set2, rt_const_cstr("c"));
+    rt_sortedset_add(set2, rt_const_cstr("d"));
 
     void *inter = rt_sortedset_intersect(set1, set2);
     test_result("Intersect set has 2 elements", rt_sortedset_len(inter) == 2);
@@ -256,12 +256,12 @@ static void test_sortedset_diff()
     printf("Testing SortedSet Diff:\n");
 
     void *set1 = rt_sortedset_new();
-    rt_sortedset_put(set1, rt_const_cstr("a"));
-    rt_sortedset_put(set1, rt_const_cstr("b"));
-    rt_sortedset_put(set1, rt_const_cstr("c"));
+    rt_sortedset_add(set1, rt_const_cstr("a"));
+    rt_sortedset_add(set1, rt_const_cstr("b"));
+    rt_sortedset_add(set1, rt_const_cstr("c"));
 
     void *set2 = rt_sortedset_new();
-    rt_sortedset_put(set2, rt_const_cstr("b"));
+    rt_sortedset_add(set2, rt_const_cstr("b"));
 
     void *diff = rt_sortedset_diff(set1, set2);
     test_result("Diff set has 2 elements", rt_sortedset_len(diff) == 2);
@@ -277,16 +277,16 @@ static void test_sortedset_is_subset()
     printf("Testing SortedSet IsSubset:\n");
 
     void *set1 = rt_sortedset_new();
-    rt_sortedset_put(set1, rt_const_cstr("a"));
-    rt_sortedset_put(set1, rt_const_cstr("b"));
+    rt_sortedset_add(set1, rt_const_cstr("a"));
+    rt_sortedset_add(set1, rt_const_cstr("b"));
 
     void *set2 = rt_sortedset_new();
-    rt_sortedset_put(set2, rt_const_cstr("a"));
-    rt_sortedset_put(set2, rt_const_cstr("b"));
-    rt_sortedset_put(set2, rt_const_cstr("c"));
+    rt_sortedset_add(set2, rt_const_cstr("a"));
+    rt_sortedset_add(set2, rt_const_cstr("b"));
+    rt_sortedset_add(set2, rt_const_cstr("c"));
 
     void *set3 = rt_sortedset_new();
-    rt_sortedset_put(set3, rt_const_cstr("x"));
+    rt_sortedset_add(set3, rt_const_cstr("x"));
 
     test_result("set1 is subset of set2", rt_sortedset_is_subset(set1, set2) == 1);
     test_result("set2 is not subset of set1", rt_sortedset_is_subset(set2, set1) == 0);
@@ -307,7 +307,7 @@ static void test_sortedset_null_handling()
 
     test_result("Len(NULL) returns 0", rt_sortedset_len(NULL) == 0);
     test_result("IsEmpty(NULL) returns 1", rt_sortedset_is_empty(NULL) == 1);
-    test_result("Put(NULL) returns 0", rt_sortedset_put(NULL, rt_const_cstr("x")) == 0);
+    test_result("Put(NULL) returns 0", rt_sortedset_add(NULL, rt_const_cstr("x")) == 0);
     test_result("Has(NULL) returns 0", rt_sortedset_has(NULL, rt_const_cstr("x")) == 0);
 
     printf("\n");

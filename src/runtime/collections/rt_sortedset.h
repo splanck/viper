@@ -55,13 +55,13 @@ extern "C"
     /// @param obj SortedSet pointer.
     /// @param str String to add (copied).
     /// @return 1 if string was new (added), 0 if already present.
-    int8_t rt_sortedset_put(void *obj, rt_string str);
+    int8_t rt_sortedset_add(void *obj, rt_string str);
 
     /// @brief Remove a string from the set.
     /// @param obj SortedSet pointer.
     /// @param str String to remove.
     /// @return 1 if removed, 0 if not found.
-    int8_t rt_sortedset_drop(void *obj, rt_string str);
+    int8_t rt_sortedset_remove(void *obj, rt_string str);
 
     /// @brief Check if a string exists in the set.
     /// @param obj SortedSet pointer.

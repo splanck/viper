@@ -170,7 +170,7 @@ int8_t rt_sortedset_is_empty(void *obj)
 // Basic Operations
 //=============================================================================
 
-int8_t rt_sortedset_put(void *obj, rt_string str)
+int8_t rt_sortedset_add(void *obj, rt_string str)
 {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set)
@@ -196,7 +196,7 @@ int8_t rt_sortedset_put(void *obj, rt_string str)
     return 1;
 }
 
-int8_t rt_sortedset_drop(void *obj, rt_string str)
+int8_t rt_sortedset_remove(void *obj, rt_string str)
 {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set)
@@ -439,7 +439,7 @@ void *rt_sortedset_union(void *obj, void *other)
     {
         for (int64_t i = 0; i < a->len; i++)
         {
-            rt_sortedset_put(result, a->data[i]);
+            rt_sortedset_add(result, a->data[i]);
         }
     }
 
@@ -447,7 +447,7 @@ void *rt_sortedset_union(void *obj, void *other)
     {
         for (int64_t i = 0; i < b->len; i++)
         {
-            rt_sortedset_put(result, b->data[i]);
+            rt_sortedset_add(result, b->data[i]);
         }
     }
 
@@ -470,7 +470,7 @@ void *rt_sortedset_intersect(void *obj, void *other)
         int cmp = compare_strings(a->data[i], b->data[j]);
         if (cmp == 0)
         {
-            rt_sortedset_put(result, a->data[i]);
+            rt_sortedset_add(result, a->data[i]);
             i++;
             j++;
         }
@@ -500,7 +500,7 @@ void *rt_sortedset_diff(void *obj, void *other)
         // All elements in a
         for (int64_t i = 0; i < a->len; i++)
         {
-            rt_sortedset_put(result, a->data[i]);
+            rt_sortedset_add(result, a->data[i]);
         }
         return result;
     }
@@ -511,7 +511,7 @@ void *rt_sortedset_diff(void *obj, void *other)
     {
         if (j >= b->len)
         {
-            rt_sortedset_put(result, a->data[i]);
+            rt_sortedset_add(result, a->data[i]);
             i++;
         }
         else
@@ -519,7 +519,7 @@ void *rt_sortedset_diff(void *obj, void *other)
             int cmp = compare_strings(a->data[i], b->data[j]);
             if (cmp < 0)
             {
-                rt_sortedset_put(result, a->data[i]);
+                rt_sortedset_add(result, a->data[i]);
                 i++;
             }
             else if (cmp > 0)

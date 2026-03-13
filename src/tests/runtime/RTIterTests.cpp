@@ -176,7 +176,7 @@ static void test_iter_to_seq()
 
 static void test_iter_from_list()
 {
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
     void *a = make_obj();
     void *b = make_obj();
     rt_list_push(list, a);
@@ -281,9 +281,9 @@ static void test_iter_from_set()
     void *a = make_obj();
     void *b = make_obj();
     void *c = make_obj();
-    rt_set_put(set, a);
-    rt_set_put(set, b);
-    rt_set_put(set, c);
+    rt_set_add(set, a);
+    rt_set_add(set, b);
+    rt_set_add(set, c);
 
     void *it = rt_iter_from_set(set);
     ASSERT(it != NULL, "iter from set not null");

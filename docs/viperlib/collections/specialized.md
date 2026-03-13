@@ -672,9 +672,10 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 
 ### Properties
 
-| Property | Type    | Description     |
-|----------|---------|-----------------|
-| `Len`    | Integer | Number of bytes |
+| Property  | Type    | Description                              |
+|-----------|---------|------------------------------------------|
+| `Len`     | Integer | Number of bytes                          |
+| `IsEmpty` | Boolean | Returns true if the byte array is empty  |
 
 ### Methods
 

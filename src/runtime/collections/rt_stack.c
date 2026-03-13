@@ -252,16 +252,16 @@ int8_t rt_stack_is_empty(void *obj)
 /// ```
 ///
 /// @param obj Pointer to a Stack object. Must not be NULL.
-/// @param val The element to push. May be NULL (NULL is a valid element).
+/// @param elem The element to push. May be NULL (NULL is a valid element).
 ///
 /// @note O(1) amortized time complexity. Occasional O(n) when resizing occurs.
-/// @note The Stack does not take ownership of val - the caller manages its lifetime.
+/// @note The Stack does not take ownership of elem - the caller manages its lifetime.
 /// @note Traps with "Stack.Push: null stack" if obj is NULL.
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_stack_pop For the inverse operation
 /// @see rt_stack_peek For viewing without removing
-void rt_stack_push(void *obj, void *val)
+void rt_stack_push(void *obj, void *elem)
 {
     if (!obj)
         rt_trap("Stack.Push: null stack");
@@ -269,7 +269,7 @@ void rt_stack_push(void *obj, void *val)
     rt_stack_impl *stack = (rt_stack_impl *)obj;
 
     stack_ensure_capacity(stack, stack->len + 1);
-    stack->items[stack->len] = val;
+    stack->items[stack->len] = elem;
     stack->len++;
 }
 
@@ -410,4 +410,41 @@ int8_t rt_stack_has(void *obj, void *elem)
             return 1;
     }
     return 0;
+}
+
+/// @brief Pop the top element, or return NULL if empty (no trap).
+/// @param obj Opaque Stack object pointer.
+/// @return The removed element, or NULL if empty.
+void *rt_stack_try_pop(void *obj)
+{
+    if (!obj)
+        return NULL;
+
+    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    if (stack->len == 0)
+        return NULL;
+
+    stack->len--;
+    return stack->items[stack->len];
+}
+
+/// @brief Create a shallow copy of the stack.
+///
+/// Allocates a new Stack and pushes all elements from the source in
+/// bottom-to-top order, preserving the original stack ordering.
+///
+/// @param obj Source Stack pointer (may be NULL).
+/// @return New Stack with the same elements, or empty stack if NULL.
+void *rt_stack_clone(void *obj)
+{
+    void *result = rt_stack_new();
+    if (!obj)
+        return result;
+
+    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    for (int64_t i = 0; i < stack->len; i++)
+    {
+        rt_stack_push(result, stack->items[i]);
+    }
+    return result;
 }

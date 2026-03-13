@@ -149,9 +149,11 @@ circular buffer for O(1) add and take operations.
 |---------------|----------------|--------------------------------------------------------|
 | `Push(value)` | `Void(Object)` | Add element to back of queue                           |
 | `Pop()`       | `Object()`     | Remove and return front element (traps if empty)       |
+| `TryPop()`    | `Object()`     | Remove and return front element, or null if empty      |
 | `Peek()`      | `Object()`     | Return front element without removing (traps if empty) |
 | `Has(value)`  | `Boolean(Object)` | Check if an element is in the queue (by reference)  |
 | `Clear()`     | `Void()`       | Remove all elements                                    |
+| `Clone()`     | `Queue()`      | Create a shallow copy of the queue                     |
 
 ### Zia Example
 
@@ -232,9 +234,11 @@ A LIFO (last-in-first-out) collection. Elements are added and removed from the t
 |---------------|----------------|------------------------------------------------------|
 | `Push(value)` | `Void(Object)` | Add element to top of stack                          |
 | `Pop()`       | `Object()`     | Remove and return top element (traps if empty)       |
+| `TryPop()`    | `Object()`     | Remove and return top element, or null if empty      |
 | `Peek()`      | `Object()`     | Return top element without removing (traps if empty) |
 | `Has(value)`  | `Boolean(Object)` | Check if an element is on the stack (by reference) |
 | `Clear()`     | `Void()`       | Remove all elements                                  |
+| `Clone()`     | `Stack()`      | Create a shallow copy of the stack                   |
 
 ### Zia Example
 
@@ -319,6 +323,8 @@ stacks and queues while also supporting indexed access.
 | `PushBack(value)`    | `Void(Object)`          | Add element to back of deque                          |
 | `PopFront()`         | `Object()`              | Remove and return front element (traps if empty)      |
 | `PopBack()`          | `Object()`              | Remove and return back element (traps if empty)       |
+| `TryPopFront()`      | `Object()`              | Remove and return front element, or null if empty     |
+| `TryPopBack()`       | `Object()`              | Remove and return back element, or null if empty      |
 | `PeekFront()`        | `Object()`              | Return front element without removing (traps if empty)|
 | `PeekBack()`         | `Object()`              | Return back element without removing (traps if empty) |
 | `Get(index)`         | `Object(Integer)`       | Get element at index (0 = front)                      |
@@ -429,6 +435,11 @@ elements.
 | `Pop()`      | Object  | Remove and return oldest item (NULL if empty)       |
 | `Peek()`     | Object  | Return oldest item without removing (NULL if empty) |
 | `Get(index)` | Object  | Get item by logical index (0 = oldest)              |
+| `Has(value)` | Boolean | Check if an element is in the ring (by reference)   |
+| `First()`    | Object  | Return the oldest element (same as Peek)            |
+| `Last()`     | Object  | Return the newest element                           |
+| `Reverse()`  | void    | Reverse all elements in place                       |
+| `Clone()`    | Ring    | Create a shallow copy of the ring                   |
 | `Clear()`    | void    | Remove all elements                                 |
 
 ### Zia Example
@@ -530,6 +541,7 @@ A priority queue implemented as a binary heap. Elements are stored with an integ
 | `TryPop()`           | `Object()`             | Remove and return highest priority element, or null if empty |
 | `TryPeek()`          | `Object()`             | Return highest priority element, or null if empty          |
 | `Clear()`            | `Void()`               | Remove all elements                                        |
+| `Items()`            | `Seq()`                | Return elements in priority order as a Seq (alias for ToSeq) |
 | `ToSeq()`            | `Seq()`                | Return elements in priority order as a Seq                 |
 
 ### Zia Example

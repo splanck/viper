@@ -43,26 +43,26 @@ static void test_bag_new_empty()
 
 static void test_bag_put_has()
 {
-    printf("Testing Bag.Put and Bag.Has:\n");
+    printf("Testing Bag.Add and Bag.Has:\n");
 
     void *bag = rt_bag_new();
 
     // Put first element
     rt_string apple = rt_const_cstr("apple");
-    int8_t was_new = rt_bag_put(bag, apple);
+    int8_t was_new = rt_bag_add(bag, apple);
     test_result("Put 'apple' returns true (new)", was_new == 1);
     test_result("Bag length is 1", rt_bag_len(bag) == 1);
     test_result("Bag is not empty", rt_bag_is_empty(bag) == 0);
     test_result("Has 'apple'", rt_bag_has(bag, apple) == 1);
 
     // Put duplicate
-    was_new = rt_bag_put(bag, apple);
+    was_new = rt_bag_add(bag, apple);
     test_result("Put duplicate 'apple' returns false", was_new == 0);
     test_result("Bag length still 1", rt_bag_len(bag) == 1);
 
     // Put second element
     rt_string banana = rt_const_cstr("banana");
-    was_new = rt_bag_put(bag, banana);
+    was_new = rt_bag_add(bag, banana);
     test_result("Put 'banana' returns true (new)", was_new == 1);
     test_result("Bag length is 2", rt_bag_len(bag) == 2);
     test_result("Has 'banana'", rt_bag_has(bag, banana) == 1);
@@ -76,7 +76,7 @@ static void test_bag_put_has()
 
 static void test_bag_drop()
 {
-    printf("Testing Bag.Drop:\n");
+    printf("Testing Bag.Remove:\n");
 
     void *bag = rt_bag_new();
 
@@ -84,13 +84,13 @@ static void test_bag_drop()
     rt_string b = rt_const_cstr("b");
     rt_string c = rt_const_cstr("c");
 
-    rt_bag_put(bag, a);
-    rt_bag_put(bag, b);
-    rt_bag_put(bag, c);
+    rt_bag_add(bag, a);
+    rt_bag_add(bag, b);
+    rt_bag_add(bag, c);
     test_result("Bag has 3 elements", rt_bag_len(bag) == 3);
 
     // Drop existing
-    int8_t was_removed = rt_bag_drop(bag, b);
+    int8_t was_removed = rt_bag_remove(bag, b);
     test_result("Drop 'b' returns true", was_removed == 1);
     test_result("Bag has 2 elements", rt_bag_len(bag) == 2);
     test_result("No longer has 'b'", rt_bag_has(bag, b) == 0);
@@ -98,7 +98,7 @@ static void test_bag_drop()
     test_result("Still has 'c'", rt_bag_has(bag, c) == 1);
 
     // Drop non-existent
-    was_removed = rt_bag_drop(bag, b);
+    was_removed = rt_bag_remove(bag, b);
     test_result("Drop 'b' again returns false", was_removed == 0);
     test_result("Bag still has 2 elements", rt_bag_len(bag) == 2);
 
@@ -111,9 +111,9 @@ static void test_bag_clear()
 
     void *bag = rt_bag_new();
 
-    rt_bag_put(bag, rt_const_cstr("x"));
-    rt_bag_put(bag, rt_const_cstr("y"));
-    rt_bag_put(bag, rt_const_cstr("z"));
+    rt_bag_add(bag, rt_const_cstr("x"));
+    rt_bag_add(bag, rt_const_cstr("y"));
+    rt_bag_add(bag, rt_const_cstr("z"));
     test_result("Bag has 3 elements", rt_bag_len(bag) == 3);
 
     rt_bag_clear(bag);
@@ -130,9 +130,9 @@ static void test_bag_items()
 
     void *bag = rt_bag_new();
 
-    rt_bag_put(bag, rt_const_cstr("one"));
-    rt_bag_put(bag, rt_const_cstr("two"));
-    rt_bag_put(bag, rt_const_cstr("three"));
+    rt_bag_add(bag, rt_const_cstr("one"));
+    rt_bag_add(bag, rt_const_cstr("two"));
+    rt_bag_add(bag, rt_const_cstr("three"));
 
     void *items = rt_bag_items(bag);
     test_result("Items is not null", items != NULL);
@@ -167,14 +167,14 @@ static void test_bag_union()
     printf("Testing Bag.Union:\n");
 
     void *bag1 = rt_bag_new();
-    rt_bag_put(bag1, rt_const_cstr("a"));
-    rt_bag_put(bag1, rt_const_cstr("b"));
-    rt_bag_put(bag1, rt_const_cstr("c"));
+    rt_bag_add(bag1, rt_const_cstr("a"));
+    rt_bag_add(bag1, rt_const_cstr("b"));
+    rt_bag_add(bag1, rt_const_cstr("c"));
 
     void *bag2 = rt_bag_new();
-    rt_bag_put(bag2, rt_const_cstr("b"));
-    rt_bag_put(bag2, rt_const_cstr("c"));
-    rt_bag_put(bag2, rt_const_cstr("d"));
+    rt_bag_add(bag2, rt_const_cstr("b"));
+    rt_bag_add(bag2, rt_const_cstr("c"));
+    rt_bag_add(bag2, rt_const_cstr("d"));
 
     void *merged = rt_bag_union(bag1, bag2);
     test_result("Union bag has 4 elements", rt_bag_len(merged) == 4);
@@ -195,14 +195,14 @@ static void test_bag_intersect()
     printf("Testing Bag.Intersect:\n");
 
     void *bag1 = rt_bag_new();
-    rt_bag_put(bag1, rt_const_cstr("a"));
-    rt_bag_put(bag1, rt_const_cstr("b"));
-    rt_bag_put(bag1, rt_const_cstr("c"));
+    rt_bag_add(bag1, rt_const_cstr("a"));
+    rt_bag_add(bag1, rt_const_cstr("b"));
+    rt_bag_add(bag1, rt_const_cstr("c"));
 
     void *bag2 = rt_bag_new();
-    rt_bag_put(bag2, rt_const_cstr("b"));
-    rt_bag_put(bag2, rt_const_cstr("c"));
-    rt_bag_put(bag2, rt_const_cstr("d"));
+    rt_bag_add(bag2, rt_const_cstr("b"));
+    rt_bag_add(bag2, rt_const_cstr("c"));
+    rt_bag_add(bag2, rt_const_cstr("d"));
 
     void *inter = rt_bag_intersect(bag1, bag2);
     test_result("Intersect bag has 2 elements", rt_bag_len(inter) == 2);
@@ -219,14 +219,14 @@ static void test_bag_diff()
     printf("Testing Bag.Diff (difference):\n");
 
     void *bag1 = rt_bag_new();
-    rt_bag_put(bag1, rt_const_cstr("a"));
-    rt_bag_put(bag1, rt_const_cstr("b"));
-    rt_bag_put(bag1, rt_const_cstr("c"));
+    rt_bag_add(bag1, rt_const_cstr("a"));
+    rt_bag_add(bag1, rt_const_cstr("b"));
+    rt_bag_add(bag1, rt_const_cstr("c"));
 
     void *bag2 = rt_bag_new();
-    rt_bag_put(bag2, rt_const_cstr("b"));
-    rt_bag_put(bag2, rt_const_cstr("c"));
-    rt_bag_put(bag2, rt_const_cstr("d"));
+    rt_bag_add(bag2, rt_const_cstr("b"));
+    rt_bag_add(bag2, rt_const_cstr("c"));
+    rt_bag_add(bag2, rt_const_cstr("d"));
 
     void *diff = rt_bag_diff(bag1, bag2);
     test_result("Diff bag has 1 element", rt_bag_len(diff) == 1);
@@ -251,7 +251,7 @@ static void test_bag_empty_operations()
     void *empty2 = rt_bag_new();
 
     void *bag = rt_bag_new();
-    rt_bag_put(bag, rt_const_cstr("x"));
+    rt_bag_add(bag, rt_const_cstr("x"));
 
     // Union with empty
     void *m1 = rt_bag_union(empty1, bag);
@@ -295,7 +295,7 @@ static void test_bag_resize()
     for (int i = 0; i < 100; i++)
     {
         snprintf(buf, sizeof(buf), "element_%d", i);
-        rt_bag_put(bag, rt_const_cstr(buf));
+        rt_bag_add(bag, rt_const_cstr(buf));
     }
 
     test_result("Bag has 100 elements", rt_bag_len(bag) == 100);

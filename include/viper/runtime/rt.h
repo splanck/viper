@@ -28,7 +28,7 @@
 #include "rt_list.h"
 #include "rt_math.h"
 #include "rt_modvar.h"
-#include "rt_ns_bridge.h"
+#include "rt_sb_bridge.h"
 #include "rt_numeric.h"
 #include "rt_object.h" /* plain include; functions are no-ops when not linked */
 #include "rt_random.h"

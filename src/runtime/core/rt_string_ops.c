@@ -304,7 +304,7 @@ rt_string rt_str_from_lit(const char *bytes, size_t len)
     return rt_string_from_bytes(bytes, len);
 }
 
-int rt_string_is_handle(void *p)
+int8_t rt_string_is_handle(void *p)
 {
     if (!p)
         return 0;
@@ -756,7 +756,7 @@ int64_t rt_str_index_of(rt_string hay, rt_string needle)
 /// @param hay Haystack string.
 /// @param needle Needle string.
 /// @return One-based index of the first match at or after @p start, or zero when absent.
-int64_t rt_instr3(int64_t start, rt_string hay, rt_string needle)
+int64_t rt_str_instr3(int64_t start, rt_string hay, rt_string needle)
 {
     if (!hay || !needle)
         return 0;
@@ -772,7 +772,7 @@ int64_t rt_instr3(int64_t start, rt_string hay, rt_string needle)
 
 int64_t rt_str_index_of_from(rt_string hay, int64_t start, rt_string needle)
 {
-    return rt_instr3(start, hay, needle);
+    return rt_str_instr3(start, hay, needle);
 }
 
 static int is_trim_ws(char c)
@@ -2332,7 +2332,7 @@ static int8_t like_match(
     return pi == plen ? 1 : 0;
 }
 
-int8_t rt_string_like(rt_string text, rt_string pattern)
+int8_t rt_str_like(rt_string text, rt_string pattern)
 {
     size_t tlen = rt_string_len_bytes(text);
     size_t plen = rt_string_len_bytes(pattern);
@@ -2341,7 +2341,7 @@ int8_t rt_string_like(rt_string text, rt_string pattern)
     return like_match(t, tlen, p, plen, 0);
 }
 
-int8_t rt_string_like_ci(rt_string text, rt_string pattern)
+int8_t rt_str_like_ci(rt_string text, rt_string pattern)
 {
     size_t tlen = rt_string_len_bytes(text);
     size_t plen = rt_string_len_bytes(pattern);

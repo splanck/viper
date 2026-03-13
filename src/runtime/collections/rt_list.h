@@ -7,13 +7,19 @@
 // Key invariants:
 //   - Elements are reference-managed: retained on store, released on overwrite or removal.
 //   - Indices are 0-based; out-of-bounds access traps at runtime.
-//   - rt_ns_list_new returns a new empty list with refcount 1.
+//   - rt_list_new returns a new empty list with refcount 1.
 //   - Sort operations use a stable algorithm preserving relative order of equal elements.
 //
 // Ownership/Lifetime:
 //   - List owns references to its elements and releases them on removal or destruction.
 //   - List lifetime is managed via reference counting; use retain/release to share.
-//   - Callers own the initial reference returned by rt_ns_list_new.
+//   - Callers own the initial reference returned by rt_list_new.
+//
+// Error conventions:
+//   - Out-of-bounds index → rt_trap()
+//   - Allocation failure → returns NULL
+//   - Search not found (Find) → returns -1
+//   - Removal not found (Remove) → returns 0
 //
 // Links: src/runtime/collections/rt_list.c (implementation), src/runtime/core/rt_heap.h
 //
@@ -34,7 +40,7 @@ extern "C"
     ///          reference counting.
     /// @return Opaque pointer to the new List object; NULL on allocation failure.
     /// @thread-safety Not thread-safe; caller is responsible for synchronization.
-    void *rt_ns_list_new(void);
+    void *rt_list_new(void);
 
     /// @brief Get the number of elements in the list.
     /// @details Exposes the List.Len property to the runtime by returning the

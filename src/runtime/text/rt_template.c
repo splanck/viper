@@ -451,7 +451,7 @@ void *rt_template_keys(rt_string tmpl)
         if (key_len > 0)
         {
             rt_string key = rt_string_from_bytes(tmpl_str + trimmed_start, key_len);
-            rt_bag_put(bag, key);
+            rt_bag_add(bag, key);
         }
 
         pos = end + 2;

@@ -398,7 +398,7 @@ BUILTIN(
                     .conditionArg = 2,
                     .callLocArg = 2,
                     .kind = VariantKind::CallRuntime,
-                    .runtime = "rt_instr3",
+                    .runtime = "rt_str_instr3",
                     .arguments = {Argument{.index = 0,
                                            .transforms = {Transform{.kind = TransformKind::EnsureI64},
                                                           Transform{.kind = TransformKind::AddConst,

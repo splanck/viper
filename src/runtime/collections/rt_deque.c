@@ -175,9 +175,9 @@ int8_t rt_deque_is_empty(void *obj)
 
 /// @brief Pushes an element onto the front of the deque.
 /// @param obj Pointer to the Deque object. No-op if NULL.
-/// @param val Element to push. May be NULL.
+/// @param elem Element to push. May be NULL.
 /// @note Grows the backing buffer if needed. O(1) amortized.
-void rt_deque_push_front(void *obj, void *val)
+void rt_deque_push_front(void *obj, void *elem)
 {
     if (!obj)
         return;
@@ -187,7 +187,7 @@ void rt_deque_push_front(void *obj, void *val)
 
     // Move front pointer backward (with wrap-around)
     d->front = (d->front - 1 + d->cap) % d->cap;
-    d->data[d->front] = val;
+    d->data[d->front] = elem;
     d->len++;
 }
 
@@ -230,9 +230,9 @@ void *rt_deque_peek_front(void *obj)
 
 /// @brief Pushes an element onto the back of the deque.
 /// @param obj Pointer to the Deque object. No-op if NULL.
-/// @param val Element to push. May be NULL.
+/// @param elem Element to push. May be NULL.
 /// @note Grows the backing buffer if needed. O(1) amortized.
-void rt_deque_push_back(void *obj, void *val)
+void rt_deque_push_back(void *obj, void *elem)
 {
     if (!obj)
         return;
@@ -241,7 +241,7 @@ void rt_deque_push_back(void *obj, void *val)
     ensure_capacity(d, d->len + 1);
 
     int64_t back = (d->front + d->len) % d->cap;
-    d->data[back] = val;
+    d->data[back] = elem;
     d->len++;
 }
 
@@ -303,9 +303,9 @@ void *rt_deque_get(void *obj, int64_t idx)
 /// @brief Replaces the element at the given logical index.
 /// @param obj Pointer to the Deque object. Must not be NULL.
 /// @param idx Zero-based index. Must be in range [0, len).
-/// @param val New value to store. May be NULL.
+/// @param elem New value to store. May be NULL.
 /// @note Traps if obj is NULL or idx is out of bounds.
-void rt_deque_set(void *obj, int64_t idx, void *val)
+void rt_deque_set(void *obj, int64_t idx, void *elem)
 {
     if (!obj)
         trap_with_message("Set called on NULL deque");
@@ -314,7 +314,7 @@ void rt_deque_set(void *obj, int64_t idx, void *val)
         trap_with_message("Index out of bounds");
 
     int64_t actual = (d->front + idx) % d->cap;
-    d->data[actual] = val;
+    d->data[actual] = elem;
 }
 
 //=============================================================================
@@ -335,10 +335,10 @@ void rt_deque_clear(void *obj)
 
 /// @brief Checks whether the deque contains a given pointer value.
 /// @param obj Pointer to the Deque object, or NULL.
-/// @param val Pointer to search for (identity comparison).
+/// @param elem Pointer to search for (identity comparison).
 /// @return 1 if found, 0 otherwise. Returns 0 if obj is NULL.
 /// @note O(n) linear scan.
-int8_t rt_deque_has(void *obj, void *val)
+int8_t rt_deque_has(void *obj, void *elem)
 {
     if (!obj)
         return 0;
@@ -347,7 +347,7 @@ int8_t rt_deque_has(void *obj, void *val)
     for (int64_t i = 0; i < d->len; i++)
     {
         int64_t idx = (d->front + i) % d->cap;
-        if (d->data[idx] == val)
+        if (d->data[idx] == elem)
             return 1;
     }
     return 0;
@@ -397,4 +397,38 @@ void *rt_deque_clone(void *obj)
     }
 
     return new_d;
+}
+
+/// @brief Pop the front element, or return NULL if empty (no trap).
+/// @param obj Opaque Deque object pointer.
+/// @return The removed element, or NULL if empty.
+void *rt_deque_try_pop_front(void *obj)
+{
+    if (!obj)
+        return NULL;
+    Deque *d = (Deque *)obj;
+    if (d->len == 0)
+        return NULL;
+
+    void *val = d->data[d->front];
+    d->front = (d->front + 1) % d->cap;
+    d->len--;
+    return val;
+}
+
+/// @brief Pop the back element, or return NULL if empty (no trap).
+/// @param obj Opaque Deque object pointer.
+/// @return The removed element, or NULL if empty.
+void *rt_deque_try_pop_back(void *obj)
+{
+    if (!obj)
+        return NULL;
+    Deque *d = (Deque *)obj;
+    if (d->len == 0)
+        return NULL;
+
+    int64_t back = (d->front + d->len - 1) % d->cap;
+    void *val = d->data[back];
+    d->len--;
+    return val;
 }

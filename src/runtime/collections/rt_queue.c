@@ -276,16 +276,16 @@ int8_t rt_queue_is_empty(void *obj)
 /// ```
 ///
 /// @param obj Pointer to a Queue object. Must not be NULL.
-/// @param val The element to add. May be NULL (NULL is a valid element).
+/// @param elem The element to add. May be NULL (NULL is a valid element).
 ///
 /// @note O(1) amortized time complexity. Occasional O(n) when resizing occurs.
-/// @note The Queue does not take ownership of val.
+/// @note The Queue does not take ownership of elem.
 /// @note Traps with "Queue.Add: null queue" if obj is NULL.
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_queue_pop For the removal operation
 /// @see rt_queue_peek For viewing without removing
-void rt_queue_push(void *obj, void *val)
+void rt_queue_push(void *obj, void *elem)
 {
     if (!obj)
         rt_trap("Queue.Add: null queue");
@@ -297,7 +297,7 @@ void rt_queue_push(void *obj, void *val)
         queue_grow(q);
     }
 
-    q->items[q->tail] = val;
+    q->items[q->tail] = elem;
     q->tail = (q->tail + 1) % q->cap;
     q->len++;
 }
@@ -443,4 +443,43 @@ int8_t rt_queue_has(void *obj, void *elem)
             return 1;
     }
     return 0;
+}
+
+/// @brief Pop the front element, or return NULL if empty (no trap).
+/// @param obj Opaque Queue object pointer.
+/// @return The removed element, or NULL if empty.
+void *rt_queue_try_pop(void *obj)
+{
+    if (!obj)
+        return NULL;
+
+    rt_queue_impl *q = (rt_queue_impl *)obj;
+    if (q->len == 0)
+        return NULL;
+
+    void *val = q->items[q->head];
+    q->head = (q->head + 1) % q->cap;
+    q->len--;
+    return val;
+}
+
+/// @brief Create a shallow copy of the queue.
+///
+/// Allocates a new Queue and pushes all elements from the source in
+/// front-to-back order, preserving the original queue ordering.
+///
+/// @param obj Source Queue pointer (may be NULL).
+/// @return New Queue with the same elements, or empty queue if NULL.
+void *rt_queue_clone(void *obj)
+{
+    void *result = rt_queue_new();
+    if (!obj)
+        return result;
+
+    rt_queue_impl *q = (rt_queue_impl *)obj;
+    for (int64_t i = 0; i < q->len; i++)
+    {
+        rt_queue_push(result, q->items[(q->head + i) % q->cap]);
+    }
+    return result;
 }

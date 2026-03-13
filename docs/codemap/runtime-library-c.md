@@ -295,8 +295,8 @@ Last updated: 2026-02-17
 | `rt_context.h`  | Context declarations                     |
 | `rt_modvar.c`   | Module-level variable storage            |
 | `rt_modvar.h`   | Module variable declarations             |
-| `rt_ns_bridge.c`| Namespace bridging for `Viper.*` runtime |
-| `rt_ns_bridge.h`| Namespace bridge declarations            |
+| `rt_sb_bridge.c`| StringBuilder bridge for `Viper.Text.StringBuilder` |
+| `rt_sb_bridge.h`| StringBuilder bridge declarations        |
 
 ## Threading
 

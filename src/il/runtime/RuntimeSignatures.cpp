@@ -77,6 +77,7 @@
 #include "rt_concmap.h"
 #include "rt_concqueue.h"
 #include "rt_context.h"
+#include "rt_convert_coll.h"
 #include "rt_countdown.h"
 #include "rt_countmap.h"
 #include "rt_csv.h"
@@ -143,7 +144,7 @@
 #include "rt_msgbus.h"
 #include "rt_multimap.h"
 #include "rt_network.h"
-#include "rt_ns_bridge.h"
+#include "rt_sb_bridge.h"
 #include "rt_numeric.h"
 #include "rt_numfmt.h"
 #include "rt_object.h"
@@ -1223,10 +1224,10 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_instr3",
+    DescriptorRow{"rt_str_instr3",
                   std::nullopt,
                   "i64(i64,string,string)",
-                  &DirectHandler<&rt_instr3, int64_t, int64_t, rt_string, rt_string>::invoke,
+                  &DirectHandler<&rt_str_instr3, int64_t, int64_t, rt_string, rt_string>::invoke,
                   featureLowering(RuntimeFeature::Instr3),
                   nullptr,
                   0,

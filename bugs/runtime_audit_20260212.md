@@ -326,7 +326,7 @@
 **Repro:** `sb = NEW Viper.Text.StringBuilder(); sb.Append("Hello"); PRINT sb.Length`
 **Error:** `Assertion failed: (hdr->magic == RT_MAGIC), function payload_to_hdr, file rt_heap.c, line 50.`
 **Zia works perfectly.** Same RT_MAGIC crash pattern as A-026 (Deque) and A-027 (SortedSet).
-**Root cause:** StringBuilder's C constructor allocates with wrong mechanism. The `rt_ns_stringbuilder_new()` implementation may use `malloc()` instead of `rt_obj_new_i64()` in the BASIC path, or the opaque layout `"opaque*"` causes a different allocation path. When BASIC's VM retains/releases the object, `payload_to_hdr()` finds no RT_MAGIC header and asserts. Same Cluster 1 pattern as A-026/A-027.
+**Root cause:** StringBuilder's C constructor allocates with wrong mechanism. The `rt_sb_new()` implementation may use `malloc()` instead of `rt_obj_new_i64()` in the BASIC path, or the opaque layout `"opaque*"` causes a different allocation path. When BASIC's VM retains/releases the object, `payload_to_hdr()` finds no RT_MAGIC header and asserts. Same Cluster 1 pattern as A-026/A-027.
 
 ### A-038: BASIC — Scanner unknown callee
 

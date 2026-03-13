@@ -1,8 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/oop/rt_ns_bridge.h
-// Purpose: Prototypes for runtime namespace bridging helpers that create heap-managed,
-// reference-counted object instances for Viper's standard namespace classes.
+// File: src/runtime/oop/rt_sb_bridge.h
+// Purpose: Prototypes for the StringBuilder bridge that creates a heap-managed,
+// reference-counted StringBuilder object for Viper.Text.StringBuilder.
 //
 // Key invariants:
 //   - Constructors return heap-managed, reference-counted object pointers.
@@ -14,7 +14,7 @@
 //   - Objects returned are managed by the runtime object heap.
 //   - Callers must release objects according to refcounting rules.
 //
-// Links: src/runtime/oop/rt_ns_bridge.c (implementation), src/runtime/core/rt_heap.h
+// Links: src/runtime/oop/rt_sb_bridge.c (implementation), src/runtime/core/rt_heap.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -29,7 +29,7 @@ extern "C"
     ///          Creates a heap-managed object with the appropriate vtable and
     ///          internal state (an embedded rt_string_builder).
     /// @return Opaque pointer to the new StringBuilder object; NULL on failure.
-    void *rt_ns_stringbuilder_new(void);
+    void *rt_sb_new(void);
 
 #ifdef __cplusplus
 }

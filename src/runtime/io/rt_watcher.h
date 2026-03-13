@@ -28,12 +28,14 @@ extern "C"
 {
 #endif
 
-// Event type constants
-#define RT_WATCH_EVENT_NONE 0
-#define RT_WATCH_EVENT_CREATED 1
-#define RT_WATCH_EVENT_MODIFIED 2
-#define RT_WATCH_EVENT_DELETED 3
-#define RT_WATCH_EVENT_RENAMED 4
+/// File system event type constants.
+typedef enum {
+    RT_WATCH_EVENT_NONE     = 0,
+    RT_WATCH_EVENT_CREATED  = 1,
+    RT_WATCH_EVENT_MODIFIED = 2,
+    RT_WATCH_EVENT_DELETED  = 3,
+    RT_WATCH_EVENT_RENAMED  = 4,
+} rt_watch_event_t;
 
     /// @brief Create a new watcher for the given path.
     /// @param path The file or directory path to watch.

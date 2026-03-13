@@ -278,10 +278,10 @@ int8_t rt_ring_is_full(void *obj)
 /// ```
 ///
 /// @param obj Pointer to a Ring object. If NULL, this function is a no-op.
-/// @param item The element pointer to add. May be NULL (NULL is a valid element).
+/// @param elem The element pointer to add. May be NULL (NULL is a valid element).
 ///
 /// @note O(1) time complexity - no memory allocation or copying occurs.
-/// @note The Ring does NOT take ownership of the item. When an item is overwritten,
+/// @note The Ring does NOT take ownership of the elem. When an elem is overwritten,
 ///       it is simply replaced in the array - no destructor or free is called.
 /// @note Thread safety: Not thread-safe. External synchronization required for
 ///       concurrent access.
@@ -291,7 +291,7 @@ int8_t rt_ring_is_full(void *obj)
 ///
 /// @see rt_ring_pop For removing and returning the oldest element
 /// @see rt_ring_is_full For checking if push will overwrite
-void rt_ring_push(void *obj, void *item)
+void rt_ring_push(void *obj, void *elem)
 {
     if (!obj)
         return;
@@ -306,7 +306,7 @@ void rt_ring_push(void *obj, void *item)
     if (ring->count == ring->capacity)
     {
         // Ring is full - overwrite oldest element at head position
-        ring->items[ring->head] = item;
+        ring->items[ring->head] = elem;
         // Advance head to next oldest
         ring->head = (ring->head + 1) % ring->capacity;
         // count stays the same (still full)
@@ -314,7 +314,7 @@ void rt_ring_push(void *obj, void *item)
     else
     {
         // Ring has space - add to tail
-        ring->items[tail] = item;
+        ring->items[tail] = elem;
         ring->count++;
     }
 }
@@ -523,4 +523,80 @@ void rt_ring_clear(void *obj)
 
     ring->head = 0;
     ring->count = 0;
+}
+
+int8_t rt_ring_has(void *obj, void *elem)
+{
+    if (!obj)
+        return 0;
+
+    rt_ring_impl *ring = (rt_ring_impl *)obj;
+    if (!ring->items)
+        return 0;
+
+    for (size_t i = 0; i < ring->count; i++)
+    {
+        size_t idx = (ring->head + i) % ring->capacity;
+        if (ring->items[idx] == elem)
+            return 1;
+    }
+    return 0;
+}
+
+void *rt_ring_first(void *obj)
+{
+    return rt_ring_peek(obj);
+}
+
+void *rt_ring_last(void *obj)
+{
+    if (!obj)
+        return NULL;
+
+    rt_ring_impl *ring = (rt_ring_impl *)obj;
+    if (ring->count == 0 || !ring->items)
+        return NULL;
+
+    size_t idx = (ring->head + ring->count - 1) % ring->capacity;
+    return ring->items[idx];
+}
+
+void rt_ring_reverse(void *obj)
+{
+    if (!obj)
+        return;
+
+    rt_ring_impl *ring = (rt_ring_impl *)obj;
+    if (ring->count < 2 || !ring->items)
+        return;
+
+    for (size_t i = 0; i < ring->count / 2; i++)
+    {
+        size_t front_idx = (ring->head + i) % ring->capacity;
+        size_t back_idx = (ring->head + ring->count - 1 - i) % ring->capacity;
+
+        void *tmp = ring->items[front_idx];
+        ring->items[front_idx] = ring->items[back_idx];
+        ring->items[back_idx] = tmp;
+    }
+}
+
+void *rt_ring_clone(void *obj)
+{
+    if (!obj)
+        return rt_ring_new(1);
+
+    rt_ring_impl *ring = (rt_ring_impl *)obj;
+
+    void *new_ring = rt_ring_new((int64_t)ring->capacity);
+    if (!new_ring)
+        return NULL;
+
+    for (size_t i = 0; i < ring->count; i++)
+    {
+        size_t idx = (ring->head + i) % ring->capacity;
+        rt_ring_push(new_ring, ring->items[idx]);
+    }
+
+    return new_ring;
 }

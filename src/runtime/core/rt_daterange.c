@@ -91,7 +91,7 @@ int64_t rt_daterange_end(void *range)
 // Containment / overlap
 // ---------------------------------------------------------------------------
 
-bool rt_daterange_contains(void *range, int64_t timestamp)
+int8_t rt_daterange_contains(void *range, int64_t timestamp)
 {
     if (!range)
         return false;
@@ -99,7 +99,7 @@ bool rt_daterange_contains(void *range, int64_t timestamp)
     return (timestamp >= r->start && timestamp <= r->end);
 }
 
-bool rt_daterange_overlaps(void *range, void *other)
+int8_t rt_daterange_overlaps(void *range, void *other)
 {
     if (!range || !other)
         return false;

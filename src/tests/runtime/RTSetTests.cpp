@@ -41,16 +41,16 @@ static void test_set_new_empty()
     printf("\n");
 }
 
-static void test_set_put_has_boxed_strings()
+static void test_set_add_has_boxed_strings()
 {
-    printf("Testing Set.Put/Has with boxed strings (content equality):\n");
+    printf("Testing Set.Add/Has with boxed strings (content equality):\n");
 
     void *set = rt_set_new();
 
     // Box "apple" and put it in the set
     void *apple1 = rt_box_str(rt_const_cstr("apple"));
-    int8_t was_new = rt_set_put(set, apple1);
-    test_result("Put boxed 'apple' returns 1 (new)", was_new == 1);
+    int8_t was_new = rt_set_add(set, apple1);
+    test_result("Add boxed 'apple' returns 1 (new)", was_new == 1);
     test_result("Set length is 1", rt_set_len(set) == 1);
 
     // Create a DIFFERENT boxed "apple" (different pointer, same content)
@@ -58,15 +58,15 @@ static void test_set_put_has_boxed_strings()
     test_result("Two boxes are different pointers", apple1 != apple2);
     test_result("Has boxed 'apple' (different box)", rt_set_has(set, apple2) == 1);
 
-    // Put duplicate should return 0
-    was_new = rt_set_put(set, apple2);
-    test_result("Put duplicate boxed 'apple' returns 0", was_new == 0);
+    // Add duplicate should return 0
+    was_new = rt_set_add(set, apple2);
+    test_result("Add duplicate boxed 'apple' returns 0", was_new == 0);
     test_result("Set length still 1", rt_set_len(set) == 1);
 
     // Add "banana"
     void *banana = rt_box_str(rt_const_cstr("banana"));
-    was_new = rt_set_put(set, banana);
-    test_result("Put boxed 'banana' returns 1 (new)", was_new == 1);
+    was_new = rt_set_add(set, banana);
+    test_result("Add boxed 'banana' returns 1 (new)", was_new == 1);
     test_result("Set length is 2", rt_set_len(set) == 2);
 
     // Check non-existent
@@ -76,9 +76,9 @@ static void test_set_put_has_boxed_strings()
     printf("\n");
 }
 
-static void test_set_put_has_boxed_integers()
+static void test_set_add_has_boxed_integers()
 {
-    printf("Testing Set.Put/Has with boxed integers:\n");
+    printf("Testing Set.Add/Has with boxed integers:\n");
 
     void *set = rt_set_new();
 
@@ -86,15 +86,15 @@ static void test_set_put_has_boxed_integers()
     void *i42b = rt_box_i64(42);
     void *i99 = rt_box_i64(99);
 
-    rt_set_put(set, i42a);
+    rt_set_add(set, i42a);
     test_result("Set length is 1", rt_set_len(set) == 1);
     test_result("Has boxed 42 (different box)", rt_set_has(set, i42b) == 1);
 
-    int8_t was_new = rt_set_put(set, i42b);
-    test_result("Put duplicate 42 returns 0", was_new == 0);
+    int8_t was_new = rt_set_add(set, i42b);
+    test_result("Add duplicate 42 returns 0", was_new == 0);
     test_result("Set length still 1", rt_set_len(set) == 1);
 
-    rt_set_put(set, i99);
+    rt_set_add(set, i99);
     test_result("Set length is 2", rt_set_len(set) == 2);
     test_result("Has boxed 99", rt_set_has(set, rt_box_i64(99)) == 1);
     test_result("Does not have 100", rt_set_has(set, rt_box_i64(100)) == 0);
@@ -102,9 +102,9 @@ static void test_set_put_has_boxed_integers()
     printf("\n");
 }
 
-static void test_set_put_has_boxed_floats()
+static void test_set_add_has_boxed_floats()
 {
-    printf("Testing Set.Put/Has with boxed floats:\n");
+    printf("Testing Set.Add/Has with boxed floats:\n");
 
     void *set = rt_set_new();
 
@@ -112,19 +112,19 @@ static void test_set_put_has_boxed_floats()
     void *f2 = rt_box_f64(3.14);
     void *f3 = rt_box_f64(2.71);
 
-    rt_set_put(set, f1);
+    rt_set_add(set, f1);
     test_result("Has boxed 3.14 (different box)", rt_set_has(set, f2) == 1);
     test_result("Does not have 2.71", rt_set_has(set, f3) == 0);
 
-    rt_set_put(set, f3);
+    rt_set_add(set, f3);
     test_result("Set length is 2", rt_set_len(set) == 2);
 
     printf("\n");
 }
 
-static void test_set_put_has_boxed_booleans()
+static void test_set_add_has_boxed_booleans()
 {
-    printf("Testing Set.Put/Has with boxed booleans:\n");
+    printf("Testing Set.Add/Has with boxed booleans:\n");
 
     void *set = rt_set_new();
 
@@ -132,40 +132,40 @@ static void test_set_put_has_boxed_booleans()
     void *t2 = rt_box_i1(1);
     void *f1 = rt_box_i1(0);
 
-    rt_set_put(set, t1);
+    rt_set_add(set, t1);
     test_result("Has boxed true (different box)", rt_set_has(set, t2) == 1);
     test_result("Does not have false", rt_set_has(set, f1) == 0);
 
-    rt_set_put(set, f1);
+    rt_set_add(set, f1);
     test_result("Set length is 2", rt_set_len(set) == 2);
 
     printf("\n");
 }
 
-static void test_set_drop_boxed()
+static void test_set_remove_boxed()
 {
-    printf("Testing Set.Drop with boxed values:\n");
+    printf("Testing Set.Remove with boxed values:\n");
 
     void *set = rt_set_new();
 
     void *a = rt_box_str(rt_const_cstr("alpha"));
     void *b = rt_box_str(rt_const_cstr("beta"));
-    rt_set_put(set, a);
-    rt_set_put(set, b);
+    rt_set_add(set, a);
+    rt_set_add(set, b);
     test_result("Set length is 2", rt_set_len(set) == 2);
 
     // Drop using a different boxed "alpha" (same content, different pointer)
     void *a2 = rt_box_str(rt_const_cstr("alpha"));
-    int8_t dropped = rt_set_drop(set, a2);
-    test_result("Drop boxed 'alpha' (different box) returns 1", dropped == 1);
+    int8_t dropped = rt_set_remove(set, a2);
+    test_result("Remove boxed 'alpha' (different box) returns 1", dropped == 1);
     test_result("Set length is 1", rt_set_len(set) == 1);
     test_result("No longer has 'alpha'", rt_set_has(set, a) == 0);
     test_result("Still has 'beta'", rt_set_has(set, b) == 1);
 
-    // Drop non-existent
+    // Remove non-existent
     void *c = rt_box_str(rt_const_cstr("gamma"));
-    dropped = rt_set_drop(set, c);
-    test_result("Drop non-existent returns 0", dropped == 0);
+    dropped = rt_set_remove(set, c);
+    test_result("Remove non-existent returns 0", dropped == 0);
 
     printf("\n");
 }
@@ -175,8 +175,8 @@ static void test_set_clear()
     printf("Testing Set.Clear:\n");
 
     void *set = rt_set_new();
-    rt_set_put(set, rt_box_str(rt_const_cstr("x")));
-    rt_set_put(set, rt_box_str(rt_const_cstr("y")));
+    rt_set_add(set, rt_box_str(rt_const_cstr("x")));
+    rt_set_add(set, rt_box_str(rt_const_cstr("y")));
     test_result("Set length is 2", rt_set_len(set) == 2);
 
     rt_set_clear(set);
@@ -197,12 +197,12 @@ static void test_set_union()
     printf("Testing Set.Union with boxed strings:\n");
 
     void *s1 = rt_set_new();
-    rt_set_put(s1, rt_box_str(rt_const_cstr("a")));
-    rt_set_put(s1, rt_box_str(rt_const_cstr("b")));
+    rt_set_add(s1, rt_box_str(rt_const_cstr("a")));
+    rt_set_add(s1, rt_box_str(rt_const_cstr("b")));
 
     void *s2 = rt_set_new();
-    rt_set_put(s2, rt_box_str(rt_const_cstr("b")));
-    rt_set_put(s2, rt_box_str(rt_const_cstr("c")));
+    rt_set_add(s2, rt_box_str(rt_const_cstr("b")));
+    rt_set_add(s2, rt_box_str(rt_const_cstr("c")));
 
     void *merged = rt_set_union(s1, s2);
     test_result("Union has 3 elements (not 4)", rt_set_len(merged) == 3);
@@ -218,14 +218,14 @@ static void test_set_intersect()
     printf("Testing Set.Intersect with boxed strings:\n");
 
     void *s1 = rt_set_new();
-    rt_set_put(s1, rt_box_str(rt_const_cstr("a")));
-    rt_set_put(s1, rt_box_str(rt_const_cstr("b")));
-    rt_set_put(s1, rt_box_str(rt_const_cstr("c")));
+    rt_set_add(s1, rt_box_str(rt_const_cstr("a")));
+    rt_set_add(s1, rt_box_str(rt_const_cstr("b")));
+    rt_set_add(s1, rt_box_str(rt_const_cstr("c")));
 
     void *s2 = rt_set_new();
-    rt_set_put(s2, rt_box_str(rt_const_cstr("b")));
-    rt_set_put(s2, rt_box_str(rt_const_cstr("c")));
-    rt_set_put(s2, rt_box_str(rt_const_cstr("d")));
+    rt_set_add(s2, rt_box_str(rt_const_cstr("b")));
+    rt_set_add(s2, rt_box_str(rt_const_cstr("c")));
+    rt_set_add(s2, rt_box_str(rt_const_cstr("d")));
 
     void *inter = rt_set_intersect(s1, s2);
     test_result("Intersect has 2 elements", rt_set_len(inter) == 2);
@@ -244,14 +244,14 @@ static void test_set_diff()
     printf("Testing Set.Diff (difference) with boxed strings:\n");
 
     void *s1 = rt_set_new();
-    rt_set_put(s1, rt_box_str(rt_const_cstr("a")));
-    rt_set_put(s1, rt_box_str(rt_const_cstr("b")));
-    rt_set_put(s1, rt_box_str(rt_const_cstr("c")));
+    rt_set_add(s1, rt_box_str(rt_const_cstr("a")));
+    rt_set_add(s1, rt_box_str(rt_const_cstr("b")));
+    rt_set_add(s1, rt_box_str(rt_const_cstr("c")));
 
     void *s2 = rt_set_new();
-    rt_set_put(s2, rt_box_str(rt_const_cstr("b")));
-    rt_set_put(s2, rt_box_str(rt_const_cstr("c")));
-    rt_set_put(s2, rt_box_str(rt_const_cstr("d")));
+    rt_set_add(s2, rt_box_str(rt_const_cstr("b")));
+    rt_set_add(s2, rt_box_str(rt_const_cstr("c")));
+    rt_set_add(s2, rt_box_str(rt_const_cstr("d")));
 
     void *diff = rt_set_diff(s1, s2);
     test_result("Diff has 1 element", rt_set_len(diff) == 1);
@@ -271,13 +271,13 @@ static void test_set_subset_superset()
     printf("Testing Set.IsSubset/IsSuperset with boxed strings:\n");
 
     void *small = rt_set_new();
-    rt_set_put(small, rt_box_str(rt_const_cstr("a")));
-    rt_set_put(small, rt_box_str(rt_const_cstr("b")));
+    rt_set_add(small, rt_box_str(rt_const_cstr("a")));
+    rt_set_add(small, rt_box_str(rt_const_cstr("b")));
 
     void *large = rt_set_new();
-    rt_set_put(large, rt_box_str(rt_const_cstr("a")));
-    rt_set_put(large, rt_box_str(rt_const_cstr("b")));
-    rt_set_put(large, rt_box_str(rt_const_cstr("c")));
+    rt_set_add(large, rt_box_str(rt_const_cstr("a")));
+    rt_set_add(large, rt_box_str(rt_const_cstr("b")));
+    rt_set_add(large, rt_box_str(rt_const_cstr("c")));
 
     test_result("small is subset of large", rt_set_is_subset(small, large) == 1);
     test_result("large is not subset of small", rt_set_is_subset(large, small) == 0);
@@ -292,16 +292,16 @@ static void test_set_disjoint()
     printf("Testing Set.IsDisjoint with boxed strings:\n");
 
     void *s1 = rt_set_new();
-    rt_set_put(s1, rt_box_str(rt_const_cstr("a")));
-    rt_set_put(s1, rt_box_str(rt_const_cstr("b")));
+    rt_set_add(s1, rt_box_str(rt_const_cstr("a")));
+    rt_set_add(s1, rt_box_str(rt_const_cstr("b")));
 
     void *s2 = rt_set_new();
-    rt_set_put(s2, rt_box_str(rt_const_cstr("c")));
-    rt_set_put(s2, rt_box_str(rt_const_cstr("d")));
+    rt_set_add(s2, rt_box_str(rt_const_cstr("c")));
+    rt_set_add(s2, rt_box_str(rt_const_cstr("d")));
 
     void *s3 = rt_set_new();
-    rt_set_put(s3, rt_box_str(rt_const_cstr("b")));
-    rt_set_put(s3, rt_box_str(rt_const_cstr("c")));
+    rt_set_add(s3, rt_box_str(rt_const_cstr("b")));
+    rt_set_add(s3, rt_box_str(rt_const_cstr("c")));
 
     test_result("s1 and s2 are disjoint", rt_set_is_disjoint(s1, s2) == 1);
     test_result("s1 and s3 are not disjoint", rt_set_is_disjoint(s1, s3) == 0);
@@ -325,7 +325,7 @@ static void test_set_resize()
     for (int i = 0; i < 100; i++)
     {
         int n = snprintf(buf, sizeof(buf), "element_%d", i);
-        rt_set_put(set, rt_box_str(rt_string_from_bytes(buf, (size_t)n)));
+        rt_set_add(set, rt_box_str(rt_string_from_bytes(buf, (size_t)n)));
     }
 
     test_result("Set has 100 elements", rt_set_len(set) == 100);
@@ -358,10 +358,10 @@ static void test_set_mixed_box_types()
     void *set = rt_set_new();
 
     // Add different boxed types
-    rt_set_put(set, rt_box_i64(42));
-    rt_set_put(set, rt_box_f64(3.14));
-    rt_set_put(set, rt_box_str(rt_const_cstr("hello")));
-    rt_set_put(set, rt_box_i1(1));
+    rt_set_add(set, rt_box_i64(42));
+    rt_set_add(set, rt_box_f64(3.14));
+    rt_set_add(set, rt_box_str(rt_const_cstr("hello")));
+    rt_set_add(set, rt_box_i1(1));
 
     test_result("Set has 4 elements", rt_set_len(set) == 4);
     test_result("Has boxed 42", rt_set_has(set, rt_box_i64(42)) == 1);
@@ -381,9 +381,9 @@ static void test_set_items()
     printf("Testing Set.Items:\n");
 
     void *set = rt_set_new();
-    rt_set_put(set, rt_box_str(rt_const_cstr("x")));
-    rt_set_put(set, rt_box_str(rt_const_cstr("y")));
-    rt_set_put(set, rt_box_str(rt_const_cstr("z")));
+    rt_set_add(set, rt_box_str(rt_const_cstr("x")));
+    rt_set_add(set, rt_box_str(rt_const_cstr("y")));
+    rt_set_add(set, rt_box_str(rt_const_cstr("z")));
 
     void *items = rt_set_items(set);
     test_result("Items seq has 3 elements", rt_seq_len(items) == 3);
@@ -400,11 +400,11 @@ int main()
     printf("=== RT Set Tests ===\n\n");
 
     test_set_new_empty();
-    test_set_put_has_boxed_strings();
-    test_set_put_has_boxed_integers();
-    test_set_put_has_boxed_floats();
-    test_set_put_has_boxed_booleans();
-    test_set_drop_boxed();
+    test_set_add_has_boxed_strings();
+    test_set_add_has_boxed_integers();
+    test_set_add_has_boxed_floats();
+    test_set_add_has_boxed_booleans();
+    test_set_remove_boxed();
     test_set_clear();
     test_set_union();
     test_set_intersect();

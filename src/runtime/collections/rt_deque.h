@@ -14,6 +14,12 @@
 //   - Deque objects are GC-managed; elements are retained on insertion and released on removal.
 //   - Callers should not free deque objects directly.
 //
+// Error conventions:
+//   - Out-of-bounds index → rt_trap()
+//   - Allocation failure → returns NULL
+//   - Pop/Peek on empty → rt_trap()
+//   - TryPopFront/TryPopBack on empty → returns NULL
+//
 // Links: src/runtime/collections/rt_deque.c (implementation)
 //
 //===----------------------------------------------------------------------===//
@@ -64,8 +70,8 @@ extern "C"
 
     /// @brief Add an element to the front of the deque.
     /// @param obj Opaque Deque object pointer.
-    /// @param val Element to add.
-    void rt_deque_push_front(void *obj, void *val);
+    /// @param elem Element to add.
+    void rt_deque_push_front(void *obj, void *elem);
 
     /// @brief Remove and return the element at the front.
     /// @param obj Opaque Deque object pointer.
@@ -83,8 +89,8 @@ extern "C"
 
     /// @brief Add an element to the back of the deque.
     /// @param obj Opaque Deque object pointer.
-    /// @param val Element to add.
-    void rt_deque_push_back(void *obj, void *val);
+    /// @param elem Element to add.
+    void rt_deque_push_back(void *obj, void *elem);
 
     /// @brief Remove and return the element at the back.
     /// @param obj Opaque Deque object pointer.
@@ -122,13 +128,23 @@ extern "C"
 
     /// @brief Check if the deque contains an element.
     /// @param obj Opaque Deque object pointer.
-    /// @param val Element to check for (compared by pointer equality).
+    /// @param elem Element to check for (compared by pointer equality).
     /// @return 1 if found, 0 otherwise.
-    int8_t rt_deque_has(void *obj, void *val);
+    int8_t rt_deque_has(void *obj, void *elem);
 
     /// @brief Reverse the elements in the deque in place.
     /// @param obj Opaque Deque object pointer.
     void rt_deque_reverse(void *obj);
+
+    /// @brief Pop the front element, or return NULL if empty (no trap).
+    /// @param obj Opaque Deque object pointer.
+    /// @return The removed element, or NULL if empty.
+    void *rt_deque_try_pop_front(void *obj);
+
+    /// @brief Pop the back element, or return NULL if empty (no trap).
+    /// @param obj Opaque Deque object pointer.
+    /// @return The removed element, or NULL if empty.
+    void *rt_deque_try_pop_back(void *obj);
 
     /// @brief Create a shallow copy of the deque.
     /// @param obj Source Deque object pointer.

@@ -152,7 +152,7 @@ static void test_list_to_seq()
 {
     printf("Testing List to Seq:\n");
 
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
     rt_list_push(list, val1);
     rt_list_push(list, val2);
 
@@ -168,7 +168,7 @@ static void test_list_to_set()
 {
     printf("Testing List to Set:\n");
 
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
     rt_list_push(list, val1);
     rt_list_push(list, val1); // Duplicate
 
@@ -188,8 +188,8 @@ static void test_set_to_seq()
     printf("Testing Set to Seq:\n");
 
     void *set = rt_set_new();
-    rt_set_put(set, val1);
-    rt_set_put(set, val2);
+    rt_set_add(set, val1);
+    rt_set_add(set, val2);
 
     void *seq = rt_set_to_seq(set);
     test_result("Seq created", seq != NULL);

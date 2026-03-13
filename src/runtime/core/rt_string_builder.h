@@ -7,7 +7,7 @@
 // Key invariants:
 //   - Inline buffer (128 bytes) avoids allocation for short strings.
 //   - len < cap invariant holds at all times; the NUL terminator is excluded from len.
-//   - All operations report errors via rt_sb_status; callers must check before using the result.
+//   - All operations report errors via rt_sb_status_t; callers must check before using the result.
 //   - rt_sb_finish transfers the built string to an rt_string; the builder must then be freed.
 //
 // Ownership/Lifetime:
@@ -35,14 +35,14 @@ extern "C"
 #define RT_SB_INLINE_CAPACITY 128
 
     /// @brief Status codes returned by string builder operations.
-    typedef enum rt_sb_status
+    typedef enum
     {
         RT_SB_OK = 0,         ///< Operation completed successfully.
         RT_SB_ERROR_ALLOC,    ///< Memory allocation failed.
         RT_SB_ERROR_OVERFLOW, ///< Size computation overflowed the platform limit.
         RT_SB_ERROR_INVALID,  ///< Caller supplied invalid arguments.
         RT_SB_ERROR_FORMAT    ///< Formatting helper reported an error.
-    } rt_sb_status;
+    } rt_sb_status_t;
 
     /// @brief Small-buffer string builder used by the runtime.
     /// @details Embeds a fixed-size inline buffer to avoid heap allocation for
@@ -84,7 +84,7 @@ extern "C"
     ///         for bad arguments.
     /// @pre required >= sb->len.
     /// @post On success, sb->cap >= required and sb->data remains valid.
-    rt_sb_status rt_sb_reserve(rt_string_builder *sb, size_t required);
+    rt_sb_status_t rt_sb_reserve(rt_string_builder *sb, size_t required);
 
     /// @brief Append a NUL-terminated C string to the builder.
     /// @details Reserves space, copies strlen(text) bytes, and updates the length.
@@ -95,7 +95,7 @@ extern "C"
     /// @return RT_SB_OK on success; RT_SB_ERROR_INVALID if text is NULL; other
     ///         errors as per rt_sb_reserve.
     /// @post sb->len increased by strlen(text); contents appended verbatim.
-    rt_sb_status rt_sb_append_cstr(rt_string_builder *sb, const char *text);
+    rt_sb_status_t rt_sb_append_cstr(rt_string_builder *sb, const char *text);
 
     /// @brief Append a fixed-length byte sequence to the builder.
     /// @details Reserves space, copies @p len bytes, and updates the length.
@@ -105,7 +105,7 @@ extern "C"
     /// @param len  Number of bytes to copy.
     /// @return RT_SB_OK on success; RT_SB_ERROR_INVALID if text is NULL and len > 0;
     ///         other errors as per rt_sb_reserve.
-    rt_sb_status rt_sb_append_bytes(rt_string_builder *sb, const char *text, size_t len);
+    rt_sb_status_t rt_sb_append_bytes(rt_string_builder *sb, const char *text, size_t len);
 
     /// @brief Append a signed 64-bit integer as decimal text.
     /// @details Formats the value into a scratch buffer with deterministic
@@ -114,7 +114,7 @@ extern "C"
     /// @param sb    Builder instance.
     /// @param value Integer to append.
     /// @return RT_SB_OK on success; error from reserve/formatting path on failure.
-    rt_sb_status rt_sb_append_int(rt_string_builder *sb, int64_t value);
+    rt_sb_status_t rt_sb_append_int(rt_string_builder *sb, int64_t value);
 
     /// @brief Append a double-precision float as decimal text.
     /// @details Uses runtime formatting helpers to produce canonical, locale-independent
@@ -122,7 +122,7 @@ extern "C"
     /// @param sb    Builder instance.
     /// @param value Double value to append.
     /// @return RT_SB_OK on success; error from reserve/formatting path on failure.
-    rt_sb_status rt_sb_append_double(rt_string_builder *sb, double value);
+    rt_sb_status_t rt_sb_append_double(rt_string_builder *sb, double value);
 
     /// @brief Append formatted text using a printf-style format string.
     /// @details Uses rt_snprintf to format into a temporary buffer, then appends
@@ -132,12 +132,12 @@ extern "C"
     /// @param ... Variadic arguments per @p fmt.
     /// @return RT_SB_OK on success; RT_SB_ERROR_FORMAT on formatting failure;
     ///         other errors from reserve.
-    rt_sb_status rt_sb_printf(rt_string_builder *sb, const char *fmt, ...);
+    rt_sb_status_t rt_sb_printf(rt_string_builder *sb, const char *fmt, ...);
 
     // --- Viper.Text.StringBuilder runtime bridge ---
     // These adapters implement the Viper.Text.StringBuilder object surface by
     // operating on the embedded rt_string_builder stored inside the opaque
-    // object (see rt_ns_bridge.c for the layout and construction helper).
+    // object (see rt_sb_bridge.c for the layout and construction helper).
 
     /// @brief Return the builder length (characters) from an opaque StringBuilder object.
     /// @details Exposes StringBuilder.Length to the runtime by reading the embedded

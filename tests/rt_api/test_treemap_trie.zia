@@ -20,9 +20,9 @@ func start() {
 
     var tr = new Viper.Collections.Trie();
     SayBool(tr.IsEmpty);
-    tr.Put("hello", "1");
-    tr.Put("help", "2");
-    tr.Put("world", "3");
+    tr.Set("hello", "1");
+    tr.Set("help", "2");
+    tr.Set("world", "3");
     SayInt(tr.Length);
     Say(tr.Get("hello"));
     SayBool(tr.Has("help"));
@@ -35,9 +35,9 @@ func start() {
 
     var ss = new Viper.Collections.SortedSet();
     SayBool(ss.IsEmpty);
-    ss.Put("cherry");
-    ss.Put("apple");
-    ss.Put("banana");
+    ss.Add("cherry");
+    ss.Add("apple");
+    ss.Add("banana");
     SayInt(ss.Length);
     Say(ss.First());
     Say(ss.Last());
@@ -46,7 +46,7 @@ func start() {
     SayInt(ss.IndexOf("banana"));
     Say(ss.Floor("blueberry"));
     Say(ss.Ceil("blueberry"));
-    ss.Drop("apple");
+    ss.Remove("apple");
     SayInt(ss.Length);
 
     var bm = new Viper.Collections.BiMap();

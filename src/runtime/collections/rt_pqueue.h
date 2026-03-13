@@ -14,6 +14,10 @@
 //   - Heap objects are heap-allocated opaque pointers.
 //   - Elements stored in the heap are not retained; callers manage element lifetimes.
 //
+// Error conventions:
+//   - Allocation failure → returns NULL
+//   - Pop/Peek on empty → rt_trap()
+//
 // Links: src/runtime/collections/rt_pqueue.c (implementation)
 //
 //===----------------------------------------------------------------------===//

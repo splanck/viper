@@ -132,7 +132,7 @@ static void rt_list_finalize(void *obj)
 /// @see rt_list_push For adding elements
 /// @see rt_list_get For accessing elements
 /// @see rt_list_finalize For cleanup behavior
-void *rt_ns_list_new(void)
+void *rt_list_new(void)
 {
     // Allocate object payload with header via object allocator to match object lifetime rules
     rt_list_impl *list = (rt_list_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_list_impl));
@@ -604,7 +604,7 @@ int8_t rt_list_remove(void *list, void *elem)
 /// @note Thread safety: Not thread-safe.
 void *rt_list_slice(void *list, int64_t start, int64_t end)
 {
-    void *result = rt_ns_list_new();
+    void *result = rt_list_new();
     if (!result)
         return NULL;
 
@@ -933,7 +933,7 @@ void rt_list_shuffle(void *list)
 
 void *rt_list_clone(void *list)
 {
-    void *result = rt_ns_list_new();
+    void *result = rt_list_new();
     if (!result || !list)
         return result;
 

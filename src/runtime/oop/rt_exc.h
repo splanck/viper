@@ -34,7 +34,7 @@ extern "C"
     /// @brief Create a new Exception object with the given message.
     /// @param msg The exception message (string pointer).
     /// @return Pointer to the newly allocated Exception object.
-    void *rt_exc_create(rt_string msg);
+    void *rt_exc_new(rt_string msg);
 
     /// @brief Get the message from an Exception object.
     /// @param exc Pointer to an Exception object.

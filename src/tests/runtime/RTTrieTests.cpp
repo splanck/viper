@@ -65,8 +65,8 @@ static void test_put_and_get()
     void *v1 = new_obj();
     void *v2 = new_obj();
 
-    rt_trie_put(t, k1, v1);
-    rt_trie_put(t, k2, v2);
+    rt_trie_set(t, k1, v1);
+    rt_trie_set(t, k2, v2);
 
     assert(rt_trie_len(t) == 2);
     assert(rt_trie_get(t, k1) == v1);
@@ -89,7 +89,7 @@ static void test_has()
     rt_string k = make_key("apple");
     void *v = new_obj();
 
-    rt_trie_put(t, k, v);
+    rt_trie_set(t, k, v);
     assert(rt_trie_has(t, k) == 1);
 
     rt_string nope = make_key("app");
@@ -108,11 +108,11 @@ static void test_overwrite()
     void *v1 = new_obj();
     void *v2 = new_obj();
 
-    rt_trie_put(t, k, v1);
+    rt_trie_set(t, k, v1);
     assert(rt_trie_get(t, k) == v1);
     assert(rt_trie_len(t) == 1);
 
-    rt_trie_put(t, k, v2);
+    rt_trie_set(t, k, v2);
     assert(rt_trie_get(t, k) == v2);
     assert(rt_trie_len(t) == 1); // Count unchanged
 
@@ -130,9 +130,9 @@ static void test_has_prefix()
     rt_string k3 = make_key("banana");
     void *v = new_obj();
 
-    rt_trie_put(t, k1, v);
-    rt_trie_put(t, k2, v);
-    rt_trie_put(t, k3, v);
+    rt_trie_set(t, k1, v);
+    rt_trie_set(t, k2, v);
+    rt_trie_set(t, k3, v);
 
     rt_string prefix = make_key("app");
     assert(rt_trie_has_prefix(t, prefix) == 1);
@@ -158,10 +158,10 @@ static void test_with_prefix()
     rt_string k4 = make_key("banana");
     void *v = new_obj();
 
-    rt_trie_put(t, k1, v);
-    rt_trie_put(t, k2, v);
-    rt_trie_put(t, k3, v);
-    rt_trie_put(t, k4, v);
+    rt_trie_set(t, k1, v);
+    rt_trie_set(t, k2, v);
+    rt_trie_set(t, k3, v);
+    rt_trie_set(t, k4, v);
 
     rt_string prefix = make_key("app");
     void *results = rt_trie_with_prefix(t, prefix);
@@ -188,10 +188,10 @@ static void test_longest_prefix()
     rt_string k3 = make_key("abc");
     rt_string k4 = make_key("abcdef");
 
-    rt_trie_put(t, k1, v);
-    rt_trie_put(t, k2, v);
-    rt_trie_put(t, k3, v);
-    rt_trie_put(t, k4, v);
+    rt_trie_set(t, k1, v);
+    rt_trie_set(t, k2, v);
+    rt_trie_set(t, k3, v);
+    rt_trie_set(t, k4, v);
 
     rt_string query = make_key("abcde");
     rt_string result = rt_trie_longest_prefix(t, query);
@@ -221,8 +221,8 @@ static void test_remove()
     void *v1 = new_obj();
     void *v2 = new_obj();
 
-    rt_trie_put(t, k1, v1);
-    rt_trie_put(t, k2, v2);
+    rt_trie_set(t, k1, v1);
+    rt_trie_set(t, k2, v2);
     assert(rt_trie_len(t) == 2);
 
     assert(rt_trie_remove(t, k1) == 1);
@@ -245,7 +245,7 @@ static void test_clear()
     rt_string k = make_key("test");
     void *v = new_obj();
 
-    rt_trie_put(t, k, v);
+    rt_trie_set(t, k, v);
     rt_trie_clear(t);
 
     assert(rt_trie_len(t) == 0);
@@ -265,9 +265,9 @@ static void test_keys()
     rt_string k2 = make_key("apple");
     rt_string k3 = make_key("cherry");
 
-    rt_trie_put(t, k1, v);
-    rt_trie_put(t, k2, v);
-    rt_trie_put(t, k3, v);
+    rt_trie_set(t, k1, v);
+    rt_trie_set(t, k2, v);
+    rt_trie_set(t, k3, v);
 
     void *keys = rt_trie_keys(t);
     assert(rt_seq_len(keys) == 3);
@@ -290,7 +290,7 @@ static void test_empty_key()
     rt_string k = make_key("");
     void *v = new_obj();
 
-    rt_trie_put(t, k, v);
+    rt_trie_set(t, k, v);
     assert(rt_trie_len(t) == 1);
     assert(rt_trie_has(t, k) == 1);
     assert(rt_trie_get(t, k) == v);
@@ -309,7 +309,7 @@ static void test_null_safety()
     assert(rt_trie_has(NULL, k) == 0);
     assert(rt_trie_has_prefix(NULL, k) == 0);
     assert(rt_trie_remove(NULL, k) == 0);
-    rt_trie_put(NULL, k, NULL);
+    rt_trie_set(NULL, k, NULL);
     rt_trie_clear(NULL);
     rt_string_unref(k);
 }

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/oop/rt_ns_bridge.c
+// File: src/runtime/oop/rt_sb_bridge.c
 // Purpose: Provides minimal bridge helpers that wrap Viper.* namespaced types
 //          (such as StringBuilder) as heap-allocated runtime objects compatible
 //          with the OOP object model. Enables Viper code to use these types
@@ -22,7 +22,7 @@
 //   - Callers receive a fresh reference (refcount=1) from bridge constructors.
 //   - The runtime GC handles deallocation when the refcount reaches zero.
 //
-// Links: src/runtime/oop/rt_ns_bridge.h (public API),
+// Links: src/runtime/oop/rt_sb_bridge.h (public API),
 //        src/runtime/rt_object.h (rt_object allocation and lifecycle),
 //        src/runtime/rt_string_builder.h (StringBuilder embedded in bridge object)
 //
@@ -41,7 +41,7 @@ typedef struct
     rt_string_builder builder; // embedded builder state
 } StringBuilder;
 
-static void rt_ns_stringbuilder_finalize(void *obj)
+static void rt_sb_finalize(void *obj)
 {
     if (!obj)
         return;
@@ -57,7 +57,7 @@ static void rt_ns_stringbuilder_finalize(void *obj)
 ///          initialized in-place so callers receive a ready-to-use object.
 ///
 /// @return Opaque pointer to the created object or NULL on allocation failure.
-void *rt_ns_stringbuilder_new(void)
+void *rt_sb_new(void)
 {
     // Allocate enough space for vptr + embedded builder
     const int64_t kClassId = 0;
@@ -68,7 +68,7 @@ void *rt_ns_stringbuilder_new(void)
     {
         // Initialize the embedded builder
         rt_sb_init(&sb->builder);
-        rt_obj_set_finalizer(sb, rt_ns_stringbuilder_finalize);
+        rt_obj_set_finalizer(sb, rt_sb_finalize);
     }
     return sb;
 }

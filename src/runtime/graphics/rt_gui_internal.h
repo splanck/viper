@@ -126,6 +126,6 @@ void rt_shortcuts_clear_triggered(void);
 /// @param key  The key code that was pressed.
 /// @param mods Active modifier flags (shift, ctrl, alt, etc.).
 /// @return Non-zero if a matching shortcut was triggered; 0 otherwise.
-int rt_shortcuts_check_key(int key, int mods);
+int8_t rt_shortcuts_check_key(int key, int mods);
 
 #endif // RT_GUI_INTERNAL_H

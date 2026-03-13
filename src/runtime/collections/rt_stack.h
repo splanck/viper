@@ -14,6 +14,11 @@
 //   - Stack objects are heap-allocated opaque pointers.
 //   - Caller is responsible for lifetime management.
 //
+// Error conventions:
+//   - Allocation failure → returns NULL
+//   - Pop/Peek on empty → rt_trap()
+//   - TryPop on empty → returns NULL
+//
 // Links: src/runtime/collections/rt_stack.c (implementation)
 //
 //===----------------------------------------------------------------------===//
@@ -42,8 +47,8 @@ extern "C"
 
     /// @brief Push an element onto the top of the stack.
     /// @param obj Opaque Stack object pointer.
-    /// @param val Element to push.
-    void rt_stack_push(void *obj, void *val);
+    /// @param elem Element to push.
+    void rt_stack_push(void *obj, void *elem);
 
     /// @brief Pop and return the top element from the stack.
     /// @param obj Opaque Stack object pointer.
@@ -69,6 +74,16 @@ extern "C"
     /// @param obj Opaque Stack object pointer.
     /// @return New List containing all elements.
     void *rt_stack_to_list(void *obj);
+
+    /// @brief Pop the top element, or return NULL if empty (no trap).
+    /// @param obj Opaque Stack object pointer.
+    /// @return The removed element, or NULL if empty.
+    void *rt_stack_try_pop(void *obj);
+
+    /// @brief Create a shallow copy of the stack.
+    /// @param obj Source Stack pointer.
+    /// @return New stack with same elements in same order.
+    void *rt_stack_clone(void *obj);
 
 #ifdef __cplusplus
 }

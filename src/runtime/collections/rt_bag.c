@@ -268,7 +268,7 @@ static void maybe_resize(rt_bag_impl *bag)
 /// @note The Bag owns copies of all strings - it does not reference the originals.
 /// @note Thread safety: Not thread-safe. External synchronization required.
 ///
-/// @see rt_bag_put For adding strings
+/// @see rt_bag_add For adding strings
 /// @see rt_bag_has For membership testing
 /// @see rt_bag_finalize For cleanup behavior
 void *rt_bag_new(void)
@@ -306,8 +306,8 @@ void *rt_bag_new(void)
 /// @note O(1) time complexity.
 ///
 /// @see rt_bag_is_empty For a boolean check
-/// @see rt_bag_put For operations that may increase the count
-/// @see rt_bag_drop For operations that decrease the count
+/// @see rt_bag_add For operations that may increase the count
+/// @see rt_bag_remove For operations that decrease the count
 int64_t rt_bag_len(void *obj)
 {
     if (!obj)
@@ -372,8 +372,8 @@ int8_t rt_bag_is_empty(void *obj)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_bag_has For checking membership without modifying
-/// @see rt_bag_drop For removing strings
-int8_t rt_bag_put(void *obj, rt_string str)
+/// @see rt_bag_remove For removing strings
+int8_t rt_bag_add(void *obj, rt_string str)
 {
     if (!obj)
         return 0;
@@ -449,10 +449,10 @@ int8_t rt_bag_put(void *obj, rt_string str)
 /// @note The Bag does not shrink after removal - capacity is maintained.
 /// @note Thread safety: Not thread-safe.
 ///
-/// @see rt_bag_put For adding strings
+/// @see rt_bag_add For adding strings
 /// @see rt_bag_has For checking membership
 /// @see rt_bag_clear For removing all strings
-int8_t rt_bag_drop(void *obj, rt_string str)
+int8_t rt_bag_remove(void *obj, rt_string str)
 {
     if (!obj)
         return 0;
@@ -516,8 +516,8 @@ int8_t rt_bag_drop(void *obj, rt_string str)
 /// @note Does not modify the Bag in any way.
 /// @note Thread safety: Safe for concurrent reads if no concurrent writes.
 ///
-/// @see rt_bag_put For adding strings to test later
-/// @see rt_bag_drop For removing strings
+/// @see rt_bag_add For adding strings to test later
+/// @see rt_bag_remove For removing strings
 int8_t rt_bag_has(void *obj, rt_string str)
 {
     if (!obj)
@@ -707,7 +707,7 @@ void *rt_bag_union(void *obj, void *other)
             while (entry)
             {
                 rt_string str = rt_string_from_bytes(entry->key, entry->key_len);
-                rt_bag_put(result, str);
+                rt_bag_add(result, str);
                 entry = entry->next;
             }
         }
@@ -723,7 +723,7 @@ void *rt_bag_union(void *obj, void *other)
             while (entry)
             {
                 rt_string str = rt_string_from_bytes(entry->key, entry->key_len);
-                rt_bag_put(result, str);
+                rt_bag_add(result, str);
                 entry = entry->next;
             }
         }
@@ -795,7 +795,7 @@ void *rt_bag_intersect(void *obj, void *other)
             rt_string str = rt_string_from_bytes(entry->key, entry->key_len);
             if (rt_bag_has(other, str))
             {
-                rt_bag_put(result, str);
+                rt_bag_add(result, str);
             }
             entry = entry->next;
         }
@@ -869,7 +869,7 @@ void *rt_bag_diff(void *obj, void *other)
             rt_string str = rt_string_from_bytes(entry->key, entry->key_len);
             if (!other || !rt_bag_has(other, str))
             {
-                rt_bag_put(result, str);
+                rt_bag_add(result, str);
             }
             entry = entry->next;
         }

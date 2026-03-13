@@ -77,7 +77,7 @@ static void test_trie_single_long_key(void)
 
     rt_string key = make_key_buf(long_key_buf, KEY_LEN);
     void *val = make_value();
-    rt_trie_put(trie, key, val);
+    rt_trie_set(trie, key, val);
 
     assert(rt_trie_len(trie) == 1);
 
@@ -116,7 +116,7 @@ static void test_trie_many_long_keys(void)
         buf[1] = (char)(33 + (i / 94));
 
         rt_string key = make_key_buf(buf, KEY_LEN);
-        rt_trie_put(trie, key, val);
+        rt_trie_set(trie, key, val);
         rt_string_unref(key);
     }
 
@@ -146,7 +146,7 @@ static void test_trie_with_prefix_long_key(void)
     void *val = make_value();
 
     rt_string key = make_key_buf(buf, KEY_LEN);
-    rt_trie_put(trie, key, val);
+    rt_trie_set(trie, key, val);
     rt_string_unref(key);
 
     // Query with the first 10 characters as a prefix.

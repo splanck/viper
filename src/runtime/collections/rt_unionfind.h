@@ -49,8 +49,8 @@ extern "C"
     /// @param uf Union-Find object.
     /// @param x First element index.
     /// @param y Second element index.
-    /// @return true if connected, false otherwise.
-    bool rt_unionfind_connected(void *uf, int64_t x, int64_t y);
+    /// @return 1 if connected, 0 otherwise.
+    int8_t rt_unionfind_connected(void *uf, int64_t x, int64_t y);
 
     /// @brief Get the number of disjoint sets.
     /// @param uf Union-Find object.

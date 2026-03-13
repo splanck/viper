@@ -68,7 +68,7 @@ static void test_sortedset_realloc_growth(void)
 
     for (int i = 0; i < n; i++)
     {
-        int8_t inserted = rt_sortedset_put(set, rt_const_cstr(words[i]));
+        int8_t inserted = rt_sortedset_add(set, rt_const_cstr(words[i]));
         check(words[i], inserted == 1);
     }
 
@@ -119,7 +119,7 @@ static void test_sortedset_clear_and_reinsert(void)
     {
         char buf[16];
         snprintf(buf, sizeof(buf), "item%d", i);
-        rt_sortedset_put(set, rt_const_cstr(buf));
+        rt_sortedset_add(set, rt_const_cstr(buf));
     }
     check("10 items inserted", rt_sortedset_len(set) == 10);
 
@@ -130,7 +130,7 @@ static void test_sortedset_clear_and_reinsert(void)
     {
         char buf[16];
         snprintf(buf, sizeof(buf), "new%d", i);
-        rt_sortedset_put(set, rt_const_cstr(buf));
+        rt_sortedset_add(set, rt_const_cstr(buf));
     }
     check("15 new items inserted after clear", rt_sortedset_len(set) == 15);
 

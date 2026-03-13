@@ -14,6 +14,11 @@
 //   - Queue objects are heap-allocated opaque pointers.
 //   - Caller is responsible for lifetime management.
 //
+// Error conventions:
+//   - Allocation failure → returns NULL
+//   - Pop/Peek on empty → rt_trap()
+//   - TryPop on empty → returns NULL
+//
 // Links: src/runtime/collections/rt_queue.c (implementation)
 //
 //===----------------------------------------------------------------------===//
@@ -42,8 +47,8 @@ extern "C"
 
     /// @brief Push an element to the back of the queue.
     /// @param obj Opaque Queue object pointer.
-    /// @param val Element to push.
-    void rt_queue_push(void *obj, void *val);
+    /// @param elem Element to push.
+    void rt_queue_push(void *obj, void *elem);
 
     /// @brief Pop and return the front element from the queue.
     /// @param obj Opaque Queue object pointer.
@@ -69,6 +74,16 @@ extern "C"
     /// @param obj Opaque Queue object pointer.
     /// @return New List containing all elements.
     void *rt_queue_to_list(void *obj);
+
+    /// @brief Pop the front element, or return NULL if empty (no trap).
+    /// @param obj Opaque Queue object pointer.
+    /// @return The removed element, or NULL if empty.
+    void *rt_queue_try_pop(void *obj);
+
+    /// @brief Create a shallow copy of the queue.
+    /// @param obj Source Queue pointer.
+    /// @return New queue with same elements in same order.
+    void *rt_queue_clone(void *obj);
 
 #ifdef __cplusplus
 }

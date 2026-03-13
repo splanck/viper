@@ -7,7 +7,7 @@
 // Key invariants:
 //   - Keys are stored as sequences of ASCII characters.
 //   - Prefix search returns all keys with the given prefix.
-//   - rt_trie_contains returns 1 only for exact key matches, not just prefixes.
+//   - rt_trie_has returns 1 only for exact key matches, not just prefixes.
 //   - Values are retained while stored in the trie.
 //
 // Ownership/Lifetime:
@@ -46,7 +46,7 @@ extern "C"
     /// @param obj Trie pointer.
     /// @param key String key.
     /// @param value Object value (will be retained).
-    void rt_trie_put(void *obj, rt_string key, void *value);
+    void rt_trie_set(void *obj, rt_string key, void *value);
 
     /// @brief Get value for exact key match.
     /// @param obj Trie pointer.

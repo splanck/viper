@@ -5,11 +5,11 @@
 ' COVER: Viper.Collections.Bag.Clear
 ' COVER: Viper.Collections.Bag.Intersect
 ' COVER: Viper.Collections.Bag.Diff
-' COVER: Viper.Collections.Bag.Drop
+' COVER: Viper.Collections.Bag.Remove
 ' COVER: Viper.Collections.Bag.Has
 ' COVER: Viper.Collections.Bag.Items
 ' COVER: Viper.Collections.Bag.Union
-' COVER: Viper.Collections.Bag.Put
+' COVER: Viper.Collections.Bag.Add
 ' COVER: Viper.Collections.Bytes.New
 ' COVER: Viper.Collections.Bytes.Length
 ' COVER: Viper.Collections.Bytes.Clone

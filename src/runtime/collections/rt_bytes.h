@@ -14,6 +14,10 @@
 //   - Bytes objects are heap-allocated; caller is responsible for lifetime management.
 //   - rt_bytes_from_str and rt_bytes_from_hex allocate new objects; caller must free.
 //
+// Error conventions:
+//   - Out-of-bounds index → rt_trap()
+//   - Allocation failure → returns NULL
+//
 // Links: src/runtime/collections/rt_bytes.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
@@ -54,6 +58,11 @@ extern "C"
     /// @param obj Bytes object pointer.
     /// @return Number of bytes.
     int64_t rt_bytes_len(void *obj);
+
+    /// @brief Check if the byte array is empty (length 0).
+    /// @param obj Bytes object pointer.
+    /// @return 1 if empty, 0 otherwise.
+    int8_t rt_bytes_is_empty(void *obj);
 
     /// @brief Get a byte value at the specified index.
     /// @param obj Bytes object pointer.

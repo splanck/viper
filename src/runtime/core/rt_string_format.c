@@ -131,7 +131,7 @@ rt_string rt_int_to_str(int64_t v)
 {
     rt_string_builder sb;
     rt_sb_init(&sb);
-    rt_sb_status status = rt_sb_append_int(&sb, v);
+    rt_sb_status_t status = rt_sb_append_int(&sb, v);
     if (status != RT_SB_OK)
     {
         const char *msg = "rt_int_to_str: format";

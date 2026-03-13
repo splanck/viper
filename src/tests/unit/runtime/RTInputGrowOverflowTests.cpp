@@ -28,7 +28,7 @@ int main()
     assert(buf != nullptr);
 
     char *before = buf;
-    rt_input_grow_result result = rt_input_try_grow(&buf, &cap);
+    rt_input_grow_result_t result = rt_input_try_grow(&buf, &cap);
 
     assert(result == RT_INPUT_GROW_OVERFLOW);
     assert(buf == before);

@@ -163,7 +163,7 @@ int64_t rt_unionfind_union(void *uf_ptr, int64_t x, int64_t y)
 // Queries
 // ---------------------------------------------------------------------------
 
-bool rt_unionfind_connected(void *uf_ptr, int64_t x, int64_t y)
+int8_t rt_unionfind_connected(void *uf_ptr, int64_t x, int64_t y)
 {
     if (!uf_ptr)
         return false;

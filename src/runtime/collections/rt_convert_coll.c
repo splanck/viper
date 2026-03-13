@@ -53,7 +53,7 @@
 
 void *rt_seq_to_list(void *seq)
 {
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
     if (!seq || !list)
         return list;
 
@@ -76,7 +76,7 @@ void *rt_seq_to_set(void *seq)
     for (int64_t i = 0; i < len; i++)
     {
         void *elem = rt_seq_get(seq, i);
-        rt_set_put(set, elem);
+        rt_set_add(set, elem);
     }
     return set;
 }
@@ -136,7 +136,7 @@ void *rt_seq_to_bag(void *seq)
     for (int64_t i = 0; i < len; i++)
     {
         void *elem = rt_seq_get(seq, i);
-        rt_bag_put(bag, (rt_string)elem);
+        rt_bag_add(bag, (rt_string)elem);
     }
     return bag;
 }
@@ -170,7 +170,7 @@ void *rt_list_to_set(void *list)
     for (int64_t i = 0; i < len; i++)
     {
         void *elem = rt_list_get(list, i);
-        rt_set_put(set, elem);
+        rt_set_add(set, elem);
     }
     return set;
 }
@@ -383,7 +383,7 @@ void *rt_bag_to_set(void *bag)
     for (int64_t i = 0; i < len; i++)
     {
         void *elem = rt_seq_get(items, i);
-        rt_set_put(set, elem);
+        rt_set_add(set, elem);
     }
     return set;
 }
@@ -431,7 +431,7 @@ void *rt_seq_of(int64_t count, ...)
 
 void *rt_list_of(int64_t count, ...)
 {
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
     if (!list || count <= 0)
         return list;
 
@@ -458,7 +458,7 @@ void *rt_set_of(int64_t count, ...)
     for (int64_t i = 0; i < count; i++)
     {
         void *elem = va_arg(args, void *);
-        rt_set_put(set, elem);
+        rt_set_add(set, elem);
     }
     va_end(args);
 

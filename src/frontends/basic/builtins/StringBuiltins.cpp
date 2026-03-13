@@ -208,7 +208,7 @@ Value lowerStr(LowerCtx &ctx, ArrayRef<Value> args)
 /// @brief Lower the INSTR builtin that searches for a substring.
 ///
 /// @details Depending on whether a starting offset is supplied, the lowering
-///          routine calls `rt_instr2` or `rt_instr3`.  Offsets are converted
+///          routine calls `rt_instr2` or `rt_str_instr3`.  Offsets are converted
 ///          from BASIC's 1-based convention to the zero-based indices expected by
 ///          the runtime.  Helper feature flags are recorded to ensure the
 ///          runtime exports the required entry points.
@@ -230,7 +230,7 @@ Value lowerInstr(LowerCtx &ctx, ArrayRef<Value> args)
         ctx.ensureI64(0, startLoc);
         ctx.addConst(0, -1, startLoc);
         callArgs = {ctx.argValue(0), ctx.argValue(1), ctx.argValue(2)};
-        runtime = "rt_instr3";
+        runtime = "rt_str_instr3";
         callLoc = ctx.argLoc(2);
         ctx.requestHelper(RuntimeFeature::Instr3);
     }

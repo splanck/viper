@@ -8,11 +8,16 @@
 //   - Stores unique strings only; duplicate insertions are silently ignored.
 //   - All operations are O(1) average-case using an open-addressing hash table.
 //   - Iteration order is unspecified and may change after insertions.
-//   - rt_bag_contains returns 1 if present, 0 if absent.
+//   - rt_bag_has returns 1 if present, 0 if absent.
 //
 // Ownership/Lifetime:
 //   - Bag objects are heap-allocated; caller is responsible for lifetime management.
 //   - String values are copied into the bag; caller retains ownership of input strings.
+//
+// Error conventions:
+//   - Allocation failure → returns NULL
+//   - Membership (Contains) → returns 1 (found) or 0 (not found)
+//   - Removal (Remove) → returns 1 (removed) or 0 (not found)
 //
 // Links: src/runtime/collections/rt_bag.c (implementation), src/runtime/core/rt_string.h
 //
@@ -46,13 +51,13 @@ extern "C"
     /// @param obj Bag pointer.
     /// @param str String to add (will be copied).
     /// @return 1 if string was new (added), 0 if already present.
-    int8_t rt_bag_put(void *obj, rt_string str);
+    int8_t rt_bag_add(void *obj, rt_string str);
 
     /// @brief Remove a string from the bag.
     /// @param obj Bag pointer.
     /// @param str String to remove.
     /// @return 1 if removed, 0 if not found.
-    int8_t rt_bag_drop(void *obj, rt_string str);
+    int8_t rt_bag_remove(void *obj, rt_string str);
 
     /// @brief Check if string exists in bag.
     /// @param obj Bag pointer.

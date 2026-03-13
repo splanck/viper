@@ -238,7 +238,7 @@ extern "C"
 
     /// @brief Check if raw mode caching is currently active.
     /// @return Non-zero if raw mode is active, zero otherwise.
-    int rt_term_is_raw_mode(void);
+    int8_t rt_term_is_raw_mode(void);
 
 #ifdef __cplusplus
 }

@@ -38,6 +38,7 @@ A key-value dictionary with string keys. Provides O(1) average-case lookup, inse
 | `Clear()`                  | `Void()`                  | Remove all entries                                                       |
 | `Keys()`                   | `Seq()`                   | Get sequence of all keys                                                 |
 | `Values()`                 | `Seq()`                   | Get sequence of all values                                               |
+| `Clone()`                  | `Map()`                   | Create a shallow copy of the map                                         |
 
 ### Typed Accessors
 
@@ -173,6 +174,7 @@ intersection, difference), and subset/superset queries. Unlike `Bag` which store
 | `IsSubset(other)`   | `Boolean(Set)`    | True if this set is a subset of other                          |
 | `IsSuperset(other)` | `Boolean(Set)`    | True if this set is a superset of other                        |
 | `IsDisjoint(other)` | `Boolean(Set)`    | True if sets have no elements in common                        |
+| `Clone()`           | `Set()`           | Create a shallow copy of the set                               |
 
 ### Notes
 

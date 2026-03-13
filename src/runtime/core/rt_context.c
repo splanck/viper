@@ -167,7 +167,7 @@ void rt_set_main_thread(void)
     __atomic_store_n(&g_main_thread_set_, 1, __ATOMIC_RELEASE);
 }
 
-int rt_is_main_thread(void)
+int8_t rt_is_main_thread(void)
 {
     if (!__atomic_load_n(&g_main_thread_set_, __ATOMIC_ACQUIRE))
         return 1; // Before init, assume main thread (avoids false positives)

@@ -140,15 +140,15 @@ extern "C"
     /// @brief Check if this sprite overlaps another sprite.
     /// @param sprite Sprite object.
     /// @param other Other sprite to check.
-    /// @return true if overlapping, false otherwise.
-    bool rt_sprite_overlaps(void *sprite, void *other);
+    /// @return 1 if overlapping, 0 otherwise.
+    int8_t rt_sprite_overlaps(void *sprite, void *other);
 
     /// @brief Check if a point is inside the sprite's bounding box.
     /// @param sprite Sprite object.
     /// @param x Point X coordinate.
     /// @param y Point Y coordinate.
-    /// @return true if point is inside, false otherwise.
-    bool rt_sprite_contains(void *sprite, int64_t x, int64_t y);
+    /// @return 1 if point is inside, 0 otherwise.
+    int8_t rt_sprite_contains(void *sprite, int64_t x, int64_t y);
 
     /// @brief Move sprite by delta amounts.
     /// @param sprite Sprite object.
@@ -212,7 +212,7 @@ extern "C"
     /// @param animator Animator.
     /// @param name     Clip name (must match a registered clip).
     /// @return 1 if clip found and started, 0 if not found.
-    int rt_sprite_animator_play(rt_sprite_animator_t *animator, const char *name);
+    int8_t rt_sprite_animator_play(rt_sprite_animator_t *animator, const char *name);
 
     /// @brief Stop the current animation (leaves sprite on its current frame).
     void rt_sprite_animator_stop(rt_sprite_animator_t *animator);
@@ -225,7 +225,7 @@ extern "C"
     void rt_sprite_animator_update(rt_sprite_animator_t *animator, void *sprite);
 
     /// @brief Return 1 if the animator is currently playing a clip, 0 otherwise.
-    int rt_sprite_animator_is_playing(rt_sprite_animator_t *animator);
+    int8_t rt_sprite_animator_is_playing(rt_sprite_animator_t *animator);
 
     /// @brief Return the name of the currently playing clip, or NULL if idle.
     const char *rt_sprite_animator_get_current(rt_sprite_animator_t *animator);

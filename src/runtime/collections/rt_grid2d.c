@@ -162,6 +162,13 @@ int64_t rt_grid2d_size(rt_grid2d grid)
     return grid ? grid->width * grid->height : 0;
 }
 
+int8_t rt_grid2d_is_empty(rt_grid2d grid)
+{
+    if (!grid)
+        return 1;
+    return (grid->width == 0 || grid->height == 0) ? 1 : 0;
+}
+
 int8_t rt_grid2d_copy_from(rt_grid2d dest, rt_grid2d src)
 {
     if (!dest || !src)

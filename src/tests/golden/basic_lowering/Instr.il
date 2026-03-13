@@ -32,7 +32,7 @@ extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @Viper.String.Length(str) -> i64
 extern @rt_str_index_of(str, str) -> i64
-extern @rt_instr3(i64, str, str) -> i64
+extern @rt_str_instr3(i64, str, str) -> i64
 extern @rt_str_empty() -> str
 extern @rt_str_retain_maybe(str) -> void
 extern @rt_str_release_maybe(str) -> void
@@ -87,7 +87,7 @@ L30:
   .loc 1 3 23
   %t10 = const_str @.L3
   .loc 1 3 23
-  %t11:i64 = call @rt_instr3(%t8, %t9, %t10)
+  %t11:i64 = call @rt_str_instr3(%t8, %t9, %t10)
   .loc 1 3 23
   call @Viper.Terminal.PrintI64(%t11)
   .loc 1 3 23

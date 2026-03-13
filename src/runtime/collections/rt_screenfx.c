@@ -59,7 +59,7 @@ static int64_t screenfx_rand(int64_t *state)
 /// Internal effect structure.
 struct screenfx_effect
 {
-    rt_screenfx_type type; ///< Effect type.
+    rt_screenfx_type_t type; ///< Effect type.
     int64_t color;         ///< Color (RGBA).
     int64_t intensity;     ///< Intensity (for shake).
     int64_t duration;      ///< Total duration (ms).
@@ -108,7 +108,7 @@ static int find_free_slot(rt_screenfx fx)
 }
 
 /// Finds an existing effect of given type (to replace).
-static int find_effect_of_type(rt_screenfx fx, rt_screenfx_type type)
+static int find_effect_of_type(rt_screenfx fx, rt_screenfx_type_t type)
 {
     for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
     {
@@ -340,7 +340,7 @@ void rt_screenfx_cancel_type(rt_screenfx fx, int64_t type)
 
     for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
     {
-        if (fx->effects[i].type == (rt_screenfx_type)type)
+        if (fx->effects[i].type == (rt_screenfx_type_t)type)
             fx->effects[i].type = RT_SCREENFX_NONE;
     }
 }
@@ -365,7 +365,7 @@ int8_t rt_screenfx_is_type_active(rt_screenfx fx, int64_t type)
 
     for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
     {
-        if (fx->effects[i].type == (rt_screenfx_type)type)
+        if (fx->effects[i].type == (rt_screenfx_type_t)type)
             return 1;
     }
     return 0;

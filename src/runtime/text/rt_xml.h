@@ -39,7 +39,7 @@ extern "C"
         XML_NODE_COMMENT = 3, ///< Comment node (<!-- ... -->)
         XML_NODE_CDATA = 4,   ///< CDATA section (<![CDATA[ ... ]]>)
         XML_NODE_DOCUMENT = 5 ///< Document root
-    } XmlNodeType;
+    } rt_xml_node_type_t;
 
     //=========================================================================
     // XML Parsing

@@ -74,7 +74,7 @@ inline HelperEffects classifyHelperEffects(std::string_view name)
         // These read string contents but don't modify anything.
         Entry{"rt_str_len", HelperEffects{true, true, false}},
         Entry{"rt_str_index_of", HelperEffects{true, true, false}},
-        Entry{"rt_instr3", HelperEffects{true, true, false}},
+        Entry{"rt_str_instr3", HelperEffects{true, true, false}},
         Entry{"rt_str_eq", HelperEffects{true, true, false}},
         Entry{"rt_str_lt", HelperEffects{true, true, false}},
         Entry{"rt_str_le", HelperEffects{true, true, false}},

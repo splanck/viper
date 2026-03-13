@@ -897,3 +897,31 @@ rt_string rt_map_get_str(void *obj, rt_string key)
         return rt_string_from_bytes("", 0);
     return (rt_string)val;
 }
+
+/// @brief Create a shallow copy of the map.
+///
+/// Allocates a new Map and copies all key-value pairs from the source.
+/// Keys are independently copied (as always with Map); values are shared
+/// references (not deep-copied).
+///
+/// @param obj Source Map pointer (may be NULL).
+/// @return New Map containing the same key-value pairs, or empty map if NULL.
+void *rt_map_clone(void *obj)
+{
+    void *result = rt_map_new();
+    if (!obj)
+        return result;
+
+    rt_map_impl *map = (rt_map_impl *)obj;
+    for (size_t i = 0; i < map->capacity; ++i)
+    {
+        rt_map_entry *entry = map->buckets[i];
+        while (entry)
+        {
+            rt_string key_str = rt_string_from_bytes(entry->key, entry->key_len);
+            rt_map_set(result, key_str, entry->value);
+            entry = entry->next;
+        }
+    }
+    return result;
+}

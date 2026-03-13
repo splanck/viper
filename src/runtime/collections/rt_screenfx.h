@@ -33,14 +33,14 @@ extern "C"
 #define RT_SCREENFX_MAX_EFFECTS 8
 
     /// Effect types.
-    typedef enum rt_screenfx_type
+    typedef enum
     {
         RT_SCREENFX_NONE = 0,
         RT_SCREENFX_SHAKE = 1,
         RT_SCREENFX_FLASH = 2,
         RT_SCREENFX_FADE_IN = 3,
         RT_SCREENFX_FADE_OUT = 4,
-    } rt_screenfx_type;
+    } rt_screenfx_type_t;
 
     /// Opaque handle to a ScreenFX manager.
     typedef struct rt_screenfx_impl *rt_screenfx;
@@ -125,7 +125,7 @@ extern "C"
 
     /// @brief Cancels all active effects of a specific type.
     /// @param fx The effects manager.
-    /// @param type The effect type to cancel, as an rt_screenfx_type value
+    /// @param type The effect type to cancel, as an rt_screenfx_type_t value
     ///   (e.g., RT_SCREENFX_SHAKE, RT_SCREENFX_FLASH).
     void rt_screenfx_cancel_type(rt_screenfx fx, int64_t type);
 
@@ -137,7 +137,7 @@ extern "C"
 
     /// @brief Queries whether a specific effect type is currently running.
     /// @param fx The effects manager to query.
-    /// @param type The effect type to check, as an rt_screenfx_type value.
+    /// @param type The effect type to check, as an rt_screenfx_type_t value.
     /// @return 1 if at least one effect of this type is active, 0 otherwise.
     int8_t rt_screenfx_is_type_active(rt_screenfx fx, int64_t type);
 

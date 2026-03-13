@@ -14,6 +14,11 @@
 //   - Map objects are heap-allocated; caller is responsible for lifetime management.
 //   - Values are retained while stored in the map.
 //
+// Error conventions:
+//   - Allocation failure → returns NULL
+//   - Key not found (Get) → returns NULL
+//   - Removal not found (Remove) → returns 0
+//
 // Links: src/runtime/collections/rt_map.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
@@ -126,6 +131,11 @@ extern "C"
 
     /// @brief Get a string value (returns empty string if missing).
     rt_string rt_map_get_str(void *obj, rt_string key);
+
+    /// @brief Create a shallow copy of the map.
+    /// @param obj Source Map pointer.
+    /// @return New map with same key-value pairs.
+    void *rt_map_clone(void *obj);
 
 #ifdef __cplusplus
 }

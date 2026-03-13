@@ -81,7 +81,7 @@ static void test_audio_pause_resume()
 static void test_sound_null_safety()
 {
     // NULL sound handle operations
-    rt_sound_free(NULL);
+    rt_sound_destroy(NULL);
     int64_t voice = rt_sound_play(NULL);
     ASSERT(voice == -1, "play null sound returns -1");
 
@@ -105,7 +105,7 @@ static void test_voice_null_safety()
 
 static void test_music_null_safety()
 {
-    rt_music_free(NULL);
+    rt_music_destroy(NULL);
     rt_music_play(NULL, 0);
     rt_music_stop(NULL);
     rt_music_pause(NULL);

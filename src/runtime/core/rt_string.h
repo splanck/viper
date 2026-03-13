@@ -66,7 +66,7 @@ extern "C"
     /// @details Used by generic object helpers to distinguish string handles from
     ///          heap-managed objects without forcing callers to inspect internals.
     /// @param p Pointer to test; may be NULL.
-    int rt_string_is_handle(void *p);
+    int8_t rt_string_is_handle(void *p);
 
     rt_string rt_str_empty(void);
 
@@ -136,7 +136,7 @@ extern "C"
     /// @param hay Haystack string.
     /// @param needle Needle string.
     /// @return 1-based match index or 0 when not found.
-    int64_t rt_instr3(int64_t start, rt_string hay, rt_string needle);
+    int64_t rt_str_instr3(int64_t start, rt_string hay, rt_string needle);
 
     /// @brief Viper.String.IndexOfFrom wrapper with receiver-first argument order.
     /// @param hay Haystack string.
@@ -452,13 +452,13 @@ extern "C"
     /// @param text Text to match.
     /// @param pattern Pattern (% = any chars, _ = one char, \ = escape).
     /// @return 1 if matched, 0 otherwise.
-    int8_t rt_string_like(rt_string text, rt_string pattern);
+    int8_t rt_str_like(rt_string text, rt_string pattern);
 
     /// @brief SQL ILIKE pattern matching (case-insensitive).
     /// @param text Text to match.
     /// @param pattern Pattern (% = any chars, _ = one char, \ = escape).
     /// @return 1 if matched, 0 otherwise.
-    int8_t rt_string_like_ci(rt_string text, rt_string pattern);
+    int8_t rt_str_like_ci(rt_string text, rt_string pattern);
 
 #ifdef __cplusplus
 }

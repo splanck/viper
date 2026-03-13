@@ -33,8 +33,10 @@ extern "C"
     // Stream Type Constants
     //=========================================================================
 
-#define RT_STREAM_TYPE_BINFILE 0
-#define RT_STREAM_TYPE_MEMSTREAM 1
+typedef enum {
+    RT_STREAM_TYPE_BINFILE   = 0,
+    RT_STREAM_TYPE_MEMSTREAM = 1,
+} rt_stream_type_t;
 
     //=========================================================================
     // Stream Creation

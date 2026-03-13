@@ -396,6 +396,9 @@ extern "C"
     // Http - Static Utility Class (Simple HTTP/1.1 Client)
     //=========================================================================
 
+    // Note: "get" in rt_http_get / rt_http_get_bytes is the HTTP GET method,
+    // not a property accessor. These perform network requests.
+
     /// @brief HTTP GET request, return body as string.
     /// @param url Full URL (http://host/path).
     /// @return Response body as string.

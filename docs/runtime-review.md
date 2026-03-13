@@ -325,7 +325,7 @@ These findings represent exploitable bugs, data-loss risks, or correctness-break
 - **Security:** ✅
 - **Optimization:** ✅
 
-#### `rt_str_trim`, `rt_str_upper`, `rt_str_lower`, `rt_str_replace`, `rt_str_starts_with`, `rt_str_ends_with`, `rt_str_contains`, `rt_str_index_of`, `rt_str_repeat`, `rt_str_pad_left`, `rt_str_pad_right`
+#### `rt_str_trim`, `rt_str_upper`, `rt_str_lower`, `rt_str_replace`, `rt_str_starts_with`, `rt_str_ends_with`, `rt_str_has`, `rt_str_index_of`, `rt_str_repeat`, `rt_str_pad_left`, `rt_str_pad_right`
 - ✅✅✅ — Standard operations, no significant issues
 
 ---
@@ -369,7 +369,7 @@ These findings represent exploitable bugs, data-loss risks, or correctness-break
 - **Security:** ✅
 - **Optimization:** ✅
 
-#### `rt_list_sort(list, cmp) → void`, `rt_list_reverse(list) → void`, `rt_list_contains(list, obj) → int`
+#### `rt_list_sort(list, cmp) → void`, `rt_list_reverse(list) → void`, `rt_list_has(list, obj) → int`
 - ✅✅✅
 
 ---
@@ -719,11 +719,11 @@ These findings represent exploitable bugs, data-loss risks, or correctness-break
 ### `rt_bloomfilter.c`
 
 #### `rt_bloomfilter_new(capacity, fp_rate) → rt_bloomfilter*`
-- **Robustness:** ❌ CRITICAL — `calloc` for `bf->bits` not checked; `NULL` stored silently → crash on first `rt_bloomfilter_add` or `rt_bloomfilter_contains`
+- **Robustness:** ❌ CRITICAL — `calloc` for `bf->bits` not checked; `NULL` stored silently → crash on first `rt_bloomfilter_add` or `rt_bloomfilter_might_contain`
 - **Security:** ✅
 - **Optimization:** ✅
 
-#### `rt_bloomfilter_add(bf, key) → void`, `rt_bloomfilter_contains(bf, key) → int`, `rt_bloomfilter_free(bf) → void`
+#### `rt_bloomfilter_add(bf, key) → void`, `rt_bloomfilter_might_contain(bf, key) → int`, `rt_bloomfilter_free(bf) → void`
 - ✅✅✅ (assuming allocation fixed)
 
 ---
@@ -757,7 +757,7 @@ These findings represent exploitable bugs, data-loss risks, or correctness-break
 - **Security:** ✅
 - **Optimization:** ✅
 
-#### `rt_sortedset_add`, `rt_sortedset_remove`, `rt_sortedset_contains`, `rt_sortedset_len`, `rt_sortedset_to_seq`
+#### `rt_sortedset_add`, `rt_sortedset_remove`, `rt_sortedset_has`, `rt_sortedset_len`, `rt_sortedset_to_seq`
 - ✅✅✅ (assuming above fixed)
 
 ---
@@ -1980,7 +1980,7 @@ Appears in `rt_file_ext.c` (write) and `rt_file_ext.c` (read bytes). Both should
 ### `rt_bloomfilter.c`
 
 #### `rt_bloomfilter_new(int64_t capacity, double false_positive_rate) → void *`
-- **Robustness:** ❌ — `calloc` for `bf->bits` not null-checked; `bf->bits = NULL` stored directly. Any `rt_bloomfilter_add` or `rt_bloomfilter_contains` call dereferences NULL.
+- **Robustness:** ❌ — `calloc` for `bf->bits` not null-checked; `bf->bits = NULL` stored directly. Any `rt_bloomfilter_add` or `rt_bloomfilter_might_contain` call dereferences NULL.
 
 #### All remaining `rt_bloomfilter_*` functions
 - ✅✅✅ — MurmurHash-based multi-hash insertion/lookup correct.

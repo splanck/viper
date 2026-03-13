@@ -82,7 +82,7 @@ static void assert_item(void *list, int64_t index, void *expected)
 
 static void test_has_empty_and_nonempty()
 {
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
     assert(list != nullptr);
 
     void *a = new_obj();
@@ -103,7 +103,7 @@ static void test_has_empty_and_nonempty()
 
 static void test_find_returns_index_or_minus1()
 {
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
     assert(list != nullptr);
 
     void *a = new_obj();
@@ -129,7 +129,7 @@ static void test_find_returns_index_or_minus1()
 
 static void test_insert_begin_middle_end()
 {
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
     assert(list != nullptr);
 
     void *a = new_obj();
@@ -159,7 +159,7 @@ static void test_insert_begin_middle_end()
 
 static void test_remove_returns_bool_and_removes_first_only()
 {
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
     assert(list != nullptr);
 
     void *a = new_obj();
@@ -190,7 +190,7 @@ static void test_remove_returns_bool_and_removes_first_only()
 
 static void test_insert_out_of_range_traps()
 {
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
     assert(list != nullptr);
     void *a = new_obj();
 
@@ -206,7 +206,7 @@ static void test_insert_out_of_range_traps()
 
 static void test_list_finalizer_releases_elements()
 {
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
     assert(list != nullptr);
 
     g_finalizer_calls = 0;
@@ -226,7 +226,7 @@ static void test_list_finalizer_releases_elements()
 
 static void test_is_empty()
 {
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
     assert(list != nullptr);
 
     assert(rt_list_is_empty(list) == 1);
@@ -242,7 +242,7 @@ static void test_is_empty()
 
 static void test_pop()
 {
-    void *list = rt_ns_list_new();
+    void *list = rt_list_new();
     assert(list != nullptr);
 
     void *a = new_obj();

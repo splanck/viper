@@ -17,9 +17,9 @@ PRINT "tm len after drop: "; tm.Length
 DIM tr AS Viper.Collections.Trie
 tr = Viper.Collections.Trie.New()
 PRINT "tr empty: "; tr.IsEmpty
-tr.Put("hello", "1")
-tr.Put("help", "2")
-tr.Put("world", "3")
+tr.Set("hello", "1")
+tr.Set("help", "2")
+tr.Set("world", "3")
 PRINT "tr len: "; tr.Length
 PRINT "tr has help: "; tr.Has("help")
 PRINT "tr hasprefix hel: "; tr.HasPrefix("hel")
@@ -31,9 +31,9 @@ PRINT "tr len after remove: "; tr.Length
 DIM ss AS Viper.Collections.SortedSet
 ss = Viper.Collections.SortedSet.New()
 PRINT "ss empty: "; ss.IsEmpty
-ss.Put("cherry")
-ss.Put("apple")
-ss.Put("banana")
+ss.Add("cherry")
+ss.Add("apple")
+ss.Add("banana")
 PRINT "ss len: "; ss.Length
 PRINT "ss first: "; ss.First()
 PRINT "ss last: "; ss.Last()
@@ -42,7 +42,7 @@ PRINT "ss at 1: "; ss.At(1)
 PRINT "ss indexof banana: "; ss.IndexOf("banana")
 PRINT "ss floor blueberry: "; ss.Floor("blueberry")
 PRINT "ss ceil blueberry: "; ss.Ceil("blueberry")
-ss.Drop("apple")
+ss.Remove("apple")
 PRINT "ss len after drop: "; ss.Length
 
 DIM bm AS Viper.Collections.BiMap

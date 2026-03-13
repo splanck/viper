@@ -32,12 +32,12 @@ extern "C"
 #define RT_PATHFOLLOW_MAX_POINTS 64
 
     /// Path following modes.
-    typedef enum rt_pathfollow_mode
+    typedef enum
     {
         RT_PATHFOLLOW_ONCE = 0,     ///< Play once and stop at end.
         RT_PATHFOLLOW_LOOP = 1,     ///< Loop back to start.
         RT_PATHFOLLOW_PINGPONG = 2, ///< Reverse at endpoints.
-    } rt_pathfollow_mode;
+    } rt_pathfollow_mode_t;
 
     /// Opaque handle to a PathFollower instance.
     typedef struct rt_pathfollow_impl *rt_pathfollow;
@@ -79,7 +79,7 @@ extern "C"
 
     /// @brief Retrieves the current traversal mode.
     /// @param path The path follower to query.
-    /// @return The mode as an integer matching the rt_pathfollow_mode enum.
+    /// @return The mode as an integer matching the rt_pathfollow_mode_t enum.
     int64_t rt_pathfollow_get_mode(rt_pathfollow path);
 
     /// @brief Sets the movement speed along the path.

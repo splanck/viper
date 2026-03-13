@@ -79,7 +79,7 @@ static void test_large_append(void)
 
     rt_string_builder sb;
     rt_sb_init(&sb);
-    rt_sb_status status = rt_sb_append_cstr(&sb, buffer);
+    rt_sb_status_t status = rt_sb_append_cstr(&sb, buffer);
     assert(status == RT_SB_OK);
     assert(sb.len == strlen(buffer));
     assert(strcmp(sb.data, buffer) == 0);
@@ -94,7 +94,7 @@ static void test_printf_growth(void)
 
     for (int i = 0; i < 64; ++i)
     {
-        rt_sb_status status = rt_sb_printf(&sb, "line:%d;", i);
+        rt_sb_status_t status = rt_sb_printf(&sb, "line:%d;", i);
         assert(status == RT_SB_OK);
     }
 
@@ -136,7 +136,7 @@ static void test_append_double_overflow_preserves_state(void)
     g_overflow_target = &sb;
     g_forced_strlen_extra = 1024;
     g_forced_strlen_used = 0;
-    rt_sb_status status = rt_sb_append_double(&sb, 123.456);
+    rt_sb_status_t status = rt_sb_append_double(&sb, 123.456);
     g_overflow_target = NULL;
     assert(g_forced_strlen_used);
     assert(status == RT_SB_ERROR_OVERFLOW);

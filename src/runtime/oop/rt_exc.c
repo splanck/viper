@@ -51,7 +51,7 @@ static void exception_finalizer(void *obj)
     }
 }
 
-void *rt_exc_create(rt_string msg)
+void *rt_exc_new(rt_string msg)
 {
     // Allocate exception object with class ID 1 (Exception)
     rt_exception_t *exc =

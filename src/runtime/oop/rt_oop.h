@@ -109,7 +109,7 @@ extern "C"
     /// @param type_id      The type to test.
     /// @param test_type_id The target type to test against.
     /// @return Non-zero if type_id is the same as or a subclass of test_type_id; 0 otherwise.
-    int rt_type_is_a(int type_id, int test_type_id);
+    int8_t rt_type_is_a(int type_id, int test_type_id);
 
     /// @brief Check whether a type implements an interface.
     /// @details Consults the runtime registry of (type, interface) bindings
@@ -117,7 +117,7 @@ extern "C"
     /// @param type_id  The class type id.
     /// @param iface_id The interface id to check.
     /// @return Non-zero if the type implements the interface; 0 otherwise.
-    int rt_type_implements(int type_id, int iface_id);
+    int8_t rt_type_implements(int type_id, int iface_id);
 
     /// @brief Cast an object to a target class type, returning the object or NULL.
     /// @details Performs a safe downcast by comparing the object's dynamic type id

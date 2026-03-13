@@ -130,7 +130,7 @@ static void load_current(playlist_impl *pl)
     if (pl->music)
     {
         rt_music_stop(pl->music);
-        rt_music_free(pl->music);
+        rt_music_destroy(pl->music);
         pl->music = NULL;
     }
 
@@ -159,7 +159,7 @@ static void playlist_finalize(void *obj)
     if (pl->music)
     {
         rt_music_stop(pl->music);
-        rt_music_free(pl->music);
+        rt_music_destroy(pl->music);
         pl->music = NULL;
     }
 
@@ -263,7 +263,7 @@ void rt_playlist_remove(void *obj, int64_t index)
         if (pl->music)
         {
             rt_music_stop(pl->music);
-            rt_music_free(pl->music);
+            rt_music_destroy(pl->music);
             pl->music = NULL;
         }
         pl->playing = 0;
@@ -298,7 +298,7 @@ void rt_playlist_clear(void *obj)
     if (pl->music)
     {
         rt_music_stop(pl->music);
-        rt_music_free(pl->music);
+        rt_music_destroy(pl->music);
         pl->music = NULL;
     }
 

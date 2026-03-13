@@ -47,6 +47,13 @@
 // Constants
 //=============================================================================
 
+/// DEFLATE block types (RFC 1951 §3.2.3).
+typedef enum {
+    RT_HUFFMAN_STORED  = 0, ///< No compression (stored block).
+    RT_HUFFMAN_FIXED   = 1, ///< Fixed Huffman codes.
+    RT_HUFFMAN_DYNAMIC = 2, ///< Dynamic Huffman codes.
+} rt_huffman_type_t;
+
 #define DEFLATE_DEFAULT_LEVEL 6
 #define DEFLATE_MIN_LEVEL 1
 #define DEFLATE_MAX_LEVEL 9
@@ -728,13 +735,13 @@ static void *inflate_data(const uint8_t *data, size_t len)
         bool ok = false;
         switch (block_type)
         {
-            case 0: // Stored
+            case RT_HUFFMAN_STORED:
                 ok = inflate_stored(&br, &out);
                 break;
-            case 1: // Fixed Huffman
+            case RT_HUFFMAN_FIXED:
                 ok = inflate_huffman(&br, &out, &fixed_lit_tree, &fixed_dist_tree);
                 break;
-            case 2: // Dynamic Huffman
+            case RT_HUFFMAN_DYNAMIC:
                 ok = inflate_dynamic(&br, &out);
                 break;
             default:

@@ -25,14 +25,14 @@ int main()
 
     rt_string s3 = rt_const_cstr("ABABAB");
     rt_string s4 = rt_const_cstr("AB");
-    assert(rt_instr3(3, s3, s4) == 3);
-    assert(rt_instr3(1, s3, s4) == 1);
-    assert(rt_instr3(LLONG_MIN, s3, s4) == rt_instr3(1, s3, s4));
+    assert(rt_str_instr3(3, s3, s4) == 3);
+    assert(rt_str_instr3(1, s3, s4) == 1);
+    assert(rt_str_instr3(LLONG_MIN, s3, s4) == rt_str_instr3(1, s3, s4));
 
     rt_string empty = rt_const_cstr("");
-    assert(rt_instr3(3, s3, empty) == 3);
-    assert(rt_instr3(10, s3, empty) == 7);
-    assert(rt_instr3(-2, s3, empty) == 1);
+    assert(rt_str_instr3(3, s3, empty) == 3);
+    assert(rt_str_instr3(10, s3, empty) == 7);
+    assert(rt_str_instr3(-2, s3, empty) == 1);
 
     rt_string s5 = rt_const_cstr("ABC");
     rt_string s6 = rt_const_cstr("X");

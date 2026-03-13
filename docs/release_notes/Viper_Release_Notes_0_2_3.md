@@ -331,7 +331,7 @@ Replace `strlen()` with `rt_string_len_bytes()`/`rt_str_len()` in 5 case-convers
 #### Runtime — Allocation Failure Handling
 
 Replace silent data-dropping on allocation failure with `rt_trap` in `rt_list_push`, `rt_map_new`,
-`rt_map_set`, `rt_set_put`. Replace `assert`-only bounds checks in `rt_arr_str` and `rt_arr_obj`
+`rt_map_set`, `rt_set_add`. Replace `assert`-only bounds checks in `rt_arr_str` and `rt_arr_obj`
 get/put with `rt_trap` + `rt_arr_oob_panic`.
 
 #### Runtime — Type System (5 fixes)
@@ -531,6 +531,56 @@ issue tracker.
 - Separate construction: pointer-address independence
 - ISel patterns (N=50): strength reduction hash map stability
 - Static counter awareness: label normalization for known counters
+
+---
+
+### Runtime Consistency Audit
+
+Systematic audit across all runtime C headers, `runtime.def` registrations, and viperlib documentation
+to enforce naming, behavioral, and type-safety consistency.
+
+#### C Function Naming (Phase 1)
+
+Renamed 40+ C functions to follow `rt_<type>_<verb>` naming convention. Affected collections: List,
+Set, Map, Stack, Queue, Deque, Ring, Heap, Seq, Bag, Bytes. Key renames include `Contains`→`Has`,
+`Count`→`Len`, `Size`→`Len`, `IsEmpty` property additions, and `TryPop`/`TryPeek` safe-access
+variants for Stack, Queue, Deque, and Heap.
+
+#### runtime.def Registration (Phase 2)
+
+Aligned all IL-level method names and signatures with their C implementations. Added missing
+`RT_METHOD`/`RT_PROP`/`RT_ALIAS` entries for newly renamed functions and ensured every `RT_FUNC`
+has corresponding class registrations.
+
+#### Collection Behavioral Consistency (Phase 3)
+
+Added missing operations to bring all collections to feature parity where semantically appropriate:
+`Clone()` for Stack, Queue, Set, Map; `First()`/`Last()`/`Reverse()` for Ring; `TryPopFront()`/
+`TryPopBack()` for Deque; `Items()` alias for Heap's `ToSeq()`.
+
+#### Enum Adoption (Phase 4)
+
+Converted 12 `#define` constant groups to `typedef enum { ... } rt_xxx_t;` enums for compile-time
+type safety. Affected: screen effect types, path-follow modes, easing types, string builder status,
+input grow results, JSON token types, and XML node types.
+
+#### Enum Naming Unification (Phase 5)
+
+Normalized 7 existing enum types from mixed naming styles (Style A tagged enums, PascalCase names)
+to a consistent Style B convention: anonymous `typedef enum { ... } rt_xxx_t;` with `_t` suffix.
+
+#### Boolean Return Type Consistency (Phase 6)
+
+Fixed 15 runtime functions that returned `bool` or `int` for boolean results to consistently return
+`int8_t`, matching the IL `i1` type. Affected: `rt_string_is_handle`, `rt_output_is_batch_mode`,
+`rt_is_main_thread`, `rt_type_is_a`, `rt_type_implements`, `rt_box_equal`, sprite overlap/contains
+functions, and GUI shortcut checks.
+
+#### Documentation Alignment (Phase 7)
+
+Updated viperlib collection documentation to reflect all API additions from Phases 1-3. Added
+missing methods to sequential, maps-sets, and specialized collection docs. Updated `runtime.def`
+table of contents to cover all 80+ sections.
 
 ---
 

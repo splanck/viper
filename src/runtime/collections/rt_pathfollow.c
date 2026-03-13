@@ -56,7 +56,7 @@ struct rt_pathfollow_impl
 {
     struct waypoint points[RT_PATHFOLLOW_MAX_POINTS];
     int64_t point_count;      ///< Number of waypoints.
-    rt_pathfollow_mode mode;  ///< Path mode.
+    rt_pathfollow_mode_t mode;  ///< Path mode.
     int64_t speed;            ///< Speed (units/sec, fixed-point).
     int8_t active;            ///< Is following active.
     int8_t finished;          ///< Has reached end (ONCE mode).
@@ -210,7 +210,7 @@ void rt_pathfollow_set_mode(rt_pathfollow path, int64_t mode)
     if (!path)
         return;
     if (mode >= RT_PATHFOLLOW_ONCE && mode <= RT_PATHFOLLOW_PINGPONG)
-        path->mode = (rt_pathfollow_mode)mode;
+        path->mode = (rt_pathfollow_mode_t)mode;
 }
 
 int64_t rt_pathfollow_get_mode(rt_pathfollow path)

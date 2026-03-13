@@ -28,12 +28,14 @@ extern "C"
 {
 #endif
 
-/// Log level constants
-#define RT_LOG_DEBUG 0
-#define RT_LOG_INFO 1
-#define RT_LOG_WARN 2
-#define RT_LOG_ERROR 3
-#define RT_LOG_OFF 4
+/// Log level constants.
+typedef enum {
+    RT_LOG_DEBUG = 0,
+    RT_LOG_INFO  = 1,
+    RT_LOG_WARN  = 2,
+    RT_LOG_ERROR = 3,
+    RT_LOG_OFF   = 4,
+} rt_log_level_t;
 
     /// @brief Log a debug message.
     /// @param message The message to log.

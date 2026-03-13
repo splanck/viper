@@ -48,14 +48,14 @@ extern "C"
     /// @brief Check if a timestamp falls within the range (inclusive).
     /// @param range Date range object.
     /// @param timestamp Timestamp to check.
-    /// @return true if contained, false otherwise.
-    bool rt_daterange_contains(void *range, int64_t timestamp);
+    /// @return 1 if contained, 0 otherwise.
+    int8_t rt_daterange_contains(void *range, int64_t timestamp);
 
     /// @brief Check if two ranges overlap.
     /// @param range First date range.
     /// @param other Second date range.
-    /// @return true if they overlap, false otherwise.
-    bool rt_daterange_overlaps(void *range, void *other);
+    /// @return 1 if they overlap, 0 otherwise.
+    int8_t rt_daterange_overlaps(void *range, void *other);
 
     /// @brief Get the intersection of two ranges.
     /// @param range First date range.

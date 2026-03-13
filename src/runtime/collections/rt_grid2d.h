@@ -86,6 +86,11 @@ extern "C"
     /// @return The total cell count (width * height).
     int64_t rt_grid2d_size(rt_grid2d grid);
 
+    /// @brief Check if the grid has zero cells (width or height is 0).
+    /// @param grid The grid.
+    /// @return 1 if empty or NULL, 0 otherwise.
+    int8_t rt_grid2d_is_empty(rt_grid2d grid);
+
     /// @brief Copy values from another grid (must be same dimensions).
     /// @param dest The destination grid.
     /// @param src The source grid.

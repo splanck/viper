@@ -635,7 +635,7 @@ extern "C"
 
     /// @brief Check whether the calling thread is the main thread.
     /// @return Non-zero if called from the main thread, zero otherwise.
-    int rt_is_main_thread(void);
+    int8_t rt_is_main_thread(void);
 
     /// @brief Internal assertion helper — do not call directly.
     /// @see RT_ASSERT_MAIN_THREAD

@@ -1575,7 +1575,7 @@ var set = new Set[String]();
 
 ```rust
 set.Add(item)           // Add an item
-set.Contains(item)      // -> Boolean
+set.Has(item)           // -> Boolean
 set.remove(item)        // Remove an item
 set.Clear()             // Remove all items
 set.Length                 // -> Integer
@@ -3496,7 +3496,7 @@ String.PadRight(str, width, ch)   // -> String
 String.Length(str)                // -> Integer (same as .Length)
 ```
 
-> **Not available:** `String.ToLower`, `String.ToUpper`, and `String.Contains` do **not** exist in the runtime. Use manual character iteration or third-party libraries for case conversion and substring containment checks. The methods that DO exist on strings are: `Split`, `StartsWith`, `EndsWith`, and the `.Length` property.
+> **String methods:** `String.ToLower(str)`, `String.ToUpper(str)`, and `String.Has(str, substr)` are available for case conversion and substring checks. Use `String.Has` instead of the `.Contains` pattern. Other string methods include `Split`, `StartsWith`, `EndsWith`, and the `.Length` property.
 
 For numeric conversion: `bind Viper.Core.Convert as Convert;` then `Convert.ToInt64(str)` / `ToDouble(str)`.
 
@@ -3505,7 +3505,6 @@ For numeric conversion: `bind Viper.Core.Convert as Convert;` then `Convert.ToIn
 ```rust
 arr.Length                    // Property -> Integer (no bind needed)
 arr.Has(item)                 // -> Boolean (built-in method)
-arr.Contains(item)            // -> Boolean (alias for .has)
 ```
 
 For advanced array operations, use `bind Viper.Collections;` and `Collections.List.*`.

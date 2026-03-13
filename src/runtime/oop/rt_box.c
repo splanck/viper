@@ -269,7 +269,7 @@ size_t rt_box_hash(void *elem)
     return (size_t)((val * KNUTH_MULT) >> 16);
 }
 
-int rt_box_equal(void *a, void *b)
+int8_t rt_box_equal(void *a, void *b)
 {
     if (a == b)
         return 1;
