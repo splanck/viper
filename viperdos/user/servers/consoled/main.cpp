@@ -93,8 +93,10 @@ class ConsoleApp {
         gui_event_t event;
 
         while (m_running) {
-            // 1. Process one GUI event (non-blocking)
-            if (gui_poll_event(m_window, &event) == 0) {
+            // 1. Drain pending GUI events (up to 16 per iteration to stay responsive)
+            for (int ev_i = 0; ev_i < 16; ev_i++) {
+                if (gui_poll_event(m_window, &event) != 0)
+                    break;
                 processEvent(event);
             }
 

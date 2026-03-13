@@ -20,6 +20,7 @@
 #include "codegen/common/linker/NativeLinker.hpp"
 
 #include "codegen/common/linker/ArchiveReader.hpp"
+#include "codegen/common/linker/DeadStripPass.hpp"
 #include "codegen/common/linker/ElfExeWriter.hpp"
 #include "codegen/common/linker/MachOExeWriter.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
@@ -423,6 +424,10 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             globalSyms[sym.name] = std::move(e);
         }
     }
+
+    // Step 3.5c: Dead-strip unused sections from archive-extracted objects.
+    // User objects (index 0) are always live; archive extracts are GC'd.
+    deadStrip(allObjects, initialObjects.size(), globalSyms, opts.entrySymbol, err);
 
     // Step 4: Merge sections and compute layout.
     LinkLayout layout;

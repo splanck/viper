@@ -315,13 +315,8 @@ static void handle_mouse_move(u16 code, i32 value) {
             new_x = static_cast<i32>(g_screen_width) - 1;
         g_mouse_x = new_x;
         g_mouse.x = new_x;
-
-        Event ev;
-        ev.type = EventType::MouseMove;
-        ev.modifiers = current_modifiers;
-        ev.code = 0;
-        ev.value = 0;
-        push_event(ev);
+        // Position tracked in g_mouse — no event queue push needed.
+        // displayd uses get_mouse_state() for mouse position, not events.
     } else if (code == REL_Y) {
         g_mouse.dy += value;
         i32 new_y = g_mouse_y + value;
@@ -331,13 +326,7 @@ static void handle_mouse_move(u16 code, i32 value) {
             new_y = static_cast<i32>(g_screen_height) - 1;
         g_mouse_y = new_y;
         g_mouse.y = new_y;
-
-        Event ev;
-        ev.type = EventType::MouseMove;
-        ev.modifiers = current_modifiers;
-        ev.code = 0;
-        ev.value = 0;
-        push_event(ev);
+        // Position tracked in g_mouse — no event queue push needed.
     } else if (code == REL_WHEEL) {
         g_mouse.scroll += value;
 
@@ -384,13 +373,8 @@ static void handle_mouse_abs(virtio::InputDevice *dev, u16 code, i32 value) {
         g_mouse.dx += dx;
         g_mouse_x = new_x;
         g_mouse.x = new_x;
-
-        Event ev;
-        ev.type = EventType::MouseMove;
-        ev.modifiers = current_modifiers;
-        ev.code = 0;
-        ev.value = 0;
-        push_event(ev);
+        // Position tracked in g_mouse — no event queue push needed.
+        // displayd uses get_mouse_state() for mouse position, not events.
     } else if (code == ABS_Y) {
         i32 new_y = has_range ? scale_abs_to_screen(value, min, max, g_screen_height)
                               : clamp_i32(value, 0, static_cast<i32>(g_screen_height) - 1);
@@ -398,13 +382,7 @@ static void handle_mouse_abs(virtio::InputDevice *dev, u16 code, i32 value) {
         g_mouse.dy += dy;
         g_mouse_y = new_y;
         g_mouse.y = new_y;
-
-        Event ev;
-        ev.type = EventType::MouseMove;
-        ev.modifiers = current_modifiers;
-        ev.code = 0;
-        ev.value = 0;
-        push_event(ev);
+        // Position tracked in g_mouse — no event queue push needed.
     }
 }
 

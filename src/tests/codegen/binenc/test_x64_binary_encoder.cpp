@@ -332,13 +332,12 @@ int main()
         CHECK(bytes[9] == 0x12); // LE byte 7
     }
 
-    // movabs $42, %r11 -> 49 BB 2A 00 00 00 00 00 00 00
-    // R11 hw=3, rex=1 -> REX.W=1, REX.B=1 = 0x49
-    // B8+3 = BB
+    // mov $42, %r11 -> 41 BB 2A 00 00 00  (6 bytes: REX.B + B8+3 + imm32)
+    // R11 hw=3, rex=1 -> REX.B=1 = 0x41 (no REX.W for 32-bit zero-extending form)
     {
         auto bytes = encodeOne(MOpcode::MOVri, {gpr(PhysReg::R11), imm(42)});
-        CHECK(bytes.size() == 10);
-        CHECK(bytes[0] == 0x49);
+        CHECK(bytes.size() == 6);
+        CHECK(bytes[0] == 0x41);
         CHECK(bytes[1] == 0xBB);
         CHECK(bytes[2] == 42);
     }
@@ -825,28 +824,11 @@ int main()
     // 34. CMOVNErr
     // ================================================================
 
-    // cmovneq %rcx, %rax -> 48 0F 45 C1
-    // No wait - CMOVNErr doesn't use REX.W based on the encoding table!
-    // Actually the encoding table shows no REXW flag for CMOVNErr.
-    // But cmovne is a 64-bit instruction... Let me check the encoding.
-    // cmovneq needs REX.W for 64-bit. But the EncodingTable.inc doesn't have REXW.
-    // Looking more carefully: reg=dst, r/m=src (regIsDst=true)
-    // REX.W not set for CMOVNErr in our encoder -> 0F 45 C1 (3 bytes)
-    // Wait, 64-bit cmov without REX.W would be 32-bit. Let's check what the
-    // text emitter does... it emits "cmovne". Since the encoding flags don't
-    // include REXW, the text assembler adds the q suffix. Our encoder needs
-    // to match the text path behavior. The encoding table says no REXW.
-    // Actually cmovne on 64-bit without REX.W operates on 32-bit registers
-    // and zero-extends. But the text emitter uses "cmovne" not "cmovneq".
-    // This is a 64-bit operation implicitly in the assembler when using
-    // 64-bit register names. Our binary encoder should check what's correct.
-    // For now, test what our encoder produces and we can fix later.
+    // cmovneq %rcx, %rax -> 48 0F 45 C1 (REX.W for 64-bit operand size)
     {
         auto bytes = encodeOne(MOpcode::CMOVNErr, {gpr(PhysReg::RAX), gpr(PhysReg::RCX)});
-        // Without REX.W: 0F 45 C1 (3 bytes)
-        // With R8+ regs: would need REX for extension bit
-        CHECK(bytes.size() == 3);
-        CHECK(bytesMatch(bytes, {0x0F, 0x45, 0xC1}));
+        CHECK(bytes.size() == 4);
+        CHECK(bytesMatch(bytes, {0x48, 0x0F, 0x45, 0xC1}));
     }
 
     // ================================================================
@@ -859,6 +841,85 @@ int main()
         auto bytes = encodeOne(MOpcode::MOVmr, {gpr(PhysReg::RAX), mem(PhysReg::RBP, 256)});
         CHECK(bytes.size() == 7);
         CHECK(bytesMatch(bytes, {0x48, 0x8B, 0x85, 0x00, 0x01, 0x00, 0x00}));
+    }
+
+    // ================================================================
+    // 36. MOVri short form — 32-bit zero-extending (5 bytes)
+    // ================================================================
+
+    // movl $0, %eax → B8 00 00 00 00 (5 bytes, zero-extends to 64-bit)
+    {
+        auto bytes = encodeOne(MOpcode::MOVri, {gpr(PhysReg::RAX), imm(0)});
+        CHECK(bytes.size() == 5);
+        CHECK(bytesMatch(bytes, {0xB8, 0x00, 0x00, 0x00, 0x00}));
+    }
+
+    // movl $127, %eax → B8 7F 00 00 00 (5 bytes)
+    {
+        auto bytes = encodeOne(MOpcode::MOVri, {gpr(PhysReg::RAX), imm(127)});
+        CHECK(bytes.size() == 5);
+        CHECK(bytesMatch(bytes, {0xB8, 0x7F, 0x00, 0x00, 0x00}));
+    }
+
+    // movl $INT32_MAX, %ecx → B9 FF FF FF 7F (5 bytes)
+    {
+        auto bytes = encodeOne(MOpcode::MOVri, {gpr(PhysReg::RCX), imm(0x7FFFFFFF)});
+        CHECK(bytes.size() == 5);
+        CHECK(bytesMatch(bytes, {0xB9, 0xFF, 0xFF, 0xFF, 0x7F}));
+    }
+
+    // ================================================================
+    // 37. MOVri short form — high register (6 bytes, needs REX.B)
+    // ================================================================
+
+    // movl $42, %r8d → 41 B8 2A 00 00 00 (6 bytes)
+    {
+        auto bytes = encodeOne(MOpcode::MOVri, {gpr(PhysReg::R8), imm(42)});
+        CHECK(bytes.size() == 6);
+        CHECK(bytesMatch(bytes, {0x41, 0xB8, 0x2A, 0x00, 0x00, 0x00}));
+    }
+
+    // ================================================================
+    // 38. MOVri sign-extending form — negative values (7 bytes)
+    // ================================================================
+
+    // movq $-1, %rax → 48 C7 C0 FF FF FF FF (7 bytes)
+    {
+        auto bytes = encodeOne(MOpcode::MOVri, {gpr(PhysReg::RAX), imm(-1)});
+        CHECK(bytes.size() == 7);
+        CHECK(bytesMatch(bytes, {0x48, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF}));
+    }
+
+    // movq $-128, %rcx → 48 C7 C1 80 FF FF FF (7 bytes)
+    {
+        auto bytes = encodeOne(MOpcode::MOVri, {gpr(PhysReg::RCX), imm(-128)});
+        CHECK(bytes.size() == 7);
+        CHECK(bytesMatch(bytes, {0x48, 0xC7, 0xC1, 0x80, 0xFF, 0xFF, 0xFF}));
+    }
+
+    // movq $INT32_MIN, %rax → 48 C7 C0 00 00 00 80 (7 bytes)
+    {
+        auto bytes = encodeOne(MOpcode::MOVri, {gpr(PhysReg::RAX), imm(INT32_MIN)});
+        CHECK(bytes.size() == 7);
+        CHECK(bytesMatch(bytes, {0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x80}));
+    }
+
+    // ================================================================
+    // 39. MOVri full 64-bit form (10 bytes)
+    // ================================================================
+
+    // movabsq $0x100000000, %rax → 48 B8 00 00 00 00 01 00 00 00
+    {
+        auto bytes = encodeOne(MOpcode::MOVri, {gpr(PhysReg::RAX), imm(0x100000000LL)});
+        CHECK(bytes.size() == 10);
+        CHECK(bytesMatch(bytes, {0x48, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00}));
+    }
+
+    // movabsq $INT64_MAX, %rax → 48 B8 FF FF FF FF FF FF FF 7F
+    {
+        auto bytes = encodeOne(MOpcode::MOVri, {gpr(PhysReg::RAX), imm(INT64_MAX)});
+        CHECK(bytes.size() == 10);
+        CHECK(bytesMatch(bytes, {0x48, 0xB8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F}));
     }
 
     // ================================================================

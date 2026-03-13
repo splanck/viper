@@ -92,6 +92,11 @@ struct ObjFile
     std::vector<ObjSymbol> symbols;   ///< Index 0 is reserved (null symbol).
 };
 
+/// Maximum number of sections/symbols accepted from an object file.
+/// Guards against corrupt or malicious inputs causing unbounded allocation.
+inline constexpr uint32_t kMaxObjSections = 65536;
+inline constexpr uint32_t kMaxObjSymbols = 1 << 20; // 1M symbols.
+
 /// Detect the object file format from magic bytes.
 ObjFileFormat detectFormat(const uint8_t *data, size_t size);
 

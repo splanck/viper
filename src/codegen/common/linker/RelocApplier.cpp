@@ -290,6 +290,14 @@ bool applyRelocations(const std::vector<ObjFile> &objects, LinkLayout &layout,
 
             for (const auto &rel : sec.relocs)
             {
+                if (rel.offset >= sec.data.size())
+                {
+                    err << "error: relocation offset " << rel.offset
+                        << " exceeds section size " << sec.data.size()
+                        << " in '" << obj.name << "'\n";
+                    return false;
+                }
+
                 const std::string &symName =
                     (rel.symIndex < obj.symbols.size()) ? obj.symbols[rel.symIndex].name : "";
 
@@ -308,7 +316,12 @@ bool applyRelocations(const std::vector<ObjFile> &objects, LinkLayout &layout,
                 const size_t patchOff = chunkBase + rel.offset;
 
                 if (patchOff + 4 > outSec.data.size())
-                    continue;
+                {
+                    err << "error: relocation at offset " << patchOff
+                        << " out of bounds in '" << outSec.name
+                        << "' (size=" << outSec.data.size() << ")\n";
+                    return false;
+                }
 
                 uint8_t *patch = outSec.data.data() + patchOff;
                 const RelocAction action = classifyReloc(obj.format, arch, rel.type);
@@ -511,10 +524,10 @@ bool applyRelocations(const std::vector<ObjFile> &objects, LinkLayout &layout,
                     break;
                 }
                 case RelocAction::Unknown:
-                    err << "warning: " << obj.name << ": unknown reloc type " << rel.type
+                    err << "error: " << obj.name << ": unknown reloc type " << rel.type
                         << " (format=" << static_cast<int>(obj.format) << ") for symbol '"
                         << symName << "'\n";
-                    break;
+                    return false;
                 }
             }
         }

@@ -13,6 +13,7 @@ add_library(viper_codegen_common STATIC
         linker/MachOReader.cpp
         linker/CoffReader.cpp
         linker/SymbolResolver.cpp
+        linker/DeadStripPass.cpp
         linker/SectionMerger.cpp
         linker/RelocApplier.cpp
         linker/ElfExeWriter.cpp

@@ -132,14 +132,18 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
 
         if (pb.kind == MOpcode::Br || pb.kind == MOpcode::Bl)
         {
-            // B/BL: 26-bit signed offset in units of 4 bytes.
+            // B/BL: 26-bit signed offset in units of 4 bytes (±128MB range).
             int32_t imm26 = static_cast<int32_t>(delta / 4);
+            assert(imm26 >= -0x2000000 && imm26 <= 0x1FFFFFF &&
+                   "B/BL branch offset exceeds ±128MB range");
             word |= (static_cast<uint32_t>(imm26) & 0x3FFFFFF);
         }
         else
         {
-            // B.cond/CBZ/CBNZ: 19-bit signed offset in units of 4 bytes.
+            // B.cond/CBZ/CBNZ: 19-bit signed offset in units of 4 bytes (±1MB range).
             int32_t imm19 = static_cast<int32_t>(delta / 4);
+            assert(imm19 >= -0x40000 && imm19 <= 0x3FFFF &&
+                   "conditional branch offset exceeds ±1MB range");
             word |= ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5);
         }
 
@@ -277,6 +281,11 @@ void A64BinaryEncoder::encodeMainInit(objfile::CodeSection &cs)
 
 void A64BinaryEncoder::encodeMovImm64(uint32_t rd, uint64_t imm, objfile::CodeSection &cs)
 {
+    // Templates indexed by halfword position (0=lsl #0, 1=lsl #16, 2=lsl #32, 3=lsl #48).
+    static constexpr uint32_t movzTmpl[4] = {kMovZ, kMovZ16, kMovZ32, kMovZ48};
+    static constexpr uint32_t movnTmpl[4] = {kMovN, kMovN16, kMovN32, kMovN48};
+    static constexpr uint32_t movkTmpl[4] = {kMovK, kMovK16, kMovK32, kMovK48};
+
     uint16_t chunks[4] = {
         static_cast<uint16_t>(imm & 0xFFFF),
         static_cast<uint16_t>((imm >> 16) & 0xFFFF),
@@ -284,42 +293,122 @@ void A64BinaryEncoder::encodeMovImm64(uint32_t rd, uint64_t imm, objfile::CodeSe
         static_cast<uint16_t>((imm >> 48) & 0xFFFF),
     };
 
-    // movz Xd, #chunk0
-    emit32(kMovZ | (static_cast<uint32_t>(chunks[0]) << 5) | rd, cs);
+    // Count non-zero halfwords for MOVZ vs MOVN decision.
+    uint64_t invImm = ~imm;
+    uint16_t invChunks[4] = {
+        static_cast<uint16_t>(invImm & 0xFFFF),
+        static_cast<uint16_t>((invImm >> 16) & 0xFFFF),
+        static_cast<uint16_t>((invImm >> 32) & 0xFFFF),
+        static_cast<uint16_t>((invImm >> 48) & 0xFFFF),
+    };
 
-    // movk for non-zero higher chunks
-    if (chunks[1])
-        emit32(kMovK16 | (static_cast<uint32_t>(chunks[1]) << 5) | rd, cs);
-    if (chunks[2])
-        emit32(kMovK32 | (static_cast<uint32_t>(chunks[2]) << 5) | rd, cs);
-    if (chunks[3])
-        emit32(kMovK48 | (static_cast<uint32_t>(chunks[3]) << 5) | rd, cs);
+    int nzCount = 0, invNzCount = 0;
+    for (int i = 0; i < 4; ++i)
+    {
+        if (chunks[i])
+            ++nzCount;
+        if (invChunks[i])
+            ++invNzCount;
+    }
+
+    bool useMovn = (invNzCount < nzCount);
+    const uint16_t *src = useMovn ? invChunks : chunks;
+
+    // Find first non-zero halfword for the initial MOVZ/MOVN.
+    int first = -1;
+    for (int i = 0; i < 4; ++i)
+    {
+        if (src[i])
+        {
+            first = i;
+            break;
+        }
+    }
+
+    if (first < 0)
+    {
+        // All halfwords zero: emit MOVZ Xd, #0 (or MOVN Xd, #0 for all-ones).
+        if (useMovn)
+            emit32(kMovN | rd, cs); // MOVN Xd, #0 → 0xFFFFFFFFFFFFFFFF
+        else
+            emit32(kMovZ | rd, cs); // MOVZ Xd, #0 → 0
+        return;
+    }
+
+    // Emit initial MOVZ or MOVN at the first non-zero halfword position.
+    const uint32_t *baseTmpl = useMovn ? movnTmpl : movzTmpl;
+    emit32(baseTmpl[first] | (static_cast<uint32_t>(src[first]) << 5) | rd, cs);
+
+    // Emit MOVK for remaining halfwords that need correction.
+    for (int i = 0; i < 4; ++i)
+    {
+        if (i == first)
+            continue;
+        // For MOVN path: MOVK the original (non-inverted) halfwords that differ from
+        // what MOVN+initial produced. For MOVZ path: MOVK non-zero original halfwords.
+        if (useMovn)
+        {
+            // After MOVN, all halfwords except 'first' are 0xFFFF. We need MOVK for
+            // any halfword that isn't 0xFFFF in the original value.
+            if (chunks[i] != 0xFFFF)
+                emit32(movkTmpl[i] | (static_cast<uint32_t>(chunks[i]) << 5) | rd, cs);
+        }
+        else
+        {
+            if (chunks[i])
+                emit32(movkTmpl[i] | (static_cast<uint32_t>(chunks[i]) << 5) | rd, cs);
+        }
+    }
+}
+
+/// Emit a single ADD or SUB immediate, using lsl #12 when possible.
+static void emitAddSubImmSmart(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t val,
+                                objfile::CodeSection &cs)
+{
+    if (val <= 4095)
+    {
+        cs.emit32LE(encodeAddSubImm(tmpl, rd, rn, val));
+    }
+    else if ((val & 0xFFF) == 0 && (val >> 12) <= 4095)
+    {
+        cs.emit32LE(encodeAddSubImmShift(tmpl, rd, rn, val >> 12));
+    }
+    else
+    {
+        // Split into shifted + unshifted parts.
+        uint32_t hi = val >> 12;
+        uint32_t lo = val & 0xFFF;
+        if (hi > 0 && hi <= 4095)
+        {
+            cs.emit32LE(encodeAddSubImmShift(tmpl, rd, rn, hi));
+            if (lo > 0)
+                cs.emit32LE(encodeAddSubImm(tmpl, rd, rd, lo));
+        }
+        else
+        {
+            // Fallback: loop with max immediate.
+            while (val > 4095)
+            {
+                cs.emit32LE(encodeAddSubImm(tmpl, rd, rn, 4080));
+                val -= 4080;
+                rn = rd; // subsequent iterations operate on rd
+            }
+            if (val > 0)
+                cs.emit32LE(encodeAddSubImm(tmpl, rd, rn, val));
+        }
+    }
 }
 
 void A64BinaryEncoder::encodeSubSp(int64_t bytes, objfile::CodeSection &cs)
 {
     const uint32_t sp = hwGPR(PhysReg::SP);
-    constexpr int64_t kMaxImm = 4080;
-    while (bytes > kMaxImm)
-    {
-        emit32(encodeAddSubImm(kSubRI, sp, sp, static_cast<uint32_t>(kMaxImm)), cs);
-        bytes -= kMaxImm;
-    }
-    if (bytes > 0)
-        emit32(encodeAddSubImm(kSubRI, sp, sp, static_cast<uint32_t>(bytes)), cs);
+    emitAddSubImmSmart(kSubRI, sp, sp, static_cast<uint32_t>(bytes), cs);
 }
 
 void A64BinaryEncoder::encodeAddSp(int64_t bytes, objfile::CodeSection &cs)
 {
     const uint32_t sp = hwGPR(PhysReg::SP);
-    constexpr int64_t kMaxImm = 4080;
-    while (bytes > kMaxImm)
-    {
-        emit32(encodeAddSubImm(kAddRI, sp, sp, static_cast<uint32_t>(kMaxImm)), cs);
-        bytes -= kMaxImm;
-    }
-    if (bytes > 0)
-        emit32(encodeAddSubImm(kAddRI, sp, sp, static_cast<uint32_t>(bytes)), cs);
+    emitAddSubImmSmart(kAddRI, sp, sp, static_cast<uint32_t>(bytes), cs);
 }
 
 void A64BinaryEncoder::encodeLargeOffsetLdSt(uint32_t rt, uint32_t base, int64_t offset,
@@ -728,19 +817,22 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         uint32_t rd = hwGPR(getReg(mi.ops[0]));
         long long offset = getImm(mi.ops[1]);
         uint32_t fp = hwGPR(PhysReg::X29);
-        if (offset >= 0 && offset <= 4095)
+        uint32_t absOff = static_cast<uint32_t>(offset >= 0 ? offset : -offset);
+        uint32_t tmpl = (offset >= 0) ? kAddRI : kSubRI;
+        if (absOff <= 4095)
         {
-            emit32(encodeAddSubImm(kAddRI, rd, fp, static_cast<uint32_t>(offset)), cs);
+            emit32(encodeAddSubImm(tmpl, rd, fp, absOff), cs);
         }
-        else if (offset < 0 && -offset <= 4095)
+        else if ((absOff & 0xFFF) == 0 && (absOff >> 12) <= 4095)
         {
-            emit32(encodeAddSubImm(kSubRI, rd, fp, static_cast<uint32_t>(-offset)), cs);
+            // Use lsl #12 shifted immediate for page-aligned offsets.
+            emit32(encodeAddSubImmShift(tmpl, rd, fp, absOff >> 12), cs);
         }
         else
         {
             // Large offset: movz x9, #abs(offset); add/sub rd, x29, x9
             uint32_t scratch = hwGPR(PhysReg::X9);
-            encodeMovImm64(scratch, static_cast<uint64_t>(offset >= 0 ? offset : -offset), cs);
+            encodeMovImm64(scratch, static_cast<uint64_t>(absOff), cs);
             if (offset >= 0)
                 emit32(encode3Reg(kAddRRR, rd, fp, scratch), cs);
             else
@@ -752,34 +844,56 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
     // ─── Logical Immediate ───
     case MOpcode::AndRI:
     {
-        // Logical immediate encoding is complex (N/immr/imms bit-fields).
-        // For now, materialise the immediate in X9 and use AND Xd, Xn, X9.
         uint32_t rd = hwGPR(getReg(mi.ops[0]));
         uint32_t rn = hwGPR(getReg(mi.ops[1]));
-        long long imm = getImm(mi.ops[2]);
-        uint32_t scratch = hwGPR(PhysReg::X9);
-        encodeMovImm64(scratch, static_cast<uint64_t>(imm), cs);
-        emit32(encode3Reg(kAndRRR, rd, rn, scratch), cs);
+        auto imm = static_cast<uint64_t>(getImm(mi.ops[2]));
+        int32_t enc = encodeLogicalImmediate(imm);
+        if (enc >= 0)
+        {
+            emit32(encodeLogImm(kAndImm, rd, rn, enc), cs);
+        }
+        else
+        {
+            uint32_t scratch = hwGPR(PhysReg::X9);
+            encodeMovImm64(scratch, imm, cs);
+            emit32(encode3Reg(kAndRRR, rd, rn, scratch), cs);
+        }
         return;
     }
     case MOpcode::OrrRI:
     {
         uint32_t rd = hwGPR(getReg(mi.ops[0]));
         uint32_t rn = hwGPR(getReg(mi.ops[1]));
-        long long imm = getImm(mi.ops[2]);
-        uint32_t scratch = hwGPR(PhysReg::X9);
-        encodeMovImm64(scratch, static_cast<uint64_t>(imm), cs);
-        emit32(encode3Reg(kOrrRRR, rd, rn, scratch), cs);
+        auto imm = static_cast<uint64_t>(getImm(mi.ops[2]));
+        int32_t enc = encodeLogicalImmediate(imm);
+        if (enc >= 0)
+        {
+            emit32(encodeLogImm(kOrrImm, rd, rn, enc), cs);
+        }
+        else
+        {
+            uint32_t scratch = hwGPR(PhysReg::X9);
+            encodeMovImm64(scratch, imm, cs);
+            emit32(encode3Reg(kOrrRRR, rd, rn, scratch), cs);
+        }
         return;
     }
     case MOpcode::EorRI:
     {
         uint32_t rd = hwGPR(getReg(mi.ops[0]));
         uint32_t rn = hwGPR(getReg(mi.ops[1]));
-        long long imm = getImm(mi.ops[2]);
-        uint32_t scratch = hwGPR(PhysReg::X9);
-        encodeMovImm64(scratch, static_cast<uint64_t>(imm), cs);
-        emit32(encode3Reg(kEorRRR, rd, rn, scratch), cs);
+        auto imm = static_cast<uint64_t>(getImm(mi.ops[2]));
+        int32_t enc = encodeLogicalImmediate(imm);
+        if (enc >= 0)
+        {
+            emit32(encodeLogImm(kEorImm, rd, rn, enc), cs);
+        }
+        else
+        {
+            uint32_t scratch = hwGPR(PhysReg::X9);
+            encodeMovImm64(scratch, imm, cs);
+            emit32(encode3Reg(kEorRRR, rd, rn, scratch), cs);
+        }
         return;
     }
 
@@ -842,11 +956,20 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
     // ─── FMovRI (float immediate) ───
     case MOpcode::FMovRI:
     {
-        // For now, materialise the 64-bit IEEE 754 double in a GPR via movz/movk,
-        // then fmov Dd, Xn to transfer bits.
         uint32_t rd = hwFPR(getReg(mi.ops[0]));
         double val;
         std::memcpy(&val, &mi.ops[1].imm, sizeof(val));
+
+        // Try FP8 immediate encoding first (single instruction).
+        int32_t fp8 = encodeFP8Immediate(val);
+        if (fp8 >= 0)
+        {
+            // FMOV Dd, #imm8 — imm8 at bits [20:13].
+            emit32(kFMovDImm | (static_cast<uint32_t>(fp8) << 13) | rd, cs);
+            return;
+        }
+
+        // Fallback: materialise 64-bit IEEE 754 bits in a GPR, then FMOV Dd, Xn.
         uint64_t bits;
         std::memcpy(&bits, &val, sizeof(bits));
         uint32_t scratch = hwGPR(PhysReg::X9);

@@ -20,6 +20,7 @@
 #include "codegen/common/linker/ArchiveReader.hpp"
 
 #include <algorithm>
+#include <climits>
 #include <cstring>
 #include <fstream>
 
@@ -37,7 +38,11 @@ static uint32_t readBE32(const uint8_t *p)
            (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
 }
 
+/// Maximum archive member size: 2 GB.
+static constexpr size_t kMaxMemberSize = 2ULL * 1024 * 1024 * 1024;
+
 /// Parse the size field from an archive member header (ASCII decimal, 10 chars at offset 48).
+/// Returns SIZE_MAX on overflow or if the value exceeds kMaxMemberSize.
 static size_t parseSize(const uint8_t *header)
 {
     // Size field is at offset 48, 10 bytes, ASCII decimal, space-padded.
@@ -45,11 +50,16 @@ static size_t parseSize(const uint8_t *header)
     for (int i = 48; i < 58; ++i)
     {
         if (header[i] >= '0' && header[i] <= '9')
+        {
+            size_t prev = val;
             val = val * 10 + (header[i] - '0');
+            if (val < prev) // Overflow.
+                return SIZE_MAX;
+        }
         else
             break;
     }
-    return val;
+    return val > kMaxMemberSize ? SIZE_MAX : val;
 }
 
 /// Parse the name field from an archive member header (16 chars at offset 0).
@@ -212,7 +222,19 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err)
             break;
 
         size_t memberSize = parseSize(header);
+        if (memberSize == SIZE_MAX)
+        {
+            err << "error: archive member at offset " << pos << " has invalid size in '" << path
+                << "'\n";
+            return false;
+        }
         size_t dataStart = pos + kArHeaderLen;
+        if (dataStart + memberSize > fileSize)
+        {
+            err << "error: archive member at offset " << pos << " extends beyond file in '" << path
+                << "'\n";
+            return false;
+        }
 
         // Parse raw name field.
         char rawName[17] = {};

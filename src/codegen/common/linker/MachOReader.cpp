@@ -45,6 +45,7 @@ static constexpr uint32_t S_THREAD_LOCAL_VARIABLES = 0x13;
 
 // Section attribute flags (high bits).
 static constexpr uint32_t S_ATTR_PURE_INSTRUCTIONS = 0x80000000;
+static constexpr uint32_t S_ATTR_DEBUG = 0x02000000;
 
 struct mach_header_64
 {
@@ -190,7 +191,10 @@ bool readMachOObj(const uint8_t *data, size_t size, const std::string &name, Obj
     // Mach-O n_value is an absolute address within the .o; we need (n_value - secAddr).
     std::vector<uint64_t> secAddrs;
     secAddrs.push_back(0); // Null section.
-    // Mach-O sections are numbered 1-based; build a map.
+    // Map Mach-O 1-based section index → ObjFile section index.
+    // Skipped sections (debug, etc.) map to 0 (unmapped).
+    std::vector<uint32_t> machoSecMap;
+    machoSecMap.push_back(0); // Null section (index 0).
     uint32_t machoSecIdx = 1;
 
     size_t tmpOff = lcOff;
@@ -213,9 +217,22 @@ bool readMachOObj(const uint8_t *data, size_t size, const std::string &name, Obj
                 if (!sec)
                     break;
 
-                ObjSection os;
                 std::string segName = trimNul(sec->segname, 16);
                 std::string secName = trimNul(sec->sectname, 16);
+
+                // Skip debug and metadata sections that don't belong in the output.
+                if (segName == "__DWARF" ||
+                    (sec->flags & macho::S_ATTR_DEBUG) != 0 ||
+                    secName == "__compact_unwind" ||
+                    secName == "__eh_frame")
+                {
+                    machoSecMap.push_back(0); // Unmapped.
+                    ++machoSecIdx;
+                    secOff += sizeof(macho::section_64);
+                    continue;
+                }
+
+                ObjSection os;
                 os.name = segName + "," + secName;
                 os.alignment = (sec->align < 30) ? (1u << sec->align) : 1;
                 os.executable = (sec->flags & macho::S_ATTR_PURE_INSTRUCTIONS) != 0;
@@ -302,6 +319,7 @@ bool readMachOObj(const uint8_t *data, size_t size, const std::string &name, Obj
                     os.relocs.push_back(rel);
                 }
 
+                machoSecMap.push_back(static_cast<uint32_t>(obj.sections.size()));
                 secAddrs.push_back(sec->addr);
                 obj.sections.push_back(std::move(os));
                 ++machoSecIdx;
@@ -317,6 +335,13 @@ bool readMachOObj(const uint8_t *data, size_t size, const std::string &name, Obj
         tmpOff += lc->cmdsize;
     }
 
+    // Validate section count.
+    if (obj.sections.size() > kMaxObjSections)
+    {
+        err << "error: " << name << ": section count " << obj.sections.size() << " exceeds limit\n";
+        return false;
+    }
+
     // Parse symbols from LC_SYMTAB.
     if (symtabLcOff != 0)
     {
@@ -328,6 +353,12 @@ bool readMachOObj(const uint8_t *data, size_t size, const std::string &name, Obj
         const uint32_t nsyms = readLE32(data + symtabLcOff + 12);
         const uint32_t stroff = readLE32(data + symtabLcOff + 16);
         const uint32_t strsize = readLE32(data + symtabLcOff + 20);
+
+        if (nsyms > kMaxObjSymbols)
+        {
+            err << "error: " << name << ": symbol count " << nsyms << " exceeds limit\n";
+            return false;
+        }
 
         obj.symbols.resize(1); // Null symbol at index 0.
         obj.symbols[0] = ObjSymbol{};
@@ -382,8 +413,10 @@ bool readMachOObj(const uint8_t *data, size_t size, const std::string &name, Obj
             }
 
             // Map Mach-O 1-based section number to our section index.
-            if (nl->n_sect > 0 && nl->n_sect < obj.sections.size())
-                os.sectionIndex = nl->n_sect;
+            // machoSecMap translates Mach-O indices (which include skipped debug
+            // sections) to ObjFile section indices.
+            if (nl->n_sect > 0 && nl->n_sect < machoSecMap.size())
+                os.sectionIndex = machoSecMap[nl->n_sect];
             // Convert Mach-O absolute n_value to section-relative offset.
             // n_value is an address in the .o's virtual space; subtract section base.
             if (os.sectionIndex > 0 && os.sectionIndex < secAddrs.size())

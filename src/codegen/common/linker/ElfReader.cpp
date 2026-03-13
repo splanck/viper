@@ -219,6 +219,11 @@ bool readElfObj(const uint8_t *data, size_t size, const std::string &name, ObjFi
     {
         const uint32_t symCount =
             static_cast<uint32_t>(symSh->sh_size / sizeof(elf::Elf64_Sym));
+        if (symCount > kMaxObjSymbols)
+        {
+            err << "error: " << name << ": symbol count " << symCount << " exceeds limit\n";
+            return false;
+        }
         symMap.resize(symCount, 0);
 
         obj.symbols.resize(1); // Null symbol at index 0.

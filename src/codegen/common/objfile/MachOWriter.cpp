@@ -590,6 +590,12 @@ bool MachOWriter::write(const std::string &path,
             if (rel.kind == RelocKind::PCRel32 || rel.kind == RelocKind::Branch32)
             {
                 size_t patchOff = textFileOff + rel.offset;
+                if (patchOff + 4 > file.size())
+                {
+                    err << "error: addend patch at offset " << patchOff
+                        << " out of bounds (file size=" << file.size() << ")\n";
+                    return false;
+                }
                 auto addend = static_cast<int32_t>(rel.addend);
                 file[patchOff + 0] = static_cast<uint8_t>(addend);
                 file[patchOff + 1] = static_cast<uint8_t>(addend >> 8);
@@ -599,6 +605,12 @@ bool MachOWriter::write(const std::string &path,
             else if (rel.kind == RelocKind::Abs64 && rel.addend != 0)
             {
                 size_t patchOff = textFileOff + rel.offset;
+                if (patchOff + 8 > file.size())
+                {
+                    err << "error: addend patch at offset " << patchOff
+                        << " out of bounds (file size=" << file.size() << ")\n";
+                    return false;
+                }
                 auto addend = static_cast<uint64_t>(rel.addend);
                 for (int i = 0; i < 8; ++i)
                     file[patchOff + i] = static_cast<uint8_t>(addend >> (i * 8));

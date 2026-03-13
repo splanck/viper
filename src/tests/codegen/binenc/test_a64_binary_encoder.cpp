@@ -94,6 +94,32 @@ static uint32_t encodeSingleInstr(const std::vector<MInstr> &instrs, size_t idx 
     return readWord(text.bytes(), idx * 4);
 }
 
+// Encode a single-block leaf function and return all bytes (no prologue for leaf).
+static std::vector<uint8_t> encodeInstrBytes(const std::vector<MInstr> &instrs)
+{
+    MFunction fn;
+    fn.name = "test_func";
+    fn.isLeaf = true;
+    MBasicBlock bb;
+    bb.name = "entry";
+    bb.instrs = instrs;
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    fn.blocks.push_back(std::move(bb));
+
+    CodeSection text, rodata;
+    A64BinaryEncoder enc;
+    enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
+    return text.bytes();
+}
+
+// Count how many 4-byte words are emitted for a set of instructions
+// (excluding the trailing Ret).
+static size_t countWords(const std::vector<MInstr> &instrs)
+{
+    auto bytes = encodeInstrBytes(instrs);
+    return (bytes.size() / 4) - 1; // Subtract 1 for the Ret.
+}
+
 // =============================================================================
 // Tests
 // =============================================================================
@@ -538,14 +564,14 @@ static void testSubSpChunking()
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
-    // Prologue: stp x29,x30,[sp,#-16]! | mov x29,sp | sub sp,sp,#4080 | sub sp,sp,#920
-    // offset 8: sub sp, sp, #4080
+    // Prologue: stp x29,x30,[sp,#-16]! | mov x29,sp | sub sp,sp,#1,lsl#12 | sub sp,sp,#904
+    // offset 8: sub sp, sp, #1, lsl #12  (= 4096)
     uint32_t sub1 = readWord(text.bytes(), 8);
-    CHECK(sub1 == (0xD1000000u | (4080u << 10) | (hwGPR(PhysReg::SP) << 5) | hwGPR(PhysReg::SP)));
+    CHECK(sub1 == (0xD1400000u | (1u << 10) | (hwGPR(PhysReg::SP) << 5) | hwGPR(PhysReg::SP)));
 
-    // offset 12: sub sp, sp, #920
+    // offset 12: sub sp, sp, #904
     uint32_t sub2 = readWord(text.bytes(), 12);
-    CHECK(sub2 == (0xD1000000u | (920u << 10) | (hwGPR(PhysReg::SP) << 5) | hwGPR(PhysReg::SP)));
+    CHECK(sub2 == (0xD1000000u | (904u << 10) | (hwGPR(PhysReg::SP) << 5) | hwGPR(PhysReg::SP)));
 }
 
 static void testCalleeSavedPair()
@@ -738,6 +764,91 @@ static void testSymbolDefined()
     CHECK(found);
 }
 
+// =============================================================================
+// Optimization tests
+// =============================================================================
+
+static void testAndRI_logicalImm()
+{
+    // AND X0, X1, #0xFF → single instruction (logical immediate encodable).
+    // enc(0xFF) = N=1, immr=0, imms=7 → 0x1007.
+    // kAndImm | (0x1007 << 10) | (X1 << 5) | X0 = 0x92401C20
+    MInstr mi{MOpcode::AndRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(0xFF)}};
+    CHECK(countWords({mi}) == 1);
+    CHECK(encodeSingleInstr({mi}) == 0x92401C20);
+}
+
+static void testOrrRI_logicalImm()
+{
+    // ORR X0, X1, #0xFF → kOrrImm | (0x1007 << 10) | (X1 << 5) | X0 = 0xB2401C20
+    MInstr mi{MOpcode::OrrRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(0xFF)}};
+    CHECK(countWords({mi}) == 1);
+    CHECK(encodeSingleInstr({mi}) == 0xB2401C20);
+}
+
+static void testAndRI_nonEncodable()
+{
+    // AND X0, X1, #3 — value 3 (0b11) IS encodable as logical immediate.
+    // For non-encodable, we'd need something like 5 (0b101) which isn't a contiguous run.
+    // Test with 5: not encodable → fallback (MOVZ + AND, 2+ words).
+    MInstr mi{MOpcode::AndRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(5)}};
+    CHECK(countWords({mi}) > 1);
+}
+
+static void testMovRI_highOnly()
+{
+    // MovRI with 0x0000000100000000 → goes through encodeMovImm64.
+    // Smart MOVZ start: chunks = [0, 0, 1, 0], first=2.
+    // MOVZ X0, #1, lsl #32 → kMovZ32 | (1 << 5) | 0 = 0xD2C00020. Single instruction.
+    MInstr mi{MOpcode::MovRI, {gpr(PhysReg::X0), imm(0x100000000LL)}};
+    CHECK(countWords({mi}) == 1);
+    CHECK(encodeSingleInstr({mi}) == 0xD2C00020u);
+}
+
+static void testMovRI_movnPath()
+{
+    // MovRI with 0xFFFFFFFF00010000 → needs wide (not simple mov).
+    // chunks = [0, 1, 0xFFFF, 0xFFFF], nzCount = 3.
+    // invChunks = [0xFFFF, 0xFFFE, 0, 0], invNzCount = 2.
+    // useMovn = (2 < 3) = true. src = invChunks, first = 0 (0xFFFF).
+    // MOVN X0, #0xFFFF → then check chunks: [1]=1 (!=0xFFFF) → MOVK.
+    // 2 instructions total (saved from 3 on MOVZ path).
+    MInstr mi{MOpcode::MovRI, {gpr(PhysReg::X0),
+        imm(static_cast<long long>(0xFFFFFFFF00010000ULL))}};
+    CHECK(countWords({mi}) == 2);
+}
+
+static void testMovRI_zero()
+{
+    // MovRI with 0 → simple mov path: MOVZ X0, #0 (single instruction).
+    MInstr mi{MOpcode::MovRI, {gpr(PhysReg::X0), imm(0)}};
+    CHECK(countWords({mi}) == 1);
+    CHECK(encodeSingleInstr({mi}) == 0xD2800000u);
+}
+
+static void testFMovRI_fp8()
+{
+    // FMOV D0, #1.0 → single instruction via FP8 encoding.
+    // 1.0: sign=0, exp=0, frac=0 → fp8 = (0<<7)|(1<<6)|(3<<4)|0 = 0x70.
+    // kFMovDImm | (0x70 << 13) | D0 = 0x1E601000 | 0xE0000 = 0x1E6E1000
+    double val = 1.0;
+    int64_t bits;
+    std::memcpy(&bits, &val, sizeof(bits));
+    MInstr mi{MOpcode::FMovRI, {fpr(PhysReg::V0), imm(bits)}};
+    CHECK(countWords({mi}) == 1);
+    CHECK(encodeSingleInstr({mi}) == 0x1E6E1000);
+}
+
+static void testFMovRI_fallback()
+{
+    // FMOV D0, #0.3 → NOT FP8 encodable → MOVZ+MOVK+FMOV (multi-word).
+    double val = 0.3;
+    int64_t bits;
+    std::memcpy(&bits, &val, sizeof(bits));
+    MInstr mi{MOpcode::FMovRI, {fpr(PhysReg::V0), imm(bits)}};
+    CHECK(countWords({mi}) > 1);
+}
+
 int main()
 {
     testAddRRR();
@@ -785,6 +896,14 @@ int main()
     testStrRegSpImm();
     testAdrpAddPageOff();
     testSymbolDefined();
+    testAndRI_logicalImm();
+    testOrrRI_logicalImm();
+    testAndRI_nonEncodable();
+    testMovRI_highOnly();
+    testMovRI_movnPath();
+    testMovRI_zero();
+    testFMovRI_fp8();
+    testFMovRI_fallback();
 
     if (gFail == 0)
         std::cout << "All A64 binary encoder tests passed.\n";

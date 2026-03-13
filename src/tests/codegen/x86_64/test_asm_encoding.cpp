@@ -280,15 +280,15 @@ static void testMovFamily(TestContext &ctx)
               MInstr::make(MOpcode::MOVri, {gpr(PhysReg::RAX), imm(2147483647)}),
               "movq $2147483647");
 
-    // CMOVNErr — low regs
+    // CMOVNErr — low regs (64-bit: uses REX.W, 'q' suffix)
     ctx.check("CMOVNErr",
               MInstr::make(MOpcode::CMOVNErr, {gpr(PhysReg::RAX), gpr(PhysReg::RCX)}),
-              "cmovne %rcx, %rax");
+              "cmovneq %rcx, %rax");
 
     // CMOVNErr — high regs
     ctx.check("CMOVNErr_hi",
               MInstr::make(MOpcode::CMOVNErr, {gpr(PhysReg::R8), gpr(PhysReg::R15)}),
-              "cmovne %r15, %r8");
+              "cmovneq %r15, %r8");
 }
 
 static void testLea(TestContext &ctx)

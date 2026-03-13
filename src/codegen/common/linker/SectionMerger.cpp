@@ -260,11 +260,31 @@ bool mergeSections(const std::vector<ObjFile> &objects, LinkPlatform platform, L
     // Skip first page (null page / __PAGEZERO).
     currentAddr += layout.pageSize;
 
+    // Permission class: only page-align when switching between segments
+    // (executable → readonly → writable → TLS). Within a segment, sections
+    // pack tightly with only their natural alignment respected.
+    auto permClass = [](const OutputSection &s) -> int
+    {
+        if (s.executable)
+            return 0;
+        if (s.tls)
+            return 3;
+        if (s.writable)
+            return 2;
+        return 1; // readonly
+    };
+
+    int prevClass = -1;
     for (auto &sec : layout.sections)
     {
-        // Page-align each section.
-        currentAddr = alignUp(currentAddr, layout.pageSize);
-        // Also respect section's internal alignment.
+        int cls = permClass(sec);
+        if (cls != prevClass)
+        {
+            // Segment boundary — page-align.
+            currentAddr = alignUp(currentAddr, layout.pageSize);
+            prevClass = cls;
+        }
+        // Respect section's internal alignment.
         currentAddr = alignUp(currentAddr, sec.alignment);
         sec.virtualAddr = currentAddr;
         currentAddr += sec.data.size();

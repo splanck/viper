@@ -238,6 +238,11 @@ bool readCoffObj(const uint8_t *data, size_t size, const std::string &name, ObjF
     }
 
     // Parse symbols.
+    if (hdr->NumberOfSymbols > kMaxObjSymbols)
+    {
+        err << "error: " << name << ": symbol count " << hdr->NumberOfSymbols << " exceeds limit\n";
+        return false;
+    }
     obj.symbols.resize(1); // Null symbol at index 0.
     obj.symbols[0] = ObjSymbol{};
 

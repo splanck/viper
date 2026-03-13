@@ -439,8 +439,8 @@ void X64BinaryEncoder::encodeRegReg(MOpcode op, PhysReg dst, PhysReg src,
     const auto &regField = info.regIsDst ? hwDst : hwSrc;
     const auto &rmField = info.regIsDst ? hwSrc : hwDst;
 
-    // REX.W for 64-bit; XORrr32 and CMOVNErr don't use REX.W.
-    bool rexW = (op != MOpcode::XORrr32 && op != MOpcode::CMOVNErr);
+    // REX.W for 64-bit; XORrr32 is the only 32-bit reg-reg opcode.
+    bool rexW = (op != MOpcode::XORrr32);
 
     if (needsRex(rexW, regField.rexBit != 0, false, rmField.rexBit != 0))
     {
@@ -542,10 +542,29 @@ void X64BinaryEncoder::encodeMovRI(PhysReg dst, int64_t imm, objfile::CodeSectio
 {
     const auto hw = hwEncode(dst);
 
-    // REX.W + B8+rd encoding (no ModR/M).
-    cs.emit8(computeRex(true, false, false, hw.rexBit != 0));
-    cs.emit8(static_cast<uint8_t>(0xB8 + hw.bits3));
-    cs.emit64LE(static_cast<uint64_t>(imm));
+    if (imm >= 0 && imm <= 0x7FFFFFFF)
+    {
+        // 5-byte form (or 6 with REX.B): B8+rd + imm32 — zero-extends to 64 bits.
+        if (hw.rexBit)
+            cs.emit8(computeRex(false, false, false, true));
+        cs.emit8(static_cast<uint8_t>(0xB8 + hw.bits3));
+        cs.emit32LE(static_cast<uint32_t>(imm));
+    }
+    else if (imm >= INT32_MIN && imm < 0)
+    {
+        // 7-byte form: REX.W + C7 /0 + imm32 — sign-extends to 64 bits.
+        cs.emit8(computeRex(true, false, false, hw.rexBit != 0));
+        cs.emit8(0xC7);
+        cs.emit8(makeModRM(0b11, 0, hw.bits3));
+        cs.emit32LE(static_cast<uint32_t>(imm));
+    }
+    else
+    {
+        // 10-byte form: REX.W + B8+rd + imm64 — full 64-bit.
+        cs.emit8(computeRex(true, false, false, hw.rexBit != 0));
+        cs.emit8(static_cast<uint8_t>(0xB8 + hw.bits3));
+        cs.emit64LE(static_cast<uint64_t>(imm));
+    }
 }
 
 // === Memory operand encoding ===
