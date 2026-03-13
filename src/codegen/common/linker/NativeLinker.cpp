@@ -82,11 +82,14 @@ static ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> 
     textSec.alloc = true;
     textSec.alignment = 4;
 
-    // Section 2: .data (selector reference pointers + selector strings).
-    // We put both sel refs and strings here for simplicity. The sel ref pointers
-    // are 8 bytes each; strings follow after all pointers.
+    // Section 2: __objc_selrefs (selector reference pointers).
+    // Named __DATA,__objc_selrefs to match MachOReader's naming convention
+    // (segname + "," + sectname). This ensures the SectionMerger groups our
+    // stub selrefs with the .o files' selrefs into one output section.
+    // The ObjC runtime discovers __objc_selrefs sections during image
+    // registration and performs selector uniquing.
     ObjSection dataSec;
-    dataSec.name = ".data";
+    dataSec.name = "__DATA,__objc_selrefs";
     dataSec.executable = false;
     dataSec.writable = true;
     dataSec.alloc = true;

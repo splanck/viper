@@ -408,16 +408,6 @@ We are not currently seeking large feature PRs while the design solidifies. Feel
 
 ---
 
-## Related Project: ViperDOS
-
-This repository also contains [ViperDOS](viperdos/README.md), a capability-based
-microkernel operating system for AArch64. ViperDOS is a separate project and
-does not depend on the Viper compiler.
-
-See [viperdos/README.md](viperdos/README.md) for documentation.
-
----
-
 ## License
 
 Viper is licensed under the **GNU General Public License v3.0** (GPL-3.0-only).

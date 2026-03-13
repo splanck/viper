@@ -80,6 +80,12 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
             size_t strLen = static_cast<size_t>(static_cast<const uint8_t *>(nulPos) - start) +
                             1; // Include NUL.
 
+            // Skip degenerate "strings" that are just a NUL byte. Non-string data
+            // (bitmap fonts, lookup tables) often starts with 0x00 and would be
+            // misidentified as an empty string, causing incorrect merging.
+            if (strLen <= 1)
+                continue;
+
             // Use the raw bytes (including NUL) as the content key.
             std::string content(reinterpret_cast<const char *>(start), strLen);
 

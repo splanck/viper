@@ -99,6 +99,14 @@ static constexpr uint8_t BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB = 0x70;
 static constexpr uint8_t BIND_OPCODE_DO_BIND = 0x90;
 static constexpr uint8_t BIND_TYPE_POINTER = 1;
 
+// Rebase opcode constants (high 4 bits = opcode, low 4 bits = immediate).
+static constexpr uint8_t REBASE_OPCODE_DONE = 0x00;
+static constexpr uint8_t REBASE_OPCODE_SET_TYPE_IMM = 0x10;
+static constexpr uint8_t REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB = 0x20;
+static constexpr uint8_t REBASE_OPCODE_ADD_ADDR_ULEB = 0x30;
+static constexpr uint8_t REBASE_OPCODE_DO_REBASE_IMM_TIMES = 0x50;
+static constexpr uint8_t REBASE_TYPE_POINTER = 1;
+
 void writeLE32(std::vector<uint8_t> &buf, uint32_t v)
 {
     buf.push_back(static_cast<uint8_t>(v));
@@ -329,7 +337,73 @@ void buildBindOpcodes(std::vector<uint8_t> &bindData,
         }
     }
 
+    // Bind data-pointer references to dynamic symbols (e.g., ObjC classrefs,
+    // superrefs, protocol refs). These are Abs64 relocations whose target is an
+    // external symbol — the linker writes 0 and dyld fills the actual pointer.
+    for (const auto &be : layout.bindEntries)
+    {
+        const auto &sec = layout.sections[be.sectionIndex];
+        uint64_t addr = sec.virtualAddr + be.offset;
+        if (addr >= dataSegVmAddr)
+        {
+            uint64_t segOff = addr - dataSegVmAddr;
+            emitBindEntry(bindData, be.symbolName, segOff, dataSegIndex);
+        }
+    }
+
     bindData.push_back(BIND_OPCODE_DONE);
+}
+
+/// Build rebase opcodes for ASLR pointer fixups in writable sections.
+/// dyld processes these at load time, adding the ASLR slide to each pointer.
+void buildRebaseOpcodes(std::vector<uint8_t> &rebaseData,
+                        const LinkLayout &layout,
+                        uint64_t dataSegVmAddr,
+                        uint32_t dataSegIndex)
+{
+    if (layout.rebaseEntries.empty())
+        return;
+
+    // Collect segment-relative offsets for all rebase locations in __DATA.
+    std::vector<uint64_t> offsets;
+    offsets.reserve(layout.rebaseEntries.size());
+    for (const auto &entry : layout.rebaseEntries)
+    {
+        const auto &sec = layout.sections[entry.sectionIndex];
+        uint64_t addr = sec.virtualAddr + entry.offset;
+        if (addr >= dataSegVmAddr)
+            offsets.push_back(addr - dataSegVmAddr);
+    }
+    std::sort(offsets.begin(), offsets.end());
+
+    // Emit rebase opcodes.
+    rebaseData.push_back(REBASE_OPCODE_SET_TYPE_IMM | REBASE_TYPE_POINTER);
+
+    size_t i = 0;
+    while (i < offsets.size())
+    {
+        // Count consecutive pointers (each 8 bytes apart).
+        size_t runLen = 1;
+        while (i + runLen < offsets.size() && offsets[i + runLen] == offsets[i] + runLen * 8)
+            ++runLen;
+
+        // Set segment and offset.
+        rebaseData.push_back(REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB | (dataSegIndex & 0x0F));
+        writeULEB128(rebaseData, offsets[i]);
+
+        // Rebase the run of consecutive pointers (max 15 per opcode).
+        size_t remaining = runLen;
+        while (remaining > 0)
+        {
+            uint8_t count = static_cast<uint8_t>(std::min<size_t>(remaining, 15));
+            rebaseData.push_back(REBASE_OPCODE_DO_REBASE_IMM_TIMES | count);
+            remaining -= count;
+        }
+
+        i += runLen; // Advance past the run we just emitted.
+    }
+
+    rebaseData.push_back(REBASE_OPCODE_DONE);
 }
 
 /// Build symbol table and string table for __LINKEDIT.
@@ -397,7 +471,7 @@ bool writeMachOExe(const std::string &path,
                    const LinkLayout &layout,
                    LinkArch arch,
                    const std::vector<DylibImport> &dylibs,
-                   const std::unordered_set<std::string> & /*dynSyms*/,
+                   const std::unordered_set<std::string> &dynSyms,
                    std::ostream &err)
 {
     const size_t pageSize = layout.pageSize;
@@ -452,19 +526,22 @@ bool writeMachOExe(const std::string &path,
     // =======================================================================
     // Phase 2: Build __LINKEDIT content.
     // =======================================================================
-    // Need bind opcodes if we have GOT entries (dynamic symbols) or TLV descriptors.
+    // Need LC_DYLD_INFO_ONLY if we have GOT entries, TLV descriptors, or rebase entries.
     bool hasTLS = false;
     for (const auto &sec : layout.sections)
         if (sec.tls && sec.name == ".tdata" && !sec.data.empty())
             hasTLS = true;
-    const bool hasDynamic = !layout.gotEntries.empty() || hasTLS;
+    const bool hasDynamic =
+        !layout.gotEntries.empty() || hasTLS || !layout.rebaseEntries.empty() ||
+        !layout.bindEntries.empty();
 
     std::vector<uint8_t> symtabData, strtabData;
     uint32_t nExtDef = 0, nUndef = 0;
-    buildSymtab(symtabData, strtabData, layout, {}, nExtDef, nUndef);
+    buildSymtab(symtabData, strtabData, layout, dynSyms, nExtDef, nUndef);
 
-    // Bind opcodes (built with correct VA after layout computation below).
+    // Bind and rebase opcodes (built with correct VAs after layout computation below).
     std::vector<uint8_t> bindData;
+    std::vector<uint8_t> rebaseData;
 
     size_t linkeditDataSize = symtabData.size() + strtabData.size();
 
@@ -581,16 +658,21 @@ bool writeMachOExe(const std::string &path,
         dataSegVmSize = alignUp(dataLastVA - dataSegVmAddr, pageSize);
     }
 
-    // Build bind opcodes now that we have correct VAs.
-    // Always build bind opcodes if we have dynamic symbols OR TLV descriptors.
-    // TLV bind opcodes are required even without other dynamic imports.
+    // Build rebase and bind opcodes now that we have correct VAs.
+    // __DATA is segment index 2 (0=__PAGEZERO, 1=__TEXT, 2=__DATA).
     {
-        // __DATA is segment index 2 (0=__PAGEZERO, 1=__TEXT, 2=__DATA).
+        // Rebase opcodes: ASLR fixups for internal pointers in writable sections.
+        buildRebaseOpcodes(rebaseData, layout, dataSegVmAddr, 2);
+        while (rebaseData.size() % 8 != 0)
+            rebaseData.push_back(0);
+
+        // Bind opcodes: dynamic symbol resolution + TLV descriptor thunks.
         buildBindOpcodes(bindData, layout.gotEntries, layout, dataSegVmAddr, 2);
         while (bindData.size() % 8 != 0)
             bindData.push_back(0);
     }
-    linkeditDataSize = symtabData.size() + strtabData.size() + bindData.size();
+    linkeditDataSize =
+        symtabData.size() + strtabData.size() + rebaseData.size() + bindData.size();
 
     // __LINKEDIT segment.
     const size_t linkeditFileOff = dataFileOff + dataFileSize;
@@ -616,10 +698,11 @@ bool writeMachOExe(const std::string &path,
         textSegVmAddr + textSegVmSize + (dataSections.empty() ? 0 : dataSegVmSize);
     const uint64_t linkeditVmSize = alignUp(linkeditTotalSize, pageSize);
 
-    // Offsets within __LINKEDIT.
+    // Offsets within __LINKEDIT: symtab → strtab → rebase → bind.
     const uint32_t symtabOff = static_cast<uint32_t>(linkeditFileOff);
     const uint32_t strtabOff = symtabOff + static_cast<uint32_t>(symtabData.size());
-    const uint32_t bindOff = strtabOff + static_cast<uint32_t>(strtabData.size());
+    const uint32_t rebaseOff = strtabOff + static_cast<uint32_t>(strtabData.size());
+    const uint32_t bindOff = rebaseOff + static_cast<uint32_t>(rebaseData.size());
 
     // Entry point: LC_MAIN entryoff = file offset of main().
     // main's file offset = textDataFileOff + (main's VA - first text section VA).
@@ -652,7 +735,9 @@ bool writeMachOExe(const std::string &path,
     writeLE32(file, sizeofcmds);
     // Use flat namespace (no MH_TWOLEVEL) so bind opcodes don't need per-symbol
     // dylib ordinals. dyld searches all loaded dylibs for each symbol.
-    uint32_t mhFlags = MH_PIE | MH_DYLDLINK | MH_NOUNDEFS;
+    uint32_t mhFlags = MH_PIE | MH_DYLDLINK;
+    if (!hasDynamic)
+        mhFlags |= MH_NOUNDEFS;
     if (hasTLS)
         mhFlags |= MH_HAS_TLV_DESCRIPTORS;
     writeLE32(file, mhFlags);
@@ -869,8 +954,8 @@ bool writeMachOExe(const std::string &path,
     {
         writeLE32(file, LC_DYLD_INFO_ONLY);
         writeLE32(file, 48);
-        writeLE32(file, 0);
-        writeLE32(file, 0); // rebase
+        writeLE32(file, rebaseData.empty() ? 0 : rebaseOff);
+        writeLE32(file, static_cast<uint32_t>(rebaseData.size())); // rebase
         writeLE32(file, bindOff);
         writeLE32(file, static_cast<uint32_t>(bindData.size())); // bind
         writeLE32(file, 0);
@@ -930,9 +1015,10 @@ bool writeMachOExe(const std::string &path,
     if (file.size() < linkeditFileOff)
         writePad(file, linkeditFileOff - file.size());
 
-    // __LINKEDIT content.
+    // __LINKEDIT content: symtab → strtab → rebase → bind.
     file.insert(file.end(), symtabData.begin(), symtabData.end());
     file.insert(file.end(), strtabData.begin(), strtabData.end());
+    file.insert(file.end(), rebaseData.begin(), rebaseData.end());
     file.insert(file.end(), bindData.begin(), bindData.end());
 
     // Append native code signature (arm64) or just pad to final page.

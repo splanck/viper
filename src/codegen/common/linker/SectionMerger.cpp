@@ -175,18 +175,85 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         mergeClass(SectionClass::Bss, bss);
     }
 
-    // TLS data (TLV descriptors on Mach-O, .tdata on ELF).
-    bool hasTlsData = false;
-    for (const auto &p : pending)
-        if (p.cls == SectionClass::TlsData)
-        {
-            hasTlsData = true;
-            break;
-        }
-    if (hasTlsData)
+    // TLS data — on Mach-O, TLV descriptors (__thread_vars) and template data
+    // (__thread_data) must be in separate output sections. dyld validates that
+    // __thread_vars size is a multiple of 24 bytes (one descriptor = {thunk(8),
+    // key(8), offset(8)}). Mixing template data into the same section produces
+    // an invalid size and a dyld abort.
     {
-        auto &tdata = addOutputSection(SectionClass::TlsData, ".tdata", false, true, true);
-        mergeClass(SectionClass::TlsData, tdata);
+        bool hasTlvDescriptors = false;
+        bool hasTlvTemplateData = false;
+        for (const auto &p : pending)
+        {
+            if (p.cls != SectionClass::TlsData)
+                continue;
+            const auto &sec = objects[p.objIdx].sections[p.secIdx];
+            if (sec.name.find("thread_vars") != std::string::npos)
+                hasTlvDescriptors = true;
+            else
+                hasTlvTemplateData = true;
+        }
+
+        // TLV descriptors → .tdata (mapped to __thread_vars in MachOExeWriter).
+        if (hasTlvDescriptors)
+        {
+            auto &tdata = addOutputSection(SectionClass::TlsData, ".tdata", false, true, true);
+            for (const auto &pc : pending)
+            {
+                if (pc.cls != SectionClass::TlsData)
+                    continue;
+                const auto &sec = objects[pc.objIdx].sections[pc.secIdx];
+                if (sec.name.find("thread_vars") == std::string::npos)
+                    continue;
+
+                size_t align = std::max(pc.alignment, 1u);
+                if (align > tdata.alignment)
+                    tdata.alignment = align;
+                size_t padded = alignUp(tdata.data.size(), align);
+                if (padded > tdata.data.size())
+                    tdata.data.resize(padded, 0);
+
+                InputChunk chunk;
+                chunk.inputObjIndex = pc.objIdx;
+                chunk.inputSecIndex = pc.secIdx;
+                chunk.outputOffset = tdata.data.size();
+                chunk.size = sec.data.size();
+                tdata.chunks.push_back(chunk);
+                tdata.data.insert(tdata.data.end(), sec.data.begin(), sec.data.end());
+            }
+        }
+
+        // TLS template data → .tdata_template (mapped to __thread_data in
+        // MachOExeWriter). On ELF/PE, all TLS data is template data (no TLV
+        // descriptors), so this path handles those platforms correctly.
+        if (hasTlvTemplateData)
+        {
+            auto &tmpl =
+                addOutputSection(SectionClass::TlsData, ".tdata_template", false, true, true);
+            for (const auto &pc : pending)
+            {
+                if (pc.cls != SectionClass::TlsData)
+                    continue;
+                const auto &sec = objects[pc.objIdx].sections[pc.secIdx];
+                if (sec.name.find("thread_vars") != std::string::npos)
+                    continue;
+
+                size_t align = std::max(pc.alignment, 1u);
+                if (align > tmpl.alignment)
+                    tmpl.alignment = align;
+                size_t padded = alignUp(tmpl.data.size(), align);
+                if (padded > tmpl.data.size())
+                    tmpl.data.resize(padded, 0);
+
+                InputChunk chunk;
+                chunk.inputObjIndex = pc.objIdx;
+                chunk.inputSecIndex = pc.secIdx;
+                chunk.outputOffset = tmpl.data.size();
+                chunk.size = sec.data.size();
+                tmpl.chunks.push_back(chunk);
+                tmpl.data.insert(tmpl.data.end(), sec.data.begin(), sec.data.end());
+            }
+        }
     }
 
     // TLS BSS (zero-initialized thread-local data).
@@ -283,6 +350,17 @@ bool mergeSections(const std::vector<ObjFile> &objects,
             return 2;
         return 1; // readonly
     };
+
+    // Sort sections by permission class before VA assignment.
+    // ObjC metadata sections are appended after the standard sections above,
+    // but their permission class (writable vs readonly) must be respected so
+    // that all non-writable sections come before writable ones in the VA space.
+    // Without this, non-writable ObjC sections (e.g., __objc_classname) get
+    // VAs after writable sections, causing __TEXT/__DATA segment overlap in
+    // the Mach-O executable (SIGKILL on macOS ARM64).
+    std::stable_sort(layout.sections.begin(), layout.sections.end(),
+                     [&permClass](const OutputSection &a, const OutputSection &b)
+                     { return permClass(a) < permClass(b); });
 
     int prevClass = -1;
     for (auto &sec : layout.sections)

@@ -227,7 +227,7 @@ int main()
         // Should have text, then tdata.
         CHECK(layout.sections.size() == 2);
         CHECK(layout.sections[0].name == ".text");
-        CHECK(layout.sections[1].name == ".tdata");
+        CHECK(layout.sections[1].name == ".tdata_template");
         CHECK(layout.sections[1].tls);
     }
 

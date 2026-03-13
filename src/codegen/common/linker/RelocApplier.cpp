@@ -319,6 +319,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     err << "error: " << obj.name << ": undefined symbol '" << symName << "'\n";
                     return false;
                 }
+
                 const int64_t A = rel.addend;
                 const uint64_t P = secVA + chunkBase + rel.offset;
                 const size_t patchOff = chunkBase + rel.offset;
@@ -351,6 +352,18 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             return false;
                         }
                         uint64_t val = static_cast<uint64_t>(static_cast<int64_t>(S) + A);
+
+                        // Dynamic symbol data references: if the symbol was stubbed
+                        // (has a __got_ entry), it's a dynamic symbol. For data pointers
+                        // (Abs64), write 0 and record a bind entry — dyld fills the
+                        // actual value at load time. Stubs are only for code branches.
+                        if (!symName.empty() && outSec.writable &&
+                            layout.globalSyms.count("__got_" + symName))
+                        {
+                            writeLE64(patch, 0);
+                            layout.bindEntries.push_back({symName, outSecIdx, patchOff});
+                            break;
+                        }
 
                         // Mach-O TLV descriptor fixups (in __thread_vars/.tdata):
                         if (outSec.tls && outSec.name == ".tdata")
@@ -388,6 +401,14 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         }
 
                         writeLE64(patch, val);
+
+                        // Record rebase entry for ASLR fixup (Mach-O MH_PIE).
+                        // Abs64 pointers in writable sections need dyld to adjust
+                        // by the ASLR slide at load time. TLS sections use separate
+                        // mechanisms (bind opcodes for thunks, relative offsets).
+                        if (outSec.writable && !outSec.tls && val != 0)
+                            layout.rebaseEntries.push_back({outSecIdx, patchOff});
+
                         break;
                     }
                     case RelocAction::Abs32:
@@ -437,6 +458,23 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         uint32_t pageOff = static_cast<uint32_t>(
                                                static_cast<uint64_t>(static_cast<int64_t>(S) + A)) &
                                            0xFFF;
+
+                        // Mach-O ARM64_RELOC_PAGEOFF12 is used for both ADD (unscaled)
+                        // and LDR/STR (scaled by access size). The linker must inspect the
+                        // instruction to determine the correct scale factor.
+                        //
+                        // LDR/STR unsigned offset encoding: bits [31:30] = size,
+                        // bits [29:24] = 11100x. Test: (insn & 0x3B000000) == 0x39000000.
+                        // Scale = 1 << size, except 128-bit SIMD where scale = 16.
+                        if ((insn & 0x3B000000) == 0x39000000)
+                        {
+                            uint32_t shift = insn >> 30; // 0=1B, 1=2B, 2=4B, 3=8B
+                            // 128-bit SIMD: V=1 (bit 26) and opc[1]=1 (bit 23) → shift=4.
+                            if ((insn & 0x04800000) == 0x04800000)
+                                shift = 4;
+                            pageOff >>= shift;
+                        }
+
                         insn = (insn & 0xFFC003FF) | (pageOff << 10);
                         writeLE32(patch, insn);
                         break;

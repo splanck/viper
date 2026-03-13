@@ -160,6 +160,22 @@ struct GotEntry
     uint64_t gotAddr = 0;   ///< Virtual address of this GOT slot.
 };
 
+/// A location in the output that contains an absolute pointer needing ASLR rebase.
+struct RebaseEntry
+{
+    size_t sectionIndex; ///< Index into LinkLayout::sections.
+    size_t offset;       ///< Byte offset within the output section.
+};
+
+/// A data-pointer location that must be bound to a dynamic symbol at load time.
+/// Used for non-GOT references (e.g., ObjC classrefs) to external symbols.
+struct BindEntry
+{
+    std::string symbolName; ///< External symbol name (e.g., "OBJC_CLASS_$_NSColor").
+    size_t sectionIndex;    ///< Index into LinkLayout::sections.
+    size_t offset;          ///< Byte offset within the output section.
+};
+
 /// Complete memory layout for the linked output.
 struct LinkLayout
 {
@@ -168,6 +184,8 @@ struct LinkLayout
     uint64_t entryAddr = 0; ///< Entry point virtual address.
     size_t pageSize = 0x1000; ///< Page size (platform-dependent).
     std::vector<GotEntry> gotEntries; ///< GOT entries for dynamic linking.
+    std::vector<RebaseEntry> rebaseEntries; ///< Locations needing ASLR pointer rebase.
+    std::vector<BindEntry> bindEntries; ///< Non-GOT data pointers needing dyld bind.
 };
 
 } // namespace viper::codegen::linker
