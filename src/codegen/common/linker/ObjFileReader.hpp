@@ -66,8 +66,9 @@ struct ObjSection
     uint32_t alignment = 1;
     bool executable = false;
     bool writable = false;
-    bool alloc = true; ///< Section contributes to memory image.
-    bool tls = false;  ///< Thread-local storage section.
+    bool alloc = true;          ///< Section contributes to memory image.
+    bool tls = false;           ///< Thread-local storage section.
+    bool isCStringSection = false; ///< Section contains NUL-terminated C strings only.
 };
 
 /// Detected object file format.

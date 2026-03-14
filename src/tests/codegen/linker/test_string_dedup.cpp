@@ -50,14 +50,15 @@ static ObjFile makeRodataObj(const std::string &name, const std::string &str)
     // Section 0: null.
     obj.sections.push_back({});
 
-    // Section 1: rodata with the string (NUL-terminated).
+    // Section 1: cstring section with the string (NUL-terminated).
     ObjSection sec;
-    sec.name = ".rodata";
+    sec.name = ".rodata.str1.1";
     sec.data.assign(str.begin(), str.end());
     sec.data.push_back(0); // NUL terminator.
     sec.executable = false;
     sec.writable = false;
     sec.alloc = true;
+    sec.isCStringSection = true;
     sec.alignment = 1;
     obj.sections.push_back(sec);
 
@@ -171,14 +172,78 @@ int main()
         std::vector<ObjFile> objs = {obj, obj2};
         std::unordered_map<std::string, GlobalSymEntry> globalSyms;
 
-        // Note: these bytes DO contain 0x00 if the float data happened to
-        // include NUL bytes. In this case the data 0x40,0x49,0x0F,0xDB...
-        // has no NUL so memchr returns nullptr → skipped.
-        // But if data DOES contain NUL, it would be "deduplicated" as a
-        // NUL-terminated string — which is fine since identical byte
-        // sequences are interchangeable regardless of type.
+        // Non-cstring sections are excluded from dedup entirely.
         size_t eliminated = deduplicateStrings(objs, globalSyms);
         CHECK(eliminated == 0);
+    }
+
+    // --- __const section data is NOT deduplicated (regression test) ---
+    // Binary data like integer arrays {64, 128, ...} can start with bytes
+    // that look like a short NUL-terminated string (e.g., 0x40 0x00 = "@\0").
+    // The dedup pass must NOT treat __const sections as string sections.
+    {
+        ObjFile obj;
+        obj.name = "pool.o";
+        obj.format = ObjFileFormat::MachO;
+
+        obj.sections.push_back({}); // null
+
+        // Section 1: __const with integer array data (NOT a cstring section).
+        ObjSection sec;
+        sec.name = "__TEXT,__const";
+        sec.data = {0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // 64
+                    0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; // 128
+        sec.executable = false;
+        sec.writable = false;
+        sec.alloc = true;
+        sec.isCStringSection = false; // NOT a cstring section!
+        obj.sections.push_back(sec);
+
+        obj.symbols.push_back({}); // null
+
+        ObjSymbol sym;
+        sym.name = "kClassSizes";
+        sym.sectionIndex = 1;
+        sym.offset = 0;
+        sym.binding = ObjSymbol::Local;
+        obj.symbols.push_back(sym);
+
+        // Another object with a __cstring section containing "@" (0x40, 0x00).
+        ObjFile obj2;
+        obj2.name = "game.o";
+        obj2.format = ObjFileFormat::MachO;
+        obj2.sections.push_back({}); // null
+
+        ObjSection sec2;
+        sec2.name = "__TEXT,__cstring";
+        sec2.data = {0x40, 0x00}; // "@" string
+        sec2.executable = false;
+        sec2.writable = false;
+        sec2.alloc = true;
+        sec2.isCStringSection = true; // IS a cstring section
+        obj2.sections.push_back(sec2);
+
+        obj2.symbols.push_back({}); // null
+
+        ObjSymbol sym2;
+        sym2.name = "l_.str.at";
+        sym2.sectionIndex = 1;
+        sym2.offset = 0;
+        sym2.binding = ObjSymbol::Local;
+        obj2.symbols.push_back(sym2);
+
+        std::vector<ObjFile> objs = {obj, obj2};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+
+        size_t eliminated = deduplicateStrings(objs, globalSyms);
+
+        // kClassSizes must NOT be merged with the "@" string — different
+        // section types. Only one occurrence in a cstring section.
+        CHECK(eliminated == 0);
+
+        // kClassSizes must keep its original name and binding.
+        CHECK(objs[0].symbols[1].name == "kClassSizes");
+        CHECK(objs[0].symbols[1].binding == ObjSymbol::Local);
     }
 
     // --- Global symbols are not touched ---

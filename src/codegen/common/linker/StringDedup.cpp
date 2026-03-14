@@ -59,8 +59,12 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
 
             const auto &sec = obj.sections[sym.sectionIndex];
 
-            // Only non-executable, non-writable, allocatable sections (rodata).
-            if (sec.executable || sec.writable || !sec.alloc)
+            // Only sections that are known to contain NUL-terminated C strings.
+            // Scanning generic rodata/const sections (e.g., Mach-O __const) is
+            // unsafe: binary data like integer arrays may start with a byte
+            // followed by NUL, which would be misidentified as a short string
+            // and merged with an unrelated real string, corrupting references.
+            if (!sec.isCStringSection)
                 continue;
             if (sec.data.empty())
                 continue;

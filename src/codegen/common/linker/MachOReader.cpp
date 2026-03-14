@@ -253,6 +253,10 @@ bool readMachOObj(const uint8_t *data, size_t size, const std::string &name, Obj
                           secType == macho::S_THREAD_LOCAL_ZEROFILL ||
                           secType == macho::S_THREAD_LOCAL_VARIABLES);
 
+                // S_CSTRING_LITERALS (0x02) sections contain only NUL-terminated
+                // C strings and are safe for cross-module string deduplication.
+                os.isCStringSection = (secType == 0x02);
+
                 // Zerofill sections (S_ZEROFILL, S_THREAD_LOCAL_ZEROFILL) have
                 // offset=0 in .o files — they carry no file data. Reading from
                 // offset 0 would incorrectly copy the Mach-O header bytes.

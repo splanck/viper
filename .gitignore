@@ -144,3 +144,4 @@ examples/bin/
 viper_issues*.txt
 viper_runtime_*.md
 viper_zia_issues.md
+/frogger_highscores.txt

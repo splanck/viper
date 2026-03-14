@@ -179,6 +179,16 @@ bool readElfObj(const uint8_t *data, size_t size, const std::string &name, ObjFi
         sec.alloc = (sh->sh_flags & elf::SHF_ALLOC) != 0;
         sec.tls = (sh->sh_flags & elf::SHF_TLS) != 0;
 
+        // ELF sections with SHF_STRINGS + SHF_MERGE contain NUL-terminated
+        // string literals suitable for cross-module deduplication.
+        // Also recognize by name: .rodata.str* sections are GCC/Clang-generated
+        // mergeable string sections even when flag inspection is impractical.
+        constexpr uint32_t SHF_MERGE = 0x10;
+        constexpr uint32_t SHF_STRINGS = 0x20;
+        sec.isCStringSection = ((sh->sh_flags & SHF_MERGE) != 0 &&
+                                 (sh->sh_flags & SHF_STRINGS) != 0) ||
+                                sec.name.find(".str") != std::string::npos;
+
         if (sh->sh_type == elf::SHT_NOBITS)
         {
             sec.data.resize(static_cast<size_t>(sh->sh_size), 0);
