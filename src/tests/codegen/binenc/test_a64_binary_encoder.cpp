@@ -826,6 +826,34 @@ static void testMovRI_zero()
     CHECK(encodeSingleInstr({mi}) == 0xD2800000u);
 }
 
+static void testMovRI_negativeSimple()
+{
+    // Negative values in [-65536, -1] must use MOVN, not MOVZ.
+    // MOVN Xd, #(~imm & 0xFFFF) produces the correct sign-extended value.
+
+    // -1: ~(-1)=0, MOVN X0, #0 → 0x92800000
+    {
+        MInstr mi{MOpcode::MovRI, {gpr(PhysReg::X0), imm(-1)}};
+        CHECK(countWords({mi}) == 1);
+        uint32_t word = encodeSingleInstr({mi});
+        CHECK(word == 0x92800000u); // kMovN | (#0 << 5) | X0
+    }
+    // -1500 (PLAYER_JUMP): ~(-1500)=0x5DB, MOVN X0, #0x5DB → 0x9280BB60
+    {
+        MInstr mi{MOpcode::MovRI, {gpr(PhysReg::X0), imm(-1500)}};
+        CHECK(countWords({mi}) == 1);
+        uint32_t word = encodeSingleInstr({mi});
+        CHECK(word == (0x92800000u | (0x5DBu << 5) | 0u));
+    }
+    // -65536: ~(-65536)=0xFFFF, MOVN X0, #0xFFFF → 0x929FFFE0
+    {
+        MInstr mi{MOpcode::MovRI, {gpr(PhysReg::X0), imm(-65536)}};
+        CHECK(countWords({mi}) == 1);
+        uint32_t word = encodeSingleInstr({mi});
+        CHECK(word == (0x92800000u | (0xFFFFu << 5) | 0u));
+    }
+}
+
 static void testFMovRI_fp8()
 {
     // FMOV D0, #1.0 → single instruction via FP8 encoding.
@@ -902,6 +930,7 @@ int main()
     testMovRI_highOnly();
     testMovRI_movnPath();
     testMovRI_zero();
+    testMovRI_negativeSimple();
     testFMovRI_fp8();
     testFMovRI_fallback();
 

@@ -414,12 +414,10 @@ class CallingConvention
 /// For simplicity, this checks if the value fits in 16 bits or can use movz/movn.
 [[nodiscard]] constexpr bool isSimpleMovImm(long long imm) noexcept
 {
-    // Values that fit in 16 bits with possible shift
+    // Positive values that fit in an unsigned 16-bit immediate (MOVZ Xd, #imm16).
     if (imm >= 0 && imm <= 0xFFFF)
         return true;
-    if (imm >= 0 && (imm & 0xFFFF) == 0 && ((imm >> 16) & 0xFFFF) <= 0xFFFF && ((imm >> 32) == 0))
-        return true;
-    // Negative values that can use movn
+    // Negative values where ~imm fits in 16 bits (MOVN Xd, #(~imm)).
     if (imm < 0 && imm >= -0x10000)
         return true;
     return false;

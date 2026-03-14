@@ -541,8 +541,16 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         uint32_t rd = hwGPR(getReg(mi.ops[0]));
         if (!needsWideImmSequence(imm))
         {
-            // movz Xd, #imm16 (or mov alias handled by assembler — we emit movz directly)
-            emit32(kMovZ | (static_cast<uint32_t>(imm & 0xFFFF) << 5) | rd, cs);
+            if (imm < 0)
+            {
+                // MOVN Xd, #(~imm & 0xFFFF) — inverts all 64 bits to produce the negative value.
+                emit32(kMovN | (static_cast<uint32_t>(~imm & 0xFFFF) << 5) | rd, cs);
+            }
+            else
+            {
+                // MOVZ Xd, #imm16 — zero-extends the 16-bit immediate.
+                emit32(kMovZ | (static_cast<uint32_t>(imm & 0xFFFF) << 5) | rd, cs);
+            }
         }
         else
         {
