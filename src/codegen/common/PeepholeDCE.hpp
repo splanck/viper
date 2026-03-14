@@ -91,9 +91,11 @@ template <typename Traits> std::size_t runBlockDCE(std::vector<typename Traits::
 
     std::size_t totalEliminated = 0;
     bool changed = true;
+    constexpr std::size_t kMaxDCEIterations = 100;
+    std::size_t iterCount = 0;
 
     // Outer loop: repeat until fixed point when requested by Traits.
-    while (changed)
+    while (changed && iterCount++ < kMaxDCEIterations)
     {
         changed = false;
 

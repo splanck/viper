@@ -29,6 +29,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "Liveness.hpp"
 #include "RegPools.hpp"
 #include "VState.hpp"
 #include "codegen/aarch64/FrameBuilder.hpp"
@@ -54,21 +55,18 @@ class LinearAllocator
     RegPools pools_;
     std::unordered_map<uint16_t, VState> gprStates_;
     std::unordered_map<uint16_t, VState> fprStates_;
-    unsigned currentInstrIdx_{0}; ///< Current instruction index for LRU tracking.
+    unsigned currentInstrIdx_{0};    ///< Current instruction index for LRU tracking.
+    std::size_t currentBlockIdx_{0}; ///< Current block index for liveness lookups.
     std::unordered_map<uint16_t, std::vector<unsigned>>
         usePositionsGPR_; ///< All use positions for GPR vregs.
     std::unordered_map<uint16_t, std::vector<unsigned>>
         usePositionsFPR_;                 ///< All use positions for FPR vregs.
     std::vector<unsigned> callPositions_; ///< Positions of call instructions in current block.
 
-    // CFG + liveness (conservative cross-block)
-    std::unordered_map<std::string, std::size_t> blockIndex_;
-    std::vector<std::vector<std::size_t>> succs_;
-    std::vector<std::unordered_set<uint16_t>> liveOutGPR_;
-    std::vector<std::unordered_set<uint16_t>> liveOutFPR_;
+    // CFG + liveness (extracted to shared-solver-backed LivenessAnalysis).
+    LivenessAnalysis liveness_;
 
-    // Cross-block register persistence: predecessor map and exit-state cache.
-    std::vector<std::vector<std::size_t>> preds_;
+    // Cross-block register persistence: exit-state cache.
 
     struct BlockExitState
     {
@@ -80,11 +78,6 @@ class LinearAllocator
 
     // Set when the previous instruction was a call to rt_arr_obj_get
     bool pendingGetBarrier_{false};
-
-    // ---- CFG / liveness ----
-    void buildCFG();
-    void buildPredecessors();
-    void computeLiveOutSets();
 
     // ---- Cross-block ----
     void restoreFromPredecessor(std::size_t bi);

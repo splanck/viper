@@ -9,6 +9,7 @@ add_library(viper_codegen_x86_64 STATIC
         ra/Coalescer.cpp
         ra/LiveIntervals.cpp
         ra/Spiller.cpp
+        ra/Liveness.cpp
         FrameLowering.cpp
         CallLowering.cpp
         ISel.cpp
@@ -24,6 +25,10 @@ add_library(viper_codegen_x86_64 STATIC
         Lowering.CF.cpp
         LoweringRules.cpp
         Peephole.cpp
+        peephole/ArithSimplify.cpp
+        peephole/MovFolding.cpp
+        peephole/DCE.cpp
+        peephole/BranchOpt.cpp
         Backend.cpp
         CodegenPipeline.cpp
         binenc/X64BinaryEncoder.cpp

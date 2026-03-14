@@ -59,16 +59,52 @@ struct StoreSite
     std::optional<unsigned> size; ///< Size in bytes of the store, if known.
 };
 
+/// @brief Classify how a call instruction interacts with memory for hoisting.
+/// @details Checks CallAttr flags (pure, readonly) which are set by frontends
+///          or inferred by alias analysis.  Pure calls have no memory effects;
+///          readonly calls only read memory (safe to hoist if no aliasing
+///          stores exist in the loop, same logic as Load hoisting).
+enum class CallHoistKind
+{
+    NotHoistable, ///< Call may write memory or has other side effects.
+    Pure,         ///< Call has no memory effects (pure math, etc.).
+    ReadOnly,     ///< Call only reads memory (safe if no aliasing stores).
+};
+
+CallHoistKind classifyCallForHoist(const Instr &instr)
+{
+    if (instr.op != Opcode::Call)
+        return CallHoistKind::NotHoistable;
+
+    // nothrow is required — a call that may throw has observable side effects
+    // (exception dispatch) that must execute at the original program point.
+    if (!instr.CallAttr.nothrow)
+        return CallHoistKind::NotHoistable;
+
+    if (instr.CallAttr.pure)
+        return CallHoistKind::Pure;
+    if (instr.CallAttr.readonly)
+        return CallHoistKind::ReadOnly;
+
+    return CallHoistKind::NotHoistable;
+}
+
 /// @brief Determine whether an instruction can be hoisted out of the loop.
 /// @details Rejects terminators, side-effecting instructions, and any opcode
 ///          marked as trapping by the verifier. Memory operations are only
 ///          allowed when they are explicitly safe, such as loads with proven
-///          non-aliasing when @p allowLoadHoist is true.
+///          non-aliasing when @p allowLoadHoist is true.  Pure calls (no memory
+///          effects) are always hoistable; readonly calls are hoistable under
+///          the same alias conditions as loads.
 /// @param instr Instruction to test.
-/// @param allowLoadHoist Whether loads may be hoisted based on alias analysis.
+/// @param allowLoadHoist Whether loads/readonly calls may be hoisted.
+/// @param callHoist Output: set to the call hoisting classification when the
+///                  instruction is a call.
 /// @return True if the instruction is safe to move to the preheader.
-bool isSafeToHoist(const Instr &instr, bool allowLoadHoist)
+bool isSafeToHoist(const Instr &instr, bool allowLoadHoist, CallHoistKind &callHoist)
 {
+    callHoist = CallHoistKind::NotHoistable;
+
     const auto &info = getOpcodeInfo(instr.op);
     if (info.isTerminator || info.hasSideEffects)
         return false;
@@ -85,6 +121,17 @@ bool isSafeToHoist(const Instr &instr, bool allowLoadHoist)
     {
         if (props->canTrap)
             return false;
+    }
+
+    // Check for hoistable calls (pure or readonly).
+    if (instr.op == Opcode::Call)
+    {
+        callHoist = classifyCallForHoist(instr);
+        if (callHoist == CallHoistKind::Pure)
+            return true;
+        if (callHoist == CallHoistKind::ReadOnly && allowLoadHoist)
+            return true;
+        return false;
     }
 
     const auto effects = memoryEffects(instr.op);
@@ -352,8 +399,22 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
                     }
                 }
 
-                if (!isSafeToHoist(instr, allowLoads) || !operandsInvariant(instr, invariants))
+                CallHoistKind callHoist = CallHoistKind::NotHoistable;
+                if (!isSafeToHoist(instr, allowLoads, callHoist) ||
+                    !operandsInvariant(instr, invariants))
                 {
+                    ++idx;
+                    continue;
+                }
+
+                // Readonly calls need the same alias-safety check as loads:
+                // if a loop store may alias memory the call reads, the call
+                // cannot be hoisted (it would observe a stale value).
+                if (callHoist == CallHoistKind::ReadOnly && !loopStores.empty())
+                {
+                    // Conservative: readonly calls may read any memory, and we
+                    // cannot know the precise address set.  Only hoist when the
+                    // loop has no stores at all.
                     ++idx;
                     continue;
                 }

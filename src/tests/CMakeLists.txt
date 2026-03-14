@@ -102,6 +102,7 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/x86_64)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/objfile)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/binenc)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/linker)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/common)
 
 # ── helpers for AArch64 and cross-platform codegen tests ────────────────────
 # Defined at file scope so they are available both inside and outside the

@@ -19,12 +19,19 @@
 #include "codegen/common/linker/PeExeWriter.hpp"
 
 #include "codegen/common/linker/AlignUtil.hpp"
+#include "codegen/common/linker/ExeWriterUtil.hpp"
 
 #include <cstring>
 #include <fstream>
 
 namespace viper::codegen::linker
 {
+
+using encoding::writeLE16;
+using encoding::writeLE32;
+using encoding::writeLE64;
+using encoding::writePad;
+using encoding::padTo;
 
 namespace
 {
@@ -39,31 +46,6 @@ static constexpr uint16_t kDllCharNXCompat = 0x0100;
 static constexpr uint16_t kDllCharTermServerAware = 0x8000;
 static constexpr uint16_t kDllCharacteristics =
     kDllCharHighEntropyVA | kDllCharDynamicBase | kDllCharNXCompat | kDllCharTermServerAware;
-
-void write16(std::vector<uint8_t> &buf, uint16_t v)
-{
-    buf.push_back(static_cast<uint8_t>(v));
-    buf.push_back(static_cast<uint8_t>(v >> 8));
-}
-
-void write32(std::vector<uint8_t> &buf, uint32_t v)
-{
-    buf.push_back(static_cast<uint8_t>(v));
-    buf.push_back(static_cast<uint8_t>(v >> 8));
-    buf.push_back(static_cast<uint8_t>(v >> 16));
-    buf.push_back(static_cast<uint8_t>(v >> 24));
-}
-
-void write64(std::vector<uint8_t> &buf, uint64_t v)
-{
-    for (int i = 0; i < 8; ++i)
-        buf.push_back(static_cast<uint8_t>(v >> (i * 8)));
-}
-
-void writePad(std::vector<uint8_t> &buf, size_t count)
-{
-    buf.insert(buf.end(), count, 0);
-}
 
 } // anonymous namespace
 
@@ -93,7 +75,7 @@ bool writePeExe(const std::string &path,
     file[63] = 0;
 
     // === PE Signature (4 bytes) ===
-    write32(file, 0x00004550); // "PE\0\0"
+    writeLE32(file, 0x00004550); // "PE\0\0"
 
     // === COFF Header (20 bytes) ===
     uint16_t numSections = 0;
@@ -101,45 +83,39 @@ bool writePeExe(const std::string &path,
         if (!sec.data.empty())
             ++numSections;
 
-    write16(file, machine);
-    write16(file, numSections);
-    write32(file, 0);      // TimeDateStamp
-    write32(file, 0);      // PointerToSymbolTable
-    write32(file, 0);      // NumberOfSymbols
-    write16(file, 240);    // SizeOfOptionalHeader (PE32+)
-    write16(file, 0x0022); // Characteristics: EXECUTABLE_IMAGE | LARGE_ADDRESS_AWARE
+    writeLE16(file, machine);
+    writeLE16(file, numSections);
+    writeLE32(file, 0);      // TimeDateStamp
+    writeLE32(file, 0);      // PointerToSymbolTable
+    writeLE32(file, 0);      // NumberOfSymbols
+    writeLE16(file, 240);    // SizeOfOptionalHeader (PE32+)
+    writeLE16(file, 0x0022); // Characteristics: EXECUTABLE_IMAGE | LARGE_ADDRESS_AWARE
 
     // === Optional Header (PE32+, 240 bytes) ===
     const size_t optHeaderStart = file.size();
-    write16(file, 0x020B); // Magic: PE32+
+    writeLE16(file, 0x020B); // Magic: PE32+
 
-    write16(file, 0); // LinkerVersion
-    write32(file, 0); // SizeOfCode (filled later)
-    write32(file, 0); // SizeOfInitializedData
-    write32(file, 0); // SizeOfUninitializedData
+    writeLE16(file, 0); // LinkerVersion
+    writeLE32(file, 0); // SizeOfCode (filled later)
+    writeLE32(file, 0); // SizeOfInitializedData
+    writeLE32(file, 0); // SizeOfUninitializedData
 
     // AddressOfEntryPoint.
-    uint32_t entryRVA = 0;
-    {
-        auto it = layout.globalSyms.find("main");
-        if (it == layout.globalSyms.end())
-            it = layout.globalSyms.find("_main");
-        if (it != layout.globalSyms.end())
-            entryRVA = static_cast<uint32_t>(it->second.resolvedAddr - imageBase);
-    }
-    write32(file, entryRVA);
-    write32(file, 0); // BaseOfCode
+    uint64_t mainAddr = resolveMainAddress(layout);
+    uint32_t entryRVA = mainAddr ? static_cast<uint32_t>(mainAddr - imageBase) : 0;
+    writeLE32(file, entryRVA);
+    writeLE32(file, 0); // BaseOfCode
 
-    write64(file, imageBase);
-    write32(file, sectionAlignment);
-    write32(file, fileAlignment);
-    write16(file, 6); // MajorOperatingSystemVersion
-    write16(file, 0);
-    write16(file, 0); // MajorImageVersion
-    write16(file, 0);
-    write16(file, 6); // MajorSubsystemVersion
-    write16(file, 0);
-    write32(file, 0); // Win32VersionValue
+    writeLE64(file, imageBase);
+    writeLE32(file, sectionAlignment);
+    writeLE32(file, fileAlignment);
+    writeLE16(file, 6); // MajorOperatingSystemVersion
+    writeLE16(file, 0);
+    writeLE16(file, 0); // MajorImageVersion
+    writeLE16(file, 0);
+    writeLE16(file, 6); // MajorSubsystemVersion
+    writeLE16(file, 0);
+    writeLE32(file, 0); // Win32VersionValue
 
     // SizeOfImage: VA of last section + its aligned size.
     uint32_t sizeOfImage = sectionAlignment; // At least first page.
@@ -152,29 +128,29 @@ bool writePeExe(const std::string &path,
         if (secEnd > sizeOfImage)
             sizeOfImage = secEnd;
     }
-    write32(file, sizeOfImage);
+    writeLE32(file, sizeOfImage);
 
     // SizeOfHeaders: headers + section table, file-aligned.
     const size_t headersEnd = optHeaderStart + 240 + numSections * 40;
     const uint32_t sizeOfHeaders = static_cast<uint32_t>(alignUp(headersEnd, fileAlignment));
-    write32(file, sizeOfHeaders);
+    writeLE32(file, sizeOfHeaders);
 
-    write32(file, 0);                   // CheckSum
-    write16(file, 3);                   // Subsystem: IMAGE_SUBSYSTEM_WINDOWS_CUI
-    write16(file, kDllCharacteristics); // HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT |
-                                        // TERMINAL_SERVER_AWARE
-    write64(file, 0x100000);            // SizeOfStackReserve (1MB)
-    write64(file, 0x1000);              // SizeOfStackCommit
-    write64(file, 0x100000);            // SizeOfHeapReserve
-    write64(file, 0x1000);              // SizeOfHeapCommit
-    write32(file, 0);                   // LoaderFlags
-    write32(file, 16);                  // NumberOfRvaAndSizes
+    writeLE32(file, 0);                   // CheckSum
+    writeLE16(file, 3);                   // Subsystem: IMAGE_SUBSYSTEM_WINDOWS_CUI
+    writeLE16(file, kDllCharacteristics); // HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT |
+                                          // TERMINAL_SERVER_AWARE
+    writeLE64(file, 0x100000);            // SizeOfStackReserve (1MB)
+    writeLE64(file, 0x1000);              // SizeOfStackCommit
+    writeLE64(file, 0x100000);            // SizeOfHeapReserve
+    writeLE64(file, 0x1000);              // SizeOfHeapCommit
+    writeLE32(file, 0);                   // LoaderFlags
+    writeLE32(file, 16);                  // NumberOfRvaAndSizes
 
     // Data directories (16 entries × 8 bytes = 128 bytes).
     for (int i = 0; i < 16; ++i)
     {
-        write32(file, 0); // VirtualAddress
-        write32(file, 0); // Size
+        writeLE32(file, 0); // VirtualAddress
+        writeLE32(file, 0); // Size
     }
 
     // === Section Headers ===
@@ -227,32 +203,28 @@ bool writePeExe(const std::string &path,
         std::strncpy(secName, sn, 8);
         file.insert(file.end(), secName, secName + 8);
 
-        write32(file, ps.virtualSize);
-        write32(file, ps.virtualAddress);
-        write32(file, ps.sizeOfRawData);
-        write32(file, ps.pointerToRawData);
-        write32(file, 0); // PointerToRelocations
-        write32(file, 0); // PointerToLinenumbers
-        write16(file, 0); // NumberOfRelocations
-        write16(file, 0); // NumberOfLinenumbers
-        write32(file, ps.characteristics);
+        writeLE32(file, ps.virtualSize);
+        writeLE32(file, ps.virtualAddress);
+        writeLE32(file, ps.sizeOfRawData);
+        writeLE32(file, ps.pointerToRawData);
+        writeLE32(file, 0); // PointerToRelocations
+        writeLE32(file, 0); // PointerToLinenumbers
+        writeLE16(file, 0); // NumberOfRelocations
+        writeLE16(file, 0); // NumberOfLinenumbers
+        writeLE32(file, ps.characteristics);
     }
 
     // Pad to sizeOfHeaders.
-    if (file.size() < sizeOfHeaders)
-        writePad(file, sizeOfHeaders - file.size());
+    padTo(file, sizeOfHeaders);
 
     // Write section data (file-aligned).
     for (const auto &ps : peSections)
     {
         const auto &sec = layout.sections[ps.layoutIdx];
-        if (file.size() < ps.pointerToRawData)
-            writePad(file, ps.pointerToRawData - file.size());
+        padTo(file, ps.pointerToRawData);
         file.insert(file.end(), sec.data.begin(), sec.data.end());
         // Pad to file alignment.
-        size_t padded = alignUp(sec.data.size(), fileAlignment);
-        if (sec.data.size() < padded)
-            writePad(file, padded - sec.data.size());
+        padTo(file, alignUp(file.size(), fileAlignment));
     }
 
     // Write file.

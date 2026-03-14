@@ -23,6 +23,7 @@
 #include "../RegAllocLinear.hpp"
 #include "../TargetX64.hpp"
 #include "LiveIntervals.hpp"
+#include "Liveness.hpp"
 #include "Spiller.hpp"
 
 #include <bitset>
@@ -82,8 +83,10 @@ class LinearScanAllocator
     MFunction &func_;
     const TargetInfo &target_;
     const LiveIntervals &intervals_;
+    LivenessAnalysis liveness_;
     AllocationResult result_{};
     Spiller spiller_{};
+    std::size_t currentBlockIdx_{0};
 
     std::unordered_map<uint16_t, VirtualAllocation> states_{};
     std::deque<PhysReg> freeGPR_{}; ///< O(1) pop_front for register allocation.
@@ -159,11 +162,12 @@ class LinearScanAllocator
     ///          cooperates with the coalescer to apply PX_COPY eliminations.
     void processBlock(MBasicBlock &block, Coalescer &coalescer);
 
-    /// @brief Release or spill registers at block boundaries.
-    /// @details Clears the active sets after a block finishes. Values that are live across
-    ///          block boundaries are spilled so successor blocks can reload them.
-    /// @param block The block that was just processed, to which spills are appended.
-    void releaseActiveForBlock(MBasicBlock &block);
+    /// @brief Release or spill registers at block boundaries using CFG-aware liveOut.
+    /// @details Spills vregs that are in the liveOut set for this block, and simply
+    ///          releases registers for vregs that are not live across the boundary.
+    /// @param block The block that was just processed.
+    /// @param blockIdx Index of the block (for liveOut lookup).
+    void releaseActiveForBlock(MBasicBlock &block, std::size_t blockIdx);
 
     /// @brief Classify each operand of an instruction as a use, def, or both.
     /// @details Produces a parallel vector describing operand roles so subsequent handling can

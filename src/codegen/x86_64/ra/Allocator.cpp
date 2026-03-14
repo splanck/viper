@@ -105,89 +105,40 @@ LinearScanAllocator::LinearScanAllocator(MFunction &func,
 /// @return Summary of virtual→physical mappings and spill requirements.
 AllocationResult LinearScanAllocator::run()
 {
-    // Pre-pass: identify vregs that span multiple blocks.
-    // Because our linear live interval analysis doesn't account for control flow,
-    // vregs used in multiple blocks may be incorrectly allocated when a forward
-    // jump goes from a later block (in linear order) to an earlier block. By
-    // pre-marking such vregs as needing spills, we ensure that every use triggers
-    // a reload from the spill slot, guaranteeing correctness.
-    std::unordered_map<uint16_t, std::size_t> vregFirstBlock;
-    std::unordered_set<uint16_t> crossBlockVregs;
+    // Compute CFG-aware liveness: builds control-flow graph from JMP/JCC
+    // terminators and solves the standard backward dataflow equations to
+    // produce per-block liveIn/liveOut sets. This replaces the conservative
+    // "unconditional spill" hack that previously force-spilled ALL cross-block
+    // vregs.
+    liveness_.run(func_);
 
-    for (std::size_t blockIdx = 0; blockIdx < func_.blocks.size(); ++blockIdx)
+    // Pre-pass: mark vregs that appear in liveOut of ANY block as needing spills.
+    // Unlike the old hack which identified cross-block vregs via linear scan and
+    // force-spilled all of them, this uses actual dataflow liveness. A vreg in
+    // liveOut[B] means it's truly live across B's boundary and needs a spill slot
+    // for correct reload in successor blocks.
+    for (std::size_t bi = 0; bi < func_.blocks.size(); ++bi)
     {
-        const auto &block = func_.blocks[blockIdx];
-        for (const auto &instr : block.instructions)
+        for (uint16_t vreg : liveness_.liveOut(bi))
         {
-            for (const auto &operand : instr.operands)
+            const auto *interval = intervals_.lookup(vreg);
+            RegClass cls = interval ? interval->cls : RegClass::GPR;
+
+            auto &state = stateFor(cls, vreg);
+            if (!state.spill.needsSpill)
             {
-                if (const auto *reg = std::get_if<OpReg>(&operand); reg && !reg->isPhys)
-                {
-                    auto it = vregFirstBlock.find(reg->idOrPhys);
-                    if (it == vregFirstBlock.end())
-                    {
-                        vregFirstBlock[reg->idOrPhys] = blockIdx;
-                    }
-                    else if (it->second != blockIdx)
-                    {
-                        crossBlockVregs.insert(reg->idOrPhys);
-                    }
-                }
-                else if (const auto *mem = std::get_if<OpMem>(&operand))
-                {
-                    if (!mem->base.isPhys)
-                    {
-                        auto it = vregFirstBlock.find(mem->base.idOrPhys);
-                        if (it == vregFirstBlock.end())
-                        {
-                            vregFirstBlock[mem->base.idOrPhys] = blockIdx;
-                        }
-                        else if (it->second != blockIdx)
-                        {
-                            crossBlockVregs.insert(mem->base.idOrPhys);
-                        }
-                    }
-                    if (mem->hasIndex && !mem->index.isPhys)
-                    {
-                        auto it = vregFirstBlock.find(mem->index.idOrPhys);
-                        if (it == vregFirstBlock.end())
-                        {
-                            vregFirstBlock[mem->index.idOrPhys] = blockIdx;
-                        }
-                        else if (it->second != blockIdx)
-                        {
-                            crossBlockVregs.insert(mem->index.idOrPhys);
-                        }
-                    }
-                }
+                state.spill.needsSpill = true;
+                spiller_.ensureSpillSlot(cls, state.spill);
             }
         }
     }
 
-    // Pre-mark cross-block vregs as needing spills. This ensures that any use
-    // will go through the reload path, preventing stale register values when
-    // control flow doesn't match linear instruction order.
-    // IMPORTANT: We must NOT use slot reuse for cross-block vregs because their
-    // linear live intervals don't accurately represent actual lifetimes. Due to
-    // control flow (especially forward jumps), two vregs with "non-overlapping"
-    // linear intervals may actually be live at the same time.
-    for (uint16_t vreg : crossBlockVregs)
-    {
-        // Determine the register class from the live interval
-        const auto *interval = intervals_.lookup(vreg);
-        RegClass cls = interval ? interval->cls : RegClass::GPR;
-
-        auto &state = stateFor(cls, vreg);
-        state.spill.needsSpill = true;
-        // Allocate a unique spill slot for this vreg - no reuse to avoid conflicts
-        spiller_.ensureSpillSlot(cls, state.spill);
-    }
-
     Coalescer coalescer{*this, spiller_};
-    for (auto &block : func_.blocks)
+    for (std::size_t bi = 0; bi < func_.blocks.size(); ++bi)
     {
-        processBlock(block, coalescer);
-        releaseActiveForBlock(block);
+        currentBlockIdx_ = bi;
+        processBlock(func_.blocks[bi], coalescer);
+        releaseActiveForBlock(func_.blocks[bi], bi);
     }
     result_.spillSlotsGPR = spiller_.gprSlots();
     result_.spillSlotsXMM = spiller_.xmmSlots();
@@ -809,76 +760,79 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
     block.instructions = std::move(rewritten);
 }
 
-/// @brief Release or spill registers at block boundaries.
-/// @details Called after rewriting a block. Values whose live intervals end
-///          before the current instruction have their registers released.
-///          Values that are live across block boundaries are spilled to memory
-///          so that successor blocks can reload them. This ensures cross-block
-///          liveness is handled correctly without relying on registers persisting.
-/// @param block The block that was just processed, to which spills are inserted.
-void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block)
+/// @brief Release or spill registers at block boundaries using CFG-aware liveOut.
+/// @details Called after rewriting a block. Uses the liveOut set from dataflow
+///          analysis to determine which vregs need spilling. Vregs in liveOut
+///          are spilled to ensure correct reload in successor blocks. Vregs not
+///          in liveOut have their registers simply released.
+/// @param block The block that was just processed.
+/// @param blockIdx Index of the block for liveOut lookup.
+void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block, std::size_t blockIdx)
 {
+    const auto &liveOutSet = liveness_.liveOut(blockIdx);
+
     // Helper to check if an instruction is a terminator
     auto isTerminator = [](MOpcode opc)
     { return opc == MOpcode::JMP || opc == MOpcode::JCC || opc == MOpcode::RET; };
 
-    // Find insertion point - before the terminator if present
+    // Find insertion point — before the terminator if present.
     std::size_t insertPos = block.instructions.size();
     if (!block.instructions.empty() && isTerminator(block.instructions.back().opcode))
     {
         insertPos = block.instructions.size() - 1;
-        // Check if there are two terminators (JCC followed by JMP)
         if (insertPos > 0 && isTerminator(block.instructions[insertPos - 1].opcode))
-        {
             insertPos--;
-        }
     }
 
     std::vector<MInstr> spills{};
 
     // Process GPR values at block boundaries.
-    // Cross-block vregs (marked with needsSpill=true in the pre-pass) are already
-    // handled by processRegOperand which emits stores on defs. We only need to
-    // emit an additional store here if the current register value hasn't been
-    // stored yet (i.e., the vreg was modified since last store).
-    // Single-block vregs (needsSpill=false) don't need spilling since no other
-    // block can access them.
     for (auto vreg : activeGPR_)
     {
         auto it = states_.find(vreg);
         if (it == states_.end() || !it->second.hasPhys)
-        {
             continue;
-        }
 
         auto &state = it->second;
-        // For cross-block vregs that are already marked for spilling, we need to
-        // ensure the current value is in memory. The processRegOperand handles
-        // stores on defs, so the spill slot should be up to date. We just need
-        // to release the register.
-        // For single-block vregs, we can just release without spilling.
-        releaseRegister(it->second.phys, RegClass::GPR);
-        it->second.hasPhys = false;
-        it->second.cachedInBlock = false;
+
+        // If this vreg is live across the block boundary, ensure its current
+        // value is stored to the spill slot.
+        if (liveOutSet.count(vreg))
+        {
+            spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
+            state.spill.needsSpill = true;
+            spills.push_back(spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
+        }
+
+        releaseRegister(state.phys, RegClass::GPR);
+        state.hasPhys = false;
+        state.cachedInBlock = false;
     }
     activeGPR_.clear();
 
-    // Process XMM values - same approach as GPR
+    // Process XMM values — same approach as GPR.
     for (auto vreg : activeXMM_)
     {
         auto it = states_.find(vreg);
         if (it == states_.end() || !it->second.hasPhys)
-        {
             continue;
+
+        auto &state = it->second;
+
+        if (liveOutSet.count(vreg))
+        {
+            spiller_.ensureSpillSlot(RegClass::XMM, state.spill);
+            state.spill.needsSpill = true;
+            spills.push_back(spiller_.makeStore(RegClass::XMM, state.spill, state.phys));
         }
 
-        releaseRegister(it->second.phys, RegClass::XMM);
-        it->second.hasPhys = false;
-        it->second.cachedInBlock = false;
+        releaseRegister(state.phys, RegClass::XMM);
+        state.hasPhys = false;
+        state.cachedInBlock = false;
     }
     activeXMM_.clear();
 
-    // Insert spills before the terminator(s)
+    // Insert spills before the terminator(s).
     if (!spills.empty())
     {
         block.instructions.insert(block.instructions.begin() + static_cast<long>(insertPos),

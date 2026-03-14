@@ -59,22 +59,20 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
             continue;
         }
 
-        // MovRR copy tracking
-        if (instr.opc == MOpcode::MovRR && instr.ops.size() == 2 && isPhysReg(instr.ops[0]) &&
-            isPhysReg(instr.ops[1]))
+        // Shared copy-tracking for MovRR and FMovRR (same-class).
+        auto trackCopy = [&](MInstr &mi) -> bool
         {
-            const MOperand &dst = instr.ops[0];
-            const MOperand &src = instr.ops[1];
+            const MOperand &dst = mi.ops[0];
+            const MOperand &src = mi.ops[1];
             uint32_t dstKey = regKey(dst);
 
             invalidateDependents(dstKey);
             copyOrigin.erase(dstKey);
 
-            uint32_t srcKey = regKey(src);
             MOperand origin = src;
             if (!isABIReg(src))
             {
-                auto it = copyOrigin.find(srcKey);
+                auto it = copyOrigin.find(regKey(src));
                 if (it != copyOrigin.end())
                     origin = it->second;
             }
@@ -82,13 +80,20 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
             if (!samePhysReg(dst, origin))
             {
                 copyOrigin[dstKey] = origin;
-
                 if (!samePhysReg(src, origin))
                 {
-                    instr.ops[1] = origin;
+                    mi.ops[1] = origin;
                     ++propagated;
                 }
             }
+            return true;
+        };
+
+        // MovRR copy tracking
+        if (instr.opc == MOpcode::MovRR && instr.ops.size() == 2 && isPhysReg(instr.ops[0]) &&
+            isPhysReg(instr.ops[1]))
+        {
+            trackCopy(instr);
             continue;
         }
 
@@ -96,32 +101,7 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
         if (instr.opc == MOpcode::FMovRR && instr.ops.size() == 2 && isPhysReg(instr.ops[0]) &&
             isPhysReg(instr.ops[1]) && instr.ops[0].reg.cls == instr.ops[1].reg.cls)
         {
-            const MOperand &dst = instr.ops[0];
-            const MOperand &src = instr.ops[1];
-            uint32_t dstKey = regKey(dst);
-
-            invalidateDependents(dstKey);
-            copyOrigin.erase(dstKey);
-
-            uint32_t srcKey = regKey(src);
-            MOperand origin = src;
-            if (!isABIReg(src))
-            {
-                auto it = copyOrigin.find(srcKey);
-                if (it != copyOrigin.end())
-                    origin = it->second;
-            }
-
-            if (!samePhysReg(dst, origin))
-            {
-                copyOrigin[dstKey] = origin;
-
-                if (!samePhysReg(src, origin))
-                {
-                    instr.ops[1] = origin;
-                    ++propagated;
-                }
-            }
+            trackCopy(instr);
             continue;
         }
 

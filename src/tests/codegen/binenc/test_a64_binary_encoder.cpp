@@ -934,6 +934,248 @@ int main()
     testFMovRI_fp8();
     testFMovRI_fallback();
 
+    // --- Encoding coverage validation (W7 remediation) ---
+    // Verify that every non-pseudo MOpcode can be encoded without crashing.
+    // This catches the asymmetry where new opcodes get added to MachineIR.hpp
+    // but are forgotten in the encoder's switch statement.
+    {
+        // Pseudo-opcodes that assert in the encoder (expanded before encoding).
+        auto isPseudo = [](MOpcode opc)
+        {
+            return opc == MOpcode::AddOvfRRR || opc == MOpcode::SubOvfRRR ||
+                   opc == MOpcode::AddOvfRI || opc == MOpcode::SubOvfRI ||
+                   opc == MOpcode::MulOvfRRR;
+        };
+
+        // Build a minimal valid instruction for each opcode category.
+        auto makeTestInstr = [&](MOpcode opc) -> MInstr
+        {
+            const auto x0 = gpr(PhysReg::X0);
+            const auto x1 = gpr(PhysReg::X1);
+            const auto x2 = gpr(PhysReg::X2);
+            const auto x3 = gpr(PhysReg::X3);
+            const auto d0 = fpr(PhysReg::V0);
+            const auto d1 = fpr(PhysReg::V1);
+            const auto d2 = fpr(PhysReg::V2);
+
+            switch (opc)
+            {
+                // 2-reg GPR
+                case MOpcode::MovRR:
+                case MOpcode::CmpRR:
+                case MOpcode::TstRR:
+                    return MInstr{opc, {x0, x1}};
+
+                // MovRI: reg + imm
+                case MOpcode::MovRI:
+                case MOpcode::AddFpImm:
+                    return MInstr{opc, {x0, imm(0)}};
+
+                // 3-reg GPR (dst, lhs, rhs)
+                case MOpcode::AddRRR:
+                case MOpcode::SubRRR:
+                case MOpcode::MulRRR:
+                case MOpcode::SmulhRRR:
+                case MOpcode::SDivRRR:
+                case MOpcode::UDivRRR:
+                case MOpcode::AndRRR:
+                case MOpcode::OrrRRR:
+                case MOpcode::EorRRR:
+                case MOpcode::AddsRRR:
+                case MOpcode::SubsRRR:
+                case MOpcode::LslvRRR:
+                case MOpcode::LsrvRRR:
+                case MOpcode::AsrvRRR:
+                    return MInstr{opc, {x0, x1, x2}};
+
+                // 4-reg GPR (dst, mul1, mul2, add/sub)
+                case MOpcode::MSubRRRR:
+                case MOpcode::MAddRRRR:
+                    return MInstr{opc, {x0, x1, x2, x3}};
+
+                // reg-imm arithmetic (3 operands: dst, src, imm)
+                case MOpcode::AddRI:
+                case MOpcode::SubRI:
+                case MOpcode::AddsRI:
+                case MOpcode::SubsRI:
+                case MOpcode::LslRI:
+                case MOpcode::LsrRI:
+                case MOpcode::AsrRI:
+                    return MInstr{opc, {x0, x1, imm(1)}};
+
+                // CmpRI: 2 operands (reg, imm) — implicit XZR dest
+                case MOpcode::CmpRI:
+                    return MInstr{opc, {x0, imm(1)}};
+
+                // Logical immediate (use 0xFFFF — encodable as bitmask)
+                case MOpcode::AndRI:
+                case MOpcode::OrrRI:
+                case MOpcode::EorRI:
+                    return MInstr{opc, {x0, x1, imm(0xFFFF)}};
+
+                // Cset: dst, cond
+                case MOpcode::Cset:
+                    return MInstr{opc, {x0, cond("eq")}};
+
+                // Csel: dst, trueReg, falseReg, cond
+                case MOpcode::Csel:
+                    return MInstr{opc, {x0, x1, x2, cond("eq")}};
+
+                // Branches
+                case MOpcode::Br:
+                    return MInstr{opc, {label("target")}};
+                case MOpcode::BCond:
+                    return MInstr{opc, {cond("eq"), label("target")}};
+                case MOpcode::Cbz:
+                case MOpcode::Cbnz:
+                    return MInstr{opc, {x0, label("target")}};
+                case MOpcode::Bl:
+                    return MInstr{opc, {label("target")}};
+                case MOpcode::Blr:
+                    return MInstr{opc, {x0}};
+                case MOpcode::Ret:
+                    return MInstr{opc, {}};
+
+                // SP adjustment
+                case MOpcode::SubSpImm:
+                case MOpcode::AddSpImm:
+                    return MInstr{opc, {imm(16)}};
+
+                // FP-relative load/store
+                case MOpcode::LdrRegFpImm:
+                case MOpcode::StrRegFpImm:
+                case MOpcode::PhiStoreGPR:
+                    return MInstr{opc, {x0, imm(0)}};
+                case MOpcode::LdrFprFpImm:
+                case MOpcode::StrFprFpImm:
+                case MOpcode::PhiStoreFPR:
+                    return MInstr{opc, {d0, imm(0)}};
+
+                // Base-register load/store
+                case MOpcode::LdrRegBaseImm:
+                case MOpcode::StrRegBaseImm:
+                    return MInstr{opc, {x0, x1, imm(0)}};
+                case MOpcode::LdrFprBaseImm:
+                case MOpcode::StrFprBaseImm:
+                    return MInstr{opc, {d0, x1, imm(0)}};
+
+                // SP-relative store (for outgoing args)
+                case MOpcode::StrRegSpImm:
+                    return MInstr{opc, {x0, imm(0)}};
+                case MOpcode::StrFprSpImm:
+                    return MInstr{opc, {d0, imm(0)}};
+
+                // Pair load/store (reg1, reg2, offset)
+                case MOpcode::LdpRegFpImm:
+                case MOpcode::StpRegFpImm:
+                    return MInstr{opc, {x0, x1, imm(0)}};
+                case MOpcode::LdpFprFpImm:
+                case MOpcode::StpFprFpImm:
+                    return MInstr{opc, {d0, d1, imm(0)}};
+
+                // Address materialisation
+                case MOpcode::AdrPage:
+                    return MInstr{opc, {x0, label("sym")}};
+                case MOpcode::AddPageOff:
+                    return MInstr{opc, {x0, x1, label("sym")}};
+
+                // FP 2-reg
+                case MOpcode::FMovRR:
+                case MOpcode::FCmpRR:
+                    return MInstr{opc, {d0, d1}};
+                case MOpcode::FMovGR:
+                    return MInstr{opc, {d0, x0}};
+                case MOpcode::FMovRI:
+                    return MInstr{opc, {d0, imm(0)}};
+                case MOpcode::FRintN:
+                    return MInstr{opc, {d0, d1}};
+
+                // FP 3-reg
+                case MOpcode::FAddRRR:
+                case MOpcode::FSubRRR:
+                case MOpcode::FMulRRR:
+                case MOpcode::FDivRRR:
+                    return MInstr{opc, {d0, d1, d2}};
+
+                // Conversions
+                case MOpcode::SCvtF:
+                case MOpcode::UCvtF:
+                    return MInstr{opc, {d0, x0}};
+                case MOpcode::FCvtZS:
+                case MOpcode::FCvtZU:
+                    return MInstr{opc, {x0, d0}};
+
+                // Pseudo-opcodes (should never reach encoder)
+                default:
+                    return MInstr{opc, {}};
+            }
+        };
+
+        // Iterate all opcodes from MovRR (0) to MulOvfRRR (last).
+        constexpr int kFirstOpcode = static_cast<int>(MOpcode::MovRR);
+        constexpr int kLastOpcode = static_cast<int>(MOpcode::MulOvfRRR);
+        int encodedCount = 0;
+        int pseudoCount = 0;
+
+        for (int i = kFirstOpcode; i <= kLastOpcode; ++i)
+        {
+            const auto opc = static_cast<MOpcode>(i);
+            if (isPseudo(opc))
+            {
+                ++pseudoCount;
+                continue;
+            }
+
+            MInstr mi = makeTestInstr(opc);
+
+            // Encode in a leaf function — should not crash.
+            MFunction fn;
+            fn.name = "coverage_test";
+            fn.isLeaf = true;
+            MBasicBlock bb;
+            bb.name = "entry";
+            bb.instrs.push_back(std::move(mi));
+            bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+            fn.blocks.push_back(std::move(bb));
+
+            // Add a target block for branch instructions so labels resolve.
+            MBasicBlock target;
+            target.name = "target";
+            target.instrs.push_back(MInstr{MOpcode::Ret, {}});
+            fn.blocks.push_back(std::move(target));
+
+            // Add a "sym" block for address materialisation opcodes.
+            MBasicBlock sym;
+            sym.name = "sym";
+            sym.instrs.push_back(MInstr{MOpcode::Ret, {}});
+            fn.blocks.push_back(std::move(sym));
+
+            CodeSection text, rodata;
+            A64BinaryEncoder enc;
+            enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
+
+            // Must have produced at least 8 bytes (test instr + ret).
+            if (text.bytes().size() < 8)
+            {
+                std::cerr << "FAIL: opcode " << opcodeName(opc)
+                          << " produced only " << text.bytes().size() << " bytes\n";
+                ++gFail;
+            }
+            else
+            {
+                ++encodedCount;
+            }
+        }
+
+        // Verify we covered the expected counts.
+        CHECK(pseudoCount == 5);   // 5 pseudo-opcodes
+        CHECK(encodedCount == 74); // 79 total - 5 pseudo = 74 real opcodes
+
+        if (encodedCount == 74 && pseudoCount == 5)
+            std::cout << "  Encoding coverage: " << encodedCount << "/74 opcodes OK, "
+                      << pseudoCount << " pseudo-opcodes skipped.\n";
+    }
+
     if (gFail == 0)
         std::cout << "All A64 binary encoder tests passed.\n";
     else

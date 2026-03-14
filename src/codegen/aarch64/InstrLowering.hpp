@@ -264,4 +264,78 @@ bool lowerFpCompare(const il::core::Instr &ins,
                     LoweringContext &ctx,
                     MBasicBlock &out);
 
+//===----------------------------------------------------------------------===//
+// Memory Operations
+//===----------------------------------------------------------------------===//
+
+/// @brief Lower a Store instruction to MIR.
+/// @param ins The IL store instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
+bool lowerStore(const il::core::Instr &ins,
+                const il::core::BasicBlock &bb,
+                LoweringContext &ctx,
+                MBasicBlock &out);
+
+/// @brief Lower a Load instruction to MIR.
+/// @param ins The IL load instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
+bool lowerLoad(const il::core::Instr &ins,
+               const il::core::BasicBlock &bb,
+               LoweringContext &ctx,
+               MBasicBlock &out);
+
+/// @brief Lower a GEP (get element pointer) instruction to MIR.
+/// @param ins The IL GEP instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
+bool lowerGEP(const il::core::Instr &ins,
+              const il::core::BasicBlock &bb,
+              LoweringContext &ctx,
+              MBasicBlock &out);
+
+//===----------------------------------------------------------------------===//
+// Call & Return Operations
+//===----------------------------------------------------------------------===//
+
+/// @brief Lower a Call instruction to MIR (full argument passing + result handling).
+/// @param ins The IL call instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
+bool lowerCall(const il::core::Instr &ins,
+               const il::core::BasicBlock &bb,
+               LoweringContext &ctx,
+               MBasicBlock &out);
+
+/// @brief Lower a CallIndirect instruction to MIR.
+/// @param ins The IL indirect call instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
+bool lowerCallIndirect(const il::core::Instr &ins,
+                       const il::core::BasicBlock &bb,
+                       LoweringContext &ctx,
+                       MBasicBlock &out);
+
+/// @brief Lower a Ret instruction to MIR.
+/// @param ins The IL return instruction to lower.
+/// @param bb  The IL basic block containing @p ins.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
+bool lowerRet(const il::core::Instr &ins,
+              const il::core::BasicBlock &bb,
+              LoweringContext &ctx,
+              MBasicBlock &out);
+
 } // namespace viper::codegen::aarch64

@@ -39,9 +39,7 @@ namespace viper::codegen::aarch64::ra
 LinearAllocator::LinearAllocator(MFunction &fn, const TargetInfo &ti) : fn_(fn), ti_(ti), fb_(fn)
 {
     pools_.build(ti);
-    buildCFG();
-    buildPredecessors();
-    computeLiveOutSets();
+    liveness_.run(fn);
 }
 
 // =========================================================================
@@ -54,6 +52,7 @@ AllocationResult LinearAllocator::run()
 
     for (std::size_t bi = 0; bi < fn_.blocks.size(); ++bi)
     {
+        currentBlockIdx_ = bi;
         restoreFromPredecessor(bi);
         allocateBlock(fn_.blocks[bi]);
         releaseBlockState();
@@ -66,142 +65,8 @@ AllocationResult LinearAllocator::run()
 }
 
 // =========================================================================
-// CFG / liveness
+// CFG / liveness — delegated to LivenessAnalysis (uses shared solver)
 // =========================================================================
-
-void LinearAllocator::buildCFG()
-{
-    blockIndex_.clear();
-    succs_.clear();
-    succs_.resize(fn_.blocks.size());
-    for (std::size_t i = 0; i < fn_.blocks.size(); ++i)
-        blockIndex_[fn_.blocks[i].name] = i;
-    for (std::size_t i = 0; i < fn_.blocks.size(); ++i)
-    {
-        const auto &bb = fn_.blocks[i];
-        for (const auto &mi : bb.instrs)
-        {
-            if (mi.opc == MOpcode::Br)
-            {
-                if (!mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
-                {
-                    auto it = blockIndex_.find(mi.ops[0].label);
-                    if (it != blockIndex_.end())
-                        succs_[i].push_back(it->second);
-                }
-            }
-            else if (mi.opc == MOpcode::BCond)
-            {
-                if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
-                {
-                    auto it = blockIndex_.find(mi.ops[1].label);
-                    if (it != blockIndex_.end())
-                        succs_[i].push_back(it->second);
-                }
-            }
-            else if (mi.opc == MOpcode::Cbz)
-            {
-                // cbz reg, label - label is ops[1]
-                if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
-                {
-                    auto it = blockIndex_.find(mi.ops[1].label);
-                    if (it != blockIndex_.end())
-                        succs_[i].push_back(it->second);
-                }
-            }
-        }
-    }
-}
-
-void LinearAllocator::buildPredecessors()
-{
-    preds_.assign(fn_.blocks.size(), {});
-    for (std::size_t i = 0; i < succs_.size(); ++i)
-        for (auto s : succs_[i])
-            preds_[s].push_back(i);
-}
-
-void LinearAllocator::computeLiveOutSets()
-{
-    const std::size_t N = fn_.blocks.size();
-
-    // ---------------------------------------------------------------
-    // Step 1: Compute gen[B] and kill[B] for each block.
-    // ---------------------------------------------------------------
-    std::vector<std::unordered_set<uint16_t>> genGPR(N), killGPR(N);
-    std::vector<std::unordered_set<uint16_t>> genFPR(N), killFPR(N);
-
-    for (std::size_t i = 0; i < N; ++i)
-    {
-        for (const auto &mi : fn_.blocks[i].instrs)
-        {
-            for (std::size_t k = 0; k < mi.ops.size(); ++k)
-            {
-                const auto &op = mi.ops[k];
-                if (op.kind != MOperand::Kind::Reg || op.reg.isPhys)
-                    continue;
-
-                const uint16_t vid = op.reg.idOrPhys;
-                const bool isFPR = (op.reg.cls == RegClass::FPR);
-                auto &genSet = isFPR ? genFPR[i] : genGPR[i];
-                auto &killSet = isFPR ? killFPR[i] : killGPR[i];
-
-                auto [isUse, isDef] = operandRoles(mi, k);
-
-                if (isUse && killSet.find(vid) == killSet.end())
-                    genSet.insert(vid);
-
-                if (isDef)
-                    killSet.insert(vid);
-            }
-        }
-    }
-
-    // ---------------------------------------------------------------
-    // Step 2: Initialise liveOut and liveIn to empty.
-    // ---------------------------------------------------------------
-    liveOutGPR_.assign(N, {});
-    liveOutFPR_.assign(N, {});
-    std::vector<std::unordered_set<uint16_t>> liveInGPR(N), liveInFPR(N);
-
-    // ---------------------------------------------------------------
-    // Step 3: Iterate backward dataflow to fixed point.
-    // ---------------------------------------------------------------
-    bool changed = true;
-    while (changed)
-    {
-        changed = false;
-        for (std::size_t i = N; i-- > 0;)
-        {
-            std::unordered_set<uint16_t> newOutGPR, newOutFPR;
-            for (auto sidx : succs_[i])
-            {
-                newOutGPR.insert(liveInGPR[sidx].begin(), liveInGPR[sidx].end());
-                newOutFPR.insert(liveInFPR[sidx].begin(), liveInFPR[sidx].end());
-            }
-
-            std::unordered_set<uint16_t> newInGPR = genGPR[i];
-            for (auto vid : newOutGPR)
-                if (killGPR[i].find(vid) == killGPR[i].end())
-                    newInGPR.insert(vid);
-
-            std::unordered_set<uint16_t> newInFPR = genFPR[i];
-            for (auto vid : newOutFPR)
-                if (killFPR[i].find(vid) == killFPR[i].end())
-                    newInFPR.insert(vid);
-
-            if (newOutGPR != liveOutGPR_[i] || newInGPR != liveInGPR[i] ||
-                newOutFPR != liveOutFPR_[i] || newInFPR != liveInFPR[i])
-            {
-                changed = true;
-                liveOutGPR_[i] = std::move(newOutGPR);
-                liveOutFPR_[i] = std::move(newOutFPR);
-                liveInGPR[i] = std::move(newInGPR);
-                liveInFPR[i] = std::move(newInFPR);
-            }
-        }
-    }
-}
 
 // =========================================================================
 // Cross-block register persistence
@@ -209,10 +74,11 @@ void LinearAllocator::computeLiveOutSets()
 
 void LinearAllocator::restoreFromPredecessor(std::size_t bi)
 {
-    if (preds_[bi].size() != 1)
+    const auto &preds = liveness_.predecessors(bi);
+    if (preds.size() != 1)
         return;
 
-    const std::size_t pred = preds_[bi][0];
+    const std::size_t pred = preds[0];
     if (pred >= bi)
         return;
 
@@ -589,61 +455,59 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb)
     if (!rewritten.empty())
     {
         std::vector<MInstr> endSpills;
-        auto itB = blockIndex_.find(bb.name);
-        if (itB != blockIndex_.end())
+        const std::size_t bi = currentBlockIdx_;
+        const auto &loGPR = liveness_.liveOutGPR(bi);
+        const auto &loFPR = liveness_.liveOutFPR(bi);
+
+        if (bi < blockExitStates_.size())
         {
-            const std::size_t bi = itB->second;
-
-            if (bi < blockExitStates_.size())
-            {
-                auto &es = blockExitStates_[bi];
-                for (auto vid : liveOutGPR_[bi])
-                {
-                    auto it = gprStates_.find(vid);
-                    if (it != gprStates_.end() && it->second.hasPhys)
-                        es.gpr[vid] = it->second.phys;
-                }
-                for (auto vid : liveOutFPR_[bi])
-                {
-                    auto it = fprStates_.find(vid);
-                    if (it != fprStates_.end() && it->second.hasPhys)
-                        es.fpr[vid] = it->second.phys;
-                }
-            }
-
-            for (auto vid : liveOutGPR_[bi])
+            auto &es = blockExitStates_[bi];
+            for (auto vid : loGPR)
             {
                 auto it = gprStates_.find(vid);
                 if (it != gprStates_.end() && it->second.hasPhys)
-                {
-                    if (it->second.dirty)
-                    {
-                        const int off = fb_.ensureSpill(vid);
-                        endSpills.push_back(makeStrFp(it->second.phys, off));
-                        it->second.dirty = false;
-                    }
-                    pools_.releaseGPR(it->second.phys, ti_);
-                    it->second.hasPhys = false;
-                    it->second.spilled = true;
-                }
+                    es.gpr[vid] = it->second.phys;
             }
-            for (auto vid : liveOutFPR_[bi])
+            for (auto vid : loFPR)
             {
                 auto it = fprStates_.find(vid);
                 if (it != fprStates_.end() && it->second.hasPhys)
+                    es.fpr[vid] = it->second.phys;
+            }
+        }
+
+        for (auto vid : loGPR)
+        {
+            auto it = gprStates_.find(vid);
+            if (it != gprStates_.end() && it->second.hasPhys)
+            {
+                if (it->second.dirty)
                 {
-                    if (it->second.dirty)
-                    {
-                        const int off = fb_.ensureSpill(vid);
-                        endSpills.push_back(
-                            MInstr{MOpcode::StrFprFpImm,
-                                   {MOperand::regOp(it->second.phys), MOperand::immOp(off)}});
-                        it->second.dirty = false;
-                    }
-                    pools_.releaseFPR(it->second.phys, ti_);
-                    it->second.hasPhys = false;
-                    it->second.spilled = true;
+                    const int off = fb_.ensureSpill(vid);
+                    endSpills.push_back(makeStrFp(it->second.phys, off));
+                    it->second.dirty = false;
                 }
+                pools_.releaseGPR(it->second.phys, ti_);
+                it->second.hasPhys = false;
+                it->second.spilled = true;
+            }
+        }
+        for (auto vid : loFPR)
+        {
+            auto it = fprStates_.find(vid);
+            if (it != fprStates_.end() && it->second.hasPhys)
+            {
+                if (it->second.dirty)
+                {
+                    const int off = fb_.ensureSpill(vid);
+                    endSpills.push_back(
+                        MInstr{MOpcode::StrFprFpImm,
+                               {MOperand::regOp(it->second.phys), MOperand::immOp(off)}});
+                    it->second.dirty = false;
+                }
+                pools_.releaseFPR(it->second.phys, ti_);
+                it->second.hasPhys = false;
+                it->second.spilled = true;
             }
         }
         if (!endSpills.empty())

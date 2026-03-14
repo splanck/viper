@@ -33,6 +33,7 @@
 #include "codegen/common/linker/MachOExeWriter.hpp"
 
 #include "codegen/common/linker/AlignUtil.hpp"
+#include "codegen/common/linker/ExeWriterUtil.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -46,6 +47,15 @@
 
 namespace viper::codegen::linker
 {
+
+using encoding::writeLE32;
+using encoding::writeLE64;
+using encoding::writeBE32;
+using encoding::writeBE64;
+using encoding::writePad;
+using encoding::writeStr;
+using encoding::writeULEB128;
+using encoding::padTo;
 
 namespace
 {
@@ -106,61 +116,6 @@ static constexpr uint8_t REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB = 0x20;
 static constexpr uint8_t REBASE_OPCODE_ADD_ADDR_ULEB = 0x30;
 static constexpr uint8_t REBASE_OPCODE_DO_REBASE_IMM_TIMES = 0x50;
 static constexpr uint8_t REBASE_TYPE_POINTER = 1;
-
-void writeLE32(std::vector<uint8_t> &buf, uint32_t v)
-{
-    buf.push_back(static_cast<uint8_t>(v));
-    buf.push_back(static_cast<uint8_t>(v >> 8));
-    buf.push_back(static_cast<uint8_t>(v >> 16));
-    buf.push_back(static_cast<uint8_t>(v >> 24));
-}
-
-void writeLE64(std::vector<uint8_t> &buf, uint64_t v)
-{
-    for (int i = 0; i < 8; ++i)
-        buf.push_back(static_cast<uint8_t>(v >> (i * 8)));
-}
-
-void writePad(std::vector<uint8_t> &buf, size_t count)
-{
-    buf.insert(buf.end(), count, 0);
-}
-
-void writeStr(std::vector<uint8_t> &buf, const char *s, size_t maxLen)
-{
-    size_t len = std::strlen(s);
-    size_t n = std::min(len, maxLen);
-    buf.insert(buf.end(), s, s + n);
-    if (n < maxLen)
-        writePad(buf, maxLen - n);
-}
-
-void writeULEB128(std::vector<uint8_t> &buf, uint64_t val)
-{
-    do
-    {
-        uint8_t byte = val & 0x7F;
-        val >>= 7;
-        if (val != 0)
-            byte |= 0x80;
-        buf.push_back(byte);
-    } while (val != 0);
-}
-
-// Big-endian helpers (code signature uses network byte order).
-void writeBE32(std::vector<uint8_t> &buf, uint32_t v)
-{
-    buf.push_back(static_cast<uint8_t>(v >> 24));
-    buf.push_back(static_cast<uint8_t>(v >> 16));
-    buf.push_back(static_cast<uint8_t>(v >> 8));
-    buf.push_back(static_cast<uint8_t>(v));
-}
-
-void writeBE64(std::vector<uint8_t> &buf, uint64_t v)
-{
-    writeBE32(buf, static_cast<uint32_t>(v >> 32));
-    writeBE32(buf, static_cast<uint32_t>(v));
-}
 
 /// Compute SHA-256 hash of data. Returns 32 bytes.
 void sha256(const uint8_t *data, size_t len, uint8_t out[32])

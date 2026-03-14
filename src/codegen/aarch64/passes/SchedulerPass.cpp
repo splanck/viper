@@ -34,9 +34,9 @@
 #include "codegen/aarch64/TargetAArch64.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <queue>
-#include <unordered_map>
 #include <vector>
 
 namespace viper::codegen::aarch64::passes
@@ -148,13 +148,22 @@ static bool isTerminator(MOpcode opc) noexcept
 // Flag (NZCV) classification helpers
 // ---------------------------------------------------------------------------
 
-/// Sentinel register ID used to model the implicit NZCV condition flags
-/// register in the dependency graph.  No physical register has this ID.
-static constexpr uint32_t kNZCV = UINT32_MAX - 1;
+/// Total number of AArch64 physical registers (X0..X30, SP, V0..V31 = 64).
+static constexpr std::size_t kNumPhysRegs = 64;
 
-/// Sentinel for the stack pointer, which is implicitly read/written by
-/// SubSpImm, AddSpImm, and SP-relative load/store instructions.
-static constexpr uint32_t kSP = UINT32_MAX - 2;
+/// Flat-array indices for implicit "virtual" registers beyond the physical file.
+static constexpr std::size_t kIdxNZCV = kNumPhysRegs;     // 64
+static constexpr std::size_t kIdxSP   = kNumPhysRegs + 1; // 65
+
+/// Total tracked register slots: 64 physical + NZCV + SP.
+static constexpr std::size_t kNumTracked = kNumPhysRegs + 2;
+
+/// Map a physical register ID (or sentinel) to a flat-array index.
+static std::size_t regIdx(uint32_t reg) noexcept
+{
+    // PhysReg enum values are 0..63, which map to themselves.
+    return static_cast<std::size_t>(reg);
+}
 
 /// @brief Returns true if the opcode sets the NZCV condition flags.
 static bool setsFlags(MOpcode opc) noexcept
@@ -317,15 +326,15 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
         }
     };
 
-    // last_def[physReg] = index of the last instruction that defined physReg.
-    // usesSinceDef[physReg] = indices of ALL instructions that read physReg since
-    //   its last definition.  When a new def occurs we add WAR deps to every entry,
-    //   ensuring the def cannot be reordered before ANY earlier reader — not just
-    //   the most recent one.
-    // kNZCV is used as a sentinel to model the implicit NZCV flags register.
+    // last_def[regSlot] = index of the last instruction that defined the register.
+    // usesSinceDef[regSlot] = indices of ALL instructions that read the register
+    //   since its last definition.  When a new def occurs we add WAR deps to every
+    //   entry, ensuring the def cannot be reordered before ANY earlier reader.
+    // Flat arrays indexed by regIdx() for O(1) cache-friendly access.
     constexpr auto kNone = static_cast<std::size_t>(~0ULL);
-    std::unordered_map<uint32_t, std::size_t> lastDef;
-    std::unordered_map<uint32_t, std::vector<std::size_t>> usesSinceDef;
+    std::array<std::size_t, kNumTracked> lastDef;
+    lastDef.fill(kNone);
+    std::array<std::vector<std::size_t>, kNumTracked> usesSinceDef;
 
     // Last instruction indices with memory side-effects.
     std::size_t lastStore = kNone;
@@ -368,55 +377,48 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
             const auto &op = mi.ops[opIdx];
             if (op.kind != MOperand::Kind::Reg || !op.reg.isPhys)
                 continue;
-            const uint32_t reg = op.reg.idOrPhys;
-            auto it = lastDef.find(reg);
-            if (it != lastDef.end())
-                addDep(i, it->second, instrLatency(body[it->second].opc));
-            usesSinceDef[reg].push_back(i);
+            const std::size_t ri = regIdx(op.reg.idOrPhys);
+            if (lastDef[ri] != kNone)
+                addDep(i, lastDef[ri], instrLatency(body[lastDef[ri]].opc));
+            usesSinceDef[ri].push_back(i);
         }
 
         // For Blr, ops[0] is a USE (the target register to call through).
         if (mi.opc == MOpcode::Blr && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Reg &&
             mi.ops[0].reg.isPhys)
         {
-            const uint32_t reg = mi.ops[0].reg.idOrPhys;
-            auto it = lastDef.find(reg);
-            if (it != lastDef.end())
-                addDep(i, it->second, instrLatency(body[it->second].opc));
-            usesSinceDef[reg].push_back(i);
+            const std::size_t ri = regIdx(mi.ops[0].reg.idOrPhys);
+            if (lastDef[ri] != kNone)
+                addDep(i, lastDef[ri], instrLatency(body[lastDef[ri]].opc));
+            usesSinceDef[ri].push_back(i);
         }
 
         // --- NZCV flag dependencies (RAW on flags) ---
         // If this instruction uses flags, depend on the last flag-setter.
         if (usesFlags(mi.opc))
         {
-            auto it = lastDef.find(kNZCV);
-            if (it != lastDef.end())
-                addDep(i, it->second, 1);
-            usesSinceDef[kNZCV].push_back(i);
+            if (lastDef[kIdxNZCV] != kNone)
+                addDep(i, lastDef[kIdxNZCV], 1);
+            usesSinceDef[kIdxNZCV].push_back(i);
         }
 
         // --- Stack pointer dependencies ---
         // SP-relative ops (StrRegSpImm, SubSpImm, AddSpImm) implicitly read SP.
         if (usesSP(mi.opc))
         {
-            auto it = lastDef.find(kSP);
-            if (it != lastDef.end())
-                addDep(i, it->second, 1);
-            usesSinceDef[kSP].push_back(i);
+            if (lastDef[kIdxSP] != kNone)
+                addDep(i, lastDef[kIdxSP], 1);
+            usesSinceDef[kIdxSP].push_back(i);
         }
         // SubSpImm/AddSpImm implicitly define SP (WAW + WAR).
         if (modifiesSP(mi.opc))
         {
-            auto dit = lastDef.find(kSP);
-            if (dit != lastDef.end())
-                addDep(i, dit->second, 1);
-            auto uit = usesSinceDef.find(kSP);
-            if (uit != usesSinceDef.end())
-                for (auto u : uit->second)
-                    addDep(i, u, 1);
-            usesSinceDef[kSP].clear();
-            lastDef[kSP] = i;
+            if (lastDef[kIdxSP] != kNone)
+                addDep(i, lastDef[kIdxSP], 1);
+            for (auto u : usesSinceDef[kIdxSP])
+                addDep(i, u, 1);
+            usesSinceDef[kIdxSP].clear();
+            lastDef[kIdxSP] = i;
         }
 
         // --- Conservative memory dependencies ---
@@ -448,13 +450,12 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
             // recent defs of caller-saved regs so they aren't reordered past call).
             for (uint32_t r : callerSaved)
             {
-                auto it = lastDef.find(r);
-                if (it != lastDef.end())
-                    addDep(i, it->second, 1);
+                const std::size_t ri = regIdx(r);
+                if (lastDef[ri] != kNone)
+                    addDep(i, lastDef[ri], 1);
             }
-            auto flagIt = lastDef.find(kNZCV);
-            if (flagIt != lastDef.end())
-                addDep(i, flagIt->second, 1);
+            if (lastDef[kIdxNZCV] != kNone)
+                addDep(i, lastDef[kIdxNZCV], 1);
         }
 
         // --- WAW + WAR dependencies, then update DEF map ---
@@ -466,31 +467,25 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
         {
             if (mi.ops[d].kind == MOperand::Kind::Reg && mi.ops[d].reg.isPhys)
             {
-                const uint32_t reg = mi.ops[d].reg.idOrPhys;
-                auto dit = lastDef.find(reg);
-                if (dit != lastDef.end())
-                    addDep(i, dit->second, 1); // WAW dependency
-                auto uit = usesSinceDef.find(reg);
-                if (uit != usesSinceDef.end())
-                    for (auto u : uit->second)
-                        addDep(i, u, 1); // WAR dependency
-                usesSinceDef[reg].clear();
-                lastDef[reg] = i;
+                const std::size_t ri = regIdx(mi.ops[d].reg.idOrPhys);
+                if (lastDef[ri] != kNone)
+                    addDep(i, lastDef[ri], 1); // WAW dependency
+                for (auto u : usesSinceDef[ri])
+                    addDep(i, u, 1); // WAR dependency
+                usesSinceDef[ri].clear();
+                lastDef[ri] = i;
             }
         }
 
         // Flag definitions — WAW + WAR on flags too.
         if (setsFlags(mi.opc))
         {
-            auto dit = lastDef.find(kNZCV);
-            if (dit != lastDef.end())
-                addDep(i, dit->second, 1);
-            auto uit = usesSinceDef.find(kNZCV);
-            if (uit != usesSinceDef.end())
-                for (auto u : uit->second)
-                    addDep(i, u, 1);
-            usesSinceDef[kNZCV].clear();
-            lastDef[kNZCV] = i;
+            if (lastDef[kIdxNZCV] != kNone)
+                addDep(i, lastDef[kIdxNZCV], 1);
+            for (auto u : usesSinceDef[kIdxNZCV])
+                addDep(i, u, 1);
+            usesSinceDef[kIdxNZCV].clear();
+            lastDef[kIdxNZCV] = i;
         }
 
         // Call clobbers: Bl/Blr implicitly define all caller-saved registers
@@ -499,25 +494,20 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
         {
             for (uint32_t r : callerSaved)
             {
-                auto dit = lastDef.find(r);
-                if (dit != lastDef.end())
-                    addDep(i, dit->second, 1); // WAW
-                auto uit = usesSinceDef.find(r);
-                if (uit != usesSinceDef.end())
-                    for (auto u : uit->second)
-                        addDep(i, u, 1); // WAR
-                usesSinceDef[r].clear();
-                lastDef[r] = i;
+                const std::size_t ri = regIdx(r);
+                if (lastDef[ri] != kNone)
+                    addDep(i, lastDef[ri], 1); // WAW
+                for (auto u : usesSinceDef[ri])
+                    addDep(i, u, 1); // WAR
+                usesSinceDef[ri].clear();
+                lastDef[ri] = i;
             }
-            auto fDit = lastDef.find(kNZCV);
-            if (fDit != lastDef.end())
-                addDep(i, fDit->second, 1);
-            auto fUit = usesSinceDef.find(kNZCV);
-            if (fUit != usesSinceDef.end())
-                for (auto u : fUit->second)
-                    addDep(i, u, 1);
-            usesSinceDef[kNZCV].clear();
-            lastDef[kNZCV] = i;
+            if (lastDef[kIdxNZCV] != kNone)
+                addDep(i, lastDef[kIdxNZCV], 1);
+            for (auto u : usesSinceDef[kIdxNZCV])
+                addDep(i, u, 1);
+            usesSinceDef[kIdxNZCV].clear();
+            lastDef[kIdxNZCV] = i;
             lastStore = i;
             lastLoad = i;
         }

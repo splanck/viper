@@ -107,6 +107,50 @@
 #include "codegen/common/LabelUtil.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 
+// ---------------------------------------------------------------------------
+// Emit primitives — reduce per-method boilerplate for common instruction forms.
+// These are file-local helpers; the public method signatures are unchanged.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+
+using viper::codegen::aarch64::PhysReg;
+using viper::codegen::aarch64::regName;
+
+/// Print a floating-point register as dN (64-bit scalar).
+inline void printDReg(std::ostream &os, PhysReg r)
+{
+    const char *name = regName(r);
+    os << (name[0] == 'v' ? 'd' : name[0]) << (name + 1);
+}
+
+/// Emit a 3-register GPR instruction: "  mnem xd, xn, xm\n"
+inline void emit3R(std::ostream &os, const char *mnem, PhysReg d, PhysReg a, PhysReg b)
+{
+    os << "  " << mnem << " " << regName(d) << ", " << regName(a) << ", " << regName(b) << "\n";
+}
+
+/// Emit a 2-register + immediate GPR instruction: "  mnem xd, xn, #imm\n"
+inline void emit2RI(std::ostream &os, const char *mnem, PhysReg d, PhysReg s, long long imm)
+{
+    os << "  " << mnem << " " << regName(d) << ", " << regName(s) << ", #" << imm << "\n";
+}
+
+/// Emit a 3-register FPR instruction: "  mnem dd, dn, dm\n"
+inline void emit3D(std::ostream &os, const char *mnem, PhysReg d, PhysReg a, PhysReg b)
+{
+    os << "  " << mnem << " ";
+    printDReg(os, d);
+    os << ", ";
+    printDReg(os, a);
+    os << ", ";
+    printDReg(os, b);
+    os << "\n";
+}
+
+} // namespace
+
 #include <cstring>
 #include <iomanip>
 
@@ -310,39 +354,12 @@ void AsmEmitter::emitMovRI(std::ostream &os, PhysReg dst, long long imm) const
     }
 }
 
-void AsmEmitter::emitAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    os << "  add " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
-}
-
-void AsmEmitter::emitSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    os << "  sub " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
-}
-
-void AsmEmitter::emitMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    // AArch64 mul: mul xd, xn, xm
-    os << "  mul " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
-}
-
-void AsmEmitter::emitSmulhRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    // AArch64 signed multiply high: smulh xd, xn, xm
-    os << "  smulh " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
-}
-
-void AsmEmitter::emitSDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    // AArch64 signed division: sdiv xd, xn, xm
-    os << "  sdiv " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
-}
-
-void AsmEmitter::emitUDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    // AArch64 unsigned division: udiv xd, xn, xm
-    os << "  udiv " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
-}
+void AsmEmitter::emitAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "add", dst, lhs, rhs); }
+void AsmEmitter::emitSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "sub", dst, lhs, rhs); }
+void AsmEmitter::emitMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "mul", dst, lhs, rhs); }
+void AsmEmitter::emitSmulhRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "smulh", dst, lhs, rhs); }
+void AsmEmitter::emitSDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "sdiv", dst, lhs, rhs); }
+void AsmEmitter::emitUDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "udiv", dst, lhs, rhs); }
 
 void AsmEmitter::emitMSubRRRR(
     std::ostream &os, PhysReg dst, PhysReg mul1, PhysReg mul2, PhysReg sub) const
@@ -358,75 +375,22 @@ void AsmEmitter::emitCbz(std::ostream &os, PhysReg reg, const std::string &label
     os << "  cbz " << rn(reg) << ", " << label << "\n";
 }
 
-void AsmEmitter::emitAddRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const
-{
-    os << "  add " << rn(dst) << ", " << rn(lhs) << ", #" << imm << "\n";
-}
+void AsmEmitter::emitAddRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const { emit2RI(os, "add", dst, lhs, imm); }
+void AsmEmitter::emitSubRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const { emit2RI(os, "sub", dst, lhs, imm); }
 
-void AsmEmitter::emitSubRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const
-{
-    os << "  sub " << rn(dst) << ", " << rn(lhs) << ", #" << imm << "\n";
-}
+void AsmEmitter::emitAndRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "and", dst, lhs, rhs); }
+void AsmEmitter::emitOrrRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "orr", dst, lhs, rhs); }
+void AsmEmitter::emitEorRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "eor", dst, lhs, rhs); }
 
-void AsmEmitter::emitAndRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    os << "  and " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
-}
-
-void AsmEmitter::emitOrrRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    os << "  orr " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
-}
-
-void AsmEmitter::emitEorRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    os << "  eor " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
-}
-
-void AsmEmitter::emitAndRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const
-{
-    os << "  and " << rn(dst) << ", " << rn(src) << ", #" << imm << "\n";
-}
-
-void AsmEmitter::emitOrrRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const
-{
-    os << "  orr " << rn(dst) << ", " << rn(src) << ", #" << imm << "\n";
-}
-
-void AsmEmitter::emitEorRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const
-{
-    os << "  eor " << rn(dst) << ", " << rn(src) << ", #" << imm << "\n";
-}
-
-void AsmEmitter::emitLslRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const
-{
-    os << "  lsl " << rn(dst) << ", " << rn(lhs) << ", #" << sh << "\n";
-}
-
-void AsmEmitter::emitLsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const
-{
-    os << "  lsr " << rn(dst) << ", " << rn(lhs) << ", #" << sh << "\n";
-}
-
-void AsmEmitter::emitAsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const
-{
-    os << "  asr " << rn(dst) << ", " << rn(lhs) << ", #" << sh << "\n";
-}
-
-void AsmEmitter::emitLslvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    os << "  lslv " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
-}
-
-void AsmEmitter::emitLsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    os << "  lsrv " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
-}
-
-void AsmEmitter::emitAsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    os << "  asrv " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
-}
+void AsmEmitter::emitAndRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const { emit2RI(os, "and", dst, src, imm); }
+void AsmEmitter::emitOrrRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const { emit2RI(os, "orr", dst, src, imm); }
+void AsmEmitter::emitEorRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const { emit2RI(os, "eor", dst, src, imm); }
+void AsmEmitter::emitLslRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const { emit2RI(os, "lsl", dst, lhs, sh); }
+void AsmEmitter::emitLsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const { emit2RI(os, "lsr", dst, lhs, sh); }
+void AsmEmitter::emitAsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const { emit2RI(os, "asr", dst, lhs, sh); }
+void AsmEmitter::emitLslvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "lslv", dst, lhs, rhs); }
+void AsmEmitter::emitLsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "lsrv", dst, lhs, rhs); }
+void AsmEmitter::emitAsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "asrv", dst, lhs, rhs); }
 
 void AsmEmitter::emitCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const
 {
@@ -767,49 +731,10 @@ void AsmEmitter::emitFMovGR(std::ostream &os, PhysReg dst, PhysReg src) const
     os << ", " << rn(src) << "\n";
 }
 
-void AsmEmitter::emitFAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    os << "  fadd ";
-    printD(os, dst);
-    os << ", ";
-    printD(os, lhs);
-    os << ", ";
-    printD(os, rhs);
-    os << "\n";
-}
-
-void AsmEmitter::emitFSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    os << "  fsub ";
-    printD(os, dst);
-    os << ", ";
-    printD(os, lhs);
-    os << ", ";
-    printD(os, rhs);
-    os << "\n";
-}
-
-void AsmEmitter::emitFMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    os << "  fmul ";
-    printD(os, dst);
-    os << ", ";
-    printD(os, lhs);
-    os << ", ";
-    printD(os, rhs);
-    os << "\n";
-}
-
-void AsmEmitter::emitFDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
-    os << "  fdiv ";
-    printD(os, dst);
-    os << ", ";
-    printD(os, lhs);
-    os << ", ";
-    printD(os, rhs);
-    os << "\n";
-}
+void AsmEmitter::emitFAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3D(os, "fadd", dst, lhs, rhs); }
+void AsmEmitter::emitFSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3D(os, "fsub", dst, lhs, rhs); }
+void AsmEmitter::emitFMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3D(os, "fmul", dst, lhs, rhs); }
+void AsmEmitter::emitFDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3D(os, "fdiv", dst, lhs, rhs); }
 
 void AsmEmitter::emitFCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const
 {

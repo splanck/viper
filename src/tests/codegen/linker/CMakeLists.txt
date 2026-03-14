@@ -7,7 +7,9 @@ set(_linker_tests
         reloc_applier
         section_merger
         dead_strip
-        string_dedup)
+        string_dedup
+        symbol_resolver
+        reloc_edge_cases)
 
 foreach (_case IN LISTS _linker_tests)
     set(_target test_linker_${_case})

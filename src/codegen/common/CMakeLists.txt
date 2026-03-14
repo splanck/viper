@@ -20,6 +20,7 @@ add_library(viper_codegen_common STATIC
         linker/ElfExeWriter.cpp
         linker/MachOExeWriter.cpp
         linker/PeExeWriter.cpp
+        linker/DynStubGen.cpp
         linker/NativeLinker.cpp)
 target_include_directories(viper_codegen_common PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>

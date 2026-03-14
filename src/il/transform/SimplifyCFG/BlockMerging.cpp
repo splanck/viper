@@ -38,20 +38,64 @@ namespace il::transform::simplify_cfg
 namespace
 {
 
+/// @brief Predecessor edge information precomputed for O(1) lookup.
+struct PredInfo
+{
+    size_t edgeCount = 0;          ///< Total predecessor edge count (including self-loops).
+    il::core::BasicBlock *pred = nullptr; ///< First non-self predecessor block (if any).
+    il::core::Instr *predTerm = nullptr;  ///< Terminator of that predecessor.
+};
+
+/// @brief Build predecessor edge map for all blocks in O(B * T).
+/// @details Scans every terminator once and records, for each target label,
+///          the total edge count and first non-self predecessor.  Self-loop
+///          edges are counted so that loop headers (which have a self-loop)
+///          correctly show edgeCount > 1 and are never merged.
+std::unordered_map<std::string, PredInfo> buildPredMap(il::core::Function &F)
+{
+    std::unordered_map<std::string, PredInfo> predMap;
+    predMap.reserve(F.blocks.size());
+
+    for (auto &candidate : F.blocks)
+    {
+        il::core::Instr *term = findTerminator(candidate);
+        if (!term)
+            continue;
+
+        for (const auto &label : term->labels)
+        {
+            auto &info = predMap[label];
+            ++info.edgeCount;
+            // Record first non-self predecessor as the merge candidate.
+            if (info.edgeCount == 1 && label != candidate.label)
+            {
+                info.pred = &candidate;
+                info.predTerm = term;
+            }
+        }
+    }
+
+    return predMap;
+}
+
 /// @brief Merge a block into its sole predecessor when safe.
 ///
-/// @details Searches for a single predecessor edge targeting @p block, verifies
-///          that the predecessor terminator is a simple branch, and rewrites all
-///          SSA uses in @p block to reference the incoming arguments.  The
-///          routine then splices @p block's non-terminator instructions into the
-///          predecessor, rewrites the successor labels in the merged terminator,
-///          and finally erases the now-redundant block from the function.
+/// @details Uses a precomputed predecessor map for O(1) edge-count lookup,
+///          verifies that the predecessor terminator is a simple branch, and
+///          rewrites all SSA uses in @p block to reference the incoming
+///          arguments.  The routine then splices @p block's non-terminator
+///          instructions into the predecessor, rewrites the successor labels
+///          in the merged terminator, and finally erases the now-redundant
+///          block from the function.
 ///
-/// @param ctx   SimplifyCFG context providing EH-sensitivity checks and
-///              diagnostic hooks.
-/// @param block Candidate block to merge.
+/// @param ctx     SimplifyCFG context providing EH-sensitivity checks and
+///                diagnostic hooks.
+/// @param block   Candidate block to merge.
+/// @param predMap Precomputed predecessor edge map for the function.
 /// @returns True when the block was merged into its predecessor.
-bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBlock &block)
+bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx,
+                     il::core::BasicBlock &block,
+                     const std::unordered_map<std::string, PredInfo> &predMap)
 {
     il::core::Function &F = ctx.function;
 
@@ -65,40 +109,17 @@ bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBl
     if (ctx.isEHSensitive(block))
         return false;
 
-    il::core::BasicBlock *predBlock = nullptr;
-    il::core::Instr *predTerm = nullptr;
-    size_t predecessorEdges = 0;
-
-    for (auto &candidate : F.blocks)
-    {
-        // Intentionally visit the block itself so that self-loop edges (e.g. a
-        // CBr whose false branch targets its own block after ForwardingElimination
-        // collapsed the loop back-edge) are counted as predecessor edges.  A
-        // block with a self-loop is a loop header and must not be merged into its
-        // entry-side predecessor — doing so would fold initialisation code inside
-        // the loop body and rewrite the self-loop into a back-edge to the merged
-        // predecessor.
-        il::core::Instr *term = findTerminator(candidate);
-        if (!term)
-            continue;
-
-        for (size_t idx = 0; idx < term->labels.size(); ++idx)
-        {
-            if (term->labels[idx] != block.label)
-                continue;
-
-            ++predecessorEdges;
-            // Only use non-self blocks as the merge target candidate.
-            if (&candidate != &block && predecessorEdges == 1)
-            {
-                predBlock = &candidate;
-                predTerm = term;
-            }
-        }
-    }
-
-    if (predecessorEdges != 1)
+    // O(1) predecessor lookup from precomputed map.
+    auto predIt = predMap.find(block.label);
+    if (predIt == predMap.end())
         return false;
+
+    const auto &info = predIt->second;
+    if (info.edgeCount != 1)
+        return false;
+
+    il::core::BasicBlock *predBlock = info.pred;
+    il::core::Instr *predTerm = info.predTerm;
 
     if (!predBlock || !predTerm)
         return false;
@@ -213,6 +234,12 @@ bool mergeSinglePredBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx)
     il::core::Function &F = ctx.function;
     bool changed = false;
 
+    // Build the predecessor map once — O(B * T) where B = blocks, T = avg
+    // terminators.  Each mergeSinglePred call then does O(1) edge-count lookup
+    // instead of the previous O(B) full scan.  We rebuild after each successful
+    // merge since block erasure invalidates the map.
+    auto predMap = buildPredMap(F);
+
     size_t blockIndex = 0;
     while (blockIndex < F.blocks.size())
     {
@@ -221,7 +248,7 @@ bool mergeSinglePredBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx)
         if (debugEnabled)
             mergedLabel = F.blocks[blockIndex].label;
 
-        if (mergeSinglePred(ctx, F.blocks[blockIndex]))
+        if (mergeSinglePred(ctx, F.blocks[blockIndex], predMap))
         {
             changed = true;
             ++ctx.stats.blocksMerged;
@@ -230,6 +257,8 @@ bool mergeSinglePredBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx)
                 std::string message = "merged block '" + mergedLabel + "' into its predecessor";
                 ctx.logDebug(message);
             }
+            // Rebuild pred map after structural change.
+            predMap = buildPredMap(F);
             continue;
         }
         ++blockIndex;
