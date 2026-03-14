@@ -45,9 +45,16 @@ namespace viper::codegen::x64
 // Import sub-pass functions into local scope for concise call sites.
 namespace ph = peephole;
 
-std::size_t runPeepholes(MFunction &fn)
+/// Maximum number of rewrite iterations before giving up on convergence.
+/// Typical functions converge in 1-2 iterations; the bound guards against
+/// pathological cases where rewrites keep enabling each other.
+static constexpr std::size_t kMaxIterations = 100;
+
+/// Run per-block rewrite passes (strength reduction, identity elimination,
+/// move folding, DCE). Returns the number of transformations applied.
+static std::size_t runBlockRewrites(MFunction &fn, ph::PeepholeStats &stats)
 {
-    ph::PeepholeStats stats;
+    std::size_t before = stats.total();
 
     for (auto &block : fn.blocks)
     {
@@ -142,6 +149,25 @@ std::size_t runPeepholes(MFunction &fn)
         // Pass 5: Dead code elimination
         ph::runBlockDCE(instrs, stats);
     }
+
+    return stats.total() - before;
+}
+
+std::size_t runPeepholes(MFunction &fn)
+{
+    ph::PeepholeStats stats;
+
+    // Iterate block rewrites to a fixed point. One rewrite can expose
+    // further opportunities (e.g., strength reduction → identity move →
+    // DCE), so iterate until no new transformations are found.
+    for (std::size_t iter = 0; iter < kMaxIterations; ++iter)
+    {
+        if (runBlockRewrites(fn, stats) == 0)
+            break;
+    }
+
+    // Layout and branch passes run once — they are idempotent and don't
+    // benefit from iteration.
 
     // Pass 6: Greedy trace block layout
     ph::traceBlockLayout(fn, stats);

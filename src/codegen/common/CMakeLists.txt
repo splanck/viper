@@ -18,6 +18,8 @@ add_library(viper_codegen_common STATIC
         linker/SectionMerger.cpp
         linker/RelocApplier.cpp
         linker/ElfExeWriter.cpp
+        linker/MachOCodeSign.cpp
+        linker/MachOBindRebase.cpp
         linker/MachOExeWriter.cpp
         linker/PeExeWriter.cpp
         linker/DynStubGen.cpp

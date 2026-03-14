@@ -23,6 +23,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/objfile/CoffWriter.hpp"
+#include "codegen/common/objfile/ObjFileWriterUtil.hpp"
 #include "codegen/common/objfile/StringTable.hpp"
 
 #include <algorithm>
@@ -81,73 +82,46 @@ static constexpr uint16_t kImageRelARM64_Pageoffset12A = 6;
 static constexpr uint16_t kImageRelARM64_Pageoffset12L = 7;
 static constexpr uint16_t kImageRelARM64_Branch19 = 8;
 
-// =============================================================================
-// Helpers
-// =============================================================================
-
-static void appendLE16(std::vector<uint8_t> &out, uint16_t val)
-{
-    out.push_back(static_cast<uint8_t>(val));
-    out.push_back(static_cast<uint8_t>(val >> 8));
-}
-
-static void appendLE32(std::vector<uint8_t> &out, uint32_t val)
-{
-    out.push_back(static_cast<uint8_t>(val));
-    out.push_back(static_cast<uint8_t>(val >> 8));
-    out.push_back(static_cast<uint8_t>(val >> 16));
-    out.push_back(static_cast<uint8_t>(val >> 24));
-}
-
-static size_t alignUp(size_t val, size_t align)
-{
-    return (val + align - 1) & ~(align - 1);
-}
-
-static void padTo(std::vector<uint8_t> &out, size_t target)
-{
-    if (out.size() < target)
-        out.resize(target, 0);
-}
+// Helpers: appendLE16/32, alignUp, padTo are provided by ObjFileWriterUtil.hpp.
 
 /// Map RelocKind to COFF relocation type.
 static uint16_t coffRelocType(RelocKind kind)
 {
     switch (kind)
     {
-    // x86_64
-    case RelocKind::PCRel32:
-        return kImageRelAMD64_Rel32;
-    case RelocKind::Branch32:
-        return kImageRelAMD64_Rel32; // COFF uses same type for both
-    case RelocKind::Abs64:
-        return kImageRelAMD64_Addr64;
-    // AArch64
-    case RelocKind::A64Call26:
-    case RelocKind::A64Jump26:
-        return kImageRelARM64_Branch26;
-    case RelocKind::A64AdrpPage21:
-        return kImageRelARM64_PagebaseRel21;
-    case RelocKind::A64AddPageOff12:
-        return kImageRelARM64_Pageoffset12A;
-    case RelocKind::A64LdSt64Off12:
-        return kImageRelARM64_Pageoffset12L;
-    case RelocKind::A64CondBr19:
-        return kImageRelARM64_Branch19;
+        // x86_64
+        case RelocKind::PCRel32:
+            return kImageRelAMD64_Rel32;
+        case RelocKind::Branch32:
+            return kImageRelAMD64_Rel32; // COFF uses same type for both
+        case RelocKind::Abs64:
+            return kImageRelAMD64_Addr64;
+        // AArch64
+        case RelocKind::A64Call26:
+        case RelocKind::A64Jump26:
+            return kImageRelARM64_Branch26;
+        case RelocKind::A64AdrpPage21:
+            return kImageRelARM64_PagebaseRel21;
+        case RelocKind::A64AddPageOff12:
+            return kImageRelARM64_Pageoffset12A;
+        case RelocKind::A64LdSt64Off12:
+            return kImageRelARM64_Pageoffset12L;
+        case RelocKind::A64CondBr19:
+            return kImageRelARM64_Branch19;
     }
     return 0;
 }
 
 /// Write a COFF section header (40 bytes).
 static void writeSectionHeader(std::vector<uint8_t> &out,
-                                const char *name,
-                                uint32_t virtualSize,
-                                uint32_t virtualAddr,
-                                uint32_t rawDataSize,
-                                uint32_t rawDataPtr,
-                                uint32_t relocPtr,
-                                uint32_t numRelocs,
-                                uint32_t characteristics)
+                               const char *name,
+                               uint32_t virtualSize,
+                               uint32_t virtualAddr,
+                               uint32_t rawDataSize,
+                               uint32_t rawDataPtr,
+                               uint32_t relocPtr,
+                               uint32_t numRelocs,
+                               uint32_t characteristics)
 {
     // Name: 8 bytes, padded with zeros.
     for (int i = 0; i < 8; ++i)
@@ -163,14 +137,14 @@ static void writeSectionHeader(std::vector<uint8_t> &out,
         }
     }
 
-    appendLE32(out, virtualSize);  // VirtualSize (0 for .obj)
-    appendLE32(out, virtualAddr);  // VirtualAddress (0 for .obj)
-    appendLE32(out, rawDataSize);  // SizeOfRawData
-    appendLE32(out, rawDataPtr);   // PointerToRawData
-    appendLE32(out, relocPtr);     // PointerToRelocations
-    appendLE32(out, 0);            // PointerToLineNumbers
+    appendLE32(out, virtualSize);                      // VirtualSize (0 for .obj)
+    appendLE32(out, virtualAddr);                      // VirtualAddress (0 for .obj)
+    appendLE32(out, rawDataSize);                      // SizeOfRawData
+    appendLE32(out, rawDataPtr);                       // PointerToRawData
+    appendLE32(out, relocPtr);                         // PointerToRelocations
+    appendLE32(out, 0);                                // PointerToLineNumbers
     appendLE16(out, static_cast<uint16_t>(numRelocs)); // NumberOfRelocations
-    appendLE16(out, 0);            // NumberOfLinenumbers
+    appendLE16(out, 0);                                // NumberOfLinenumbers
     appendLE32(out, characteristics);
 }
 
@@ -179,12 +153,12 @@ static void writeSectionHeader(std::vector<uint8_t> &out,
 /// Otherwise, the first 4 bytes are zero and the next 4 bytes are the
 /// string table offset.
 static void writeSymbol(std::vector<uint8_t> &out,
-                         const std::string &name,
-                         uint32_t strTabOffset,
-                         uint32_t value,
-                         int16_t sectionNumber,
-                         uint16_t type,
-                         uint8_t storageClass)
+                        const std::string &name,
+                        uint32_t strTabOffset,
+                        uint32_t value,
+                        int16_t sectionNumber,
+                        uint16_t type,
+                        uint8_t storageClass)
 {
     if (name.size() <= 8)
     {
@@ -213,9 +187,9 @@ static void writeSymbol(std::vector<uint8_t> &out,
 
 /// Write a COFF relocation entry (10 bytes).
 static void writeReloc(std::vector<uint8_t> &out,
-                        uint32_t virtualAddr,
-                        uint32_t symbolTableIndex,
-                        uint16_t type)
+                       uint32_t virtualAddr,
+                       uint32_t symbolTableIndex,
+                       uint16_t type)
 {
     appendLE32(out, virtualAddr);
     appendLE32(out, symbolTableIndex);
@@ -227,14 +201,14 @@ static void writeReloc(std::vector<uint8_t> &out,
 // =============================================================================
 
 bool CoffWriter::write(const std::string &path,
-                        const CodeSection &text,
-                        const CodeSection &rodata,
-                        std::ostream &err)
+                       const CodeSection &text,
+                       const CodeSection &rodata,
+                       std::ostream &err)
 {
     // Determine section count: always .text; .rdata only if rodata has content.
     const bool hasRodata = !rodata.empty();
     const uint16_t numSections = hasRodata ? 2 : 1;
-    const uint16_t secIdxText = 1;  // COFF sections are 1-based
+    const uint16_t secIdxText = 1; // COFF sections are 1-based
     const uint16_t secIdxRdata = hasRodata ? 2 : 0;
 
     // --- 1. Build symbol table and string table ---
@@ -292,7 +266,11 @@ bool CoffWriter::write(const std::string &path,
         if (s.name.size() > 8)
             strOff = addToStrTab(s.name);
 
-        writeSymbol(symtabBytes, s.name, strOff, value, secNum,
+        writeSymbol(symtabBytes,
+                    s.name,
+                    strOff,
+                    value,
+                    secNum,
                     0x20, // type: 0x20 = function for code symbols
                     storageClass);
         textSymMap[i] = coffSymCount++;
@@ -328,7 +306,11 @@ bool CoffWriter::write(const std::string &path,
             if (s.name.size() > 8)
                 strOff = addToStrTab(s.name);
 
-            writeSymbol(symtabBytes, s.name, strOff, value, secNum,
+            writeSymbol(symtabBytes,
+                        s.name,
+                        strOff,
+                        value,
+                        secNum,
                         0, // type: 0 = not a function (data)
                         storageClass);
             rodataSymMap[i] = coffSymCount++;
@@ -362,8 +344,7 @@ bool CoffWriter::write(const std::string &path,
         }
 
         uint16_t relocType = coffRelocType(rel.kind);
-        writeReloc(textRelocBytes, static_cast<uint32_t>(rel.offset),
-                   coffSymIdx, relocType);
+        writeReloc(textRelocBytes, static_cast<uint32_t>(rel.offset), coffSymIdx, relocType);
     }
 
     uint32_t numTextRelocs = static_cast<uint32_t>(text.relocations().size());
@@ -387,8 +368,7 @@ bool CoffWriter::write(const std::string &path,
     uint32_t rdataDataOff = 0;
     if (hasRodata)
     {
-        rdataDataOff = static_cast<uint32_t>(
-            alignUp(textRelocOff + textRelocTotalSize, 4));
+        rdataDataOff = static_cast<uint32_t>(alignUp(textRelocOff + textRelocTotalSize, 4));
     }
 
     // Symbol table follows all section data + relocs
@@ -404,28 +384,33 @@ bool CoffWriter::write(const std::string &path,
 
     // COFF header (20 bytes)
     uint16_t machine = (arch_ == ObjArch::X86_64) ? kMachineAMD64 : kMachineARM64;
-    appendLE16(file, machine);             // Machine
-    appendLE16(file, numSections);         // NumberOfSections
-    appendLE32(file, 0);                   // TimeDateStamp (0 for reproducibility)
-    appendLE32(file, symtabOff);           // PointerToSymbolTable
-    appendLE32(file, coffSymCount);        // NumberOfSymbols
-    appendLE16(file, 0);                   // SizeOfOptionalHeader (0 for .obj)
-    appendLE16(file, 0);                   // Characteristics
+    appendLE16(file, machine);      // Machine
+    appendLE16(file, numSections);  // NumberOfSections
+    appendLE32(file, 0);            // TimeDateStamp (0 for reproducibility)
+    appendLE32(file, symtabOff);    // PointerToSymbolTable
+    appendLE32(file, coffSymCount); // NumberOfSymbols
+    appendLE16(file, 0);            // SizeOfOptionalHeader (0 for .obj)
+    appendLE16(file, 0);            // Characteristics
 
     // Section headers
     // .text
     uint32_t textChars = kImageScnCntCode | kImageScnMemExecute | kImageScnMemRead;
     textChars |= (arch_ == ObjArch::X86_64) ? kImageScnAlignText : kImageScnAlign4;
-    writeSectionHeader(file, ".text", 0, 0, textSize, textDataOff,
+    writeSectionHeader(file,
+                       ".text",
+                       0,
+                       0,
+                       textSize,
+                       textDataOff,
                        (numTextRelocs > 0) ? textRelocOff : 0,
-                       numTextRelocs, textChars);
+                       numTextRelocs,
+                       textChars);
 
     // .rdata
     if (hasRodata)
     {
         uint32_t rdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign8;
-        writeSectionHeader(file, ".rdata", 0, 0, rdataSize, rdataDataOff,
-                           0, 0, rdataChars);
+        writeSectionHeader(file, ".rdata", 0, 0, rdataSize, rdataDataOff, 0, 0, rdataChars);
     }
 
     // .text section data

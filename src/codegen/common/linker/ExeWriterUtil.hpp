@@ -129,4 +129,41 @@ inline uint64_t resolveMainAddress(const LinkLayout &layout)
     return 0;
 }
 
+/// Partition layout section indices into non-writable (text/rodata) and writable (data) groups.
+/// Only includes sections with non-empty data.
+inline void classifySections(const LinkLayout &layout,
+                             std::vector<size_t> &textIndices,
+                             std::vector<size_t> &dataIndices)
+{
+    for (size_t i = 0; i < layout.sections.size(); ++i)
+    {
+        if (layout.sections[i].data.empty())
+            continue;
+        if (layout.sections[i].writable)
+            dataIndices.push_back(i);
+        else
+            textIndices.push_back(i);
+    }
+}
+
+/// Compute the VA span of a set of sections within a single segment.
+/// Returns the byte distance from the first section's VA to the end of the last section.
+/// Handles VA gaps between sections (e.g., page-aligned subsections).
+/// Returns 0 if the index list is empty.
+inline size_t computeSegmentSpan(const LinkLayout &layout, const std::vector<size_t> &indices)
+{
+    if (indices.empty())
+        return 0;
+    uint64_t firstVA = layout.sections[indices.front()].virtualAddr;
+    size_t span = 0;
+    for (size_t idx : indices)
+    {
+        const auto &sec = layout.sections[idx];
+        size_t endOff = static_cast<size_t>(sec.virtualAddr + sec.data.size() - firstVA);
+        if (endOff > span)
+            span = endOff;
+    }
+    return span;
+}
+
 } // namespace viper::codegen::linker

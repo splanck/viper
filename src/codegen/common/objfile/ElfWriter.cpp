@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/objfile/ElfWriter.hpp"
+#include "codegen/common/objfile/ObjFileWriterUtil.hpp"
 #include "codegen/common/objfile/StringTable.hpp"
 
 #include <algorithm>
@@ -96,45 +97,7 @@ static constexpr uint16_t kSecShstrtab = 6;
 static constexpr uint16_t kSecNoteGnuStack = 7;
 static constexpr uint16_t kNumSections = 8;
 
-// =============================================================================
-// Helpers
-// =============================================================================
-
-/// Append a little-endian uint16_t to a byte vector.
-static void appendLE16(std::vector<uint8_t> &out, uint16_t val)
-{
-    out.push_back(static_cast<uint8_t>(val));
-    out.push_back(static_cast<uint8_t>(val >> 8));
-}
-
-/// Append a little-endian uint32_t to a byte vector.
-static void appendLE32(std::vector<uint8_t> &out, uint32_t val)
-{
-    out.push_back(static_cast<uint8_t>(val));
-    out.push_back(static_cast<uint8_t>(val >> 8));
-    out.push_back(static_cast<uint8_t>(val >> 16));
-    out.push_back(static_cast<uint8_t>(val >> 24));
-}
-
-/// Append a little-endian uint64_t to a byte vector.
-static void appendLE64(std::vector<uint8_t> &out, uint64_t val)
-{
-    for (int i = 0; i < 8; ++i)
-        out.push_back(static_cast<uint8_t>(val >> (i * 8)));
-}
-
-/// Align a value up to the given alignment.
-static size_t alignUp(size_t val, size_t align)
-{
-    return (val + align - 1) & ~(align - 1);
-}
-
-/// Pad a byte vector to reach the given total size.
-static void padTo(std::vector<uint8_t> &out, size_t target)
-{
-    if (out.size() < target)
-        out.resize(target, 0);
-}
+// Helpers: appendLE16/32/64, alignUp, padTo are provided by ObjFileWriterUtil.hpp.
 
 /// Map RelocKind to ELF relocation type.
 static uint32_t elfRelocType(RelocKind kind, ObjArch arch)

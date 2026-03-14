@@ -31,31 +31,25 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/linker/MachOExeWriter.hpp"
+#include "codegen/common/linker/MachOBindRebase.hpp"
+#include "codegen/common/linker/MachOCodeSign.hpp"
+#include "codegen/common/linker/NameMangling.hpp"
 
 #include "codegen/common/linker/AlignUtil.hpp"
 #include "codegen/common/linker/ExeWriterUtil.hpp"
 
-#include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <vector>
-
-#if defined(__APPLE__)
-#include <CommonCrypto/CommonDigest.h>
-#endif
 
 namespace viper::codegen::linker
 {
 
 using encoding::writeLE32;
 using encoding::writeLE64;
-using encoding::writeBE32;
-using encoding::writeBE64;
 using encoding::writePad;
 using encoding::writeStr;
-using encoding::writeULEB128;
-using encoding::padTo;
 
 namespace
 {
@@ -65,13 +59,11 @@ static constexpr uint32_t MH_MAGIC_64 = 0xFEEDFACF;
 static constexpr uint32_t MH_EXECUTE = 2;
 static constexpr uint32_t MH_NOUNDEFS = 0x1;
 static constexpr uint32_t MH_DYLDLINK = 0x4;
-static constexpr uint32_t MH_TWOLEVEL = 0x80;
 static constexpr uint32_t MH_PIE = 0x200000;
 static constexpr uint32_t MH_HAS_TLV_DESCRIPTORS = 0x800000;
 
 // Mach-O section type constants (low 8 bits of flags).
 static constexpr uint32_t S_THREAD_LOCAL_REGULAR = 0x11;
-static constexpr uint32_t S_THREAD_LOCAL_ZEROFILL = 0x12;
 static constexpr uint32_t S_THREAD_LOCAL_VARIABLES = 0x13;
 
 static constexpr uint32_t CPU_TYPE_X86_64 = 0x01000007;
@@ -95,331 +87,6 @@ static constexpr uint32_t VM_PROT_EXECUTE = 4;
 
 static constexpr uint32_t PLATFORM_MACOS = 1;
 
-// Symbol table constants.
-static constexpr uint8_t N_EXT = 0x01;
-static constexpr uint8_t N_UNDF = 0x00;
-static constexpr uint8_t N_SECT = 0x0E;
-
-// Bind opcode constants (high 4 bits = opcode, low 4 bits = immediate).
-static constexpr uint8_t BIND_OPCODE_DONE = 0x00;
-static constexpr uint8_t BIND_OPCODE_SET_DYLIB_ORDINAL_IMM = 0x10;
-static constexpr uint8_t BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM = 0x40;
-static constexpr uint8_t BIND_OPCODE_SET_TYPE_IMM = 0x50;
-static constexpr uint8_t BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB = 0x70;
-static constexpr uint8_t BIND_OPCODE_DO_BIND = 0x90;
-static constexpr uint8_t BIND_TYPE_POINTER = 1;
-
-// Rebase opcode constants (high 4 bits = opcode, low 4 bits = immediate).
-static constexpr uint8_t REBASE_OPCODE_DONE = 0x00;
-static constexpr uint8_t REBASE_OPCODE_SET_TYPE_IMM = 0x10;
-static constexpr uint8_t REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB = 0x20;
-static constexpr uint8_t REBASE_OPCODE_ADD_ADDR_ULEB = 0x30;
-static constexpr uint8_t REBASE_OPCODE_DO_REBASE_IMM_TIMES = 0x50;
-static constexpr uint8_t REBASE_TYPE_POINTER = 1;
-
-/// Compute SHA-256 hash of data. Returns 32 bytes.
-void sha256(const uint8_t *data, size_t len, uint8_t out[32])
-{
-#if defined(__APPLE__)
-    CC_SHA256(data, static_cast<CC_LONG>(len), out);
-#else
-    // Code signing only needed on macOS; zero-fill on other platforms.
-    std::memset(out, 0, 32);
-    (void)data;
-    (void)len;
-#endif
-}
-
-/// Build a linker-signed ad-hoc code signature (SuperBlob) for a Mach-O executable.
-/// Returns the complete code signature blob to append to __LINKEDIT.
-///
-/// The signature includes:
-///   - SuperBlob (CSMAGIC_EMBEDDED_SIGNATURE) containing:
-///     - CodeDirectory (CSMAGIC_CODEDIRECTORY v0x20400) with CS_LINKER_SIGNED flag
-///     - Empty Requirements blob (CSMAGIC_REQUIREMENTS)
-///   - SHA-256 hash of each 4KB page up to codeLimit
-///
-/// The CS_LINKER_SIGNED flag is critical: macOS AMFI rejects ad-hoc binaries
-/// without it. Only linkers are supposed to set this flag (codesign doesn't).
-std::vector<uint8_t> buildCodeSignature(const std::vector<uint8_t> &file,
-                                        size_t codeLimit,
-                                        const std::string &identifier,
-                                        uint64_t textSegFileOff,
-                                        uint64_t textSegFileSize)
-{
-    // CodeDirectory constants (all big-endian in output).
-    static constexpr uint32_t CSMAGIC_EMBEDDED_SIGNATURE = 0xFADE0CC0;
-    static constexpr uint32_t CSMAGIC_CODEDIRECTORY = 0xFADE0C02;
-    static constexpr uint32_t CSMAGIC_REQUIREMENTS = 0xFADE0C01;
-    static constexpr uint32_t CS_ADHOC = 0x2;
-    static constexpr uint32_t CS_LINKER_SIGNED = 0x20000;
-    static constexpr uint32_t CS_EXECSEG_MAIN_BINARY = 0x1;
-    static constexpr uint32_t CD_VERSION = 0x20400;
-
-    const uint32_t nCodeSlots = static_cast<uint32_t>((codeLimit + 4095) / 4096);
-    const size_t identLen = identifier.size() + 1; // including NUL
-    const uint32_t cdHeaderSize = 88;              // version 0x20400 struct size
-    const uint32_t hashOffset = static_cast<uint32_t>(cdHeaderSize + identLen);
-    const uint32_t cdSize = hashOffset + nCodeSlots * 32;
-
-    // --- Build CodeDirectory ---
-    std::vector<uint8_t> cd;
-    cd.reserve(cdSize);
-    writeBE32(cd, CSMAGIC_CODEDIRECTORY);
-    writeBE32(cd, cdSize);
-    writeBE32(cd, CD_VERSION);
-    writeBE32(cd, CS_ADHOC | CS_LINKER_SIGNED);
-    writeBE32(cd, hashOffset);   // hashOffset
-    writeBE32(cd, cdHeaderSize); // identOffset
-    writeBE32(cd, 0);            // nSpecialSlots
-    writeBE32(cd, nCodeSlots);
-    writeBE32(cd, static_cast<uint32_t>(codeLimit));
-    cd.push_back(32);                      // hashSize (SHA-256)
-    cd.push_back(2);                       // hashType (SHA-256)
-    cd.push_back(0);                       // platform
-    cd.push_back(12);                      // pageSize (log2 4096)
-    writeBE32(cd, 0);                      // spare2
-    writeBE32(cd, 0);                      // scatterOffset (v >= 0x20100)
-    writeBE32(cd, 0);                      // teamOffset (v >= 0x20200)
-    writeBE32(cd, 0);                      // spare3 (v >= 0x20300)
-    writeBE64(cd, codeLimit);              // codeLimit64
-    writeBE64(cd, textSegFileOff);         // execSegBase (v >= 0x20400)
-    writeBE64(cd, textSegFileSize);        // execSegLimit
-    writeBE64(cd, CS_EXECSEG_MAIN_BINARY); // execSegFlags
-
-    // Identifier string.
-    cd.insert(cd.end(), identifier.begin(), identifier.end());
-    cd.push_back(0);
-
-    // Code slot hashes: SHA-256 of each 4KB page.
-    for (uint32_t i = 0; i < nCodeSlots; ++i)
-    {
-        size_t pageStart = static_cast<size_t>(i) * 4096;
-        size_t pageEnd = std::min(pageStart + 4096, codeLimit);
-        uint8_t hash[32];
-        sha256(file.data() + pageStart, pageEnd - pageStart, hash);
-        cd.insert(cd.end(), hash, hash + 32);
-    }
-
-    // --- Build empty Requirements blob ---
-    std::vector<uint8_t> req;
-    writeBE32(req, CSMAGIC_REQUIREMENTS);
-    writeBE32(req, 12);
-    writeBE32(req, 0); // count = 0
-
-    // --- Build SuperBlob ---
-    const uint32_t sbHeaderSize = 12 + 2 * 8; // header(12) + 2 index entries(8 each)
-    const uint32_t sbSize = sbHeaderSize + static_cast<uint32_t>(cd.size() + req.size());
-
-    std::vector<uint8_t> sb;
-    sb.reserve(sbSize);
-    writeBE32(sb, CSMAGIC_EMBEDDED_SIGNATURE);
-    writeBE32(sb, sbSize);
-    writeBE32(sb, 2); // count = 2 blobs
-
-    // Index entry 0: CodeDirectory (type = 0)
-    writeBE32(sb, 0);
-    writeBE32(sb, sbHeaderSize);
-
-    // Index entry 1: Requirements (type = 2)
-    writeBE32(sb, 2);
-    writeBE32(sb, sbHeaderSize + static_cast<uint32_t>(cd.size()));
-
-    sb.insert(sb.end(), cd.begin(), cd.end());
-    sb.insert(sb.end(), req.begin(), req.end());
-    return sb;
-}
-
-// Bind opcode for flat namespace lookup (ordinal = -2).
-// With flat namespace, dyld searches all loaded dylibs for the symbol.
-// This avoids needing per-symbol ordinal tracking against specific dylibs.
-static constexpr uint8_t BIND_OPCODE_SET_DYLIB_SPECIAL_IMM = 0x30;
-
-/// Emit one bind entry for a given symbol at a given segment offset.
-void emitBindEntry(std::vector<uint8_t> &bindData,
-                   const std::string &symbolName,
-                   uint64_t segmentOffset,
-                   uint32_t dataSegIndex)
-{
-    // Use flat namespace lookup: ordinal = -2 (BIND_SPECIAL_DYLIB_FLAT_LOOKUP).
-    // Immediate field encodes -2 as 4-bit twos complement = 0x0E.
-    bindData.push_back(BIND_OPCODE_SET_DYLIB_SPECIAL_IMM | 0x0E);
-
-    // Symbol name with Mach-O underscore prefix.
-    bindData.push_back(BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM | 0);
-    std::string machoName = "_" + symbolName;
-    bindData.insert(bindData.end(), machoName.begin(), machoName.end());
-    bindData.push_back(0); // NUL terminator
-
-    bindData.push_back(BIND_OPCODE_SET_TYPE_IMM | BIND_TYPE_POINTER);
-
-    bindData.push_back(BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB | (dataSegIndex & 0x0F));
-    writeULEB128(bindData, segmentOffset);
-
-    bindData.push_back(BIND_OPCODE_DO_BIND);
-}
-
-/// Build the bind opcode stream for non-lazy GOT binding + TLV descriptors.
-void buildBindOpcodes(std::vector<uint8_t> &bindData,
-                      const std::vector<GotEntry> &gotEntries,
-                      const LinkLayout &layout,
-                      uint64_t dataSegVmAddr,
-                      uint32_t dataSegIndex)
-{
-    // Bind GOT entries for dynamic symbols.
-    for (const auto &ge : gotEntries)
-    {
-        uint64_t offset = ge.gotAddr - dataSegVmAddr;
-        emitBindEntry(bindData, ge.symbolName, offset, dataSegIndex);
-    }
-
-    // Bind TLV descriptor thunk fields → _tlv_bootstrap.
-    // dyld uses these bind events to discover TLV descriptors and initialize
-    // per-image TLS metadata. Without this, _tlv_bootstrap (a fail-stub) aborts.
-    for (const auto &sec : layout.sections)
-    {
-        if (!sec.tls || sec.name != ".tdata")
-            continue;
-
-        // Each TLV descriptor is 24 bytes: {thunk(8), key(8), offset(8)}.
-        // The thunk at byte 0 of each descriptor must be bound to _tlv_bootstrap.
-        size_t numDescriptors = sec.data.size() / 24;
-        for (size_t i = 0; i < numDescriptors; ++i)
-        {
-            uint64_t descVA = sec.virtualAddr + i * 24;
-            uint64_t segOff = descVA - dataSegVmAddr;
-            emitBindEntry(bindData, "_tlv_bootstrap", segOff, dataSegIndex);
-        }
-    }
-
-    // Bind data-pointer references to dynamic symbols (e.g., ObjC classrefs,
-    // superrefs, protocol refs). These are Abs64 relocations whose target is an
-    // external symbol — the linker writes 0 and dyld fills the actual pointer.
-    for (const auto &be : layout.bindEntries)
-    {
-        const auto &sec = layout.sections[be.sectionIndex];
-        uint64_t addr = sec.virtualAddr + be.offset;
-        if (addr >= dataSegVmAddr)
-        {
-            uint64_t segOff = addr - dataSegVmAddr;
-            emitBindEntry(bindData, be.symbolName, segOff, dataSegIndex);
-        }
-    }
-
-    bindData.push_back(BIND_OPCODE_DONE);
-}
-
-/// Build rebase opcodes for ASLR pointer fixups in writable sections.
-/// dyld processes these at load time, adding the ASLR slide to each pointer.
-void buildRebaseOpcodes(std::vector<uint8_t> &rebaseData,
-                        const LinkLayout &layout,
-                        uint64_t dataSegVmAddr,
-                        uint32_t dataSegIndex)
-{
-    if (layout.rebaseEntries.empty())
-        return;
-
-    // Collect segment-relative offsets for all rebase locations in __DATA.
-    std::vector<uint64_t> offsets;
-    offsets.reserve(layout.rebaseEntries.size());
-    for (const auto &entry : layout.rebaseEntries)
-    {
-        const auto &sec = layout.sections[entry.sectionIndex];
-        uint64_t addr = sec.virtualAddr + entry.offset;
-        if (addr >= dataSegVmAddr)
-            offsets.push_back(addr - dataSegVmAddr);
-    }
-    std::sort(offsets.begin(), offsets.end());
-
-    // Emit rebase opcodes.
-    rebaseData.push_back(REBASE_OPCODE_SET_TYPE_IMM | REBASE_TYPE_POINTER);
-
-    size_t i = 0;
-    while (i < offsets.size())
-    {
-        // Count consecutive pointers (each 8 bytes apart).
-        size_t runLen = 1;
-        while (i + runLen < offsets.size() && offsets[i + runLen] == offsets[i] + runLen * 8)
-            ++runLen;
-
-        // Set segment and offset.
-        rebaseData.push_back(REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB | (dataSegIndex & 0x0F));
-        writeULEB128(rebaseData, offsets[i]);
-
-        // Rebase the run of consecutive pointers (max 15 per opcode).
-        size_t remaining = runLen;
-        while (remaining > 0)
-        {
-            uint8_t count = static_cast<uint8_t>(std::min<size_t>(remaining, 15));
-            rebaseData.push_back(REBASE_OPCODE_DO_REBASE_IMM_TIMES | count);
-            remaining -= count;
-        }
-
-        i += runLen; // Advance past the run we just emitted.
-    }
-
-    rebaseData.push_back(REBASE_OPCODE_DONE);
-}
-
-/// Build symbol table and string table for __LINKEDIT.
-void buildSymtab(std::vector<uint8_t> &symtabData,
-                 std::vector<uint8_t> &strtabData,
-                 const LinkLayout &layout,
-                 const std::unordered_set<std::string> &dynSyms,
-                 uint32_t &nExtDef,
-                 uint32_t &nUndef)
-{
-    strtabData.push_back(0); // String table starts with NUL.
-
-    auto addString = [&](const std::string &s) -> uint32_t
-    {
-        uint32_t off = static_cast<uint32_t>(strtabData.size());
-        strtabData.insert(strtabData.end(), s.begin(), s.end());
-        strtabData.push_back(0);
-        return off;
-    };
-
-    auto writeNlist = [&](uint32_t strx, uint8_t type, uint8_t sect, uint16_t desc, uint64_t value)
-    {
-        writeLE32(symtabData, strx);
-        symtabData.push_back(type);
-        symtabData.push_back(sect);
-        symtabData.push_back(static_cast<uint8_t>(desc));
-        symtabData.push_back(static_cast<uint8_t>(desc >> 8));
-        writeLE64(symtabData, value);
-    };
-
-    // External defined: _main.
-    nExtDef = 0;
-    {
-        auto it = layout.globalSyms.find("main");
-        if (it == layout.globalSyms.end())
-            it = layout.globalSyms.find("_main");
-        if (it != layout.globalSyms.end())
-        {
-            uint32_t strx = addString("_main");
-            writeNlist(strx, N_EXT | N_SECT, 1, 0, it->second.resolvedAddr);
-            nExtDef++;
-        }
-    }
-
-    // Undefined: dynamic imports.
-    nUndef = 0;
-    std::vector<std::string> sortedDyn(dynSyms.begin(), dynSyms.end());
-    std::sort(sortedDyn.begin(), sortedDyn.end());
-    for (const auto &sym : sortedDyn)
-    {
-        if (sym.size() > 6 && sym.substr(0, 6) == "__got_")
-            continue;
-        uint32_t strx = addString("_" + sym);
-        writeNlist(strx, N_EXT | N_UNDF, 0, 0x0100, 0);
-        nUndef++;
-    }
-
-    while (strtabData.size() % 4 != 0)
-        strtabData.push_back(0);
-}
-
 } // anonymous namespace
 
 bool writeMachOExe(const std::string &path,
@@ -438,45 +105,12 @@ bool writeMachOExe(const std::string &path,
     // Phase 1: Classify sections and compute data sizes.
     // =======================================================================
     std::vector<size_t> textSections, dataSections;
-    for (size_t i = 0; i < layout.sections.size(); ++i)
-    {
-        const auto &sec = layout.sections[i];
-        if (sec.data.empty())
-            continue;
-        if (sec.writable)
-            dataSections.push_back(i);
-        else
-            textSections.push_back(i);
-    }
+    classifySections(layout, textSections, dataSections);
 
     // Compute text/data sizes accounting for VA gaps between sections.
     // Sections within a segment have page-aligned VAs; file layout must mirror this.
-    size_t textDataSize = 0;
-    if (!textSections.empty())
-    {
-        uint64_t firstVA = layout.sections[textSections.front()].virtualAddr;
-        for (size_t i : textSections)
-        {
-            const auto &sec = layout.sections[i];
-            uint64_t endVA = sec.virtualAddr + sec.data.size();
-            size_t spanFromFirst = static_cast<size_t>(endVA - firstVA);
-            if (spanFromFirst > textDataSize)
-                textDataSize = spanFromFirst;
-        }
-    }
-    size_t dataDataSize = 0;
-    if (!dataSections.empty())
-    {
-        uint64_t firstVA = layout.sections[dataSections.front()].virtualAddr;
-        for (size_t i : dataSections)
-        {
-            const auto &sec = layout.sections[i];
-            uint64_t endVA = sec.virtualAddr + sec.data.size();
-            size_t spanFromFirst = static_cast<size_t>(endVA - firstVA);
-            if (spanFromFirst > dataDataSize)
-                dataDataSize = spanFromFirst;
-        }
-    }
+    const size_t textDataSize = computeSegmentSpan(layout, textSections);
+    const size_t dataDataSize = computeSegmentSpan(layout, dataSections);
 
     // =======================================================================
     // Phase 2: Build __LINKEDIT content.
@@ -486,9 +120,8 @@ bool writeMachOExe(const std::string &path,
     for (const auto &sec : layout.sections)
         if (sec.tls && sec.name == ".tdata" && !sec.data.empty())
             hasTLS = true;
-    const bool hasDynamic =
-        !layout.gotEntries.empty() || hasTLS || !layout.rebaseEntries.empty() ||
-        !layout.bindEntries.empty();
+    const bool hasDynamic = !layout.gotEntries.empty() || hasTLS || !layout.rebaseEntries.empty() ||
+                            !layout.bindEntries.empty();
 
     std::vector<uint8_t> symtabData, strtabData;
     uint32_t nExtDef = 0, nUndef = 0;
@@ -626,8 +259,7 @@ bool writeMachOExe(const std::string &path,
         while (bindData.size() % 8 != 0)
             bindData.push_back(0);
     }
-    linkeditDataSize =
-        symtabData.size() + strtabData.size() + rebaseData.size() + bindData.size();
+    linkeditDataSize = symtabData.size() + strtabData.size() + rebaseData.size() + bindData.size();
 
     // __LINKEDIT segment.
     const size_t linkeditFileOff = dataFileOff + dataFileSize;

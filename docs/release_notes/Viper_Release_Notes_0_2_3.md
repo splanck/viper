@@ -11,17 +11,21 @@
 
 ### Release Overview
 
-Version 0.2.3 is a hardening and infrastructure release. Rather than adding major new user-facing
-features, this cycle focused on production readiness: comprehensive safety audits across every layer
-(VM, codegen, runtime, network), concurrency hardening with TSan verification, three new IL optimizer
-passes, major AArch64 backend performance work (post-RA scheduler, register coalescer, loop-invariant
-hoisting, cross-block store-load forwarding), an interactive REPL for both languages, a multi-language
-benchmark suite, and a large-scale codebase reorganization that consolidates documentation and examples
-into clean hierarchies.
+Version 0.2.3 is a hardening, tooling, and infrastructure release. Headline features include a
+**native assembler and linker** (zero external tool dependencies for compilation), **enum types** for
+both language frontends, a **dual-protocol language server** (LSP + MCP), and a comprehensive
+**backend codegen review** that decomposed monolithic files, added CFG-aware register allocation
+liveness, and shared core algorithms across both backends. The release also includes comprehensive
+safety audits across every layer (VM, codegen, runtime, network), concurrency hardening with TSan
+verification, three new IL optimizer passes, major AArch64 backend performance work (post-RA
+scheduler, register coalescer, loop-invariant hoisting, cross-block store-load forwarding), an
+interactive REPL for both languages, a multi-language benchmark suite, and a large-scale codebase
+reorganization that consolidates documentation and examples into clean hierarchies.
 
-2,013 files changed across 43 commits. ~69K lines added and ~78K lines removed. 437 stale files
-deleted and 92 new files added. Test count increased from 1,261 to 1,272 (+11 net; large stale test
-fixture deletion offset by new coverage).
+2,900+ files changed across 55 commits. ~114K lines added and ~81K lines removed (excluding
+ViperDOS cleanup; ~311K total with 658 ViperDOS files deleted). 442 stale files deleted and 324 new
+files added. Test count increased from 1,261 to 1,301 (+40 net; large stale test fixture deletion
+offset by new coverage).
 
 ---
 
@@ -53,6 +57,118 @@ zia> x * 2
 zia> .il
 ; IL output for last expression...
 ```
+
+#### Native Assembler and Linker
+
+A complete in-process assembler and linker that eliminates all external tool dependencies (`as`, `ld`,
+`link.exe`) from the native compilation pipeline. Viper can now go from source to executable using
+only its own code — zero external dependencies, true to the project philosophy.
+
+**Assembler (MIR → .o)**
+
+- Binary encoders for both x86-64 (49 opcode encodings, REX/ModR/M/SIB, RIP-relative relocations)
+  and AArch64 (70+ opcodes, branch resolution, FP literal materialization)
+- Object file writers for ELF (x86_64 + AArch64), Mach-O (x86_64 + AArch64), and PE/COFF (Windows)
+- Per-function text sections for dead stripping
+- `--native-asm` / `--system-asm` CLI flags to choose pipeline
+
+**Linker (.o + archives → executable)**
+
+- Archive reader supporting GNU ar, BSD ar, and COFF archive formats
+- Object file readers for ELF, Mach-O, and COFF with unified `ObjFile` API
+- Symbol resolution with weak/strong precedence and archive demand-pull
+- Section merging with ObjC metadata preservation and page-aligned layout
+- Relocation application for x86-64 and AArch64 (PC-rel, absolute, ADRP/PageOff12)
+- Executable writers for Mach-O (dyld bind opcodes, GOT generation), ELF (program headers,
+  dynamic section), and PE (import tables, DOS stub)
+- Native ad-hoc code signing with `CS_LINKER_SIGNED` flag (arm64 macOS)
+- `--native-link` / `--system-link` CLI flags
+
+**Optimizations**
+
+- Mark-and-sweep dead section stripping (`DeadStripPass`) — ~53% binary size reduction
+- Cross-module string deduplication (promotes duplicate LOCAL rodata to shared GLOBAL symbols)
+- Segment-level VA packing instead of per-section page alignment
+- Debug/metadata section filtering
+
+**Hardening**
+
+- Archive member size limits, relocation bounds checks, section/symbol count caps
+- `isCStringSection` flag prevents string dedup from corrupting binary data sections
+- Expanded dynamic symbol recognition to avoid false undefined-symbol errors
+
+All 11 demos build and run with the native pipeline. 13 new assembler tests, 6 string dedup tests,
+plus symbol resolver and relocation edge-case test suites.
+
+#### Zia Language Server (zia-server)
+
+A dual-protocol language server supporting both MCP (for AI assistants) and LSP (for editors):
+
+- JSON value type + recursive-descent parser/emitter (zero dependencies)
+- MCP transport (newline-delimited) with 11 tool definitions for AI assistants
+- LSP transport (Content-Length framed) with diagnostics, completions, hover, and document symbols
+- JSON-RPC 2.0 request/response handling
+- `CompilerBridge` facade wrapping Zia compiler APIs
+- VS Code extension with auto-discovery of `zia-server` binary
+
+#### Zia Language Features
+
+**Enum Types**
+
+Enumeration types for both Zia and BASIC frontends:
+
+```rust
+enum Color { Red, Green = 5, Blue }
+match c {
+    Color.Red => Say("red")
+    Color.Green => Say("green")
+    _ => Say("other")
+}
+```
+
+- Zia: `enum` declaration, explicit/auto-increment values, `expose` visibility, match exhaustiveness
+  checking, variant access via dot notation
+- BASIC: `ENUM...END ENUM` blocks, explicit/negative values, keyword-as-name collision handling
+- Variants lowered as I64 constants; 16 Zia + 8 BASIC enum tests
+
+**Match OR Patterns**
+
+```rust
+match x {
+    1 | 2 | 3 => Say("small")
+    10 | 20 => Say("round")
+    _ => Say("other")
+}
+```
+
+New `Pattern::Kind::Or` supports pipe-separated alternatives in match arms. Lowered as a waterfall
+of test blocks — each subpattern's success jumps to the arm body, failure falls through to the next.
+
+**Typed Catch with List Shorthand**
+
+Exception handlers can now specify a type for the caught error, with list-literal shorthand syntax.
+
+**Say/Print Auto-Dispatch**
+
+`Say(42)`, `Say(3.14)`, `Say(true)` now work without explicit `.ToString()` conversion via typed
+runtime variants (`SayInt`, `SayNum`, `SayBool`, `PrintBool`).
+
+**.Len → .Length Rename**
+
+Collection `.Len` property renamed to `.Length` across List, Map, and Set for consistency with the
+language specification. `.Len` remains as an alias for backward compatibility.
+
+#### Bible Audit Remediation
+
+Three missing platform features identified by the comprehensive documentation audit:
+
+- **Http.Put/Delete**: `Http.Put()`, `PutBytes()`, `Delete()`, `DeleteBytes()` completing the full
+  REST verb set
+- **Range iteration**: `.rev()` for reverse iteration and `.step(n)` for stepped iteration in
+  `for i in range` loops
+- **Color constants**: `Color.RED` through `Color.ORANGE` (10 named constants) as static properties
+
+Plus 900+ documentation fixes across the Bible reference manual.
 
 #### IL Optimizer — Three New Passes
 
@@ -188,10 +304,54 @@ branch, conditional branch target, or fallthrough).
 
 **Peephole Decomposition**
 
-Split the monolithic 2,750-line `Peephole.cpp` into 6 focused sub-passes under `peephole/`:
+Split the monolithic 2,750-line AArch64 `Peephole.cpp` into 6 focused sub-passes under `peephole/`:
 `IdentityElim`, `StrengthReduce`, `CopyPropDCE`, `BranchOpt`, `MemoryOpt`, `LoopOpt`. Shared
 peephole templates (`PeepholeDCE.hpp`, `PeepholeCopyProp.hpp`) parameterized on target traits are
 used by both AArch64 and x86-64 backends.
+
+#### x86-64 Backend Improvements
+
+**Comprehensive Backend Codegen Review** — 20-item systematic review of both backends with
+improvements across modularity, shared infrastructure, and test coverage:
+
+**x86-64 Peephole Decomposition**
+
+Split the 1,470-line monolithic `Peephole.cpp` into 4 focused sub-passes under `peephole/`:
+`ArithSimplify` (MOV-zero→XOR, CMP-zero→TEST, strength reduction), `MovFolding` (redundant MOV
+elimination), `DCE` (dead code elimination with implicit register tracking), `BranchOpt` (branch
+optimization and cold block reordering). Peephole iteration now bounded by `kMaxIterations=100`.
+
+**CFG-Aware Register Allocation Liveness**
+
+Replaced the conservative "unconditional spill" hack (which force-spilled ALL cross-block vregs)
+with proper backward dataflow liveness analysis. The new `LivenessAnalysis` class computes per-block
+`liveIn`/`liveOut` sets using the standard fixed-point iteration, so only vregs that are *truly* live
+across block boundaries get spill slots. This is the same algorithm used by production compilers.
+
+**Shared Dataflow Solver**
+
+Extracted the backward dataflow liveness algorithm into a shared template
+(`common/ra/DataflowLiveness.hpp`) used by both x86-64 and AArch64 backends. The AArch64 allocator's
+inline liveness code was extracted into a separate `Liveness` class (matching x86-64's pattern),
+both now delegating to the shared solver. Also includes a shared `buildPredecessors()` utility.
+
+**Shared Linker Utilities**
+
+Common encoding utilities (`ExeWriterUtil.hpp`) shared between Mach-O and PE executable writers:
+`writeLE16/32/64`, `writeBE32/64`, `writeULEB128`, `writePad`, `padTo`, and `resolveMainAddress()`.
+ObjC dynamic stub generation extracted from the native linker into `DynStubGen.hpp/cpp`.
+
+**Additional Improvements**
+
+- `LoweringRuleTable.hpp` declarations moved to `.cpp` for faster incremental compile times
+- AArch64 division handlers parameterized (4 near-identical → shared `lowerDivisionChk`)
+- AArch64 `OpcodeDispatch` refactored with handler table replacing 1K-line switch
+- AArch64 `AsmEmitter` consolidated with `emit2Op`/`emit3Op` primitives
+- `SchedulerPass` hash maps replaced with `vector<optional<>>` for O(1) cache-friendly lookup
+- `CopyPropDCE` `MovRR`/`FMovRR` logic parameterized (90% duplication eliminated)
+- Shared prologue/epilogue iteration (`FrameCodegen.hpp`) eliminates callee-saved
+  register save/restore duplication between AsmEmitter and BinaryEncoder
+- x86-64 peephole fixed-point iteration with `kMaxIterations=100` bound
 
 #### Game Engine Framework (10-Item Improvement Plan)
 
@@ -486,7 +646,8 @@ Readability refactoring of the largest source files:
 | `rt_network_http.c` | + `rt_http_url.c` | URL parsing extracted |
 | `rt_tls.c` | + `rt_tls_verify.c` + `rt_tls_internal.h` | Cert verification extracted |
 | `vg_ide_widgets.h` | Split into 6 focused sub-headers | Umbrella include preserved |
-| `Peephole.cpp` | 6 sub-passes in `peephole/` directory | AArch64 peephole decomposition (2,750 LOC) |
+| `Peephole.cpp` (AArch64) | 6 sub-passes in `peephole/` directory | AArch64 peephole decomposition (2,750 LOC) |
+| `Peephole.cpp` (x86-64) | 4 sub-passes in `peephole/` directory | x86-64 peephole decomposition (1,470 LOC) |
 | `RegAllocLinear.cpp` | 8 files in `ra/` directory | AArch64 register allocator decomposition (1,478 LOC) |
 | `Lowerer.hpp` | + `LowererTypes.hpp` + `LowererSymbolTable.hpp` + `LowererTypeLayout.hpp` | Zia lowerer decomposition foundation |
 
@@ -517,6 +678,14 @@ issue tracker.
 | rt_pool | 11 | Pool allocator tests |
 | VM equivalence | 5 | VM vs BytecodeVM output equivalence |
 | Zia frontend | 75 | 35 parser + 24 sema + 16 lowerer unit tests |
+| Zia/BASIC enums | 24 | 16 Zia + 8 BASIC enum tests |
+| Native assembler | 13 | Binary encoder + object file writer tests |
+| String dedup | 6 | Cross-module string deduplication tests |
+| Symbol resolver | 13 | Weak/strong symbol resolution + archive demand-pull |
+| Relocation edge cases | 8 | Out-of-range branch, overflow, and boundary tests |
+| Dataflow liveness | 9 | Shared backward dataflow solver (31 assertions) |
+| Encoding validation | 1 | Opcode coverage validation for encoding tables |
+| x86-64 peephole | 1 | Peephole sub-pass integration test |
 | Fuzz harnesses | 2 | libFuzzer harnesses for Zia lexer and parser |
 
 #### Determinism Stress Test
@@ -584,6 +753,17 @@ table of contents to cover all 80+ sections.
 
 ---
 
+### Codegen Bug Fixes
+
+- **EH subsystem cleanup**: Auto-pop exception handler at dispatch, `TrapKind` enum alignment across
+  VM and codegen layers for consistent exception handling semantics
+- **AArch64 MOVN**: Binary encoder now emits `MOVN` for simple negative immediates (e.g., -1 through
+  -65536) instead of a multi-instruction `MOVZ`/`MOVK` sequence, reducing code size
+- **String dedup safety**: `isCStringSection` flag prevents string deduplication from corrupting
+  binary data sections (rodata containing non-string data)
+- **Native linker launch fixes**: Correct dynamic symbol recognition for Zia/graphics demo
+  executables, preventing false undefined-symbol errors at link time
+
 ### Runtime Bug Fixes
 
 - **TextCenteredScaled**: Fix swapped `scale`/`color` parameters in `rt_canvas_text_centered_scaled`
@@ -607,18 +787,19 @@ table of contents to cover all 80+ sections.
 | Metric              | v0.2.2    | v0.2.3 (draft) | Change     |
 |---------------------|-----------|----------------|------------|
 | C/C++ Source (LOC)  | ~1,000,000 | ~820,000*     | -180,000*  |
-| C/C++ Source Files  | 2,288     | ~2,500         | +212       |
-| Test Count          | 1,261     | 1,272          | +11        |
-| Commits             | —         | 43             | —          |
-| Files Changed       | —         | 2,013          | —          |
-| Lines Added         | —         | 68,697         | —          |
-| Lines Removed       | —         | 78,481         | —          |
-| New Files           | —         | 92             | —          |
-| Deleted Files       | —         | 437            | —          |
+| C/C++ Source Files  | 2,288     | ~2,528         | +240       |
+| Test Count          | 1,261     | 1,301          | +40        |
+| Commits             | —         | 55             | —          |
+| Files Changed       | —         | 2,904          | —          |
+| Lines Added         | —         | 114,084        | —          |
+| Lines Removed       | —         | 311,131        | —          |
+| New Files           | —         | 324            | —          |
+| Deleted Files       | —         | 1,100          | —          |
 
-*\* Net LOC decreased due to deletion of 437 stale files (devdocs, dead demos, test fixtures,
-zia-review). Test count is net +11 because 286 obsolete test fixture files were removed while
-~300 new tests were added across Zia frontend, REPL, determinism, and pool allocator suites.*
+*\* Net LOC decreased due to deletion of 1,100 files: 658 ViperDOS files, 286 obsolete test
+fixtures, devdocs, dead demos, and zia-review. Test count is net +40 because obsolete test fixture
+files were removed while ~340 new tests were added across Zia frontend, REPL, determinism, pool
+allocator, native assembler, dataflow liveness, and codegen review suites.*
 
 ---
 
@@ -626,6 +807,13 @@ zia-review). Test count is net +11 because 286 obsolete test fixture files were 
 
 1. **Directory restructure**: `demos/` consolidated into `examples/`. Update any hardcoded paths.
 2. **devdocs/ removed**: All developer documentation now lives under `docs/`.
+3. **Runtime API renames**: 40+ C functions renamed to `rt_<type>_<verb>` convention. Key changes:
+   `Contains`→`Has`, `Count`→`Len`, `Size`→`Len`, plus `IsEmpty` property additions.
+   `runtime.def` registrations updated accordingly.
+4. **Collection .Len → .Length**: User-facing `.Len` property renamed to `.Length` across List, Map,
+   and Set. `.Len` retained as alias for backward compatibility.
+5. **Boolean return types**: 15 runtime functions changed from `bool`/`int` to `int8_t` (matching
+   IL `i1`). Affects C FFI callers using these functions directly.
 
 ---
 
@@ -650,15 +838,37 @@ zia-review). Test count is net +11 because 286 obsolete test fixture files were 
                       │
       ┌───────────────┼───────────────┐
       ▼               ▼               ▼
-┌──────────┐    ┌──────────┐    ┌───────────────┐
-│  IL VM   │    │  x86-64  │    │    AArch64    │
-│ Bytecode │    │  Native  │    │    Native     │
-│    VM    │    └──────────┘    │  PassMgr (NEW)│
-│  REPL    │                   │  Coalescer    │ (NEW)
-│  (NEW)   │                   │  Scheduler    │ (NEW)
-└──────────┘                   │  Loop Hoist   │ (NEW)
-                               │  6 Peephole   │ (NEW)
-                               └───────────────┘
+┌──────────┐    ┌──────────────┐ ┌───────────────┐
+│  IL VM   │    │   x86-64     │ │    AArch64    │
+│ Bytecode │    │ 4 Peephole   │ │  PassMgr (NEW)│
+│    VM    │    │ CFG Liveness │ │  Coalescer    │ (NEW)
+│  REPL    │    │   (NEW)      │ │  Scheduler    │ (NEW)
+│  (NEW)   │    └──────┬───────┘ │  Loop Hoist   │ (NEW)
+└──────────┘           │         │  6 Peephole   │ (NEW)
+                       │         └──────┬────────┘
+                       └────────┬───────┘
+                                ▼
+                  ┌───────────────────────────┐
+                  │  Shared Infrastructure    │
+                  │  DataflowLiveness (NEW)   │
+                  │  PeepholeDCE/CopyProp     │
+                  │  ParallelCopyResolver     │
+                  └────────────┬──────────────┘
+                               ▼
+                  ┌───────────────────────────┐
+                  │  Native Assembler (NEW)   │
+                  │  MIR → Binary Encoder     │
+                  │  → Object File Writer     │
+                  │  (ELF / Mach-O / PE)      │
+                  └────────────┬──────────────┘
+                               ▼
+                  ┌───────────────────────────┐
+                  │  Native Linker (NEW)      │
+                  │  Symbol Resolution        │
+                  │  Section Merging          │
+                  │  Dead Strip + String Dedup│
+                  │  → Executable Writer      │
+                  └───────────────────────────┘
 ```
 
 ---
@@ -667,9 +877,12 @@ zia-review). Test count is net +11 because 286 obsolete test fixture files were 
 
 | Feature                    | v0.2.2               | v0.2.3 (draft)                     |
 |----------------------------|----------------------|------------------------------------|
+| Native Assembler/Linker    | External as/ld/link  | In-process, zero external deps     |
 | Interactive REPL           | No                   | Full REPL for Zia and BASIC        |
+| Enum Types                 | No                   | Zia + BASIC, match exhaustiveness  |
+| Language Server            | No                   | Dual MCP/LSP (zia-server)          |
 | IL Optimizer Passes        | 35                   | 38 (+EH-Opt, LoopRotate, Reassoc)  |
-| Test Count                 | 1,261                | 1,272 (+11 net)                    |
+| Test Count                 | 1,261                | 1,301 (+40 net)                    |
 | Fuzz Harnesses             | No                   | Zia lexer + parser                 |
 | Determinism Tests          | No                   | 357 checks, 407 compilations       |
 | AArch64 EH Opcodes        | No                   | Full support                       |
@@ -679,6 +892,9 @@ zia-review). Test count is net +11 because 286 obsolete test fixture files were 
 | AArch64 Loop Hoisting      | No                   | MovRI hoisting with BFS loop body  |
 | AArch64 Cross-Block SLF    | No                   | Store-load forwarding across BBs   |
 | AArch64 Peephole Sub-passes| Monolithic (2750 LOC)| 6 focused sub-passes + shared templates |
+| x86-64 Peephole Sub-passes | Monolithic (1470 LOC)| 4 focused sub-passes in peephole/  |
+| x86-64 CFG-Aware Liveness  | Unconditional spill  | Backward dataflow liveness analysis|
+| Shared Dataflow Solver     | No                   | Template in common/ra/, both backends |
 | SipHash (HashDoS resist.)  | FNV-1a               | SipHash-2-4 with OS CSPRNG seed    |
 | GC Epoch Tagging           | No                   | Survival counter, promoted skip    |
 | Async/Await (Zia)          | No                   | Parser + sema + Future.Get lower   |
@@ -691,6 +907,8 @@ zia-review). Test count is net +11 because 286 obsolete test fixture files were 
 | ParticleEmitter Rendering  | No                   | Draw/DrawAt/DrawToPixels            |
 | Project Website            | No                   | Landing + docs hub + showcase       |
 | Sidescroller Demo          | 1 level, rectangles  | 5 levels, sprite art, full game     |
+| Game Engine Framework      | No                   | GameBase/IScene + 7 runtime APIs   |
+| Runtime API Audit          | Mixed naming         | Consistent rt_type_verb + runtime.def |
 | Codebase Organization      | demos/ + devdocs/    | Unified examples/ + docs/          |
 
 ---

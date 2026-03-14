@@ -24,6 +24,7 @@
 #include "codegen/common/linker/DynStubGen.hpp"
 #include "codegen/common/linker/ElfExeWriter.hpp"
 #include "codegen/common/linker/MachOExeWriter.hpp"
+#include "codegen/common/linker/NameMangling.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
 #include "codegen/common/linker/PeExeWriter.hpp"
 #include "codegen/common/linker/RelocApplier.hpp"
@@ -162,16 +163,9 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
 
     // Step 5: Resolve entry point.
     {
-        auto it = layout.globalSyms.find(opts.entrySymbol);
+        auto it = findWithMachoFallback(layout.globalSyms, opts.entrySymbol);
         if (it != layout.globalSyms.end())
             layout.entryAddr = it->second.resolvedAddr;
-        else
-        {
-            // Try with underscore prefix (Mach-O convention stripped during reading).
-            auto it2 = layout.globalSyms.find("_" + opts.entrySymbol);
-            if (it2 != layout.globalSyms.end())
-                layout.entryAddr = it2->second.resolvedAddr;
-        }
     }
 
     // Step 6: Apply relocations.
@@ -209,70 +203,83 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             // Always link libSystem.B.dylib on macOS.
             dylibs.push_back({"/usr/lib/libSystem.B.dylib"});
 
-            // Detect required frameworks from dynamic symbol names.
-            // macOS frameworks are discovered from the dyld shared cache at load time;
-            // the paths here are conventional and dyld intercepts them.
-            bool needCoreFoundation = false;
-            bool needCocoa = false;
-            bool needAppKit = false;
-            bool needCoreGraphics = false;
-            bool needFoundation = false;
-            bool needIOKit = false;
-            bool needObjC = false;
-            bool needUTI = false;
-            bool needAudioToolbox = false;
-
-            for (const auto &sym : dynamicSyms)
+            // Detect required frameworks from dynamic symbol prefixes.
+            // Each entry: {list of symbol prefixes, dylib path}.
+            // A framework is linked if ANY dynamic symbol starts with one of its prefixes.
+            struct FrameworkRule
             {
-                if (sym.find("CF") == 0 || sym.find("kCF") == 0)
-                    needCoreFoundation = true;
-                if (sym.find("NS") == 0 && sym.find("NSS") != 0) // NS* but not NSS* (NSURL etc.)
-                    needCocoa = true;
-                if (sym.find("NSApp") == 0 || sym.find("NSWindow") == 0 ||
-                    sym.find("NSView") == 0 || sym.find("NSColor") == 0 ||
-                    sym.find("NSEvent") == 0 || sym.find("NSCursor") == 0 ||
-                    sym.find("NSGraphicsContext") == 0 || sym.find("NSOpenGL") == 0 ||
-                    sym.find("NSApplication") == 0)
-                    needAppKit = true;
-                if (sym.find("CG") == 0)
-                    needCoreGraphics = true;
-                if (sym.find("NSLog") == 0 || sym.find("NSSearchPathForDirectories") == 0)
-                    needFoundation = true;
-                if (sym.find("IOKit") == 0 || sym.find("IOHID") == 0 ||
-                    sym.find("IOService") == 0 || sym.find("IORegistryEntry") == 0)
-                    needIOKit = true;
-                if (sym.find("objc_") == 0 || sym.find("OBJC_") == 0 || sym == "sel_registerName" ||
-                    sym == "sel_getName")
-                    needObjC = true;
-                if (sym.find("UTType") == 0 || sym.find("UTCopy") == 0)
-                    needUTI = true;
-                if (sym.find("AudioQueue") == 0 || sym.find("AudioServices") == 0)
-                    needAudioToolbox = true;
-            }
+                const char *prefixes[10]; // NUL-terminated list of symbol prefixes.
+                const char *exactSyms[3]; // NUL-terminated list of exact-match symbol names.
+                const char *dylibPath;
+            };
 
-            if (needCocoa)
-                dylibs.push_back({"/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa"});
-            if (needIOKit)
-                dylibs.push_back({"/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit"});
-            if (needCoreFoundation)
-                dylibs.push_back({"/System/Library/Frameworks/CoreFoundation.framework/Versions/A/"
-                                  "CoreFoundation"});
-            if (needUTI)
-                dylibs.push_back({"/System/Library/Frameworks/UniformTypeIdentifiers.framework/"
-                                  "Versions/A/UniformTypeIdentifiers"});
-            if (needAppKit)
-                dylibs.push_back({"/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit"});
-            if (needCoreGraphics)
-                dylibs.push_back(
-                    {"/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics"});
-            if (needFoundation)
-                dylibs.push_back(
-                    {"/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation"});
-            if (needObjC)
-                dylibs.push_back({"/usr/lib/libobjc.A.dylib"});
-            if (needAudioToolbox)
-                dylibs.push_back(
-                    {"/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox"});
+            static constexpr FrameworkRule kFrameworkRules[] = {
+                {{"CF", "kCF"},
+                 {},
+                 "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation"},
+                {{"NS"}, {}, "/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa"},
+                {{"NSApp",
+                  "NSWindow",
+                  "NSView",
+                  "NSColor",
+                  "NSEvent",
+                  "NSCursor",
+                  "NSGraphicsContext",
+                  "NSOpenGL",
+                  "NSApplication"},
+                 {},
+                 "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit"},
+                {{"CG"},
+                 {},
+                 "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics"},
+                {{"NSLog", "NSSearchPathForDirectories"},
+                 {},
+                 "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation"},
+                {{"IOKit", "IOHID", "IOService", "IORegistryEntry"},
+                 {},
+                 "/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit"},
+                {{"objc_", "OBJC_"},
+                 {"sel_registerName", "sel_getName"},
+                 "/usr/lib/libobjc.A.dylib"},
+                {{"UTType", "UTCopy"},
+                 {},
+                 "/System/Library/Frameworks/UniformTypeIdentifiers.framework/Versions/A/"
+                 "UniformTypeIdentifiers"},
+                {{"AudioQueue", "AudioServices"},
+                 {},
+                 "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox"},
+            };
+
+            for (const auto &rule : kFrameworkRules)
+            {
+                bool needed = false;
+                for (const auto &sym : dynamicSyms)
+                {
+                    for (const char *const *p = rule.prefixes; *p; ++p)
+                    {
+                        if (sym.find(*p) == 0)
+                        {
+                            needed = true;
+                            break;
+                        }
+                    }
+                    if (!needed)
+                    {
+                        for (const char *const *e = rule.exactSyms; *e; ++e)
+                        {
+                            if (sym == *e)
+                            {
+                                needed = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (needed)
+                        break;
+                }
+                if (needed)
+                    dylibs.push_back({rule.dylibPath});
+            }
 
             writeOk = writeMachOExe(opts.exePath, layout, opts.arch, dylibs, dynamicSyms, err);
             break;

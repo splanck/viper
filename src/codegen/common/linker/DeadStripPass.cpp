@@ -21,6 +21,7 @@
 #include "codegen/common/linker/DeadStripPass.hpp"
 
 #include "codegen/common/linker/LinkTypes.hpp"
+#include "codegen/common/linker/NameMangling.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
 
 #include <queue>
@@ -57,16 +58,17 @@ static bool isAlwaysLiveSection(const std::string &name)
         return true;
 
     // COFF CRT init/term.
-    if (name == ".CRT$XCA" || name == ".CRT$XCZ" ||
-        name == ".CRT$XIA" || name == ".CRT$XIZ")
+    if (name == ".CRT$XCA" || name == ".CRT$XCZ" || name == ".CRT$XIA" || name == ".CRT$XIZ")
         return true;
 
     return false;
 }
 
-void deadStrip(std::vector<ObjFile> &allObjects, size_t userObjCount,
+void deadStrip(std::vector<ObjFile> &allObjects,
+               size_t userObjCount,
                const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
-               const std::string &entrySymbol, std::ostream & /*err*/)
+               const std::string &entrySymbol,
+               std::ostream &err)
 {
     // Set of live (objIdx, secIdx) pairs.
     std::unordered_set<uint64_t> live;
@@ -103,9 +105,7 @@ void deadStrip(std::vector<ObjFile> &allObjects, size_t userObjCount,
 
     // Entry point section is a root.
     {
-        auto it = globalSyms.find(entrySymbol);
-        if (it == globalSyms.end())
-            it = globalSyms.find("_" + entrySymbol);
+        auto it = findWithMachoFallback(globalSyms, entrySymbol);
         if (it != globalSyms.end() && it->second.secIndex > 0)
             markLive(it->second.objIndex, it->second.secIndex);
     }
@@ -191,6 +191,10 @@ void deadStrip(std::vector<ObjFile> &allObjects, size_t userObjCount,
             sec.relocs.clear();
         }
     }
+
+    if (strippedSections > 0)
+        err << "dead-strip: removed " << strippedSections << " sections (" << strippedBytes
+            << " bytes)\n";
 }
 
 } // namespace viper::codegen::linker

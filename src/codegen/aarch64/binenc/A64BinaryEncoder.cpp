@@ -24,6 +24,7 @@
 
 #include "codegen/aarch64/binenc/A64BinaryEncoder.hpp"
 
+#include "codegen/aarch64/FrameCodegen.hpp"
 #include "codegen/aarch64/binenc/A64Encoding.hpp"
 #include "codegen/common/LabelUtil.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
@@ -173,37 +174,21 @@ void A64BinaryEncoder::encodePrologue(const MFunction &fn, objfile::CodeSection 
     if (fn.localFrameSize > 0)
         encodeSubSp(fn.localFrameSize, cs);
 
-    // Save callee-saved GPRs.
-    for (size_t i = 0; i < fn.savedGPRs.size();)
-    {
-        uint32_t r0 = hwGPR(fn.savedGPRs[i++]);
-        if (i < fn.savedGPRs.size())
-        {
-            uint32_t r1 = hwGPR(fn.savedGPRs[i++]);
-            // stp r0, r1, [sp, #-16]!  → pre-indexed, imm7 = -16/8 = -2
-            emit32(encodePair(kStpGprPre, r0, r1, sp, static_cast<int32_t>(-16 / 8)), cs);
-        }
-        else
-        {
-            // str r0, [sp, #-16]!  → pre-indexed single
-            emit32(kStrGprPre | ((static_cast<uint32_t>(-16) & 0x1FF) << 12) | (sp << 5) | r0, cs);
-        }
-    }
+    // Save callee-saved GPRs (shared iteration logic).
+    forEachSaveReg(
+        fn.savedGPRs,
+        [&](PhysReg r0, PhysReg r1)
+        { emit32(encodePair(kStpGprPre, hwGPR(r0), hwGPR(r1), sp, static_cast<int32_t>(-16 / 8)), cs); },
+        [&](PhysReg r0)
+        { emit32(kStrGprPre | ((static_cast<uint32_t>(-16) & 0x1FF) << 12) | (sp << 5) | hwGPR(r0), cs); });
 
     // Save callee-saved FPRs.
-    for (size_t i = 0; i < fn.savedFPRs.size();)
-    {
-        uint32_t r0 = hwFPR(fn.savedFPRs[i++]);
-        if (i < fn.savedFPRs.size())
-        {
-            uint32_t r1 = hwFPR(fn.savedFPRs[i++]);
-            emit32(encodePair(kStpFprPre, r0, r1, sp, static_cast<int32_t>(-16 / 8)), cs);
-        }
-        else
-        {
-            emit32(kStrFprPre | ((static_cast<uint32_t>(-16) & 0x1FF) << 12) | (sp << 5) | r0, cs);
-        }
-    }
+    forEachSaveReg(
+        fn.savedFPRs,
+        [&](PhysReg r0, PhysReg r1)
+        { emit32(encodePair(kStpFprPre, hwFPR(r0), hwFPR(r1), sp, static_cast<int32_t>(-16 / 8)), cs); },
+        [&](PhysReg r0)
+        { emit32(kStrFprPre | ((static_cast<uint32_t>(-16) & 0x1FF) << 12) | (sp << 5) | hwFPR(r0), cs); });
 }
 
 void A64BinaryEncoder::encodeEpilogue(const MFunction &fn, objfile::CodeSection &cs)
@@ -212,39 +197,21 @@ void A64BinaryEncoder::encodeEpilogue(const MFunction &fn, objfile::CodeSection 
     const uint32_t fp = hwGPR(PhysReg::X29);
     const uint32_t lr = hwGPR(PhysReg::X30);
 
-    // Restore callee-saved GPRs (reverse order).
-    size_t n = fn.savedGPRs.size();
-    if (n % 2 == 1)
-    {
-        uint32_t r0 = hwGPR(fn.savedGPRs[n - 1]);
-        // ldr r0, [sp], #16  → post-indexed
-        emit32(kLdrGprPost | ((16u & 0x1FF) << 12) | (sp << 5) | r0, cs);
-        --n;
-    }
-    while (n > 0)
-    {
-        uint32_t r1 = hwGPR(fn.savedGPRs[n - 1]);
-        uint32_t r0 = hwGPR(fn.savedGPRs[n - 2]);
-        // ldp r0, r1, [sp], #16  → post-indexed, imm7 = 16/8 = 2
-        emit32(encodePair(kLdpGprPost, r0, r1, sp, static_cast<int32_t>(16 / 8)), cs);
-        n -= 2;
-    }
+    // Restore callee-saved FPRs (reverse order, shared iteration logic).
+    forEachRestoreReg(
+        fn.savedFPRs,
+        [&](PhysReg r0, PhysReg r1)
+        { emit32(encodePair(kLdpFprPost, hwFPR(r0), hwFPR(r1), sp, static_cast<int32_t>(16 / 8)), cs); },
+        [&](PhysReg r0)
+        { emit32(kLdrFprPost | ((16u & 0x1FF) << 12) | (sp << 5) | hwFPR(r0), cs); });
 
-    // Restore callee-saved FPRs (reverse order).
-    size_t nf = fn.savedFPRs.size();
-    if (nf % 2 == 1)
-    {
-        uint32_t r0 = hwFPR(fn.savedFPRs[nf - 1]);
-        emit32(kLdrFprPost | ((16u & 0x1FF) << 12) | (sp << 5) | r0, cs);
-        --nf;
-    }
-    while (nf > 0)
-    {
-        uint32_t r1 = hwFPR(fn.savedFPRs[nf - 1]);
-        uint32_t r0 = hwFPR(fn.savedFPRs[nf - 2]);
-        emit32(encodePair(kLdpFprPost, r0, r1, sp, static_cast<int32_t>(16 / 8)), cs);
-        nf -= 2;
-    }
+    // Restore callee-saved GPRs (reverse order).
+    forEachRestoreReg(
+        fn.savedGPRs,
+        [&](PhysReg r0, PhysReg r1)
+        { emit32(encodePair(kLdpGprPost, hwGPR(r0), hwGPR(r1), sp, static_cast<int32_t>(16 / 8)), cs); },
+        [&](PhysReg r0)
+        { emit32(kLdrGprPost | ((16u & 0x1FF) << 12) | (sp << 5) | hwGPR(r0), cs); });
 
     // Deallocate local frame.
     if (fn.localFrameSize > 0)

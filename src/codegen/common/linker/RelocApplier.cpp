@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/linker/RelocApplier.hpp"
+#include "codegen/common/linker/RelocClassify.hpp"
 
 #include <cstring>
 
@@ -43,6 +44,41 @@ static uint32_t readLE32(const uint8_t *p)
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
+/// Encode (objIndex, secIndex) into a single 64-bit key for hash map lookup.
+static uint64_t makeKey(size_t objIdx, size_t secIdx)
+{
+    return (static_cast<uint64_t>(objIdx) << 32) | static_cast<uint64_t>(secIdx);
+}
+
+/// Pre-built reverse index: (objIdx, secIdx) → (outSecIdx, outputOffset).
+/// Built once at the start of applyRelocations(), replaces the previous O(S×C)
+/// linear scan with O(1) amortized lookup per relocation.
+using LocationMap = std::unordered_map<uint64_t, std::pair<size_t, size_t>>;
+
+/// Build the reverse-index map from the link layout.
+static LocationMap buildLocationMap(const LinkLayout &layout)
+{
+    LocationMap map;
+    for (size_t si = 0; si < layout.sections.size(); ++si)
+    {
+        for (const auto &chunk : layout.sections[si].chunks)
+            map[makeKey(chunk.inputObjIndex, chunk.inputSecIndex)] = {si, chunk.outputOffset};
+    }
+    return map;
+}
+
+/// Look up the output section and offset for a given (objIndex, secIndex).
+static bool findOutputLocation(
+    const LocationMap &locMap, size_t objIdx, uint32_t secIdx, size_t &outSecIdx, size_t &outOffset)
+{
+    auto it = locMap.find(makeKey(objIdx, secIdx));
+    if (it == locMap.end())
+        return false;
+    outSecIdx = it->second.first;
+    outOffset = it->second.second;
+    return true;
+}
+
 /// Resolve a symbol name to its virtual address.
 static bool resolveSymAddr(const std::string &symName,
                            const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
@@ -55,30 +91,12 @@ static bool resolveSymAddr(const std::string &symName,
     return true;
 }
 
-/// Find the output section and offset for a given (objIndex, secIndex).
-static bool findOutputLocation(
-    const LinkLayout &layout, size_t objIdx, uint32_t secIdx, size_t &outSecIdx, size_t &outOffset)
-{
-    for (size_t si = 0; si < layout.sections.size(); ++si)
-    {
-        for (const auto &chunk : layout.sections[si].chunks)
-        {
-            if (chunk.inputObjIndex == objIdx && chunk.inputSecIndex == secIdx)
-            {
-                outSecIdx = si;
-                outOffset = chunk.outputOffset;
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
 /// Resolve a local symbol address from the object's symbol table.
 /// For symbols not in globalSyms (e.g., static functions), compute their
 /// address from their section and offset within the output layout.
 static bool resolveLocalSymAddr(const ObjSymbol &sym,
                                 size_t objIdx,
+                                const LocationMap &locMap,
                                 const LinkLayout &layout,
                                 uint64_t &addr)
 {
@@ -86,172 +104,16 @@ static bool resolveLocalSymAddr(const ObjSymbol &sym,
         return false;
     size_t outSecIdx = 0;
     size_t chunkOff = 0;
-    if (!findOutputLocation(layout, objIdx, sym.sectionIndex, outSecIdx, chunkOff))
+    if (!findOutputLocation(locMap, objIdx, sym.sectionIndex, outSecIdx, chunkOff))
         return false;
-    addr = layout.sections[outSecIdx].virtualAddr + chunkOff + sym.offset;
+    const auto &outSec = layout.sections[outSecIdx];
+    if (chunkOff + sym.offset > outSec.data.size())
+        return false; // Symbol offset exceeds section bounds (malformed .o).
+    addr = outSec.virtualAddr + chunkOff + sym.offset;
     return true;
 }
 
-/// Relocation categories (format-independent).
-enum class RelocAction
-{
-    PCRel32,      // S + A - P (32-bit)
-    Abs64,        // S + A (64-bit)
-    Abs32,        // S + A (32-bit)
-    Branch26,     // AArch64: ((S+A-P)>>2) & 0x3FFFFFF
-    Page21,       // AArch64: ADRP page delta
-    PageOff12,    // AArch64: ADD page offset
-    LdSt64Off,    // AArch64: LDR/STR 64-bit scaled offset
-    LdSt32Off,    // AArch64: LDR/STR 32-bit scaled offset
-    LdSt128Off,   // AArch64: LDR/STR 128-bit scaled offset
-    CondBr19,     // AArch64: B.cond 19-bit
-    GotPage21,    // AArch64: GOT ADRP (relaxable to Page21 for local symbols)
-    GotPageOff12, // AArch64: GOT LDR pageoff (relaxable to ADD for local symbols)
-    Unknown,
-};
-
-/// Map ELF x86_64 relocation type to action.
-static RelocAction elfX64Action(uint32_t type)
-{
-    switch (type)
-    {
-        case 1:
-            return RelocAction::Abs64; // R_X86_64_64
-        case 2:
-            return RelocAction::PCRel32; // R_X86_64_PC32
-        case 4:
-            return RelocAction::PCRel32; // R_X86_64_PLT32
-        case 10:
-            return RelocAction::Abs32; // R_X86_64_32
-        default:
-            return RelocAction::Unknown;
-    }
-}
-
-/// Map ELF AArch64 relocation type to action.
-static RelocAction elfA64Action(uint32_t type)
-{
-    switch (type)
-    {
-        case 257:
-            return RelocAction::Abs64; // R_AARCH64_ABS64
-        case 275:
-            return RelocAction::Page21; // R_AARCH64_ADR_PREL_PG_HI21
-        case 277:
-            return RelocAction::PageOff12; // R_AARCH64_ADD_ABS_LO12_NC
-        case 280:
-            return RelocAction::CondBr19; // R_AARCH64_CONDBR19
-        case 282:
-            return RelocAction::Branch26; // R_AARCH64_JUMP26
-        case 283:
-            return RelocAction::Branch26; // R_AARCH64_CALL26
-        case 285:
-            return RelocAction::LdSt32Off; // R_AARCH64_LDST32_ABS_LO12_NC
-        case 286:
-            return RelocAction::LdSt64Off; // R_AARCH64_LDST64_ABS_LO12_NC
-        case 299:
-            return RelocAction::LdSt128Off; // R_AARCH64_LDST128_ABS_LO12_NC
-        default:
-            return RelocAction::Unknown;
-    }
-}
-
-/// Map Mach-O x86_64 relocation type to action.
-static RelocAction machoX64Action(uint32_t type)
-{
-    switch (type)
-    {
-        case 0:
-            return RelocAction::Abs64; // X86_64_RELOC_UNSIGNED
-        case 1:
-            return RelocAction::PCRel32; // X86_64_RELOC_SIGNED
-        case 2:
-            return RelocAction::PCRel32; // X86_64_RELOC_BRANCH
-        default:
-            return RelocAction::Unknown;
-    }
-}
-
-/// Map Mach-O ARM64 relocation type to action.
-static RelocAction machoA64Action(uint32_t type)
-{
-    switch (type)
-    {
-        case 0:
-            return RelocAction::Abs64; // ARM64_RELOC_UNSIGNED
-        case 2:
-            return RelocAction::Branch26; // ARM64_RELOC_BRANCH26
-        case 3:
-            return RelocAction::Page21; // ARM64_RELOC_PAGE21
-        case 4:
-            return RelocAction::PageOff12; // ARM64_RELOC_PAGEOFF12
-        case 5:
-            return RelocAction::GotPage21; // ARM64_RELOC_GOT_LOAD_PAGE21
-        case 6:
-            return RelocAction::GotPageOff12; // ARM64_RELOC_GOT_LOAD_PAGEOFF12
-        case 8:
-            return RelocAction::Page21; // ARM64_RELOC_TLVP_LOAD_PAGE21
-        case 9:
-            // ARM64_RELOC_TLVP_LOAD_PAGEOFF12 — for static linking, the TLV descriptor
-            // address is known at link time. Rewrite LDR to ADD (GOT relaxation style)
-            // so the code gets a pointer TO the descriptor, not a load FROM it.
-            return RelocAction::GotPageOff12;
-        default:
-            return RelocAction::Unknown;
-    }
-}
-
-/// Map COFF AMD64 relocation type to action.
-static RelocAction coffX64Action(uint32_t type)
-{
-    switch (type)
-    {
-        case 1:
-            return RelocAction::Abs64; // IMAGE_REL_AMD64_ADDR64
-        case 2:
-            return RelocAction::Abs32; // IMAGE_REL_AMD64_ADDR32
-        case 4:
-            return RelocAction::PCRel32; // IMAGE_REL_AMD64_REL32
-        default:
-            return RelocAction::Unknown;
-    }
-}
-
-/// Map COFF ARM64 relocation type to action.
-static RelocAction coffA64Action(uint32_t type)
-{
-    switch (type)
-    {
-        case 3:
-            return RelocAction::Branch26; // IMAGE_REL_ARM64_BRANCH26
-        case 4:
-            return RelocAction::Page21; // IMAGE_REL_ARM64_PAGEBASE_REL21
-        case 6:
-            return RelocAction::PageOff12; // IMAGE_REL_ARM64_PAGEOFFSET_12A
-        case 7:
-            return RelocAction::LdSt64Off; // IMAGE_REL_ARM64_PAGEOFFSET_12L
-        case 8:
-            return RelocAction::CondBr19; // IMAGE_REL_ARM64_BRANCH19
-        default:
-            return RelocAction::Unknown;
-    }
-}
-
-/// Dispatch relocation type to action based on format and architecture.
-static RelocAction classifyReloc(ObjFileFormat format, LinkArch arch, uint32_t type)
-{
-    switch (format)
-    {
-        case ObjFileFormat::ELF:
-            return (arch == LinkArch::X86_64) ? elfX64Action(type) : elfA64Action(type);
-        case ObjFileFormat::MachO:
-            return (arch == LinkArch::X86_64) ? machoX64Action(type) : machoA64Action(type);
-        case ObjFileFormat::COFF:
-            return (arch == LinkArch::X86_64) ? coffX64Action(type) : coffA64Action(type);
-        default:
-            return RelocAction::Unknown;
-    }
-}
+// Relocation classification (RelocAction, classifyReloc) is in RelocClassify.hpp.
 
 bool applyRelocations(const std::vector<ObjFile> &objects,
                       LinkLayout &layout,
@@ -260,6 +122,10 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                       LinkArch arch,
                       std::ostream &err)
 {
+    // Build reverse-index map once: (objIdx, secIdx) → (outSecIdx, outputOffset).
+    // This replaces the previous O(S×C) linear scan per lookup with O(1) amortized.
+    const LocationMap locMap = buildLocationMap(layout);
+
     // First pass: resolve all symbol addresses.
     for (auto &[name, entry] : layout.globalSyms)
     {
@@ -268,7 +134,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
 
         size_t outSecIdx = 0;
         size_t chunkOffset = 0;
-        if (findOutputLocation(layout, entry.objIndex, entry.secIndex, outSecIdx, chunkOffset))
+        if (findOutputLocation(locMap, entry.objIndex, entry.secIndex, outSecIdx, chunkOffset))
         {
             entry.resolvedAddr =
                 layout.sections[outSecIdx].virtualAddr + chunkOffset + entry.offset;
@@ -287,7 +153,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
 
             size_t outSecIdx = 0;
             size_t chunkBase = 0;
-            if (!findOutputLocation(layout, oi, static_cast<uint32_t>(si), outSecIdx, chunkBase))
+            if (!findOutputLocation(locMap, oi, static_cast<uint32_t>(si), outSecIdx, chunkBase))
                 continue;
 
             auto &outSec = layout.sections[outSecIdx];
@@ -312,7 +178,8 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     symResolved = resolveSymAddr(symName, layout.globalSyms, S);
                     // Fall back to local symbol resolution for static functions.
                     if (!symResolved && rel.symIndex < obj.symbols.size())
-                        symResolved = resolveLocalSymAddr(obj.symbols[rel.symIndex], oi, layout, S);
+                        symResolved =
+                            resolveLocalSymAddr(obj.symbols[rel.symIndex], oi, locMap, layout, S);
                 }
                 if (!symResolved && !symName.empty())
                 {

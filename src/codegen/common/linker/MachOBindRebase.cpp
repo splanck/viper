@@ -1,0 +1,246 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/common/linker/MachOBindRebase.cpp
+// Purpose: Mach-O bind/rebase opcode emission and symbol table construction.
+//          Encodes GOT bindings, TLV descriptor bindings, ASLR rebases, and
+//          the nlist symbol table for __LINKEDIT.
+// Key invariants:
+//   - Bind opcodes use flat namespace (ordinal = -2, no MH_TWOLEVEL)
+//   - Symbol names Mach-O mangled (underscore prefix)
+//   - Rebase offsets sorted, run-length encoded for consecutive 8-byte pointers
+//   - String table NUL-separated, 4-byte aligned at end
+// Ownership/Lifetime:
+//   - Stateless builder functions — no persistent state
+// Links: codegen/common/linker/MachOBindRebase.hpp
+//
+//===----------------------------------------------------------------------===//
+
+#include "codegen/common/linker/MachOBindRebase.hpp"
+#include "codegen/common/linker/ExeWriterUtil.hpp"
+#include "codegen/common/linker/NameMangling.hpp"
+
+#include <algorithm>
+
+namespace viper::codegen::linker
+{
+
+using encoding::writeLE32;
+using encoding::writeLE64;
+using encoding::writeULEB128;
+
+namespace
+{
+
+// Bind opcode constants (high 4 bits = opcode, low 4 bits = immediate).
+static constexpr uint8_t BIND_OPCODE_DONE = 0x00;
+static constexpr uint8_t BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM = 0x40;
+static constexpr uint8_t BIND_OPCODE_SET_TYPE_IMM = 0x50;
+static constexpr uint8_t BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB = 0x70;
+static constexpr uint8_t BIND_OPCODE_DO_BIND = 0x90;
+static constexpr uint8_t BIND_TYPE_POINTER = 1;
+
+// Bind opcode for flat namespace lookup (ordinal = -2).
+// With flat namespace, dyld searches all loaded dylibs for the symbol.
+static constexpr uint8_t BIND_OPCODE_SET_DYLIB_SPECIAL_IMM = 0x30;
+
+// Rebase opcode constants (high 4 bits = opcode, low 4 bits = immediate).
+static constexpr uint8_t REBASE_OPCODE_DONE = 0x00;
+static constexpr uint8_t REBASE_OPCODE_SET_TYPE_IMM = 0x10;
+static constexpr uint8_t REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB = 0x20;
+static constexpr uint8_t REBASE_OPCODE_DO_REBASE_IMM_TIMES = 0x50;
+static constexpr uint8_t REBASE_TYPE_POINTER = 1;
+
+// Symbol table constants.
+static constexpr uint8_t N_EXT = 0x01;
+static constexpr uint8_t N_UNDF = 0x00;
+static constexpr uint8_t N_SECT = 0x0E;
+
+/// Emit one bind entry for a given symbol at a given segment offset.
+void emitBindEntry(std::vector<uint8_t> &bindData,
+                   const std::string &symbolName,
+                   uint64_t segmentOffset,
+                   uint32_t dataSegIndex)
+{
+    // Use flat namespace lookup: ordinal = -2 (BIND_SPECIAL_DYLIB_FLAT_LOOKUP).
+    // Immediate field encodes -2 as 4-bit twos complement = 0x0E.
+    bindData.push_back(BIND_OPCODE_SET_DYLIB_SPECIAL_IMM | 0x0E);
+
+    // Symbol name with Mach-O underscore prefix.
+    bindData.push_back(BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM | 0);
+    std::string machoName = machoMangle(symbolName);
+    bindData.insert(bindData.end(), machoName.begin(), machoName.end());
+    bindData.push_back(0); // NUL terminator
+
+    bindData.push_back(BIND_OPCODE_SET_TYPE_IMM | BIND_TYPE_POINTER);
+
+    bindData.push_back(BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB | (dataSegIndex & 0x0F));
+    writeULEB128(bindData, segmentOffset);
+
+    bindData.push_back(BIND_OPCODE_DO_BIND);
+}
+
+} // anonymous namespace
+
+void buildBindOpcodes(std::vector<uint8_t> &bindData,
+                      const std::vector<GotEntry> &gotEntries,
+                      const LinkLayout &layout,
+                      uint64_t dataSegVmAddr,
+                      uint32_t dataSegIndex)
+{
+    // Bind GOT entries for dynamic symbols.
+    for (const auto &ge : gotEntries)
+    {
+        uint64_t offset = ge.gotAddr - dataSegVmAddr;
+        emitBindEntry(bindData, ge.symbolName, offset, dataSegIndex);
+    }
+
+    // Bind TLV descriptor thunk fields → _tlv_bootstrap.
+    // dyld uses these bind events to discover TLV descriptors and initialize
+    // per-image TLS metadata. Without this, _tlv_bootstrap (a fail-stub) aborts.
+    for (const auto &sec : layout.sections)
+    {
+        if (!sec.tls || sec.name != ".tdata")
+            continue;
+
+        // Each TLV descriptor is 24 bytes: {thunk(8), key(8), offset(8)}.
+        // The thunk at byte 0 of each descriptor must be bound to _tlv_bootstrap.
+        size_t numDescriptors = sec.data.size() / 24;
+        for (size_t i = 0; i < numDescriptors; ++i)
+        {
+            uint64_t descVA = sec.virtualAddr + i * 24;
+            uint64_t segOff = descVA - dataSegVmAddr;
+            emitBindEntry(bindData, "_tlv_bootstrap", segOff, dataSegIndex);
+        }
+    }
+
+    // Bind data-pointer references to dynamic symbols (e.g., ObjC classrefs,
+    // superrefs, protocol refs). These are Abs64 relocations whose target is an
+    // external symbol — the linker writes 0 and dyld fills the actual pointer.
+    for (const auto &be : layout.bindEntries)
+    {
+        const auto &sec = layout.sections[be.sectionIndex];
+        uint64_t addr = sec.virtualAddr + be.offset;
+        if (addr >= dataSegVmAddr)
+        {
+            uint64_t segOff = addr - dataSegVmAddr;
+            emitBindEntry(bindData, be.symbolName, segOff, dataSegIndex);
+        }
+    }
+
+    bindData.push_back(BIND_OPCODE_DONE);
+}
+
+void buildRebaseOpcodes(std::vector<uint8_t> &rebaseData,
+                        const LinkLayout &layout,
+                        uint64_t dataSegVmAddr,
+                        uint32_t dataSegIndex)
+{
+    if (layout.rebaseEntries.empty())
+        return;
+
+    // Collect segment-relative offsets for all rebase locations in __DATA.
+    std::vector<uint64_t> offsets;
+    offsets.reserve(layout.rebaseEntries.size());
+    for (const auto &entry : layout.rebaseEntries)
+    {
+        const auto &sec = layout.sections[entry.sectionIndex];
+        uint64_t addr = sec.virtualAddr + entry.offset;
+        if (addr >= dataSegVmAddr)
+            offsets.push_back(addr - dataSegVmAddr);
+    }
+    std::sort(offsets.begin(), offsets.end());
+
+    // Emit rebase opcodes.
+    rebaseData.push_back(REBASE_OPCODE_SET_TYPE_IMM | REBASE_TYPE_POINTER);
+
+    size_t i = 0;
+    while (i < offsets.size())
+    {
+        // Count consecutive pointers (each 8 bytes apart).
+        size_t runLen = 1;
+        while (i + runLen < offsets.size() && offsets[i + runLen] == offsets[i] + runLen * 8)
+            ++runLen;
+
+        // Set segment and offset.
+        rebaseData.push_back(REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB | (dataSegIndex & 0x0F));
+        writeULEB128(rebaseData, offsets[i]);
+
+        // Rebase the run of consecutive pointers (max 15 per opcode).
+        size_t remaining = runLen;
+        while (remaining > 0)
+        {
+            uint8_t count = static_cast<uint8_t>(std::min<size_t>(remaining, 15));
+            rebaseData.push_back(REBASE_OPCODE_DO_REBASE_IMM_TIMES | count);
+            remaining -= count;
+        }
+
+        i += runLen; // Advance past the run we just emitted.
+    }
+
+    rebaseData.push_back(REBASE_OPCODE_DONE);
+}
+
+void buildSymtab(std::vector<uint8_t> &symtabData,
+                 std::vector<uint8_t> &strtabData,
+                 const LinkLayout &layout,
+                 const std::unordered_set<std::string> &dynSyms,
+                 uint32_t &nExtDef,
+                 uint32_t &nUndef)
+{
+    strtabData.push_back(0); // String table starts with NUL.
+
+    auto addString = [&](const std::string &s) -> uint32_t
+    {
+        uint32_t off = static_cast<uint32_t>(strtabData.size());
+        strtabData.insert(strtabData.end(), s.begin(), s.end());
+        strtabData.push_back(0);
+        return off;
+    };
+
+    auto writeNlist = [&](uint32_t strx, uint8_t type, uint8_t sect, uint16_t desc, uint64_t value)
+    {
+        writeLE32(symtabData, strx);
+        symtabData.push_back(type);
+        symtabData.push_back(sect);
+        symtabData.push_back(static_cast<uint8_t>(desc));
+        symtabData.push_back(static_cast<uint8_t>(desc >> 8));
+        writeLE64(symtabData, value);
+    };
+
+    // External defined: _main.
+    nExtDef = 0;
+    {
+        auto it = layout.globalSyms.find("main");
+        if (it == layout.globalSyms.end())
+            it = layout.globalSyms.find("_main");
+        if (it != layout.globalSyms.end())
+        {
+            uint32_t strx = addString("_main");
+            writeNlist(strx, N_EXT | N_SECT, 1, 0, it->second.resolvedAddr);
+            nExtDef++;
+        }
+    }
+
+    // Undefined: dynamic imports.
+    nUndef = 0;
+    std::vector<std::string> sortedDyn(dynSyms.begin(), dynSyms.end());
+    std::sort(sortedDyn.begin(), sortedDyn.end());
+    for (const auto &sym : sortedDyn)
+    {
+        if (sym.size() > 6 && sym.substr(0, 6) == "__got_")
+            continue;
+        uint32_t strx = addString(machoMangle(sym));
+        writeNlist(strx, N_EXT | N_UNDF, 0, 0x0100, 0);
+        nUndef++;
+    }
+
+    while (strtabData.size() % 4 != 0)
+        strtabData.push_back(0);
+}
+
+} // namespace viper::codegen::linker

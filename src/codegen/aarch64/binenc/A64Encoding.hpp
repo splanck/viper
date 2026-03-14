@@ -59,37 +59,61 @@ constexpr uint32_t hwFPR(PhysReg r)
 /// Returns 0xE (always) for unrecognized codes.
 inline uint32_t condCode(const char *cond)
 {
-    if (!cond) return 0xE;
+    if (!cond)
+        return 0xE;
+
     // Fast 2-char comparison using memcmp
-    struct Entry { const char str[3]; uint32_t code; };
+    struct Entry
+    {
+        const char str[3];
+        uint32_t code;
+    };
+
     static constexpr Entry table[] = {
-        {"eq", 0x0}, {"ne", 0x1}, {"hs", 0x2}, {"cs", 0x2},
-        {"lo", 0x3}, {"cc", 0x3}, {"mi", 0x4}, {"pl", 0x5},
-        {"vs", 0x6}, {"vc", 0x7}, {"hi", 0x8}, {"ls", 0x9},
-        {"ge", 0xA}, {"lt", 0xB}, {"gt", 0xC}, {"le", 0xD},
-        {"al", 0xE}, {"nv", 0xF},
+        {"eq", 0x0},
+        {"ne", 0x1},
+        {"hs", 0x2},
+        {"cs", 0x2},
+        {"lo", 0x3},
+        {"cc", 0x3},
+        {"mi", 0x4},
+        {"pl", 0x5},
+        {"vs", 0x6},
+        {"vc", 0x7},
+        {"hi", 0x8},
+        {"ls", 0x9},
+        {"ge", 0xA},
+        {"lt", 0xB},
+        {"gt", 0xC},
+        {"le", 0xD},
+        {"al", 0xE},
+        {"nv", 0xF},
     };
     for (const auto &e : table)
-        if (std::strcmp(cond, e.str) == 0) return e.code;
+        if (std::strcmp(cond, e.str) == 0)
+            return e.code;
     return 0xE;
 }
 
 /// Invert a 4-bit condition code (flip LSB).
-constexpr uint32_t invertCond(uint32_t cc) { return cc ^ 1; }
+constexpr uint32_t invertCond(uint32_t cc)
+{
+    return cc ^ 1;
+}
 
 // =============================================================================
 // Instruction Templates — Data Processing (Three-Register)
 // =============================================================================
 
-inline constexpr uint32_t kAddRRR  = 0x8B000000; // add  Xd, Xn, Xm
-inline constexpr uint32_t kSubRRR  = 0xCB000000; // sub  Xd, Xn, Xm
-inline constexpr uint32_t kAndRRR  = 0x8A000000; // and  Xd, Xn, Xm
-inline constexpr uint32_t kOrrRRR  = 0xAA000000; // orr  Xd, Xn, Xm
-inline constexpr uint32_t kEorRRR  = 0xCA000000; // eor  Xd, Xn, Xm
+inline constexpr uint32_t kAddRRR = 0x8B000000; // add  Xd, Xn, Xm
+inline constexpr uint32_t kSubRRR = 0xCB000000; // sub  Xd, Xn, Xm
+inline constexpr uint32_t kAndRRR = 0x8A000000; // and  Xd, Xn, Xm
+inline constexpr uint32_t kOrrRRR = 0xAA000000; // orr  Xd, Xn, Xm
+inline constexpr uint32_t kEorRRR = 0xCA000000; // eor  Xd, Xn, Xm
 // Logical immediate: AND/ORR/EOR Xd, Xn, #bitmask  (N:immr:imms encoding)
-inline constexpr uint32_t kAndImm  = 0x92000000; // and  Xd, Xn, #bitmask
-inline constexpr uint32_t kOrrImm  = 0xB2000000; // orr  Xd, Xn, #bitmask
-inline constexpr uint32_t kEorImm  = 0xD2000000; // eor  Xd, Xn, #bitmask
+inline constexpr uint32_t kAndImm = 0x92000000;  // and  Xd, Xn, #bitmask
+inline constexpr uint32_t kOrrImm = 0xB2000000;  // orr  Xd, Xn, #bitmask
+inline constexpr uint32_t kEorImm = 0xD2000000;  // eor  Xd, Xn, #bitmask
 inline constexpr uint32_t kAddsRRR = 0xAB000000; // adds Xd, Xn, Xm
 inline constexpr uint32_t kSubsRRR = 0xEB000000; // subs Xd, Xn, Xm
 inline constexpr uint32_t kAndsRRR = 0xEA000000; // ands Xd, Xn, Xm (for TST alias)
@@ -106,10 +130,10 @@ inline constexpr uint32_t kAsrvRRR = 0x9AC02800; // asrv Xd, Xn, Xm
 // Instruction Templates — Multiply / Divide
 // =============================================================================
 
-inline constexpr uint32_t kMulRRR   = 0x9B007C00; // madd Xd, Xn, Xm, XZR (mul alias)
+inline constexpr uint32_t kMulRRR = 0x9B007C00;   // madd Xd, Xn, Xm, XZR (mul alias)
 inline constexpr uint32_t kSmulhRRR = 0x9B407C00; // smulh Xd, Xn, Xm
-inline constexpr uint32_t kSDivRRR  = 0x9AC00C00; // sdiv Xd, Xn, Xm
-inline constexpr uint32_t kUDivRRR  = 0x9AC00800; // udiv Xd, Xn, Xm
+inline constexpr uint32_t kSDivRRR = 0x9AC00C00;  // sdiv Xd, Xn, Xm
+inline constexpr uint32_t kUDivRRR = 0x9AC00800;  // udiv Xd, Xn, Xm
 inline constexpr uint32_t kMSubRRRR = 0x9B008000; // msub Xd, Xn, Xm, Xa
 inline constexpr uint32_t kMAddRRRR = 0x9B000000; // madd Xd, Xn, Xm, Xa
 
@@ -117,8 +141,8 @@ inline constexpr uint32_t kMAddRRRR = 0x9B000000; // madd Xd, Xn, Xm, Xa
 // Instruction Templates — Immediate (Add/Sub)
 // =============================================================================
 
-inline constexpr uint32_t kAddRI  = 0x91000000; // add  Xd, Xn, #imm12
-inline constexpr uint32_t kSubRI  = 0xD1000000; // sub  Xd, Xn, #imm12
+inline constexpr uint32_t kAddRI = 0x91000000;  // add  Xd, Xn, #imm12
+inline constexpr uint32_t kSubRI = 0xD1000000;  // sub  Xd, Xn, #imm12
 inline constexpr uint32_t kAddsRI = 0xB1000000; // adds Xd, Xn, #imm12
 inline constexpr uint32_t kSubsRI = 0xF1000000; // subs Xd, Xn, #imm12
 
@@ -126,19 +150,19 @@ inline constexpr uint32_t kSubsRI = 0xF1000000; // subs Xd, Xn, #imm12
 // Instruction Templates — Move
 // =============================================================================
 
-inline constexpr uint32_t kMovRR   = 0xAA0003E0; // orr Xd, XZR, Xm (mov alias)
-inline constexpr uint32_t kMovZ    = 0xD2800000; // movz Xd, #imm16          (lsl #0)
-inline constexpr uint32_t kMovZ16  = 0xD2A00000; // movz Xd, #imm16, lsl #16
-inline constexpr uint32_t kMovZ32  = 0xD2C00000; // movz Xd, #imm16, lsl #32
-inline constexpr uint32_t kMovZ48  = 0xD2E00000; // movz Xd, #imm16, lsl #48
-inline constexpr uint32_t kMovN    = 0x92800000; // movn Xd, #imm16          (lsl #0)
-inline constexpr uint32_t kMovN16  = 0x92A00000; // movn Xd, #imm16, lsl #16
-inline constexpr uint32_t kMovN32  = 0x92C00000; // movn Xd, #imm16, lsl #32
-inline constexpr uint32_t kMovN48  = 0x92E00000; // movn Xd, #imm16, lsl #48
-inline constexpr uint32_t kMovK    = 0xF2800000; // movk Xd, #imm16          (lsl #0)
-inline constexpr uint32_t kMovK16  = 0xF2A00000; // movk Xd, #imm16, lsl #16
-inline constexpr uint32_t kMovK32  = 0xF2C00000; // movk Xd, #imm16, lsl #32
-inline constexpr uint32_t kMovK48  = 0xF2E00000; // movk Xd, #imm16, lsl #48
+inline constexpr uint32_t kMovRR = 0xAA0003E0;  // orr Xd, XZR, Xm (mov alias)
+inline constexpr uint32_t kMovZ = 0xD2800000;   // movz Xd, #imm16          (lsl #0)
+inline constexpr uint32_t kMovZ16 = 0xD2A00000; // movz Xd, #imm16, lsl #16
+inline constexpr uint32_t kMovZ32 = 0xD2C00000; // movz Xd, #imm16, lsl #32
+inline constexpr uint32_t kMovZ48 = 0xD2E00000; // movz Xd, #imm16, lsl #48
+inline constexpr uint32_t kMovN = 0x92800000;   // movn Xd, #imm16          (lsl #0)
+inline constexpr uint32_t kMovN16 = 0x92A00000; // movn Xd, #imm16, lsl #16
+inline constexpr uint32_t kMovN32 = 0x92C00000; // movn Xd, #imm16, lsl #32
+inline constexpr uint32_t kMovN48 = 0x92E00000; // movn Xd, #imm16, lsl #48
+inline constexpr uint32_t kMovK = 0xF2800000;   // movk Xd, #imm16          (lsl #0)
+inline constexpr uint32_t kMovK16 = 0xF2A00000; // movk Xd, #imm16, lsl #16
+inline constexpr uint32_t kMovK32 = 0xF2C00000; // movk Xd, #imm16, lsl #32
+inline constexpr uint32_t kMovK48 = 0xF2E00000; // movk Xd, #imm16, lsl #48
 
 // =============================================================================
 // Instruction Templates — Bitfield (Shift Aliases)
@@ -185,9 +209,9 @@ inline constexpr uint32_t kStpFprPre = 0x6D800000;
 inline constexpr uint32_t kLdpFprPost = 0x6CC00000;
 
 // Single register pre/post-indexed (for odd callee-saved count)
-inline constexpr uint32_t kStrGprPre  = 0xF8000C00; // str Xt, [Xn, #simm9]!
+inline constexpr uint32_t kStrGprPre = 0xF8000C00;  // str Xt, [Xn, #simm9]!
 inline constexpr uint32_t kLdrGprPost = 0xF8400400; // ldr Xt, [Xn], #simm9
-inline constexpr uint32_t kStrFprPre  = 0xFC000C00; // str Dt, [Xn, #simm9]!
+inline constexpr uint32_t kStrFprPre = 0xFC000C00;  // str Dt, [Xn, #simm9]!
 inline constexpr uint32_t kLdrFprPost = 0xFC400400; // ldr Dt, [Xn], #simm9
 
 // =============================================================================
@@ -198,17 +222,17 @@ inline constexpr uint32_t kFAddRRR = 0x1E602800; // fadd Dd, Dn, Dm
 inline constexpr uint32_t kFSubRRR = 0x1E603800; // fsub Dd, Dn, Dm
 inline constexpr uint32_t kFMulRRR = 0x1E600800; // fmul Dd, Dn, Dm
 inline constexpr uint32_t kFDivRRR = 0x1E601800; // fdiv Dd, Dn, Dm
-inline constexpr uint32_t kFCmpRR  = 0x1E602000; // fcmp Dn, Dm
-inline constexpr uint32_t kFMovRR  = 0x1E604000; // fmov Dd, Dn
-inline constexpr uint32_t kFRintN  = 0x1E644000; // frintn Dd, Dn
+inline constexpr uint32_t kFCmpRR = 0x1E602000;  // fcmp Dn, Dm
+inline constexpr uint32_t kFMovRR = 0x1E604000;  // fmov Dd, Dn
+inline constexpr uint32_t kFRintN = 0x1E644000;  // frintn Dd, Dn
 
 // =============================================================================
 // Instruction Templates — Int↔Float Conversion
 // =============================================================================
 
-inline constexpr uint32_t kSCvtF  = 0x9E620000; // scvtf Dd, Xn
+inline constexpr uint32_t kSCvtF = 0x9E620000;  // scvtf Dd, Xn
 inline constexpr uint32_t kFCvtZS = 0x9E780000; // fcvtzs Xd, Dn
-inline constexpr uint32_t kUCvtF  = 0x9E630000; // ucvtf Dd, Xn
+inline constexpr uint32_t kUCvtF = 0x9E630000;  // ucvtf Dd, Xn
 inline constexpr uint32_t kFCvtZU = 0x9E790000; // fcvtzu Xd, Dn
 inline constexpr uint32_t kFMovGR = 0x9E670000; // fmov Dd, Xn (GPR→FPR bit transfer)
 
@@ -216,13 +240,13 @@ inline constexpr uint32_t kFMovGR = 0x9E670000; // fmov Dd, Xn (GPR→FPR bit tr
 // Instruction Templates — Branch
 // =============================================================================
 
-inline constexpr uint32_t kBr   = 0x14000000; // b   label
-inline constexpr uint32_t kBl   = 0x94000000; // bl  label
+inline constexpr uint32_t kBr = 0x14000000;    // b   label
+inline constexpr uint32_t kBl = 0x94000000;    // bl  label
 inline constexpr uint32_t kBCond = 0x54000000; // b.cond label
-inline constexpr uint32_t kCbz  = 0xB4000000; // cbz Xt, label
-inline constexpr uint32_t kCbnz = 0xB5000000; // cbnz Xt, label
-inline constexpr uint32_t kBlr  = 0xD63F0000; // blr Xn
-inline constexpr uint32_t kRet  = 0xD65F03C0; // ret x30
+inline constexpr uint32_t kCbz = 0xB4000000;   // cbz Xt, label
+inline constexpr uint32_t kCbnz = 0xB5000000;  // cbnz Xt, label
+inline constexpr uint32_t kBlr = 0xD63F0000;   // blr Xn
+inline constexpr uint32_t kRet = 0xD65F03C0;   // ret x30
 
 // =============================================================================
 // Instruction Templates — Address Materialization
@@ -247,14 +271,16 @@ constexpr uint32_t encode4Reg(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t 
 }
 
 /// Build an add/sub immediate instruction: template | (imm12 << 10) | (Rn << 5) | Rd
-constexpr uint32_t encodeAddSubImm(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t imm12)
+inline uint32_t encodeAddSubImm(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t imm12)
 {
+    assert(imm12 <= 0xFFF && "encodeAddSubImm: immediate exceeds 12-bit range");
     return tmpl | ((imm12 & 0xFFF) << 10) | (rn << 5) | rd;
 }
 
 /// Build an add/sub immediate with shift: bit 22 selects lsl #12.
-constexpr uint32_t encodeAddSubImmShift(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t imm12)
+inline uint32_t encodeAddSubImmShift(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t imm12)
 {
+    assert(imm12 <= 0xFFF && "encodeAddSubImmShift: immediate exceeds 12-bit range");
     return tmpl | (1U << 22) | ((imm12 & 0xFFF) << 10) | (rn << 5) | rd;
 }
 
@@ -325,7 +351,8 @@ inline int32_t encodeLogicalImmediate(uint64_t val)
         // Verify: (doubled >> tz >> runLen) has no more 1-bits within 2*size.
         {
             uint64_t remaining = doubled >> (tz + runLen);
-            uint64_t checkMask = (size < 32) ? ((1ULL << size) - 1) : (size == 32 ? 0xFFFFFFFF : ~0ULL);
+            uint64_t checkMask =
+                (size < 32) ? ((1ULL << size) - 1) : (size == 32 ? 0xFFFFFFFF : ~0ULL);
             // We need to check bits [tz+runLen .. 2*size-1]. But since we doubled,
             // if the run doesn't wrap cleanly, this element isn't valid.
             if (runLen == 0 || runLen >= size)
@@ -354,9 +381,9 @@ inline int32_t encodeLogicalImmediate(uint64_t val)
         else
         {
             N = 0;
-            // imms has a size-encoding prefix: for size=32, top bit is 0; for 16, top 2 are 10; etc.
-            // The pattern is: imms = (NOT(size-1) & 0x3F) | (runLen - 1)
-            // More precisely: the high bits of imms encode the element size:
+            // imms has a size-encoding prefix: for size=32, top bit is 0; for 16, top 2 are 10;
+            // etc. The pattern is: imms = (NOT(size-1) & 0x3F) | (runLen - 1) More precisely: the
+            // high bits of imms encode the element size:
             //   size=2:  imms[5:1] = 11110x  (0x3C | (runLen-1))
             //   size=4:  imms[5:2] = 1110xx  (0x38 | (runLen-1))
             //   size=8:  imms[5:3] = 110xxx  (0x30 | (runLen-1))

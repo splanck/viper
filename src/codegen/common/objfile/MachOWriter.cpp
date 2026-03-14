@@ -23,6 +23,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/objfile/MachOWriter.hpp"
+#include "codegen/common/objfile/ObjFileWriterUtil.hpp"
 #include "codegen/common/objfile/StringTable.hpp"
 
 #include <algorithm>
@@ -87,59 +88,26 @@ static constexpr uint32_t kHeaderSize = 32;
 static constexpr uint32_t kNlistSize = 16;
 static constexpr uint32_t kRelocSize = 8;
 
-// =============================================================================
-// Helpers
-// =============================================================================
-
-static void appendLE16(std::vector<uint8_t> &out, uint16_t val)
-{
-    out.push_back(static_cast<uint8_t>(val));
-    out.push_back(static_cast<uint8_t>(val >> 8));
-}
-
-static void appendLE32(std::vector<uint8_t> &out, uint32_t val)
-{
-    out.push_back(static_cast<uint8_t>(val));
-    out.push_back(static_cast<uint8_t>(val >> 8));
-    out.push_back(static_cast<uint8_t>(val >> 16));
-    out.push_back(static_cast<uint8_t>(val >> 24));
-}
-
-static void appendLE64(std::vector<uint8_t> &out, uint64_t val)
-{
-    for (int i = 0; i < 8; ++i)
-        out.push_back(static_cast<uint8_t>(val >> (i * 8)));
-}
-
-static size_t alignUp(size_t val, size_t align)
-{
-    return (val + align - 1) & ~(align - 1);
-}
-
-static void padTo(std::vector<uint8_t> &out, size_t target)
-{
-    if (out.size() < target)
-        out.resize(target, 0);
-}
+// Helpers: appendLE16/32/64, alignUp, padTo are provided by ObjFileWriterUtil.hpp.
 
 /// Mangle a symbol name for Darwin: prepend '_' unless it's a local label.
 static std::string mangleName(const std::string &name)
 {
-    if (name.empty()) return name;
-    if (name[0] == 'L' || name[0] == '.') return name; // local label
+    if (name.empty())
+        return name;
+    if (name[0] == 'L' || name[0] == '.')
+        return name; // local label
     return "_" + name;
 }
 
 /// Pack a Mach-O relocation info field (little-endian bit-field layout).
 /// Layout: symbolnum[23:0] | pcrel[24] | length[26:25] | extern[27] | type[31:28]
-static uint32_t packRelocInfo(uint32_t symbolnum, uint8_t pcrel,
-                               uint8_t length, uint8_t ext, uint8_t type)
+static uint32_t packRelocInfo(
+    uint32_t symbolnum, uint8_t pcrel, uint8_t length, uint8_t ext, uint8_t type)
 {
-    return (symbolnum & 0x00FFFFFF)
-           | (static_cast<uint32_t>(pcrel & 1) << 24)
-           | (static_cast<uint32_t>(length & 3) << 25)
-           | (static_cast<uint32_t>(ext & 1) << 27)
-           | (static_cast<uint32_t>(type & 0xF) << 28);
+    return (symbolnum & 0x00FFFFFF) | (static_cast<uint32_t>(pcrel & 1) << 24) |
+           (static_cast<uint32_t>(length & 3) << 25) | (static_cast<uint32_t>(ext & 1) << 27) |
+           (static_cast<uint32_t>(type & 0xF) << 28);
 }
 
 // =============================================================================
@@ -148,9 +116,11 @@ static uint32_t packRelocInfo(uint32_t symbolnum, uint8_t pcrel,
 
 /// Write mach_header_64 (32 bytes).
 static void writeMachOHeader(std::vector<uint8_t> &out,
-                              uint32_t cputype, uint32_t cpusubtype,
-                              uint32_t ncmds, uint32_t sizeofcmds,
-                              uint32_t flags)
+                             uint32_t cputype,
+                             uint32_t cpusubtype,
+                             uint32_t ncmds,
+                             uint32_t sizeofcmds,
+                             uint32_t flags)
 {
     appendLE32(out, kMhMagic64);
     appendLE32(out, cputype);
@@ -163,31 +133,39 @@ static void writeMachOHeader(std::vector<uint8_t> &out,
 }
 
 /// Write LC_SEGMENT_64 command header (72 bytes, excluding section headers).
-static void writeSegmentCmd(std::vector<uint8_t> &out, uint32_t cmdsize,
-                             uint64_t vmsize, uint64_t fileoff,
-                             uint64_t filesize, uint32_t nsects)
+static void writeSegmentCmd(std::vector<uint8_t> &out,
+                            uint32_t cmdsize,
+                            uint64_t vmsize,
+                            uint64_t fileoff,
+                            uint64_t filesize,
+                            uint32_t nsects)
 {
     appendLE32(out, kLcSegment64);
     appendLE32(out, cmdsize);
     // segname: 16 zero bytes (unnamed for .o files)
-    for (int i = 0; i < 16; ++i) out.push_back(0);
-    appendLE64(out, 0);        // vmaddr
+    for (int i = 0; i < 16; ++i)
+        out.push_back(0);
+    appendLE64(out, 0); // vmaddr
     appendLE64(out, vmsize);
     appendLE64(out, fileoff);
     appendLE64(out, filesize);
-    appendLE32(out, 7);        // maxprot = rwx
-    appendLE32(out, 7);        // initprot = rwx
+    appendLE32(out, 7); // maxprot = rwx
+    appendLE32(out, 7); // initprot = rwx
     appendLE32(out, nsects);
-    appendLE32(out, 0);        // flags
+    appendLE32(out, 0); // flags
 }
 
 /// Write a section_64 header (80 bytes).
 static void writeSectionHdr(std::vector<uint8_t> &out,
-                             const char *sectname, const char *segname,
-                             uint64_t addr, uint64_t size,
-                             uint32_t offset, uint32_t align,
-                             uint32_t reloff, uint32_t nreloc,
-                             uint32_t flags)
+                            const char *sectname,
+                            const char *segname,
+                            uint64_t addr,
+                            uint64_t size,
+                            uint32_t offset,
+                            uint32_t align,
+                            uint32_t reloff,
+                            uint32_t nreloc,
+                            uint32_t flags)
 {
     // sectname: 16 bytes, zero-padded
     char buf[16] = {};
@@ -200,13 +178,13 @@ static void writeSectionHdr(std::vector<uint8_t> &out,
     appendLE64(out, addr);
     appendLE64(out, size);
     appendLE32(out, offset);
-    appendLE32(out, align);   // log2 of alignment
+    appendLE32(out, align); // log2 of alignment
     appendLE32(out, reloff);
     appendLE32(out, nreloc);
     appendLE32(out, flags);
-    appendLE32(out, 0);       // reserved1
-    appendLE32(out, 0);       // reserved2
-    appendLE32(out, 0);       // reserved3
+    appendLE32(out, 0); // reserved1
+    appendLE32(out, 0); // reserved2
+    appendLE32(out, 0); // reserved3
 }
 
 /// Write LC_BUILD_VERSION (24 bytes).
@@ -221,9 +199,8 @@ static void writeBuildVersionCmd(std::vector<uint8_t> &out)
 }
 
 /// Write LC_SYMTAB (24 bytes).
-static void writeSymtabCmd(std::vector<uint8_t> &out,
-                            uint32_t symoff, uint32_t nsyms,
-                            uint32_t stroff, uint32_t strsize)
+static void writeSymtabCmd(
+    std::vector<uint8_t> &out, uint32_t symoff, uint32_t nsyms, uint32_t stroff, uint32_t strsize)
 {
     appendLE32(out, kLcSymtab);
     appendLE32(out, kSymtabCmdSize);
@@ -235,9 +212,12 @@ static void writeSymtabCmd(std::vector<uint8_t> &out,
 
 /// Write LC_DYSYMTAB (80 bytes).
 static void writeDysymtabCmd(std::vector<uint8_t> &out,
-                              uint32_t ilocal, uint32_t nlocal,
-                              uint32_t iextdef, uint32_t nextdef,
-                              uint32_t iundef, uint32_t nundef)
+                             uint32_t ilocal,
+                             uint32_t nlocal,
+                             uint32_t iextdef,
+                             uint32_t nextdef,
+                             uint32_t iundef,
+                             uint32_t nundef)
 {
     appendLE32(out, kLcDysymtab);
     appendLE32(out, kDysymtabCmdSize);
@@ -254,8 +234,11 @@ static void writeDysymtabCmd(std::vector<uint8_t> &out,
 
 /// Write one nlist_64 entry (16 bytes).
 static void writeNlist(std::vector<uint8_t> &out,
-                        uint32_t strx, uint8_t type, uint8_t sect,
-                        uint16_t desc, uint64_t value)
+                       uint32_t strx,
+                       uint8_t type,
+                       uint8_t sect,
+                       uint16_t desc,
+                       uint64_t value)
 {
     appendLE32(out, strx);
     out.push_back(type);
@@ -265,8 +248,7 @@ static void writeNlist(std::vector<uint8_t> &out,
 }
 
 /// Write one relocation_info entry (8 bytes).
-static void writeMachoReloc(std::vector<uint8_t> &out,
-                              uint32_t address, uint32_t packed)
+static void writeMachoReloc(std::vector<uint8_t> &out, uint32_t address, uint32_t packed)
 {
     appendLE32(out, address);
     appendLE32(out, packed);
@@ -288,26 +270,26 @@ static MachoRelocAttrs machoRelocAttrs(RelocKind kind)
 {
     switch (kind)
     {
-    // x86_64
-    case RelocKind::PCRel32:
-        return {static_cast<uint8_t>(kX86_64RelocSigned), 1, 2, false};
-    case RelocKind::Branch32:
-        return {static_cast<uint8_t>(kX86_64RelocBranch), 1, 2, false};
-    case RelocKind::Abs64:
-        return {static_cast<uint8_t>(kX86_64RelocUnsigned), 0, 3, false};
-    // AArch64
-    case RelocKind::A64Call26:
-    case RelocKind::A64Jump26:
-        return {static_cast<uint8_t>(kArm64RelocBranch26), 1, 2, false};
-    case RelocKind::A64AdrpPage21:
-        return {static_cast<uint8_t>(kArm64RelocPage21), 1, 2, false};
-    case RelocKind::A64AddPageOff12:
-    case RelocKind::A64LdSt64Off12:
-        return {static_cast<uint8_t>(kArm64RelocPageoff12), 0, 2, false};
-    case RelocKind::A64CondBr19:
-        // Mach-O has no ARM64_RELOC_BRANCH19; conditional branches are
-        // always resolved internally by the encoder.
-        return {0, 0, 0, true};
+        // x86_64
+        case RelocKind::PCRel32:
+            return {static_cast<uint8_t>(kX86_64RelocSigned), 1, 2, false};
+        case RelocKind::Branch32:
+            return {static_cast<uint8_t>(kX86_64RelocBranch), 1, 2, false};
+        case RelocKind::Abs64:
+            return {static_cast<uint8_t>(kX86_64RelocUnsigned), 0, 3, false};
+        // AArch64
+        case RelocKind::A64Call26:
+        case RelocKind::A64Jump26:
+            return {static_cast<uint8_t>(kArm64RelocBranch26), 1, 2, false};
+        case RelocKind::A64AdrpPage21:
+            return {static_cast<uint8_t>(kArm64RelocPage21), 1, 2, false};
+        case RelocKind::A64AddPageOff12:
+        case RelocKind::A64LdSt64Off12:
+            return {static_cast<uint8_t>(kArm64RelocPageoff12), 0, 2, false};
+        case RelocKind::A64CondBr19:
+            // Mach-O has no ARM64_RELOC_BRANCH19; conditional branches are
+            // always resolved internally by the encoder.
+            return {0, 0, 0, true};
     }
     return {0, 0, 0, true};
 }
@@ -317,9 +299,9 @@ static MachoRelocAttrs machoRelocAttrs(RelocKind kind)
 // =============================================================================
 
 bool MachOWriter::write(const std::string &path,
-                         const CodeSection &text,
-                         const CodeSection &rodata,
-                         std::ostream &err)
+                        const CodeSection &text,
+                        const CodeSection &rodata,
+                        std::ostream &err)
 {
     // --- Architecture-specific parameters ---
     uint32_t cputype, cpusubtype;
@@ -355,6 +337,7 @@ bool MachOWriter::write(const std::string &path,
         uint64_t value;
         std::string mangledName;
     };
+
     std::vector<PendingSym> pendingLocals, pendingExtDef, pendingUndef;
 
     // Track names to avoid duplicate symbols in the Mach-O table.
@@ -455,14 +438,13 @@ bool MachOWriter::write(const std::string &path,
         uint8_t sect;
         uint64_t value;
     };
+
     std::vector<FinalSym> allSyms(nsyms);
     auto emitSyms = [&](const std::vector<PendingSym> &syms, bool skipIfDefined)
     {
         for (const auto &ps : syms)
         {
-            uint32_t idx = (ps.fromText)
-                ? textSymMap[ps.encoderIdx]
-                : rodataSymMap[ps.encoderIdx];
+            uint32_t idx = (ps.fromText) ? textSymMap[ps.encoderIdx] : rodataSymMap[ps.encoderIdx];
             // When an undefined symbol in text duplicates a defined symbol in
             // rodata, the defined version must win (they share the same Mach-O
             // index). Skip the undefined overwrite when the slot already holds
@@ -482,12 +464,14 @@ bool MachOWriter::write(const std::string &path,
         uint32_t address;
         uint32_t packed;
     };
+
     std::vector<MachoReloc> textRelocs;
 
     for (const auto &rel : text.relocations())
     {
         auto attrs = machoRelocAttrs(rel.kind);
-        if (attrs.skip) continue;
+        if (attrs.skip)
+            continue;
 
         // Map encoder symbol index to Mach-O index.
         uint32_t symIdx = 0;
@@ -501,19 +485,18 @@ bool MachOWriter::write(const std::string &path,
                 symIdx = rit->second;
         }
 
-        uint32_t packed = packRelocInfo(symIdx, attrs.pcrel, attrs.length,
-                                         1 /*extern*/, attrs.type);
+        uint32_t packed =
+            packRelocInfo(symIdx, attrs.pcrel, attrs.length, 1 /*extern*/, attrs.type);
         textRelocs.push_back({static_cast<uint32_t>(rel.offset), packed});
     }
 
     // Sort relocations by address descending (Mach-O convention).
-    std::sort(textRelocs.begin(), textRelocs.end(),
-              [](const MachoReloc &a, const MachoReloc &b)
-              { return a.address > b.address; });
+    std::sort(textRelocs.begin(),
+              textRelocs.end(),
+              [](const MachoReloc &a, const MachoReloc &b) { return a.address > b.address; });
 
     // --- 5. Compute file layout ---
-    uint32_t sizeOfCmds = kSegCmdSize + kBuildVerCmdSize
-                          + kSymtabCmdSize + kDysymtabCmdSize;
+    uint32_t sizeOfCmds = kSegCmdSize + kBuildVerCmdSize + kSymtabCmdSize + kDysymtabCmdSize;
     size_t afterHeaders = kHeaderSize + sizeOfCmds;
 
     size_t textSize = text.bytes().size();
@@ -541,34 +524,41 @@ bool MachOWriter::write(const std::string &path,
     file.reserve(totalSize);
 
     // Mach-O header (32 bytes)
-    writeMachOHeader(file, cputype, cpusubtype, 4, sizeOfCmds,
-                      kMhSubsectionsViaSymbols);
+    writeMachOHeader(file, cputype, cpusubtype, 4, sizeOfCmds, kMhSubsectionsViaSymbols);
 
     // LC_SEGMENT_64 (232 bytes)
     writeSegmentCmd(file, kSegCmdSize, segVmSize, segFileOff, segFileSize, 2);
 
     // __text section header
-    writeSectionHdr(file, "__text", "__TEXT",
-                    0, textSize,
-                    static_cast<uint32_t>(textFileOff), textAlignLog2,
+    writeSectionHdr(file,
+                    "__text",
+                    "__TEXT",
+                    0,
+                    textSize,
+                    static_cast<uint32_t>(textFileOff),
+                    textAlignLog2,
                     (nTextRelocs > 0) ? static_cast<uint32_t>(textRelocOff) : 0,
                     nTextRelocs,
                     kSAttrPureInstructions | kSAttrSomeInstructions);
 
     // __const section header
-    writeSectionHdr(file, "__const", "__TEXT",
-                    constAddr, rodataSize,
-                    static_cast<uint32_t>(constFileOff), constAlignLog2,
-                    0, 0, // no __const relocations
+    writeSectionHdr(file,
+                    "__const",
+                    "__TEXT",
+                    constAddr,
+                    rodataSize,
+                    static_cast<uint32_t>(constFileOff),
+                    constAlignLog2,
+                    0,
+                    0, // no __const relocations
                     0);
 
     // LC_BUILD_VERSION (24 bytes)
     writeBuildVersionCmd(file);
 
     // LC_SYMTAB (24 bytes)
-    writeSymtabCmd(file,
-                   static_cast<uint32_t>(symOff), nsyms,
-                   static_cast<uint32_t>(strOff), strtab.size());
+    writeSymtabCmd(
+        file, static_cast<uint32_t>(symOff), nsyms, static_cast<uint32_t>(strOff), strtab.size());
 
     // LC_DYSYMTAB (80 bytes)
     writeDysymtabCmd(file, ilocal, nlocal, iextdef, nextdef, iundef, nundef);

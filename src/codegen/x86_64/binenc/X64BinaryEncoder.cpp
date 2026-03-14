@@ -485,6 +485,8 @@ void X64BinaryEncoder::encodeRegImm(MOpcode op, PhysReg dst, int64_t imm, objfil
     }
     else
     {
+        assert(imm >= -2147483648LL && imm <= 2147483647LL &&
+               "encodeRegImm: immediate exceeds 32-bit range");
         cs.emit8(0x81);
         cs.emit8(makeModRM(0b11, ext, hw.bits3));
         cs.emit32LE(static_cast<uint32_t>(static_cast<int32_t>(imm)));

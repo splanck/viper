@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "DynStubGen.hpp"
+#include "RelocConstants.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -152,7 +153,7 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
         // Relocation: selref pointer -> selector string (Abs64).
         ObjReloc strReloc;
         strReloc.offset = selrefOff;
-        strReloc.type = 257; // R_AARCH64_ABS64
+        strReloc.type = elf_a64::kAbs64;
         strReloc.symIndex = strSymIdx;
         strReloc.addend = 0;
         dataSec.relocs.push_back(strReloc);
@@ -168,7 +169,7 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
         // Relocation: ADRP x1, selref@PAGE
         ObjReloc adrpReloc;
         adrpReloc.offset = stubOff;
-        adrpReloc.type = 275; // R_AARCH64_ADR_PREL_PG_HI21
+        adrpReloc.type = elf_a64::kAdrPrelPgHi21;
         adrpReloc.symIndex = selrefSymIdx;
         adrpReloc.addend = 0;
         textSec.relocs.push_back(adrpReloc);
@@ -176,7 +177,7 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
         // Relocation: LDR x1, [x1, selref@PAGEOFF]
         ObjReloc ldrReloc;
         ldrReloc.offset = stubOff + 4;
-        ldrReloc.type = 286; // R_AARCH64_LDST64_ABS_LO12_NC
+        ldrReloc.type = elf_a64::kLdSt64Lo12Nc;
         ldrReloc.symIndex = selrefSymIdx;
         ldrReloc.addend = 0;
         textSec.relocs.push_back(ldrReloc);
@@ -195,7 +196,7 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
     {
         ObjReloc bReloc;
         bReloc.offset = i * 12 + 8;
-        bReloc.type = 282; // R_AARCH64_JUMP26
+        bReloc.type = elf_a64::kJump26;
         bReloc.symIndex = msgSendSymIdx;
         bReloc.addend = 0;
         textSec.relocs.push_back(bReloc);
@@ -272,7 +273,7 @@ ObjFile generateDynStubsAArch64(const std::unordered_set<std::string> &dynamicSy
         // Relocation: ADRP x16, GOT_entry@PAGE
         ObjReloc adrpReloc;
         adrpReloc.offset = stubOff;
-        adrpReloc.type = 275; // R_AARCH64_ADR_PREL_PG_HI21
+        adrpReloc.type = elf_a64::kAdrPrelPgHi21;
         adrpReloc.symIndex = gotSymIdx;
         adrpReloc.addend = 0;
         textSec.relocs.push_back(adrpReloc);
@@ -280,7 +281,7 @@ ObjFile generateDynStubsAArch64(const std::unordered_set<std::string> &dynamicSy
         // Relocation: LDR x16, [x16, GOT_entry@PAGEOFF]
         ObjReloc ldrReloc;
         ldrReloc.offset = stubOff + 4;
-        ldrReloc.type = 286; // R_AARCH64_LDST64_ABS_LO12_NC
+        ldrReloc.type = elf_a64::kLdSt64Lo12Nc;
         ldrReloc.symIndex = gotSymIdx;
         ldrReloc.addend = 0;
         textSec.relocs.push_back(ldrReloc);

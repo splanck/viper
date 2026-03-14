@@ -9,7 +9,9 @@ set(_linker_tests
         dead_strip
         string_dedup
         symbol_resolver
-        reloc_edge_cases)
+        reloc_edge_cases
+        elf_exe_writer
+        linker_integration)
 
 foreach (_case IN LISTS _linker_tests)
     set(_target test_linker_${_case})

@@ -104,6 +104,7 @@
 
 #include "AsmEmitter.hpp"
 
+#include "FrameCodegen.hpp"
 #include "codegen/common/LabelUtil.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 
@@ -251,88 +252,61 @@ void AsmEmitter::emitPrologue(std::ostream &os, const FramePlan &plan) const
 {
     emitPrologue(os);
     if (plan.localFrameSize > 0)
-    {
-        /// @brief Emits subsp.
         emitSubSp(os, plan.localFrameSize);
-    }
-    for (std::size_t i = 0; i < plan.saveGPRs.size();)
-    {
-        const PhysReg r0 = plan.saveGPRs[i++];
-        if (i < plan.saveGPRs.size())
+
+    // Save callee-saved GPRs in pairs (shared iteration logic).
+    forEachSaveReg(
+        plan.saveGPRs,
+        [&](PhysReg r0, PhysReg r1) { os << "  stp " << rn(r0) << ", " << rn(r1) << ", [sp, #-16]!\n"; },
+        [&](PhysReg r0) { os << "  str " << rn(r0) << ", [sp, #-16]!\n"; });
+
+    // Save callee-saved FPRs in pairs.
+    forEachSaveReg(
+        plan.saveFPRs,
+        [&](PhysReg r0, PhysReg r1)
         {
-            const PhysReg r1 = plan.saveGPRs[i++];
-            os << "  stp " << rn(r0) << ", " << rn(r1) << ", [sp, #-16]!\n";
-        }
-        else
-        {
-            os << "  str " << rn(r0) << ", [sp, #-16]!\n";
-        }
-    }
-    for (std::size_t i = 0; i < plan.saveFPRs.size();)
-    {
-        const PhysReg r0 = plan.saveFPRs[i++];
-        if (i < plan.saveFPRs.size())
-        {
-            const PhysReg r1 = plan.saveFPRs[i++];
             os << "  stp ";
             printD(os, r0);
             os << ", ";
             printD(os, r1);
             os << ", [sp, #-16]!\n";
-        }
-        else
+        },
+        [&](PhysReg r0)
         {
             os << "  str ";
             printD(os, r0);
             os << ", [sp, #-16]!\n";
-        }
-    }
+        });
 }
 
 void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const
 {
-    // Restore in reverse order of saves, then FP/LR
-    // Compute how many stores we emitted.
-    std::size_t n = plan.saveGPRs.size();
-    if (n % 2 == 1)
-    {
-        const PhysReg r0 = plan.saveGPRs[n - 1];
-        os << "  ldr " << rn(r0) << ", [sp], #16\n";
-        --n;
-    }
-    while (n > 0)
-    {
-        const PhysReg r1 = plan.saveGPRs[n - 1];
-        const PhysReg r0 = plan.saveGPRs[n - 2];
-        os << "  ldp " << rn(r0) << ", " << rn(r1) << ", [sp], #16\n";
-        n -= 2;
-    }
-    // Restore FPRs in reverse
-    std::size_t nf = plan.saveFPRs.size();
-    if (nf % 2 == 1)
-    {
-        const PhysReg r0 = plan.saveFPRs[nf - 1];
-        os << "  ldr ";
-        printD(os, r0);
-        os << ", [sp], #16\n";
-        --nf;
-    }
-    while (nf > 0)
-    {
-        const PhysReg r1 = plan.saveFPRs[nf - 1];
-        const PhysReg r0 = plan.saveFPRs[nf - 2];
-        os << "  ldp ";
-        printD(os, r0);
-        os << ", ";
-        printD(os, r1);
-        os << ", [sp], #16\n";
-        nf -= 2;
-    }
+    // Restore FPRs in reverse order (last saved = first restored).
+    forEachRestoreReg(
+        plan.saveFPRs,
+        [&](PhysReg r0, PhysReg r1)
+        {
+            os << "  ldp ";
+            printD(os, r0);
+            os << ", ";
+            printD(os, r1);
+            os << ", [sp], #16\n";
+        },
+        [&](PhysReg r0)
+        {
+            os << "  ldr ";
+            printD(os, r0);
+            os << ", [sp], #16\n";
+        });
+
+    // Restore GPRs in reverse order.
+    forEachRestoreReg(
+        plan.saveGPRs,
+        [&](PhysReg r0, PhysReg r1) { os << "  ldp " << rn(r0) << ", " << rn(r1) << ", [sp], #16\n"; },
+        [&](PhysReg r0) { os << "  ldr " << rn(r0) << ", [sp], #16\n"; });
+
     if (plan.localFrameSize > 0)
-    {
-        /// @brief Emits addsp.
         emitAddSp(os, plan.localFrameSize);
-    }
     emitEpilogue(os);
 }
 
