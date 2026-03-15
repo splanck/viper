@@ -712,7 +712,7 @@ to enforce naming, behavioral, and type-safety consistency.
 
 Renamed 40+ C functions to follow `rt_<type>_<verb>` naming convention. Affected collections: List,
 Set, Map, Stack, Queue, Deque, Ring, Heap, Seq, Bag, Bytes. Key renames include `Contains`→`Has`,
-`Count`→`Len`, `Size`→`Len`, `IsEmpty` property additions, and `TryPop`/`TryPeek` safe-access
+`Count`→`Length`, `Size`→`Length`, `IsEmpty` property additions, and `TryPop`/`TryPeek` safe-access
 variants for Stack, Queue, Deque, and Heap.
 
 #### runtime.def Registration (Phase 2)
@@ -808,7 +808,7 @@ allocator, native assembler, dataflow liveness, and codegen review suites.*
 1. **Directory restructure**: `demos/` consolidated into `examples/`. Update any hardcoded paths.
 2. **devdocs/ removed**: All developer documentation now lives under `docs/`.
 3. **Runtime API renames**: 40+ C functions renamed to `rt_<type>_<verb>` convention. Key changes:
-   `Contains`→`Has`, `Count`→`Len`, `Size`→`Len`, plus `IsEmpty` property additions.
+   `Contains`→`Has`, `Count`→`Length`, `Size`→`Length`, plus `IsEmpty` property additions.
    `runtime.def` registrations updated accordingly.
 4. **Collection .Len → .Length**: User-facing `.Len` property renamed to `.Length` across List, Map,
    and Set. `.Len` retained as alias for backward compatibility.

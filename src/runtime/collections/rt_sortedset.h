@@ -18,8 +18,7 @@
 // Links: src/runtime/collections/rt_sortedset.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_SORTEDSET_H
-#define VIPER_RT_SORTEDSET_H
+#pragma once
 
 #include "rt_string.h"
 #include <stdint.h>
@@ -182,5 +181,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_SORTEDSET_H

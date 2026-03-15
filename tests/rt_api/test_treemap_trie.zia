@@ -14,7 +14,7 @@ func start() {
     Say(tm.Last());
     Say(tm.Floor("blueberry"));
     Say(tm.Ceil("blueberry"));
-    tm.Drop("apple");
+    tm.Remove("apple");
     SayInt(tm.Length);
     SayInt(tm.Keys().Length);
 

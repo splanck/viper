@@ -17,8 +17,7 @@
 // Links: src/runtime/collections/rt_tween.c (implementation), src/runtime/core/rt_easing.h
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_TWEEN_H
-#define VIPER_RT_TWEEN_H
+#pragma once
 
 #include <stdint.h>
 
@@ -186,5 +185,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_TWEEN_H

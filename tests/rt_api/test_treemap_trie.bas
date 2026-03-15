@@ -11,8 +11,8 @@ PRINT "tm first: "; tm.First()
 PRINT "tm last: "; tm.Last()
 PRINT "tm floor blueberry: "; tm.Floor("blueberry")
 PRINT "tm ceil blueberry: "; tm.Ceil("blueberry")
-tm.Drop("apple")
-PRINT "tm len after drop: "; tm.Length
+tm.Remove("apple")
+PRINT "tm len after remove: "; tm.Length
 
 DIM tr AS Viper.Collections.Trie
 tr = Viper.Collections.Trie.New()

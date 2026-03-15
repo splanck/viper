@@ -93,6 +93,11 @@ extern "C"
     /// @return Seq of all keys (sorted lexicographically).
     void *rt_trie_keys(void *obj);
 
+    /// @brief Create a deep copy of the trie.
+    /// @param obj Trie pointer.
+    /// @return New trie with all key-value pairs copied.
+    void *rt_trie_clone(void *obj);
+
 #ifdef __cplusplus
 }
 #endif

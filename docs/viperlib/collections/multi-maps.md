@@ -23,7 +23,7 @@ directions. Each key maps to exactly one value, and each value maps to exactly o
 
 | Property  | Type    | Description                          |
 |-----------|---------|--------------------------------------|
-| `Len`     | Integer | Number of key-value pairs in the map |
+| `Length`     | Integer | Number of key-value pairs in the map |
 | `IsEmpty` | Boolean | True if the map has no entries       |
 
 ### Methods
@@ -131,7 +131,7 @@ stores a list of values for each key.
 |------------|---------|-----------------------------------------------|
 | `IsEmpty`  | Boolean | True if the map has no entries                |
 | `KeyCount` | Integer | Number of distinct keys                       |
-| `Len`      | Integer | Total number of values across all keys        |
+| `Length`      | Integer | Total number of values across all keys        |
 
 ### Methods
 
@@ -148,7 +148,7 @@ stores a list of values for each key.
 
 ### Notes
 
-- `Len` is the *total* number of values across all keys, not the number of distinct keys
+- `Length` is the *total* number of values across all keys, not the number of distinct keys
 - `KeyCount` gives the number of distinct keys
 - `Get` returns an empty Seq (not null) if the key does not exist
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
@@ -267,7 +267,7 @@ ranking operations for counting occurrences.
 | Property  | Type    | Description                                |
 |-----------|---------|--------------------------------------------|
 | `IsEmpty` | Boolean | True if the map has no entries             |
-| `Len`     | Integer | Number of distinct keys in the map         |
+| `Length`     | Integer | Number of distinct keys in the map         |
 | `Total`   | Integer | Sum of all counts across all keys          |
 
 ### Methods
@@ -398,7 +398,7 @@ An integer-keyed dictionary for efficient mapping of integer keys to object valu
 
 | Property  | Type    | Description                            |
 |-----------|---------|----------------------------------------|
-| `Len`     | Integer | Number of key-value pairs in the map   |
+| `Length`     | Integer | Number of key-value pairs in the map   |
 | `IsEmpty` | Boolean | True if the map has no entries         |
 
 ### Methods
@@ -499,7 +499,7 @@ value specified at construction time via `Viper.Core.Box`.
 
 | Property | Type    | Description                        |
 |----------|---------|------------------------------------|
-| `Len`    | Integer | Number of key-value pairs in the map |
+| `Length`    | Integer | Number of key-value pairs in the map |
 
 ### Methods
 
@@ -617,7 +617,7 @@ eviction operations. Values are accessed by string keys.
 |-----------|---------|-------------------------------------------|
 | `Cap`     | Integer | Maximum capacity (fixed at creation)      |
 | `IsEmpty` | Boolean | True if the cache has no entries          |
-| `Len`     | Integer | Number of entries currently in the cache  |
+| `Length`     | Integer | Number of entries currently in the cache  |
 
 ### Methods
 
@@ -749,7 +749,7 @@ A map with weak value references. Values may become NULL when their referent is 
 
 | Property  | Type    | Description                                              |
 |-----------|---------|----------------------------------------------------------|
-| `Len`     | Integer | Number of entries (including potentially collected ones) |
+| `Length`     | Integer | Number of entries (including potentially collected ones) |
 | `IsEmpty` | Boolean | True if map has no entries                               |
 
 ### Methods
@@ -769,7 +769,7 @@ A map with weak value references. Values may become NULL when their referent is 
 - **Weak references:** Values are stored without preventing garbage collection. If the only reference to an object is through a WeakMap, it may be collected.
 - **Stale entries:** After a value is collected, `Get()` returns NULL for that key. Use `Compact()` to clean up stale entries.
 - **String keys:** Keys are regular (strong) string references.
-- **Len includes stale:** `Len` counts all entries including those with collected values. Call `Compact()` first for an accurate live count.
+- **Length includes stale:** `Length` counts all entries including those with collected values. Call `Compact()` first for an accurate live count.
 
 ### Zia Example
 
@@ -844,7 +844,7 @@ for gaps. Only occupied indices consume storage.
 
 | Property | Type    | Description                                  |
 |----------|---------|----------------------------------------------|
-| `Len`    | Integer | Number of elements stored (occupied indices) |
+| `Length`    | Integer | Number of elements stored (occupied indices) |
 
 ### Methods
 

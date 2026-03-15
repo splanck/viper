@@ -17,8 +17,7 @@
 // Links: src/runtime/text/rt_aes.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-#ifndef RT_AES_H
-#define RT_AES_H
+#pragma once
 
 #include "rt_string.h"
 #include <stddef.h>
@@ -58,5 +57,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // RT_AES_H

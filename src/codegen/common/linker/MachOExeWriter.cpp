@@ -21,6 +21,7 @@
 //   - Page alignment: 16KB for arm64, 4KB for x86_64
 // Security features:
 //   - MH_PIE: ASLR — kernel randomizes load address on each execution
+//   - MH_TWOLEVEL: two-level namespace — per-symbol dylib ordinals
 //   - __PAGEZERO: null-pointer dereference guard (4GB unmapped region)
 //   - CS_LINKER_SIGNED: ad-hoc code signature (arm64) — required by AMFI
 //   - W^X: __TEXT is R+X, __DATA is R+W — no segment is both writable
@@ -41,6 +42,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <unordered_map>
 #include <vector>
 
 namespace viper::codegen::linker
@@ -59,6 +61,7 @@ static constexpr uint32_t MH_MAGIC_64 = 0xFEEDFACF;
 static constexpr uint32_t MH_EXECUTE = 2;
 static constexpr uint32_t MH_NOUNDEFS = 0x1;
 static constexpr uint32_t MH_DYLDLINK = 0x4;
+static constexpr uint32_t MH_TWOLEVEL = 0x80;
 static constexpr uint32_t MH_PIE = 0x200000;
 static constexpr uint32_t MH_HAS_TLV_DESCRIPTORS = 0x800000;
 
@@ -94,6 +97,7 @@ bool writeMachOExe(const std::string &path,
                    LinkArch arch,
                    const std::vector<DylibImport> &dylibs,
                    const std::unordered_set<std::string> &dynSyms,
+                   const std::unordered_map<std::string, uint32_t> &symOrdinals,
                    std::ostream &err)
 {
     const size_t pageSize = layout.pageSize;
@@ -133,7 +137,7 @@ bool writeMachOExe(const std::string &path,
 
     std::vector<uint8_t> symtabData, strtabData;
     uint32_t nExtDef = 0, nUndef = 0;
-    buildSymtab(symtabData, strtabData, layout, dynSyms, nExtDef, nUndef);
+    buildSymtab(symtabData, strtabData, layout, dynSyms, symOrdinals, nExtDef, nUndef);
 
     // Bind and rebase opcodes (built with correct VAs after layout computation below).
     std::vector<uint8_t> bindData;
@@ -271,7 +275,7 @@ bool writeMachOExe(const std::string &path,
             rebaseData.push_back(0);
 
         // Bind opcodes: dynamic symbol resolution + TLV descriptor thunks.
-        buildBindOpcodes(bindData, layout.gotEntries, layout, dataSegVmAddr, 2);
+        buildBindOpcodes(bindData, layout.gotEntries, layout, dataSegVmAddr, 2, symOrdinals);
         while (bindData.size() % 8 != 0)
             bindData.push_back(0);
     }
@@ -359,9 +363,10 @@ bool writeMachOExe(const std::string &path,
     writeLE32(file, MH_EXECUTE);
     writeLE32(file, ncmds);
     writeLE32(file, sizeofcmds);
-    // Use flat namespace (no MH_TWOLEVEL) so bind opcodes don't need per-symbol
-    // dylib ordinals. dyld searches all loaded dylibs for each symbol.
-    uint32_t mhFlags = MH_PIE | MH_DYLDLINK;
+    // Two-level namespace: each bind opcode specifies the dylib ordinal for its
+    // symbol. ObjC class/metaclass symbols use flat lookup (ordinal -2) since
+    // their defining framework can't be determined by prefix alone.
+    uint32_t mhFlags = MH_PIE | MH_DYLDLINK | MH_TWOLEVEL;
     if (!hasDynamic)
         mhFlags |= MH_NOUNDEFS;
     if (hasTLS)

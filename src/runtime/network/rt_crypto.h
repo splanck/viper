@@ -17,8 +17,7 @@
 // Links: src/runtime/network/rt_crypto.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_CRYPTO_H
-#define VIPER_RT_CRYPTO_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -157,5 +156,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_CRYPTO_H

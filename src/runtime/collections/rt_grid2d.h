@@ -17,8 +17,7 @@
 // Links: src/runtime/collections/rt_grid2d.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_GRID2D_H
-#define VIPER_RT_GRID2D_H
+#pragma once
 
 #include <stdint.h>
 
@@ -121,5 +120,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_GRID2D_H

@@ -17,8 +17,7 @@
 // Links: src/runtime/text/rt_regex.c, src/runtime/text/rt_compiled_pattern.c (internal users)
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_REGEX_INTERNAL_H
-#define VIPER_RT_REGEX_INTERNAL_H
+#pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -91,5 +90,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_REGEX_INTERNAL_H

@@ -17,8 +17,7 @@
 // Links: src/runtime/threads/rt_parallel.c (implementation), src/runtime/threads/rt_threadpool.h
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_PARALLEL_H
-#define VIPER_RT_PARALLEL_H
+#pragma once
 
 #include "rt_string.h"
 #include <stdint.h>
@@ -111,5 +110,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_PARALLEL_H

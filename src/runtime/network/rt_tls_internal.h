@@ -16,8 +16,7 @@
 // Links: rt_tls.c (core TLS), rt_tls_verify.c (certificate validation)
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_TLS_INTERNAL_H
-#define VIPER_RT_TLS_INTERNAL_H
+#pragma once
 
 #include "rt_tls.h"
 #include <stddef.h>
@@ -134,5 +133,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_TLS_INTERNAL_H

@@ -18,8 +18,7 @@
 // Links: src/runtime/core/rt_stack_safety.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-#ifndef RT_STACK_SAFETY_H
-#define RT_STACK_SAFETY_H
+#pragma once
 
 #ifdef __cplusplus
 extern "C"
@@ -43,5 +42,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // RT_STACK_SAFETY_H

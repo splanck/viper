@@ -17,15 +17,15 @@ PRINT "map empty after clear: "; m.IsEmpty
 DIM b AS Viper.Collections.Bag
 b = Viper.Collections.Bag.New()
 PRINT "bag empty: "; b.IsEmpty
-b.Put("x")
-b.Put("y")
-b.Put("z")
-b.Put("x")
+b.Add("x")
+b.Add("y")
+b.Add("z")
+b.Add("x")
 PRINT "bag len: "; b.Length
 PRINT "bag has x: "; b.Has("x")
 PRINT "bag has w: "; b.Has("w")
-b.Drop("x")
-PRINT "bag len after drop: "; b.Length
+b.Remove("x")
+PRINT "bag len after remove: "; b.Length
 b.Clear()
 PRINT "bag empty after clear: "; b.IsEmpty
 

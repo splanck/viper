@@ -18,8 +18,7 @@
 // src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_TLS_H
-#define VIPER_RT_TLS_H
+#pragma once
 
 #include "rt_string.h"
 #include <stddef.h>
@@ -155,5 +154,3 @@ typedef enum {
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_TLS_H

@@ -19,8 +19,7 @@
 // src/runtime/collections/rt_particle.h
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_SCREENFX_H
-#define VIPER_RT_SCREENFX_H
+#pragma once
 
 #include <stdint.h>
 
@@ -178,5 +177,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_SCREENFX_H

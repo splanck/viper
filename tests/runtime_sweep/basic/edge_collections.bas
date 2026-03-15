@@ -199,13 +199,13 @@ bag = Viper.Collections.Bag.New()
 PRINT "Empty bag Len: "; bag.Length
 PRINT "Empty bag Has('x'): "; bag.Has("x")
 
-' Drop non-existent
-PRINT "Drop('nonexistent'): "; bag.Drop("nonexistent")
+' Remove non-existent
+PRINT "Remove('nonexistent'): "; bag.Remove("nonexistent")
 
-' Put empty string
-bag.Put("")
-PRINT "Put(''), Has(''): "; bag.Has("")
-PRINT "After Put(''), Len: "; bag.Length
+' Add empty string
+bag.Add("")
+PRINT "Add(''), Has(''): "; bag.Has("")
+PRINT "After Add(''), Length: "; bag.Length
 
 PRINT ""
 PRINT "=== Collection Edge Case Tests Complete ==="

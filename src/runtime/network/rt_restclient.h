@@ -17,8 +17,7 @@
 // Links: src/runtime/network/rt_restclient.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_RESTCLIENT_H
-#define VIPER_RT_RESTCLIENT_H
+#pragma once
 
 #include "rt_string.h"
 #include <stdint.h>
@@ -177,5 +176,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_RESTCLIENT_H

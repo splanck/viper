@@ -17,8 +17,7 @@
 // Links: src/runtime/collections/rt_collision.c (implementation), src/runtime/graphics/rt_camera.h
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_COLLISION_H
-#define VIPER_RT_COLLISION_H
+#pragma once
 
 #include <stdint.h>
 
@@ -256,5 +255,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_COLLISION_H

@@ -52,7 +52,7 @@ typedef struct
     void *music;         // Currently loaded Music object
     int64_t volume;      // Playback volume (0-100)
     int8_t shuffle;      // Shuffle mode
-    int64_t repeat;      // 0=none, 1=all, 2=one
+    int64_t repeat;      // RT_REPEAT_NONE, RT_REPEAT_ALL, or RT_REPEAT_ONE
     int8_t playing;      // Currently playing
     int8_t paused;       // Paused state
     void *shuffle_order; // Shuffled index sequence
@@ -188,7 +188,7 @@ void *rt_playlist_new(void)
     pl->music = NULL;
     pl->volume = 100;
     pl->shuffle = 0;
-    pl->repeat = 0;
+    pl->repeat = RT_REPEAT_NONE;
     pl->playing = 0;
     pl->paused = 0;
     pl->shuffle_order = NULL;
@@ -370,7 +370,7 @@ void rt_playlist_play(void *obj)
     load_current(pl);
     if (pl->music)
     {
-        int loop = (pl->repeat == 2) ? 1 : 0; // Repeat one = loop
+        int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
         rt_music_play(pl->music, loop);
         pl->playing = 1;
         pl->paused = 0;
@@ -421,7 +421,7 @@ void rt_playlist_next(void *obj)
 
     if (pl->current >= count)
     {
-        if (pl->repeat == 1)
+        if (pl->repeat == RT_REPEAT_ALL)
         {
             // Repeat all: go back to start
             pl->current = 0;
@@ -443,7 +443,7 @@ void rt_playlist_next(void *obj)
     load_current(pl);
     if (was_playing && pl->music)
     {
-        int loop = (pl->repeat == 2) ? 1 : 0;
+        int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
         rt_music_play(pl->music, loop);
         pl->playing = 1;
         pl->paused = 0;
@@ -464,7 +464,7 @@ void rt_playlist_prev(void *obj)
 
     if (pl->current < 0)
     {
-        if (pl->repeat == 1)
+        if (pl->repeat == RT_REPEAT_ALL)
         {
             // Repeat all: go to end
             pl->current = count - 1;
@@ -479,7 +479,7 @@ void rt_playlist_prev(void *obj)
     load_current(pl);
     if (was_playing && pl->music)
     {
-        int loop = (pl->repeat == 2) ? 1 : 0;
+        int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
         rt_music_play(pl->music, loop);
         pl->playing = 1;
         pl->paused = 0;
@@ -502,7 +502,7 @@ void rt_playlist_jump(void *obj, int64_t index)
     load_current(pl);
     if (was_playing && pl->music)
     {
-        int loop = (pl->repeat == 2) ? 1 : 0;
+        int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
         rt_music_play(pl->music, loop);
         pl->playing = 1;
         pl->paused = 0;
@@ -600,10 +600,10 @@ void rt_playlist_set_repeat(void *obj, int64_t mode)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
 
-    if (mode < 0)
-        mode = 0;
-    if (mode > 2)
-        mode = 2;
+    if (mode < RT_REPEAT_NONE)
+        mode = RT_REPEAT_NONE;
+    if (mode > RT_REPEAT_ONE)
+        mode = RT_REPEAT_ONE;
     pl->repeat = mode;
 }
 
@@ -632,7 +632,7 @@ void rt_playlist_update(void *obj)
     if (!rt_music_is_playing(pl->music))
     {
         // Track ended
-        if (pl->repeat == 2)
+        if (pl->repeat == RT_REPEAT_ONE)
         {
             // Repeat one: restart same track
             rt_music_seek(pl->music, 0);

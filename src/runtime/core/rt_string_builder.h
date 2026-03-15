@@ -19,8 +19,7 @@
 // src/runtime/core/rt_printf_compat.h
 //
 //===----------------------------------------------------------------------===//
-#ifndef RT_STRING_BUILDER_H
-#define RT_STRING_BUILDER_H
+#pragma once
 
 #include "rt_string.h"
 #include <stddef.h>
@@ -187,5 +186,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // RT_STRING_BUILDER_H

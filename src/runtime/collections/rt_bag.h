@@ -92,6 +92,11 @@ extern "C"
     /// @return New bag containing elements in first but not second.
     void *rt_bag_diff(void *obj, void *other);
 
+    /// @brief Create a shallow copy of the bag.
+    /// @param obj Bag pointer.
+    /// @return New bag containing all elements from the original.
+    void *rt_bag_clone(void *obj);
+
 #ifdef __cplusplus
 }
 #endif

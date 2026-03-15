@@ -23,21 +23,23 @@ intersection, difference), and enumeration.
 
 | Property  | Type    | Description                     |
 |-----------|---------|---------------------------------|
-| `Len`     | Integer | Number of strings in the bag    |
+| `Length`  | Integer | Number of strings in the bag    |
 | `IsEmpty` | Boolean | True if bag contains no strings |
 
 ### Methods
 
 | Method          | Signature         | Description                                                  |
 |-----------------|-------------------|--------------------------------------------------------------|
-| `Put(str)`      | `Boolean(String)` | Add a string; returns true if new, false if already present  |
-| `Drop(str)`     | `Boolean(String)` | Remove a string; returns true if removed, false if not found |
+| `Add(str)`      | `Boolean(String)` | Add a string; returns true if new, false if already present  |
+| `Remove(str)`   | `Boolean(String)` | Remove a string; returns true if removed, false if not found |
 | `Has(str)`      | `Boolean(String)` | Check if string is in the bag                                |
 | `Clear()`       | `Void()`          | Remove all strings from the bag                              |
 | `Items()`       | `Seq()`           | Get all strings as a Seq (order undefined)                   |
 | `Union(other)`     | `Bag(Bag)`        | Return new bag with union of both bags                       |
 | `Intersect(other)` | `Bag(Bag)`        | Return new bag with intersection of both bags                |
 | `Diff(other)`   | `Bag(Bag)`        | Return new bag with elements in this but not other           |
+| `ToSeq()`        | `Seq()`           | Return all strings as a Seq (same as Items)                    |
+| `ToSet()`        | `Set()`           | Return all strings as a new Set                                |
 
 ### Notes
 
@@ -58,9 +60,9 @@ bind Viper.Fmt as Fmt;
 
 func start() {
     var fruits = new Bag();
-    fruits.Put("apple");
-    fruits.Put("banana");
-    fruits.Put("cherry");
+    fruits.Add("apple");
+    fruits.Add("banana");
+    fruits.Add("cherry");
     Say("Count: " + Fmt.Int(fruits.Length));              // 3
 
     // Membership testing
@@ -68,11 +70,11 @@ func start() {
     Say("Has grape: " + Fmt.Bool(fruits.Has("grape")));    // false
 
     // Duplicate returns false
-    Say("Add apple: " + Fmt.Bool(fruits.Put("apple")));    // false
+    Say("Add apple: " + Fmt.Bool(fruits.Add("apple")));    // false
 
     // Remove
-    fruits.Drop("banana");
-    Say("After drop: " + Fmt.Int(fruits.Length));             // 2
+    fruits.Remove("banana");
+    Say("After remove: " + Fmt.Int(fruits.Length));             // 2
 }
 ```
 
@@ -81,13 +83,13 @@ func start() {
 ```basic
 ' Create and populate a bag
 DIM fruits AS OBJECT = NEW Viper.Collections.Bag()
-fruits.Put("apple")
-fruits.Put("banana")
-fruits.Put("cherry")
+fruits.Add("apple")
+fruits.Add("banana")
+fruits.Add("cherry")
 PRINT fruits.Length           ' Output: 3
 
 ' Duplicate add returns false
-DIM wasNew AS INTEGER = fruits.Put("apple")
+DIM wasNew AS INTEGER = fruits.Add("apple")
 PRINT wasNew               ' Output: 0 (already present)
 
 ' Membership testing
@@ -95,20 +97,20 @@ PRINT fruits.Has("banana") ' Output: 1 (true)
 PRINT fruits.Has("grape")  ' Output: 0 (false)
 
 ' Remove an element
-DIM removed AS INTEGER = fruits.Drop("banana")
+DIM removed AS INTEGER = fruits.Remove("banana")
 PRINT removed              ' Output: 1 (was removed)
 PRINT fruits.Has("banana") ' Output: 0 (no longer present)
 
 ' Set operations
 DIM bagA AS OBJECT = NEW Viper.Collections.Bag()
-bagA.Put("a")
-bagA.Put("b")
-bagA.Put("c")
+bagA.Add("a")
+bagA.Add("b")
+bagA.Add("c")
 
 DIM bagB AS OBJECT = NEW Viper.Collections.Bag()
-bagB.Put("b")
-bagB.Put("c")
-bagB.Put("d")
+bagB.Add("b")
+bagB.Add("c")
+bagB.Add("d")
 
 ' Union: elements in either bag
 DIM merged AS OBJECT = bagA.Union(bagB)
@@ -267,13 +269,13 @@ existence checking, longest prefix matching, and retrieving all keys with a give
 | Property  | Type    | Description                             |
 |-----------|---------|-----------------------------------------|
 | `IsEmpty` | Boolean | True if the trie has no entries         |
-| `Len`     | Integer | Number of key-value pairs in the trie   |
+| `Length`  | Integer | Number of key-value pairs in the trie   |
 
 ### Methods
 
 | Method                | Signature            | Description                                                          |
 |-----------------------|----------------------|----------------------------------------------------------------------|
-| `Put(key, value)`     | `Void(String, Object)` | Add or update a key-value pair                                    |
+| `Set(key, value)`     | `Void(String, Object)` | Add or update a key-value pair                                    |
 | `Get(key)`            | `Object(String)`     | Get value for an exact key match (null if not found)                 |
 | `Has(key)`            | `Boolean(String)`    | Check if an exact key exists                                         |
 | `HasPrefix(prefix)`   | `Boolean(String)`    | Check if any key starts with the given prefix                        |
@@ -304,11 +306,11 @@ func start() {
     var t = Trie.New();
 
     // Insert keys
-    t.Put("cat", Box.I64(1));
-    t.Put("car", Box.I64(2));
-    t.Put("card", Box.I64(3));
-    t.Put("care", Box.I64(4));
-    t.Put("dog", Box.I64(5));
+    t.Set("cat", Box.I64(1));
+    t.Set("car", Box.I64(2));
+    t.Set("card", Box.I64(3));
+    t.Set("care", Box.I64(4));
+    t.Set("dog", Box.I64(5));
     SayInt(t.Length);                                 // 5
 
     // Exact lookup
@@ -343,11 +345,11 @@ DIM t AS OBJECT
 t = Viper.Collections.Trie.New()
 
 ' Insert keys with values
-t.Put("cat", Viper.Core.Box.I64(1))
-t.Put("car", Viper.Core.Box.I64(2))
-t.Put("card", Viper.Core.Box.I64(3))
-t.Put("care", Viper.Core.Box.I64(4))
-t.Put("dog", Viper.Core.Box.I64(5))
+t.Set("cat", Viper.Core.Box.I64(1))
+t.Set("car", Viper.Core.Box.I64(2))
+t.Set("card", Viper.Core.Box.I64(3))
+t.Set("care", Viper.Core.Box.I64(4))
+t.Set("dog", Viper.Core.Box.I64(5))
 PRINT t.Length                     ' 5
 
 ' Exact lookup
@@ -376,7 +378,7 @@ caKeys = t.WithPrefix("ca")
 PRINT caKeys.Length                ' 4 (cat, car, card, care)
 
 ' Update existing key
-t.Put("cat", Viper.Core.Box.I64(100))
+t.Set("cat", Viper.Core.Box.I64(100))
 PRINT Viper.Core.Box.ToI64(t.Get("cat"))  ' 100
 PRINT t.Length                     ' 5 (no new entry)
 
@@ -539,7 +541,7 @@ set operations on integer-indexed elements.
 |-----------|---------|------------------------------------------|
 | `Count`   | Integer | Number of bits currently set to 1        |
 | `IsEmpty` | Boolean | True if no bits are set                  |
-| `Len`     | Integer | Total number of bits (size of the set)   |
+| `Length`  | Integer | Total number of bits (size of the set)   |
 
 ### Methods
 
@@ -674,7 +676,7 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 
 | Property  | Type    | Description                              |
 |-----------|---------|------------------------------------------|
-| `Len`     | Integer | Number of bytes                          |
+| `Length`  | Integer | Number of bytes                          |
 | `IsEmpty` | Boolean | Returns true if the byte array is empty  |
 
 ### Methods

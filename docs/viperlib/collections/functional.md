@@ -23,7 +23,7 @@ push/pop, insert/remove, and slicing operations.
 
 | Property  | Type    | Description                                    |
 |-----------|---------|------------------------------------------------|
-| `Len`     | Integer | Number of elements currently in the sequence   |
+| `Length`  | Integer | Number of elements currently in the sequence   |
 | `Cap`     | Integer | Current allocated capacity                     |
 | `IsEmpty` | Boolean | Returns true if the sequence has zero elements |
 
@@ -63,6 +63,13 @@ push/pop, insert/remove, and slicing operations.
 | `TakeWhile(pred)`      | `Seq(Function)`         | Returns new Seq with leading elements while predicate is true                         |
 | `DropWhile(pred)`      | `Seq(Function)`         | Returns new Seq skipping leading elements while predicate is true                     |
 | `Fold(init, fn)`       | `Object(Object, Function)` | Reduces sequence to single value using accumulator                                 |
+| `GetStr(index)`        | `String(Integer)`         | Returns the element at index as a string (convenience)                                |
+| `ToList()`             | `List()`                  | Returns elements as a new List                                                        |
+| `ToSet()`              | `Set()`                   | Returns unique elements as a new Set                                                  |
+| `ToStack()`            | `Stack()`                 | Returns elements as a new Stack                                                       |
+| `ToQueue()`            | `Queue()`                 | Returns elements as a new Queue                                                       |
+| `ToDeque()`            | `Deque()`                 | Returns elements as a new Deque                                                       |
+| `ToBag()`              | `Bag()`                   | Returns unique string elements as a new Bag                                           |
 
 ### Zia Example
 

@@ -22,8 +22,7 @@
 // Links: src/runtime/collections/rt_debugoverlay.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_DEBUGOVERLAY_H
-#define VIPER_RT_DEBUGOVERLAY_H
+#pragma once
 
 #include <stdint.h>
 
@@ -85,5 +84,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_DEBUGOVERLAY_H

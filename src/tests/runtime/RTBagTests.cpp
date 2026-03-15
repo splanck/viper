@@ -41,7 +41,7 @@ static void test_bag_new_empty()
     printf("\n");
 }
 
-static void test_bag_put_has()
+static void test_bag_add_has()
 {
     printf("Testing Bag.Add and Bag.Has:\n");
 
@@ -74,7 +74,7 @@ static void test_bag_put_has()
     printf("\n");
 }
 
-static void test_bag_drop()
+static void test_bag_remove()
 {
     printf("Testing Bag.Remove:\n");
 
@@ -325,8 +325,8 @@ int main()
     printf("=== RT Bag Tests ===\n\n");
 
     test_bag_new_empty();
-    test_bag_put_has();
-    test_bag_drop();
+    test_bag_add_has();
+    test_bag_remove();
     test_bag_clear();
     test_bag_items();
     test_bag_union();

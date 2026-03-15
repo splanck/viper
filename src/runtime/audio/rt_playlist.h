@@ -17,8 +17,7 @@
 // Links: src/runtime/audio/rt_playlist.c (implementation), src/runtime/audio/rt_audio.h
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_PLAYLIST_H
-#define VIPER_RT_PLAYLIST_H
+#pragma once
 
 #include "rt_string.h"
 #include <stdint.h>
@@ -27,6 +26,13 @@
 extern "C"
 {
 #endif
+
+/// Playlist repeat mode constants.
+typedef enum {
+    RT_REPEAT_NONE = 0, ///< Stop at end of playlist.
+    RT_REPEAT_ALL  = 1, ///< Loop back to first track after last.
+    RT_REPEAT_ONE  = 2, ///< Replay the current track indefinitely.
+} rt_playlist_repeat_t;
 
     //=============================================================================
     // Viper.Audio.Playlist
@@ -141,12 +147,12 @@ extern "C"
 
     /// @brief Set the repeat mode.
     /// @param playlist Playlist object.
-    /// @param mode 0 = no repeat, 1 = repeat all, 2 = repeat one.
+    /// @param mode Repeat mode (RT_REPEAT_NONE, RT_REPEAT_ALL, or RT_REPEAT_ONE).
     void rt_playlist_set_repeat(void *playlist, int64_t mode);
 
     /// @brief Get the current repeat mode.
     /// @param playlist Playlist object.
-    /// @return Repeat mode (0, 1, or 2).
+    /// @return Repeat mode (RT_REPEAT_NONE, RT_REPEAT_ALL, or RT_REPEAT_ONE).
     int64_t rt_playlist_get_repeat(void *playlist);
 
     //=============================================================================
@@ -161,5 +167,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_PLAYLIST_H

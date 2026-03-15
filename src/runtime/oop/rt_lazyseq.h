@@ -17,8 +17,7 @@
 // Links: src/runtime/oop/rt_lazyseq.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_LAZYSEQ_H
-#define VIPER_RT_LAZYSEQ_H
+#pragma once
 
 #include <stdint.h>
 
@@ -237,5 +236,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_LAZYSEQ_H

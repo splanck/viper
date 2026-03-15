@@ -10,7 +10,8 @@
 //          Encodes GOT bindings, TLV descriptor bindings, ASLR rebases, and
 //          the nlist symbol table for __LINKEDIT.
 // Key invariants:
-//   - Bind opcodes use flat namespace (ordinal = -2, no MH_TWOLEVEL)
+//   - Bind opcodes use two-level namespace (MH_TWOLEVEL) with per-symbol ordinals
+//   - OBJC_CLASS_$/OBJC_METACLASS_$ symbols use flat lookup (ordinal -2)
 //   - Symbol names Mach-O mangled (underscore prefix)
 //   - Rebase offsets sorted, run-length encoded for consecutive 8-byte pointers
 //   - String table NUL-separated, 4-byte aligned at end
@@ -38,15 +39,14 @@ namespace
 
 // Bind opcode constants (high 4 bits = opcode, low 4 bits = immediate).
 static constexpr uint8_t BIND_OPCODE_DONE = 0x00;
+static constexpr uint8_t BIND_OPCODE_SET_DYLIB_ORDINAL_IMM = 0x10;
+static constexpr uint8_t BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB = 0x20;
+static constexpr uint8_t BIND_OPCODE_SET_DYLIB_SPECIAL_IMM = 0x30;
 static constexpr uint8_t BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM = 0x40;
 static constexpr uint8_t BIND_OPCODE_SET_TYPE_IMM = 0x50;
 static constexpr uint8_t BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB = 0x70;
 static constexpr uint8_t BIND_OPCODE_DO_BIND = 0x90;
 static constexpr uint8_t BIND_TYPE_POINTER = 1;
-
-// Bind opcode for flat namespace lookup (ordinal = -2).
-// With flat namespace, dyld searches all loaded dylibs for the symbol.
-static constexpr uint8_t BIND_OPCODE_SET_DYLIB_SPECIAL_IMM = 0x30;
 
 // Rebase opcode constants (high 4 bits = opcode, low 4 bits = immediate).
 static constexpr uint8_t REBASE_OPCODE_DONE = 0x00;
@@ -61,14 +61,28 @@ static constexpr uint8_t N_UNDF = 0x00;
 static constexpr uint8_t N_SECT = 0x0E;
 
 /// Emit one bind entry for a given symbol at a given segment offset.
+/// @param dylibOrdinal  1-based dylib ordinal for MH_TWOLEVEL. 0 = flat lookup.
 void emitBindEntry(std::vector<uint8_t> &bindData,
                    const std::string &symbolName,
                    uint64_t segmentOffset,
-                   uint32_t dataSegIndex)
+                   uint32_t dataSegIndex,
+                   uint32_t dylibOrdinal)
 {
-    // Use flat namespace lookup: ordinal = -2 (BIND_SPECIAL_DYLIB_FLAT_LOOKUP).
-    // Immediate field encodes -2 as 4-bit twos complement = 0x0E.
-    bindData.push_back(BIND_OPCODE_SET_DYLIB_SPECIAL_IMM | 0x0E);
+    // Two-level namespace: set dylib ordinal for this symbol.
+    // Ordinal 0 = flat lookup (BIND_SPECIAL_DYLIB_FLAT_LOOKUP, -2).
+    if (dylibOrdinal == 0)
+    {
+        bindData.push_back(BIND_OPCODE_SET_DYLIB_SPECIAL_IMM | 0x0E);
+    }
+    else if (dylibOrdinal <= 15)
+    {
+        bindData.push_back(BIND_OPCODE_SET_DYLIB_ORDINAL_IMM | (dylibOrdinal & 0x0F));
+    }
+    else
+    {
+        bindData.push_back(BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB);
+        writeULEB128(bindData, dylibOrdinal);
+    }
 
     // Symbol name with Mach-O underscore prefix.
     bindData.push_back(BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM | 0);
@@ -86,17 +100,27 @@ void emitBindEntry(std::vector<uint8_t> &bindData,
 
 } // anonymous namespace
 
+/// Look up the dylib ordinal for a symbol. Returns 1 (libSystem) as default.
+static uint32_t lookupOrdinal(const std::string &symName,
+                               const std::unordered_map<std::string, uint32_t> &symOrdinals)
+{
+    auto it = symOrdinals.find(symName);
+    return (it != symOrdinals.end()) ? it->second : 1;
+}
+
 void buildBindOpcodes(std::vector<uint8_t> &bindData,
                       const std::vector<GotEntry> &gotEntries,
                       const LinkLayout &layout,
                       uint64_t dataSegVmAddr,
-                      uint32_t dataSegIndex)
+                      uint32_t dataSegIndex,
+                      const std::unordered_map<std::string, uint32_t> &symOrdinals)
 {
     // Bind GOT entries for dynamic symbols.
     for (const auto &ge : gotEntries)
     {
         uint64_t offset = ge.gotAddr - dataSegVmAddr;
-        emitBindEntry(bindData, ge.symbolName, offset, dataSegIndex);
+        uint32_t ordinal = lookupOrdinal(ge.symbolName, symOrdinals);
+        emitBindEntry(bindData, ge.symbolName, offset, dataSegIndex, ordinal);
     }
 
     // Bind TLV descriptor thunk fields → _tlv_bootstrap.
@@ -109,12 +133,13 @@ void buildBindOpcodes(std::vector<uint8_t> &bindData,
 
         // Each TLV descriptor is 24 bytes: {thunk(8), key(8), offset(8)}.
         // The thunk at byte 0 of each descriptor must be bound to _tlv_bootstrap.
+        // _tlv_bootstrap is in libSystem (ordinal 1).
         size_t numDescriptors = sec.data.size() / 24;
         for (size_t i = 0; i < numDescriptors; ++i)
         {
             uint64_t descVA = sec.virtualAddr + i * 24;
             uint64_t segOff = descVA - dataSegVmAddr;
-            emitBindEntry(bindData, "_tlv_bootstrap", segOff, dataSegIndex);
+            emitBindEntry(bindData, "_tlv_bootstrap", segOff, dataSegIndex, 1);
         }
     }
 
@@ -128,7 +153,8 @@ void buildBindOpcodes(std::vector<uint8_t> &bindData,
         if (addr >= dataSegVmAddr)
         {
             uint64_t segOff = addr - dataSegVmAddr;
-            emitBindEntry(bindData, be.symbolName, segOff, dataSegIndex);
+            uint32_t ordinal = lookupOrdinal(be.symbolName, symOrdinals);
+            emitBindEntry(bindData, be.symbolName, segOff, dataSegIndex, ordinal);
         }
     }
 
@@ -189,6 +215,7 @@ void buildSymtab(std::vector<uint8_t> &symtabData,
                  std::vector<uint8_t> &strtabData,
                  const LinkLayout &layout,
                  const std::unordered_set<std::string> &dynSyms,
+                 const std::unordered_map<std::string, uint32_t> &symOrdinals,
                  uint32_t &nExtDef,
                  uint32_t &nUndef)
 {
@@ -226,7 +253,10 @@ void buildSymtab(std::vector<uint8_t> &symtabData,
         }
     }
 
-    // Undefined: dynamic imports.
+    // Undefined: dynamic imports with MH_TWOLEVEL library ordinals.
+    // nlist n_desc bits [15:8] encode the 1-based dylib ordinal.
+    // DYNAMIC_LOOKUP_ORDINAL (0xFE) is used for flat-lookup symbols.
+    static constexpr uint32_t DYNAMIC_LOOKUP_ORDINAL = 0xFE;
     nUndef = 0;
     std::vector<std::string> sortedDyn(dynSyms.begin(), dynSyms.end());
     std::sort(sortedDyn.begin(), sortedDyn.end());
@@ -235,7 +265,11 @@ void buildSymtab(std::vector<uint8_t> &symtabData,
         if (sym.size() > 6 && sym.substr(0, 6) == "__got_")
             continue;
         uint32_t strx = addString(machoMangle(sym));
-        writeNlist(strx, N_EXT | N_UNDF, 0, 0x0100, 0);
+        uint32_t ordinal = lookupOrdinal(sym, symOrdinals);
+        if (ordinal == 0)
+            ordinal = DYNAMIC_LOOKUP_ORDINAL;
+        uint16_t desc = static_cast<uint16_t>(ordinal << 8);
+        writeNlist(strx, N_EXT | N_UNDF, 0, desc, 0);
         nUndef++;
     }
 

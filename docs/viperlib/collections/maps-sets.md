@@ -22,7 +22,7 @@ A key-value dictionary with string keys. Provides O(1) average-case lookup, inse
 
 | Property  | Type    | Description                            |
 |-----------|---------|----------------------------------------|
-| `Len`     | Integer | Number of key-value pairs in the map   |
+| `Length`  | Integer | Number of key-value pairs in the map   |
 | `IsEmpty` | Boolean | Returns true if the map has no entries |
 
 ### Methods
@@ -156,7 +156,7 @@ intersection, difference), and subset/superset queries. Unlike `Bag` which store
 
 | Property  | Type    | Description                       |
 |-----------|---------|-----------------------------------|
-| `Len`     | Integer | Number of objects in the set      |
+| `Length`  | Integer | Number of objects in the set      |
 | `IsEmpty` | Boolean | True if set contains no objects   |
 
 ### Methods
@@ -175,6 +175,8 @@ intersection, difference), and subset/superset queries. Unlike `Bag` which store
 | `IsSuperset(other)` | `Boolean(Set)`    | True if this set is a superset of other                        |
 | `IsDisjoint(other)` | `Boolean(Set)`    | True if sets have no elements in common                        |
 | `Clone()`           | `Set()`           | Create a shallow copy of the set                               |
+| `ToSeq()`           | `Seq()`           | Returns all elements as a new Seq (order undefined)            |
+| `ToList()`          | `List()`          | Returns all elements as a new List (order undefined)           |
 
 ### Notes
 
@@ -288,7 +290,7 @@ regardless of updates.
 | Property  | Type    | Description                            |
 |-----------|---------|----------------------------------------|
 | `IsEmpty` | Boolean | True if the map has no entries         |
-| `Len`     | Integer | Number of key-value pairs in the map   |
+| `Length`  | Integer | Number of key-value pairs in the map   |
 
 ### Methods
 
@@ -434,15 +436,15 @@ keeps elements sorted, enabling efficient range queries, ordered iteration, and 
 
 | Property  | Type    | Description                             |
 |-----------|---------|-----------------------------------------|
-| `Len`     | Integer | Number of strings in the set            |
+| `Length`  | Integer | Number of strings in the set            |
 | `IsEmpty` | Boolean | True if set contains no strings         |
 
 ### Methods
 
 | Method              | Signature                  | Description                                                        |
 |---------------------|----------------------------|--------------------------------------------------------------------|
-| `Put(str)`          | `Boolean(String)`          | Add a string; returns true if new, false if already present        |
-| `Drop(str)`         | `Boolean(String)`          | Remove a string; returns true if removed, false if not found       |
+| `Add(str)`          | `Boolean(String)`          | Add a string; returns true if new, false if already present        |
+| `Remove(str)`       | `Boolean(String)`          | Remove a string; returns true if removed, false if not found       |
 | `Has(str)`          | `Boolean(String)`          | Check if string is in the set                                      |
 | `Clear()`           | `Void()`                   | Remove all strings from the set                                    |
 | `First()`           | `String()`                 | Get smallest (first) element; empty string if empty                |
@@ -472,10 +474,10 @@ keeps elements sorted, enabling efficient range queries, ordered iteration, and 
 DIM words AS OBJECT = NEW Viper.Collections.SortedSet()
 
 ' Add words (stored in sorted order)
-words.Put("cherry")
-words.Put("apple")
-words.Put("banana")
-words.Put("date")
+words.Add("cherry")
+words.Add("apple")
+words.Add("banana")
+words.Add("date")
 
 PRINT words.Length          ' Output: 4
 
@@ -507,14 +509,14 @@ NEXT
 
 ' Set operations
 DIM set1 AS OBJECT = NEW Viper.Collections.SortedSet()
-set1.Put("a")
-set1.Put("b")
-set1.Put("c")
+set1.Add("a")
+set1.Add("b")
+set1.Add("c")
 
 DIM set2 AS OBJECT = NEW Viper.Collections.SortedSet()
-set2.Put("b")
-set2.Put("c")
-set2.Put("d")
+set2.Add("b")
+set2.Add("c")
+set2.Add("d")
 
 ' Union
 DIM merged AS OBJECT = set1.Union(set2)
@@ -530,8 +532,8 @@ PRINT diff.Length           ' Output: 1 (a only)
 
 ' Subset check
 DIM subset AS OBJECT = NEW Viper.Collections.SortedSet()
-subset.Put("b")
-subset.Put("c")
+subset.Add("b")
+subset.Add("c")
 PRINT subset.IsSubset(set1)  ' Output: 1 (true)
 ```
 
@@ -575,7 +577,7 @@ lookup, merging (which returns a new FrozenMap), and equality comparison.
 | Property  | Type    | Description                            |
 |-----------|---------|----------------------------------------|
 | `IsEmpty` | Boolean | True if the map has no entries         |
-| `Len`     | Integer | Number of key-value pairs in the map   |
+| `Length`  | Integer | Number of key-value pairs in the map   |
 
 ### Methods
 
@@ -718,7 +720,7 @@ that return new FrozenSet instances.
 | Property  | Type    | Description                             |
 |-----------|---------|-----------------------------------------|
 | `IsEmpty` | Boolean | True if the set has no elements         |
-| `Len`     | Integer | Number of unique elements in the set    |
+| `Length`  | Integer | Number of unique elements in the set    |
 
 ### Methods
 
@@ -863,7 +865,7 @@ Supports range queries via Floor/Ceil operations.
 
 | Property  | Type    | Description                            |
 |-----------|---------|----------------------------------------|
-| `Len`     | Integer | Number of key-value pairs in the map   |
+| `Length`  | Integer | Number of key-value pairs in the map   |
 | `IsEmpty` | Boolean | Returns true if the map has no entries |
 
 ### Methods

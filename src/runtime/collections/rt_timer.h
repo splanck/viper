@@ -17,8 +17,7 @@
 // Links: src/runtime/collections/rt_timer.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_TIMER_H
-#define VIPER_RT_TIMER_H
+#pragma once
 
 #include <stdint.h>
 
@@ -132,5 +131,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_TIMER_H

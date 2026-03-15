@@ -24,8 +24,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef RT_ATOMIC_COMPAT_H
-#define RT_ATOMIC_COMPAT_H
+#pragma once
 
 #ifdef _MSC_VER
 
@@ -115,4 +114,3 @@ static __forceinline long long rt__atomic_fetch_add_64(volatile long long *p, lo
     rt__atomic_cas_32((volatile long *)(ptr), (long *)(expected), (long)(desired))
 
 #endif /* _MSC_VER */
-#endif /* RT_ATOMIC_COMPAT_H */

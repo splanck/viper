@@ -17,8 +17,7 @@
 // Links: src/runtime/collections/rt_statemachine.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_STATEMACHINE_H
-#define VIPER_RT_STATEMACHINE_H
+#pragma once
 
 #include <stdint.h>
 
@@ -145,5 +144,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_STATEMACHINE_H

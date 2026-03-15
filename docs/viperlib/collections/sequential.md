@@ -22,10 +22,10 @@ Dynamic array that grows automatically. Stores object references.
 
 | Property | Type    | Description                 |
 |----------|---------|-----------------------------|
-| `Len`     | Integer | Number of items in the list            |
+| `Length`  | Integer | Number of items in the list            |
 | `IsEmpty` | Boolean | True if the list contains no items     |
 
-> **Note:** `Count` is available as an alias for `Len` for backward compatibility.
+> **Note:** `Count` is available as an alias for `Length` for backward compatibility.
 
 ### Methods
 
@@ -47,6 +47,12 @@ Dynamic array that grows automatically. Stores object references.
 | `Sort()`                 | `Void()`                | Sorts the list in ascending order (strings lexicographic, otherwise by pointer value) |
 | `SortDesc()`             | `Void()`                | Sorts the list in descending order                                                    |
 | `Pop()`                  | `Object()`              | Removes and returns the last element (traps if empty)                                 |
+| `Shuffle()`              | `Void()`                | Shuffles the list in place (Fisher-Yates)                                             |
+| `Clone()`                | `List()`                | Creates a shallow copy of the list                                                    |
+| `ToSeq()`                | `Seq()`                 | Returns elements as a new Seq                                                         |
+| `ToSet()`                | `Set()`                 | Returns unique elements as a new Set                                                  |
+| `ToStack()`              | `Stack()`               | Returns elements as a new Stack                                                       |
+| `ToQueue()`              | `Queue()`               | Returns elements as a new Queue                                                       |
 
 ### Zia Example
 
@@ -140,7 +146,7 @@ circular buffer for O(1) add and take operations.
 
 | Property  | Type    | Description                               |
 |-----------|---------|-------------------------------------------|
-| `Len`     | Integer | Number of elements in the queue           |
+| `Length`  | Integer | Number of elements in the queue           |
 | `IsEmpty` | Boolean | Returns true if the queue has no elements |
 
 ### Methods
@@ -154,6 +160,8 @@ circular buffer for O(1) add and take operations.
 | `Has(value)`  | `Boolean(Object)` | Check if an element is in the queue (by reference)  |
 | `Clear()`     | `Void()`       | Remove all elements                                    |
 | `Clone()`     | `Queue()`      | Create a shallow copy of the queue                     |
+| `ToList()`    | `List()`       | Returns elements as a new List                         |
+| `ToSeq()`     | `Seq()`        | Returns elements as a new Seq                          |
 
 ### Zia Example
 
@@ -225,7 +233,7 @@ A LIFO (last-in-first-out) collection. Elements are added and removed from the t
 
 | Property  | Type    | Description                               |
 |-----------|---------|-------------------------------------------|
-| `Len`     | Integer | Number of elements on the stack           |
+| `Length`  | Integer | Number of elements on the stack           |
 | `IsEmpty` | Boolean | Returns true if the stack has no elements |
 
 ### Methods
@@ -239,6 +247,8 @@ A LIFO (last-in-first-out) collection. Elements are added and removed from the t
 | `Has(value)`  | `Boolean(Object)` | Check if an element is on the stack (by reference) |
 | `Clear()`     | `Void()`       | Remove all elements                                  |
 | `Clone()`     | `Stack()`      | Create a shallow copy of the stack                   |
+| `ToList()`    | `List()`       | Returns elements as a new List                       |
+| `ToSeq()`     | `Seq()`        | Returns elements as a new Seq                        |
 
 ### Zia Example
 
@@ -311,7 +321,7 @@ stacks and queues while also supporting indexed access.
 
 | Property  | Type    | Description                               |
 |-----------|---------|-------------------------------------------|
-| `Len`     | Integer | Number of elements in the deque           |
+| `Length`  | Integer | Number of elements in the deque           |
 | `Cap`     | Integer | Current allocated capacity                |
 | `IsEmpty` | Boolean | Returns true if the deque has no elements |
 
@@ -333,6 +343,8 @@ stacks and queues while also supporting indexed access.
 | `Clear()`            | `Void()`                | Remove all elements                                   |
 | `Reverse()`          | `Void()`                | Reverse elements in place                             |
 | `Clone()`            | `Deque()`               | Create shallow copy                                   |
+| `ToSeq()`            | `Seq()`                 | Returns elements as a new Seq                         |
+| `ToList()`           | `List()`                | Returns elements as a new List                        |
 
 ### Zia Example
 
@@ -422,7 +434,7 @@ elements.
 
 | Property  | Type      | Description                          |
 |-----------|-----------|--------------------------------------|
-| `Len`     | `Integer` | Number of elements currently stored  |
+| `Length`  | `Integer` | Number of elements currently stored  |
 | `Cap`     | `Integer` | Maximum capacity (fixed at creation) |
 | `IsEmpty` | `Boolean` | True if ring has no elements         |
 | `IsFull`  | `Boolean` | True if ring is at capacity          |
@@ -441,6 +453,7 @@ elements.
 | `Reverse()`  | void    | Reverse all elements in place                       |
 | `Clone()`    | Ring    | Create a shallow copy of the ring                   |
 | `Clear()`    | void    | Remove all elements                                 |
+| `ToSeq()`    | Seq     | Return all elements as a new Seq (oldest to newest) |
 
 ### Zia Example
 
@@ -527,7 +540,7 @@ A priority queue implemented as a binary heap. Elements are stored with an integ
 
 | Property  | Type    | Description                                    |
 |-----------|---------|------------------------------------------------|
-| `Len`     | Integer | Number of elements in the heap                 |
+| `Length`  | Integer | Number of elements in the heap                 |
 | `IsEmpty` | Boolean | Returns true if the heap has no elements       |
 | `IsMax`   | Boolean | Returns true if max-heap, false if min-heap    |
 

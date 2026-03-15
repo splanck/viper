@@ -17,8 +17,7 @@
 // Links: src/runtime/graphics/rt_inputmgr.c (implementation), src/runtime/graphics/rt_input.h
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_INPUTMGR_H
-#define VIPER_RT_INPUTMGR_H
+#pragma once
 
 #include "rt_string.h"
 #include <stdint.h>
@@ -298,5 +297,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_INPUTMGR_H

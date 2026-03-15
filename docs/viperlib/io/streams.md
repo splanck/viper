@@ -31,7 +31,7 @@ Unified stream abstraction providing a common interface over file and memory str
 |----------|---------|-----------------------------------------------------------|
 | `Type`   | Integer | Stream backing type: 0 = file, 1 = memory (read-only)    |
 | `Pos`    | Integer | Current stream position (read/write)                      |
-| `Len`    | Integer | Current data length in bytes (read-only)                  |
+| `Length`    | Integer | Current data length in bytes (read-only)                  |
 | `Eof`    | Boolean | True if at end of stream (read-only)                      |
 
 ### Methods
@@ -192,7 +192,7 @@ In-memory binary stream for reading and writing raw bytes with auto-expanding bu
 | Property   | Type    | Access     | Description                      |
 |------------|---------|------------|----------------------------------|
 | `Pos`      | Integer | Read/Write | Current stream position          |
-| `Len`      | Integer | Read-only  | Current data length in bytes     |
+| `Length`      | Integer | Read-only  | Current data length in bytes     |
 | `Capacity` | Integer | Read-only  | Current buffer capacity in bytes |
 
 ### Methods
@@ -268,7 +268,7 @@ func start() {
 }
 ```
 
-> **Note:** MemStream properties (`Pos`, `Len`, `Capacity`) use the get_/set_ pattern; access them as `ms.get_Length()`, `ms.get_Pos()`, `ms.set_Pos(n)` in Zia.
+> **Note:** MemStream properties (`Pos`, `Length`, `Capacity`) use the get_/set_ pattern; access them as `ms.get_Length()`, `ms.get_Pos()`, `ms.set_Pos(n)` in Zia.
 
 ### BASIC Example
 
@@ -639,7 +639,7 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 | Property | Type    | Access     | Description                   |
 |----------|---------|------------|-------------------------------|
 | `Pos`    | Integer | Read/Write | Current buffer position       |
-| `Len`    | Integer | Read-only  | Current data length in bytes  |
+| `Length`    | Integer | Read-only  | Current data length in bytes  |
 
 ### Write Methods
 
@@ -709,7 +709,7 @@ func start() {
 }
 ```
 
-> **Note:** BinaryBuffer properties (`Pos`, `Len`) use the get_/set_ pattern in Zia; access them as `buf.get_Length()`, `buf.get_Pos()`, `buf.set_Pos(n)`.
+> **Note:** BinaryBuffer properties (`Pos`, `Length`) use the get_/set_ pattern in Zia; access them as `buf.get_Length()`, `buf.get_Pos()`, `buf.set_Pos(n)`.
 
 ### BASIC Example
 

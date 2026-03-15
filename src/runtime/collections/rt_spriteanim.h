@@ -18,8 +18,7 @@
 // src/runtime/collections/rt_tween.h
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_SPRITEANIM_H
-#define VIPER_RT_SPRITEANIM_H
+#pragma once
 
 #include <stdint.h>
 
@@ -191,5 +190,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_SPRITEANIM_H

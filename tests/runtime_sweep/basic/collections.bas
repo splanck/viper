@@ -124,18 +124,18 @@
 DIM bag AS Viper.Collections.Bag
 bag = NEW Viper.Collections.Bag()
 Viper.Core.Diagnostics.Assert(bag.IsEmpty, "bag.empty")
-bag.Put("a")
-bag.Put("b")
-bag.Put("b")
+bag.Add("a")
+bag.Add("b")
+bag.Add("b")
 Viper.Core.Diagnostics.AssertEq(bag.Length, 2, "bag.len")
 Viper.Core.Diagnostics.Assert(bag.Has("a"), "bag.has")
-bag.Drop("a")
-Viper.Core.Diagnostics.AssertEq(bag.Length, 1, "bag.drop")
+bag.Remove("a")
+Viper.Core.Diagnostics.AssertEq(bag.Length, 1, "bag.remove")
 
 DIM bag2 AS Viper.Collections.Bag
 bag2 = NEW Viper.Collections.Bag()
-bag2.Put("b")
-bag2.Put("c")
+bag2.Add("b")
+bag2.Add("c")
 DIM merged AS Viper.Collections.Bag
 merged = bag.Union(bag2)
 Viper.Core.Diagnostics.AssertEq(merged.Length, 2, "bag.union")

@@ -17,8 +17,7 @@
 // Links: src/runtime/core/rt_printf_compat.c (implementation), src/runtime/core/rt_string_builder.h
 //
 //===----------------------------------------------------------------------===//
-#ifndef RT_PRINTF_COMPAT_H
-#define RT_PRINTF_COMPAT_H
+#pragma once
 
 #include <stddef.h>
 
@@ -42,5 +41,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // RT_PRINTF_COMPAT_H

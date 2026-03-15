@@ -1285,7 +1285,7 @@ Thread-safe string-keyed hash map for concurrent access from multiple threads.
 
 | Property  | Type    | Description                            |
 |-----------|---------|----------------------------------------|
-| `Len`     | Integer | Number of key-value pairs in the map   |
+| `Length`     | Integer | Number of key-value pairs in the map   |
 | `IsEmpty` | Boolean | Returns true if the map has no entries |
 
 ### Methods
@@ -1391,7 +1391,7 @@ Thread-safe FIFO queue for concurrent access from multiple threads.
 
 | Property  | Type                   | Description                              |
 |-----------|------------------------|------------------------------------------|
-| `Len`     | `Integer` (read-only)  | Approximate number of elements           |
+| `Length`     | `Integer` (read-only)  | Approximate number of elements           |
 | `IsEmpty` | `Boolean` (read-only)  | True if the queue is approximately empty |
 
 ### Methods
@@ -1513,7 +1513,7 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 
 | Property   | Type                   | Description                           |
 |------------|------------------------|---------------------------------------|
-| `Len`      | `Integer` (read-only)  | Number of items currently in channel  |
+| `Length`      | `Integer` (read-only)  | Number of items currently in channel  |
 | `Cap`      | `Integer` (read-only)  | Channel capacity (0 for synchronous)  |
 | `IsClosed` | `Boolean` (read-only)  | True if the channel has been closed   |
 | `IsEmpty`  | `Boolean` (read-only)  | True if the channel contains no items |

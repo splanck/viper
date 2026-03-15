@@ -18,8 +18,7 @@
 //        src/runtime/network/rt_tls.c (integration)
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_ECDSA_P256_H
-#define VIPER_RT_ECDSA_P256_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -53,5 +52,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_ECDSA_P256_H

@@ -724,14 +724,14 @@ bind Viper.Fmt as Fmt;
 
 var tags = new Bag();
 
-tags.Put("important");
-tags.Put("urgent");
-tags.Put("important");  // Ignored - already exists
+tags.Add("important");
+tags.Add("urgent");
+tags.Add("important");  // Ignored - already exists
 
 Say(Fmt.Int(tags.Length));       // 2
 Say(Fmt.Bool(tags.Has("urgent")));  // true
 
-tags.Drop("urgent");
+tags.Remove("urgent");
 ```
 
 **When to use:** When you need to track unique items, check membership quickly, or remove duplicates.

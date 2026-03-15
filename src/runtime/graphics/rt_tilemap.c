@@ -52,10 +52,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-/// Collision type constants
-#define TILE_COLLISION_NONE 0
-#define TILE_COLLISION_SOLID 1
-#define TILE_COLLISION_ONE_WAY 2
+/// Collision type constants — use public enum from rt_tilemap.h.
+#define TILE_COLLISION_NONE    RT_TILE_COLLISION_NONE
+#define TILE_COLLISION_SOLID   RT_TILE_COLLISION_SOLID
+#define TILE_COLLISION_ONE_WAY RT_TILE_COLLISION_ONE_WAY_UP
 
 /// Maximum distinct tile IDs that can have collision types set
 #define MAX_TILE_COLLISION_IDS 4096

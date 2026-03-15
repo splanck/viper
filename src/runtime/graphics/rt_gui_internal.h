@@ -17,8 +17,7 @@
 // Links: src/runtime/graphics/rt_gui.h, src/runtime/core/rt_string.h, src/runtime/oop/rt_object.h
 //
 //===----------------------------------------------------------------------===//
-#ifndef RT_GUI_INTERNAL_H
-#define RT_GUI_INTERNAL_H
+#pragma once
 
 #include "rt_gui.h"
 #include "rt_object.h"
@@ -127,5 +126,3 @@ void rt_shortcuts_clear_triggered(void);
 /// @param mods Active modifier flags (shift, ctrl, alt, etc.).
 /// @return Non-zero if a matching shortcut was triggered; 0 otherwise.
 int8_t rt_shortcuts_check_key(int key, int mods);
-
-#endif // RT_GUI_INTERNAL_H

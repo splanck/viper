@@ -26,6 +26,13 @@ extern "C"
 {
 #endif
 
+/// Tile collision type constants.
+typedef enum {
+    RT_TILE_COLLISION_NONE       = 0, ///< No collision (passable).
+    RT_TILE_COLLISION_SOLID      = 1, ///< Fully solid (blocks movement).
+    RT_TILE_COLLISION_ONE_WAY_UP = 2, ///< One-way platform (passable from below).
+} rt_tilemap_collision_t;
+
     //=========================================================================
     // Tilemap Creation
     //=========================================================================
@@ -173,7 +180,7 @@ extern "C"
     /// @brief Set collision type for a tile ID.
     /// @param tilemap Tilemap object.
     /// @param tile_id Tile index (0-4095).
-    /// @param coll_type 0=none, 1=solid, 2=one_way_up.
+    /// @param coll_type Collision type (RT_TILE_COLLISION_NONE, _SOLID, or _ONE_WAY_UP).
     void rt_tilemap_set_collision(void *tilemap, int64_t tile_id, int64_t coll_type);
 
     /// @brief Get collision type for a tile ID.

@@ -29,6 +29,29 @@ extern "C"
 {
 #endif
 
+/// Button style constants.
+typedef enum {
+    RT_BTN_DEFAULT   = 0, ///< Standard button.
+    RT_BTN_PRIMARY   = 1, ///< Primary action (highlighted).
+    RT_BTN_SECONDARY = 2, ///< Secondary action.
+    RT_BTN_DANGER    = 3, ///< Destructive action (red).
+    RT_BTN_TEXT      = 4, ///< Text-only (no background).
+} rt_button_style_t;
+
+/// Icon position constants.
+typedef enum {
+    RT_ICON_LEFT  = 0, ///< Icon to the left of label (default).
+    RT_ICON_RIGHT = 1, ///< Icon to the right of label.
+} rt_icon_pos_t;
+
+/// Image scale mode constants.
+typedef enum {
+    RT_SCALE_NONE    = 0, ///< No scaling (original size).
+    RT_SCALE_FIT     = 1, ///< Scale to fit within bounds (preserve aspect ratio).
+    RT_SCALE_FILL    = 2, ///< Scale to fill bounds (may crop).
+    RT_SCALE_STRETCH = 3, ///< Stretch to fill bounds (distort aspect ratio).
+} rt_image_scale_t;
+
     //=========================================================================
     // GUI Application
     //=========================================================================
@@ -207,7 +230,7 @@ extern "C"
 
     /// @brief Set button style.
     /// @param button Button widget handle.
-    /// @param style Button style (0=default, 1=primary, 2=secondary, 3=danger, 4=text).
+    /// @param style Button style (RT_BTN_DEFAULT through RT_BTN_TEXT).
     void rt_button_set_style(void *button, int64_t style);
 
     /// @brief Set button icon text (UTF-8 emoji or icon glyph).
@@ -217,7 +240,7 @@ extern "C"
 
     /// @brief Set icon position relative to label.
     /// @param button Button widget handle.
-    /// @param pos 0 = left of label (default), 1 = right of label.
+    /// @param pos Icon position (RT_ICON_LEFT or RT_ICON_RIGHT).
     void rt_button_set_icon_pos(void *button, int64_t pos);
 
     //=========================================================================
@@ -802,7 +825,7 @@ extern "C"
 
     /// @brief Set image scale mode.
     /// @param image Image widget handle.
-    /// @param mode Scale mode (0=none, 1=fit, 2=fill, 3=stretch).
+    /// @param mode Scale mode (RT_SCALE_NONE, _FIT, _FILL, or _STRETCH).
     void rt_image_set_scale_mode(void *image, int64_t mode);
 
     /// @brief Set image opacity.

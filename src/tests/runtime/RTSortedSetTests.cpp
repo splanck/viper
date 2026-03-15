@@ -41,9 +41,9 @@ static void test_sortedset_new()
     printf("\n");
 }
 
-static void test_sortedset_put_has()
+static void test_sortedset_add_has()
 {
-    printf("Testing SortedSet Put/Has:\n");
+    printf("Testing SortedSet Add/Has:\n");
 
     void *set = rt_sortedset_new();
 
@@ -322,7 +322,7 @@ int main()
     printf("=== RT SortedSet Tests ===\n\n");
 
     test_sortedset_new();
-    test_sortedset_put_has();
+    test_sortedset_add_has();
     test_sortedset_order();
     test_sortedset_drop();
     test_sortedset_floor_ceil();

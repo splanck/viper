@@ -330,7 +330,7 @@ Stateful string scanner for lexing and parsing text. Maintains a position cursor
 | `Pos`       | Integer | Read/Write | Current byte position (0-indexed)        |
 | `IsEnd`     | Boolean | Read-only  | True if at end of string                 |
 | `Remaining` | Integer | Read-only  | Number of characters remaining           |
-| `Len`       | Integer | Read-only  | Total length of the source string        |
+| `Length`    | Integer | Read-only  | Total length of the source string        |
 
 ### Methods
 

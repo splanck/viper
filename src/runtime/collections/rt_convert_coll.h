@@ -18,8 +18,7 @@
 // Links: src/runtime/collections/rt_convert_coll.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_CONVERT_COLL_H
-#define VIPER_RT_CONVERT_COLL_H
+#pragma once
 
 #include <stdint.h>
 
@@ -204,5 +203,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_CONVERT_COLL_H

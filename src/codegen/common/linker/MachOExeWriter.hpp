@@ -24,6 +24,7 @@
 
 #include <ostream>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -37,15 +38,20 @@ struct DylibImport
 };
 
 /// Write a Mach-O executable.
-/// @param path      Output file path.
-/// @param layout    The link layout with merged sections.
-/// @param arch      Target architecture.
-/// @param dylibs    Dynamic libraries to link against.
-/// @param dynSyms   Symbols imported from dynamic libraries.
-/// @param err       Error output.
+/// @param path         Output file path.
+/// @param layout       The link layout with merged sections.
+/// @param arch         Target architecture.
+/// @param dylibs       Dynamic libraries to link against.
+/// @param dynSyms      Symbols imported from dynamic libraries.
+/// @param symOrdinals  Map from symbol name to 1-based dylib ordinal (for MH_TWOLEVEL).
+///                     Ordinal 0 means flat lookup (BIND_SPECIAL_DYLIB_FLAT_LOOKUP).
+///                     Symbols not in the map default to ordinal 1 (libSystem).
+/// @param err          Error output.
 /// @return true on success.
 bool writeMachOExe(const std::string &path, const LinkLayout &layout, LinkArch arch,
                    const std::vector<DylibImport> &dylibs,
-                   const std::unordered_set<std::string> &dynSyms, std::ostream &err);
+                   const std::unordered_set<std::string> &dynSyms,
+                   const std::unordered_map<std::string, uint32_t> &symOrdinals,
+                   std::ostream &err);
 
 } // namespace viper::codegen::linker

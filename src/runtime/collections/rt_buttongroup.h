@@ -17,8 +17,7 @@
 // Links: src/runtime/collections/rt_buttongroup.c (implementation)
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_BUTTONGROUP_H
-#define VIPER_RT_BUTTONGROUP_H
+#pragma once
 
 #include <stdint.h>
 
@@ -124,5 +123,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIPER_RT_BUTTONGROUP_H

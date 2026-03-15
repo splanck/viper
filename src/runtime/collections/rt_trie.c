@@ -405,3 +405,39 @@ void *rt_trie_keys(void *obj)
     free(buf);
     return result;
 }
+
+/// @brief Recursively clone a trie node and all its descendants.
+static rt_trie_node *clone_node(rt_trie_node *src)
+{
+    if (!src)
+        return NULL;
+
+    rt_trie_node *dst = new_node();
+    dst->is_terminal = src->is_terminal;
+    dst->value = src->value;
+    if (dst->value)
+        rt_obj_retain_maybe(dst->value);
+
+    for (int i = 0; i < TRIE_ALPHABET_SIZE; ++i)
+        dst->children[i] = clone_node(src->children[i]);
+
+    return dst;
+}
+
+void *rt_trie_clone(void *obj)
+{
+    if (!obj)
+        return rt_trie_new();
+
+    rt_trie_impl *src = (rt_trie_impl *)obj;
+    rt_trie_impl *dst = (rt_trie_impl *)rt_trie_new();
+    if (!dst)
+        return NULL;
+
+    // Free the default empty root from rt_trie_new, replace with deep copy
+    free_node(dst->root);
+    dst->root = clone_node(src->root);
+    dst->count = src->count;
+
+    return dst;
+}

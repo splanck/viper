@@ -19,8 +19,7 @@
 // Links: src/runtime/core/rt_gc.c (implementation), src/runtime/oop/rt_object.h
 //
 //===----------------------------------------------------------------------===//
-#ifndef RT_GC_H
-#define RT_GC_H
+#pragma once
 
 #include <stdint.h>
 
@@ -162,5 +161,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* RT_GC_H */

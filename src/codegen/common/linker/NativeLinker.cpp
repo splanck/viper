@@ -262,14 +262,27 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                  "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox"},
             };
 
+            // Helper: strip all leading underscores from a symbol name for
+            // prefix matching. Needed because some C symbols retain underscores
+            // after the MachOReader strips the Mach-O mangling prefix (e.g.,
+            // __CFConstantStringClassReference, _objc_empty_cache).
+            auto stripUnderscores = [](const std::string &s) -> std::string
+            {
+                size_t i = 0;
+                while (i < s.size() && s[i] == '_')
+                    ++i;
+                return (i > 0) ? s.substr(i) : s;
+            };
+
             for (const auto &rule : kFrameworkRules)
             {
                 bool needed = false;
                 for (const auto &sym : dynamicSyms)
                 {
+                    const std::string stripped = stripUnderscores(sym);
                     for (const char *const *p = rule.prefixes; *p; ++p)
                     {
-                        if (sym.find(*p) == 0)
+                        if (sym.find(*p) == 0 || stripped.find(*p) == 0)
                         {
                             needed = true;
                             break;
@@ -293,7 +306,71 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                     dylibs.push_back({rule.dylibPath});
             }
 
-            writeOk = writeMachOExe(opts.exePath, layout, opts.arch, dylibs, dynamicSyms, err);
+            // Build symbol-to-dylib ordinal map for MH_TWOLEVEL.
+            // Ordinal = 1-based index into the dylibs vector.
+            // Ordinal 0 = flat lookup (for ObjC class/metaclass symbols).
+            std::unordered_map<std::string, uint32_t> symOrdinals;
+            {
+                // Map dylib path → ordinal (1-based).
+                std::unordered_map<std::string, uint32_t> pathToOrdinal;
+                for (size_t di = 0; di < dylibs.size(); ++di)
+                    pathToOrdinal[dylibs[di].path] = static_cast<uint32_t>(di + 1);
+
+                for (const auto &sym : dynamicSyms)
+                {
+                    // ObjC class/metaclass symbols use flat lookup — they live in
+                    // the framework that defines the class, which can't be determined
+                    // from the symbol prefix alone (e.g., OBJC_CLASS_$_NSWindow is
+                    // in AppKit, not libobjc).
+                    if (sym.find("OBJC_CLASS_$_") == 0 || sym.find("OBJC_METACLASS_$_") == 0)
+                    {
+                        symOrdinals[sym] = 0; // flat lookup
+                        continue;
+                    }
+
+                    // Try prefix/exact matching against framework rules.
+                    bool matched = false;
+                    const std::string stripped = stripUnderscores(sym);
+                    for (const auto &rule : kFrameworkRules)
+                    {
+                        // Try prefix match against both raw and underscore-stripped name.
+                        for (const char *const *p = rule.prefixes; *p; ++p)
+                        {
+                            if (sym.find(*p) == 0 || stripped.find(*p) == 0)
+                            {
+                                auto pit = pathToOrdinal.find(rule.dylibPath);
+                                if (pit != pathToOrdinal.end())
+                                    symOrdinals[sym] = pit->second;
+                                matched = true;
+                                break;
+                            }
+                        }
+                        if (!matched)
+                        {
+                            for (const char *const *e = rule.exactSyms; *e; ++e)
+                            {
+                                if (sym == *e)
+                                {
+                                    auto pit = pathToOrdinal.find(rule.dylibPath);
+                                    if (pit != pathToOrdinal.end())
+                                        symOrdinals[sym] = pit->second;
+                                    matched = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (matched)
+                            break;
+                    }
+
+                    // Default: ordinal 1 (libSystem.B.dylib).
+                    if (!matched)
+                        symOrdinals[sym] = 1;
+                }
+            }
+
+            writeOk = writeMachOExe(opts.exePath, layout, opts.arch, dylibs, dynamicSyms,
+                                    symOrdinals, err);
             break;
         }
         case LinkPlatform::Windows:

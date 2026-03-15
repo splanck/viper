@@ -21,8 +21,7 @@
 //        src/runtime/collections/rt_map.h, src/runtime/collections/rt_bag.h (users)
 //
 //===----------------------------------------------------------------------===//
-#ifndef RT_HASH_UTIL_H
-#define RT_HASH_UTIL_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -143,5 +142,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* RT_HASH_UTIL_H */

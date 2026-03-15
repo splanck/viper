@@ -852,6 +852,28 @@ void *rt_bag_intersect(void *obj, void *other)
 ///
 /// @see rt_bag_union For set union
 /// @see rt_bag_intersect For set intersection
+void *rt_bag_clone(void *obj)
+{
+    void *result = rt_bag_new();
+    if (!result || !obj)
+        return result;
+
+    rt_bag_impl *bag = (rt_bag_impl *)obj;
+
+    for (size_t i = 0; i < bag->capacity; ++i)
+    {
+        rt_bag_entry *entry = bag->buckets[i];
+        while (entry)
+        {
+            rt_string str = rt_string_from_bytes(entry->key, entry->key_len);
+            rt_bag_add(result, str);
+            entry = entry->next;
+        }
+    }
+
+    return result;
+}
+
 void *rt_bag_diff(void *obj, void *other)
 {
     void *result = rt_bag_new();
