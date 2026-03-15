@@ -566,6 +566,11 @@ int emitAndMaybeLink(const Options &opts)
         {
             using namespace viper::codegen::objfile;
             auto writer = createObjectFileWriter(detectHostFormat(), ObjArch::AArch64);
+
+            // Pass pre-encoded DWARF .debug_line data to the writer.
+            if (!pipelineModule.debugLineData.empty())
+                writer->setDebugLineData(std::move(pipelineModule.debugLineData));
+
             if (!writer->write(objPath.string(),
                                pipelineModule.binaryTextSections,
                                *pipelineModule.binaryRodata,

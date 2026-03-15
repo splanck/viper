@@ -86,6 +86,7 @@ struct OutputSection
     bool executable = false;
     bool writable = false;
     bool tls = false;
+    bool alloc = true;              ///< Section is loadable (false for debug sections).
 };
 
 /// Section classification for merging.

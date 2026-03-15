@@ -95,7 +95,7 @@ static constexpr uint16_t kSecSymtab = 4;
 static constexpr uint16_t kSecStrtab = 5;
 static constexpr uint16_t kSecShstrtab = 6;
 static constexpr uint16_t kSecNoteGnuStack = 7;
-static constexpr uint16_t kNumSections = 8;
+// kNumSections is computed dynamically in write() based on whether debug data is present.
 
 // Helpers: appendLE16/32/64, alignUp, padTo are provided by ObjFileWriterUtil.hpp.
 
@@ -228,6 +228,11 @@ bool ElfWriter::write(const std::string &path,
     uint32_t shNameStrtab = shstrtab.add(".strtab");
     uint32_t shNameShstrtab = shstrtab.add(".shstrtab");
     uint32_t shNameNoteGnuStack = shstrtab.add(".note.GNU-stack");
+
+    const bool hasDebugLine = !debugLineData_.empty();
+    uint32_t shNameDebugLine = 0;
+    if (hasDebugLine)
+        shNameDebugLine = shstrtab.add(".debug_line");
 
     // --- 2. Build symbol table and .strtab ---
     // ELF requires: null sym, section syms (local), then globals, then externals.
@@ -416,15 +421,20 @@ bool ElfWriter::write(const std::string &path,
     uint64_t offShstrtab = offStrtab + strtabSize; // alignment 1
     // .note.GNU-stack has zero size, its offset doesn't matter but we place it next.
     uint64_t offNoteGnuStack = offShstrtab + shstrtabSize;
-    uint64_t offShtab = alignUp(offNoteGnuStack, 8);
+    // .debug_line (optional, non-alloc) — placed after .note.GNU-stack.
+    uint64_t debugLineSize = debugLineData_.size();
+    uint64_t offDebugLine = offNoteGnuStack;
+    uint64_t offShtab = alignUp(offDebugLine + debugLineSize, 8);
 
     // --- 5. Build the file ---
+    const uint16_t numSections = hasDebugLine ? 9 : 8;
+
     std::vector<uint8_t> file;
-    file.reserve(static_cast<size_t>(offShtab + kNumSections * kShEntSize));
+    file.reserve(static_cast<size_t>(offShtab + numSections * kShEntSize));
 
     // ELF header (64 bytes)
     uint16_t machine = (arch_ == ObjArch::X86_64) ? kEmX86_64 : kEmAarch64;
-    writeEhdr(file, machine, offShtab, kNumSections, kSecShstrtab);
+    writeEhdr(file, machine, offShtab, numSections, kSecShstrtab);
 
     // .text
     padTo(file, static_cast<size_t>(offText));
@@ -457,6 +467,10 @@ bool ElfWriter::write(const std::string &path,
     }
 
     // .note.GNU-stack (zero size, no data to append)
+
+    // .debug_line (optional)
+    if (hasDebugLine)
+        file.insert(file.end(), debugLineData_.begin(), debugLineData_.end());
 
     // Section header table
     padTo(file, static_cast<size_t>(offShtab));
@@ -512,6 +526,10 @@ bool ElfWriter::write(const std::string &path,
     // [7] .note.GNU-stack
     writeShdr(file, shNameNoteGnuStack, kShtProgbits, 0, offNoteGnuStack, 0, 0, 0, 1, 0);
 
+    // [8] .debug_line (optional, non-alloc)
+    if (hasDebugLine)
+        writeShdr(file, shNameDebugLine, kShtProgbits, 0, offDebugLine, debugLineSize, 0, 0, 1, 0);
+
     // --- 6. Write to disk ---
     std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
     if (!ofs)
@@ -551,6 +569,7 @@ bool ElfWriter::write(const std::string &path,
         return write(path, empty, rodata, err);
     }
 
+    const bool hasDebugLine = !debugLineData_.empty();
     const size_t N = textSections.size();
 
     // --- 1. Extract function names from each text section ---
@@ -585,7 +604,7 @@ bool ElfWriter::write(const std::string &path,
     const uint16_t secStrtab = static_cast<uint16_t>(2 * N + 3);
     const uint16_t secShstrtab = static_cast<uint16_t>(2 * N + 4);
     const uint16_t secNoteGnuStack = static_cast<uint16_t>(2 * N + 5);
-    const uint16_t numSections = static_cast<uint16_t>(2 * N + 6);
+    const uint16_t numSections = static_cast<uint16_t>(2 * N + 6 + (hasDebugLine ? 1 : 0));
 
     // --- 3. Build .shstrtab ---
     StringTable shstrtab;
@@ -604,6 +623,10 @@ bool ElfWriter::write(const std::string &path,
     uint32_t shNameStrtab = shstrtab.add(".strtab");
     uint32_t shNameShstrtab = shstrtab.add(".shstrtab");
     uint32_t shNameNoteGnuStack = shstrtab.add(".note.GNU-stack");
+
+    uint32_t shNameDebugLine = 0;
+    if (hasDebugLine)
+        shNameDebugLine = shstrtab.add(".debug_line");
 
     // --- 4. Build symbol table ---
     StringTable strtab;
@@ -829,7 +852,9 @@ bool ElfWriter::write(const std::string &path,
     cursor = offShstrtab + shstrtabSize;
 
     uint64_t offNoteGnuStack = cursor;
-    uint64_t offShtab = alignUp(offNoteGnuStack, 8);
+    uint64_t debugLineSize = debugLineData_.size();
+    uint64_t offDebugLine = offNoteGnuStack;
+    uint64_t offShtab = alignUp(offDebugLine + debugLineSize, 8);
 
     // --- 7. Build the file ---
     std::vector<uint8_t> file;
@@ -878,6 +903,10 @@ bool ElfWriter::write(const std::string &path,
     }
 
     // .note.GNU-stack (zero size — no data to append)
+
+    // .debug_line (optional)
+    if (hasDebugLine)
+        file.insert(file.end(), debugLineData_.begin(), debugLineData_.end());
 
     // --- 8. Section header table ---
     padTo(file, static_cast<size_t>(offShtab));
@@ -930,6 +959,10 @@ bool ElfWriter::write(const std::string &path,
 
     // .note.GNU-stack
     writeShdr(file, shNameNoteGnuStack, kShtProgbits, 0, offNoteGnuStack, 0, 0, 0, 1, 0);
+
+    // .debug_line (optional, non-alloc)
+    if (hasDebugLine)
+        writeShdr(file, shNameDebugLine, kShtProgbits, 0, offDebugLine, debugLineSize, 0, 0, 1, 0);
 
     // --- 9. Write to disk ---
     std::ofstream ofs(path, std::ios::binary | std::ios::trunc);

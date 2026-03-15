@@ -20,6 +20,8 @@
 
 #include "TargetX64.hpp"
 
+#include "support/source_location.hpp"
+
 #include <cassert>
 #include <cstdint>
 #include <initializer_list>
@@ -145,6 +147,7 @@ struct MInstr
 {
     MOpcode opcode{MOpcode::MOVrr};  ///< Opcode for the instruction.
     std::vector<Operand> operands{}; ///< Operands in emission order.
+    il::support::SourceLoc loc{};    ///< Source location (for debug info).
 
     /// \brief Create an instruction with the given operands.
     /// @param opc The machine opcode for the instruction.

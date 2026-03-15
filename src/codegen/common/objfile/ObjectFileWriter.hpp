@@ -52,6 +52,10 @@ class ObjectFileWriter
   public:
     virtual ~ObjectFileWriter() = default;
 
+    /// Set pre-encoded DWARF .debug_line section data.
+    /// If non-empty, concrete writers will emit a .debug_line section.
+    void setDebugLineData(std::vector<uint8_t> data) { debugLineData_ = std::move(data); }
+
     /// Write a complete .o file to disk.
     /// @param path   Output file path.
     /// @param text   Machine code section (.text).
@@ -71,6 +75,9 @@ class ObjectFileWriter
                        const std::vector<CodeSection> &textSections,
                        const CodeSection &rodata,
                        std::ostream &err);
+
+  protected:
+    std::vector<uint8_t> debugLineData_; ///< Pre-encoded DWARF .debug_line bytes.
 };
 
 /// Detect the host object file format at compile time.

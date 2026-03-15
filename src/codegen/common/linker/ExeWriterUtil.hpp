@@ -90,6 +90,22 @@ inline void writeULEB128(std::vector<uint8_t> &buf, uint64_t val)
     } while (val != 0);
 }
 
+/// Append a signed LEB128-encoded value (used by DWARF line number deltas).
+inline void writeSLEB128(std::vector<uint8_t> &buf, int64_t val)
+{
+    bool more = true;
+    while (more)
+    {
+        uint8_t byte = static_cast<uint8_t>(val) & 0x7F;
+        val >>= 7;
+        if ((val == 0 && (byte & 0x40) == 0) || (val == -1 && (byte & 0x40) != 0))
+            more = false;
+        else
+            byte |= 0x80;
+        buf.push_back(byte);
+    }
+}
+
 /// Append \p count zero bytes.
 inline void writePad(std::vector<uint8_t> &buf, size_t count)
 {
@@ -139,6 +155,8 @@ inline void classifySections(const LinkLayout &layout,
     {
         if (layout.sections[i].data.empty())
             continue;
+        if (!layout.sections[i].alloc)
+            continue; // Skip non-alloc sections (e.g., .debug_line).
         if (layout.sections[i].writable)
             dataIndices.push_back(i);
         else

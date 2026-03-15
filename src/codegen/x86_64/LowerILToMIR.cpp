@@ -178,11 +178,18 @@ bool MIRBuilder::isImmediate(const ILValue &value) const noexcept
     return lower_->isImmediate(value);
 }
 
+/// @brief Set the source location for subsequently emitted instructions.
+void MIRBuilder::setCurrentLoc(il::support::SourceLoc loc) noexcept
+{
+    currentLoc_ = loc;
+}
+
 /// @brief Append a machine instruction to the current block.
 /// @param instr Machine instruction to insert.
 void MIRBuilder::append(MInstr instr)
 {
     assert(block_);
+    instr.loc = currentLoc_;
     block_->append(std::move(instr));
 }
 
@@ -684,6 +691,8 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
             {
                 emitEdgeCopies(ilBlock, mirBlock);
             }
+
+            builder.setCurrentLoc(instr.loc);
 
             const LoweringRule *rule = viper_select_rule(instr);
             if (!rule)

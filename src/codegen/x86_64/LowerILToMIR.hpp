@@ -61,6 +61,7 @@ struct ILInstr
     std::vector<ILValue> ops{};                   ///< Ordered operands.
     int resultId{-1};                             ///< SSA identifier assigned to the result.
     ILValue::Kind resultKind{ILValue::Kind::I64}; ///< Static type of the result.
+    il::support::SourceLoc loc{};                 ///< Source location (for debug info).
 };
 
 /// \brief IL basic block placeholder with parameters and outgoing edges.
@@ -171,7 +172,12 @@ class MIRBuilder
     /// @return True if the value is an inline constant (no vreg needed).
     [[nodiscard]] bool isImmediate(const ILValue &value) const noexcept;
 
+    /// @brief Set the source location to stamp onto subsequent MInstrs.
+    /// @param loc The source location for instructions emitted by the current rule.
+    void setCurrentLoc(il::support::SourceLoc loc) noexcept;
+
     /// @brief Append a machine instruction to the active basic block.
+    /// @details Automatically stamps the current source location onto the instruction.
     /// @param instr The MInstr to append (moved into the block's instruction list).
     void append(MInstr instr);
 
@@ -184,6 +190,7 @@ class MIRBuilder
   private:
     LowerILToMIR *lower_{nullptr};
     MBasicBlock *block_{nullptr};
+    il::support::SourceLoc currentLoc_{}; ///< Loc stamped onto emitted MInstrs.
 };
 
 /// @brief Adapter that lowers temporary IL structures into Machine IR (MIR).

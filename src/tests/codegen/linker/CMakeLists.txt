@@ -11,7 +11,10 @@ set(_linker_tests
         symbol_resolver
         reloc_edge_cases
         elf_exe_writer
-        linker_integration)
+        linker_integration
+        icf
+        branch_trampoline
+        debug_sections)
 
 foreach (_case IN LISTS _linker_tests)
     set(_target test_linker_${_case})

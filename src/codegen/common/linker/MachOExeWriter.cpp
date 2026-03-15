@@ -107,6 +107,14 @@ bool writeMachOExe(const std::string &path,
     std::vector<size_t> textSections, dataSections;
     classifySections(layout, textSections, dataSections);
 
+    // Collect non-alloc debug sections.
+    std::vector<size_t> debugSections;
+    for (size_t i = 0; i < layout.sections.size(); ++i)
+    {
+        if (!layout.sections[i].alloc && !layout.sections[i].data.empty())
+            debugSections.push_back(i);
+    }
+
     // Compute text/data sizes accounting for VA gaps between sections.
     // Sections within a segment have page-aligned VAs; file layout must mirror this.
     const size_t textDataSize = computeSegmentSpan(layout, textSections);
@@ -159,6 +167,14 @@ bool writeMachOExe(const std::string &path,
     {
         ncmds++;
         sizeofcmds += 72 + dataSecCount * 80; // __DATA
+    }
+
+    const uint32_t debugSecCount = static_cast<uint32_t>(debugSections.size());
+    const bool hasDwarf = !debugSections.empty();
+    if (hasDwarf)
+    {
+        ncmds++;
+        sizeofcmds += 72 + debugSecCount * 80; // __DWARF
     }
 
     ncmds++;
@@ -261,8 +277,29 @@ bool writeMachOExe(const std::string &path,
     }
     linkeditDataSize = symtabData.size() + strtabData.size() + rebaseData.size() + bindData.size();
 
+    // __DWARF segment (non-alloc debug sections, placed before __LINKEDIT).
+    const size_t dwarfFileOff = dataFileOff + dataFileSize;
+    size_t dwarfTotalSize = 0;
+    struct DwarfSecInfo
+    {
+        size_t layoutIdx;
+        size_t offset; // Offset within __DWARF segment.
+    };
+    std::vector<DwarfSecInfo> dwarfSecInfos;
+    if (hasDwarf)
+    {
+        for (size_t idx : debugSections)
+        {
+            const auto &sec = layout.sections[idx];
+            size_t padded = alignUp(dwarfTotalSize, sec.alignment);
+            dwarfSecInfos.push_back({idx, padded});
+            dwarfTotalSize = padded + sec.data.size();
+        }
+    }
+    const size_t dwarfFileSize = hasDwarf ? alignUp(dwarfTotalSize, pageSize) : 0;
+
     // __LINKEDIT segment.
-    const size_t linkeditFileOff = dataFileOff + dataFileSize;
+    const size_t linkeditFileOff = dwarfFileOff + dwarfFileSize;
 
     // Code signature lives at end of __LINKEDIT (arm64 only).
     // Pre-compute offset and size so __LINKEDIT filesize includes it.
@@ -281,6 +318,8 @@ bool writeMachOExe(const std::string &path,
     const size_t linkeditTotalSize =
         needsCodeSign ? (codeSignOff - linkeditFileOff + codeSignSize) : linkeditDataSize;
     const size_t linkeditFileSize = alignUp(linkeditTotalSize, pageSize);
+    // __DWARF segment has no VM mapping (vmaddr=0, vmsize=0), so it doesn't
+    // shift __LINKEDIT's vmaddr. However, it does occupy file space.
     const uint64_t linkeditVmAddr =
         textSegVmAddr + textSegVmSize + (dataSections.empty() ? 0 : dataSegVmSize);
     const uint64_t linkeditVmSize = alignUp(linkeditTotalSize, pageSize);
@@ -466,6 +505,45 @@ bool writeMachOExe(const std::string &path,
         }
     }
 
+    // --- __DWARF (non-alloc debug sections) ---
+    if (hasDwarf)
+    {
+        writeLE32(file, LC_SEGMENT_64);
+        writeLE32(file, 72 + debugSecCount * 80);
+        writeStr(file, "__DWARF", 16);
+        writeLE64(file, 0);             // vmaddr: no VM mapping
+        writeLE64(file, 0);             // vmsize: no VM mapping
+        writeLE64(file, dwarfFileOff);
+        writeLE64(file, dwarfFileSize);
+        writeLE32(file, 0);             // maxprot: no permissions
+        writeLE32(file, 0);             // initprot: no permissions
+        writeLE32(file, debugSecCount);
+        writeLE32(file, 0);
+
+        for (const auto &dsi : dwarfSecInfos)
+        {
+            const auto &sec = layout.sections[dsi.layoutIdx];
+            // Mach-O debug section names: __debug_line, __debug_info, etc.
+            // Strip the leading dot from ELF-style names (.debug_line → __debug_line).
+            std::string machoSecName = sec.name;
+            if (!machoSecName.empty() && machoSecName[0] == '.')
+                machoSecName[0] = '_';
+
+            writeStr(file, machoSecName.c_str(), 16);
+            writeStr(file, "__DWARF", 16);
+            writeLE64(file, 0);         // addr: no VM mapping
+            writeLE64(file, sec.data.size());
+            writeLE32(file, static_cast<uint32_t>(dwarfFileOff + dsi.offset));
+            writeLE32(file, 0);         // align
+            writeLE32(file, 0);
+            writeLE32(file, 0);         // reloff, nreloc
+            writeLE32(file, 0x02000000u); // S_ATTR_DEBUG
+            writeLE32(file, 0);
+            writeLE32(file, 0);
+            writeLE32(file, 0);         // reserved
+        }
+    }
+
     // --- __LINKEDIT ---
     writeLE32(file, LC_SEGMENT_64);
     writeLE32(file, 72);
@@ -592,6 +670,19 @@ bool writeMachOExe(const std::string &path,
         {
             const auto &sec = layout.sections[idx];
             size_t targetOff = dataFileOff + static_cast<size_t>(sec.virtualAddr - dataSegVmAddr);
+            if (file.size() < targetOff)
+                writePad(file, targetOff - file.size());
+            file.insert(file.end(), sec.data.begin(), sec.data.end());
+        }
+    }
+
+    // Write __DWARF segment data.
+    if (hasDwarf)
+    {
+        for (const auto &dsi : dwarfSecInfos)
+        {
+            const auto &sec = layout.sections[dsi.layoutIdx];
+            size_t targetOff = dwarfFileOff + dsi.offset;
             if (file.size() < targetOff)
                 writePad(file, targetOff - file.size());
             file.insert(file.end(), sec.data.begin(), sec.data.end());

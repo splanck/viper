@@ -36,8 +36,12 @@
 #include <unordered_map>
 #include <vector>
 
+namespace viper::codegen { class DebugLineTable; }
+
 namespace viper::codegen::x64::binenc
 {
+
+using viper::codegen::DebugLineTable;
 
 /// Encodes x86_64 MIR functions into machine code bytes.
 ///
@@ -51,6 +55,9 @@ namespace viper::codegen::x64::binenc
 class X64BinaryEncoder
 {
 public:
+    /// Set the debug line table for recording address→line mappings.
+    void setDebugLineTable(DebugLineTable *table) { debugLines_ = table; }
+
     /// Encode a complete MIR function into the text CodeSection.
     ///
     /// @param fn        The MIR function to encode.
@@ -161,6 +168,9 @@ private:
 
     /// Forward references needing patching.
     std::vector<PendingBranch> pendingBranches_;
+
+    /// Optional debug line table for recording address→line mappings.
+    DebugLineTable *debugLines_{nullptr};
 };
 
 } // namespace viper::codegen::x64::binenc

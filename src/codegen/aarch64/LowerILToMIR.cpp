@@ -444,6 +444,9 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
 
         for (const auto &ins : bbIn.instructions)
         {
+            // Record instruction count so we can stamp source loc on new MInstrs.
+            const size_t mirCountBefore = bbOutFn().instrs.size();
+
             // Try extracted handlers first; they return true if they handled the opcode
             if (lowerInstruction(ins, bbIn, ctx, bi))
             {
@@ -822,6 +825,10 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                     }
                 }
             }
+
+            // Stamp source location on all MInstrs emitted by this IL instruction.
+            for (size_t mi = mirCountBefore; mi < bbOutFn().instrs.size(); ++mi)
+                bbOutFn().instrs[mi].loc = ins.loc;
         }
 
         // Save tempVReg snapshot for this block before processing next block.

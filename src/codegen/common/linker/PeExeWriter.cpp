@@ -77,11 +77,20 @@ bool writePeExe(const std::string &path,
     // === PE Signature (4 bytes) ===
     writeLE32(file, 0x00004550); // "PE\0\0"
 
+    // Collect alloc and non-alloc sections.
+    std::vector<size_t> allocIndices, debugIndices;
+    for (size_t i = 0; i < layout.sections.size(); ++i)
+    {
+        if (layout.sections[i].data.empty())
+            continue;
+        if (!layout.sections[i].alloc)
+            debugIndices.push_back(i);
+        else
+            allocIndices.push_back(i);
+    }
+
     // === COFF Header (20 bytes) ===
-    uint16_t numSections = 0;
-    for (const auto &sec : layout.sections)
-        if (!sec.data.empty())
-            ++numSections;
+    uint16_t numSections = static_cast<uint16_t>(allocIndices.size() + debugIndices.size());
 
     writeLE16(file, machine);
     writeLE16(file, numSections);
@@ -117,12 +126,11 @@ bool writePeExe(const std::string &path,
     writeLE16(file, 0);
     writeLE32(file, 0); // Win32VersionValue
 
-    // SizeOfImage: VA of last section + its aligned size.
+    // SizeOfImage: VA of last alloc section + its aligned size.
     uint32_t sizeOfImage = sectionAlignment; // At least first page.
-    for (const auto &sec : layout.sections)
+    for (size_t idx : allocIndices)
     {
-        if (sec.data.empty())
-            continue;
+        const auto &sec = layout.sections[idx];
         uint32_t secEnd = static_cast<uint32_t>(sec.virtualAddr - imageBase +
                                                 alignUp(sec.data.size(), sectionAlignment));
         if (secEnd > sizeOfImage)
@@ -167,14 +175,13 @@ bool writePeExe(const std::string &path,
     std::vector<PeSection> peSections;
 
     uint32_t currentFileOff = sizeOfHeaders;
-    for (size_t i = 0; i < layout.sections.size(); ++i)
-    {
-        const auto &sec = layout.sections[i];
-        if (sec.data.empty())
-            continue;
 
+    // Alloc sections.
+    for (size_t idx : allocIndices)
+    {
+        const auto &sec = layout.sections[idx];
         PeSection ps;
-        ps.layoutIdx = i;
+        ps.layoutIdx = idx;
         ps.virtualAddress = static_cast<uint32_t>(sec.virtualAddr - imageBase);
         ps.virtualSize = static_cast<uint32_t>(sec.data.size());
         ps.sizeOfRawData = static_cast<uint32_t>(alignUp(sec.data.size(), fileAlignment));
@@ -193,13 +200,36 @@ bool writePeExe(const std::string &path,
         currentFileOff += ps.sizeOfRawData;
     }
 
+    // Non-alloc debug sections (IMAGE_SCN_MEM_DISCARDABLE | CNT_INITIALIZED_DATA | MEM_READ).
+    for (size_t idx : debugIndices)
+    {
+        const auto &sec = layout.sections[idx];
+        PeSection ps;
+        ps.layoutIdx = idx;
+        ps.virtualAddress = 0;
+        ps.virtualSize = static_cast<uint32_t>(sec.data.size());
+        ps.sizeOfRawData = static_cast<uint32_t>(alignUp(sec.data.size(), fileAlignment));
+        ps.pointerToRawData = currentFileOff;
+        ps.characteristics = 0x42000040; // CNT_INITIALIZED_DATA | MEM_DISCARDABLE | MEM_READ
+        peSections.push_back(ps);
+        currentFileOff += ps.sizeOfRawData;
+    }
+
     // Write section headers (40 bytes each).
     for (const auto &ps : peSections)
     {
         const auto &sec = layout.sections[ps.layoutIdx];
         // Section name (8 bytes, NUL-padded).
         char secName[8] = {};
-        const char *sn = sec.executable ? ".text" : (sec.writable ? ".data" : ".rdata");
+        const char *sn;
+        if (!sec.alloc)
+            sn = ".debug";
+        else if (sec.executable)
+            sn = ".text";
+        else if (sec.writable)
+            sn = ".data";
+        else
+            sn = ".rdata";
         std::strncpy(secName, sn, 8);
         file.insert(file.end(), secName, secName + 8);
 

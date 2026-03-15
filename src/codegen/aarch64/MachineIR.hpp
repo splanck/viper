@@ -36,6 +36,7 @@
 #include <vector>
 
 #include "codegen/aarch64/TargetAArch64.hpp"
+#include "support/source_location.hpp"
 
 namespace viper::codegen::aarch64
 {
@@ -233,6 +234,7 @@ struct MInstr
 {
     MOpcode opc{};               ///< The operation to perform.
     std::vector<MOperand> ops{}; ///< Instruction operands.
+    il::support::SourceLoc loc{}; ///< Source location (for debug info).
 };
 
 /// @brief A basic block containing machine IR instructions.

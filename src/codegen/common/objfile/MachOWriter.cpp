@@ -79,14 +79,17 @@ static constexpr uint8_t kSectText = 1;
 static constexpr uint8_t kSectConst = 2;
 static constexpr uint8_t kNoSect = 0;
 
-// Load command sizes (fixed)
-static constexpr uint32_t kSegCmdSize = 72 + 2 * 80; // segment header + 2 section headers
+// Load command sizes (fixed, except segment command which varies with section count)
+// Segment cmd size = 72 (header) + nsects * 80 (section headers), computed dynamically.
 static constexpr uint32_t kBuildVerCmdSize = 24;
 static constexpr uint32_t kSymtabCmdSize = 24;
 static constexpr uint32_t kDysymtabCmdSize = 80;
 static constexpr uint32_t kHeaderSize = 32;
 static constexpr uint32_t kNlistSize = 16;
 static constexpr uint32_t kRelocSize = 8;
+
+// Section attribute flags
+static constexpr uint32_t kSAttrDebug = 0x02000000;
 
 // Helpers: appendLE16/32/64, alignUp, padTo are provided by ObjFileWriterUtil.hpp.
 
@@ -496,23 +499,29 @@ bool MachOWriter::write(const std::string &path,
               [](const MachoReloc &a, const MachoReloc &b) { return a.address > b.address; });
 
     // --- 5. Compute file layout ---
-    uint32_t sizeOfCmds = kSegCmdSize + kBuildVerCmdSize + kSymtabCmdSize + kDysymtabCmdSize;
+    const bool hasDebugLine = !debugLineData_.empty();
+    const uint32_t nsects = hasDebugLine ? 3 : 2;
+    const uint32_t segCmdSize = 72 + nsects * 80;
+    uint32_t sizeOfCmds = segCmdSize + kBuildVerCmdSize + kSymtabCmdSize + kDysymtabCmdSize;
     size_t afterHeaders = kHeaderSize + sizeOfCmds;
 
     size_t textSize = text.bytes().size();
     size_t rodataSize = rodata.bytes().size();
+    size_t debugLineSize = hasDebugLine ? debugLineData_.size() : 0;
 
     size_t textFileOff = alignUp(afterHeaders, textAlign);
     size_t constFileOff = alignUp(textFileOff + textSize, constAlign);
     size_t constAddr = constFileOff - textFileOff; // virtual address of __const
 
-    size_t segFileOff = textFileOff;
-    // Segment size must encompass the __const section's aligned address even
-    // when rodata is empty, because the section header is always emitted.
-    size_t segFileSize = constFileOff + rodataSize - textFileOff;
-    size_t segVmSize = constAddr + rodataSize;
+    size_t debugLineFileOff = constFileOff + rodataSize;
+    size_t debugLineAddr = constAddr + rodataSize;
 
-    size_t textRelocOff = constFileOff + rodataSize;
+    size_t segFileOff = textFileOff;
+    // Segment size must encompass all section data.
+    size_t segFileSize = constFileOff + rodataSize + debugLineSize - textFileOff;
+    size_t segVmSize = constAddr + rodataSize + debugLineSize;
+
+    size_t textRelocOff = constFileOff + rodataSize + debugLineSize;
     uint32_t nTextRelocs = static_cast<uint32_t>(textRelocs.size());
 
     size_t symOff = textRelocOff + nTextRelocs * kRelocSize;
@@ -527,7 +536,7 @@ bool MachOWriter::write(const std::string &path,
     writeMachOHeader(file, cputype, cpusubtype, 4, sizeOfCmds, kMhSubsectionsViaSymbols);
 
     // LC_SEGMENT_64 (232 bytes)
-    writeSegmentCmd(file, kSegCmdSize, segVmSize, segFileOff, segFileSize, 2);
+    writeSegmentCmd(file, segCmdSize, segVmSize, segFileOff, segFileSize, nsects);
 
     // __text section header
     writeSectionHdr(file,
@@ -553,6 +562,21 @@ bool MachOWriter::write(const std::string &path,
                     0, // no __const relocations
                     0);
 
+    // __debug_line section header (in __DWARF segment)
+    if (hasDebugLine)
+    {
+        writeSectionHdr(file,
+                        "__debug_line",
+                        "__DWARF",
+                        debugLineAddr,
+                        debugLineSize,
+                        static_cast<uint32_t>(debugLineFileOff),
+                        0, // align = 2^0 = 1
+                        0,
+                        0,
+                        kSAttrDebug);
+    }
+
     // LC_BUILD_VERSION (24 bytes)
     writeBuildVersionCmd(file);
 
@@ -571,6 +595,10 @@ bool MachOWriter::write(const std::string &path,
     // __const
     padTo(file, constFileOff);
     file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
+
+    // __debug_line
+    if (hasDebugLine)
+        file.insert(file.end(), debugLineData_.begin(), debugLineData_.end());
 
     // --- Patch addends into instruction bytes (Mach-O REL convention) ---
     if (arch_ == ObjArch::X86_64)

@@ -37,8 +37,12 @@
 #include <unordered_map>
 #include <vector>
 
+namespace viper::codegen { class DebugLineTable; }
+
 namespace viper::codegen::aarch64::binenc
 {
+
+using viper::codegen::DebugLineTable;
 
 /// Encodes AArch64 MIR functions into machine code bytes.
 ///
@@ -53,6 +57,10 @@ namespace viper::codegen::aarch64::binenc
 class A64BinaryEncoder
 {
 public:
+    /// Set the debug line table for recording address→line mappings.
+    /// @param table Pointer to the DebugLineTable (null disables recording).
+    void setDebugLineTable(DebugLineTable *table) { debugLines_ = table; }
+
     /// Encode a complete MIR function into the text CodeSection.
     ///
     /// @param fn      The MIR function to encode.
@@ -120,6 +128,9 @@ private:
 
     /// Pointer to current function being encoded (for epilogue synthesis on Ret).
     const MFunction *currentFn_{nullptr};
+
+    /// Optional debug line table for recording address→line mappings.
+    DebugLineTable *debugLines_{nullptr};
 };
 
 } // namespace viper::codegen::aarch64::binenc

@@ -35,6 +35,7 @@
 #include "RegAllocLinear.hpp"
 #include "TargetX64.hpp"
 #include "binenc/X64BinaryEncoder.hpp"
+#include "codegen/common/objfile/DebugLineTable.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -303,6 +304,11 @@ BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &o
     LowerILToMIR lowering{target, roData};
     binenc::X64BinaryEncoder encoder{};
 
+    // Set up debug line table for address→line mapping.
+    DebugLineTable debugLines;
+    debugLines.addFile("<source>");
+    encoder.setDebugLineTable(&debugLines);
+
     for (const auto &func : mod.funcs)
     {
         FrameInfo frame{};
@@ -346,6 +352,10 @@ BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &o
         std::memcpy(&bits, &val, sizeof(bits));
         result.rodata.emit64LE(bits);
     }
+
+    // Encode DWARF .debug_line if any entries were recorded.
+    if (!debugLines.empty())
+        result.debugLineData = debugLines.encodeDwarf5(8);
 
     result.errors = errorStream.str();
     return result;

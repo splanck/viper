@@ -8,7 +8,8 @@ set(_objfile_tests
         symbol_table
         code_section
         elf_writer
-        macho_writer)
+        macho_writer
+        debug_line)
 
 foreach (_case IN LISTS _objfile_tests)
     set(_target test_objfile_${_case})

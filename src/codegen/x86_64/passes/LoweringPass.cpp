@@ -370,6 +370,7 @@ class ModuleAdapter
     {
         ILInstr out{};
         out.resultId = -1;
+        out.loc = instr.loc;
 
         switch (instr.op)
         {

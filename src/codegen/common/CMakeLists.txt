@@ -7,6 +7,7 @@ add_library(viper_codegen_common STATIC
         objfile/CoffWriter.cpp
         objfile/StringTable.cpp
         objfile/SymbolTable.cpp
+        objfile/DebugLineTable.cpp
         linker/ArchiveReader.cpp
         linker/ObjFileReader.cpp
         linker/ElfReader.cpp
@@ -15,6 +16,8 @@ add_library(viper_codegen_common STATIC
         linker/SymbolResolver.cpp
         linker/DeadStripPass.cpp
         linker/StringDedup.cpp
+        linker/ICF.cpp
+        linker/BranchTrampoline.cpp
         linker/SectionMerger.cpp
         linker/RelocApplier.cpp
         linker/ElfExeWriter.cpp

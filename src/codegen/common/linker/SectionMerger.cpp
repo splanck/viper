@@ -317,6 +317,52 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         }
     }
 
+    // Collect non-alloc sections (e.g., .debug_line) into separate output sections.
+    // These have no virtual address and are not mapped into the process address space.
+    // Debuggers read them directly from the file.
+    {
+        std::map<std::string, std::vector<std::pair<size_t, size_t>>> debugGroups;
+        for (size_t oi = 0; oi < objects.size(); ++oi)
+        {
+            const auto &obj = objects[oi];
+            for (size_t si = 1; si < obj.sections.size(); ++si)
+            {
+                const auto &sec = obj.sections[si];
+                if (sec.alloc)
+                    continue;
+                if (sec.data.empty())
+                    continue;
+                debugGroups[sec.name].push_back({oi, si});
+            }
+        }
+        for (auto &[name, pairs] : debugGroups)
+        {
+            layout.sections.push_back({});
+            auto &out = layout.sections.back();
+            out.name = name;
+            out.alloc = false;
+
+            for (auto [oi, si] : pairs)
+            {
+                const auto &sec = objects[oi].sections[si];
+                size_t align = std::max(sec.alignment, 1u);
+                if (align > out.alignment)
+                    out.alignment = align;
+                size_t padded = alignUp(out.data.size(), align);
+                if (padded > out.data.size())
+                    out.data.resize(padded, 0);
+
+                InputChunk chunk;
+                chunk.inputObjIndex = oi;
+                chunk.inputSecIndex = si;
+                chunk.outputOffset = out.data.size();
+                chunk.size = sec.data.size();
+                out.chunks.push_back(chunk);
+                out.data.insert(out.data.end(), sec.data.begin(), sec.data.end());
+            }
+        }
+    }
+
     // Assign virtual addresses.
     uint64_t baseAddr;
     switch (platform)
@@ -342,6 +388,8 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // pack tightly with only their natural alignment respected.
     auto permClass = [](const OutputSection &s) -> int
     {
+        if (!s.alloc)
+            return 4; // Non-alloc sections (debug) sort last.
         if (s.executable)
             return 0;
         if (s.tls)
@@ -365,6 +413,8 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     int prevClass = -1;
     for (auto &sec : layout.sections)
     {
+        if (!sec.alloc)
+            continue; // Non-alloc sections (debug) have no VA.
         int cls = permClass(sec);
         if (cls != prevClass)
         {

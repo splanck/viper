@@ -56,7 +56,9 @@ static constexpr uint32_t kImageScnAlignText = 0x00600000; // 16-byte align for 
 static constexpr uint32_t kImageScnAlign4 = 0x00300000;    // 4-byte align for AArch64
 static constexpr uint32_t kImageScnAlign8 = 0x00400000;    // 8-byte align
 static constexpr uint32_t kImageScnMemExecute = 0x20000000;
+static constexpr uint32_t kImageScnMemDiscardable = 0x02000000;
 static constexpr uint32_t kImageScnMemRead = 0x40000000;
+static constexpr uint32_t kImageScnAlign1 = 0x00100000; // 1-byte align
 
 // Symbol storage class
 static constexpr uint8_t kImageSymClassExternal = 2;
@@ -205,9 +207,12 @@ bool CoffWriter::write(const std::string &path,
                        const CodeSection &rodata,
                        std::ostream &err)
 {
-    // Determine section count: always .text; .rdata only if rodata has content.
+    // Determine section count: always .text; .rdata only if rodata has content;
+    // .debug_line only if debug data is present.
     const bool hasRodata = !rodata.empty();
-    const uint16_t numSections = hasRodata ? 2 : 1;
+    const bool hasDebugLine = !debugLineData_.empty();
+    const uint16_t numSections =
+        static_cast<uint16_t>(1 + (hasRodata ? 1 : 0) + (hasDebugLine ? 1 : 0));
     const uint16_t secIdxText = 1; // COFF sections are 1-based
     const uint16_t secIdxRdata = hasRodata ? 2 : 0;
 
@@ -317,6 +322,11 @@ bool CoffWriter::write(const std::string &path,
         }
     }
 
+    // Add .debug_line section name to string table if needed (> 8 chars).
+    uint32_t debugLineStrOff = 0;
+    if (hasDebugLine)
+        debugLineStrOff = addToStrTab(".debug_line");
+
     // Finalize string table size.
     {
         uint32_t strtabSize = static_cast<uint32_t>(strtabBytes.size());
@@ -371,12 +381,24 @@ bool CoffWriter::write(const std::string &path,
         rdataDataOff = static_cast<uint32_t>(alignUp(textRelocOff + textRelocTotalSize, 4));
     }
 
-    // Symbol table follows all section data + relocs
-    uint32_t symtabOff;
+    // .debug_line section data
+    uint32_t debugLineDataSize = hasDebugLine ? static_cast<uint32_t>(debugLineData_.size()) : 0;
+    uint32_t debugLineDataOff = 0;
+
+    uint32_t afterLastSection;
     if (hasRodata)
-        symtabOff = static_cast<uint32_t>(alignUp(rdataDataOff + rdataSize, 4));
+        afterLastSection = rdataDataOff + rdataSize;
     else
-        symtabOff = static_cast<uint32_t>(alignUp(textRelocOff + textRelocTotalSize, 4));
+        afterLastSection = textRelocOff + textRelocTotalSize;
+
+    if (hasDebugLine)
+    {
+        debugLineDataOff = static_cast<uint32_t>(alignUp(afterLastSection, 4));
+        afterLastSection = debugLineDataOff + debugLineDataSize;
+    }
+
+    // Symbol table follows all section data + relocs
+    uint32_t symtabOff = static_cast<uint32_t>(alignUp(afterLastSection, 4));
 
     // --- 4. Build the file ---
     std::vector<uint8_t> file;
@@ -413,6 +435,16 @@ bool CoffWriter::write(const std::string &path,
         writeSectionHeader(file, ".rdata", 0, 0, rdataSize, rdataDataOff, 0, 0, rdataChars);
     }
 
+    // .debug_line (long name via string table: /offset format)
+    if (hasDebugLine)
+    {
+        std::string debugSecName = "/" + std::to_string(debugLineStrOff);
+        uint32_t debugChars =
+            kImageScnCntInitData | kImageScnMemDiscardable | kImageScnMemRead | kImageScnAlign1;
+        writeSectionHeader(
+            file, debugSecName.c_str(), 0, 0, debugLineDataSize, debugLineDataOff, 0, 0, debugChars);
+    }
+
     // .text section data
     padTo(file, textDataOff);
     file.insert(file.end(), text.bytes().begin(), text.bytes().end());
@@ -429,6 +461,13 @@ bool CoffWriter::write(const std::string &path,
     {
         padTo(file, rdataDataOff);
         file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
+    }
+
+    // .debug_line section data
+    if (hasDebugLine)
+    {
+        padTo(file, debugLineDataOff);
+        file.insert(file.end(), debugLineData_.begin(), debugLineData_.end());
     }
 
     // Symbol table

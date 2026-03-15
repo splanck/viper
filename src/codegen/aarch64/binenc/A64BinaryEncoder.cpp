@@ -25,6 +25,7 @@
 #include "codegen/aarch64/binenc/A64BinaryEncoder.hpp"
 
 #include "codegen/aarch64/FrameCodegen.hpp"
+#include "codegen/common/objfile/DebugLineTable.hpp"
 #include "codegen/aarch64/binenc/A64Encoding.hpp"
 #include "codegen/common/LabelUtil.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
@@ -112,7 +113,11 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
             labelOffsets_[sanitizeLabel(bb.name)] = text.currentOffset();
 
         for (const auto &mi : bb.instrs)
+        {
+            if (debugLines_ && mi.loc.hasLine())
+                debugLines_->addEntry(text.currentOffset(), mi.loc.file_id, mi.loc.line, mi.loc.column);
             encodeInstruction(mi, text);
+        }
     }
 
     // Resolve pending internal branches.

@@ -116,20 +116,27 @@ bool writeElfExe(const std::string &path,
     // Build program headers and file layout.
     // Layout: ELF header | program headers | [page-aligned segments...] | section headers
 
-    // Determine number of LOAD segments (one per output section with data).
+    // Determine number of LOAD segments (one per alloc output section with data).
     std::vector<size_t> loadableIndices;
+    std::vector<size_t> nonAllocIndices;
     for (size_t i = 0; i < layout.sections.size(); ++i)
     {
-        if (!layout.sections[i].data.empty())
-            loadableIndices.push_back(i);
+        if (layout.sections[i].data.empty())
+            continue;
+        if (!layout.sections[i].alloc)
+        {
+            nonAllocIndices.push_back(i);
+            continue;
+        }
+        loadableIndices.push_back(i);
     }
 
     const uint16_t numPhdrs = static_cast<uint16_t>(loadableIndices.size() + 1); // +1 for GNU_STACK
     const size_t ehdrSize = sizeof(Elf64_Ehdr);
     const size_t phdrTableSize = numPhdrs * sizeof(Elf64_Phdr);
 
-    // Section headers: null + each output section + .note.GNU-stack + .shstrtab.
-    const uint16_t numShdrs = static_cast<uint16_t>(layout.sections.size() + 3);
+    // Section headers: null + each alloc section + each non-alloc section + .note.GNU-stack + .shstrtab.
+    const uint16_t numShdrs = static_cast<uint16_t>(loadableIndices.size() + nonAllocIndices.size() + 3);
 
     // Compute file offsets for each segment.
     struct SegmentInfo
@@ -173,13 +180,24 @@ bool writeElfExe(const std::string &path,
     // Build .shstrtab.
     std::string shstrtab;
     shstrtab.push_back('\0'); // Null entry.
-    std::vector<uint32_t> secNameOffsets;
-    for (const auto &sec : layout.sections)
+
+    // Add names for alloc sections.
+    std::vector<uint32_t> loadableNameOffsets;
+    for (size_t idx : loadableIndices)
     {
-        secNameOffsets.push_back(static_cast<uint32_t>(shstrtab.size()));
-        shstrtab += sec.name;
+        loadableNameOffsets.push_back(static_cast<uint32_t>(shstrtab.size()));
+        shstrtab += layout.sections[idx].name;
         shstrtab.push_back('\0');
     }
+    // Add names for non-alloc sections (debug).
+    std::vector<uint32_t> nonAllocNameOffsets;
+    for (size_t idx : nonAllocIndices)
+    {
+        nonAllocNameOffsets.push_back(static_cast<uint32_t>(shstrtab.size()));
+        shstrtab += layout.sections[idx].name;
+        shstrtab.push_back('\0');
+    }
+
     const uint32_t gnuStackNameOff = static_cast<uint32_t>(shstrtab.size());
     shstrtab += ".note.GNU-stack";
     shstrtab.push_back('\0');
@@ -187,7 +205,22 @@ bool writeElfExe(const std::string &path,
     shstrtab += ".shstrtab";
     shstrtab.push_back('\0');
 
-    // Section headers placed after all segment data.
+    // Non-alloc section data placed after all loadable segment data.
+    struct NonAllocInfo
+    {
+        size_t layoutIdx;
+        size_t fileOffset;
+    };
+    std::vector<NonAllocInfo> nonAllocInfo;
+    for (size_t idx : nonAllocIndices)
+    {
+        const auto &sec = layout.sections[idx];
+        filePos = alignUp(filePos, sec.alignment);
+        nonAllocInfo.push_back({idx, filePos});
+        filePos += sec.data.size();
+    }
+
+    // Section headers placed after all data (loadable + non-alloc).
     const size_t shstrtabOff = alignUp(filePos, 8);
     const size_t shdrsOff = alignUp(shstrtabOff + shstrtab.size(), 8);
 
@@ -251,6 +284,20 @@ bool writeElfExe(const std::string &path,
                 static_cast<std::streamsize>(secData.size()));
     }
 
+    // Write non-alloc section data (debug sections).
+    for (const auto &na : nonAllocInfo)
+    {
+        auto cur = static_cast<size_t>(f.tellp());
+        if (cur < na.fileOffset)
+        {
+            std::vector<char> pad(na.fileOffset - cur, 0);
+            f.write(pad.data(), static_cast<std::streamsize>(pad.size()));
+        }
+        const auto &secData = layout.sections[na.layoutIdx].data;
+        f.write(reinterpret_cast<const char *>(secData.data()),
+                static_cast<std::streamsize>(secData.size()));
+    }
+
     // Write .shstrtab.
     {
         auto cur = static_cast<size_t>(f.tellp());
@@ -278,12 +325,13 @@ bool writeElfExe(const std::string &path,
         f.write(reinterpret_cast<const char *>(&shdr), sizeof(shdr));
     }
 
-    // Section headers for each output section.
-    for (size_t i = 0; i < layout.sections.size(); ++i)
+    // Section headers for alloc output sections.
+    for (size_t li = 0; li < loadableIndices.size(); ++li)
     {
+        size_t i = loadableIndices[li];
         const auto &sec = layout.sections[i];
         Elf64_Shdr shdr{};
-        shdr.sh_name = secNameOffsets[i];
+        shdr.sh_name = loadableNameOffsets[li];
         shdr.sh_type = sec.data.empty() ? SHT_NOBITS : SHT_PROGBITS;
         shdr.sh_flags = SHF_ALLOC;
         if (sec.executable)
@@ -301,6 +349,21 @@ bool writeElfExe(const std::string &path,
                 break;
             }
         }
+        shdr.sh_size = sec.data.size();
+        shdr.sh_addralign = sec.alignment;
+        f.write(reinterpret_cast<const char *>(&shdr), sizeof(shdr));
+    }
+
+    // Section headers for non-alloc output sections (debug).
+    for (size_t ni = 0; ni < nonAllocIndices.size(); ++ni)
+    {
+        const auto &sec = layout.sections[nonAllocIndices[ni]];
+        Elf64_Shdr shdr{};
+        shdr.sh_name = nonAllocNameOffsets[ni];
+        shdr.sh_type = SHT_PROGBITS;
+        shdr.sh_flags = 0;         // No SHF_ALLOC — not loaded into memory.
+        shdr.sh_addr = 0;          // No virtual address.
+        shdr.sh_offset = nonAllocInfo[ni].fileOffset;
         shdr.sh_size = sec.data.size();
         shdr.sh_addralign = sec.alignment;
         f.write(reinterpret_cast<const char *>(&shdr), sizeof(shdr));

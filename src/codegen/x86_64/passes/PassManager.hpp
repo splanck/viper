@@ -42,6 +42,7 @@ struct Module
     std::optional<objfile::CodeSection> binaryText;       ///< Machine code bytes + relocations.
     std::optional<objfile::CodeSection> binaryRodata;     ///< Read-only data section.
     std::vector<objfile::CodeSection> binaryTextSections; ///< Per-function text sections.
+    std::vector<uint8_t> debugLineData;                   ///< Pre-encoded DWARF .debug_line bytes.
 };
 
 // Backward-compatible aliases — consumers continue to use these names unchanged.

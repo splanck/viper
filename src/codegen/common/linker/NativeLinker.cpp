@@ -9,7 +9,7 @@
 // Purpose: Top-level native linker implementation.
 // Key invariants:
 //   - Pipeline: parse .o → parse archives → resolve symbols → generate stubs →
-//     merge sections → apply relocations → write executable
+//     merge sections → branch trampolines → apply relocations → write executable
 //   - For macOS: generates GOT entries and stub trampolines for dynamic symbols,
 //     uses non-lazy binding (dyld fills GOT at load time)
 //   - Falls back gracefully with clear error messages
@@ -20,7 +20,9 @@
 #include "codegen/common/linker/NativeLinker.hpp"
 
 #include "codegen/common/linker/ArchiveReader.hpp"
+#include "codegen/common/linker/BranchTrampoline.hpp"
 #include "codegen/common/linker/DeadStripPass.hpp"
+#include "codegen/common/linker/ICF.hpp"
 #include "codegen/common/linker/DynStubGen.hpp"
 #include "codegen/common/linker/ElfExeWriter.hpp"
 #include "codegen/common/linker/MachOExeWriter.hpp"
@@ -132,6 +134,9 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     // Step 3.5d: Deduplicate identical rodata strings across object files.
     deduplicateStrings(allObjects, globalSyms);
 
+    // Step 3.5d2: Fold identical .text sections (Identical Code Folding).
+    foldIdenticalCode(allObjects, globalSyms);
+
     // Step 3.5e: Remove global symbols that reference stripped (empty) sections.
     // After dead stripping, sections with cleared data are skipped by the merger,
     // so symbols pointing to them would resolve to invalid addresses.
@@ -166,6 +171,13 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         auto it = findWithMachoFallback(layout.globalSyms, opts.entrySymbol);
         if (it != layout.globalSyms.end())
             layout.entryAddr = it->second.resolvedAddr;
+    }
+
+    // Step 5.5: Insert branch trampolines for out-of-range AArch64 B/BL instructions.
+    if (!insertBranchTrampolines(allObjects, layout, opts.arch, opts.platform, err))
+    {
+        err << "error: branch trampoline insertion failed\n";
+        return 1;
     }
 
     // Step 6: Apply relocations.

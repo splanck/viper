@@ -58,6 +58,9 @@ struct BinaryEmitResult
     /// Per-function text sections for function-level dead stripping.
     /// Each CodeSection contains exactly one function's machine code.
     std::vector<objfile::CodeSection> textSections{};
+
+    /// Pre-encoded DWARF .debug_line bytes (empty when no debug info is available).
+    std::vector<uint8_t> debugLineData{};
 };
 
 /// \brief Lower an IL module to binary machine code via X64BinaryEncoder.

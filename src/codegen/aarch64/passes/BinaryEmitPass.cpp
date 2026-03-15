@@ -22,6 +22,7 @@
 #include "codegen/aarch64/passes/BinaryEmitPass.hpp"
 
 #include "codegen/aarch64/binenc/A64BinaryEncoder.hpp"
+#include "codegen/common/objfile/DebugLineTable.hpp"
 
 #include <utility>
 
@@ -51,6 +52,11 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags)
     objfile::CodeSection rodata;
     binenc::A64BinaryEncoder encoder;
 
+    // Set up debug line table for address→line mapping.
+    viper::codegen::DebugLineTable debugLines;
+    debugLines.addFile("<source>");
+    encoder.setDebugLineTable(&debugLines);
+
     for (const auto &fn : module.mir)
     {
         // Emit each function into its own CodeSection for per-function dead stripping.
@@ -70,6 +76,10 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags)
         rodata.emitBytes(content.data(), content.size());
         rodata.emit8(0); // NUL terminator
     }
+
+    // Encode DWARF .debug_line if any entries were recorded.
+    if (!debugLines.empty())
+        module.debugLineData = debugLines.encodeDwarf5(8);
 
     module.binaryText = std::move(text);
     module.binaryRodata = std::move(rodata);
