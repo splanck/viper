@@ -5,6 +5,30 @@
 **Scope:** VM execution, Native codegen, IL optimization, Runtime overhead
 **Benchmark:** Recursive fibonacci fib(45)
 
+## Update (Mar 2026)
+
+### Pipeline and Gating Fixes
+
+1. **x86_64 O2 gating bug fixed** - The codegen-O2 pipeline was gated behind
+   `-O3` instead of `-O2` (`opts_.optimize >= 3`). Fixed to `>= 2` so `-O2`
+   correctly runs the full O2 optimization stack.
+
+2. **Codegen pipelines now match full O2** - Both the x86_64 and AArch64 codegen
+   pipelines previously used a stripped-down O2 pipeline with 16 passes. They now
+   use the complete 29-pass O2 pipeline from PassManager.cpp, adding:
+   loop-simplify, loop-rotate, indvars, loop-unroll, check-opt, eh-opt,
+   sibling-recursion, constfold, licm, and reassociate.
+
+3. **Codegen O1 pipeline updated** - The codegen O1 pipeline now matches the
+   canonical O1 pipeline from PassManager.cpp, adding: constfold, inline,
+   second sccp, and licm passes.
+
+4. **x86_64 O1 support enabled** - The outer optimization guard was changed from
+   `>= 2` to `>= 1` so the x86_64 backend runs the O1 pipeline when `-O1` is
+   requested (previously no IL optimization ran at O1).
+
+---
+
 ## Update (Jan 2026)
 
 ### Optimizations Implemented
@@ -50,6 +74,13 @@ After optimizations:
 cmp x8, #1       ; immediate form
 cmp x0, #1       ; cset removed by DCE
 ```
+
+5. **Division/modulo strength reduction** - COMPLETED
+   - SDIV by power-of-2 replaced with sign-corrected arithmetic shift (4 instructions, ~4 cycles vs ~22 cycles)
+   - SDIV by arbitrary constant replaced with SMULH magic-number multiply (4-6 instructions, ~6-8 cycles vs ~22 cycles)
+   - UREM by power-of-2 (UDIV+MSUB) replaced with AND mask (1 instruction, ~1 cycle vs ~26 cycles)
+   - SREM by power-of-2 (SDIV+MSUB) replaced with sign-corrected AND+SUB sequence (5 instructions, ~5 cycles vs ~26 cycles)
+   - Impact: branch_stress benchmark (`i%2`, `i%3`, `i%5`, `i%7`) should see significant improvement
 
 ### Next Steps for Further Optimization
 1. **Live range splitting** - Split long-lived values to reduce register pressure

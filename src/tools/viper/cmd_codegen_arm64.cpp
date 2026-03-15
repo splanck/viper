@@ -359,25 +359,38 @@ int emitAndMaybeLink(const Options &opts)
     }
 
     // Run IL optimizations before lowering to MIR.
-    // Codegen-safe pipelines omit LICM and check-opt (known correctness
-    // issues).  SCCP and inlining are safe and enabled.
+    // The codegen pipelines match the canonical O1/O2 pipelines from
+    // PassManager.cpp so native output benefits from the full optimization
+    // stack (loop opts, LICM, check-opt, sibling-recursion, etc.).
     if (opts.optimize >= 1)
     {
         il::transform::PassManager ilpm;
         if (opts.optimize >= 2)
         {
             ilpm.registerPipeline("codegen-O2",
-                                  {"simplify-cfg",
+                                  {"loop-simplify",
+                                   "loop-rotate",
+                                   "indvars",
+                                   "loop-unroll",
+                                   "simplify-cfg",
                                    "mem2reg",
                                    "simplify-cfg",
                                    "sccp",
+                                   "check-opt",
+                                   "eh-opt",
                                    "dce",
                                    "simplify-cfg",
+                                   "sibling-recursion",
                                    "inline",
                                    "simplify-cfg",
-                                   "dce",
                                    "sccp",
+                                   "constfold",
+                                   "dce",
+                                   "simplify-cfg",
+                                   "licm",
+                                   "simplify-cfg",
                                    "gvn",
+                                   "reassociate",
                                    "earlycse",
                                    "dse",
                                    "peephole",
@@ -392,7 +405,14 @@ int emitAndMaybeLink(const Options &opts)
                                    "mem2reg",
                                    "simplify-cfg",
                                    "sccp",
+                                   "constfold",
                                    "dce",
+                                   "simplify-cfg",
+                                   "inline",
+                                   "simplify-cfg",
+                                   "sccp",
+                                   "dce",
+                                   "licm",
                                    "simplify-cfg",
                                    "peephole",
                                    "dce"});

@@ -66,6 +66,53 @@ PeepholeStats runPeephole(MFunction &fn)
         if (instrs.empty())
             continue;
 
+        // Pass 0.9: Division/remainder strength reduction (multi-instruction patterns).
+        // This must run BEFORE Pass 1's single-instruction strength reduction,
+        // because Pass 1 converts UDIV->LSR which would break the UDIV+MSUB
+        // remainder pattern. Remainder fusion must see the original UDIV/SDIV.
+        {
+            ph::RegConstMap divConsts;
+            for (std::size_t i = 0; i < instrs.size(); ++i)
+                ph::updateKnownConsts(instrs[i], divConsts);
+
+            // First pass: try remainder fusion (UDIV/SDIV + MSUB -> AND/shift sequence)
+            for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
+            {
+                if (ph::tryRemainderFusion(instrs, i, divConsts, stats))
+                {
+                    // Rebuild constant map after modification
+                    divConsts.clear();
+                    for (std::size_t j = 0; j < instrs.size(); ++j)
+                        ph::updateKnownConsts(instrs[j], divConsts);
+                    if (i > 0)
+                        --i;
+                }
+            }
+
+            // Second pass: try standalone SDIV strength reduction
+            // (only for SDivRRR not already consumed by remainder fusion)
+            divConsts.clear();
+            for (std::size_t i = 0; i < instrs.size(); ++i)
+                ph::updateKnownConsts(instrs[i], divConsts);
+
+            for (std::size_t i = 0; i < instrs.size(); ++i)
+            {
+                if (instrs[i].opc == MOpcode::SDivRRR)
+                {
+                    if (ph::trySDivStrengthReduction(instrs, i, divConsts, stats))
+                    {
+                        // Rebuild constant map after modification
+                        divConsts.clear();
+                        for (std::size_t j = 0; j < instrs.size(); ++j)
+                            ph::updateKnownConsts(instrs[j], divConsts);
+                        // Don't decrement i -- the expansion replaces the current
+                        // index and we should continue scanning from the next
+                        // unprocessed instruction.
+                    }
+                }
+            }
+        }
+
         // Pass 1: Build register constant map and apply rewrites
         ph::RegConstMap knownConsts;
         for (auto &instr : instrs)

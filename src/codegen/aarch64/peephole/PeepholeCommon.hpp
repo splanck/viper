@@ -252,6 +252,9 @@ using viper::codegen::common::removeMarkedInstructions;
                 return true;
             break;
 
+        case MOpcode::AndRI:
+        case MOpcode::OrrRI:
+        case MOpcode::EorRI:
         case MOpcode::AddRI:
         case MOpcode::SubRI:
         case MOpcode::LslRI:
@@ -392,6 +395,9 @@ using viper::codegen::common::removeMarkedInstructions;
         case MOpcode::AsrvRRR:
             return idx == 0 ? std::make_pair(false, true) : std::make_pair(true, false);
 
+        case MOpcode::AndRI:
+        case MOpcode::OrrRI:
+        case MOpcode::EorRI:
         case MOpcode::AddRI:
         case MOpcode::SubRI:
         case MOpcode::LslRI:
@@ -528,6 +534,9 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
         case MOpcode::AndRRR:
         case MOpcode::OrrRRR:
         case MOpcode::EorRRR:
+        case MOpcode::AndRI:
+        case MOpcode::OrrRI:
+        case MOpcode::EorRI:
         case MOpcode::AddRI:
         case MOpcode::SubRI:
         case MOpcode::LslRI:
@@ -660,6 +669,9 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
         case MOpcode::AndRRR:
         case MOpcode::OrrRRR:
         case MOpcode::EorRRR:
+        case MOpcode::AndRI:
+        case MOpcode::OrrRI:
+        case MOpcode::EorRI:
         case MOpcode::AddRI:
         case MOpcode::SubRI:
         case MOpcode::LslRI:
