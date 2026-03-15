@@ -321,35 +321,9 @@ class Lexer
     /// @pre Current position is at the first `"` of `"""`.
     Token lexTripleQuotedString();
 
-    /// @brief Process an escape sequence in a string.
-    /// @return The escaped character, or nullopt on invalid escape.
-    ///
-    /// @details Called after consuming the backslash. Handles:
-    /// - `\n` → newline
-    /// - `\r` → carriage return
-    /// - `\t` → tab
-    /// - `\\` → backslash
-    /// - `\"` → double quote
-    /// - `\'` → single quote
-    /// - `\0` → null character
-    /// - `\$` → dollar sign (for escaping interpolation)
-    ///
-    /// Returns nullopt for unrecognized escape sequences.
-    /// @param c The escape character (the character after the backslash).
-    std::optional<char> processEscape(char c);
-
-    /// @brief Convert a hex digit character to its numeric value.
-    /// @param c The character ('0'-'9', 'a'-'f', 'A'-'F').
-    /// @return The numeric value 0-15, or -1 if not a valid hex digit.
-    int hexDigitValue(char c);
-
-    /// @brief Process a unicode escape sequence \uXXXX.
-    /// @return The UTF-8 encoded string, or nullopt on error.
-    std::optional<std::string> processUnicodeEscape();
-
-    /// @brief Process a hex escape sequence \xXX.
-    /// @return The character value, or nullopt on error.
-    std::optional<char> processHexEscape();
+    // Note: Escape sequence processing (processEscape, processHexEscape,
+    // processUnicodeEscape) has been extracted to frontends/common/EscapeSequences.hpp.
+    // The Lexer acts as a cursor (peekChar/getChar/eof) for the templated utilities.
 
     /// @brief Lex the continuation of an interpolated string after '}'.
     /// @return Token with kind StringMid, StringEnd, or Error.

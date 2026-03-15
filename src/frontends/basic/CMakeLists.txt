@@ -80,6 +80,7 @@ target_sources(fe_basic PRIVATE
         lower/Lowerer_Expr.cpp
         lower/Lower_Expr_NumericClassifier.cpp
         lower/Lowerer_Stmt.cpp
+        lower/MemberArrayResolver.cpp
         lower/Scan_ExprTypes.cpp
         lower/Scan_RuntimeNeeds.cpp
         lower/oop/Lower_OOP_Scan.cpp

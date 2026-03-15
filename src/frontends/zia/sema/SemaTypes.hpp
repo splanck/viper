@@ -1,0 +1,195 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/zia/sema/SemaTypes.hpp
+// Purpose: Symbol, ScopedSymbol, and Scope types used by the Zia semantic
+//          analyzer. Extracted from Sema.hpp to reduce header size and
+//          allow independent inclusion by IDE tooling and lowerer code.
+// Key invariants:
+//   - Symbol names are unique within a single Scope
+//   - Scope parent pointers are immutable after construction
+// Ownership/Lifetime:
+//   - Scope instances are owned by Sema (via std::unique_ptr)
+//   - Symbol instances are value-stored inside Scope maps
+// Links: frontends/zia/Sema.hpp, frontends/zia/Types.hpp
+//
+//===----------------------------------------------------------------------===//
+#pragma once
+
+#include "frontends/zia/AST.hpp"
+#include "frontends/zia/Types.hpp"
+#include "support/source_location.hpp"
+#include <string>
+#include <unordered_map>
+
+namespace il::frontends::zia
+{
+
+//===----------------------------------------------------------------------===//
+/// @name Symbol Information
+/// @brief Structure for tracking declared symbols.
+/// @{
+//===----------------------------------------------------------------------===//
+
+/// @brief Information about a declared symbol (variable, function, type, etc.).
+/// @details Represents any named entity that can be looked up in a scope.
+/// Used during semantic analysis to track declarations and their types.
+///
+/// ## Symbol Categories
+///
+/// - **Variable**: Local or global variable, can be read/written based on isFinal
+/// - **Parameter**: Read-only function/method parameter
+/// - **Function**: Global function that can be called
+/// - **Method**: Method on a type that can be called on an object
+/// - **Field**: Field in a type that can be accessed on an object
+/// - **Type**: Type declaration (value, entity, interface)
+struct Symbol
+{
+    /// @brief The kind of symbol.
+    /// @details Determines how the symbol can be used in expressions.
+    enum class Kind
+    {
+        Variable,  ///< Local or global variable
+        Parameter, ///< Function/method parameter
+        Function,  ///< Global function declaration
+        Method,    ///< Method in a type declaration
+        Field,     ///< Field in a type declaration
+        Type,      ///< Type declaration (value, entity, interface)
+        Module,    ///< Imported module namespace
+    };
+
+    /// @brief The symbol kind.
+    Kind kind;
+
+    /// @brief The symbol name as declared.
+    std::string name;
+
+    /// @brief The resolved semantic type of this symbol.
+    /// @details For functions/methods, this is the function type.
+    /// For types, this is the type itself (e.g., entity("MyClass")).
+    TypeRef type;
+
+    /// @brief True if this symbol is immutable (declared with `final`).
+    /// @details Only meaningful for Variable and Field kinds.
+    bool isFinal{false};
+
+    /// @brief True if this is an external/runtime function.
+    /// @details For functions in the Viper.* namespace, this is true.
+    /// The lowerer uses this to emit extern calls instead of direct calls.
+    bool isExtern{false};
+
+    /// @brief Whether this symbol has been referenced (read) in the source.
+    /// @details Used by W001 (unused-variable) to detect variables that are
+    /// declared but never read. Set to true by Sema::analyzeIdent() on lookup.
+    bool used{false};
+
+    /// @brief Pointer to the AST declaration node.
+    /// @details May be nullptr for built-in symbols or extern functions.
+    Decl *decl{nullptr};
+};
+
+/// @}
+
+/// @brief Snapshot of a symbol definition for position-based hover lookup.
+/// @details Captured during analysis by defineSymbol(). Persists after scopes
+/// are popped, enabling IDE queries for local variables, parameters, and fields.
+struct ScopedSymbol
+{
+    Symbol symbol;         ///< The full symbol metadata (kind, name, type, etc.)
+    SourceLoc loc;         ///< Position of the defining declaration/statement
+    std::string ownerType; ///< Entity name when inside entity body (empty otherwise)
+};
+
+//===----------------------------------------------------------------------===//
+/// @name Scope Management
+/// @brief Class for managing symbol scopes.
+/// @{
+//===----------------------------------------------------------------------===//
+
+/// @brief Scope for symbol lookup.
+/// @details Represents a lexical scope containing symbol definitions.
+/// Scopes are linked to parent scopes to enable nested lookup.
+///
+/// ## Scope Hierarchy
+///
+/// Scopes form a tree structure:
+/// - Global scope (module-level)
+///   - Function scope
+///     - Block scope (if, while, for bodies)
+///       - Nested block scope
+///
+/// Symbol lookup proceeds from innermost to outermost scope.
+///
+/// @invariant A scope's parent pointer is set at construction and never changes.
+/// @invariant Symbol names are unique within a single scope.
+class Scope
+{
+  public:
+    /// @brief Create a scope with an optional parent.
+    /// @param parent The enclosing scope, or nullptr for global scope.
+    explicit Scope(Scope *parent = nullptr) : parent_(parent) {}
+
+    /// @brief Define a symbol in this scope.
+    /// @param name The symbol name.
+    /// @param symbol The symbol information.
+    ///
+    /// @details If a symbol with the same name already exists in this scope,
+    /// it is replaced (shadowing). Parent scope symbols are not affected.
+    void define(const std::string &name, Symbol symbol);
+
+    /// @brief Look up a symbol by name in this scope and ancestors.
+    /// @param name The symbol name to find.
+    /// @return Pointer to the symbol if found, nullptr otherwise.
+    ///
+    /// @details Searches this scope first, then parent scopes recursively.
+    /// Returns the first match found (innermost scope wins for shadowing).
+    Symbol *lookup(const std::string &name);
+
+    /// @brief Look up a symbol only in this scope (not ancestors).
+    /// @param name The symbol name to find.
+    /// @return Pointer to the symbol if found in this scope, nullptr otherwise.
+    ///
+    /// @details Used to check for redefinition in the current scope.
+    Symbol *lookupLocal(const std::string &name);
+
+    /// @brief Get the parent scope.
+    /// @return The parent scope, or nullptr for the global scope.
+    Scope *parent() const
+    {
+        return parent_;
+    }
+
+    /// @brief Check if any symbol name starts with the given prefix.
+    bool hasSymbolWithPrefix(const std::string &prefix) const
+    {
+        for (const auto &[name, _] : symbols_)
+        {
+            if (name.rfind(prefix, 0) == 0)
+                return true;
+        }
+        return false;
+    }
+
+    /// @brief Get all symbols defined in this scope (not ancestors).
+    /// @return Const reference to the symbols map.
+    /// @details Used by completion tools and unused-variable checks.
+    const std::unordered_map<std::string, Symbol> &getSymbols() const
+    {
+        return symbols_;
+    }
+
+  private:
+    /// @brief The enclosing scope.
+    Scope *parent_{nullptr};
+
+    /// @brief Symbols defined in this scope.
+    std::unordered_map<std::string, Symbol> symbols_;
+};
+
+/// @}
+
+} // namespace il::frontends::zia

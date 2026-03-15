@@ -121,18 +121,9 @@ NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperan
             if (value.type.kind == IlKind::F64)
                 return;
             il::support::SourceLoc loc = node ? node->loc : expr.loc;
-            if (expr.op == BinaryExpr::Op::Div)
-            {
-                value = lowerer.coerceToI64(std::move(value), loc);
-                lowerer.curLoc = loc;
-                value.value =
-                    lowerer.emitUnary(Opcode::CastSiToFp, IlType(IlKind::F64), value.value);
-                value.type = IlType(IlKind::F64);
-            }
-            else
-            {
-                value = lowerer.ensureF64(std::move(value), loc);
-            }
+            // Route all float promotions through the TypeCoercionEngine
+            // (toI64 normalisation followed by int-to-float conversion).
+            value = lowerer.ensureF64(std::move(value), loc);
         };
 
         promoteToF64(lhs, expr.lhs.get());

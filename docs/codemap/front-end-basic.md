@@ -351,8 +351,8 @@ The BASIC frontend (`src/frontends/basic/`) compiles Viper BASIC source to IL.
 | `ILTypeUtils.cpp`       | IL type utilities impl            |
 | `ILTypeUtils.hpp`       | IL type utilities                 |
 | `NumericRules.hpp`      | Numeric type rules                |
-| `TypeCoercionEngine.cpp`| Type coercion logic impl          |
-| `TypeCoercionEngine.hpp`| Type coercion logic               |
+| `TypeCoercionEngine.cpp`| Unified type coercion engine impl (all numeric conversions route here) |
+| `TypeCoercionEngine.hpp`| Unified type coercion engine (float/int/bool conversions)             |
 | `TypeRules.cpp`         | Type checking rules impl          |
 | `TypeRules.hpp`         | Type checking rules               |
 | `TypeSuffix.cpp`        | Type suffix handling impl         |

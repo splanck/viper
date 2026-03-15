@@ -100,10 +100,13 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     // This supports module-level globals referenced inside procedures (BUG-053),
     // where globals are routed through runtime-backed storage and do not have
     // a materialised local stack slot.
+    // Member array field resolution consolidated via resolveMemberArrayField().
     // BUG-056: Detect object field array access via dotted name (e.g., B.CELLS(i)).
-    // BUG-059/058: Also detect field arrays accessed without dotted syntax in methods (e.g.,
-    // inventory(i)).
-    const bool isMemberArray = expr.name.find('.') != std::string::npos;
+    // BUG-059/058: Also detect field arrays accessed without dotted syntax in methods.
+    // BUG-089: Object arrays detected via non-empty objectClassName.
+    // BUG-108: Local variables shadow implicit field arrays.
+    const MemberArrayInfo fieldInfo = resolveMemberArrayField(expr.name);
+    const bool isMemberArray = fieldInfo.isDottedAccess;
 
     const auto *info = isMemberArray ? nullptr : findSymbol(expr.name);
 
@@ -120,9 +123,20 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     // When accessing array fields, we'll compute 'base' by loading the pointer from
     // the object's field; otherwise we load from variable storage as usual.
     Type::Kind memberElemIlKind = Type::Kind::I64; // default element kind
-    ::il::frontends::basic::Type memberElemAstType = ::il::frontends::basic::Type::I64;
-    bool isMemberObjectArray = false; // BUG-089: Track if member array holds objects
+    ::il::frontends::basic::Type memberElemAstType = fieldInfo.elementAstType;
+    bool isMemberObjectArray = fieldInfo.isObjectArray;
     Value base;
+
+    // Derive IL element kind from resolved field info
+    if (fieldInfo.isField)
+    {
+        if (fieldInfo.elementAstType == ::il::frontends::basic::Type::Str)
+            memberElemIlKind = Type::Kind::Str;
+        else if (fieldInfo.isObjectArray)
+            memberElemIlKind = Type::Kind::Ptr;
+        else
+            memberElemIlKind = Type::Kind::I64;
+    }
 
     // Only resolve storage for non-member arrays
     std::optional<VariableStorage> storage;
@@ -132,38 +146,6 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         assert(storage && "array access requires resolvable storage");
         if (!storage)
             return {Value::null(), Value::null()}; // Safety: null in Release.
-    }
-
-    // Determine element type early so we can require the right runtime functions
-    if (isMemberArray)
-    {
-        // Split into base variable and field name
-        const std::string &full = expr.name;
-        std::size_t dot = full.find('.');
-        std::string baseName = full.substr(0, dot);
-        std::string fieldName = full.substr(dot + 1);
-
-        // Look up field type in class layout
-        const auto *baseSym = findSymbol(baseName);
-        if (baseSym)
-        {
-            std::string klass = getSlotType(baseName).objectClass;
-            if (const ClassLayout *layout = findClassLayout(klass))
-            {
-                if (const ClassLayout::Field *fld = layout->findField(fieldName))
-                {
-                    memberElemAstType = fld->type;
-                    // BUG-089 fix: Check if field is an object array
-                    isMemberObjectArray = !fld->objectClassName.empty();
-                    if (fld->type == ::il::frontends::basic::Type::Str)
-                        memberElemIlKind = Type::Kind::Str;
-                    else if (isMemberObjectArray)
-                        memberElemIlKind = Type::Kind::Ptr;
-                    else
-                        memberElemIlKind = Type::Kind::I64;
-                }
-            }
-        }
     }
 
     // Require appropriate runtime functions based on array element type
@@ -255,16 +237,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
             {
                 if (const ClassLayout::Field *fld = it->second.findField(fieldName))
                 {
-                    // Type already set above
-                    memberElemAstType = fld->type;
-                    // BUG-089 fix: Check if field is an object array (same as earlier)
-                    isMemberObjectArray = !fld->objectClassName.empty();
-                    if (fld->type == ::il::frontends::basic::Type::Str)
-                        memberElemIlKind = Type::Kind::Str;
-                    else if (isMemberObjectArray)
-                        memberElemIlKind = Type::Kind::Ptr;
-                    else
-                        memberElemIlKind = Type::Kind::I64;
+                    // Type info already resolved via resolveMemberArrayField() above.
                     curLoc = expr.loc;
                     Value fieldPtr =
                         emitBinary(Opcode::GEP,

@@ -94,6 +94,7 @@
 #include "frontends/common/LoopContext.hpp"
 #include "frontends/common/StringTable.hpp"
 #include "frontends/zia/AST.hpp"
+#include "frontends/zia/LowererTypes.hpp"
 #include "frontends/zia/Options.hpp"
 #include "frontends/zia/Sema.hpp"
 #include "frontends/zia/Types.hpp"
@@ -128,228 +129,8 @@ using LowerResult = ::il::frontends::common::ExprResult;
 
 /// @}
 
-//===----------------------------------------------------------------------===//
-/// @name Type Layout Structures
-/// @brief Structures for computing and storing type layout information.
-/// @{
-//===----------------------------------------------------------------------===//
-
-/// @brief Field layout information within a type.
-/// @details Describes a single field's position and size in memory.
-/// Used for generating field access instructions.
-struct FieldLayout
-{
-    /// @brief The field name as declared.
-    std::string name;
-
-    /// @brief The semantic type of the field.
-    TypeRef type;
-
-    /// @brief Byte offset from the start of the struct.
-    /// @details For entity types, this is the offset after the object header.
-    size_t offset;
-
-    /// @brief Size in bytes of this field.
-    size_t size;
-};
-
-/// @brief Value type layout information.
-/// @details Contains everything needed to generate code for a value type:
-/// field layout for access, methods for calls, and total size for copying.
-///
-/// ## Memory Layout
-///
-/// Value types are laid out inline (no header):
-/// ```
-/// [field0][field1][field2]...
-/// ```
-///
-/// ## Method Dispatch
-///
-/// Value type methods are statically dispatched by mangled name.
-struct ValueTypeInfo
-{
-    /// @brief The type name.
-    std::string name;
-
-    /// @brief Fields in declaration order with computed offsets.
-    std::vector<FieldLayout> fields;
-
-    /// @brief Methods declared in this type.
-    std::vector<MethodDecl *> methods;
-
-    /// @brief Total size in bytes of an instance.
-    size_t totalSize;
-
-    /// @brief Fast lookup: field name -> index in fields vector.
-    std::unordered_map<std::string, size_t> fieldIndex;
-
-    /// @brief Fast lookup: method name -> method declaration.
-    std::unordered_map<std::string, MethodDecl *> methodMap;
-
-    /// @brief Find a field by name.
-    /// @param n The field name.
-    /// @return Pointer to FieldLayout, or nullptr if not found.
-    const FieldLayout *findField(const std::string &n) const
-    {
-        auto it = fieldIndex.find(n);
-        return it != fieldIndex.end() ? &fields[it->second] : nullptr;
-    }
-
-    /// @brief Find a method by name.
-    /// @param n The method name.
-    /// @return Pointer to MethodDecl, or nullptr if not found.
-    MethodDecl *findMethod(const std::string &n) const
-    {
-        auto it = methodMap.find(n);
-        return it != methodMap.end() ? it->second : nullptr;
-    }
-};
-
-/// @brief Entity type layout information (reference types).
-/// @details Contains everything needed to generate code for an entity type:
-/// field layout, methods, inheritance info, and runtime class ID.
-///
-/// ## Memory Layout
-///
-/// Entity types are heap-allocated with an object header:
-/// ```
-/// [header: classId, refCount][field0][field1]...
-/// ```
-///
-/// The header is 16 bytes (8 for class ID, 8 for reference count).
-///
-/// ## Inheritance
-///
-/// If baseClass is set, inherited fields come first, followed by
-/// this class's fields. The classId is unique per type for RTTI.
-///
-/// ## Method Dispatch
-///
-/// Entity methods use static dispatch currently (no vtable yet).
-/// The classId enables future virtual dispatch and `is`/`as` checks.
-struct EntityTypeInfo
-{
-    /// @brief The type name.
-    std::string name;
-
-    /// @brief Parent class name (empty if no inheritance).
-    std::string baseClass;
-
-    /// @brief Fields in declaration order with computed offsets.
-    /// @details Inherited fields (if any) come first.
-    std::vector<FieldLayout> fields;
-
-    /// @brief Methods declared in this type.
-    std::vector<MethodDecl *> methods;
-
-    /// @brief Total size in bytes of object data (excluding header).
-    size_t totalSize;
-
-    /// @brief Runtime class ID for object allocation and RTTI.
-    /// @details Unique per entity type, assigned during lowering.
-    int classId;
-
-    /// @brief Fast lookup: field name -> index in fields vector.
-    std::unordered_map<std::string, size_t> fieldIndex;
-
-    /// @brief Fast lookup: method name -> method declaration.
-    std::unordered_map<std::string, MethodDecl *> methodMap;
-
-    /// @brief vtable method entries in vtable order (includes inherited methods).
-    /// @details Each entry is the fully qualified method name (e.g., "Dog.speak").
-    std::vector<std::string> vtable;
-
-    /// @brief vtable slot lookup: method name -> vtable index.
-    std::unordered_map<std::string, size_t> vtableIndex;
-
-    /// @brief Name of the global vtable symbol.
-    std::string vtableName;
-
-    /// @brief Set of interfaces this entity implements.
-    /// @details Used for interface method dispatch.
-    std::set<std::string> implementedInterfaces;
-
-    /// @brief Property getter method names (e.g., "get_area").
-    std::set<std::string> propertyGetters;
-
-    /// @brief Property setter method names (e.g., "set_area").
-    std::set<std::string> propertySetters;
-
-    /// @brief Find a field by name.
-    /// @param n The field name.
-    /// @return Pointer to FieldLayout, or nullptr if not found.
-    const FieldLayout *findField(const std::string &n) const
-    {
-        auto it = fieldIndex.find(n);
-        return it != fieldIndex.end() ? &fields[it->second] : nullptr;
-    }
-
-    /// @brief Find a method by name.
-    /// @param n The method name.
-    /// @return Pointer to MethodDecl, or nullptr if not found.
-    MethodDecl *findMethod(const std::string &n) const
-    {
-        auto it = methodMap.find(n);
-        return it != methodMap.end() ? it->second : nullptr;
-    }
-
-    /// @brief Find vtable index for a method.
-    /// @param n The method name.
-    /// @return vtable index, or SIZE_MAX if not found.
-    size_t findVtableSlot(const std::string &n) const
-    {
-        auto it = vtableIndex.find(n);
-        return it != vtableIndex.end() ? it->second : SIZE_MAX;
-    }
-};
-
-/// @brief Interface type information.
-/// @details Contains method signatures for interface types.
-/// Used for generating interface method calls via vtable dispatch.
-///
-/// ## Interface Dispatch
-///
-/// When calling a method on an interface-typed value, the lowerer
-/// generates a vtable lookup and indirect call. Each implementing
-/// type has a vtable with method pointers at fixed slots.
-struct InterfaceTypeInfo
-{
-    /// @brief The interface name.
-    std::string name;
-
-    /// @brief Unique interface ID for runtime itable dispatch.
-    int ifaceId{-1};
-
-    /// @brief Method declarations (signatures only, no bodies) in slot order.
-    std::vector<MethodDecl *> methods;
-
-    /// @brief Fast lookup: method name -> method declaration.
-    std::unordered_map<std::string, MethodDecl *> methodMap;
-
-    /// @brief Method name -> itable slot index (0-based).
-    std::unordered_map<std::string, size_t> slotIndex;
-
-    /// @brief Find a method by name.
-    /// @param n The method name.
-    /// @return Pointer to MethodDecl, or nullptr if not found.
-    MethodDecl *findMethod(const std::string &n) const
-    {
-        auto it = methodMap.find(n);
-        return it != methodMap.end() ? it->second : nullptr;
-    }
-
-    /// @brief Find the itable slot for a method.
-    /// @param n The method name.
-    /// @return Slot index, or SIZE_MAX if not found.
-    size_t findSlot(const std::string &n) const
-    {
-        auto it = slotIndex.find(n);
-        return it != slotIndex.end() ? it->second : SIZE_MAX;
-    }
-};
-
-/// @}
+// Type layout structures (FieldLayout, ValueTypeInfo, EntityTypeInfo,
+// InterfaceTypeInfo) are defined in LowererTypes.hpp.
 
 //===----------------------------------------------------------------------===//
 /// @name IL Lowerer
@@ -687,9 +468,33 @@ class Lowerer
     /// @param decl The entity declaration.
     void registerEntityLayout(EntityDecl &decl);
 
+    /// @brief Compute field offsets for an entity declaration's own fields.
+    /// @param decl The entity declaration.
+    /// @param info The entity type info to populate with field layouts.
+    /// @param qualifiedName The fully qualified type name.
+    void computeEntityFieldLayout(EntityDecl &decl, EntityTypeInfo &info,
+                                   const std::string &qualifiedName);
+
+    /// @brief Build vtable entries from an entity declaration's methods and properties.
+    /// @param decl The entity declaration.
+    /// @param info The entity type info to populate with vtable slots.
+    /// @param qualifiedName The fully qualified type name.
+    void buildEntityVtable(EntityDecl &decl, EntityTypeInfo &info,
+                            const std::string &qualifiedName);
+
+    /// @brief Copy inherited fields, totalSize, and vtable from parent entity.
+    /// @param info The child entity type info to populate.
+    /// @param parent The parent entity type info to copy from.
+    void inheritEntityMembers(EntityTypeInfo &info, const EntityTypeInfo &parent);
+
     /// @brief Register a single value type's field layout without lowering methods.
     /// @param decl The value declaration.
     void registerValueLayout(ValueDecl &decl);
+
+    /// @brief Try to evaluate an initializer expression to a compile-time constant.
+    /// @param init The expression to fold.
+    /// @return The folded constant value, or nullopt if not foldable.
+    static std::optional<il::core::Value> tryFoldNumericConstant(Expr *init);
 
     /// @brief Emit vtable global for an entity type.
     /// @param info The entity type info with vtable entries.

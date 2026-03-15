@@ -4,6 +4,8 @@ set(ZIA_SOURCES
         ImportResolver.cpp
         Parser_Tokens.cpp
         Parser_Expr.cpp
+        Parser_Expr_Primary.cpp
+        Parser_Expr_Pattern.cpp
         Parser_Stmt.cpp
         Parser_Type.cpp
         Parser_Decl.cpp
@@ -22,10 +24,14 @@ set(ZIA_SOURCES
         Sema_Expr_Advanced.cpp
         Lowerer.cpp
         Lowerer_Decl.cpp
+        Lowerer_Decl_Types.cpp
+        Lowerer_Decl_Functions.cpp
         Lowerer_Stmt.cpp
         Lowerer_Stmt_EH.cpp
         Lowerer_Expr.cpp
         Lowerer_Expr_Complex.cpp
+        Lowerer_Expr_Optional.cpp
+        Lowerer_Expr_Lambda.cpp
         Lowerer_Expr_Literals.cpp
         Lowerer_Expr_Binary.cpp
         Lowerer_Expr_Call.cpp

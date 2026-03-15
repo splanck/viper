@@ -12,6 +12,10 @@
 /// into a stream of tokens for the parser. The lexer handles all BASIC-specific
 /// syntax including keywords, operators, literals, and comments.
 ///
+/// Cursor management (peek/get/eof) is inherited from LexerCursor<Lexer> via
+/// CRTP, shared with the Zia frontend. This file only contains BASIC-specific
+/// tokenization logic.
+///
 /// ## Tokenization Strategy
 ///
 /// The lexer uses a single-character lookahead approach:
@@ -51,6 +55,7 @@
 ///
 /// The lexer maintains accurate line and column positions for each token,
 /// enabling precise error messages from the parser and semantic analyzer.
+/// Position tracking is provided by the LexerCursor CRTP base class.
 ///
 /// @invariant pos_ always points to the next character to be read.
 /// @invariant line_ and column_ reflect the position of pos_.
@@ -231,56 +236,7 @@ TokenKind lookupKeyword(std::string_view lexeme)
 ///          underlying buffer for the lexer's lifetime.
 /// @param src BASIC program text to scan; must outlive the lexer instance.
 /// @param file_id Identifier used when emitting diagnostic locations.
-Lexer::Lexer(std::string_view src, uint32_t file_id) : src_(src), file_id_(file_id) {}
-
-/// @brief Peek at the current character without consuming it.
-///
-/// @details Returns the byte located at the current cursor position.  When the
-///          cursor has advanced past the end of the buffer, the sentinel
-///          character @c '\0' is returned instead so callers can test for
-///          exhaustion without modifying state.
-/// @return The current character, or '\0' if the lexer is at end of input.
-char Lexer::peek() const
-{
-    return pos_ < src_.size() ? src_[pos_] : '\0';
-}
-
-/// @brief Consume and return the next character from the source.
-///
-/// @details Advances @ref pos_ by one and updates @ref line_/@ref column_ to
-///          maintain diagnostic accuracy.  Newlines increment the line counter
-///          and reset the column to one, whereas other characters simply bump
-///          the column.  When invoked at end of input the function returns the
-///          sentinel @c '\0' and leaves the state unchanged.
-/// @return The consumed character, or '\0' if already at end of input.
-char Lexer::get()
-{
-    if (pos_ >= src_.size())
-        return '\0';
-    char c = src_[pos_++];
-    if (c == '\n')
-    {
-        line_++;
-        column_ = 1;
-    }
-    else
-    {
-        column_++;
-    }
-    return c;
-}
-
-/// @brief Determine whether all input has been consumed.
-///
-/// @details This lightweight predicate powers loops that walk forward until a
-///          newline or delimiter is encountered without performing bounds
-///          checks on each iteration.  The method leaves the cursor untouched
-///          and can therefore be called freely.
-/// @return @c true if @ref pos_ is at or beyond the end of the buffer.
-bool Lexer::eof() const
-{
-    return pos_ >= src_.size();
-}
+Lexer::Lexer(std::string_view src, uint32_t file_id) : Base(file_id), src_(src) {}
 
 /// @brief Skip spaces, tabs, and carriage returns but stop at newlines.
 ///
@@ -295,7 +251,6 @@ void Lexer::skipWhitespaceExceptNewline()
         char c = peek();
         if (c == ' ' || c == '\t' || c == '\r')
         {
-            /// @brief Retrieves  value.
             get();
         }
         else
@@ -321,7 +276,6 @@ void Lexer::skipWhitespaceAndComments()
         if (peek() == '\'')
         {
             while (!eof() && peek() != '\n')
-                /// @brief Retrieves  value.
                 get();
             continue;
         }
@@ -333,14 +287,10 @@ void Lexer::skipWhitespaceAndComments()
             if (!isAlphanumeric(after) && after != '$' && after != '#' && after != '!' &&
                 after != '%' && after != '&')
             {
-                /// @brief Retrieves  value.
                 get();
-                /// @brief Retrieves  value.
                 get();
-                /// @brief Retrieves  value.
                 get();
                 while (!eof() && peek() != '\n')
-                    /// @brief Retrieves  value.
                     get();
                 continue;
             }
@@ -361,7 +311,7 @@ void Lexer::skipWhitespaceAndComments()
 /// @return Token of kind Number representing the characters consumed.
 Token Lexer::lexNumber()
 {
-    il::support::SourceLoc loc{file_id_, line_, column_};
+    il::support::SourceLoc loc{fileId_, line_, column_};
     std::string s;
     bool seenDot = false;
     bool seenExp = false;
@@ -427,7 +377,7 @@ Token Lexer::lexNumber()
 ///         comparison.
 Token Lexer::lexIdentifierOrKeyword()
 {
-    il::support::SourceLoc loc{file_id_, line_, column_};
+    il::support::SourceLoc loc{fileId_, line_, column_};
     std::string s;
     constexpr size_t kMaxIdentLen = 1024;
     while (isAlphanumeric(peek()) || peek() == '_')
@@ -457,11 +407,10 @@ Token Lexer::lexIdentifierOrKeyword()
 /// @return String token containing characters between quotes.
 Token Lexer::lexString()
 {
-    il::support::SourceLoc loc{file_id_, line_, column_};
+    il::support::SourceLoc loc{fileId_, line_, column_};
     std::string s;
     constexpr size_t kMaxStringLen = 16 * 1024 * 1024; // 16MB
-    /// @brief Retrieves  value.
-    get(); // consume opening quote
+    get();                                             // consume opening quote
     while (!eof())
     {
         if (s.size() >= kMaxStringLen)
@@ -511,14 +460,13 @@ Token Lexer::next()
         skipWhitespaceAndComments();
 
         if (eof())
-            return {TokenKind::EndOfFile, "", {file_id_, line_, column_}};
+            return {TokenKind::EndOfFile, "", {fileId_, line_, column_}};
 
         char c = peek();
 
         if (c == '\n')
         {
-            il::support::SourceLoc loc{file_id_, line_, column_};
-            /// @brief Retrieves  value.
+            il::support::SourceLoc loc{fileId_, line_, column_};
             get();
             return {TokenKind::EndOfLine, "\n", loc};
         }
@@ -530,8 +478,7 @@ Token Lexer::next()
         if (c == '"')
             return lexString();
 
-        il::support::SourceLoc loc{file_id_, line_, column_};
-        /// @brief Retrieves  value.
+        il::support::SourceLoc loc{fileId_, line_, column_};
         get();
         switch (c)
         {
@@ -554,13 +501,11 @@ Token Lexer::next()
             case '<':
                 if (peek() == '>')
                 {
-                    /// @brief Retrieves  value.
                     get();
                     return {TokenKind::NotEqual, "<>", loc};
                 }
                 if (peek() == '=')
                 {
-                    /// @brief Retrieves  value.
                     get();
                     return {TokenKind::LessEqual, "<=", loc};
                 }
@@ -568,7 +513,6 @@ Token Lexer::next()
             case '>':
                 if (peek() == '=')
                 {
-                    /// @brief Retrieves  value.
                     get();
                     return {TokenKind::GreaterEqual, ">=", loc};
                 }

@@ -15,16 +15,18 @@ Version 0.2.3 is a hardening, tooling, and infrastructure release. Headline feat
 **native assembler and linker** (zero external tool dependencies for compilation), **enum types** for
 both language frontends, a **dual-protocol language server** (LSP + MCP), and a comprehensive
 **backend codegen review** that decomposed monolithic files, added CFG-aware register allocation
-liveness, and shared core algorithms across both backends. The release also includes comprehensive
+liveness, and shared core algorithms across both backends. The native linker gained **DWARF v5
+debug info**, **Identical Code Folding (ICF)**, **branch trampolines**, and **Mach-O two-level
+namespace** support (resolving PAC crashes on macOS ARM64). The release also includes comprehensive
 safety audits across every layer (VM, codegen, runtime, network), concurrency hardening with TSan
 verification, three new IL optimizer passes, major AArch64 backend performance work (post-RA
 scheduler, register coalescer, loop-invariant hoisting, cross-block store-load forwarding), an
 interactive REPL for both languages, a multi-language benchmark suite, and a large-scale codebase
 reorganization that consolidates documentation and examples into clean hierarchies.
 
-2,900+ files changed across 55 commits. ~114K lines added and ~81K lines removed (excluding
-ViperDOS cleanup; ~311K total with 658 ViperDOS files deleted). 442 stale files deleted and 324 new
-files added. Test count increased from 1,261 to 1,301 (+40 net; large stale test fixture deletion
+2,900+ files changed across 57 commits. ~115K lines added and ~81K lines removed (excluding
+ViperDOS cleanup; ~312K total with 658 ViperDOS files deleted). 442 stale files deleted and 341 new
+files added. Test count increased from 1,261 to 1,307 (+46 net; large stale test fixture deletion
 offset by new coverage).
 
 ---
@@ -91,14 +93,59 @@ only its own code — zero external dependencies, true to the project philosophy
 - Segment-level VA packing instead of per-section page alignment
 - Debug/metadata section filtering
 
+**Debug Info & Advanced Linker Features**
+
+- DWARF v5 `.debug_line` section encoding via `DebugLineTable` — maps machine instructions back
+  to source file, line, and column for debugger integration
+- Non-alloc debug section handling across all three executable writers:
+  ELF (`SHT_PROGBITS` without `SHF_ALLOC`, emitted after `PT_LOAD` segments),
+  Mach-O (`__DWARF` segment with `vmaddr=0`, no VM permissions),
+  PE (`IMAGE_SCN_MEM_DISCARDABLE`, excluded from `SizeOfImage`)
+- Identical Code Folding (ICF) pass — merges functions with byte-identical `.text` content and
+  matching relocations, reducing binary size for template-heavy or copy-heavy codegen output
+- Branch trampoline generation for out-of-range relocations — automatically inserts veneer stubs
+  when branch targets exceed architecture-specific displacement limits (±128MB on AArch64,
+  ±2GB on x86-64)
+- `OutputSection.alloc` flag distinguishes loadable sections from debug/metadata sections
+
+**Mach-O Two-Level Namespace**
+
+- Add `MH_TWOLEVEL` flag to Mach-O header, replacing flat namespace resolution. Required for
+  macOS ARM64 — without it, CoreAnimation PAC pointer authentication traps fire ~1 second after
+  window creation
+- Per-symbol dylib ordinal assignment in bind opcodes using
+  `BIND_OPCODE_SET_DYLIB_ORDINAL_IMM`/`ULEB` instead of flat lookup
+- Flat lookup (ordinal -2) fallback for `OBJC_CLASS_$`/`OBJC_METACLASS_$` symbols whose defining
+  framework can't be determined by prefix alone
+- Fix dylib detection to strip leading underscores before prefix matching (handles
+  `_objc_empty_cache`, `__CFConstantStringClassReference`)
+- Update nlist library ordinals in symbol table for two-level namespace compatibility
+
 **Hardening**
 
 - Archive member size limits, relocation bounds checks, section/symbol count caps
 - `isCStringSection` flag prevents string dedup from corrupting binary data sections
 - Expanded dynamic symbol recognition to avoid false undefined-symbol errors
 
+**Assembler & Linker Layer Review (15 items)**
+
+Systematic review and refactoring of the native assembler/linker infrastructure:
+
+- Reverse-index map for `findOutputLocation` (O(S×C) → O(1) lookup)
+- Named relocation constants (`RelocConstants.hpp`) replacing magic numbers
+- Shared `ObjFileWriterUtil.hpp` deduplicating 3× `appendLE`/`alignUp`/`padTo` implementations
+- Centralized Mach-O name mangling (`NameMangling.hpp`)
+- Extracted relocation classification (`RelocClassify.hpp`, 189 LOC)
+- Immediate range validation asserts (AArch64 imm12, x86-64 imm32)
+- Dead-strip statistics reporting to stderr
+- Shared segment layout utilities (`classifySections`, `computeSegmentSpan`)
+- Local symbol offset bounds check in `RelocApplier`
+- Split `MachOExeWriter` (1,029 → 670 LOC) into `MachOCodeSign` + `MachOBindRebase` modules
+- Data-driven framework detection (`kFrameworkRules[]` table replacing ad-hoc prefix checks)
+
 All 11 demos build and run with the native pipeline. 13 new assembler tests, 6 string dedup tests,
-plus symbol resolver and relocation edge-case test suites.
+11 debug line tests, 9 debug section tests, 10 ELF exe writer tests, 7 linker integration tests,
+plus ICF, branch trampoline, symbol resolver, and relocation edge-case test suites.
 
 #### Zia Language Server (zia-server)
 
@@ -686,6 +733,12 @@ issue tracker.
 | Dataflow liveness | 9 | Shared backward dataflow solver (31 assertions) |
 | Encoding validation | 1 | Opcode coverage validation for encoding tables |
 | x86-64 peephole | 1 | Peephole sub-pass integration test |
+| DWARF debug line | 11 | Line table encoding, file/directory entries, sequences |
+| DWARF debug sections | 9 | Non-alloc section handling across ELF/Mach-O/PE |
+| ICF | 1 | Identical Code Folding correctness |
+| Branch trampolines | 1 | Out-of-range relocation veneer generation |
+| ELF exe writer | 10 | ELF executable output validation |
+| Linker integration | 7 | End-to-end linker pipeline (multi-object, archives) |
 | Fuzz harnesses | 2 | libFuzzer harnesses for Zia lexer and parser |
 
 #### Determinism Stress Test
@@ -755,6 +808,10 @@ table of contents to cover all 80+ sections.
 
 ### Codegen Bug Fixes
 
+- **Two-level namespace PAC crash**: Native linker produced Mach-O binaries with flat namespace
+  (missing `MH_TWOLEVEL`), causing CoreAnimation PAC pointer authentication traps on macOS ARM64
+  ~1 second after window creation. Fixed with proper two-level namespace support and per-symbol
+  dylib ordinal assignment
 - **EH subsystem cleanup**: Auto-pop exception handler at dispatch, `TrapKind` enum alignment across
   VM and codegen layers for consistent exception handling semantics
 - **AArch64 MOVN**: Binary encoder now emits `MOVN` for simple negative immediates (e.g., -1 through
@@ -787,13 +844,13 @@ table of contents to cover all 80+ sections.
 | Metric              | v0.2.2    | v0.2.3 (draft) | Change     |
 |---------------------|-----------|----------------|------------|
 | C/C++ Source (LOC)  | ~1,000,000 | ~820,000*     | -180,000*  |
-| C/C++ Source Files  | 2,288     | ~2,528         | +240       |
-| Test Count          | 1,261     | 1,301          | +40        |
-| Commits             | —         | 55             | —          |
-| Files Changed       | —         | 2,904          | —          |
-| Lines Added         | —         | 114,084        | —          |
-| Lines Removed       | —         | 311,131        | —          |
-| New Files           | —         | 324            | —          |
+| C/C++ Source Files  | 2,288     | ~2,558         | +270       |
+| Test Count          | 1,261     | 1,307          | +46        |
+| Commits             | —         | 57             | —          |
+| Files Changed       | —         | 2,946          | —          |
+| Lines Added         | —         | 115,242        | —          |
+| Lines Removed       | —         | 311,812        | —          |
+| New Files           | —         | 341            | —          |
 | Deleted Files       | —         | 1,100          | —          |
 
 *\* Net LOC decreased due to deletion of 1,100 files: 658 ViperDOS files, 286 obsolete test
@@ -865,8 +922,11 @@ allocator, native assembler, dataflow liveness, and codegen review suites.*
                   ┌───────────────────────────┐
                   │  Native Linker (NEW)      │
                   │  Symbol Resolution        │
-                  │  Section Merging          │
+                  │  Section Merging + ICF    │ (NEW)
                   │  Dead Strip + String Dedup│
+                  │  DWARF Debug Info         │ (NEW)
+                  │  Branch Trampolines       │ (NEW)
+                  │  Two-Level Namespace      │ (NEW)
                   │  → Executable Writer      │
                   └───────────────────────────┘
 ```
@@ -877,12 +937,12 @@ allocator, native assembler, dataflow liveness, and codegen review suites.*
 
 | Feature                    | v0.2.2               | v0.2.3 (draft)                     |
 |----------------------------|----------------------|------------------------------------|
-| Native Assembler/Linker    | External as/ld/link  | In-process, zero external deps     |
+| Native Assembler/Linker    | External as/ld/link  | In-process, zero external deps, DWARF debug info |
 | Interactive REPL           | No                   | Full REPL for Zia and BASIC        |
 | Enum Types                 | No                   | Zia + BASIC, match exhaustiveness  |
 | Language Server            | No                   | Dual MCP/LSP (zia-server)          |
 | IL Optimizer Passes        | 35                   | 38 (+EH-Opt, LoopRotate, Reassoc)  |
-| Test Count                 | 1,261                | 1,301 (+40 net)                    |
+| Test Count                 | 1,261                | 1,307 (+46 net)                    |
 | Fuzz Harnesses             | No                   | Zia lexer + parser                 |
 | Determinism Tests          | No                   | 357 checks, 407 compilations       |
 | AArch64 EH Opcodes        | No                   | Full support                       |
@@ -909,6 +969,10 @@ allocator, native assembler, dataflow liveness, and codegen review suites.*
 | Sidescroller Demo          | 1 level, rectangles  | 5 levels, sprite art, full game     |
 | Game Engine Framework      | No                   | GameBase/IScene + 7 runtime APIs   |
 | Runtime API Audit          | Mixed naming         | Consistent rt_type_verb + runtime.def |
+| DWARF Debug Info           | No                   | DWARF v5 .debug_line across ELF/Mach-O/PE |
+| Identical Code Folding     | No                   | ICF linker pass for binary size reduction |
+| Branch Trampolines         | No                   | Auto-generated veneers for long branches |
+| Mach-O Two-Level Namespace | No                   | Per-symbol dylib ordinals, PAC-safe |
 | Codebase Organization      | demos/ + devdocs/    | Unified examples/ + docs/          |
 
 ---

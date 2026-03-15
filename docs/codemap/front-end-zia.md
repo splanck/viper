@@ -82,12 +82,21 @@ Last updated: 2026-02-17
 | `RuntimeAdapter.cpp` | Type conversion bridge impl (IL types to Zia types) |
 | `RuntimeAdapter.hpp` | Type conversion utilities for RuntimeRegistry |
 
+## Semantic Analysis Support (`sema/`)
+
+| File                  | Purpose                                        |
+|-----------------------|------------------------------------------------|
+| `sema/SemaTypes.hpp`  | Symbol, ScopedSymbol, and Scope type definitions (extracted from Sema.hpp) |
+
 ## IL Lowering
 
 | File                          | Purpose                                                          |
 |-------------------------------|------------------------------------------------------------------|
 | `Lowerer.cpp`                 | Main lowering coordinator impl                                   |
 | `Lowerer.hpp`                 | Main lowering coordinator and BlockManager                       |
+| `LowererTypes.hpp`            | Type layout structs (FieldLayout, ValueTypeInfo, EntityTypeInfo, InterfaceTypeInfo) |
+| `LowererTypeLayout.hpp`       | Type layout computation and registry class                       |
+| `LowererTypeLayout.cpp`       | Type layout registration implementation                          |
 | `Lowerer_Decl.cpp`            | Declaration lowering (functions, types)                          |
 | `Lowerer_Dispatch.cpp`        | Method dispatch lowering                                         |
 | `Lowerer_Emit.cpp`            | IL emission helpers (box/unbox, GEP, etc.)                       |

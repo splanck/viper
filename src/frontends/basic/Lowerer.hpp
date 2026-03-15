@@ -27,6 +27,7 @@
 #include "frontends/basic/LowererFwd.hpp"
 #include "frontends/basic/LowererRuntimeHelpers.hpp"
 #include "frontends/basic/LowererTypes.hpp"
+#include "frontends/basic/lower/MemberArrayResolver.hpp"
 #include "frontends/basic/NameMangler.hpp"
 #include "frontends/basic/OopIndex.hpp"
 #include "frontends/basic/StringTable.hpp"
@@ -516,6 +517,13 @@ class Lowerer
         void lowerSwap(const SwapStmt &stmt)
         {
             lowerer_->lowerSwap(stmt);
+        }
+
+        /// @brief Access the centralized type coercion engine.
+        /// @return Reference to the TypeCoercionEngine owned by the Lowerer.
+        TypeCoercionEngine &coercion() noexcept
+        {
+            return lowerer_->coercion();
         }
 
       private:
@@ -1098,65 +1106,9 @@ class Lowerer
     /// @brief Reset all manual helper requirement flags.
     void resetManualHelpers();
 
-    void requireTrap();
-    void requireArrayI32New();
-    void requireArrayI32Resize();
-    void requireArrayI32Len();
-    void requireArrayI32Get();
-    void requireArrayI32Set();
-    void requireArrayI32Retain();
-    void requireArrayI32Release();
-    void requireArrayOobPanic();
-    // I64 array helpers (for LONG arrays)
-    void requireArrayI64New();
-    void requireArrayI64Resize();
-    void requireArrayI64Len();
-    void requireArrayI64Get();
-    void requireArrayI64Set();
-    void requireArrayI64Retain();
-    void requireArrayI64Release();
-    // F64 array helpers (for SINGLE/DOUBLE arrays)
-    void requireArrayF64New();
-    void requireArrayF64Resize();
-    void requireArrayF64Len();
-    void requireArrayF64Get();
-    void requireArrayF64Set();
-    void requireArrayF64Retain();
-    void requireArrayF64Release();
-
-    void requireArrayStrAlloc();
-    void requireArrayStrRelease();
-    void requireArrayStrGet();
-    void requireArrayStrPut();
-    void requireArrayStrLen();
-    // Object array helpers
-    void requireArrayObjNew();
-    void requireArrayObjLen();
-    void requireArrayObjGet();
-    void requireArrayObjPut();
-    void requireArrayObjResize();
-    void requireArrayObjRelease();
-    void requireOpenErrVstr();
-    void requireCloseErr();
-    void requireSeekChErr();
-    void requireWriteChErr();
-    void requirePrintlnChErr();
-    void requireLineInputChErr();
-    // --- begin: require declarations ---
-    void requireEofCh();
-    void requireLofCh();
-    void requireLocCh();
-    // Module-level globals helpers
-    void requireModvarAddrI64();
-    void requireModvarAddrF64();
-    void requireModvarAddrI1();
-    void requireModvarAddrPtr();
-    void requireModvarAddrStr();
-    // --- end: require declarations ---
-    void requireStrRetainMaybe();
-    void requireStrReleaseMaybe();
-    void requireSleepMs();
-    void requireTimerMs();
+    // ═══ Runtime Requirement Declarations ═══
+    // These one-liner require*() methods are in a separate header for readability.
+#include "lowerer/LowererRuntimeRequirements.hpp"
     /// @brief Request that a runtime feature be declared and linked.
     /// @param feature Runtime feature to make available in the emitted module.
     void requestHelper(RuntimeFeature feature);
@@ -1255,6 +1207,16 @@ class Lowerer
     /// @param className Class name as discovered (may be qualified or different casing).
     /// @return Pointer to layout when found; nullptr otherwise.
     [[nodiscard]] const ClassLayout *findClassLayout(std::string_view className) const;
+
+    /// @brief Resolve member array field information for a variable name.
+    /// @details Consolidates the repeated field/array/object checks previously
+    ///          scattered across RuntimeStatementLowerer_Assign, Emit_Expr,
+    ///          Lowerer_Expr, and Lower_OOP_Helpers (BUG-056, BUG-058, BUG-089,
+    ///          BUG-108). Handles dotted member arrays, implicit field arrays in
+    ///          methods, and local variable shadowing.
+    /// @param name Variable name to resolve (may contain a dot for member access).
+    /// @return MemberArrayInfo describing the resolution result.
+    [[nodiscard]] MemberArrayInfo resolveMemberArrayField(std::string_view name) const;
 
   private:
     /// @brief Compute the canonical layout key (unqualified, declared casing) for a class name.

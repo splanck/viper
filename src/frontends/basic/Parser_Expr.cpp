@@ -77,30 +77,60 @@ constexpr std::array<InfixParselet, 18> infixParselets{
     InfixParselet{TokenKind::KeywordOr, BinaryExpr::Op::LogicalOr, 1, Assoc::Left},
 };
 
+/// @brief Direct-index lookup table mapping TokenKind -> PrefixParselet pointer.
+/// @details Built once at static-init time from the prefixParselets array.
+///          O(1) lookup replaces the previous linear search.
+const auto &prefixLookup()
+{
+    static const auto table = []
+    {
+        constexpr auto count = static_cast<size_t>(TokenKind::Count);
+        std::array<const PrefixParselet *, count> tbl{};
+        tbl.fill(nullptr);
+        for (const auto &p : prefixParselets)
+            tbl[static_cast<size_t>(p.kind)] = &p;
+        return tbl;
+    }();
+    return table;
+}
+
+/// @brief Direct-index lookup table mapping TokenKind -> InfixParselet pointer.
+/// @details Built once at static-init time from the infixParselets array.
+///          O(1) lookup replaces the previous linear search.
+const auto &infixLookup()
+{
+    static const auto table = []
+    {
+        constexpr auto count = static_cast<size_t>(TokenKind::Count);
+        std::array<const InfixParselet *, count> tbl{};
+        tbl.fill(nullptr);
+        for (const auto &p : infixParselets)
+            tbl[static_cast<size_t>(p.kind)] = &p;
+        return tbl;
+    }();
+    return table;
+}
+
 /// @brief Look up the prefix parselet for a token kind.
 /// @param kind The token kind to search for.
 /// @return Pointer to the matching parselet, or nullptr if not found.
-/// @note Uses linear search; consider optimizing if this becomes a bottleneck.
 inline const PrefixParselet *findPrefix(TokenKind kind)
 {
-    const auto it =
-        std::find_if(prefixParselets.begin(),
-                     prefixParselets.end(),
-                     [kind](const PrefixParselet &parselet) { return parselet.kind == kind; });
-    return it == prefixParselets.end() ? nullptr : &*it;
+    auto idx = static_cast<size_t>(kind);
+    if (idx >= static_cast<size_t>(TokenKind::Count))
+        return nullptr;
+    return prefixLookup()[idx];
 }
 
 /// @brief Look up the infix parselet for a token kind.
 /// @param kind The token kind to search for.
 /// @return Pointer to the matching parselet, or nullptr if not found.
-/// @note Uses linear search; consider optimizing if this becomes a bottleneck.
 inline const InfixParselet *findInfix(TokenKind kind)
 {
-    const auto it =
-        std::find_if(infixParselets.begin(),
-                     infixParselets.end(),
-                     [kind](const InfixParselet &parselet) { return parselet.kind == kind; });
-    return it == infixParselets.end() ? nullptr : &*it;
+    auto idx = static_cast<size_t>(kind);
+    if (idx >= static_cast<size_t>(TokenKind::Count))
+        return nullptr;
+    return infixLookup()[idx];
 }
 
 } // namespace

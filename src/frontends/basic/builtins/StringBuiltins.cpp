@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <unordered_map>
 
 namespace il::frontends::basic::builtins
 {
@@ -371,20 +372,26 @@ const std::array<BuiltinSpec, 13> kStringBuiltins = {{{"LEN", 1, 1, &lowerLen},
 
 /// @brief Look up a string builtin specification by name.
 ///
-/// @details Performs a linear search over the constexpr table.  The table is
-///          small (13 entries), so a simple `std::find_if` keeps the code
-///          straightforward and constexpr-friendly.
+/// @details Uses a lazily-initialized hash map for O(1) average lookup.
+///          The map is built once on first call from the kStringBuiltins table
+///          and remains valid for the lifetime of the process.
 ///
 /// @param name Builtin identifier as it appears in BASIC source.
 /// @return Pointer to the builtin specification or `nullptr` if not found.
 const BuiltinSpec *findBuiltin(StringRef name)
 {
-    auto it = std::find_if(kStringBuiltins.begin(),
-                           kStringBuiltins.end(),
-                           [&](const BuiltinSpec &spec) { return spec.name == name; });
-    if (it == kStringBuiltins.end())
-        return nullptr;
-    return &*it;
+    // Build the lookup map once on first call using a function-local static.
+    // The map stores string_view -> pointer mappings from the static table.
+    static const auto &map = *[]
+    {
+        auto *m = new std::unordered_map<std::string_view, const BuiltinSpec *>();
+        m->reserve(kStringBuiltins.size());
+        for (const auto &spec : kStringBuiltins)
+            m->emplace(std::string_view(spec.name), &spec);
+        return m;
+    }();
+    auto it = map.find(name);
+    return it != map.end() ? it->second : nullptr;
 }
 
 /// @brief Construct a lowering context bound to a builtin call.

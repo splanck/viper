@@ -10,16 +10,17 @@ Shared utilities (`src/frontends/common/`) used across all language frontends.
 
 ## Overview
 
-- **Total source files**: 19 (.cpp/.hpp)
+- **Total source files**: 21 (.cpp/.hpp)
 
 ## Lexer Utilities
 
-| File                | Purpose                               |
-|---------------------|---------------------------------------|
-| `CharUtils.hpp`     | Character classification helpers      |
-| `KeywordTable.hpp`  | Keyword lookup table infrastructure   |
-| `LexerBase.hpp`     | Common lexer base class and utilities |
-| `NumberParsing.hpp` | Numeric literal parsing               |
+| File                    | Purpose                                      |
+|-------------------------|----------------------------------------------|
+| `CharUtils.hpp`         | Character classification helpers             |
+| `EscapeSequences.hpp`   | Escape sequence processing (\\n, \\xNN, \\uXXXX) |
+| `KeywordTable.hpp`      | Keyword lookup table infrastructure          |
+| `LexerBase.hpp`         | Common lexer base class and utilities        |
+| `NumberParsing.hpp`     | Numeric literal parsing                      |
 
 ## Parser Utilities
 
@@ -54,9 +55,10 @@ Shared utilities (`src/frontends/common/`) used across all language frontends.
 
 ## Diagnostics
 
-| File                    | Purpose                              |
-|-------------------------|--------------------------------------|
-| `DiagnosticHelpers.hpp` | Common diagnostic formatting helpers |
+| File                       | Purpose                                        |
+|----------------------------|------------------------------------------------|
+| `DiagnosticFormatter.hpp`  | Source-line extraction, caret, severity display |
+| `DiagnosticHelpers.hpp`    | Common diagnostic formatting helpers           |
 
 ## Runtime Registry
 

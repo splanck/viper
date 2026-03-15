@@ -34,6 +34,7 @@
 
 #include "frontends/zia/Lexer.hpp"
 #include "frontends/common/CharUtils.hpp"
+#include "frontends/common/EscapeSequences.hpp"
 #include "frontends/common/NumberParsing.hpp"
 #include <algorithm>
 #include <array>
@@ -679,123 +680,11 @@ Token Lexer::lexNumber()
     return tok;
 }
 
-std::optional<char> Lexer::processEscape(char c)
-{
-    switch (c)
-    {
-        case 'n':
-            return '\n';
-        case 'r':
-            return '\r';
-        case 't':
-            return '\t';
-        case 'b':
-            return '\b';
-        case 'a':
-            return '\a';
-        case 'f':
-            return '\f';
-        case 'v':
-            return '\v';
-        case '\\':
-            return '\\';
-        case '"':
-            return '"';
-        case '\'':
-            return '\'';
-        case '0':
-            return '\0';
-        case '$':
-            return '$'; // For string interpolation escape
-        default:
-            return std::nullopt;
-    }
-}
-
-int Lexer::hexDigitValue(char c)
-{
-    if (c >= '0' && c <= '9')
-        return c - '0';
-    if (c >= 'a' && c <= 'f')
-        return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F')
-        return c - 'A' + 10;
-    return -1;
-}
-
-std::optional<std::string> Lexer::processUnicodeEscape()
-{
-    // Expects to be called after consuming \u
-    // Reads 4 hex digits and returns the UTF-8 encoded character
-    if (eof())
-        return std::nullopt;
-
-    uint32_t codepoint = 0;
-    for (int i = 0; i < 4; i++)
-    {
-        if (eof())
-            return std::nullopt;
-        char c = peekChar();
-        int val = hexDigitValue(c);
-        if (val < 0)
-            return std::nullopt;
-        getChar(); // consume the hex digit
-        codepoint = (codepoint << 4) | val;
-    }
-
-    // Convert codepoint to UTF-8
-    std::string result;
-    if (codepoint <= 0x7F)
-    {
-        result.push_back(static_cast<char>(codepoint));
-    }
-    else if (codepoint <= 0x7FF)
-    {
-        result.push_back(static_cast<char>(0xC0 | (codepoint >> 6)));
-        result.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
-    }
-    else if (codepoint <= 0xFFFF)
-    {
-        result.push_back(static_cast<char>(0xE0 | (codepoint >> 12)));
-        result.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
-        result.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
-    }
-    else if (codepoint <= 0x10FFFF)
-    {
-        result.push_back(static_cast<char>(0xF0 | (codepoint >> 18)));
-        result.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F)));
-        result.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
-        result.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
-    }
-    else
-    {
-        return std::nullopt; // Invalid codepoint
-    }
-    return result;
-}
-
-std::optional<char> Lexer::processHexEscape()
-{
-    // Expects to be called after consuming \x
-    // Reads 2 hex digits and returns the character
-    if (eof())
-        return std::nullopt;
-
-    int high = hexDigitValue(peekChar());
-    if (high < 0)
-        return std::nullopt;
-    getChar();
-
-    if (eof())
-        return std::nullopt;
-
-    int low = hexDigitValue(peekChar());
-    if (low < 0)
-        return std::nullopt;
-    getChar();
-
-    return static_cast<char>((high << 4) | low);
-}
+// Escape sequence processing is provided by frontends/common/EscapeSequences.hpp.
+// The Lexer itself satisfies the Cursor concept (peekChar/getChar/eof) required
+// by the templated processHexEscape and processUnicodeEscape utilities.
+// The namespace alias below keeps call sites concise.
+namespace esc = common::escape_sequences;
 
 Token Lexer::lexString()
 {
@@ -880,11 +769,31 @@ Token Lexer::lexString()
             // Handle unicode escape \uXXXX
             if (escaped == 'u')
             {
-                if (auto utf8 = processUnicodeEscape())
+                // Read 4 hex digits, then delegate to common utility
+                char digits[4];
+                bool valid = true;
+                for (int i = 0; i < 4 && valid; ++i)
                 {
-                    for (char ch : *utf8)
+                    if (eof() || !isHexDigit(peekChar()))
                     {
-                        tok.stringValue.push_back(ch);
+                        valid = false;
+                    }
+                    else
+                    {
+                        digits[i] = getChar();
+                    }
+                }
+                if (valid)
+                {
+                    if (auto utf8 = esc::processUnicodeEscape(digits))
+                    {
+                        for (char ch : *utf8)
+                            tok.stringValue.push_back(ch);
+                    }
+                    else
+                    {
+                        reportError(tok.loc,
+                                    "invalid unicode escape sequence: expected \\uXXXX");
                     }
                 }
                 else
@@ -897,9 +806,27 @@ Token Lexer::lexString()
             // Handle hex escape \xXX
             if (escaped == 'x')
             {
-                if (auto hexChar = processHexEscape())
+                // Read 2 hex digits, then delegate to common utility
+                if (!eof() && isHexDigit(peekChar()))
                 {
-                    tok.stringValue.push_back(*hexChar);
+                    char high = getChar();
+                    if (!eof() && isHexDigit(peekChar()))
+                    {
+                        char low = getChar();
+                        if (auto hexChar = esc::processHexEscape(high, low))
+                        {
+                            tok.stringValue.push_back(*hexChar);
+                        }
+                        else
+                        {
+                            reportError(tok.loc,
+                                        "invalid hex escape sequence: expected \\xXX");
+                        }
+                    }
+                    else
+                    {
+                        reportError(tok.loc, "invalid hex escape sequence: expected \\xXX");
+                    }
                 }
                 else
                 {
@@ -909,9 +836,9 @@ Token Lexer::lexString()
             }
 
             // Handle simple escape sequences
-            if (auto esc = processEscape(escaped))
+            if (auto escaped_ch = esc::processEscape(escaped))
             {
-                tok.stringValue.push_back(*esc);
+                tok.stringValue.push_back(*escaped_ch);
             }
             else
             {
@@ -991,9 +918,9 @@ Token Lexer::lexInterpolatedStringContinuation()
             }
             char escaped = peekChar();
             tok.text.push_back(getChar()); // consume the escape character
-            if (auto esc = processEscape(escaped))
+            if (auto escaped_ch = esc::processEscape(escaped))
             {
-                tok.stringValue.push_back(*esc);
+                tok.stringValue.push_back(*escaped_ch);
             }
             else
             {
@@ -1045,9 +972,9 @@ Token Lexer::lexTripleQuotedString()
             {
                 char escaped = peekChar();
                 tok.text.push_back(getChar()); // consume the escape character
-                if (auto esc = processEscape(escaped))
+                if (auto escaped_ch = esc::processEscape(escaped))
                 {
-                    tok.stringValue.push_back(*esc);
+                    tok.stringValue.push_back(*escaped_ch);
                 }
                 else
                 {

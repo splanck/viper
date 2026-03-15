@@ -20,6 +20,7 @@
 #include "frontends/basic/OopLoweringContext.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/StringUtils.hpp"
+#include "frontends/basic/lower/MemberArrayResolver.hpp"
 #include "frontends/basic/lower/oop/Lower_OOP_Internal.hpp"
 #include "frontends/basic/sem/RuntimeMethodIndex.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
@@ -144,35 +145,12 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
         if (info && info->isObject && !info->objectClass.empty())
             return info->objectClass;
 
-        // Check if this is a member array with dotted name (e.g., ME.items)
-        bool isMemberArray = arr->name.find('.') != std::string::npos;
-        if (isMemberArray)
-        {
-            const std::string &full = arr->name;
-            std::size_t dot = full.find('.');
-            std::string baseName = full.substr(0, dot);
-            std::string fieldName = full.substr(dot + 1);
-            std::string klass = getSlotType(baseName).objectClass;
-            if (const ClassLayout *layout = findClassLayout(klass))
-            {
-                if (const ClassLayout::Field *fld = layout->findField(fieldName))
-                {
-                    if (!fld->objectClassName.empty())
-                        return qualify(fld->objectClassName);
-                }
-            }
-        }
+        // Use consolidated member array field resolver for dotted and implicit
+        // field arrays (BUG-056, BUG-058, BUG-089, BUG-108).
+        const MemberArrayInfo fieldInfo = resolveMemberArrayField(arr->name);
+        if (fieldInfo.isObjectArray)
+            return qualify(fieldInfo.elementClassName);
 
-        // Check if this is an implicit field access (e.g., items in a method). (BUG-089)
-        const FieldScope *scope = activeFieldScope();
-        if (scope && scope->layout)
-        {
-            const auto *field = scope->layout->findField(arr->name);
-            if (field && !field->objectClassName.empty())
-            {
-                return qualify(field->objectClassName);
-            }
-        }
         // Module-level arrays referenced inside procedures need their element class
         // recovered from the cached module-level object array map. (BUG-097)
         std::string cls = lookupModuleArrayElemClass(arr->name);

@@ -24,6 +24,7 @@
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/AstVisitor.hpp"
+#include "frontends/basic/lower/MemberArrayResolver.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include "viper/il/Module.hpp"
@@ -136,8 +137,10 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             lowerer_.lowerArrayAccess(expr, Lowerer::ArrayAccessKind::Load);
         lowerer_.curLoc = expr.loc;
 
-        // Determine array element type and use appropriate runtime function
+        // Determine array element type and use appropriate runtime function.
+        // Member array field resolution consolidated via resolveMemberArrayField().
         const auto *info = lowerer_.findSymbol(expr.name);
+        const MemberArrayInfo fieldInfo = lowerer_.resolveMemberArrayField(expr.name);
 
         // BUG-097 fix: Check module-level cache if symbol exists but isn't marked as object,
         // or if symbol doesn't exist at all (procedure-local symbol tables lose module info)
@@ -150,65 +153,26 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         // BUG-OOP-011 fix: Check module-level string array cache
         bool isModuleStrArray = lowerer_.isModuleStrArray(expr.name);
 
-        bool isMemberArray = expr.name.find('.') != std::string::npos;
-        ::il::frontends::basic::Type memberElemAstType = ::il::frontends::basic::Type::I64;
-        bool isMemberObjectArray = false; // BUG-089: Track if member array holds objects
-        std::string memberObjectClass;    // BUG-089: Track object class name for member arrays
-        if (isMemberArray)
-        {
-            const std::string &full = expr.name;
-            std::size_t dot = full.find('.');
-            std::string baseName = full.substr(0, dot);
-            std::string fieldName = full.substr(dot + 1);
-            std::string klass = lowerer_.getSlotType(baseName).objectClass;
-            if (const Lowerer::ClassLayout *layout = lowerer_.findClassLayout(klass))
-            {
-                if (const Lowerer::ClassLayout::Field *fld = layout->findField(fieldName))
-                {
-                    memberElemAstType = fld->type;
-                    // BUG-089 fix: Check if field is an object array
-                    isMemberObjectArray = !fld->objectClassName.empty();
-                    if (isMemberObjectArray)
-                        memberObjectClass = fld->objectClassName;
-                }
-            }
-        }
-        // BUG-089 fix: Also check for implicit field arrays (no dot in name but is a class field)
-        else if (auto field = lowerer_.resolveImplicitField(expr.name, {}))
-        {
-            memberElemAstType = field->astType;
-            isMemberObjectArray = !field->objectClassName.empty();
-            if (isMemberObjectArray)
-                memberObjectClass = field->objectClassName;
-        }
-
         // BUG-OOP-011 fix: Also check module-level string array cache
         if ((info && info->type == ::il::frontends::basic::Type::Str) ||
-            (isMemberArray && memberElemAstType == ::il::frontends::basic::Type::Str) ||
+            (fieldInfo.isField && fieldInfo.elementAstType == ::il::frontends::basic::Type::Str) ||
             isModuleStrArray)
         {
             // String array: use rt_arr_str_get (returns retained handle)
-            // BUG-071 fix: Don't defer release - consuming code handles lifetime
-            // to avoid dominance violations when array access is in conditional blocks
             IlValue val = lowerer_.emitCallRet(
                 IlType(IlType::Kind::Str), "rt_arr_str_get", {access.base, access.index});
-            // Removed: lowerer_.deferReleaseStr(val);
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::Str)};
         }
-        else if ((info && info->isObject) || isMemberObjectArray || !moduleObjectClass.empty())
+        else if ((info && info->isObject) || fieldInfo.isObjectArray || !moduleObjectClass.empty())
         {
-            // BUG-089/BUG-097 fix: Object array (member, non-member, or module-level):
-            // rt_arr_obj_get returns retained ptr BUG-104 fix: Don't defer release - consuming code
-            // handles lifetime to avoid dominance violations when array access is in conditional
-            // blocks (same as BUG-071 for strings)
+            // BUG-089/BUG-097 fix: Object array (member, non-member, or module-level)
             IlValue val = lowerer_.emitCallRet(
                 IlType(IlType::Kind::Ptr), "rt_arr_obj_get", {access.base, access.index});
-            // Removed: deferReleaseObj calls - consuming code (method calls, assignments) handles
-            // object lifetime
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::Ptr)};
         }
         else if ((info && info->type == ::il::frontends::basic::Type::F64) ||
-                 (isMemberArray && memberElemAstType == ::il::frontends::basic::Type::F64))
+                 (fieldInfo.isField &&
+                  fieldInfo.elementAstType == ::il::frontends::basic::Type::F64))
         {
             // Float array (SINGLE/DOUBLE): use rt_arr_f64_get
             lowerer_.requireArrayF64Get();

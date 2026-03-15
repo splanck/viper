@@ -20,6 +20,7 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
+#include "frontends/basic/lower/MemberArrayResolver.hpp"
 
 #include <cassert>
 
@@ -169,61 +170,21 @@ void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target,
     // =========================================================================
     // Member Array Field Resolution (BUG-056, BUG-058, BUG-089, BUG-108)
     // =========================================================================
-    // Array element types must be determined correctly for three scenarios:
-    //
-    // 1. Dotted member arrays (e.g., `player.inventory(i) = item`):
-    //    - BUG-056: Element type comes from class layout, not symbol table
-    //    - Parse "player.inventory" to get class layout and field type
-    //
-    // 2. Implicit field arrays inside methods (e.g., `inventory(i) = item`):
-    //    - BUG-058: Unqualified array names resolve against the active class
-    //    - BUG-108: Local variables/parameters shadow implicit field arrays
-    //    - Must also recompute base pointer as ME.<field>
-    //
-    // 3. Object arrays (arrays holding object references):
-    //    - BUG-089: Require object-typed runtime helpers, not primitive helpers
-    //    - Detected via non-empty objectClassName in field layout
+    // Consolidated via resolveMemberArrayField(). See MemberArrayResolver.cpp
+    // for the unified resolution logic covering dotted member arrays, implicit
+    // field arrays, object array detection, and local variable shadowing.
     // =========================================================================
     const auto *info = lowerer_.findSymbol(target.name);
-    // Array field assignments (dotted names) derive element type from class layout,
-    // not the symbol table. (BUG-056)
-    bool isMemberArray = target.name.find('.') != std::string::npos;
-    ::il::frontends::basic::Type memberElemAstType = ::il::frontends::basic::Type::I64;
-    bool isMemberObjectArray = false; // Track if member array holds objects (BUG-089)
-    if (isMemberArray)
-    {
-        const std::string &full = target.name;
-        std::size_t dot = full.find('.');
-        std::string baseName = full.substr(0, dot);
-        std::string fieldName = full.substr(dot + 1);
-        std::string klass = lowerer_.getSlotType(baseName).objectClass;
-        if (const Lowerer::ClassLayout *layout = lowerer_.findClassLayout(klass))
-        {
-            if (const Lowerer::ClassLayout::Field *fld = layout->findField(fieldName))
-            {
-                memberElemAstType = fld->type;
-                // Object arrays require object-typed runtime calls (BUG-089)
-                isMemberObjectArray = !fld->objectClassName.empty();
-            }
-        }
-    }
-    // Implicit field array accesses (inside methods) use non-dotted names like `inventory(i)`.
-    // Derive element type from the active class layout to choose correct runtime helpers. (BUG-058)
-    bool isImplicitFieldArray = (!isMemberArray) && lowerer_.isFieldInScope(target.name);
-    // Local variables or parameters shadow implicit field arrays. Prefer the local array. (BUG-108)
-    const auto *localSym = lowerer_.findSymbol(target.name);
-    if (isImplicitFieldArray && !(localSym && localSym->slotId))
+    const MemberArrayInfo fieldInfo = lowerer_.resolveMemberArrayField(target.name);
+    const bool isMemberArray = fieldInfo.isDottedAccess;
+    const bool isImplicitFieldArray = fieldInfo.isField && !fieldInfo.isDottedAccess;
+
+    // For implicit field arrays, recompute base as ME.<field> to ensure we are
+    // storing into the instance field array even when the name is unqualified.
+    if (isImplicitFieldArray)
     {
         if (const auto *scope = lowerer_.activeFieldScope(); scope && scope->layout)
         {
-            if (const Lowerer::ClassLayout::Field *fld = scope->layout->findField(target.name))
-            {
-                memberElemAstType = fld->type;
-                // Object arrays require object-typed runtime calls (BUG-089)
-                isMemberObjectArray = !fld->objectClassName.empty();
-            }
-            // Recompute base as ME.<field> to ensure we are storing into the
-            // instance field array even when the name is implicit.
             const auto *selfInfo = lowerer_.findSymbol("ME");
             if (selfInfo && selfInfo->slotId)
             {
@@ -231,7 +192,6 @@ void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target,
                 Value selfPtr = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr),
                                                   Value::temp(*selfInfo->slotId));
                 lowerer_.curLoc = loc;
-                // Look up offset again for the named field
                 long long offset = 0;
                 if (const Lowerer::ClassLayout::Field *f2 = scope->layout->findField(target.name))
                     offset = static_cast<long long>(f2->offset);
@@ -240,7 +200,6 @@ void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target,
                                                      selfPtr,
                                                      Value::constInt(offset));
                 lowerer_.curLoc = loc;
-                // Load the array handle from the field into access.base
                 access.base =
                     lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr), fieldPtr);
             }
@@ -251,23 +210,21 @@ void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target,
     // resolution across scopes: a string RHS must use string array helpers,
     // an object (ptr) RHS must use object array helpers; otherwise numeric.
     if (value.type.kind == il::core::Type::Kind::Str || (info && info->type == AstType::Str) ||
-        (isMemberArray && memberElemAstType == ::il::frontends::basic::Type::Str) ||
-        (isImplicitFieldArray && memberElemAstType == ::il::frontends::basic::Type::Str))
+        (fieldInfo.isField && fieldInfo.elementAstType == ::il::frontends::basic::Type::Str))
     {
         // String array: use rt_arr_str_put (handles retain/release)
         // Pass the string handle directly - the C runtime expects rt_string by value.
         lowerer_.emitCall("rt_arr_str_put", {access.base, access.index, value.value});
     }
     else if (value.type.kind == il::core::Type::Kind::Ptr ||
-             (!isMemberArray && info && info->isObject) || isMemberObjectArray)
+             (!isMemberArray && info && info->isObject) || fieldInfo.isObjectArray)
     {
         // Object arrays (including member object arrays) use rt_arr_obj_put (BUG-089)
         lowerer_.requireArrayObjPut();
         lowerer_.emitCall("rt_arr_obj_put", {access.base, access.index, value.value});
     }
     else if ((info && info->type == AstType::F64) ||
-             (isMemberArray && memberElemAstType == ::il::frontends::basic::Type::F64) ||
-             (isImplicitFieldArray && memberElemAstType == ::il::frontends::basic::Type::F64))
+             (fieldInfo.isField && fieldInfo.elementAstType == ::il::frontends::basic::Type::F64))
     {
         // Float array (SINGLE/DOUBLE): use rt_arr_f64_set
         Lowerer::RVal coerced = lowerer_.ensureF64(std::move(value), loc);

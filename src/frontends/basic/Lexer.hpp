@@ -9,7 +9,7 @@
 // source code and produces a stream of tokens for the parser.
 //
 // The lexer is the first stage of the BASIC frontend compilation pipeline:
-//   Lexer → Parser → AST → Semantic → Lowerer → IL
+//   Lexer -> Parser -> AST -> Semantic -> Lowerer -> IL
 //
 // Key Responsibilities:
 // - Tokenizes BASIC source text into lexical tokens (keywords, identifiers,
@@ -33,6 +33,8 @@
 //   since BASIC uses line-oriented syntax
 // - The lexer handles both traditional BASIC line numbers and modern label-based
 //   control flow
+// - Cursor management (peek/get/eof/position tracking) is inherited from
+//   LexerCursor<Lexer> via CRTP, shared with the Zia frontend
 //
 // Usage:
 //   Lexer lex(sourceText, fileId);
@@ -45,6 +47,7 @@
 #pragma once
 
 #include "frontends/basic/Token.hpp"
+#include "frontends/common/LexerBase.hpp"
 #include <string_view>
 
 namespace il::frontends::basic
@@ -53,8 +56,12 @@ namespace il::frontends::basic
 /// @brief Tokenizes BASIC source text into a stream of tokens.
 /// @details Construct with a source buffer and file identifier, then call
 /// next() repeatedly to iterate through tokens until an EOF token is returned.
-class Lexer
+/// Inherits cursor management (peek/get/eof/position tracking) from
+/// LexerCursor<Lexer> via CRTP.
+class Lexer : public il::frontends::common::lexer_base::LexerCursor<Lexer>
 {
+    using Base = il::frontends::common::lexer_base::LexerCursor<Lexer>;
+
   public:
     /// @brief Create a lexer over the given source buffer.
     /// @param src Source text to tokenize. The lexer does not take ownership.
@@ -66,19 +73,14 @@ class Lexer
     /// remain.
     Token next();
 
+    /// @brief Provide the source buffer to the CRTP base class.
+    /// @return View of the source text being tokenized.
+    [[nodiscard]] std::string_view source() const
+    {
+        return src_;
+    }
+
   private:
-    /// @brief Look at the current character without consuming it.
-    /// @return The current character, or '\0' if at end of source.
-    char peek() const;
-
-    /// @brief Consume and return the current character.
-    /// @return The consumed character, or '\0' if at end of source.
-    char get();
-
-    /// @brief Check whether the lexer has reached the end of the source.
-    /// @return True if no characters remain, otherwise false.
-    bool eof() const;
-
     /// @brief Skip spaces and tabs but leave newlines intact.
     void skipWhitespaceExceptNewline();
 
@@ -106,10 +108,6 @@ class Lexer
     Token lexString();
 
     std::string_view src_; ///< Source code being tokenized.
-    size_t pos_ = 0;       ///< Current index into the source buffer.
-    uint32_t file_id_;
-    uint32_t line_ = 1;   ///< 1-based line number of current character.
-    uint32_t column_ = 1; ///< 1-based column number of current character.
 };
 
 } // namespace il::frontends::basic

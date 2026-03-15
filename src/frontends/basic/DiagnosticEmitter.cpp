@@ -17,6 +17,7 @@
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/LineUtils.hpp"
+#include "frontends/common/DiagnosticFormatter.hpp"
 #include <algorithm>
 #include <sstream>
 
@@ -84,30 +85,13 @@ void DiagnosticEmitter::emitExpected(TokenKind got, TokenKind expect, il::suppor
     emit(il::support::Severity::Error, "B0001", loc, 0, std::move(msg));
 }
 
-/// @brief Convert severity enum to human-readable string.
-/// @details Used when printing diagnostics so the textual level appears alongside
-///          the code and message.
-/// @param s Severity to convert.
-/// @return Null-terminated severity name.
-static const char *toString(il::support::Severity s)
-{
-    using il::support::Severity;
-    switch (s)
-    {
-        case Severity::Note:
-            return "note";
-        case Severity::Warning:
-            return "warning";
-        case Severity::Error:
-            return "error";
-    }
-    return "";
-}
+// Severity-to-string and source-line extraction are provided by the common
+// DiagnosticFormatter header. The namespace alias keeps call sites concise.
+namespace dfmt = common::diag_fmt;
 
 /// @brief Retrieve a specific line from stored source text.
-/// @details Performs a linear scan through the cached buffer to extract the
-///          requested 1-based line, returning an empty string when the file or
-///          line number is unknown.
+/// @details Delegates to the common DiagnosticFormatter utility after checking
+///          for unlabeled BASIC lines.
 /// @param fileId Source file identifier.
 /// @param line 1-based line number to fetch.
 /// @return Line contents or empty string if unavailable.
@@ -119,56 +103,23 @@ std::string DiagnosticEmitter::getLine(uint32_t fileId, uint32_t line) const
     auto it = sources_.find(fileId);
     if (it == sources_.end())
         return {};
-    const std::string &src = it->second;
-    size_t start = 0;
-    for (uint32_t l = 1; l < line; ++l)
-    {
-        size_t pos = src.find('\n', start);
-        if (pos == std::string::npos)
-            return {};
-        start = pos + 1;
-    }
-    size_t end = src.find('\n', start);
-    if (end == std::string::npos)
-        end = src.size();
-    return src.substr(start, end - start);
+    return dfmt::getSourceLine(it->second, line);
 }
 
 /// @brief Print all collected diagnostics with caret markers.
-/// @details Streams each stored entry to @p os, including file/line metadata and
-///          a caret underline that spans @ref DiagnosticEntry::length
-///          characters.
+/// @details Delegates to the common DiagnosticFormatter for the actual formatting
+///          of each entry, using a BASIC-specific line-skip predicate for
+///          unlabeled lines.
 /// @param os Output stream receiving formatted diagnostics.
 void DiagnosticEmitter::printAll(std::ostream &os) const
 {
     for (const auto &e : entries_)
     {
-        if (e.loc.file_id != 0)
-        {
-            auto path = sm_.getPath(e.loc.file_id);
-            if (!path.empty())
-            {
-                os << path;
-                if (!isUnlabeledLine(e.loc.line))
-                {
-                    os << ':' << e.loc.line;
-                    if (e.loc.column != 0)
-                    {
-                        os << ':' << e.loc.column;
-                    }
-                }
-                os << ": ";
-            }
-        }
-        os << toString(e.severity) << '[' << e.code << "]: " << e.message << '\n';
+        std::string locStr =
+            dfmt::formatLocation(sm_, e.loc, [](uint32_t line) { return isUnlabeledLine(line); });
         std::string line = getLine(e.loc.file_id, e.loc.line);
-        if (!line.empty())
-        {
-            os << line << '\n';
-            uint32_t caretLen = e.length == 0 ? 1 : e.length;
-            uint32_t indent = e.loc.column > 0 ? e.loc.column - 1 : 0;
-            os << std::string(indent, ' ') << std::string(caretLen, '^') << '\n';
-        }
+        dfmt::printDiagnostic(os, e.severity, e.code, e.message, locStr, line, e.loc.column,
+                              e.length);
     }
 }
 
@@ -190,16 +141,10 @@ size_t DiagnosticEmitter::warningCount() const
 }
 
 /// @brief Format a path:line string for a source location.
-/// @details Uses SourceManager to convert file_id into a path and appends the line.
-///          Returns empty string when path or line are unavailable.
+/// @details Delegates to the common DiagnosticFormatter utility.
 std::string DiagnosticEmitter::formatFileLine(il::support::SourceLoc loc) const
 {
-    if (!loc.hasFile() || !loc.hasLine())
-        return {};
-    std::string path = std::string(sm_.getPath(loc.file_id));
-    if (path.empty())
-        return {};
-    return path + ":" + std::to_string(loc.line);
+    return dfmt::formatFileLine(sm_, loc);
 }
 
 } // namespace il::frontends::basic
