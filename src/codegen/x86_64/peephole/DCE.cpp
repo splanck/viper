@@ -312,8 +312,7 @@ struct X64DCETraits
         return getDefReg(instr);
     }
 
-    static void collectUsedRegKeys(const MInstr &instr,
-                                   std::unordered_set<RegKey> &live) noexcept
+    static void collectUsedRegKeys(const MInstr &instr, std::unordered_set<RegKey> &live) noexcept
     {
         collectUsedRegs(instr, live);
     }

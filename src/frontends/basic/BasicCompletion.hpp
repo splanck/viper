@@ -99,7 +99,7 @@ class BasicCompletionEngine
     {
         TriggerKind trigger{TriggerKind::CtrlSpace};
         std::string triggerExpr; ///< Expression left of '.'
-        std::string prefix;     ///< Typed prefix after trigger
+        std::string prefix;      ///< Typed prefix after trigger
     };
 
     /// @brief Extract completion context from source at (line, col).

@@ -87,10 +87,18 @@ void Sema::analyzeStmt(Stmt *stmt)
             if (!tryStmt->catchTypeName.empty())
             {
                 static const char *const validErrorTypes[] = {
-                    "DivideByZero",     "Overflow",     "InvalidCast",
-                    "DomainError",      "Bounds",       "FileNotFound",
-                    "EOF",              "IOError",      "InvalidOperation",
-                    "RuntimeError",     "Interrupt",    "NetworkError",
+                    "DivideByZero",
+                    "Overflow",
+                    "InvalidCast",
+                    "DomainError",
+                    "Bounds",
+                    "FileNotFound",
+                    "EOF",
+                    "IOError",
+                    "InvalidOperation",
+                    "RuntimeError",
+                    "Interrupt",
+                    "NetworkError",
                     "Error", // catch-all alias
                 };
                 bool found = false;
@@ -104,8 +112,8 @@ void Sema::analyzeStmt(Stmt *stmt)
                 }
                 if (!found)
                 {
-                    error(tryStmt->loc, "unknown error type '" + tryStmt->catchTypeName +
-                                            "' in catch clause");
+                    error(tryStmt->loc,
+                          "unknown error type '" + tryStmt->catchTypeName + "' in catch clause");
                 }
             }
 
@@ -679,8 +687,7 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt)
                             missing += scrutineeType->name + "." + v.name;
                         }
                     }
-                    error(stmt->loc,
-                          "Non-exhaustive patterns: missing variants " + missing);
+                    error(stmt->loc, "Non-exhaustive patterns: missing variants " + missing);
                 }
             }
         }

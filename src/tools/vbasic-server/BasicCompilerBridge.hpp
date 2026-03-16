@@ -44,22 +44,22 @@ class BasicCompilerBridge : public ICompilerBridge
     ~BasicCompilerBridge() override;
 
     // ── Analysis ──
-    std::vector<DiagnosticInfo> check(const std::string &source,
-                                      const std::string &path) override;
+    std::vector<DiagnosticInfo> check(const std::string &source, const std::string &path) override;
     CompileResult compile(const std::string &source, const std::string &path) override;
 
     // ── IDE Features ──
     std::vector<CompletionInfo> completions(const std::string &source,
-                                            int line, int col,
+                                            int line,
+                                            int col,
                                             const std::string &path) override;
-    std::string hover(const std::string &source, int line, int col,
+    std::string hover(const std::string &source,
+                      int line,
+                      int col,
                       const std::string &path) override;
-    std::vector<SymbolInfo> symbols(const std::string &source,
-                                    const std::string &path) override;
+    std::vector<SymbolInfo> symbols(const std::string &source, const std::string &path) override;
 
     // ── Dump ──
-    std::string dumpIL(const std::string &source, const std::string &path,
-                       bool optimized) override;
+    std::string dumpIL(const std::string &source, const std::string &path, bool optimized) override;
     std::string dumpAst(const std::string &source, const std::string &path) override;
     std::string dumpTokens(const std::string &source, const std::string &path) override;
 

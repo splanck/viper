@@ -99,16 +99,15 @@ struct Elf64_Rela
 
 } // namespace elf
 
-template <typename T>
-static const T *readStruct(const uint8_t *data, size_t size, size_t offset)
+template <typename T> static const T *readStruct(const uint8_t *data, size_t size, size_t offset)
 {
     if (offset + sizeof(T) > size)
         return nullptr;
     return reinterpret_cast<const T *>(data + offset);
 }
 
-static const char *readString(const uint8_t *data, size_t size, size_t strTabOff, size_t strTabSize,
-                              uint32_t nameOff)
+static const char *readString(
+    const uint8_t *data, size_t size, size_t strTabOff, size_t strTabSize, uint32_t nameOff)
 {
     size_t pos = strTabOff + nameOff;
     if (pos >= size)
@@ -116,8 +115,8 @@ static const char *readString(const uint8_t *data, size_t size, size_t strTabOff
     return reinterpret_cast<const char *>(data + pos);
 }
 
-bool readElfObj(const uint8_t *data, size_t size, const std::string &name, ObjFile &obj,
-                std::ostream &err)
+bool readElfObj(
+    const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err)
 {
     const auto *ehdr = readStruct<elf::Elf64_Ehdr>(data, size, 0);
     if (!ehdr)
@@ -185,9 +184,9 @@ bool readElfObj(const uint8_t *data, size_t size, const std::string &name, ObjFi
         // mergeable string sections even when flag inspection is impractical.
         constexpr uint32_t SHF_MERGE = 0x10;
         constexpr uint32_t SHF_STRINGS = 0x20;
-        sec.isCStringSection = ((sh->sh_flags & SHF_MERGE) != 0 &&
-                                 (sh->sh_flags & SHF_STRINGS) != 0) ||
-                                sec.name.find(".str") != std::string::npos;
+        sec.isCStringSection =
+            ((sh->sh_flags & SHF_MERGE) != 0 && (sh->sh_flags & SHF_STRINGS) != 0) ||
+            sec.name.find(".str") != std::string::npos;
 
         if (sh->sh_type == elf::SHT_NOBITS)
         {
@@ -227,8 +226,7 @@ bool readElfObj(const uint8_t *data, size_t size, const std::string &name, ObjFi
     std::vector<uint32_t> symMap; // ELF sym index → ObjFile sym index.
     if (symSh)
     {
-        const uint32_t symCount =
-            static_cast<uint32_t>(symSh->sh_size / sizeof(elf::Elf64_Sym));
+        const uint32_t symCount = static_cast<uint32_t>(symSh->sh_size / sizeof(elf::Elf64_Sym));
         if (symCount > kMaxObjSymbols)
         {
             err << "error: " << name << ": symbol count " << symCount << " exceeds limit\n";
@@ -289,8 +287,7 @@ bool readElfObj(const uint8_t *data, size_t size, const std::string &name, ObjFi
         for (uint32_t r = 0; r < relCount; ++r)
         {
             const auto *rela = readStruct<elf::Elf64_Rela>(
-                data, size,
-                static_cast<size_t>(shdrs[i]->sh_offset) + r * sizeof(elf::Elf64_Rela));
+                data, size, static_cast<size_t>(shdrs[i]->sh_offset) + r * sizeof(elf::Elf64_Rela));
             if (!rela)
                 break;
 

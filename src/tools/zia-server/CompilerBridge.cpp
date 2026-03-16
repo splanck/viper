@@ -99,7 +99,8 @@ CompileResult CompilerBridge::compile(const std::string &source, const std::stri
 struct HoverResult
 {
     std::string name;
-    std::string kind;      ///< "variable","parameter","function","method","field","type","module","runtime-class"
+    std::string
+        kind; ///< "variable","parameter","function","method","field","type","module","runtime-class"
     std::string type;      ///< ViperType::toString()
     std::string signature; ///< Full signature for functions/methods
     std::string ownerName; ///< Parent type name for members
@@ -108,8 +109,7 @@ struct HoverResult
 };
 
 /// @brief Build a human-readable function signature from AST param names + semantic types.
-static std::string buildSignatureFromDecl(const std::vector<Param> &params,
-                                          const TypeRef &funcType)
+static std::string buildSignatureFromDecl(const std::vector<Param> &params, const TypeRef &funcType)
 {
     auto paramTys = funcType ? funcType->paramTypes() : std::vector<TypeRef>{};
     auto retTy = funcType ? funcType->returnType() : TypeRef{};
@@ -151,8 +151,7 @@ static std::string buildSignatureFromType(const TypeRef &funcType)
 }
 
 /// @brief Resolve a hover target using Sema APIs.
-static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx,
-                                      int line, int col)
+static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx, int line, int col)
 {
     HoverResult result;
 
@@ -306,8 +305,7 @@ static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx,
                     if (mem.decl && mem.decl->kind == DeclKind::Method)
                     {
                         auto *md = static_cast<MethodDecl *>(mem.decl);
-                        result.signature =
-                            buildSignatureFromDecl(md->params, mem.type);
+                        result.signature = buildSignatureFromDecl(md->params, mem.type);
                     }
                     else
                     {
@@ -372,8 +370,7 @@ static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx,
                 if (sym.decl && sym.decl->kind == DeclKind::Function)
                 {
                     auto *fd = static_cast<FunctionDecl *>(sym.decl);
-                    result.signature =
-                        buildSignatureFromDecl(fd->params, sym.type);
+                    result.signature = buildSignatureFromDecl(fd->params, sym.type);
                 }
                 else
                 {

@@ -17,8 +17,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tests/TestHarness.hpp"
 #include "frontends/basic/BasicCompletion.hpp"
+#include "tests/TestHarness.hpp"
 
 #include <algorithm>
 #include <string>

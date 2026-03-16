@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "codegen/common/objfile/ElfWriter.hpp"
 #include "codegen/common/objfile/CodeSection.hpp"
+#include "codegen/common/objfile/ElfWriter.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 
 #include <cstdio>
@@ -51,7 +51,8 @@ static void check(bool cond, const char *msg, int line)
 static std::vector<uint8_t> readFile(const std::string &path)
 {
     std::ifstream ifs(path, std::ios::binary | std::ios::ate);
-    if (!ifs) return {};
+    if (!ifs)
+        return {};
     auto sz = ifs.tellg();
     ifs.seekg(0);
     std::vector<uint8_t> data(static_cast<size_t>(sz));
@@ -68,10 +69,8 @@ static uint16_t readLE16(const std::vector<uint8_t> &d, size_t off)
 /// Read a little-endian uint32_t.
 static uint32_t readLE32(const std::vector<uint8_t> &d, size_t off)
 {
-    return static_cast<uint32_t>(d[off]) |
-           (static_cast<uint32_t>(d[off + 1]) << 8) |
-           (static_cast<uint32_t>(d[off + 2]) << 16) |
-           (static_cast<uint32_t>(d[off + 3]) << 24);
+    return static_cast<uint32_t>(d[off]) | (static_cast<uint32_t>(d[off + 1]) << 8) |
+           (static_cast<uint32_t>(d[off + 2]) << 16) | (static_cast<uint32_t>(d[off + 3]) << 24);
 }
 
 /// Read a little-endian uint64_t.
@@ -138,7 +137,8 @@ static void testMinimalX64Elf()
     CHECK(readLE16(data, 62) == 6);
 
     // Verify .text data at the expected offset (should be aligned to 16 for x86_64)
-    size_t textOff = 64; // First section after 64-byte header, aligned to 16 (64 is already aligned)
+    size_t textOff =
+        64; // First section after 64-byte header, aligned to 16 (64 is already aligned)
     CHECK(data[textOff] == 0xC3); // ret instruction
 
     std::remove(path.c_str());
@@ -374,8 +374,9 @@ static void testSectionNames()
     uint64_t shstrSize = readLE64(data, shstrHdr + 32);
 
     // Extract the section name string table.
-    std::string shstrtab(reinterpret_cast<const char *>(data.data() + static_cast<size_t>(shstrOff)),
-                         static_cast<size_t>(shstrSize));
+    std::string shstrtab(
+        reinterpret_cast<const char *>(data.data() + static_cast<size_t>(shstrOff)),
+        static_cast<size_t>(shstrSize));
 
     // Verify required section names are present.
     CHECK(shstrtab.find(".text") != std::string::npos);
@@ -421,8 +422,9 @@ static void testRodataSection()
     CHECK(rodataSize == std::strlen(str) + 1);
 
     // Verify the string content.
-    std::string content(reinterpret_cast<const char *>(data.data() + static_cast<size_t>(rodataOff)),
-                        static_cast<size_t>(rodataSize) - 1); // exclude NUL
+    std::string content(
+        reinterpret_cast<const char *>(data.data() + static_cast<size_t>(rodataOff)),
+        static_cast<size_t>(rodataSize) - 1); // exclude NUL
     CHECK(content == "Hello, World!");
 
     std::remove(path.c_str());

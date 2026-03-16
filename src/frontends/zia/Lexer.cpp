@@ -792,8 +792,7 @@ Token Lexer::lexString()
                     }
                     else
                     {
-                        reportError(tok.loc,
-                                    "invalid unicode escape sequence: expected \\uXXXX");
+                        reportError(tok.loc, "invalid unicode escape sequence: expected \\uXXXX");
                     }
                 }
                 else
@@ -819,8 +818,7 @@ Token Lexer::lexString()
                         }
                         else
                         {
-                            reportError(tok.loc,
-                                        "invalid hex escape sequence: expected \\xXX");
+                            reportError(tok.loc, "invalid hex escape sequence: expected \\xXX");
                         }
                     }
                     else

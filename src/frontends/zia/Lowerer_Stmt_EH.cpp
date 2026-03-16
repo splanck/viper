@@ -140,9 +140,9 @@ void Lowerer::lowerTryStmt(TryStmt *stmt)
         std::vector<il::core::Param> catchBodyParams;
         catchBodyParams.push_back({"err", Type(Type::Kind::Error)});
         catchBodyParams.push_back({"tok", Type(Type::Kind::ResumeTok)});
-        builder_->createBlock(
-            *currentFunc_, "catch_body_" + std::to_string(blockMgr_.nextBlockId()),
-            catchBodyParams);
+        builder_->createBlock(*currentFunc_,
+                              "catch_body_" + std::to_string(blockMgr_.nextBlockId()),
+                              catchBodyParams);
         catchBodyIdx = currentFunc_->blocks.size() - 1;
 
         // rethrow: receives I32 kind value as branch argument

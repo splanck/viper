@@ -22,8 +22,8 @@
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"
-#include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
+#include "frontends/basic/Semantic_OOP.hpp"
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
 
@@ -69,14 +69,13 @@ ParseResult parseSource(const std::string &src)
 
 TEST(BasicEnums, ParseEnumDecl)
 {
-    auto result = parseSource(
-        "ENUM Shade\n"
-        "  RED\n"
-        "  GREEN\n"
-        "  BLUE\n"
-        "END ENUM\n"
-        "PRINT 0\n"
-        "END\n");
+    auto result = parseSource("ENUM Shade\n"
+                              "  RED\n"
+                              "  GREEN\n"
+                              "  BLUE\n"
+                              "END ENUM\n"
+                              "PRINT 0\n"
+                              "END\n");
 
     EXPECT_TRUE(result.program != nullptr);
     if (result.errors > 0)
@@ -106,14 +105,13 @@ TEST(BasicEnums, ParseEnumDecl)
 
 TEST(BasicEnums, ParseEnumExplicitValues)
 {
-    auto result = parseSource(
-        "ENUM HttpStatus\n"
-        "  OK = 200\n"
-        "  NOT_FOUND = 404\n"
-        "  SERVER_ERROR = 500\n"
-        "END ENUM\n"
-        "PRINT 0\n"
-        "END\n");
+    auto result = parseSource("ENUM HttpStatus\n"
+                              "  OK = 200\n"
+                              "  NOT_FOUND = 404\n"
+                              "  SERVER_ERROR = 500\n"
+                              "END ENUM\n"
+                              "PRINT 0\n"
+                              "END\n");
 
     EXPECT_TRUE(result.program != nullptr);
     EXPECT_EQ(result.errors, 0u);
@@ -136,14 +134,13 @@ TEST(BasicEnums, ParseEnumExplicitValues)
 
 TEST(BasicEnums, ParseEnumNegativeValues)
 {
-    auto result = parseSource(
-        "ENUM Offset\n"
-        "  BACKWARD = -1\n"
-        "  NONE = 0\n"
-        "  FORWARD = 1\n"
-        "END ENUM\n"
-        "PRINT 0\n"
-        "END\n");
+    auto result = parseSource("ENUM Offset\n"
+                              "  BACKWARD = -1\n"
+                              "  NONE = 0\n"
+                              "  FORWARD = 1\n"
+                              "END ENUM\n"
+                              "PRINT 0\n"
+                              "END\n");
 
     EXPECT_TRUE(result.program != nullptr);
     EXPECT_EQ(result.errors, 0u);
@@ -164,14 +161,13 @@ TEST(BasicEnums, ParseEnumNegativeValues)
 TEST(BasicEnums, OopIndexPopulation)
 {
     // Use "Tint" instead of "Color" to avoid keyword collision (COLOR is a BASIC keyword)
-    auto result = parseSource(
-        "ENUM Tint\n"
-        "  RED\n"
-        "  GREEN\n"
-        "  BLUE\n"
-        "END ENUM\n"
-        "PRINT 0\n"
-        "END\n");
+    auto result = parseSource("ENUM Tint\n"
+                              "  RED\n"
+                              "  GREEN\n"
+                              "  BLUE\n"
+                              "END ENUM\n"
+                              "PRINT 0\n"
+                              "END\n");
 
     EXPECT_TRUE(result.program != nullptr);
 
@@ -202,15 +198,14 @@ TEST(BasicEnums, OopIndexPopulation)
 
 TEST(BasicEnums, OopIndexExplicitValues)
 {
-    auto result = parseSource(
-        "ENUM Priority\n"
-        "  LOW\n"
-        "  MEDIUM = 5\n"
-        "  HIGH\n"
-        "  CRITICAL\n"
-        "END ENUM\n"
-        "PRINT 0\n"
-        "END\n");
+    auto result = parseSource("ENUM Priority\n"
+                              "  LOW\n"
+                              "  MEDIUM = 5\n"
+                              "  HIGH\n"
+                              "  CRITICAL\n"
+                              "END ENUM\n"
+                              "PRINT 0\n"
+                              "END\n");
 
     EXPECT_TRUE(result.program != nullptr);
 
@@ -228,14 +223,13 @@ TEST(BasicEnums, OopIndexDuplicateVariantError)
     // Use "Tint" to avoid keyword collision with COLOR
     SourceManager sm;
     uint32_t fid = sm.addFile("test.bas");
-    const std::string src =
-        "ENUM Tint\n"
-        "  RED\n"
-        "  GREEN\n"
-        "  RED\n"
-        "END ENUM\n"
-        "PRINT 0\n"
-        "END\n";
+    const std::string src = "ENUM Tint\n"
+                            "  RED\n"
+                            "  GREEN\n"
+                            "  RED\n"
+                            "END ENUM\n"
+                            "PRINT 0\n"
+                            "END\n";
 
     DiagnosticEngine de;
     DiagnosticEmitter emitter(de, sm);
@@ -256,15 +250,14 @@ TEST(BasicEnums, OopIndexDuplicateVariantError)
 TEST(BasicEnums, LowerEnumVariantAccess)
 {
     // Use "Tint" to avoid keyword collision with COLOR
-    const std::string src =
-        "ENUM Tint\n"
-        "  RED\n"
-        "  GREEN\n"
-        "  BLUE\n"
-        "END ENUM\n"
-        "LET x = Tint.GREEN\n"
-        "PRINT x\n"
-        "END\n";
+    const std::string src = "ENUM Tint\n"
+                            "  RED\n"
+                            "  GREEN\n"
+                            "  BLUE\n"
+                            "END ENUM\n"
+                            "LET x = Tint.GREEN\n"
+                            "PRINT x\n"
+                            "END\n";
 
     SourceManager sm;
     uint32_t fid = sm.addFile("test.bas");
@@ -290,13 +283,12 @@ TEST(BasicEnums, LowerEnumVariantAccess)
 TEST(BasicEnums, ParseEnumWithKeywordName)
 {
     // COLOR is a BASIC keyword — verify the parser accepts it as an enum name
-    auto result = parseSource(
-        "ENUM Color\n"
-        "  RED\n"
-        "  GREEN\n"
-        "END ENUM\n"
-        "PRINT 0\n"
-        "END\n");
+    auto result = parseSource("ENUM Color\n"
+                              "  RED\n"
+                              "  GREEN\n"
+                              "END ENUM\n"
+                              "PRINT 0\n"
+                              "END\n");
 
     EXPECT_TRUE(result.program != nullptr);
     EXPECT_EQ(result.errors, 0u);

@@ -27,11 +27,11 @@
 namespace viper::codegen::linker
 {
 
+using encoding::padTo;
 using encoding::writeLE16;
 using encoding::writeLE32;
 using encoding::writeLE64;
 using encoding::writePad;
-using encoding::padTo;
 
 namespace
 {

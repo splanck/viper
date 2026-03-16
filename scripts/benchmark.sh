@@ -289,6 +289,8 @@ has_runtime_deps() {
 # ============================================================================
 IL_DIR="$ROOT_DIR/examples/il/benchmarks"
 REF_DIR="$ROOT_DIR/benchmarks/reference"
+ZIA_DIR="$ROOT_DIR/benchmarks/reference/zia"
+BAS_DIR="$ROOT_DIR/benchmarks/reference/basic"
 
 declare -a PROGRAMS=()
 for f in "$IL_DIR"/*.il; do
@@ -326,7 +328,9 @@ log "  Programs:    ${#PROGRAMS[*]}"
 log ""
 log "  Available modes:"
 [[ "$NO_VM" != "1" ]] && log "    Bytecode:  bc-switch, bc-threaded"
-[[ "$NO_NATIVE" != "1" && "$HAS_NATIVE_ARM64" == "1" ]] && log "    Native:    arm64"
+[[ "$NO_NATIVE" != "1" && "$HAS_NATIVE_ARM64" == "1" ]] && log "    Native IL: arm64"
+[[ "$NO_NATIVE" != "1" && "$HAS_NATIVE_ARM64" == "1" ]] && log "    Native Zia: arm64"
+[[ "$NO_NATIVE" != "1" && "$HAS_NATIVE_ARM64" == "1" ]] && log "    Native BASIC: arm64"
 [[ "$NO_NATIVE" != "1" && "$HAS_NATIVE_X86_64" == "1" ]] && log "    Native:    x86_64"
 if [[ "$NO_REFERENCE" != "1" ]]; then
     [[ "$HAS_CC" == "1" ]] && log "    C:         -O0, -O2, -O3"
@@ -357,6 +361,8 @@ for prog in "${PROGRAMS[@]}"; do
     if [[ "$NO_NATIVE" != "1" ]]; then
         [[ "$HAS_NATIVE_ARM64" == "1" ]] && ((total_benchmarks++)) || true
         [[ "$HAS_NATIVE_X86_64" == "1" ]] && ((total_benchmarks++)) || true
+        [[ "$HAS_NATIVE_ARM64" == "1" && -f "$ZIA_DIR/$prog.zia" ]] && ((total_benchmarks++)) || true
+        [[ "$HAS_NATIVE_ARM64" == "1" && -f "$BAS_DIR/$prog.bas" ]] && ((total_benchmarks++)) || true
     fi
     if [[ "$NO_REFERENCE" != "1" ]]; then
         [[ "$HAS_CC" == "1" && -f "$REF_DIR/c/$prog.c" ]] && ((total_benchmarks += 3)) || true
@@ -435,6 +441,40 @@ print(','.join(parts))
             else
                 [[ -n "$modes_json" ]] && modes_json="$modes_json,"
                 modes_json="$modes_json\"native-x86_64\":{\"success\":false,\"skip_reason\":\"compilation failed\"}"
+            fi
+            ((completed_benchmarks++)) || true
+        fi
+    fi
+
+    # --- Zia native ---
+    if [[ "$NO_NATIVE" != "1" && -f "$ZIA_DIR/$prog.zia" ]]; then
+        if [[ "$HAS_NATIVE_ARM64" == "1" ]]; then
+            log_progress "\r  [$completed_benchmarks/$total_benchmarks] $prog: zia-arm64...                   "
+            zia_exe="$TMPDIR_BENCH/zia_arm64_$prog"
+            if "$VIPER" build "$ZIA_DIR/$prog.zia" -o "$zia_exe" -O2 --arch arm64 >/dev/null 2>&1; then
+                result=$(time_executable "$zia_exe" "$ITERATIONS" "$WARMUP")
+                [[ -n "$modes_json" ]] && modes_json="$modes_json,"
+                modes_json="$modes_json\"zia-arm64\":$result"
+            else
+                [[ -n "$modes_json" ]] && modes_json="$modes_json,"
+                modes_json="$modes_json\"zia-arm64\":{\"success\":false,\"skip_reason\":\"compilation failed\"}"
+            fi
+            ((completed_benchmarks++)) || true
+        fi
+    fi
+
+    # --- BASIC native ---
+    if [[ "$NO_NATIVE" != "1" && -f "$BAS_DIR/$prog.bas" ]]; then
+        if [[ "$HAS_NATIVE_ARM64" == "1" ]]; then
+            log_progress "\r  [$completed_benchmarks/$total_benchmarks] $prog: basic-arm64...                 "
+            bas_exe="$TMPDIR_BENCH/basic_arm64_$prog"
+            if "$VIPER" build "$BAS_DIR/$prog.bas" -o "$bas_exe" -O2 --arch arm64 >/dev/null 2>&1; then
+                result=$(time_executable "$bas_exe" "$ITERATIONS" "$WARMUP")
+                [[ -n "$modes_json" ]] && modes_json="$modes_json,"
+                modes_json="$modes_json\"basic-arm64\":$result"
+            else
+                [[ -n "$modes_json" ]] && modes_json="$modes_json,"
+                modes_json="$modes_json\"basic-arm64\":{\"success\":false,\"skip_reason\":\"compilation failed\"}"
             fi
             ((completed_benchmarks++)) || true
         fi
@@ -608,7 +648,7 @@ data = json.loads('''$RESULT_JSON''')
 # Ordered mode list
 mode_order = [
     'bc-switch', 'bc-threaded',
-    'native-arm64', 'native-x86_64',
+    'native-arm64', 'zia-arm64', 'basic-arm64', 'native-x86_64',
     'c-O0', 'c-O2', 'c-O3',
     'rust-O', 'lua',
     'python3', 'java', 'csharp'

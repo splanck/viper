@@ -18,12 +18,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "tests/TestHarness.hpp"
-#include "tools/zia-server/CompilerBridge.hpp"
 #include "tools/lsp-common/DocumentStore.hpp"
 #include "tools/lsp-common/Json.hpp"
 #include "tools/lsp-common/JsonRpc.hpp"
 #include "tools/lsp-common/LspHandler.hpp"
 #include "tools/lsp-common/Transport.hpp"
+#include "tools/zia-server/CompilerBridge.hpp"
 
 #include <cstdio>
 #include <string>

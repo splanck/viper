@@ -31,8 +31,7 @@ namespace il::frontends::basic
 
 // --- Constructor / Destructor ---
 
-BasicCompletionEngine::BasicCompletionEngine()
-    : sm_(std::make_unique<il::support::SourceManager>())
+BasicCompletionEngine::BasicCompletionEngine() : sm_(std::make_unique<il::support::SourceManager>())
 {
 }
 
@@ -91,8 +90,8 @@ BasicCompletionEngine::Context BasicCompletionEngine::extractContext(std::string
     while (prefStart > lineStart)
     {
         char c = src[prefStart - 1];
-        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '$' ||
-            c == '%' || c == '!' || c == '#' || c == '&')
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '$' || c == '%' ||
+            c == '!' || c == '#' || c == '&')
             --prefStart;
         else
             break;
@@ -114,9 +113,8 @@ BasicCompletionEngine::Context BasicCompletionEngine::extractContext(std::string
             char c = src[p];
             if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '$')
             {
-                while (p > lineStart &&
-                       (std::isalnum(static_cast<unsigned char>(src[p - 1])) ||
-                        src[p - 1] == '_' || src[p - 1] == '$'))
+                while (p > lineStart && (std::isalnum(static_cast<unsigned char>(src[p - 1])) ||
+                                         src[p - 1] == '_' || src[p - 1] == '$'))
                     --p;
                 exprStart = p;
                 if (p > lineStart && src[p - 1] == '.')
@@ -161,16 +159,16 @@ static bool prefixMatch(const std::string &label, const std::string &prefix)
 std::vector<CompletionItem> BasicCompletionEngine::provideKeywords(const std::string &prefix) const
 {
     static const char *keywords[] = {
-        "AND",    "AS",       "BOOLEAN", "CALL",     "CASE",     "CLASS",    "CLOSE",
-        "CONST",  "DECLARE",  "DIM",     "DO",       "DOUBLE",   "EACH",     "ELSE",
-        "ELSEIF", "END",      "ENUM",    "ERASE",    "ERROR",    "EXIT",     "FALSE",
-        "FOR",    "FUNCTION", "GET",     "GOSUB",    "GOTO",     "IF",       "IMPLEMENTS",
-        "IN",     "INPUT",    "INTEGER", "INHERITS", "INTERFACE","LET",      "LINE",
-        "LONG",   "LOOP",     "MOD",     "NAMESPACE","NEW",      "NEXT",     "NOT",
-        "ON",     "OPEN",     "OR",      "PRINT",    "PRIVATE",  "PROPERTY", "PUBLIC",
-        "PUT",    "RANDOMIZE","REDIM",   "RESUME",   "RETURN",   "SELECT",   "SHARED",
-        "SINGLE", "STATIC",   "STEP",    "STRING",   "SUB",      "SWAP",     "THEN",
-        "TO",     "TRUE",     "TYPE",    "UNTIL",    "USING",    "WEND",     "WHILE",
+        "AND",    "AS",        "BOOLEAN", "CALL",      "CASE",      "CLASS",    "CLOSE",
+        "CONST",  "DECLARE",   "DIM",     "DO",        "DOUBLE",    "EACH",     "ELSE",
+        "ELSEIF", "END",       "ENUM",    "ERASE",     "ERROR",     "EXIT",     "FALSE",
+        "FOR",    "FUNCTION",  "GET",     "GOSUB",     "GOTO",      "IF",       "IMPLEMENTS",
+        "IN",     "INPUT",     "INTEGER", "INHERITS",  "INTERFACE", "LET",      "LINE",
+        "LONG",   "LOOP",      "MOD",     "NAMESPACE", "NEW",       "NEXT",     "NOT",
+        "ON",     "OPEN",      "OR",      "PRINT",     "PRIVATE",   "PROPERTY", "PUBLIC",
+        "PUT",    "RANDOMIZE", "REDIM",   "RESUME",    "RETURN",    "SELECT",   "SHARED",
+        "SINGLE", "STATIC",    "STEP",    "STRING",    "SUB",       "SWAP",     "THEN",
+        "TO",     "TRUE",      "TYPE",    "UNTIL",     "USING",     "WEND",     "WHILE",
         "XOR",
     };
 
@@ -195,19 +193,23 @@ std::vector<CompletionItem> BasicCompletionEngine::provideSnippets(const std::st
         const char *insert;
         const char *detail;
     };
+
     static const Snippet snippets[] = {
         {"FOR...NEXT", "FOR ${1:i} = ${2:1} TO ${3:10}\n    ${0}\nNEXT ${1:i}", "FOR loop"},
         {"IF...END IF", "IF ${1:condition} THEN\n    ${0}\nEND IF", "IF block"},
-        {"IF...ELSE...END IF", "IF ${1:condition} THEN\n    ${2}\nELSE\n    ${0}\nEND IF",
+        {"IF...ELSE...END IF",
+         "IF ${1:condition} THEN\n    ${2}\nELSE\n    ${0}\nEND IF",
          "IF/ELSE block"},
         {"DO...LOOP", "DO\n    ${0}\nLOOP", "DO loop"},
         {"DO WHILE...LOOP", "DO WHILE ${1:condition}\n    ${0}\nLOOP", "DO WHILE loop"},
         {"WHILE...WEND", "WHILE ${1:condition}\n    ${0}\nWEND", "WHILE loop"},
-        {"SELECT CASE", "SELECT CASE ${1:expr}\n    CASE ${2:value}\n        ${0}\nEND SELECT",
+        {"SELECT CASE",
+         "SELECT CASE ${1:expr}\n    CASE ${2:value}\n        ${0}\nEND SELECT",
          "SELECT CASE block"},
         {"SUB...END SUB", "SUB ${1:Name}()\n    ${0}\nEND SUB", "SUB procedure"},
         {"FUNCTION...END FUNCTION",
-         "FUNCTION ${1:Name}() AS ${2:INTEGER}\n    ${0}\nEND FUNCTION", "FUNCTION"},
+         "FUNCTION ${1:Name}() AS ${2:INTEGER}\n    ${0}\nEND FUNCTION",
+         "FUNCTION"},
         {"CLASS...END CLASS", "CLASS ${1:Name}\n    ${0}\nEND CLASS", "CLASS definition"},
     };
 
@@ -329,8 +331,7 @@ std::vector<CompletionItem> BasicCompletionEngine::provideScopeSymbols(
     {
         if (prefixMatch(name, prefix))
         {
-            std::string detail =
-                sig.kind == ProcSignature::Kind::Function ? "FUNCTION" : "SUB";
+            std::string detail = sig.kind == ProcSignature::Kind::Function ? "FUNCTION" : "SUB";
             items.push_back({name, name, CompletionKind::Function, detail, 60});
         }
     }
@@ -355,16 +356,14 @@ std::vector<CompletionItem> BasicCompletionEngine::provideMemberCompletions(
             {
                 if (prefixMatch(field.name, ctx.prefix))
                 {
-                    items.push_back(
-                        {field.name, field.name, CompletionKind::Field, "", 30});
+                    items.push_back({field.name, field.name, CompletionKind::Field, "", 30});
                 }
             }
             for (const auto &[mName, mInfo] : classInfo->methods)
             {
                 if (prefixMatch(mName, ctx.prefix))
                 {
-                    items.push_back(
-                        {mName, mName, CompletionKind::Method, "", 30});
+                    items.push_back({mName, mName, CompletionKind::Method, "", 30});
                 }
             }
 
@@ -426,11 +425,8 @@ std::vector<CompletionItem> BasicCompletionEngine::provideRuntimeMembers(
     {
         if (prefixMatch(prop.name, prefix))
         {
-            items.push_back({prop.name,
-                             prop.name,
-                             CompletionKind::Property,
-                             prop.type ? prop.type : "",
-                             30});
+            items.push_back(
+                {prop.name, prop.name, CompletionKind::Property, prop.type ? prop.type : "", 30});
         }
     }
     return items;
@@ -439,7 +435,7 @@ std::vector<CompletionItem> BasicCompletionEngine::provideRuntimeMembers(
 // --- Post-processing ---
 
 void BasicCompletionEngine::filterByPrefix(std::vector<CompletionItem> &items,
-                                            const std::string &prefix) const
+                                           const std::string &prefix) const
 {
     if (prefix.empty())
         return;
@@ -455,11 +451,12 @@ void BasicCompletionEngine::filterByPrefix(std::vector<CompletionItem> &items,
 }
 
 void BasicCompletionEngine::rank(std::vector<CompletionItem> &items,
-                                  const std::string &prefix) const
+                                 const std::string &prefix) const
 {
     if (prefix.empty())
     {
-        std::sort(items.begin(), items.end(),
+        std::sort(items.begin(),
+                  items.end(),
                   [](const CompletionItem &a, const CompletionItem &b)
                   { return a.sortPriority < b.sortPriority; });
         return;
@@ -509,11 +506,8 @@ void BasicCompletionEngine::deduplicate(std::vector<CompletionItem> &items) cons
 
 // --- Main entry point ---
 
-std::vector<CompletionItem> BasicCompletionEngine::complete(std::string_view source,
-                                                             int line,
-                                                             int col,
-                                                             std::string_view filePath,
-                                                             int maxResults)
+std::vector<CompletionItem> BasicCompletionEngine::complete(
+    std::string_view source, int line, int col, std::string_view filePath, int maxResults)
 {
     // Check cache
     uint64_t hash = fnv1a(source);
@@ -546,14 +540,14 @@ std::vector<CompletionItem> BasicCompletionEngine::complete(std::string_view sou
         auto sc = provideScopeSymbols(*ar.sema, ctx.prefix);
 
         items.reserve(kw.size() + sn.size() + bi.size() + sc.size());
-        items.insert(items.end(), std::make_move_iterator(sc.begin()),
-                     std::make_move_iterator(sc.end()));
-        items.insert(items.end(), std::make_move_iterator(bi.begin()),
-                     std::make_move_iterator(bi.end()));
-        items.insert(items.end(), std::make_move_iterator(kw.begin()),
-                     std::make_move_iterator(kw.end()));
-        items.insert(items.end(), std::make_move_iterator(sn.begin()),
-                     std::make_move_iterator(sn.end()));
+        items.insert(
+            items.end(), std::make_move_iterator(sc.begin()), std::make_move_iterator(sc.end()));
+        items.insert(
+            items.end(), std::make_move_iterator(bi.begin()), std::make_move_iterator(bi.end()));
+        items.insert(
+            items.end(), std::make_move_iterator(kw.begin()), std::make_move_iterator(kw.end()));
+        items.insert(
+            items.end(), std::make_move_iterator(sn.begin()), std::make_move_iterator(sn.end()));
     }
 
     filterByPrefix(items, ctx.prefix);

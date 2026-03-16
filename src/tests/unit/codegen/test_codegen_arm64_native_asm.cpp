@@ -295,8 +295,7 @@ TEST(NativeAsmArm64, AsmOutputStillWorks)
     ASSERT_TRUE(std::filesystem::exists(asmOut));
     // Verify it contains assembly text
     std::ifstream f(asmOut);
-    std::string content((std::istreambuf_iterator<char>(f)),
-                        std::istreambuf_iterator<char>());
+    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
     EXPECT_TRUE(content.find("main") != std::string::npos);
     std::filesystem::remove(asmOut);
 }

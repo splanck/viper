@@ -112,9 +112,9 @@ int prepareLinkContext(const std::string &asmPath,
 /// @param err Standard error stream for error messages.
 /// @return 0 on success, non-zero on failure.
 int prepareLinkContextFromSymbols(const std::unordered_set<std::string> &symbols,
-                                   LinkContext &ctx,
-                                   std::ostream &out,
-                                   std::ostream &err);
+                                  LinkContext &ctx,
+                                  std::ostream &out,
+                                  std::ostream &err);
 
 /// @brief Append required archive paths to a linker command in reverse dependency order.
 /// @param ctx The link context containing resolved archive paths.

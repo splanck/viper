@@ -41,8 +41,11 @@ namespace viper::codegen::linker
 /// @param arch         Target architecture.
 /// @param err          Error output.
 /// @return true on success.
-bool applyRelocations(const std::vector<ObjFile> &objects, LinkLayout &layout,
-                      const std::unordered_set<std::string> &dynamicSyms, LinkPlatform platform,
-                      LinkArch arch, std::ostream &err);
+bool applyRelocations(const std::vector<ObjFile> &objects,
+                      LinkLayout &layout,
+                      const std::unordered_set<std::string> &dynamicSyms,
+                      LinkPlatform platform,
+                      LinkArch arch,
+                      std::ostream &err);
 
 } // namespace viper::codegen::linker

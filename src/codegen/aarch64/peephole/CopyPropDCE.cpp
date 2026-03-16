@@ -462,4 +462,50 @@ std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &st
     return folded;
 }
 
+std::size_t eliminateDeadFpStoresCrossBlock(MFunction &fn, PeepholeStats &stats)
+{
+    // Step 1: Collect all FP offsets that are LOADED anywhere in the function.
+    std::unordered_set<int64_t> loadedOffsets;
+    for (const auto &bb : fn.blocks)
+    {
+        for (const auto &mi : bb.instrs)
+        {
+            if (mi.opc == MOpcode::LdrRegFpImm && mi.ops.size() >= 2 &&
+                mi.ops[1].kind == MOperand::Kind::Imm)
+            {
+                loadedOffsets.insert(mi.ops[1].imm);
+            }
+            if (mi.opc == MOpcode::LdpRegFpImm && mi.ops.size() >= 3 &&
+                mi.ops[2].kind == MOperand::Kind::Imm)
+            {
+                loadedOffsets.insert(mi.ops[2].imm);
+                loadedOffsets.insert(mi.ops[2].imm + 8);
+            }
+        }
+    }
+
+    // Step 2: Remove stores to offsets that are never loaded.
+    std::size_t removed = 0;
+    for (auto &bb : fn.blocks)
+    {
+        bb.instrs.erase(std::remove_if(bb.instrs.begin(),
+                                       bb.instrs.end(),
+                                       [&](const MInstr &mi)
+                                       {
+                                           if (mi.opc == MOpcode::StrRegFpImm &&
+                                               mi.ops.size() >= 2 &&
+                                               mi.ops[1].kind == MOperand::Kind::Imm &&
+                                               !loadedOffsets.count(mi.ops[1].imm))
+                                           {
+                                               ++removed;
+                                               return true;
+                                           }
+                                           return false;
+                                       }),
+                        bb.instrs.end());
+    }
+    stats.deadInstructionsRemoved += static_cast<int>(removed);
+    return removed;
+}
+
 } // namespace viper::codegen::aarch64::peephole

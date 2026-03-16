@@ -472,15 +472,17 @@ class Lowerer
     /// @param decl The entity declaration.
     /// @param info The entity type info to populate with field layouts.
     /// @param qualifiedName The fully qualified type name.
-    void computeEntityFieldLayout(EntityDecl &decl, EntityTypeInfo &info,
-                                   const std::string &qualifiedName);
+    void computeEntityFieldLayout(EntityDecl &decl,
+                                  EntityTypeInfo &info,
+                                  const std::string &qualifiedName);
 
     /// @brief Build vtable entries from an entity declaration's methods and properties.
     /// @param decl The entity declaration.
     /// @param info The entity type info to populate with vtable slots.
     /// @param qualifiedName The fully qualified type name.
-    void buildEntityVtable(EntityDecl &decl, EntityTypeInfo &info,
-                            const std::string &qualifiedName);
+    void buildEntityVtable(EntityDecl &decl,
+                           EntityTypeInfo &info,
+                           const std::string &qualifiedName);
 
     /// @brief Copy inherited fields, totalSize, and vtable from parent entity.
     /// @param info The child entity type info to populate.

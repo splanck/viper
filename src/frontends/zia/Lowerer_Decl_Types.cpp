@@ -100,8 +100,9 @@ void Lowerer::registerEntityLayout(EntityDecl &decl)
     entityTypes_[qualifiedName] = std::move(info);
 }
 
-void Lowerer::computeEntityFieldLayout(EntityDecl &decl, EntityTypeInfo &info,
-                                        const std::string &qualifiedName)
+void Lowerer::computeEntityFieldLayout(EntityDecl &decl,
+                                       EntityTypeInfo &info,
+                                       const std::string &qualifiedName)
 {
     (void)qualifiedName; // used implicitly via caller context
     for (auto &member : decl.members)
@@ -115,8 +116,7 @@ void Lowerer::computeEntityFieldLayout(EntityDecl &decl, EntityTypeInfo &info,
         if (field->isStatic)
             continue;
 
-        TypeRef fieldType =
-            field->type ? sema_.resolveType(field->type.get()) : types::unknown();
+        TypeRef fieldType = field->type ? sema_.resolveType(field->type.get()) : types::unknown();
 
         // Compute size and alignment; fixed-size arrays are stored inline.
         size_t fieldLayoutSize, fieldLayoutAlignment;
@@ -147,8 +147,9 @@ void Lowerer::computeEntityFieldLayout(EntityDecl &decl, EntityTypeInfo &info,
     }
 }
 
-void Lowerer::buildEntityVtable(EntityDecl &decl, EntityTypeInfo &info,
-                                 const std::string &qualifiedName)
+void Lowerer::buildEntityVtable(EntityDecl &decl,
+                                EntityTypeInfo &info,
+                                const std::string &qualifiedName)
 {
     for (auto &member : decl.members)
     {

@@ -28,16 +28,22 @@ string(REPLACE "\r" "\n" out_content "${out_content}")
 string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" golden_content "${golden_content}")
 string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" out_content "${out_content}")
 if (NOT out_content STREQUAL golden_content)
-    execute_process(
-            COMMAND diff -u ${GOLDEN} ${OUT_FILE}
-            RESULT_VARIABLE diff_res
-            OUTPUT_VARIABLE diff_out)
-    set(art_dir "${CMAKE_CURRENT_BINARY_DIR}/_artifacts/constfold_${test_name}")
-    file(MAKE_DIRECTORY ${art_dir})
-    configure_file(${GOLDEN} ${art_dir}/golden.il COPYONLY)
-    configure_file(${OUT_FILE} ${art_dir}/out.il COPYONLY)
-    file(WRITE ${art_dir}/diff.txt "${diff_out}")
-    message(FATAL_ERROR "IL mismatch for constfold_${test_name}:\n${diff_out}")
+    if (DEFINED UPDATE_GOLDEN)
+        file(READ ${OUT_FILE} _raw)
+        file(WRITE ${GOLDEN} "${_raw}")
+        message(STATUS "Updated golden: ${GOLDEN}")
+    else ()
+        execute_process(
+                COMMAND diff -u ${GOLDEN} ${OUT_FILE}
+                RESULT_VARIABLE diff_res
+                OUTPUT_VARIABLE diff_out)
+        set(art_dir "${CMAKE_CURRENT_BINARY_DIR}/_artifacts/constfold_${test_name}")
+        file(MAKE_DIRECTORY ${art_dir})
+        configure_file(${GOLDEN} ${art_dir}/golden.il COPYONLY)
+        configure_file(${OUT_FILE} ${art_dir}/out.il COPYONLY)
+        file(WRITE ${art_dir}/diff.txt "${diff_out}")
+        message(FATAL_ERROR "IL mismatch for constfold_${test_name}:\n${diff_out}")
+    endif ()
 endif ()
 if (NOT DEFINED SKIP_RUNTIME)
     execute_process(

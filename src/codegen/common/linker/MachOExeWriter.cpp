@@ -284,11 +284,13 @@ bool writeMachOExe(const std::string &path,
     // __DWARF segment (non-alloc debug sections, placed before __LINKEDIT).
     const size_t dwarfFileOff = dataFileOff + dataFileSize;
     size_t dwarfTotalSize = 0;
+
     struct DwarfSecInfo
     {
         size_t layoutIdx;
         size_t offset; // Offset within __DWARF segment.
     };
+
     std::vector<DwarfSecInfo> dwarfSecInfos;
     if (hasDwarf)
     {
@@ -516,12 +518,12 @@ bool writeMachOExe(const std::string &path,
         writeLE32(file, LC_SEGMENT_64);
         writeLE32(file, 72 + debugSecCount * 80);
         writeStr(file, "__DWARF", 16);
-        writeLE64(file, 0);             // vmaddr: no VM mapping
-        writeLE64(file, 0);             // vmsize: no VM mapping
+        writeLE64(file, 0); // vmaddr: no VM mapping
+        writeLE64(file, 0); // vmsize: no VM mapping
         writeLE64(file, dwarfFileOff);
         writeLE64(file, dwarfFileSize);
-        writeLE32(file, 0);             // maxprot: no permissions
-        writeLE32(file, 0);             // initprot: no permissions
+        writeLE32(file, 0); // maxprot: no permissions
+        writeLE32(file, 0); // initprot: no permissions
         writeLE32(file, debugSecCount);
         writeLE32(file, 0);
 
@@ -536,16 +538,16 @@ bool writeMachOExe(const std::string &path,
 
             writeStr(file, machoSecName.c_str(), 16);
             writeStr(file, "__DWARF", 16);
-            writeLE64(file, 0);         // addr: no VM mapping
+            writeLE64(file, 0); // addr: no VM mapping
             writeLE64(file, sec.data.size());
             writeLE32(file, static_cast<uint32_t>(dwarfFileOff + dsi.offset));
-            writeLE32(file, 0);         // align
+            writeLE32(file, 0); // align
             writeLE32(file, 0);
-            writeLE32(file, 0);         // reloff, nreloc
+            writeLE32(file, 0);           // reloff, nreloc
             writeLE32(file, 0x02000000u); // S_ATTR_DEBUG
             writeLE32(file, 0);
             writeLE32(file, 0);
-            writeLE32(file, 0);         // reserved
+            writeLE32(file, 0); // reserved
         }
     }
 

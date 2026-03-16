@@ -1,0 +1,33 @@
+module bench;
+
+func doubleVal(x: Integer) -> Integer {
+    return x + x;
+}
+
+func square(x: Integer) -> Integer {
+    return x * x;
+}
+
+func add3(a: Integer, b: Integer, c: Integer) -> Integer {
+    return a + b + c;
+}
+
+func inc(x: Integer) -> Integer {
+    return x + 1;
+}
+
+func combine(x: Integer) -> Integer {
+    var d: Integer = doubleVal(x);
+    var s: Integer = square(x);
+    var i: Integer = inc(x);
+    return add3(d, s, i);
+}
+
+func start() {
+    var sum: Integer = 0;
+    for i in 0..50000000 {
+        var r: Integer = combine(i);
+        sum = (sum + r) & 268435455;
+    }
+    Viper.Environment.EndProgram(sum);
+}

@@ -27,9 +27,9 @@
 
 #pragma once
 
+#include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/common/objfile/CodeSection.hpp"
-#include "codegen/aarch64/MachineIR.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -37,7 +37,10 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen { class DebugLineTable; }
+namespace viper::codegen
+{
+class DebugLineTable;
+}
 
 namespace viper::codegen::aarch64::binenc
 {
@@ -56,10 +59,13 @@ using viper::codegen::DebugLineTable;
 /// symbols generate Relocation entries.
 class A64BinaryEncoder
 {
-public:
+  public:
     /// Set the debug line table for recording address→line mappings.
     /// @param table Pointer to the DebugLineTable (null disables recording).
-    void setDebugLineTable(DebugLineTable *table) { debugLines_ = table; }
+    void setDebugLineTable(DebugLineTable *table)
+    {
+        debugLines_ = table;
+    }
 
     /// Encode a complete MIR function into the text CodeSection.
     ///
@@ -72,7 +78,7 @@ public:
                         objfile::CodeSection &rodata,
                         ABIFormat abi);
 
-private:
+  private:
     /// Encode a single MIR instruction.
     void encodeInstruction(const MInstr &mi, objfile::CodeSection &cs);
 
@@ -99,17 +105,24 @@ private:
     void encodeAddSp(int64_t bytes, objfile::CodeSection &cs);
 
     /// Emit a large-offset load/store sequence using scratch X9.
-    void encodeLargeOffsetLdSt(uint32_t rt, uint32_t base, int64_t offset,
-                               bool isLoad, bool isFPR, objfile::CodeSection &cs);
+    void encodeLargeOffsetLdSt(uint32_t rt,
+                               uint32_t base,
+                               int64_t offset,
+                               bool isLoad,
+                               bool isFPR,
+                               objfile::CodeSection &cs);
 
     /// Emit a single 32-bit instruction word.
-    void emit32(uint32_t word, objfile::CodeSection &cs) { cs.emit32LE(word); }
+    void emit32(uint32_t word, objfile::CodeSection &cs)
+    {
+        cs.emit32LE(word);
+    }
 
     // === Internal branch resolution ===
 
     struct PendingBranch
     {
-        size_t offset;     ///< Byte offset in CodeSection of the instruction.
+        size_t offset;      ///< Byte offset in CodeSection of the instruction.
         std::string target; ///< Target label name.
         MOpcode kind;       ///< Branch type (Br/BCond/Cbz/Cbnz/Bl).
     };

@@ -19,9 +19,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "codegen/common/linker/SymbolResolver.hpp"
 #include "codegen/common/linker/LinkTypes.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
+#include "codegen/common/linker/SymbolResolver.hpp"
 
 #include <cstdlib>
 #include <iostream>

@@ -176,7 +176,10 @@ class SemanticAnalyzer
 
     /// @brief Access the OOP class/interface index (for IDE tooling queries).
     /// @return Const reference to the OopIndex populated during analysis.
-    const OopIndex &oopIndex() const noexcept { return oopIndex_; }
+    const OopIndex &oopIndex() const noexcept
+    {
+        return oopIndex_;
+    }
 
   private:
     friend class sem::ControlCheckContext;

@@ -9,7 +9,8 @@ set(_objfile_tests
         code_section
         elf_writer
         macho_writer
-        debug_line)
+        debug_line
+        pe_writer)
 
 foreach (_case IN LISTS _objfile_tests)
     set(_target test_objfile_${_case})
@@ -22,5 +23,5 @@ foreach (_case IN LISTS _objfile_tests)
     endif ()
     target_link_libraries(${_target} PRIVATE viper_testing viper_codegen_common)
     target_include_directories(${_target} PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    add_test(NAME ${_target} COMMAND ${_target})
+    viper_add_ctest(${_target} $<TARGET_FILE:${_target}>)
 endforeach ()

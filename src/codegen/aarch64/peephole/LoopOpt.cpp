@@ -376,4 +376,346 @@ std::size_t hoistLoopConstants(MFunction &fn)
     return hoisted;
 }
 
+std::size_t eliminateLoopPhiSpills(MFunction &fn)
+{
+    if (fn.blocks.size() < 2)
+        return 0;
+
+    // Build block-name -> block-index map.
+    std::unordered_map<std::string, std::size_t> nameToIdx;
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
+        nameToIdx[fn.blocks[i].name] = i;
+
+    // Helper: get branch target label from an instruction.
+    auto getBranchTarget = [](const MInstr &mi) -> std::string
+    {
+        if (mi.opc == MOpcode::Br && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
+            return mi.ops[0].label;
+        if (mi.opc == MOpcode::BCond && mi.ops.size() >= 2 &&
+            mi.ops[1].kind == MOperand::Kind::Label)
+            return mi.ops[1].label;
+        if ((mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz) && mi.ops.size() >= 2 &&
+            mi.ops[1].kind == MOperand::Kind::Label)
+            return mi.ops[1].label;
+        return {};
+    };
+
+    // Helper: check if instruction is a branch or terminator.
+    auto isTerminator = [](MOpcode opc) -> bool
+    {
+        return opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Cbz ||
+               opc == MOpcode::Cbnz || opc == MOpcode::Ret;
+    };
+
+    // Find back-edges: block i branches to block j where j <= i.
+    struct BackEdge
+    {
+        std::size_t latchIdx;
+        std::size_t headerIdx;
+    };
+
+    std::vector<BackEdge> backEdges;
+
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
+    {
+        for (const auto &mi : fn.blocks[i].instrs)
+        {
+            std::string target = getBranchTarget(mi);
+            if (target.empty())
+                continue;
+            auto it = nameToIdx.find(target);
+            if (it != nameToIdx.end() && it->second <= i)
+                backEdges.push_back({i, it->second});
+        }
+    }
+
+    if (backEdges.empty())
+        return 0;
+
+    std::size_t eliminated = 0;
+
+    // Process each back-edge. We process at most one per pass to avoid
+    // invalidating indices after block insertion.
+    for (const auto &edge : backEdges)
+    {
+        auto &header = fn.blocks[edge.headerIdx];
+        auto &latch = fn.blocks[edge.latchIdx];
+
+        // Step 1: Identify phi loads at the start of the header.
+        // These are LdrRegFpImm instructions at the very beginning.
+        struct PhiLoad
+        {
+            std::size_t instrIdx;
+            int64_t fpOffset;
+            MOperand dstReg; // Physical register loaded into.
+        };
+
+        std::vector<PhiLoad> phiLoads;
+
+        for (std::size_t i = 0; i < header.instrs.size(); ++i)
+        {
+            const auto &mi = header.instrs[i];
+            if (mi.opc != MOpcode::LdrRegFpImm)
+                break; // Phi loads must be at the very start.
+            if (mi.ops.size() < 2 || !isPhysReg(mi.ops[0]) || mi.ops[1].kind != MOperand::Kind::Imm)
+                break;
+            phiLoads.push_back({i, mi.ops[1].imm, mi.ops[0]});
+        }
+
+        // Require at least 2 consecutive phi loads. Single-variable loops
+        // often use register movs for phi transfer (from single-predecessor
+        // optimization), making header splitting unsafe.
+        if (phiLoads.size() < 2)
+            continue;
+
+        // Step 2: Find matching phi stores in the latch block.
+        // These are StrRegFpImm instructions that store to the same offsets
+        // as the header's phi loads. They may not be strictly at the end
+        // (other instructions like cmp can be interspersed).
+        struct PhiStore
+        {
+            std::size_t instrIdx;
+            int64_t fpOffset;
+            MOperand srcReg; // Physical register stored from.
+        };
+
+        // Collect phi load offsets for matching.
+        std::unordered_set<int64_t> phiLoadOffsets;
+        for (const auto &pl : phiLoads)
+            phiLoadOffsets.insert(pl.fpOffset);
+
+        // Scan the entire latch block for stores to phi slot offsets.
+        std::vector<PhiStore> phiStores;
+        for (std::size_t i = 0; i < latch.instrs.size(); ++i)
+        {
+            const auto &mi = latch.instrs[i];
+            if (mi.opc == MOpcode::StrRegFpImm && mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
+                mi.ops[1].kind == MOperand::Kind::Imm && phiLoadOffsets.count(mi.ops[1].imm))
+            {
+                phiStores.push_back({i, mi.ops[1].imm, mi.ops[0]});
+            }
+        }
+
+        if (phiStores.empty())
+            continue;
+
+        // Step 3: Match phi loads with phi stores by FP offset.
+        struct PhiPair
+        {
+            PhiLoad load;
+            PhiStore store;
+        };
+
+        std::vector<PhiPair> pairs;
+
+        for (const auto &load : phiLoads)
+        {
+            for (const auto &store : phiStores)
+            {
+                if (load.fpOffset == store.fpOffset)
+                {
+                    pairs.push_back({load, store});
+                    break;
+                }
+            }
+        }
+
+        if (pairs.empty())
+            continue;
+
+        // Safety: require a 1:1 match between phi loads and ALL phi-like stores.
+        if (pairs.size() != phiLoads.size())
+            continue;
+
+        // Count ALL StrRegFpImm stores in the block (not just those matching
+        // phi load offsets). If there are stores to FP offsets that DON'T have
+        // a matching phi load, some loop-carried values are transferred via
+        // different mechanisms (register movs, etc.) and splitting the header
+        // would break those transfers.
+        {
+            std::unordered_set<int64_t> matchedOffsets;
+            for (const auto &p : pairs)
+                matchedOffsets.insert(p.load.fpOffset);
+
+            // Collect ALL unique FP store offsets in the latch block.
+            std::unordered_set<int64_t> allStoreOffsets;
+            for (const auto &mi : latch.instrs)
+            {
+                if ((mi.opc == MOpcode::StrRegFpImm || mi.opc == MOpcode::PhiStoreGPR) &&
+                    mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Imm)
+                {
+                    allStoreOffsets.insert(mi.ops[1].imm);
+                }
+            }
+
+            // Check that EVERY phi-slot store is matched by a phi load.
+            // Offsets that are stored but not loaded indicate loop-carried
+            // values transferred via register moves, not stack loads.
+            bool hasUnmatchedStores = false;
+            for (int64_t off : allStoreOffsets)
+            {
+                // Skip stores to offsets that are NOT phi slots (e.g., exit-path values).
+                // Only flag stores that correspond to a phi slot used at block entry.
+                // We detect phi slots by checking if the offset was stored FROM the entry
+                // block as well. But since we can't easily check that, use a simpler
+                // heuristic: only flag offsets that are loaded at the header start
+                // (within the first few instructions, not just the phi loads).
+                // Actually, just check: is this offset loaded ANYWHERE in the header block?
+                bool loadedInHeader = false;
+                for (const auto &hmi : header.instrs)
+                {
+                    if (hmi.opc == MOpcode::LdrRegFpImm && hmi.ops.size() >= 2 &&
+                        hmi.ops[1].kind == MOperand::Kind::Imm && hmi.ops[1].imm == off)
+                    {
+                        loadedInHeader = true;
+                        break;
+                    }
+                }
+                if (loadedInHeader && !matchedOffsets.count(off))
+                {
+                    hasUnmatchedStores = true;
+                    break;
+                }
+            }
+            if (hasUnmatchedStores)
+                continue;
+        }
+
+        // Step 4: Verify the phi slot offsets are NOT loaded anywhere else in the
+        // function besides the header. If the exit block loads from the same offset,
+        // we must keep the store.
+        std::unordered_set<int64_t> phiOffsets;
+        for (const auto &p : pairs)
+            phiOffsets.insert(p.load.fpOffset);
+
+        bool safeToEliminate = true;
+        for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi)
+        {
+            if (bi == edge.headerIdx)
+                continue; // Skip header (its loads are the ones we're eliminating).
+            for (const auto &mi : fn.blocks[bi].instrs)
+            {
+                if (mi.opc == MOpcode::LdrRegFpImm && mi.ops.size() >= 2 &&
+                    mi.ops[1].kind == MOperand::Kind::Imm && phiOffsets.count(mi.ops[1].imm))
+                {
+                    safeToEliminate = false;
+                    break;
+                }
+                // Also check LDP loads.
+                if (mi.opc == MOpcode::LdpRegFpImm && mi.ops.size() >= 3 &&
+                    mi.ops[2].kind == MOperand::Kind::Imm)
+                {
+                    int64_t off1 = mi.ops[2].imm;
+                    int64_t off2 = off1 + 8;
+                    if (phiOffsets.count(off1) || phiOffsets.count(off2))
+                    {
+                        safeToEliminate = false;
+                        break;
+                    }
+                }
+            }
+            if (!safeToEliminate)
+                break;
+        }
+
+        if (!safeToEliminate)
+            continue;
+
+        // Step 5: Split the header block. Create a new body block that contains
+        // everything after the phi loads. The back-edge will target this body block.
+        std::string bodyName = header.name + "_body";
+        std::string headerName = header.name;
+
+        // Build the body block with instructions after the phi loads.
+        MBasicBlock bodyBlock;
+        bodyBlock.name = bodyName;
+        std::size_t firstNonPhiIdx = phiLoads.back().instrIdx + 1;
+        bodyBlock.instrs.assign(header.instrs.begin() + static_cast<std::ptrdiff_t>(firstNonPhiIdx),
+                                header.instrs.end());
+
+        // Trim the header to just the phi loads + unconditional branch to body.
+        header.instrs.resize(firstNonPhiIdx);
+        header.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(bodyName)}});
+
+        // Step 6: The back-edge and phi stores are now in the BODY block
+        // (they were moved from the header during the split). Scan the entire
+        // body block for stores to phi slot offsets.
+        std::vector<PhiStore> bodyPhiStores;
+        for (std::size_t i = 0; i < bodyBlock.instrs.size(); ++i)
+        {
+            const auto &mi = bodyBlock.instrs[i];
+            if (mi.opc == MOpcode::StrRegFpImm && mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
+                mi.ops[1].kind == MOperand::Kind::Imm && phiLoadOffsets.count(mi.ops[1].imm))
+            {
+                bodyPhiStores.push_back({i, mi.ops[1].imm, mi.ops[0]});
+            }
+        }
+
+        // Re-match pairs using body stores.
+        std::unordered_set<std::size_t> storeIndicesToRemove;
+        std::vector<MInstr> movs;
+
+        for (const auto &load : phiLoads)
+        {
+            for (const auto &store : bodyPhiStores)
+            {
+                if (load.fpOffset == store.fpOffset)
+                {
+                    storeIndicesToRemove.insert(store.instrIdx);
+                    if (store.srcReg.reg.idOrPhys != load.dstReg.reg.idOrPhys)
+                    {
+                        movs.push_back(MInstr{MOpcode::MovRR, {load.dstReg, store.srcReg}});
+                    }
+                    ++eliminated;
+                    break;
+                }
+            }
+        }
+
+        // Remove phi stores from body block.
+        {
+            std::vector<MInstr> newInstrs;
+            newInstrs.reserve(bodyBlock.instrs.size());
+            for (std::size_t i = 0; i < bodyBlock.instrs.size(); ++i)
+            {
+                if (storeIndicesToRemove.count(i))
+                    continue;
+                newInstrs.push_back(std::move(bodyBlock.instrs[i]));
+            }
+            bodyBlock.instrs = std::move(newInstrs);
+        }
+
+        // Redirect back-edge branch targets from header to body (self-loop fix).
+        for (auto &mi : bodyBlock.instrs)
+        {
+            for (auto &op : mi.ops)
+            {
+                if (op.kind == MOperand::Kind::Label && op.label == headerName)
+                    op.label = bodyName;
+            }
+        }
+
+        // Insert movs before the last terminator in the body block.
+        if (!movs.empty())
+        {
+            std::size_t insertPos = bodyBlock.instrs.size();
+            while (insertPos > 0 && isTerminator(bodyBlock.instrs[insertPos - 1].opc))
+                --insertPos;
+            bodyBlock.instrs.insert(bodyBlock.instrs.begin() +
+                                        static_cast<std::ptrdiff_t>(insertPos),
+                                    movs.begin(),
+                                    movs.end());
+        }
+
+        // Step 7: Insert body block immediately after header.
+        fn.blocks.insert(fn.blocks.begin() + static_cast<std::ptrdiff_t>(edge.headerIdx) + 1,
+                         std::move(bodyBlock));
+
+        // Only process one back-edge per pass (indices are invalidated).
+        break;
+    }
+
+    return eliminated;
+}
+
 } // namespace viper::codegen::aarch64::peephole

@@ -39,8 +39,8 @@
 #include "rt_format.h"
 #include "rt_int_format.h"
 #include "rt_internal.h"
-#include "rt_sb_bridge.h"
 #include "rt_object.h"
+#include "rt_sb_bridge.h"
 #include "rt_string.h"
 
 #include <assert.h>

@@ -29,18 +29,19 @@ extern "C"
 {
 #endif
 
-/// TLS status/error codes.
-typedef enum {
-    RT_TLS_OK                  =  0,
-    RT_TLS_ERROR               = -1,
-    RT_TLS_ERROR_SOCKET        = -2,
-    RT_TLS_ERROR_HANDSHAKE     = -3,
-    RT_TLS_ERROR_CERTIFICATE   = -4,
-    RT_TLS_ERROR_CLOSED        = -5,
-    RT_TLS_ERROR_TIMEOUT       = -6,
-    RT_TLS_ERROR_MEMORY        = -7,
-    RT_TLS_ERROR_INVALID_ARG   = -8,
-} rt_tls_status_t;
+    /// TLS status/error codes.
+    typedef enum
+    {
+        RT_TLS_OK = 0,
+        RT_TLS_ERROR = -1,
+        RT_TLS_ERROR_SOCKET = -2,
+        RT_TLS_ERROR_HANDSHAKE = -3,
+        RT_TLS_ERROR_CERTIFICATE = -4,
+        RT_TLS_ERROR_CLOSED = -5,
+        RT_TLS_ERROR_TIMEOUT = -6,
+        RT_TLS_ERROR_MEMORY = -7,
+        RT_TLS_ERROR_INVALID_ARG = -8,
+    } rt_tls_status_t;
 
     /// @brief Opaque TLS session handle.
     typedef struct rt_tls_session rt_tls_session_t;

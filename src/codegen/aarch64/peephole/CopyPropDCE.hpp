@@ -48,4 +48,9 @@ std::size_t removeDeadFlagSetters(std::vector<MInstr> &instrs, PeepholeStats &st
 ///        moved to another register and the original destination is dead.
 std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &stats);
 
+/// @brief Remove stores to FP offsets that are never loaded anywhere in the function.
+/// Cross-block analysis: collects all loaded FP offsets, then removes stores to
+/// offsets not in that set.
+std::size_t eliminateDeadFpStoresCrossBlock(MFunction &fn, PeepholeStats &stats);
+
 } // namespace viper::codegen::aarch64::peephole

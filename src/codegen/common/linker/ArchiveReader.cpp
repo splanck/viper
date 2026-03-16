@@ -107,8 +107,9 @@ static std::string parseName(const uint8_t *header, const std::string &longNames
 /// Parse a GNU-style symbol table ("/" member).
 /// Format: big-endian 32-bit count, then count big-endian 32-bit offsets,
 /// then count NUL-terminated symbol names.
-static void parseGnuSymbolTable(const uint8_t *data, size_t size,
-                                 std::vector<std::pair<std::string, size_t>> &symbols)
+static void parseGnuSymbolTable(const uint8_t *data,
+                                size_t size,
+                                std::vector<std::pair<std::string, size_t>> &symbols)
 {
     if (size < 4)
         return;
@@ -135,8 +136,9 @@ static void parseGnuSymbolTable(const uint8_t *data, size_t size,
 /// Parse a BSD-style symbol table ("__.SYMDEF" or "__.SYMDEF SORTED").
 /// Format: 4-byte ranlib count (byte size of ranlib array), then ranlibs (8B each:
 /// string offset + member offset), then 4-byte string size, then string pool.
-static void parseBsdSymbolTable(const uint8_t *data, size_t size,
-                                 std::vector<std::pair<std::string, size_t>> &symbols)
+static void parseBsdSymbolTable(const uint8_t *data,
+                                size_t size,
+                                std::vector<std::pair<std::string, size_t>> &symbols)
 {
     if (size < 4)
         return;
@@ -197,7 +199,7 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err)
     }
 
     // First pass: find special members (symbol table, long name string table).
-    std::string longNames; // GNU "//" long name string table.
+    std::string longNames;                                  // GNU "//" long name string table.
     std::vector<std::pair<std::string, size_t>> rawSymbols; // (symbol name, file offset of member).
 
     // Track member headers and their file offsets for symbol index mapping.
@@ -210,6 +212,7 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err)
         size_t bsdNameLen; // BSD "#1/N" name length (0 if not BSD long name).
         bool isSpecial;    // true for "/", "//", "__.SYMDEF"
     };
+
     std::vector<RawMember> rawMembers;
 
     size_t pos = kArMagicLen;
@@ -253,8 +256,7 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err)
         if (nameField.size() >= 3 && nameField[0] == '#' && nameField[1] == '1' &&
             nameField[2] == '/')
         {
-            for (size_t i = 3; i < nameField.size() && nameField[i] >= '0' &&
-                                   nameField[i] <= '9';
+            for (size_t i = 3; i < nameField.size() && nameField[i] >= '0' && nameField[i] <= '9';
                  ++i)
                 bsdNameLen = bsdNameLen * 10 + (nameField[i] - '0');
             if (bsdNameLen <= memberSize && dataStart + bsdNameLen <= fileSize)
@@ -353,9 +355,9 @@ std::vector<uint8_t> extractMember(const Archive &ar, const ArchiveMember &membe
 {
     if (member.dataOffset + member.dataSize > ar.data.size())
         return {};
-    return std::vector<uint8_t>(ar.data.begin() + static_cast<std::ptrdiff_t>(member.dataOffset),
-                                 ar.data.begin() +
-                                     static_cast<std::ptrdiff_t>(member.dataOffset + member.dataSize));
+    return std::vector<uint8_t>(
+        ar.data.begin() + static_cast<std::ptrdiff_t>(member.dataOffset),
+        ar.data.begin() + static_cast<std::ptrdiff_t>(member.dataOffset + member.dataSize));
 }
 
 } // namespace viper::codegen::linker

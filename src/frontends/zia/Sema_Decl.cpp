@@ -741,7 +741,8 @@ void Sema::analyzeEnumDecl(EnumDecl &decl)
         // Check for duplicate variant names
         if (!seenNames.insert(variant.name).second)
         {
-            error(variant.loc, "Duplicate enum variant '" + variant.name + "' in '" + decl.name + "'");
+            error(variant.loc,
+                  "Duplicate enum variant '" + variant.name + "' in '" + decl.name + "'");
             continue;
         }
 

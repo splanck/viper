@@ -27,12 +27,13 @@ extern "C"
 {
 #endif
 
-/// Playlist repeat mode constants.
-typedef enum {
-    RT_REPEAT_NONE = 0, ///< Stop at end of playlist.
-    RT_REPEAT_ALL  = 1, ///< Loop back to first track after last.
-    RT_REPEAT_ONE  = 2, ///< Replay the current track indefinitely.
-} rt_playlist_repeat_t;
+    /// Playlist repeat mode constants.
+    typedef enum
+    {
+        RT_REPEAT_NONE = 0, ///< Stop at end of playlist.
+        RT_REPEAT_ALL = 1,  ///< Loop back to first track after last.
+        RT_REPEAT_ONE = 2,  ///< Replay the current track indefinitely.
+    } rt_playlist_repeat_t;
 
     //=============================================================================
     // Viper.Audio.Playlist

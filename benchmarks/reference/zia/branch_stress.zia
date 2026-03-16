@@ -1,0 +1,20 @@
+module bench;
+
+func start() {
+    var count: Integer = 0;
+    for i in 0..20000000 {
+        if i % 2 == 0 {
+            count = count + 1;
+        }
+        if i % 3 == 0 {
+            count = count + 2;
+        }
+        if i % 5 == 0 {
+            count = count + 3;
+        }
+        if i % 7 == 0 {
+            count = count + 5;
+        }
+    }
+    Viper.Environment.EndProgram(count);
+}

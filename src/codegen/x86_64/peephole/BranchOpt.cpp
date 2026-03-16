@@ -131,8 +131,7 @@ void moveColdBlocks(MFunction &fn, PeepholeStats &stats)
 
         // Check for trap/error indicators in label
         const auto &label = block.label;
-        if (label.find("trap") != std::string::npos ||
-            label.find("error") != std::string::npos ||
+        if (label.find("trap") != std::string::npos || label.find("error") != std::string::npos ||
             label.find("panic") != std::string::npos ||
             label.find("unreachable") != std::string::npos)
         {

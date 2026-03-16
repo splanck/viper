@@ -41,14 +41,20 @@ namespace viper::codegen::objfile
 /// and serializes them into the target object file format.
 class CodeSection
 {
-public:
+  public:
     // === Byte emission ===
 
     /// Current write position (byte offset from start of section).
-    size_t currentOffset() const { return bytes_.size(); }
+    size_t currentOffset() const
+    {
+        return bytes_.size();
+    }
 
     /// Append a single byte.
-    void emit8(uint8_t val) { bytes_.push_back(val); }
+    void emit8(uint8_t val)
+    {
+        bytes_.push_back(val);
+    }
 
     /// Append 2 bytes, little-endian.
     void emit16LE(uint16_t val)
@@ -87,7 +93,10 @@ public:
     }
 
     /// Append N zero bytes (for alignment padding).
-    void emitZeros(size_t count) { bytes_.insert(bytes_.end(), count, 0); }
+    void emitZeros(size_t count)
+    {
+        bytes_.insert(bytes_.end(), count, 0);
+    }
 
     // === Alignment ===
 
@@ -122,10 +131,16 @@ public:
     }
 
     /// Declare an external (undefined) symbol. Returns its index.
-    uint32_t declareExternal(const std::string &name) { return symbols_.findOrAdd(name); }
+    uint32_t declareExternal(const std::string &name)
+    {
+        return symbols_.findOrAdd(name);
+    }
 
     /// Find an existing symbol or declare it as external. Returns its index.
-    uint32_t findOrDeclareSymbol(const std::string &name) { return symbols_.findOrAdd(name); }
+    uint32_t findOrDeclareSymbol(const std::string &name)
+    {
+        return symbols_.findOrAdd(name);
+    }
 
     // === Patch (for resolved internal branches) ===
 
@@ -139,29 +154,50 @@ public:
     }
 
     /// Overwrite 1 byte at the given offset.
-    void patch8(size_t offset, uint8_t val) { bytes_[offset] = val; }
+    void patch8(size_t offset, uint8_t val)
+    {
+        bytes_[offset] = val;
+    }
 
     // === Accessors ===
 
     /// Raw byte buffer.
-    const std::vector<uint8_t> &bytes() const { return bytes_; }
+    const std::vector<uint8_t> &bytes() const
+    {
+        return bytes_;
+    }
 
     /// Mutable byte buffer (for Mach-O addend embedding).
-    std::vector<uint8_t> &mutableBytes() { return bytes_; }
+    std::vector<uint8_t> &mutableBytes()
+    {
+        return bytes_;
+    }
 
     /// All recorded relocations.
-    const std::vector<Relocation> &relocations() const { return relocations_; }
+    const std::vector<Relocation> &relocations() const
+    {
+        return relocations_;
+    }
 
     /// The symbol table.
-    const SymbolTable &symbols() const { return symbols_; }
+    const SymbolTable &symbols() const
+    {
+        return symbols_;
+    }
 
     /// Mutable symbol table.
-    SymbolTable &symbols() { return symbols_; }
+    SymbolTable &symbols()
+    {
+        return symbols_;
+    }
 
     /// Whether this section has any content.
-    bool empty() const { return bytes_.empty(); }
+    bool empty() const
+    {
+        return bytes_.empty();
+    }
 
-private:
+  private:
     std::vector<uint8_t> bytes_;
     std::vector<Relocation> relocations_;
     SymbolTable symbols_;

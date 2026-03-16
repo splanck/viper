@@ -33,7 +33,9 @@ namespace viper::codegen::linker
 /// @param arch    Target architecture.
 /// @param err     Error output.
 /// @return true on success.
-bool writeElfExe(const std::string &path, const LinkLayout &layout, LinkArch arch,
+bool writeElfExe(const std::string &path,
+                 const LinkLayout &layout,
+                 LinkArch arch,
                  std::ostream &err);
 
 } // namespace viper::codegen::linker

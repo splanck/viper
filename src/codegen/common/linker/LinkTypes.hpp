@@ -69,24 +69,24 @@ constexpr LinkArch detectLinkArch()
 /// A chunk of data from one input section within an output section.
 struct InputChunk
 {
-    size_t inputObjIndex;  ///< Index into the linker's object file list.
-    size_t inputSecIndex;  ///< Index into that ObjFile's sections.
-    size_t outputOffset;   ///< Byte offset within the output section.
-    size_t size;           ///< Size in bytes.
+    size_t inputObjIndex; ///< Index into the linker's object file list.
+    size_t inputSecIndex; ///< Index into that ObjFile's sections.
+    size_t outputOffset;  ///< Byte offset within the output section.
+    size_t size;          ///< Size in bytes.
 };
 
 /// A merged output section.
 struct OutputSection
 {
     std::string name;
-    std::vector<uint8_t> data;          ///< Concatenated section bytes.
-    std::vector<InputChunk> chunks;     ///< Provenance info for each chunk.
-    uint64_t virtualAddr = 0;           ///< Virtual address after layout.
-    uint32_t alignment = 1;             ///< Required alignment.
+    std::vector<uint8_t> data;      ///< Concatenated section bytes.
+    std::vector<InputChunk> chunks; ///< Provenance info for each chunk.
+    uint64_t virtualAddr = 0;       ///< Virtual address after layout.
+    uint32_t alignment = 1;         ///< Required alignment.
     bool executable = false;
     bool writable = false;
     bool tls = false;
-    bool alloc = true;              ///< Section is loadable (false for debug sections).
+    bool alloc = true; ///< Section is loadable (false for debug sections).
 };
 
 /// Section classification for merging.
@@ -110,8 +110,10 @@ inline bool isObjCSection(const std::string &name)
 }
 
 /// Classify a section by name and attributes.
-inline SectionClass classifySection(const std::string &name, bool executable, bool writable,
-                                     bool tls)
+inline SectionClass classifySection(const std::string &name,
+                                    bool executable,
+                                    bool writable,
+                                    bool tls)
 {
     if (tls)
     {
@@ -127,7 +129,8 @@ inline SectionClass classifySection(const std::string &name, bool executable, bo
         return SectionClass::Text;
     if (writable)
     {
-        if (name.find("bss") != std::string::npos || name.find("UNINITIALIZED") != std::string::npos)
+        if (name.find("bss") != std::string::npos ||
+            name.find("UNINITIALIZED") != std::string::npos)
             return SectionClass::Bss;
         return SectionClass::Data;
     }
@@ -141,6 +144,7 @@ inline SectionClass classifySection(const std::string &name, bool executable, bo
 struct GlobalSymEntry
 {
     std::string name;
+
     enum Binding : uint8_t
     {
         Undefined,
@@ -148,9 +152,10 @@ struct GlobalSymEntry
         Weak,
         Dynamic, ///< Provided by a shared library.
     } binding = Undefined;
-    size_t objIndex = 0;     ///< Which ObjFile defined this symbol.
-    uint32_t secIndex = 0;   ///< Section within that ObjFile.
-    size_t offset = 0;       ///< Offset within the section.
+
+    size_t objIndex = 0;       ///< Which ObjFile defined this symbol.
+    uint32_t secIndex = 0;     ///< Section within that ObjFile.
+    size_t offset = 0;         ///< Offset within the section.
     uint64_t resolvedAddr = 0; ///< Final virtual address after layout.
 };
 
@@ -180,13 +185,13 @@ struct BindEntry
 /// Complete memory layout for the linked output.
 struct LinkLayout
 {
-    std::vector<OutputSection> sections; ///< Merged output sections.
+    std::vector<OutputSection> sections;                        ///< Merged output sections.
     std::unordered_map<std::string, GlobalSymEntry> globalSyms; ///< All resolved symbols.
-    uint64_t entryAddr = 0; ///< Entry point virtual address.
-    size_t pageSize = 0x1000; ///< Page size (platform-dependent).
-    std::vector<GotEntry> gotEntries; ///< GOT entries for dynamic linking.
+    uint64_t entryAddr = 0;                                     ///< Entry point virtual address.
+    size_t pageSize = 0x1000;                                   ///< Page size (platform-dependent).
+    std::vector<GotEntry> gotEntries;       ///< GOT entries for dynamic linking.
     std::vector<RebaseEntry> rebaseEntries; ///< Locations needing ASLR pointer rebase.
-    std::vector<BindEntry> bindEntries; ///< Non-GOT data pointers needing dyld bind.
+    std::vector<BindEntry> bindEntries;     ///< Non-GOT data pointers needing dyld bind.
 };
 
 } // namespace viper::codegen::linker

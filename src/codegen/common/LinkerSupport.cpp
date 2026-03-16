@@ -172,9 +172,9 @@ bool hasComponent(const LinkContext &ctx, RtComponent c)
 /// @details Shared by both prepareLinkContext (file-based) and
 ///          prepareLinkContextFromSymbols (symbol-set-based).
 static int resolveAndBuildArchives(const std::unordered_set<std::string> &symbols,
-                                    LinkContext &ctx,
-                                    std::ostream &out,
-                                    std::ostream &err)
+                                   LinkContext &ctx,
+                                   std::ostream &out,
+                                   std::ostream &err)
 {
     ctx.requiredComponents = resolveRequiredComponents(symbols);
 
@@ -244,9 +244,9 @@ int prepareLinkContext(const std::string &asmPath,
 }
 
 int prepareLinkContextFromSymbols(const std::unordered_set<std::string> &symbols,
-                                   LinkContext &ctx,
-                                   std::ostream &out,
-                                   std::ostream &err)
+                                  LinkContext &ctx,
+                                  std::ostream &out,
+                                  std::ostream &err)
 {
     return resolveAndBuildArchives(symbols, ctx, out, err);
 }

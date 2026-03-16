@@ -1,0 +1,23 @@
+module bench;
+
+func start() {
+    var sum: Integer = 0;
+    for i in 0..50000000 {
+        var k1: Integer = 10 + 20;
+        var k2: Integer = k1 * 3;
+        var k3: Integer = k2 - 40;
+        var a1: Integer = i + 7;
+        var a2: Integer = a1 * 3;
+        var b1: Integer = i + 7;
+        var b2: Integer = b1 * 3;
+        var c1: Integer = 100 + 200;
+        var c2: Integer = c1 * 2;
+        var c3: Integer = c2 - 100;
+        var d1: Integer = 5 + 10;
+        var d2: Integer = d1 * 5;
+        var d3: Integer = d2 - 5;
+        var live: Integer = a2 + b2 + k3 + c3 + d3;
+        sum = (sum + live) & 268435455;
+    }
+    Viper.Environment.EndProgram(sum);
+}

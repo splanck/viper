@@ -477,6 +477,110 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
     }
 
     // =========================================================================
+    // Phase 0.5: Guard-based overflow elimination
+    // =========================================================================
+    // When a CBr on a signed comparison guards an overflow-checked subtraction,
+    // the overflow check may be provably safe. For example:
+    //   %cmp = scmp_le %n, 1
+    //   cbr %cmp, base, recurse
+    // On the false branch (recurse): n > 1, so n >= 2.
+    // Therefore: isub.ovf %n, 1 → n-1 >= 1 (no overflow)
+    //            isub.ovf %n, 2 → n-2 >= 0 (no overflow)
+    //
+    // We scan each block for CBr instructions on signed comparisons, propagate
+    // range constraints to the target blocks, and demote overflow ops to plain
+    // ops when the range proves safety.
+    for (auto &block : function.blocks)
+    {
+        if (block.instructions.empty())
+            continue;
+
+        const auto &term = block.instructions.back();
+        if (term.op != Opcode::CBr || term.labels.size() != 2 || term.operands.empty())
+            continue;
+
+        // Find the comparison instruction feeding the CBr.
+        const Value &condVal = term.operands[0];
+        if (condVal.kind != Value::Kind::Temp)
+            continue;
+
+        const Instr *cmpInstr = nullptr;
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.result && *instr.result == condVal.id)
+            {
+                cmpInstr = &instr;
+                break;
+            }
+        }
+        if (!cmpInstr || cmpInstr->operands.size() < 2)
+            continue;
+
+        // Only handle scmp_le %x, C where C is a constant.
+        if (cmpInstr->op != Opcode::SCmpLE)
+            continue;
+
+        const Value &cmpLHS = cmpInstr->operands[0]; // %x
+        const Value &cmpRHS = cmpInstr->operands[1]; // C
+        if (cmpRHS.kind != Value::Kind::ConstInt || cmpLHS.kind != Value::Kind::Temp)
+            continue;
+
+        const int64_t threshold = cmpRHS.i64;
+        const unsigned guardedVar = cmpLHS.id;
+
+        // CBr: labels[0] = true branch (cmp is true → x <= C)
+        //      labels[1] = false branch (cmp is false → x > C → x >= C+1)
+        // On the FALSE branch, we know: guardedVar >= threshold + 1
+        const std::string &falseBranch = term.labels[1];
+        const int64_t lowerBound = threshold + 1; // x >= lowerBound on false branch
+
+        // Avoid overflow in threshold + 1
+        if (threshold == std::numeric_limits<int64_t>::max())
+            continue;
+
+        // Find the false-branch target block and demote safe overflow ops.
+        auto tgtIt = blockMap.find(falseBranch);
+        if (tgtIt == blockMap.end())
+            continue;
+        BasicBlock *targetBlock = tgtIt->second;
+
+        for (auto &instr : targetBlock->instructions)
+        {
+            if (instr.op != Opcode::ISubOvf)
+                continue;
+            if (instr.operands.size() < 2)
+                continue;
+
+            const Value &subLHS = instr.operands[0];
+            const Value &subRHS = instr.operands[1];
+
+            // Match: isub.ovf %guardedVar, K where K is a constant
+            if (subLHS.kind != Value::Kind::Temp || subLHS.id != guardedVar)
+                continue;
+            if (subRHS.kind != Value::Kind::ConstInt)
+                continue;
+
+            const int64_t K = subRHS.i64;
+
+            // Check: lowerBound - K >= INT64_MIN (subtraction can't overflow)
+            // Since lowerBound >= C+1 and K is small (typically 1 or 2),
+            // this is almost always safe.
+            if (K >= 0 && lowerBound >= std::numeric_limits<int64_t>::min() + K)
+            {
+                // x >= lowerBound, K >= 0 → x - K >= lowerBound - K >= INT64_MIN → safe
+                instr.op = Opcode::Sub;
+                changed = true;
+            }
+            else if (K < 0 && lowerBound <= std::numeric_limits<int64_t>::max() + K)
+            {
+                // x >= lowerBound, K < 0 → x - K = x + |K| → check x + |K| <= INT64_MAX
+                instr.op = Opcode::Sub;
+                changed = true;
+            }
+        }
+    }
+
+    // =========================================================================
     // Phase 1: Dominance-based redundancy elimination
     // =========================================================================
     // Walk dominator tree with scoped map so siblings do not incorrectly share

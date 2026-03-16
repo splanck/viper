@@ -48,7 +48,9 @@ struct DylibImport
 ///                     Symbols not in the map default to ordinal 1 (libSystem).
 /// @param err          Error output.
 /// @return true on success.
-bool writeMachOExe(const std::string &path, const LinkLayout &layout, LinkArch arch,
+bool writeMachOExe(const std::string &path,
+                   const LinkLayout &layout,
+                   LinkArch arch,
                    const std::vector<DylibImport> &dylibs,
                    const std::unordered_set<std::string> &dynSyms,
                    const std::unordered_map<std::string, uint32_t> &symOrdinals,

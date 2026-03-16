@@ -36,7 +36,10 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen { class DebugLineTable; }
+namespace viper::codegen
+{
+class DebugLineTable;
+}
 
 namespace viper::codegen::x64::binenc
 {
@@ -54,9 +57,12 @@ using viper::codegen::DebugLineTable;
 /// Relocation entries in the CodeSection.
 class X64BinaryEncoder
 {
-public:
+  public:
     /// Set the debug line table for recording address→line mappings.
-    void setDebugLineTable(DebugLineTable *table) { debugLines_ = table; }
+    void setDebugLineTable(DebugLineTable *table)
+    {
+        debugLines_ = table;
+    }
 
     /// Encode a complete MIR function into the text CodeSection.
     ///
@@ -69,7 +75,7 @@ public:
                         objfile::CodeSection &rodata,
                         bool isDarwin);
 
-private:
+  private:
     /// Encode a single MIR instruction.
     void encodeInstruction(const MInstr &instr,
                            objfile::CodeSection &text,
@@ -106,8 +112,10 @@ private:
     void encodeLEA(PhysReg dst, const OpMem &mem, objfile::CodeSection &cs);
 
     /// Encode LEA with RIP-relative label.
-    void encodeLEARip(PhysReg dst, const OpRipLabel &rip,
-                      objfile::CodeSection &text, objfile::CodeSection &rodata,
+    void encodeLEARip(PhysReg dst,
+                      const OpRipLabel &rip,
+                      objfile::CodeSection &text,
+                      objfile::CodeSection &rodata,
                       bool isDarwin);
 
     /// Encode SSE reg-reg instructions.
@@ -123,7 +131,9 @@ private:
     void encodeMOVZX(PhysReg dst, PhysReg src, objfile::CodeSection &cs);
 
     /// Encode JMP/JCC/CALL with label target (direct branch/call).
-    void encodeBranchLabel(MOpcode op, const std::string &label, int condCode,
+    void encodeBranchLabel(MOpcode op,
+                           const std::string &label,
+                           int condCode,
                            objfile::CodeSection &cs);
 
     /// Encode JMP/CALL with register target (indirect).
@@ -146,7 +156,8 @@ private:
     /// @param mandatoryPrefix SSE mandatory prefix (0xF2, 0x66, or 0 for none).
     /// @param opByte1 First opcode byte.
     /// @param opByte2 Second opcode byte (0 if single-byte opcode).
-    void emitWithMemOperand(uint8_t reg3, uint8_t regRex,
+    void emitWithMemOperand(uint8_t reg3,
+                            uint8_t regRex,
                             const OpMem &mem,
                             objfile::CodeSection &cs,
                             bool rexW,
@@ -159,8 +170,8 @@ private:
     /// A branch that needs its rel32 patched after all blocks are emitted.
     struct PendingBranch
     {
-        size_t patchOffset;  ///< Offset in CodeSection of the rel32 placeholder.
-        std::string target;  ///< Target label name.
+        size_t patchOffset; ///< Offset in CodeSection of the rel32 placeholder.
+        std::string target; ///< Target label name.
     };
 
     /// Label name -> byte offset in CodeSection.

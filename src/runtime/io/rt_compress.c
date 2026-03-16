@@ -48,9 +48,10 @@
 //=============================================================================
 
 /// DEFLATE block types (RFC 1951 §3.2.3).
-typedef enum {
-    RT_HUFFMAN_STORED  = 0, ///< No compression (stored block).
-    RT_HUFFMAN_FIXED   = 1, ///< Fixed Huffman codes.
+typedef enum
+{
+    RT_HUFFMAN_STORED = 0,  ///< No compression (stored block).
+    RT_HUFFMAN_FIXED = 1,   ///< Fixed Huffman codes.
     RT_HUFFMAN_DYNAMIC = 2, ///< Dynamic Huffman codes.
 } rt_huffman_type_t;
 

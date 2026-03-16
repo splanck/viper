@@ -186,8 +186,7 @@ int main()
     // --- Symbol management ---
     {
         CodeSection cs;
-        uint32_t main_idx =
-            cs.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+        uint32_t main_idx = cs.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
         cs.emit8(0x55); // push rbp
 
         uint32_t ext_idx = cs.declareExternal("rt_init");

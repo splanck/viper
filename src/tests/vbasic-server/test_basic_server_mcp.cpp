@@ -19,10 +19,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "tests/TestHarness.hpp"
-#include "tools/vbasic-server/BasicCompilerBridge.hpp"
 #include "tools/lsp-common/Json.hpp"
 #include "tools/lsp-common/JsonRpc.hpp"
 #include "tools/lsp-common/McpHandler.hpp"
+#include "tools/vbasic-server/BasicCompilerBridge.hpp"
 
 #include <string>
 
@@ -68,8 +68,7 @@ TEST(BasicMcp, InitializedNotification)
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
 
-    auto resp =
-        handler.handleRequest({"initialized", JsonValue::object({}), JsonValue()});
+    auto resp = handler.handleRequest({"initialized", JsonValue::object({}), JsonValue()});
     EXPECT_TRUE(resp.empty());
 }
 

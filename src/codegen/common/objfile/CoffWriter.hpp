@@ -31,7 +31,7 @@ namespace viper::codegen::objfile
 /// COFF object file writer for Windows (x86_64 and AArch64).
 class CoffWriter : public ObjectFileWriter
 {
-public:
+  public:
     explicit CoffWriter(ObjArch arch) : arch_(arch) {}
 
     bool write(const std::string &path,
@@ -39,7 +39,7 @@ public:
                const CodeSection &rodata,
                std::ostream &err) override;
 
-private:
+  private:
     ObjArch arch_;
 };
 

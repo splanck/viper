@@ -17,6 +17,8 @@ NOTES: Never mention Claude in any commit messages or comments. Never commit cha
 - If interrupted with new requirements, incorporate them immediately without re-asking.
 - On macOS, use POSIX-compatible shell commands. Avoid GNU-specific awk/sed syntax (no `^` anchors for indented content, no GNU awk features). Test commands mentally for BSD compatibility before running.
 
+REPEAT! DO NOT USE AGENTS FOR WRITING CODE!! Agents can be used for investigation and collecting information, BUT DO NOT USE THEM TO WRITE CODE! NO EXCEPTIONS!!
+
 ## Core Principles (Priority Order)
 
 1. **Spec First** — IL spec is normative. Changes require ADR, never silent divergence.

@@ -54,7 +54,10 @@ class ObjectFileWriter
 
     /// Set pre-encoded DWARF .debug_line section data.
     /// If non-empty, concrete writers will emit a .debug_line section.
-    void setDebugLineData(std::vector<uint8_t> data) { debugLineData_ = std::move(data); }
+    void setDebugLineData(std::vector<uint8_t> data)
+    {
+        debugLineData_ = std::move(data);
+    }
 
     /// Write a complete .o file to disk.
     /// @param path   Output file path.

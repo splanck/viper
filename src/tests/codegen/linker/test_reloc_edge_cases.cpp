@@ -135,8 +135,13 @@ int main()
         callerCode[2] = 0x00;
         callerCode[3] = 0x14; // B (unconditional branch)
 
-        auto caller = makeObj("branch.o", ObjFileFormat::ELF, callerCode,
-                              "target_func", /*R_AARCH64_JUMP26=*/282, 0, 0);
+        auto caller = makeObj("branch.o",
+                              ObjFileFormat::ELF,
+                              callerCode,
+                              "target_func",
+                              /*R_AARCH64_JUMP26=*/282,
+                              0,
+                              0);
 
         // Target object: 16 bytes of NOPs starting after caller.
         ObjFile target;
@@ -202,8 +207,8 @@ int main()
         std::vector<uint8_t> code(4, 0);
         code[3] = 0x94; // BL = 0x94000000
 
-        auto caller = makeObj("call.o", ObjFileFormat::ELF, code,
-                              "callee", /*R_AARCH64_CALL26=*/283, 0, 0);
+        auto caller =
+            makeObj("call.o", ObjFileFormat::ELF, code, "callee", /*R_AARCH64_CALL26=*/283, 0, 0);
 
         ObjFile target;
         target.name = "callee.o";
@@ -263,8 +268,14 @@ int main()
         text.name = ".text";
         // ADRP x0, #0 = 0x90000000
         // LDR  x0, [x0] = 0xF9400000
-        text.data = {0x00, 0x00, 0x00, 0x90,  // adrp x0, #0
-                     0x00, 0x00, 0x40, 0xF9}; // ldr  x0, [x0, #0]
+        text.data = {0x00,
+                     0x00,
+                     0x00,
+                     0x90, // adrp x0, #0
+                     0x00,
+                     0x00,
+                     0x40,
+                     0xF9}; // ldr  x0, [x0, #0]
         text.executable = true;
         text.alloc = true;
         text.alignment = 4;
@@ -331,8 +342,8 @@ int main()
     // PLT32 is treated identically to PC32 for static linking.
     {
         std::vector<uint8_t> code(8, 0);
-        auto obj = makeObj("plt_test.o", ObjFileFormat::ELF, code,
-                           "target_fn", /*R_X86_64_PLT32=*/4, 0, -4);
+        auto obj = makeObj(
+            "plt_test.o", ObjFileFormat::ELF, code, "target_fn", /*R_X86_64_PLT32=*/4, 0, -4);
 
         ObjFile target;
         target.name = "target.o";
@@ -452,8 +463,8 @@ int main()
     // --- AArch64 Abs64 (ELF: R_AARCH64_ABS64 = type 257) ---
     {
         std::vector<uint8_t> code(16, 0);
-        auto obj = makeObj("a64_abs64.o", ObjFileFormat::ELF, code,
-                           "data_ptr", /*R_AARCH64_ABS64=*/257, 0, 0);
+        auto obj = makeObj(
+            "a64_abs64.o", ObjFileFormat::ELF, code, "data_ptr", /*R_AARCH64_ABS64=*/257, 0, 0);
 
         std::vector<ObjFile> objs = {obj};
         auto layout = makeLayout(objs, 0x100000);
@@ -503,8 +514,13 @@ int main()
         // Caller: B instruction branching backward.
         std::vector<uint8_t> callerCode(4, 0);
         callerCode[3] = 0x14; // B
-        auto caller = makeObj("back_br.o", ObjFileFormat::ELF, callerCode,
-                              "loop_top", /*R_AARCH64_JUMP26=*/282, 0, 0);
+        auto caller = makeObj("back_br.o",
+                              ObjFileFormat::ELF,
+                              callerCode,
+                              "loop_top",
+                              /*R_AARCH64_JUMP26=*/282,
+                              0,
+                              0);
 
         std::vector<ObjFile> objs = {target, caller};
         auto layout = makeLayout(objs, 0x100000);
@@ -539,8 +555,13 @@ int main()
     // Offset scaled by 4 (32-bit load/store).
     {
         std::vector<uint8_t> code = {0x00, 0x00, 0x40, 0xB9}; // LDR W0, [x0, #0]
-        auto obj = makeObj("ldst32.o", ObjFileFormat::ELF, code,
-                           "word_data", /*R_AARCH64_LDST32_ABS_LO12_NC=*/285, 0, 0);
+        auto obj = makeObj("ldst32.o",
+                           ObjFileFormat::ELF,
+                           code,
+                           "word_data",
+                           /*R_AARCH64_LDST32_ABS_LO12_NC=*/285,
+                           0,
+                           0);
 
         std::vector<ObjFile> objs = {obj};
         auto layout = makeLayout(objs, 0x100000);

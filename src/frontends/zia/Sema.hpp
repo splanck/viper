@@ -978,7 +978,8 @@ class Sema
     /// and parameters that are no longer in scope). Returns the innermost
     /// (most recently defined before cursor) match.
     const ScopedSymbol *findSymbolAtPosition(const std::string &name,
-                                             uint32_t line, uint32_t col) const;
+                                             uint32_t line,
+                                             uint32_t col) const;
 
     /// @brief Get all visible fields and methods of a user-defined type.
     /// @param type An entity, value, or interface type reference.

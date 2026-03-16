@@ -184,8 +184,7 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
         if (enumVal.has_value())
         {
             curLoc = expr.loc;
-            return {Value::constInt(static_cast<long long>(*enumVal)),
-                    Type(Type::Kind::I64)};
+            return {Value::constInt(static_cast<long long>(*enumVal)), Type(Type::Kind::I64)};
         }
     }
 

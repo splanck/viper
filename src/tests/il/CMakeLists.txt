@@ -1077,6 +1077,21 @@ function(viper_add_il_invalid_tests)
             -DFILE=${_VIPER_INVALID_EH_DIR}/resume_label_non_postdom.il
             -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/resume_label_non_postdom.expected
             -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+
+    # Phase III gap-fill: additional verifier negative tests
+    viper_add_ctest(il_verify_negative_call_arity_mismatch
+            ${CMAKE_COMMAND}
+            -DIL_VERIFY=${IL_VERIFY}
+            -DFILE=${_VIPER_NEGATIVE_DIR}/call_arity_mismatch.il
+            -DEXPECT_FILE=${_VIPER_NEGATIVE_DIR}/call_arity_mismatch.expected
+            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+
+    viper_add_ctest(il_verify_negative_missing_entry_block
+            ${CMAKE_COMMAND}
+            -DIL_VERIFY=${IL_VERIFY}
+            -DFILE=${_VIPER_NEGATIVE_DIR}/missing_entry_block.il
+            -DEXPECT_FILE=${_VIPER_NEGATIVE_DIR}/missing_entry_block.expected
+            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
 endfunction()
 
 function(viper_add_il_liveness_tests)
@@ -1097,4 +1112,18 @@ function(viper_add_il_liveness_tests)
     viper_add_test(test_il_switch_i32 ${_VIPER_IL_UNIT_DIR}/test_il_switch_i32.cpp)
     target_link_libraries(test_il_switch_i32 PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_transform il_api)
     viper_add_ctest(test_il_switch_i32 test_il_switch_i32)
+
+    # EH optimization tests (Phase III gap fill)
+    viper_add_test(test_il_ehopt
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_EHOpt.cpp)
+    target_link_libraries(
+            test_il_ehopt PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_ehopt test_il_ehopt)
+
+    # Reassociation tests (Phase III gap fill)
+    viper_add_test(test_il_reassociate
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_Reassociate.cpp)
+    target_link_libraries(
+            test_il_reassociate PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_reassociate test_il_reassociate)
 endfunction()

@@ -22,9 +22,9 @@
 #include "codegen/common/linker/ArchiveReader.hpp"
 #include "codegen/common/linker/BranchTrampoline.hpp"
 #include "codegen/common/linker/DeadStripPass.hpp"
-#include "codegen/common/linker/ICF.hpp"
 #include "codegen/common/linker/DynStubGen.hpp"
 #include "codegen/common/linker/ElfExeWriter.hpp"
+#include "codegen/common/linker/ICF.hpp"
 #include "codegen/common/linker/MachOExeWriter.hpp"
 #include "codegen/common/linker/NameMangling.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
@@ -369,8 +369,8 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                 }
             }
 
-            writeOk = writeMachOExe(opts.exePath, layout, opts.arch, dylibs, dynamicSyms,
-                                    symOrdinals, err);
+            writeOk = writeMachOExe(
+                opts.exePath, layout, opts.arch, dylibs, dynamicSyms, symOrdinals, err);
             break;
         }
         case LinkPlatform::Windows:

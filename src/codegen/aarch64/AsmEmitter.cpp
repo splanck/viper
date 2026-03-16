@@ -257,7 +257,8 @@ void AsmEmitter::emitPrologue(std::ostream &os, const FramePlan &plan) const
     // Save callee-saved GPRs in pairs (shared iteration logic).
     forEachSaveReg(
         plan.saveGPRs,
-        [&](PhysReg r0, PhysReg r1) { os << "  stp " << rn(r0) << ", " << rn(r1) << ", [sp, #-16]!\n"; },
+        [&](PhysReg r0, PhysReg r1)
+        { os << "  stp " << rn(r0) << ", " << rn(r1) << ", [sp, #-16]!\n"; },
         [&](PhysReg r0) { os << "  str " << rn(r0) << ", [sp, #-16]!\n"; });
 
     // Save callee-saved FPRs in pairs.
@@ -302,7 +303,8 @@ void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const
     // Restore GPRs in reverse order.
     forEachRestoreReg(
         plan.saveGPRs,
-        [&](PhysReg r0, PhysReg r1) { os << "  ldp " << rn(r0) << ", " << rn(r1) << ", [sp], #16\n"; },
+        [&](PhysReg r0, PhysReg r1)
+        { os << "  ldp " << rn(r0) << ", " << rn(r1) << ", [sp], #16\n"; },
         [&](PhysReg r0) { os << "  ldr " << rn(r0) << ", [sp], #16\n"; });
 
     if (plan.localFrameSize > 0)
@@ -328,12 +330,35 @@ void AsmEmitter::emitMovRI(std::ostream &os, PhysReg dst, long long imm) const
     }
 }
 
-void AsmEmitter::emitAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "add", dst, lhs, rhs); }
-void AsmEmitter::emitSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "sub", dst, lhs, rhs); }
-void AsmEmitter::emitMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "mul", dst, lhs, rhs); }
-void AsmEmitter::emitSmulhRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "smulh", dst, lhs, rhs); }
-void AsmEmitter::emitSDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "sdiv", dst, lhs, rhs); }
-void AsmEmitter::emitUDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "udiv", dst, lhs, rhs); }
+void AsmEmitter::emitAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3R(os, "add", dst, lhs, rhs);
+}
+
+void AsmEmitter::emitSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3R(os, "sub", dst, lhs, rhs);
+}
+
+void AsmEmitter::emitMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3R(os, "mul", dst, lhs, rhs);
+}
+
+void AsmEmitter::emitSmulhRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3R(os, "smulh", dst, lhs, rhs);
+}
+
+void AsmEmitter::emitSDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3R(os, "sdiv", dst, lhs, rhs);
+}
+
+void AsmEmitter::emitUDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3R(os, "udiv", dst, lhs, rhs);
+}
 
 void AsmEmitter::emitMSubRRRR(
     std::ostream &os, PhysReg dst, PhysReg mul1, PhysReg mul2, PhysReg sub) const
@@ -349,22 +374,75 @@ void AsmEmitter::emitCbz(std::ostream &os, PhysReg reg, const std::string &label
     os << "  cbz " << rn(reg) << ", " << label << "\n";
 }
 
-void AsmEmitter::emitAddRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const { emit2RI(os, "add", dst, lhs, imm); }
-void AsmEmitter::emitSubRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const { emit2RI(os, "sub", dst, lhs, imm); }
+void AsmEmitter::emitAddRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const
+{
+    emit2RI(os, "add", dst, lhs, imm);
+}
 
-void AsmEmitter::emitAndRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "and", dst, lhs, rhs); }
-void AsmEmitter::emitOrrRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "orr", dst, lhs, rhs); }
-void AsmEmitter::emitEorRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "eor", dst, lhs, rhs); }
+void AsmEmitter::emitSubRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const
+{
+    emit2RI(os, "sub", dst, lhs, imm);
+}
 
-void AsmEmitter::emitAndRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const { emit2RI(os, "and", dst, src, imm); }
-void AsmEmitter::emitOrrRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const { emit2RI(os, "orr", dst, src, imm); }
-void AsmEmitter::emitEorRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const { emit2RI(os, "eor", dst, src, imm); }
-void AsmEmitter::emitLslRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const { emit2RI(os, "lsl", dst, lhs, sh); }
-void AsmEmitter::emitLsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const { emit2RI(os, "lsr", dst, lhs, sh); }
-void AsmEmitter::emitAsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const { emit2RI(os, "asr", dst, lhs, sh); }
-void AsmEmitter::emitLslvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "lslv", dst, lhs, rhs); }
-void AsmEmitter::emitLsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "lsrv", dst, lhs, rhs); }
-void AsmEmitter::emitAsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3R(os, "asrv", dst, lhs, rhs); }
+void AsmEmitter::emitAndRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3R(os, "and", dst, lhs, rhs);
+}
+
+void AsmEmitter::emitOrrRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3R(os, "orr", dst, lhs, rhs);
+}
+
+void AsmEmitter::emitEorRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3R(os, "eor", dst, lhs, rhs);
+}
+
+void AsmEmitter::emitAndRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const
+{
+    emit2RI(os, "and", dst, src, imm);
+}
+
+void AsmEmitter::emitOrrRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const
+{
+    emit2RI(os, "orr", dst, src, imm);
+}
+
+void AsmEmitter::emitEorRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const
+{
+    emit2RI(os, "eor", dst, src, imm);
+}
+
+void AsmEmitter::emitLslRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const
+{
+    emit2RI(os, "lsl", dst, lhs, sh);
+}
+
+void AsmEmitter::emitLsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const
+{
+    emit2RI(os, "lsr", dst, lhs, sh);
+}
+
+void AsmEmitter::emitAsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const
+{
+    emit2RI(os, "asr", dst, lhs, sh);
+}
+
+void AsmEmitter::emitLslvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3R(os, "lslv", dst, lhs, rhs);
+}
+
+void AsmEmitter::emitLsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3R(os, "lsrv", dst, lhs, rhs);
+}
+
+void AsmEmitter::emitAsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3R(os, "asrv", dst, lhs, rhs);
+}
 
 void AsmEmitter::emitCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const
 {
@@ -705,10 +783,25 @@ void AsmEmitter::emitFMovGR(std::ostream &os, PhysReg dst, PhysReg src) const
     os << ", " << rn(src) << "\n";
 }
 
-void AsmEmitter::emitFAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3D(os, "fadd", dst, lhs, rhs); }
-void AsmEmitter::emitFSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3D(os, "fsub", dst, lhs, rhs); }
-void AsmEmitter::emitFMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3D(os, "fmul", dst, lhs, rhs); }
-void AsmEmitter::emitFDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const { emit3D(os, "fdiv", dst, lhs, rhs); }
+void AsmEmitter::emitFAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3D(os, "fadd", dst, lhs, rhs);
+}
+
+void AsmEmitter::emitFSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3D(os, "fsub", dst, lhs, rhs);
+}
+
+void AsmEmitter::emitFMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3D(os, "fmul", dst, lhs, rhs);
+}
+
+void AsmEmitter::emitFDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    emit3D(os, "fdiv", dst, lhs, rhs);
+}
 
 void AsmEmitter::emitFCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const
 {

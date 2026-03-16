@@ -29,28 +29,31 @@ extern "C"
 {
 #endif
 
-/// Button style constants.
-typedef enum {
-    RT_BTN_DEFAULT   = 0, ///< Standard button.
-    RT_BTN_PRIMARY   = 1, ///< Primary action (highlighted).
-    RT_BTN_SECONDARY = 2, ///< Secondary action.
-    RT_BTN_DANGER    = 3, ///< Destructive action (red).
-    RT_BTN_TEXT      = 4, ///< Text-only (no background).
-} rt_button_style_t;
+    /// Button style constants.
+    typedef enum
+    {
+        RT_BTN_DEFAULT = 0,   ///< Standard button.
+        RT_BTN_PRIMARY = 1,   ///< Primary action (highlighted).
+        RT_BTN_SECONDARY = 2, ///< Secondary action.
+        RT_BTN_DANGER = 3,    ///< Destructive action (red).
+        RT_BTN_TEXT = 4,      ///< Text-only (no background).
+    } rt_button_style_t;
 
-/// Icon position constants.
-typedef enum {
-    RT_ICON_LEFT  = 0, ///< Icon to the left of label (default).
-    RT_ICON_RIGHT = 1, ///< Icon to the right of label.
-} rt_icon_pos_t;
+    /// Icon position constants.
+    typedef enum
+    {
+        RT_ICON_LEFT = 0,  ///< Icon to the left of label (default).
+        RT_ICON_RIGHT = 1, ///< Icon to the right of label.
+    } rt_icon_pos_t;
 
-/// Image scale mode constants.
-typedef enum {
-    RT_SCALE_NONE    = 0, ///< No scaling (original size).
-    RT_SCALE_FIT     = 1, ///< Scale to fit within bounds (preserve aspect ratio).
-    RT_SCALE_FILL    = 2, ///< Scale to fill bounds (may crop).
-    RT_SCALE_STRETCH = 3, ///< Stretch to fill bounds (distort aspect ratio).
-} rt_image_scale_t;
+    /// Image scale mode constants.
+    typedef enum
+    {
+        RT_SCALE_NONE = 0,    ///< No scaling (original size).
+        RT_SCALE_FIT = 1,     ///< Scale to fit within bounds (preserve aspect ratio).
+        RT_SCALE_FILL = 2,    ///< Scale to fill bounds (may crop).
+        RT_SCALE_STRETCH = 3, ///< Stretch to fill bounds (distort aspect ratio).
+    } rt_image_scale_t;
 
     //=========================================================================
     // GUI Application
@@ -1043,24 +1046,25 @@ typedef enum {
     /// @brief Set the default font size for the application.
     void rt_app_set_font_size(void *app, double size);
 
-//=========================================================================
-// Cursor Styles (Phase 1)
-//=========================================================================
+    //=========================================================================
+    // Cursor Styles (Phase 1)
+    //=========================================================================
 
-/// Cursor type constants.
-typedef enum {
-    RT_CURSOR_ARROW       = 0,
-    RT_CURSOR_IBEAM       = 1,
-    RT_CURSOR_WAIT        = 2,
-    RT_CURSOR_CROSSHAIR   = 3,
-    RT_CURSOR_HAND        = 4,
-    RT_CURSOR_RESIZE_H    = 5,
-    RT_CURSOR_RESIZE_V    = 6,
-    RT_CURSOR_RESIZE_NE   = 7,
-    RT_CURSOR_RESIZE_NW   = 8,
-    RT_CURSOR_MOVE        = 9,
-    RT_CURSOR_NOT_ALLOWED = 10,
-} rt_cursor_type_t;
+    /// Cursor type constants.
+    typedef enum
+    {
+        RT_CURSOR_ARROW = 0,
+        RT_CURSOR_IBEAM = 1,
+        RT_CURSOR_WAIT = 2,
+        RT_CURSOR_CROSSHAIR = 3,
+        RT_CURSOR_HAND = 4,
+        RT_CURSOR_RESIZE_H = 5,
+        RT_CURSOR_RESIZE_V = 6,
+        RT_CURSOR_RESIZE_NE = 7,
+        RT_CURSOR_RESIZE_NW = 8,
+        RT_CURSOR_MOVE = 9,
+        RT_CURSOR_NOT_ALLOWED = 10,
+    } rt_cursor_type_t;
 
     /// @brief Set the global cursor style.
     /// @param type Cursor type constant (RT_CURSOR_*).
@@ -1324,16 +1328,17 @@ typedef enum {
     /// @return MenuItem handle that was clicked, or NULL if none.
     void *rt_contextmenu_get_clicked_item(void *menu);
 
-//=========================================================================
-// StatusBar Widget (Phase 3)
-//=========================================================================
+    //=========================================================================
+    // StatusBar Widget (Phase 3)
+    //=========================================================================
 
-/// StatusBar zone constants.
-typedef enum {
-    RT_STATUSBAR_ZONE_LEFT   = 0,
-    RT_STATUSBAR_ZONE_CENTER = 1,
-    RT_STATUSBAR_ZONE_RIGHT  = 2,
-} rt_statusbar_zone_t;
+    /// StatusBar zone constants.
+    typedef enum
+    {
+        RT_STATUSBAR_ZONE_LEFT = 0,
+        RT_STATUSBAR_ZONE_CENTER = 1,
+        RT_STATUSBAR_ZONE_RIGHT = 2,
+    } rt_statusbar_zone_t;
 
     /// @brief Create a new status bar widget.
     /// @param parent Parent widget.
@@ -1464,23 +1469,25 @@ typedef enum {
     /// @return 1 if clicked, 0 otherwise.
     int64_t rt_statusbaritem_was_clicked(void *item);
 
-//=========================================================================
-// Toolbar Widget (Phase 3)
-//=========================================================================
+    //=========================================================================
+    // Toolbar Widget (Phase 3)
+    //=========================================================================
 
-/// Toolbar style constants.
-typedef enum {
-    RT_TOOLBAR_STYLE_ICON_ONLY = 0,
-    RT_TOOLBAR_STYLE_TEXT_ONLY = 1,
-    RT_TOOLBAR_STYLE_ICON_TEXT = 2,
-} rt_toolbar_style_t;
+    /// Toolbar style constants.
+    typedef enum
+    {
+        RT_TOOLBAR_STYLE_ICON_ONLY = 0,
+        RT_TOOLBAR_STYLE_TEXT_ONLY = 1,
+        RT_TOOLBAR_STYLE_ICON_TEXT = 2,
+    } rt_toolbar_style_t;
 
-/// Toolbar icon size constants.
-typedef enum {
-    RT_TOOLBAR_ICON_SMALL  = 0,
-    RT_TOOLBAR_ICON_MEDIUM = 1,
-    RT_TOOLBAR_ICON_LARGE  = 2,
-} rt_toolbar_icon_size_t;
+    /// Toolbar icon size constants.
+    typedef enum
+    {
+        RT_TOOLBAR_ICON_SMALL = 0,
+        RT_TOOLBAR_ICON_MEDIUM = 1,
+        RT_TOOLBAR_ICON_LARGE = 2,
+    } rt_toolbar_icon_size_t;
 
     /// @brief Create a new horizontal toolbar widget.
     /// @param parent Parent widget.
@@ -1627,24 +1634,25 @@ typedef enum {
     /// @return 1 if clicked, 0 otherwise.
     int64_t rt_toolbaritem_was_clicked(void *item);
 
-//=========================================================================
-// CodeEditor Enhancements - Syntax Highlighting (Phase 4)
-//=========================================================================
+    //=========================================================================
+    // CodeEditor Enhancements - Syntax Highlighting (Phase 4)
+    //=========================================================================
 
-/// Token type constants for syntax highlighting.
-typedef enum {
-    RT_TOKEN_NONE     = 0,
-    RT_TOKEN_KEYWORD  = 1,
-    RT_TOKEN_TYPE     = 2,
-    RT_TOKEN_STRING   = 3,
-    RT_TOKEN_NUMBER   = 4,
-    RT_TOKEN_COMMENT  = 5,
-    RT_TOKEN_OPERATOR = 6,
-    RT_TOKEN_FUNCTION = 7,
-    RT_TOKEN_VARIABLE = 8,
-    RT_TOKEN_CONSTANT = 9,
-    RT_TOKEN_ERROR    = 10,
-} rt_token_type_t;
+    /// Token type constants for syntax highlighting.
+    typedef enum
+    {
+        RT_TOKEN_NONE = 0,
+        RT_TOKEN_KEYWORD = 1,
+        RT_TOKEN_TYPE = 2,
+        RT_TOKEN_STRING = 3,
+        RT_TOKEN_NUMBER = 4,
+        RT_TOKEN_COMMENT = 5,
+        RT_TOKEN_OPERATOR = 6,
+        RT_TOKEN_FUNCTION = 7,
+        RT_TOKEN_VARIABLE = 8,
+        RT_TOKEN_CONSTANT = 9,
+        RT_TOKEN_ERROR = 10,
+    } rt_token_type_t;
 
     /// @brief Set syntax highlighting language.
     /// @param editor CodeEditor handle.
@@ -1897,17 +1905,18 @@ typedef enum {
     /// @param editor CodeEditor handle.
     void rt_codeeditor_select_all(void *editor);
 
-//=========================================================================
-// Phase 5: MessageBox Dialog
-//=========================================================================
+    //=========================================================================
+    // Phase 5: MessageBox Dialog
+    //=========================================================================
 
-/// MessageBox type constants.
-typedef enum {
-    RT_MESSAGEBOX_INFO     = 0,
-    RT_MESSAGEBOX_WARNING  = 1,
-    RT_MESSAGEBOX_ERROR    = 2,
-    RT_MESSAGEBOX_QUESTION = 3,
-} rt_messagebox_type_t;
+    /// MessageBox type constants.
+    typedef enum
+    {
+        RT_MESSAGEBOX_INFO = 0,
+        RT_MESSAGEBOX_WARNING = 1,
+        RT_MESSAGEBOX_ERROR = 2,
+        RT_MESSAGEBOX_QUESTION = 3,
+    } rt_messagebox_type_t;
 
     /// @brief Show an info message box.
     /// @param title Dialog title.
@@ -1972,16 +1981,17 @@ typedef enum {
     /// @param box MessageBox handle.
     void rt_messagebox_destroy(void *box);
 
-//=========================================================================
-// Phase 5: FileDialog
-//=========================================================================
+    //=========================================================================
+    // Phase 5: FileDialog
+    //=========================================================================
 
-/// FileDialog mode constants.
-typedef enum {
-    RT_FILEDIALOG_OPEN   = 0,
-    RT_FILEDIALOG_SAVE   = 1,
-    RT_FILEDIALOG_FOLDER = 2,
-} rt_filedialog_mode_t;
+    /// FileDialog mode constants.
+    typedef enum
+    {
+        RT_FILEDIALOG_OPEN = 0,
+        RT_FILEDIALOG_SAVE = 1,
+        RT_FILEDIALOG_FOLDER = 2,
+    } rt_filedialog_mode_t;
 
     /// @brief Show a file open dialog (quick version).
     /// @param title Dialog title.
@@ -2312,27 +2322,29 @@ typedef enum {
     /// @param widget Widget handle.
     void rt_widget_clear_tooltip(void *widget);
 
-//=========================================================================
-// Phase 7: Toast/Notifications
-//=========================================================================
+    //=========================================================================
+    // Phase 7: Toast/Notifications
+    //=========================================================================
 
-/// Toast type constants.
-typedef enum {
-    RT_TOAST_INFO    = 0,
-    RT_TOAST_SUCCESS = 1,
-    RT_TOAST_WARNING = 2,
-    RT_TOAST_ERROR   = 3,
-} rt_toast_type_t;
+    /// Toast type constants.
+    typedef enum
+    {
+        RT_TOAST_INFO = 0,
+        RT_TOAST_SUCCESS = 1,
+        RT_TOAST_WARNING = 2,
+        RT_TOAST_ERROR = 3,
+    } rt_toast_type_t;
 
-/// Toast position constants.
-typedef enum {
-    RT_TOAST_POSITION_TOP_RIGHT     = 0,
-    RT_TOAST_POSITION_TOP_LEFT      = 1,
-    RT_TOAST_POSITION_BOTTOM_RIGHT  = 2,
-    RT_TOAST_POSITION_BOTTOM_LEFT   = 3,
-    RT_TOAST_POSITION_TOP_CENTER    = 4,
-    RT_TOAST_POSITION_BOTTOM_CENTER = 5,
-} rt_toast_position_t;
+    /// Toast position constants.
+    typedef enum
+    {
+        RT_TOAST_POSITION_TOP_RIGHT = 0,
+        RT_TOAST_POSITION_TOP_LEFT = 1,
+        RT_TOAST_POSITION_BOTTOM_RIGHT = 2,
+        RT_TOAST_POSITION_BOTTOM_LEFT = 3,
+        RT_TOAST_POSITION_TOP_CENTER = 4,
+        RT_TOAST_POSITION_BOTTOM_CENTER = 5,
+    } rt_toast_position_t;
 
     /// @brief Show an info toast notification.
     /// @param message Toast message.
@@ -2488,13 +2500,14 @@ typedef enum {
     /// @param show 1 to show, 0 to hide.
     void rt_minimap_set_show_slider(void *minimap, int64_t show);
 
-/// Minimap marker type constants.
-typedef enum {
-    RT_MINIMAP_MARKER_ERROR   = 0,
-    RT_MINIMAP_MARKER_WARNING = 1,
-    RT_MINIMAP_MARKER_INFO    = 2,
-    RT_MINIMAP_MARKER_SEARCH  = 3,
-} rt_minimap_marker_t;
+    /// Minimap marker type constants.
+    typedef enum
+    {
+        RT_MINIMAP_MARKER_ERROR = 0,
+        RT_MINIMAP_MARKER_WARNING = 1,
+        RT_MINIMAP_MARKER_INFO = 2,
+        RT_MINIMAP_MARKER_SEARCH = 3,
+    } rt_minimap_marker_t;
 
     /// @brief Add a marker to the minimap.
     /// @param minimap Minimap handle.

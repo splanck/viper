@@ -1,0 +1,13 @@
+module bench;
+
+func fib(n: Integer) -> Integer {
+    if n <= 1 {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+func start() {
+    var result: Integer = fib(40);
+    Viper.Environment.EndProgram(result);
+}

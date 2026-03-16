@@ -62,7 +62,10 @@ class LivenessAnalysis
     [[nodiscard]] const std::vector<std::size_t> &predecessors(std::size_t blockIdx) const;
 
     /// @brief Number of blocks in the analyzed function.
-    [[nodiscard]] std::size_t numBlocks() const { return succs_.size(); }
+    [[nodiscard]] std::size_t numBlocks() const
+    {
+        return succs_.size();
+    }
 
   private:
     std::unordered_map<std::string, std::size_t> blockIndex_;

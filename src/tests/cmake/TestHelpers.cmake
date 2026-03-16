@@ -8,11 +8,13 @@ function(_viper_assign_test_label name)
         set_tests_properties(${name} PROPERTIES LABELS basic)
     elseif (name MATCHES "^test_il_" OR name MATCHES "^il_" OR name MATCHES "^test_analysis_" OR name MATCHES "^test_irbuilder_")
         set_tests_properties(${name} PROPERTIES LABELS il)
-    elseif (name MATCHES "^test_vm_" OR name MATCHES "^vm_")
+    elseif (name MATCHES "^test_vm_" OR name MATCHES "^vm_" OR name MATCHES "^test_bytecode_vm$")
         set_tests_properties(${name} PROPERTIES LABELS vm)
+    elseif (name MATCHES "^test_shift_conformance$" OR name MATCHES "^test_subwidth_arith$" OR name MATCHES "^test_crosslayer_arith$" OR name MATCHES "^test_zia_arith_conformance$" OR name MATCHES "^basic_arith_")
+        set_tests_properties(${name} PROPERTIES LABELS conformance)
     elseif (name MATCHES "^test_rt_" OR name MATCHES "^test_runtime_" OR name MATCHES "^runtime_" OR name MATCHES "^test_stringbuilder_" OR name MATCHES "^test_console_" OR name MATCHES "^test_convert_" OR name MATCHES "^test_catalog_")
         set_tests_properties(${name} PROPERTIES LABELS runtime)
-    elseif (name MATCHES "^test_codegen_" OR name MATCHES "^test_emit_" OR name MATCHES "^test_target_" OR name MATCHES "^test_aarch64_" OR name MATCHES "^test_arm64_" OR name MATCHES "^codegen_")
+    elseif (name MATCHES "^test_codegen_" OR name MATCHES "^test_emit_" OR name MATCHES "^test_target_" OR name MATCHES "^test_aarch64_" OR name MATCHES "^test_arm64_" OR name MATCHES "^codegen_" OR name MATCHES "^test_binenc_" OR name MATCHES "^test_linker_" OR name MATCHES "^test_objfile_" OR name MATCHES "^test_x86_")
         set_tests_properties(${name} PROPERTIES LABELS codegen)
     elseif (name MATCHES "^test_oop_" OR name MATCHES "^oop_" OR name MATCHES "^unit_basic_oop" OR name MATCHES "^test_method_" OR name MATCHES "^test_property_")
         set_tests_properties(${name} PROPERTIES LABELS oop)
@@ -32,7 +34,7 @@ function(_viper_assign_test_label name)
         set_tests_properties(${name} PROPERTIES LABELS tui)
     elseif (name MATCHES "^perf_")
         set_tests_properties(${name} PROPERTIES LABELS perf)
-    elseif (name MATCHES "^test_cli_" OR name MATCHES "^NoAssertFalseGuard$" OR name MATCHES "^test_tools_")
+    elseif (name MATCHES "^test_cli_" OR name MATCHES "^NoAssertFalseGuard$" OR name MATCHES "^test_tools_" OR name MATCHES "^test_vbasic_" OR name MATCHES "^test_zia_server_")
         set_tests_properties(${name} PROPERTIES LABELS tools)
     elseif (name MATCHES "^test_support$" OR name MATCHES "^test_run_" OR name MATCHES "^test_expected_" OR name MATCHES "^test_ident_" OR name MATCHES "^test_path_" OR name MATCHES "^test_integer_" OR name MATCHES "^test_window$" OR name MATCHES "^test_pixels$" OR name MATCHES "^test_drawing$" OR name MATCHES "^test_input$")
         set_tests_properties(${name} PROPERTIES LABELS unit)
@@ -105,6 +107,160 @@ function(viper_assert_no_goldens_directories)
                 FATAL_ERROR
                 "Golden directories named 'goldens' are prohibited. Remove or rename:\n  ${_viper_goldens_pretty}")
     endif ()
+endfunction()
+
+# =============================================================================
+# Golden Test Helpers
+# =============================================================================
+# These functions reduce golden test registration from 6-8 lines to 1 line.
+# Each wraps one of the 10 runner cmake scripts.
+
+# _golden_error: BASIC compile error test (check_error.cmake)
+# Reads .stderr file, compiles .bas, verifies stderr matches.
+# Optional: EXPECT_EXIT_ZERO for tests that should compile without error.
+function(_golden_error name dir bas_stem)
+    set(options EXPECT_EXIT_ZERO)
+    cmake_parse_arguments(GE "${options}" "" "" ${ARGN})
+    set(_bas ${dir}/${bas_stem}.bas)
+    set(_stderr ${dir}/${bas_stem}.stderr)
+    file(READ ${_stderr} _expect)
+    string(STRIP "${_expect}" _expect)
+    set(_extra_args "")
+    if (GE_EXPECT_EXIT_ZERO)
+        set(_extra_args -DEXPECT_EXIT_ZERO=TRUE)
+    endif ()
+    viper_add_ctest(${name}
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_bas}
+            "-DEXPECT=${_expect}"
+            ${_extra_args}
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+endfunction()
+
+# _golden_basic_run: BASIC run + stdout comparison (check_basic_run_output.cmake)
+function(_golden_basic_run name dir bas_stem stdout_file)
+    set(options "")
+    set(oneValueArgs CLEANUP_FILE)
+    cmake_parse_arguments(GR "${options}" "${oneValueArgs}" "" ${ARGN})
+    file(READ ${dir}/${stdout_file} _expect)
+    string(STRIP "${_expect}" _expect)
+    set(_extra_args "")
+    if (GR_CLEANUP_FILE)
+        set(_extra_args "-DCLEANUP_FILE=${GR_CLEANUP_FILE}")
+    endif ()
+    viper_add_ctest(${name}
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${dir}/${bas_stem}.bas
+            "-DEXPECT=${_expect}"
+            ${_extra_args}
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+endfunction()
+
+# _golden_basic_run_error: BASIC run + stderr comparison (check_basic_run_error.cmake)
+function(_golden_basic_run_error name dir bas_stem stderr_file)
+    file(READ ${dir}/${stderr_file} _expect)
+    string(STRIP "${_expect}" _expect)
+    viper_add_ctest(${name}
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${dir}/${bas_stem}.bas
+            "-DEXPECT=${_expect}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_basic_run_error.cmake)
+endfunction()
+
+# _golden_il_run: IL run + stdout comparison (check_run_output.cmake)
+function(_golden_il_run name il_file expect_str)
+    viper_add_ctest(${name}
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DIL_FILE=${il_file}
+            "-DEXPECT=${expect_str}"
+            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+endfunction()
+
+# _golden_il_run_file: IL run + stdout from file (check_run_output.cmake)
+function(_golden_il_run_file name il_file expect_file)
+    file(READ ${expect_file} _expect)
+    string(STRIP "${_expect}" _expect)
+    viper_add_ctest(${name}
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DIL_FILE=${il_file}
+            "-DEXPECT=${_expect}"
+            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+endfunction()
+
+# _golden_il_opt: IL optimizer golden test (check_opt.cmake)
+function(_golden_il_opt name il_in_file golden_file)
+    set(oneValueArgs PASSES)
+    cmake_parse_arguments(GO "" "${oneValueArgs}" "" ${ARGN})
+    set(_extra_args "")
+    if (GO_PASSES)
+        set(_extra_args -DPASSES=${GO_PASSES})
+    endif ()
+    viper_add_ctest(${name}
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DIL_FILE=${il_in_file}
+            -DGOLDEN=${golden_file}
+            ${_extra_args}
+            -P ${_VIPER_GOLDEN_DIR}/il_opt/check_opt.cmake)
+endfunction()
+
+# _golden_constfold: IL constant folding golden test (check_constfold.cmake)
+function(_golden_constfold name il_file golden_file)
+    viper_add_ctest(${name}
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DIL_FILE=${il_file}
+            -DGOLDEN=${golden_file}
+            -P ${_VIPER_GOLDEN_DIR}/constfold/check_constfold.cmake)
+endfunction()
+
+# _golden_basic_to_il: BASIC→IL golden test (check_il.cmake)
+function(_golden_basic_to_il name bas_file golden_il_file)
+    viper_add_ctest(${name}
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${bas_file}
+            -DGOLDEN=${golden_il_file}
+            -P ${_VIPER_GOLDEN_DIR}/basic_to_il/check_il.cmake)
+endfunction()
+
+# _golden_vm_trap_loc: IL run expecting trap at specific location (check_vm_trap_loc.cmake)
+function(_golden_vm_trap_loc name il_file expect_str)
+    viper_add_ctest(${name}
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DIL_FILE=${il_file}
+            "-DEXPECT=${expect_str}"
+            -P ${_VIPER_GOLDEN_DIR}/check_vm_trap_loc.cmake)
+endfunction()
+
+# _golden_exit_code: Run program and check exit code (check_run_exit_code.cmake)
+function(_golden_exit_code name)
+    set(oneValueArgs BAS_FILE IL_FILE EXIT_CODE EXPECT)
+    cmake_parse_arguments(GX "" "${oneValueArgs}" "" ${ARGN})
+    set(_args "")
+    if (GX_BAS_FILE)
+        list(APPEND _args -DBAS_FILE=${GX_BAS_FILE})
+    endif ()
+    if (GX_IL_FILE)
+        list(APPEND _args -DIL_FILE=${GX_IL_FILE})
+    endif ()
+    if (GX_EXIT_CODE)
+        list(APPEND _args -DEXPECT_EXIT=${GX_EXIT_CODE})
+    endif ()
+    if (GX_EXPECT)
+        list(APPEND _args "-DEXPECT=${GX_EXPECT}")
+    endif ()
+    viper_add_ctest(${name}
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            ${_args}
+            -P ${_VIPER_GOLDEN_DIR}/check_run_exit_code.cmake)
 endfunction()
 
 viper_assert_no_goldens_directories()

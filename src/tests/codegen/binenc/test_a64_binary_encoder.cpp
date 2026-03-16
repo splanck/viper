@@ -20,10 +20,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/binenc/A64BinaryEncoder.hpp"
 #include "codegen/aarch64/binenc/A64Encoding.hpp"
 #include "codegen/common/objfile/CodeSection.hpp"
-#include "codegen/aarch64/MachineIR.hpp"
 
 #include <cstdlib>
 #include <cstring>
@@ -50,26 +50,40 @@ static void check(bool cond, const char *msg, int line)
 // Helper: read a 32-bit LE word from a byte vector at offset.
 static uint32_t readWord(const std::vector<uint8_t> &bytes, size_t offset)
 {
-    return static_cast<uint32_t>(bytes[offset]) |
-           (static_cast<uint32_t>(bytes[offset + 1]) << 8) |
+    return static_cast<uint32_t>(bytes[offset]) | (static_cast<uint32_t>(bytes[offset + 1]) << 8) |
            (static_cast<uint32_t>(bytes[offset + 2]) << 16) |
            (static_cast<uint32_t>(bytes[offset + 3]) << 24);
 }
 
 // Helper: create a physical GPR register operand.
-static MOperand gpr(PhysReg r) { return MOperand::regOp(r); }
+static MOperand gpr(PhysReg r)
+{
+    return MOperand::regOp(r);
+}
 
 // Helper: create a physical FPR register operand.
-static MOperand fpr(PhysReg r) { return MOperand::regOp(r); }
+static MOperand fpr(PhysReg r)
+{
+    return MOperand::regOp(r);
+}
 
 // Helper: create an immediate operand.
-static MOperand imm(long long val) { return MOperand::immOp(val); }
+static MOperand imm(long long val)
+{
+    return MOperand::immOp(val);
+}
 
 // Helper: create a condition code operand.
-static MOperand cond(const char *c) { return MOperand::condOp(c); }
+static MOperand cond(const char *c)
+{
+    return MOperand::condOp(c);
+}
 
 // Helper: create a label operand.
-static MOperand label(const std::string &name) { return MOperand::labelOp(name); }
+static MOperand label(const std::string &name)
+{
+    return MOperand::labelOp(name);
+}
 
 // Encode a single-block leaf function with given instructions.
 // Returns the word at instruction index `idx` (skipping any prologue).
@@ -183,7 +197,8 @@ static void testSDivRRR()
 static void testMSubRRRR()
 {
     // msub x0, x1, x2, x3 → 0x9B028060
-    MInstr mi{MOpcode::MSubRRRR, {gpr(PhysReg::X0), gpr(PhysReg::X1), gpr(PhysReg::X2), gpr(PhysReg::X3)}};
+    MInstr mi{MOpcode::MSubRRRR,
+              {gpr(PhysReg::X0), gpr(PhysReg::X1), gpr(PhysReg::X2), gpr(PhysReg::X3)}};
     uint32_t word = encodeSingleInstr({mi});
     // template 0x9B008000 | (Rm=2 << 16) | (Ra=3 << 10) | (Rn=1 << 5) | Rd=0
     // = 0x9B008000 | 0x00020000 | 0x00000C00 | 0x00000020 | 0
@@ -228,7 +243,7 @@ static void testLslRI()
     MInstr mi{MOpcode::LslRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(4)}};
     uint32_t word = encodeSingleInstr({mi});
     uint32_t immr = (64 - 4) & 63; // 60
-    uint32_t imms = 63 - 4;         // 59
+    uint32_t imms = 63 - 4;        // 59
     CHECK(word == (0xD3400000u | (immr << 16) | (imms << 10) | (1u << 5) | 0u));
 }
 
@@ -472,7 +487,8 @@ static void testExternalCall()
 
 static void testPrologueEpilogue()
 {
-    // Non-leaf function: should get stp x29,x30,[sp,#-16]! ; mov x29,sp ; ... ; ldp x29,x30,[sp],#16 ; ret
+    // Non-leaf function: should get stp x29,x30,[sp,#-16]! ; mov x29,sp ; ... ; ldp
+    // x29,x30,[sp],#16 ; ret
     MFunction fn;
     fn.name = "nonleaf";
     fn.isLeaf = false; // has calls
@@ -492,11 +508,9 @@ static void testPrologueEpilogue()
     // stp x29, x30, [sp, #-16]! (pre-indexed GPR pair)
     // imm7 = -16/8 = -2 → signed 7-bit → 0x7E
     uint32_t stp = readWord(text.bytes(), 0);
-    uint32_t expected_stp = 0xA9800000u |
-        ((static_cast<uint32_t>(-2) & 0x7F) << 15) |
-        (hwGPR(PhysReg::X30) << 10) |
-        (hwGPR(PhysReg::SP) << 5) |
-        hwGPR(PhysReg::X29);
+    uint32_t expected_stp = 0xA9800000u | ((static_cast<uint32_t>(-2) & 0x7F) << 15) |
+                            (hwGPR(PhysReg::X30) << 10) | (hwGPR(PhysReg::SP) << 5) |
+                            hwGPR(PhysReg::X29);
     CHECK(stp == expected_stp);
 
     // mov x29, sp → add x29, sp, #0
@@ -505,11 +519,9 @@ static void testPrologueEpilogue()
 
     // ldp x29, x30, [sp], #16 (post-indexed)
     uint32_t ldp = readWord(text.bytes(), 8);
-    uint32_t expected_ldp = 0xA8C00000u |
-        ((static_cast<uint32_t>(2) & 0x7F) << 15) |
-        (hwGPR(PhysReg::X30) << 10) |
-        (hwGPR(PhysReg::SP) << 5) |
-        hwGPR(PhysReg::X29);
+    uint32_t expected_ldp = 0xA8C00000u | ((static_cast<uint32_t>(2) & 0x7F) << 15) |
+                            (hwGPR(PhysReg::X30) << 10) | (hwGPR(PhysReg::SP) << 5) |
+                            hwGPR(PhysReg::X29);
     CHECK(ldp == expected_ldp);
 
     // ret
@@ -597,11 +609,9 @@ static void testCalleeSavedPair()
 
     // Third instruction (offset 8) = stp x19, x20, [sp, #-16]! (pre-indexed)
     uint32_t stp = readWord(text.bytes(), 8);
-    uint32_t expected = 0xA9800000u |
-        ((static_cast<uint32_t>(-2) & 0x7F) << 15) |
-        (hwGPR(PhysReg::X20) << 10) |
-        (hwGPR(PhysReg::SP) << 5) |
-        hwGPR(PhysReg::X19);
+    uint32_t expected = 0xA9800000u | ((static_cast<uint32_t>(-2) & 0x7F) << 15) |
+                        (hwGPR(PhysReg::X20) << 10) | (hwGPR(PhysReg::SP) << 5) |
+                        hwGPR(PhysReg::X19);
     CHECK(stp == expected);
 }
 
@@ -659,7 +669,8 @@ static void testLdpStpRegFpImm()
     MInstr stp{MOpcode::StpRegFpImm, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(-16)}};
     uint32_t w2 = encodeSingleInstr({stp});
     // imm7 = -16/8 = -2 → 0x7E
-    CHECK(w2 == (0xA9000000u | ((static_cast<uint32_t>(-2) & 0x7F) << 15) | (1u << 10) | (29u << 5) | 0u));
+    CHECK(w2 == (0xA9000000u | ((static_cast<uint32_t>(-2) & 0x7F) << 15) | (1u << 10) |
+                 (29u << 5) | 0u));
 }
 
 static void testVariableShift()
@@ -711,7 +722,8 @@ static void testAdrpAddPageOff()
     MBasicBlock bb;
     bb.name = "entry";
     bb.instrs.push_back(MInstr{MOpcode::AdrPage, {gpr(PhysReg::X0), label("my_global")}});
-    bb.instrs.push_back(MInstr{MOpcode::AddPageOff, {gpr(PhysReg::X0), gpr(PhysReg::X0), label("my_global")}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::AddPageOff, {gpr(PhysReg::X0), gpr(PhysReg::X0), label("my_global")}});
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
     fn.blocks.push_back(std::move(bb));
 
@@ -728,8 +740,10 @@ static void testAdrpAddPageOff()
     bool hasAdrp = false, hasAdd = false;
     for (const auto &r : text.relocations())
     {
-        if (r.kind == RelocKind::A64AdrpPage21) hasAdrp = true;
-        if (r.kind == RelocKind::A64AddPageOff12) hasAdd = true;
+        if (r.kind == RelocKind::A64AdrpPage21)
+            hasAdrp = true;
+        if (r.kind == RelocKind::A64AddPageOff12)
+            hasAdd = true;
     }
     CHECK(hasAdrp);
     CHECK(hasAdd);
@@ -813,8 +827,8 @@ static void testMovRI_movnPath()
     // useMovn = (2 < 3) = true. src = invChunks, first = 0 (0xFFFF).
     // MOVN X0, #0xFFFF → then check chunks: [1]=1 (!=0xFFFF) → MOVK.
     // 2 instructions total (saved from 3 on MOVZ path).
-    MInstr mi{MOpcode::MovRI, {gpr(PhysReg::X0),
-        imm(static_cast<long long>(0xFFFFFFFF00010000ULL))}};
+    MInstr mi{MOpcode::MovRI,
+              {gpr(PhysReg::X0), imm(static_cast<long long>(0xFFFFFFFF00010000ULL))}};
     CHECK(countWords({mi}) == 2);
 }
 
@@ -1157,8 +1171,8 @@ int main()
             // Must have produced at least 8 bytes (test instr + ret).
             if (text.bytes().size() < 8)
             {
-                std::cerr << "FAIL: opcode " << opcodeName(opc)
-                          << " produced only " << text.bytes().size() << " bytes\n";
+                std::cerr << "FAIL: opcode " << opcodeName(opc) << " produced only "
+                          << text.bytes().size() << " bytes\n";
                 ++gFail;
             }
             else

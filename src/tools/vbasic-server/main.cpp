@@ -17,12 +17,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/vbasic-server/BasicCompilerBridge.hpp"
 #include "tools/lsp-common/Json.hpp"
 #include "tools/lsp-common/JsonRpc.hpp"
 #include "tools/lsp-common/LspHandler.hpp"
 #include "tools/lsp-common/McpHandler.hpp"
 #include "tools/lsp-common/Transport.hpp"
+#include "tools/vbasic-server/BasicCompilerBridge.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -31,12 +31,12 @@
 using namespace viper::server;
 
 static const ServerConfig kBasicConfig{
-    "vbasic-server",  // serverName
-    "0.1.0",          // version
-    "vbasic",         // sourceName
-    "basic",          // toolPrefix
-    ".bas",           // defaultExt
-    "Viper BASIC",    // langLabel
+    "vbasic-server", // serverName
+    "0.1.0",         // version
+    "vbasic",        // sourceName
+    "basic",         // toolPrefix
+    ".bas",          // defaultExt
+    "Viper BASIC",   // langLabel
 };
 
 static void printUsage()
@@ -133,7 +133,8 @@ static int runLspServer(Transport &transport, BasicCompilerBridge &bridge)
             continue;
         }
 
-        std::fprintf(stderr, "[vbasic-server] method=%s id=%s\n",
+        std::fprintf(stderr,
+                     "[vbasic-server] method=%s id=%s\n",
                      req.method.c_str(),
                      req.id.isNull() ? "null" : req.id.toCompactString().c_str());
         std::fflush(stderr);

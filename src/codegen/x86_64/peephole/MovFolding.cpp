@@ -26,9 +26,7 @@
 namespace viper::codegen::x64::peephole
 {
 
-bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs,
-                             std::size_t idx,
-                             PeepholeStats &stats)
+bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
 {
     if (idx + 1 >= instrs.size())
         return false;

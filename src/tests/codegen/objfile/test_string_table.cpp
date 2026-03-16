@@ -53,7 +53,7 @@ int main()
     {
         StringTable st;
         uint32_t off = st.add("hello");
-        CHECK(off == 1); // after the initial NUL
+        CHECK(off == 1);       // after the initial NUL
         CHECK(st.size() == 7); // NUL + "hello" + NUL = 1 + 5 + 1 = 7
         CHECK(st.find("hello") == 1);
 
@@ -70,7 +70,7 @@ int main()
         StringTable st;
         uint32_t off1 = st.add("foo");
         uint32_t off2 = st.add("foo");
-        CHECK(off1 == off2); // same offset
+        CHECK(off1 == off2);   // same offset
         CHECK(st.size() == 5); // NUL + "foo" + NUL = 1 + 3 + 1 = 5
     }
 
@@ -81,9 +81,9 @@ int main()
         uint32_t b = st.add(".rodata");
         uint32_t c = st.add(".symtab");
 
-        CHECK(a == 1);                 // NUL + ".text"
-        CHECK(b == a + 5 + 1);        // after ".text\0"
-        CHECK(c == b + 7 + 1);        // after ".rodata\0"
+        CHECK(a == 1);                     // NUL + ".text"
+        CHECK(b == a + 5 + 1);             // after ".text\0"
+        CHECK(c == b + 7 + 1);             // after ".rodata\0"
         CHECK(st.size() == 1 + 6 + 8 + 8); // NUL + ".text\0" + ".rodata\0" + ".symtab\0"
 
         // Find returns correct offsets
@@ -103,7 +103,7 @@ int main()
     {
         StringTable st;
         uint32_t off = st.add("");
-        CHECK(off == 0); // dedup with the initial empty string
+        CHECK(off == 0);       // dedup with the initial empty string
         CHECK(st.size() == 1); // no growth
     }
 

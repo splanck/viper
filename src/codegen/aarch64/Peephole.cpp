@@ -60,6 +60,8 @@ PeepholeStats runPeephole(MFunction &fn)
     // Pass 0.5: Hoist loop-invariant MovRI out of loop bodies
     stats.loopConstsHoisted = static_cast<int>(ph::hoistLoopConstants(fn));
 
+    // (Pass 0.6 - loop phi spill elimination - runs after Pass 4.8 below)
+
     for (auto &block : fn.blocks)
     {
         auto &instrs = block.instrs;
@@ -364,6 +366,18 @@ PeepholeStats runPeephole(MFunction &fn)
             }
         }
     }
+
+    // Pass 4.85: Cross-block dead FP store elimination.
+    // TODO: This pass needs to run before store-load forwarding (Pass 1.9),
+    // otherwise forwarded loads are invisible and their source stores get
+    // incorrectly removed. Disabled until ordering is fixed.
+    // ph::eliminateDeadFpStoresCrossBlock(fn, stats);
+
+    // Pass 4.9: Eliminate redundant phi-slot spill/reload cycles in loop back-edges.
+    // Must run AFTER Pass 4.8 (cross-block store-load forwarding) because that pass
+    // may convert phi loads to register movs, changing the header's instruction mix.
+    // Running after 4.8 ensures we see the final form of the header instructions.
+    stats.loopConstsHoisted += static_cast<int>(ph::eliminateLoopPhiSpills(fn));
 
     // Pass 5: Branch inversion and branch-to-next removal.
     // This must be done after per-block passes since it looks at adjacent blocks.

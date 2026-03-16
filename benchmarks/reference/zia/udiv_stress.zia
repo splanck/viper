@@ -1,0 +1,20 @@
+module bench;
+
+func start() {
+    var sum: Integer = 0;
+    var i: Integer = 1;
+    while i < 50000001 {
+        var d1: Integer = i / 2;
+        var d2: Integer = i / 4;
+        var d3: Integer = i / 8;
+        var d4: Integer = i / 16;
+        var d5: Integer = i / 32;
+        var d6: Integer = i / 64;
+        var d7: Integer = i / 128;
+        var d8: Integer = i / 256;
+        var s: Integer = d1 + d2 + d3 + d4 + d5 + d6 + d7 + d8;
+        sum = (sum + s) & 268435455;
+        i = i + 1;
+    }
+    Viper.Environment.EndProgram(sum);
+}

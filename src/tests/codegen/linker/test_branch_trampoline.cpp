@@ -21,9 +21,9 @@
 #include "codegen/common/linker/BranchTrampoline.hpp"
 #include "codegen/common/linker/LinkTypes.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
+#include "codegen/common/linker/RelocApplier.hpp"
 #include "codegen/common/linker/RelocConstants.hpp"
 #include "codegen/common/linker/SectionMerger.hpp"
-#include "codegen/common/linker/RelocApplier.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -52,7 +52,8 @@ static uint32_t readLE32(const uint8_t *p)
 }
 
 /// Helper: create a minimal ObjFile with a .text section containing code.
-static ObjFile makeCodeObj(const std::string &name, const std::string &func,
+static ObjFile makeCodeObj(const std::string &name,
+                           const std::string &func,
                            const std::vector<uint8_t> &code,
                            const std::vector<ObjReloc> &relocs = {},
                            const std::vector<ObjSymbol> &extraSyms = {})
@@ -91,7 +92,9 @@ static ObjFile makeCodeObj(const std::string &name, const std::string &func,
 /// Run the merge+trampoline pipeline and return the layout.
 static bool runPipeline(std::vector<ObjFile> &objs,
                         std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
-                        LinkLayout &layout, LinkArch arch, LinkPlatform platform,
+                        LinkLayout &layout,
+                        LinkArch arch,
+                        LinkPlatform platform,
                         std::ostream &err)
 {
     layout.globalSyms = std::move(globalSyms);
@@ -122,9 +125,13 @@ int main()
         std::vector<ObjFile> objs = {obj1, obj2};
         std::unordered_map<std::string, GlobalSymEntry> globalSyms;
         GlobalSymEntry e;
-        e.name = "funcA"; e.binding = GlobalSymEntry::Global; e.objIndex = 0; e.secIndex = 1;
+        e.name = "funcA";
+        e.binding = GlobalSymEntry::Global;
+        e.objIndex = 0;
+        e.secIndex = 1;
         globalSyms["funcA"] = e;
-        e.name = "funcB"; e.objIndex = 1;
+        e.name = "funcB";
+        e.objIndex = 1;
         globalSyms["funcB"] = e;
 
         LinkLayout layout;
@@ -144,7 +151,10 @@ int main()
         std::vector<ObjFile> objs = {obj1};
         std::unordered_map<std::string, GlobalSymEntry> globalSyms;
         GlobalSymEntry e;
-        e.name = "funcA"; e.binding = GlobalSymEntry::Global; e.objIndex = 0; e.secIndex = 1;
+        e.name = "funcA";
+        e.binding = GlobalSymEntry::Global;
+        e.objIndex = 0;
+        e.secIndex = 1;
         globalSyms["funcA"] = e;
 
         LinkLayout layout;
@@ -233,13 +243,23 @@ int main()
         std::unordered_map<std::string, GlobalSymEntry> globalSyms;
         GlobalSymEntry e;
         e.binding = GlobalSymEntry::Global;
-        e.name = "funcB"; e.objIndex = 0; e.secIndex = 1; globalSyms["funcB"] = e;
-        e.name = "__padding"; e.objIndex = 0; e.secIndex = 2; globalSyms["__padding"] = e;
-        e.name = "funcA"; e.objIndex = 1; e.secIndex = 1; globalSyms["funcA"] = e;
+        e.name = "funcB";
+        e.objIndex = 0;
+        e.secIndex = 1;
+        globalSyms["funcB"] = e;
+        e.name = "__padding";
+        e.objIndex = 0;
+        e.secIndex = 2;
+        globalSyms["__padding"] = e;
+        e.name = "funcA";
+        e.objIndex = 1;
+        e.secIndex = 1;
+        globalSyms["funcA"] = e;
 
         LinkLayout layout;
         std::ostringstream err;
-        bool ok = runPipeline(objs, globalSyms, layout, LinkArch::AArch64, LinkPlatform::Linux, err);
+        bool ok =
+            runPipeline(objs, globalSyms, layout, LinkArch::AArch64, LinkPlatform::Linux, err);
 
         CHECK(ok);
         if (ok && !layout.sections.empty())
@@ -285,10 +305,16 @@ int main()
 
         obj1.symbols.push_back({});
         ObjSymbol sB;
-        sB.name = "funcB"; sB.sectionIndex = 1; sB.offset = 0; sB.binding = ObjSymbol::Global;
+        sB.name = "funcB";
+        sB.sectionIndex = 1;
+        sB.offset = 0;
+        sB.binding = ObjSymbol::Global;
         obj1.symbols.push_back(sB);
         ObjSymbol sPad;
-        sPad.name = "__padding"; sPad.sectionIndex = 2; sPad.offset = 0; sPad.binding = ObjSymbol::Global;
+        sPad.name = "__padding";
+        sPad.sectionIndex = 2;
+        sPad.offset = 0;
+        sPad.binding = ObjSymbol::Global;
         obj1.symbols.push_back(sPad);
 
         // obj2: funcA and funcC, both calling funcB.
@@ -329,33 +355,54 @@ int main()
 
         obj2.symbols.push_back({});
         ObjSymbol sA;
-        sA.name = "funcA"; sA.sectionIndex = 1; sA.offset = 0; sA.binding = ObjSymbol::Global;
+        sA.name = "funcA";
+        sA.sectionIndex = 1;
+        sA.offset = 0;
+        sA.binding = ObjSymbol::Global;
         obj2.symbols.push_back(sA);
         ObjSymbol sC;
-        sC.name = "funcC"; sC.sectionIndex = 2; sC.offset = 0; sC.binding = ObjSymbol::Global;
+        sC.name = "funcC";
+        sC.sectionIndex = 2;
+        sC.offset = 0;
+        sC.binding = ObjSymbol::Global;
         obj2.symbols.push_back(sC);
         ObjSymbol sBUndef;
-        sBUndef.name = "funcB"; sBUndef.binding = ObjSymbol::Undefined;
+        sBUndef.name = "funcB";
+        sBUndef.binding = ObjSymbol::Undefined;
         obj2.symbols.push_back(sBUndef);
 
         std::vector<ObjFile> objs = {obj1, obj2};
         std::unordered_map<std::string, GlobalSymEntry> globalSyms;
         GlobalSymEntry e;
         e.binding = GlobalSymEntry::Global;
-        e.name = "funcB"; e.objIndex = 0; e.secIndex = 1; globalSyms["funcB"] = e;
-        e.name = "__padding"; e.objIndex = 0; e.secIndex = 2; globalSyms["__padding"] = e;
-        e.name = "funcA"; e.objIndex = 1; e.secIndex = 1; globalSyms["funcA"] = e;
-        e.name = "funcC"; e.objIndex = 1; e.secIndex = 2; globalSyms["funcC"] = e;
+        e.name = "funcB";
+        e.objIndex = 0;
+        e.secIndex = 1;
+        globalSyms["funcB"] = e;
+        e.name = "__padding";
+        e.objIndex = 0;
+        e.secIndex = 2;
+        globalSyms["__padding"] = e;
+        e.name = "funcA";
+        e.objIndex = 1;
+        e.secIndex = 1;
+        globalSyms["funcA"] = e;
+        e.name = "funcC";
+        e.objIndex = 1;
+        e.secIndex = 2;
+        globalSyms["funcC"] = e;
 
         LinkLayout layout;
         std::ostringstream err;
-        bool ok = runPipeline(objs, globalSyms, layout, LinkArch::AArch64, LinkPlatform::Linux, err);
+        bool ok =
+            runPipeline(objs, globalSyms, layout, LinkArch::AArch64, LinkPlatform::Linux, err);
         CHECK(ok);
 
         if (ok && !layout.sections.empty())
         {
             // Both calls to funcB should share ONE 12-byte trampoline.
-            const size_t baseSize = 4 + 140 * 1024 * 1024 + 4 + 4; // funcB + padding + funcA + funcC
+            const size_t baseSize =
+                4 + 140 * 1024 * 1024 + 4 + 4; // funcB + padding + funcA + funcC
             size_t growth = layout.sections[0].data.size() - baseSize;
             // Should have exactly 12 extra bytes (one trampoline), not 24.
             // Allow for alignment padding (up to 3 bytes).
@@ -399,10 +446,16 @@ int main()
 
         obj1.symbols.push_back({});
         ObjSymbol sBDef;
-        sBDef.name = "funcB"; sBDef.sectionIndex = 1; sBDef.offset = 0; sBDef.binding = ObjSymbol::Global;
+        sBDef.name = "funcB";
+        sBDef.sectionIndex = 1;
+        sBDef.offset = 0;
+        sBDef.binding = ObjSymbol::Global;
         obj1.symbols.push_back(sBDef);
         ObjSymbol sPad;
-        sPad.name = "__padding"; sPad.sectionIndex = 2; sPad.offset = 0; sPad.binding = ObjSymbol::Global;
+        sPad.name = "__padding";
+        sPad.sectionIndex = 2;
+        sPad.offset = 0;
+        sPad.binding = ObjSymbol::Global;
         obj1.symbols.push_back(sPad);
 
         // obj2: funcA with BL funcB.
@@ -427,19 +480,32 @@ int main()
 
         obj2.symbols.push_back({});
         ObjSymbol sA;
-        sA.name = "funcA"; sA.sectionIndex = 1; sA.offset = 0; sA.binding = ObjSymbol::Global;
+        sA.name = "funcA";
+        sA.sectionIndex = 1;
+        sA.offset = 0;
+        sA.binding = ObjSymbol::Global;
         obj2.symbols.push_back(sA);
         ObjSymbol sBUndef;
-        sBUndef.name = "funcB"; sBUndef.binding = ObjSymbol::Undefined;
+        sBUndef.name = "funcB";
+        sBUndef.binding = ObjSymbol::Undefined;
         obj2.symbols.push_back(sBUndef);
 
         std::vector<ObjFile> objs = {obj1, obj2};
         std::unordered_map<std::string, GlobalSymEntry> globalSyms;
         GlobalSymEntry e;
         e.binding = GlobalSymEntry::Global;
-        e.name = "funcB"; e.objIndex = 0; e.secIndex = 1; globalSyms["funcB"] = e;
-        e.name = "__padding"; e.objIndex = 0; e.secIndex = 2; globalSyms["__padding"] = e;
-        e.name = "funcA"; e.objIndex = 1; e.secIndex = 1; globalSyms["funcA"] = e;
+        e.name = "funcB";
+        e.objIndex = 0;
+        e.secIndex = 1;
+        globalSyms["funcB"] = e;
+        e.name = "__padding";
+        e.objIndex = 0;
+        e.secIndex = 2;
+        globalSyms["__padding"] = e;
+        e.name = "funcA";
+        e.objIndex = 1;
+        e.secIndex = 1;
+        globalSyms["funcA"] = e;
 
         // Run with trampolines.
         LinkLayout layout;

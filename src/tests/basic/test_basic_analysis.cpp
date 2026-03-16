@@ -18,10 +18,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tests/TestHarness.hpp"
 #include "frontends/basic/BasicAnalysis.hpp"
 #include "frontends/basic/BasicCompiler.hpp"
 #include "support/source_manager.hpp"
+#include "tests/TestHarness.hpp"
 
 #include <string>
 
@@ -77,9 +77,8 @@ TEST(BasicAnalysis, SemaPopulatesSymbols)
 TEST(BasicAnalysis, SemaPopulatesProcs)
 {
     il::support::SourceManager sm;
-    BasicCompilerInput input{
-        .source = "SUB Hello()\n  PRINT \"hi\"\nEND SUB\nHello\nEND\n",
-        .path = "test.bas"};
+    BasicCompilerInput input{.source = "SUB Hello()\n  PRINT \"hi\"\nEND SUB\nHello\nEND\n",
+                             .path = "test.bas"};
     auto result = parseAndAnalyzeBasic(input, sm);
 
     EXPECT_TRUE(result != nullptr);

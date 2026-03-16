@@ -61,8 +61,8 @@ std::string McpHandler::handleInitialize(const JsonRpcRequest &req)
         {"protocolVersion", JsonValue("2024-11-05")},
         {"capabilities", JsonValue::object({{"tools", JsonValue::object({})}})},
         {"serverInfo",
-         JsonValue::object({{"name", JsonValue(config_.serverName)},
-                            {"version", JsonValue(config_.version)}})},
+         JsonValue::object(
+             {{"name", JsonValue(config_.serverName)}, {"version", JsonValue(config_.version)}})},
     });
     return buildResponse(req.id, result);
 }
@@ -141,16 +141,15 @@ JsonValue McpHandler::buildToolDefinitions() const
                 {"source"}));
 
     // <prefix>/completions
-    tools.push_back(
-        toolDef(prefix + "/completions",
-                "Get code completions at a cursor position in " + lang + " source",
-                {
-                    {"source", schemaProp("string", sourceDesc.c_str())},
-                    {"line", schemaProp("integer", "Cursor line (1-based)")},
-                    {"col", schemaProp("integer", "Cursor column (1-based)")},
-                    {"path", schemaProp("string", "Virtual file path (optional)")},
-                },
-                {"source", "line", "col"}));
+    tools.push_back(toolDef(prefix + "/completions",
+                            "Get code completions at a cursor position in " + lang + " source",
+                            {
+                                {"source", schemaProp("string", sourceDesc.c_str())},
+                                {"line", schemaProp("integer", "Cursor line (1-based)")},
+                                {"col", schemaProp("integer", "Cursor column (1-based)")},
+                                {"path", schemaProp("string", "Virtual file path (optional)")},
+                            },
+                            {"source", "line", "col"}));
 
     // <prefix>/hover
     tools.push_back(toolDef(prefix + "/hover",
@@ -290,8 +289,7 @@ std::string McpHandler::handleToolsCall(const JsonRpcRequest &req)
 JsonValue McpHandler::callCheck(const JsonValue &args)
 {
     std::string source = args["source"].asString();
-    std::string path =
-        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
+    std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     auto diags = bridge_.check(source, path);
 
@@ -314,8 +312,7 @@ JsonValue McpHandler::callCheck(const JsonValue &args)
 JsonValue McpHandler::callCompile(const JsonValue &args)
 {
     std::string source = args["source"].asString();
-    std::string path =
-        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
+    std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     auto result = bridge_.compile(source, path);
 
@@ -343,8 +340,7 @@ JsonValue McpHandler::callCompletions(const JsonValue &args)
     std::string source = args["source"].asString();
     int line = static_cast<int>(args["line"].asInt());
     int col = static_cast<int>(args["col"].asInt());
-    std::string path =
-        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
+    std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     auto items = bridge_.completions(source, line, col, path);
 
@@ -368,8 +364,7 @@ JsonValue McpHandler::callHover(const JsonValue &args)
     std::string source = args["source"].asString();
     int line = static_cast<int>(args["line"].asInt());
     int col = static_cast<int>(args["col"].asInt());
-    std::string path =
-        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
+    std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     auto result = bridge_.hover(source, line, col, path);
     return textContent(result.empty() ? "(no type information)" : result);
@@ -378,8 +373,7 @@ JsonValue McpHandler::callHover(const JsonValue &args)
 JsonValue McpHandler::callSymbols(const JsonValue &args)
 {
     std::string source = args["source"].asString();
-    std::string path =
-        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
+    std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     auto syms = bridge_.symbols(source, path);
 
@@ -400,8 +394,7 @@ JsonValue McpHandler::callSymbols(const JsonValue &args)
 JsonValue McpHandler::callDumpIL(const JsonValue &args)
 {
     std::string source = args["source"].asString();
-    std::string path =
-        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
+    std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
     bool optimized = args.has("optimized") ? args["optimized"].asBool() : false;
 
     return textContent(bridge_.dumpIL(source, path, optimized));
@@ -410,8 +403,7 @@ JsonValue McpHandler::callDumpIL(const JsonValue &args)
 JsonValue McpHandler::callDumpAst(const JsonValue &args)
 {
     std::string source = args["source"].asString();
-    std::string path =
-        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
+    std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     return textContent(bridge_.dumpAst(source, path));
 }
@@ -419,8 +411,7 @@ JsonValue McpHandler::callDumpAst(const JsonValue &args)
 JsonValue McpHandler::callDumpTokens(const JsonValue &args)
 {
     std::string source = args["source"].asString();
-    std::string path =
-        args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
+    std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     return textContent(bridge_.dumpTokens(source, path));
 }

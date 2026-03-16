@@ -62,11 +62,25 @@ void RegPools::build(const TargetInfo &ti)
 
 PhysReg RegPools::takeGPR()
 {
-    // Allocator is responsible for ensuring pressure is handled before requesting.
-    // Do not ever return the global scratch register here.
     if (gprFree.empty())
         throw std::runtime_error("AArch64 register allocator: GPR pool exhausted — "
                                  "maybeSpillForPressure should have freed a register");
+
+    // Prefer caller-saved registers to minimize prologue/epilogue overhead.
+    // Callee-saved registers (x19-x28) require save/restore in the function
+    // prologue/epilogue for every call, so use them only when caller-saved
+    // registers are exhausted.
+    for (auto it = gprFree.begin(); it != gprFree.end(); ++it)
+    {
+        if (!calleeSavedGPRSet[static_cast<std::size_t>(*it)])
+        {
+            PhysReg r = *it;
+            gprFree.erase(it);
+            return r;
+        }
+    }
+
+    // No caller-saved available, take any register.
     auto r = gprFree.front();
     gprFree.pop_front();
     return r;

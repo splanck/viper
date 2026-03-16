@@ -229,8 +229,8 @@ int verifyAndExecute(il::core::Module &module,
         if (shared.profile)
         {
             double ms = std::chrono::duration<double, std::milli>(endTime - startTime).count();
-            std::cerr << "[SUMMARY] instr=" << runner.instructionCount()
-                      << " time_ms=" << ms << "\n";
+            std::cerr << "[SUMMARY] instr=" << runner.instructionCount() << " time_ms=" << ms
+                      << "\n";
         }
 
         return rc;

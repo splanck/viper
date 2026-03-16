@@ -62,7 +62,7 @@ struct Symbol
 /// is created automatically in the constructor.
 class SymbolTable
 {
-public:
+  public:
     SymbolTable();
 
     /// Add a symbol, returning its index.
@@ -72,23 +72,43 @@ public:
     uint32_t findOrAdd(const std::string &name);
 
     /// Look up a symbol by index.
-    const Symbol &at(uint32_t index) const { return symbols_[index]; }
+    const Symbol &at(uint32_t index) const
+    {
+        return symbols_[index];
+    }
 
     /// Mutable look up a symbol by index.
-    Symbol &at(uint32_t index) { return symbols_[index]; }
+    Symbol &at(uint32_t index)
+    {
+        return symbols_[index];
+    }
 
     /// Total number of symbols (including null entry at index 0).
-    uint32_t count() const { return static_cast<uint32_t>(symbols_.size()); }
+    uint32_t count() const
+    {
+        return static_cast<uint32_t>(symbols_.size());
+    }
 
     /// Iteration support.
     using const_iterator = std::vector<Symbol>::const_iterator;
-    const_iterator begin() const { return symbols_.begin(); }
-    const_iterator end() const { return symbols_.end(); }
+
+    const_iterator begin() const
+    {
+        return symbols_.begin();
+    }
+
+    const_iterator end() const
+    {
+        return symbols_.end();
+    }
 
     /// Direct access to the underlying vector.
-    const std::vector<Symbol> &symbols() const { return symbols_; }
+    const std::vector<Symbol> &symbols() const
+    {
+        return symbols_;
+    }
 
-private:
+  private:
     std::vector<Symbol> symbols_;
     std::unordered_map<std::string, uint32_t> nameIndex_;
 };

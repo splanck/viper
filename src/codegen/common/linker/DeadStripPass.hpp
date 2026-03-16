@@ -42,8 +42,10 @@ struct GlobalSymEntry;
 /// @param globalSyms       Global symbol table (used to find entry point).
 /// @param entrySymbol      Entry point symbol name (e.g., "main").
 /// @param err              Diagnostic output.
-void deadStrip(std::vector<ObjFile> &allObjects, size_t userObjCount,
+void deadStrip(std::vector<ObjFile> &allObjects,
+               size_t userObjCount,
                const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
-               const std::string &entrySymbol, std::ostream &err);
+               const std::string &entrySymbol,
+               std::ostream &err);
 
 } // namespace viper::codegen::linker

@@ -152,8 +152,8 @@ static bool isTerminator(MOpcode opc) noexcept
 static constexpr std::size_t kNumPhysRegs = 64;
 
 /// Flat-array indices for implicit "virtual" registers beyond the physical file.
-static constexpr std::size_t kIdxNZCV = kNumPhysRegs;     // 64
-static constexpr std::size_t kIdxSP   = kNumPhysRegs + 1; // 65
+static constexpr std::size_t kIdxNZCV = kNumPhysRegs;   // 64
+static constexpr std::size_t kIdxSP = kNumPhysRegs + 1; // 65
 
 /// Total tracked register slots: 64 physical + NZCV + SP.
 static constexpr std::size_t kNumTracked = kNumPhysRegs + 2;

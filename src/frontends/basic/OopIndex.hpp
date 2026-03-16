@@ -244,16 +244,17 @@ class OopIndex
     struct EnumInfo
     {
         std::string name;
+
         struct Member
         {
             std::string name;
             long long value{0};
         };
+
         std::vector<Member> members;
     };
 
-    using EnumTable =
-        std::unordered_map<std::string, EnumInfo, OopStringHash, std::equal_to<>>;
+    using EnumTable = std::unordered_map<std::string, EnumInfo, OopStringHash, std::equal_to<>>;
 
     /// @brief Access the enum table.
     [[nodiscard]] EnumTable &enums() noexcept

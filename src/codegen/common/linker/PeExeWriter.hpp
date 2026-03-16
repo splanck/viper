@@ -31,12 +31,15 @@ namespace viper::codegen::linker
 /// DLL import for PE linking.
 struct DllImport
 {
-    std::string dllName;                    ///< DLL name (e.g., "kernel32.dll").
-    std::vector<std::string> functions;     ///< Imported function names.
+    std::string dllName;                ///< DLL name (e.g., "kernel32.dll").
+    std::vector<std::string> functions; ///< Imported function names.
 };
 
 /// Write a PE executable.
-bool writePeExe(const std::string &path, const LinkLayout &layout, LinkArch arch,
-                const std::vector<DllImport> &imports, std::ostream &err);
+bool writePeExe(const std::string &path,
+                const LinkLayout &layout,
+                LinkArch arch,
+                const std::vector<DllImport> &imports,
+                std::ostream &err);
 
 } // namespace viper::codegen::linker

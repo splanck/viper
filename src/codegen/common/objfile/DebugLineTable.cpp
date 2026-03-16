@@ -81,10 +81,11 @@ static constexpr uint8_t DW_LNCT_path = 1;
 static constexpr uint8_t DW_FORM_string = 8; // Inline NUL-terminated string.
 
 // Helpers.
-static void writeExtendedOpcode(std::vector<uint8_t> &buf, uint8_t opcode,
+static void writeExtendedOpcode(std::vector<uint8_t> &buf,
+                                uint8_t opcode,
                                 const std::vector<uint8_t> &data)
 {
-    buf.push_back(0); // Extended opcode escape.
+    buf.push_back(0);                                          // Extended opcode escape.
     writeULEB128(buf, static_cast<uint64_t>(1 + data.size())); // length
     buf.push_back(opcode);
     buf.insert(buf.end(), data.begin(), data.end());
@@ -122,12 +123,12 @@ std::vector<uint8_t> DebugLineTable::encodeDwarf5(uint8_t addressSize) const
     const size_t headerStart = out.size();
 
     // --- Header fields ---
-    out.push_back(1); // minimum_instruction_length
-    out.push_back(1); // maximum_operations_per_instruction
-    out.push_back(1); // default_is_stmt
-    out.push_back(static_cast<uint8_t>(kLineBase));  // line_base (signed)
-    out.push_back(kLineRange);                         // line_range
-    out.push_back(kOpcodeBase);                        // opcode_base
+    out.push_back(1);                               // minimum_instruction_length
+    out.push_back(1);                               // maximum_operations_per_instruction
+    out.push_back(1);                               // default_is_stmt
+    out.push_back(static_cast<uint8_t>(kLineBase)); // line_base (signed)
+    out.push_back(kLineRange);                      // line_range
+    out.push_back(kOpcodeBase);                     // opcode_base
 
     // standard_opcode_lengths (one per opcode, 1..opcode_base-1):
     // DW_LNS_copy(0), advance_pc(1), advance_line(1), set_file(1),
@@ -210,12 +211,13 @@ std::vector<uint8_t> DebugLineTable::encodeDwarf5(uint8_t addressSize) const
             curColumn = entry.column;
         }
 
-        // Try special opcode encoding: opcode = (line_delta - line_base) + (line_range * addr_delta) + opcode_base
-        // Valid when: line_delta in [line_base, line_base + line_range - 1] and the opcode fits in [opcode_base, 255].
+        // Try special opcode encoding: opcode = (line_delta - line_base) + (line_range *
+        // addr_delta) + opcode_base Valid when: line_delta in [line_base, line_base + line_range -
+        // 1] and the opcode fits in [opcode_base, 255].
         if (lineDelta >= kLineBase && lineDelta < kLineBase + kLineRange)
         {
-            const uint64_t specialOp =
-                static_cast<uint64_t>(lineDelta - kLineBase) + (kLineRange * addrDelta) + kOpcodeBase;
+            const uint64_t specialOp = static_cast<uint64_t>(lineDelta - kLineBase) +
+                                       (kLineRange * addrDelta) + kOpcodeBase;
             if (specialOp <= 255)
             {
                 out.push_back(static_cast<uint8_t>(specialOp));

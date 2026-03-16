@@ -82,10 +82,11 @@ MFunction makeFunc(const std::string &blockLabel, std::vector<MInstr> instrs)
 TEST(X86Peephole, MovZeroToXor)
 {
     // mov rax, #0 should become xor eax, eax
-    auto fn = makeFunc(".Lentry", {
-        MInstr{MOpcode::MOVri, {gpr(PhysReg::RAX), imm(0)}},
-        MInstr{MOpcode::RET, {}},
-    });
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVri, {gpr(PhysReg::RAX), imm(0)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
 
     auto count = runPeepholes(fn);
     EXPECT_TRUE(count > 0U);
@@ -99,12 +100,13 @@ TEST(X86Peephole, MovZeroToXor)
 TEST(X86Peephole, MovZeroToXorSkipsWhenFlagsRead)
 {
     // mov rax, #0 followed by JCC reading flags — should NOT rewrite to XOR
-    auto fn = makeFunc(".Lentry", {
-        MInstr{MOpcode::CMPrr, {gpr(PhysReg::RBX), gpr(PhysReg::RCX)}},
-        MInstr{MOpcode::MOVri, {gpr(PhysReg::RAX), imm(0)}},
-        MInstr{MOpcode::JCC, {imm(0), lbl(".Ltarget")}},
-        MInstr{MOpcode::RET, {}},
-    });
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::CMPrr, {gpr(PhysReg::RBX), gpr(PhysReg::RCX)}},
+                           MInstr{MOpcode::MOVri, {gpr(PhysReg::RAX), imm(0)}},
+                           MInstr{MOpcode::JCC, {imm(0), lbl(".Ltarget")}},
+                           MInstr{MOpcode::RET, {}},
+                       });
 
     runPeepholes(fn);
 
@@ -126,11 +128,12 @@ TEST(X86Peephole, MovZeroToXorSkipsWhenFlagsRead)
 TEST(X86Peephole, CmpZeroToTest)
 {
     // cmp rax, #0 should become test rax, rax
-    auto fn = makeFunc(".Lentry", {
-        MInstr{MOpcode::CMPri, {gpr(PhysReg::RAX), imm(0)}},
-        MInstr{MOpcode::JCC, {imm(0), lbl(".Ltarget")}},
-        MInstr{MOpcode::RET, {}},
-    });
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::CMPri, {gpr(PhysReg::RAX), imm(0)}},
+                           MInstr{MOpcode::JCC, {imm(0), lbl(".Ltarget")}},
+                           MInstr{MOpcode::RET, {}},
+                       });
 
     auto count = runPeepholes(fn);
     EXPECT_TRUE(count > 0U);
@@ -153,10 +156,11 @@ TEST(X86Peephole, CmpZeroToTest)
 TEST(X86Peephole, ArithIdentityAddZero)
 {
     // add rax, #0 should be eliminated (when flags not read)
-    auto fn = makeFunc(".Lentry", {
-        MInstr{MOpcode::ADDri, {gpr(PhysReg::RAX), imm(0)}},
-        MInstr{MOpcode::RET, {}},
-    });
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::ADDri, {gpr(PhysReg::RAX), imm(0)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
 
     auto count = runPeepholes(fn);
     EXPECT_TRUE(count > 0U);
@@ -172,10 +176,11 @@ TEST(X86Peephole, ArithIdentityAddZero)
 TEST(X86Peephole, ArithIdentityShiftZero)
 {
     // shl rax, #0 should be eliminated (when flags not read)
-    auto fn = makeFunc(".Lentry", {
-        MInstr{MOpcode::SHLri, {gpr(PhysReg::RAX), imm(0)}},
-        MInstr{MOpcode::RET, {}},
-    });
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::SHLri, {gpr(PhysReg::RAX), imm(0)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
 
     auto count = runPeepholes(fn);
     EXPECT_TRUE(count > 0U);
@@ -190,10 +195,11 @@ TEST(X86Peephole, ArithIdentityShiftZero)
 TEST(X86Peephole, ArithIdentityAndAllOnes)
 {
     // and rax, #-1 should be eliminated (when flags not read)
-    auto fn = makeFunc(".Lentry", {
-        MInstr{MOpcode::ANDri, {gpr(PhysReg::RAX), imm(-1)}},
-        MInstr{MOpcode::RET, {}},
-    });
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::ANDri, {gpr(PhysReg::RAX), imm(-1)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
 
     auto count = runPeepholes(fn);
     EXPECT_TRUE(count > 0U);
@@ -208,10 +214,11 @@ TEST(X86Peephole, ArithIdentityAndAllOnes)
 TEST(X86Peephole, ArithIdentityOrZero)
 {
     // or rax, #0 should be eliminated
-    auto fn = makeFunc(".Lentry", {
-        MInstr{MOpcode::ORri, {gpr(PhysReg::RAX), imm(0)}},
-        MInstr{MOpcode::RET, {}},
-    });
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::ORri, {gpr(PhysReg::RAX), imm(0)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
 
     runPeepholes(fn);
 
@@ -225,11 +232,12 @@ TEST(X86Peephole, ArithIdentityOrZero)
 TEST(X86Peephole, ArithIdentityPreservedWhenFlagsRead)
 {
     // add rax, #0 followed by JCC reading flags — should NOT be removed
-    auto fn = makeFunc(".Lentry", {
-        MInstr{MOpcode::ADDri, {gpr(PhysReg::RAX), imm(0)}},
-        MInstr{MOpcode::JCC, {imm(0), lbl(".Ltarget")}},
-        MInstr{MOpcode::RET, {}},
-    });
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::ADDri, {gpr(PhysReg::RAX), imm(0)}},
+                           MInstr{MOpcode::JCC, {imm(0), lbl(".Ltarget")}},
+                           MInstr{MOpcode::RET, {}},
+                       });
 
     runPeepholes(fn);
 
@@ -250,11 +258,12 @@ TEST(X86Peephole, ArithIdentityPreservedWhenFlagsRead)
 TEST(X86Peephole, StrengthReductionMulPow2)
 {
     // Load #8 into rcx, then imul rax, rcx -> shl rax, #3
-    auto fn = makeFunc(".Lentry", {
-        MInstr{MOpcode::MOVri, {gpr(PhysReg::RCX), imm(8)}},
-        MInstr{MOpcode::IMULrr, {gpr(PhysReg::RAX), gpr(PhysReg::RCX)}},
-        MInstr{MOpcode::RET, {}},
-    });
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVri, {gpr(PhysReg::RCX), imm(8)}},
+                           MInstr{MOpcode::IMULrr, {gpr(PhysReg::RAX), gpr(PhysReg::RCX)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
 
     auto count = runPeepholes(fn);
     EXPECT_TRUE(count > 0U);
@@ -279,11 +288,12 @@ TEST(X86Peephole, StrengthReductionMulPow2)
 TEST(X86Peephole, StrengthReductionNoRewriteNonPow2)
 {
     // Load #7 into rcx, then imul rax, rcx — 7 is not power-of-2, no rewrite
-    auto fn = makeFunc(".Lentry", {
-        MInstr{MOpcode::MOVri, {gpr(PhysReg::RCX), imm(7)}},
-        MInstr{MOpcode::IMULrr, {gpr(PhysReg::RAX), gpr(PhysReg::RCX)}},
-        MInstr{MOpcode::RET, {}},
-    });
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVri, {gpr(PhysReg::RCX), imm(7)}},
+                           MInstr{MOpcode::IMULrr, {gpr(PhysReg::RAX), gpr(PhysReg::RCX)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
 
     runPeepholes(fn);
 
@@ -304,12 +314,14 @@ TEST(X86Peephole, StrengthReductionNoRewriteNonPow2)
 TEST(X86Peephole, RemoveIdentityMovRR)
 {
     // mov rax, rax (identity) should be removed
-    auto fn = makeFunc(".Lentry", {
-        MInstr{MOpcode::MOVrr, {gpr(PhysReg::RAX), gpr(PhysReg::RBX)}},  // non-identity
-        MInstr{MOpcode::MOVrr, {gpr(PhysReg::RAX), gpr(PhysReg::RAX)}},  // identity
-        MInstr{MOpcode::MOVrr, {gpr(PhysReg::RCX), gpr(PhysReg::RCX)}},  // identity
-        MInstr{MOpcode::RET, {}},
-    });
+    auto fn =
+        makeFunc(".Lentry",
+                 {
+                     MInstr{MOpcode::MOVrr, {gpr(PhysReg::RAX), gpr(PhysReg::RBX)}}, // non-identity
+                     MInstr{MOpcode::MOVrr, {gpr(PhysReg::RAX), gpr(PhysReg::RAX)}}, // identity
+                     MInstr{MOpcode::MOVrr, {gpr(PhysReg::RCX), gpr(PhysReg::RCX)}}, // identity
+                     MInstr{MOpcode::RET, {}},
+                 });
 
     auto count = runPeepholes(fn);
     EXPECT_TRUE(count > 0U);
@@ -328,11 +340,13 @@ TEST(X86Peephole, RemoveIdentityMovRR)
 TEST(X86Peephole, RemoveIdentityMovSDRR)
 {
     // movsd xmm0, xmm0 (identity) should be removed
-    auto fn = makeFunc(".Lentry", {
-        MInstr{MOpcode::MOVSDrr, {xmm(PhysReg::XMM0), xmm(PhysReg::XMM1)}},  // non-identity
-        MInstr{MOpcode::MOVSDrr, {xmm(PhysReg::XMM0), xmm(PhysReg::XMM0)}},  // identity
-        MInstr{MOpcode::RET, {}},
-    });
+    auto fn = makeFunc(
+        ".Lentry",
+        {
+            MInstr{MOpcode::MOVSDrr, {xmm(PhysReg::XMM0), xmm(PhysReg::XMM1)}}, // non-identity
+            MInstr{MOpcode::MOVSDrr, {xmm(PhysReg::XMM0), xmm(PhysReg::XMM0)}}, // identity
+            MInstr{MOpcode::RET, {}},
+        });
 
     auto count = runPeepholes(fn);
     EXPECT_TRUE(count > 0U);
@@ -362,7 +376,7 @@ TEST(X86Peephole, BranchInversion)
     bb1.label = ".Lentry";
     bb1.instructions = {
         MInstr{MOpcode::CMPrr, {gpr(PhysReg::RAX), gpr(PhysReg::RBX)}},
-        MInstr{MOpcode::JCC, {imm(0), lbl(".Lnext")}},  // cc=0 is eq
+        MInstr{MOpcode::JCC, {imm(0), lbl(".Lnext")}}, // cc=0 is eq
         MInstr{MOpcode::JMP, {lbl(".Lexit")}},
     };
 
@@ -535,13 +549,15 @@ TEST(X86Peephole, ColdBlockMovedToEnd)
 TEST(X86Peephole, CombinedOptimizations)
 {
     // Combines: MOV #0->XOR, identity mov removal, CMP #0->TEST
-    auto fn = makeFunc(".Lentry", {
-        MInstr{MOpcode::MOVri, {gpr(PhysReg::RAX), imm(0)}},       // -> XOR
-        MInstr{MOpcode::MOVrr, {gpr(PhysReg::RBX), gpr(PhysReg::RBX)}}, // identity, removed
-        MInstr{MOpcode::CMPri, {gpr(PhysReg::RCX), imm(0)}},       // -> TEST
-        MInstr{MOpcode::JCC, {imm(1), lbl(".Ltarget")}},
-        MInstr{MOpcode::RET, {}},
-    });
+    auto fn = makeFunc(
+        ".Lentry",
+        {
+            MInstr{MOpcode::MOVri, {gpr(PhysReg::RAX), imm(0)}},            // -> XOR
+            MInstr{MOpcode::MOVrr, {gpr(PhysReg::RBX), gpr(PhysReg::RBX)}}, // identity, removed
+            MInstr{MOpcode::CMPri, {gpr(PhysReg::RCX), imm(0)}},            // -> TEST
+            MInstr{MOpcode::JCC, {imm(1), lbl(".Ltarget")}},
+            MInstr{MOpcode::RET, {}},
+        });
 
     auto count = runPeepholes(fn);
     EXPECT_TRUE(count > 0U);

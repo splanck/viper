@@ -42,9 +42,7 @@ void rewriteToTest(MInstr &instr, Operand regOperand)
     instr.operands.push_back(regOperand);
 }
 
-bool tryArithmeticIdentity(const std::vector<MInstr> &instrs,
-                           std::size_t idx,
-                           PeepholeStats &stats)
+bool tryArithmeticIdentity(const std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
 {
     const auto &instr = instrs[idx];
     switch (instr.opcode)

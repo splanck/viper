@@ -149,8 +149,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
                 {
                     return fieldIt->second;
                 }
-                error(expr->loc,
-                      "Enum '" + dottedBase + "' has no variant '" + expr->field + "'");
+                error(expr->loc, "Enum '" + dottedBase + "' has no variant '" + expr->field + "'");
                 return types::unknown();
             }
 
@@ -896,8 +895,7 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr)
                             missing += scrutineeType->name + "." + v.name;
                         }
                     }
-                    error(expr->loc,
-                          "Non-exhaustive patterns: missing variants " + missing);
+                    error(expr->loc, "Non-exhaustive patterns: missing variants " + missing);
                 }
             }
         }

@@ -45,6 +45,7 @@ struct ObjReloc
 struct ObjSymbol
 {
     std::string name;
+
     enum Binding : uint8_t
     {
         Local,
@@ -52,6 +53,7 @@ struct ObjSymbol
         Weak,
         Undefined
     } binding = Undefined;
+
     uint32_t sectionIndex = 0; ///< Index into ObjFile::sections (0 = undefined).
     size_t offset = 0;         ///< Byte offset within section.
     size_t size = 0;
@@ -66,8 +68,8 @@ struct ObjSection
     uint32_t alignment = 1;
     bool executable = false;
     bool writable = false;
-    bool alloc = true;          ///< Section contributes to memory image.
-    bool tls = false;           ///< Thread-local storage section.
+    bool alloc = true;             ///< Section contributes to memory image.
+    bool tls = false;              ///< Thread-local storage section.
     bool isCStringSection = false; ///< Section contains NUL-terminated C strings only.
 };
 
@@ -108,18 +110,18 @@ ObjFileFormat detectFormat(const uint8_t *data, size_t size);
 /// @param obj   Output parsed object file.
 /// @param err   Error output stream.
 /// @return true on success.
-bool readObjFile(const uint8_t *data, size_t size, const std::string &name, ObjFile &obj,
-                 std::ostream &err);
+bool readObjFile(
+    const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err);
 
 /// Read an object file from a file path.
 bool readObjFile(const std::string &path, ObjFile &obj, std::ostream &err);
 
 // Format-specific readers (called by readObjFile).
-bool readElfObj(const uint8_t *data, size_t size, const std::string &name, ObjFile &obj,
-                std::ostream &err);
-bool readMachOObj(const uint8_t *data, size_t size, const std::string &name, ObjFile &obj,
-                  std::ostream &err);
-bool readCoffObj(const uint8_t *data, size_t size, const std::string &name, ObjFile &obj,
-                 std::ostream &err);
+bool readElfObj(
+    const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err);
+bool readMachOObj(
+    const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err);
+bool readCoffObj(
+    const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err);
 
 } // namespace viper::codegen::linker

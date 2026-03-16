@@ -74,7 +74,7 @@ int main()
         SymbolTable st;
         st.add(Symbol{"foo", SymbolBinding::Global, SymbolSection::Text, 42, 0});
         uint32_t idx = st.findOrAdd("foo");
-        CHECK(idx == 1); // found existing
+        CHECK(idx == 1);        // found existing
         CHECK(st.count() == 2); // no new entry
     }
 
@@ -121,7 +121,8 @@ int main()
     // --- Mutable access ---
     {
         SymbolTable st;
-        uint32_t idx = st.add(Symbol{"mutable_test", SymbolBinding::Local, SymbolSection::Text, 0, 0});
+        uint32_t idx =
+            st.add(Symbol{"mutable_test", SymbolBinding::Local, SymbolSection::Text, 0, 0});
         st.at(idx).offset = 999;
         CHECK(st.at(idx).offset == 999);
     }

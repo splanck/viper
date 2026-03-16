@@ -55,18 +55,18 @@ struct waypoint
 struct rt_pathfollow_impl
 {
     struct waypoint points[RT_PATHFOLLOW_MAX_POINTS];
-    int64_t point_count;      ///< Number of waypoints.
-    rt_pathfollow_mode_t mode;  ///< Path mode.
-    int64_t speed;            ///< Speed (units/sec, fixed-point).
-    int8_t active;            ///< Is following active.
-    int8_t finished;          ///< Has reached end (ONCE mode).
-    int8_t reverse;           ///< Direction for PINGPONG.
-    int64_t current_x;        ///< Current X position.
-    int64_t current_y;        ///< Current Y position.
-    int64_t segment;          ///< Current segment index.
-    int64_t segment_progress; ///< Progress within segment (0-1000).
-    int64_t total_length;     ///< Total path length (cached).
-    int64_t *segment_lengths; ///< Cached segment lengths.
+    int64_t point_count;       ///< Number of waypoints.
+    rt_pathfollow_mode_t mode; ///< Path mode.
+    int64_t speed;             ///< Speed (units/sec, fixed-point).
+    int8_t active;             ///< Is following active.
+    int8_t finished;           ///< Has reached end (ONCE mode).
+    int8_t reverse;            ///< Direction for PINGPONG.
+    int64_t current_x;         ///< Current X position.
+    int64_t current_y;         ///< Current Y position.
+    int64_t segment;           ///< Current segment index.
+    int64_t segment_progress;  ///< Progress within segment (0-1000).
+    int64_t total_length;      ///< Total path length (cached).
+    int64_t *segment_lengths;  ///< Cached segment lengths.
 };
 
 /// Integer square root approximation.

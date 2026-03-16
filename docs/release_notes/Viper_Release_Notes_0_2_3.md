@@ -21,13 +21,16 @@ namespace** support (resolving PAC crashes on macOS ARM64). The release also inc
 safety audits across every layer (VM, codegen, runtime, network), concurrency hardening with TSan
 verification, three new IL optimizer passes, major AArch64 backend performance work (post-RA
 scheduler, register coalescer, loop-invariant hoisting, cross-block store-load forwarding), an
-interactive REPL for both languages, a multi-language benchmark suite, and a large-scale codebase
-reorganization that consolidates documentation and examples into clean hierarchies.
+interactive REPL for both languages, a multi-language benchmark suite, a **frontend decomposition**
+that extracted shared utilities and split the largest parser/lowerer files, and a large-scale
+codebase reorganization that consolidates documentation and examples into clean hierarchies. The
+full O2 optimization pipeline was restored for native codegen (10 passes were missing) combined
+with division strength reduction, yielding **24-87% benchmark improvements** on Apple M4 Max.
 
-2,900+ files changed across 57 commits. ~115K lines added and ~81K lines removed (excluding
-ViperDOS cleanup; ~312K total with 658 ViperDOS files deleted). 442 stale files deleted and 341 new
-files added. Test count increased from 1,261 to 1,307 (+46 net; large stale test fixture deletion
-offset by new coverage).
+2,970 files changed across 57 commits. ~120K lines added and ~316K lines removed (including
+ViperDOS cleanup of 658 files). 1,100 stale files deleted and 341 new files added. Test count
+increased from 1,261 to 1,307 (+46 net; large stale test fixture deletion offset by new coverage).
+Source file count: 2,546 files totaling ~700K LOC.
 
 ---
 
@@ -337,6 +340,34 @@ Peephole optimization that forwards stores to loads across basic block boundarie
 predecessor has a single successor and the store/load access the same FP-relative offset. Includes
 reachability verification to ensure the predecessor actually reaches the successor (unconditional
 branch, conditional branch target, or fallthrough).
+
+**Division/Modulo Strength Reduction**
+
+Peephole pass that replaces expensive SDIV/UDIV/SREM/UREM instructions with cheaper sequences:
+
+- `SDIV` by power-of-2: sign-corrected arithmetic shift (22 cycles → 4 cycles)
+- `SDIV` by arbitrary constant: magic number multiply-high (22 cycles → 6-8 cycles)
+- `UREM` by power-of-2: AND mask (26 cycles → 1 cycle)
+- `SREM` by power-of-2: sign-corrected AND+SUB (26 cycles → 5 cycles)
+
+**Full O2 Pipeline Restoration**
+
+Restored 10 missing IL optimization passes to the native codegen O2 pipeline: loop-simplify,
+loop-rotate, indvars, loop-unroll, check-opt, eh-opt, sibling-recursion, constfold, licm,
+reassociate. The codegen pipeline was running a stripped-down O1-level optimizer despite requesting
+`-O2`. Also fixed x86-64 codegen O2 gating threshold.
+
+**Benchmark Results** (Apple M4 Max, native -O2 vs previous baseline):
+
+| Benchmark | Before | After | Improvement |
+|-----------|--------|-------|-------------|
+| branch_stress | 180ms | 24ms | **-87%** |
+| redundant_stress | 315ms | 104ms | **-67%** |
+| mixed_stress | 83ms | 30ms | **-63%** |
+| udiv_stress | 180ms | 74ms | **-59%** |
+| inline_stress | 144ms | 79ms | **-46%** |
+| call_stress | 45ms | 34ms | **-24%** |
+| arith_stress | 140ms | 119ms | **-15%** |
 
 **Additional Peephole Optimizations**
 
@@ -682,6 +713,34 @@ gui_test, particles, classes, vedit). 7 broken/redundant scripts removed.
 - 548 bare code blocks tagged with language identifiers
 - Terminology standardized: "standard library" → "ViperLib", "interpreter" → "VM"
 
+#### Frontend Decomposition
+
+Systematic 10-item improvement across BASIC, Zia, and shared frontend infrastructure:
+
+**Shared Infrastructure (fe_common/)**
+- Extract string escape processing to `EscapeSequences.hpp` (shared by both frontends)
+- Extract diagnostic formatter to `DiagnosticFormatter.hpp`
+- Replace O(n) linear searches with hash tables in BASIC parser/builtins
+
+**Zia File Splits**
+- `Parser_Expr.cpp` (1,804 LOC → 3 files)
+- `Lowerer_Decl.cpp` (1,690 LOC → 3 files)
+- `Lowerer_Expr_Complex.cpp` (1,386 LOC → 3 files)
+- Extract entity layout helpers (`computeEntityFieldLayout`, `buildEntityVtable`,
+  `inheritEntityMembers`) from monolithic `registerEntityLayout`
+
+**BASIC Improvements**
+- Consolidate member array field handling (4 bugs) into `MemberArrayResolver`
+- Migrate BASIC Lexer to `LexerBase` CRTP (shared cursor management with Zia)
+
+**Header Decomposition**
+- Extract Zia type layout structs to `LowererTypes.hpp` (-195 LOC from header)
+- Extract Zia Sema support types to `sema/SemaTypes.hpp` (-159 LOC)
+- Extract BASIC `require*()` methods to `lowerer/LowererRuntimeRequirements.hpp`
+
+**Type Coercion Unification**
+- Unified numeric coercion logic between BASIC and Zia frontends
+
 #### Large File Splits
 
 Readability refactoring of the largest source files:
@@ -843,18 +902,18 @@ table of contents to cover all 80+ sections.
 
 | Metric              | v0.2.2    | v0.2.3 (draft) | Change     |
 |---------------------|-----------|----------------|------------|
-| C/C++ Source (LOC)  | ~1,000,000 | ~820,000*     | -180,000*  |
-| C/C++ Source Files  | 2,288     | ~2,558         | +270       |
+| C/C++ Source (LOC)  | ~1,000,000 | ~700,000*     | -300,000*  |
+| C/C++ Source Files  | 2,288     | 2,546          | +258       |
 | Test Count          | 1,261     | 1,307          | +46        |
 | Commits             | —         | 57             | —          |
-| Files Changed       | —         | 2,946          | —          |
-| Lines Added         | —         | 115,242        | —          |
-| Lines Removed       | —         | 311,812        | —          |
+| Files Changed       | —         | 2,970          | —          |
+| Lines Added         | —         | 120,145        | —          |
+| Lines Removed       | —         | 315,974        | —          |
 | New Files           | —         | 341            | —          |
 | Deleted Files       | —         | 1,100          | —          |
 
 *\* Net LOC decreased due to deletion of 1,100 files: 658 ViperDOS files, 286 obsolete test
-fixtures, devdocs, dead demos, and zia-review. Test count is net +40 because obsolete test fixture
+fixtures, devdocs, dead demos, and zia-review. Test count is net +46 because obsolete test fixture
 files were removed while ~340 new tests were added across Zia frontend, REPL, determinism, pool
 allocator, native assembler, dataflow liveness, and codegen review suites.*
 
@@ -973,6 +1032,11 @@ allocator, native assembler, dataflow liveness, and codegen review suites.*
 | Identical Code Folding     | No                   | ICF linker pass for binary size reduction |
 | Branch Trampolines         | No                   | Auto-generated veneers for long branches |
 | Mach-O Two-Level Namespace | No                   | Per-symbol dylib ordinals, PAC-safe |
+| Division Strength Reduction | No                   | Power-of-2 shift, magic multiply   |
+| Full O2 Pipeline (native)  | O1-level only        | All 10 missing passes restored     |
+| Frontend Shared Infra      | Separate per-frontend| fe_common/ shared utilities        |
+| Zia Parser/Lowerer Splits  | Monolithic files     | 9 focused sub-files                |
+| BASIC LexerBase CRTP       | Independent lexer    | Shared cursor management           |
 | Codebase Organization      | demos/ + devdocs/    | Unified examples/ + docs/          |
 
 ---

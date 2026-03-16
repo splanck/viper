@@ -135,8 +135,10 @@ bool writeElfExe(const std::string &path,
     const size_t ehdrSize = sizeof(Elf64_Ehdr);
     const size_t phdrTableSize = numPhdrs * sizeof(Elf64_Phdr);
 
-    // Section headers: null + each alloc section + each non-alloc section + .note.GNU-stack + .shstrtab.
-    const uint16_t numShdrs = static_cast<uint16_t>(loadableIndices.size() + nonAllocIndices.size() + 3);
+    // Section headers: null + each alloc section + each non-alloc section + .note.GNU-stack +
+    // .shstrtab.
+    const uint16_t numShdrs =
+        static_cast<uint16_t>(loadableIndices.size() + nonAllocIndices.size() + 3);
 
     // Compute file offsets for each segment.
     struct SegmentInfo
@@ -211,6 +213,7 @@ bool writeElfExe(const std::string &path,
         size_t layoutIdx;
         size_t fileOffset;
     };
+
     std::vector<NonAllocInfo> nonAllocInfo;
     for (size_t idx : nonAllocIndices)
     {
@@ -361,8 +364,8 @@ bool writeElfExe(const std::string &path,
         Elf64_Shdr shdr{};
         shdr.sh_name = nonAllocNameOffsets[ni];
         shdr.sh_type = SHT_PROGBITS;
-        shdr.sh_flags = 0;         // No SHF_ALLOC — not loaded into memory.
-        shdr.sh_addr = 0;          // No virtual address.
+        shdr.sh_flags = 0; // No SHF_ALLOC — not loaded into memory.
+        shdr.sh_addr = 0;  // No virtual address.
         shdr.sh_offset = nonAllocInfo[ni].fileOffset;
         shdr.sh_size = sec.data.size();
         shdr.sh_addralign = sec.alignment;

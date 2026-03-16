@@ -1,0 +1,25 @@
+module bench;
+
+func helper(x: Integer) -> Integer {
+    return x * 3 + 7;
+}
+
+func start() {
+    var sum: Integer = 0;
+    for i in 0..10000000 {
+        var t1: Integer = i + 1;
+        var t2: Integer = t1 * 2;
+        var t3: Integer = t2 - i;
+        var tmp: Integer = 0;
+        if i % 4 == 0 {
+            tmp = helper(t3) * 2;
+        } else {
+            tmp = (t3 + 100) * 3;
+        }
+        if i % 7 == 0 {
+            tmp = tmp + helper(tmp);
+        }
+        sum = sum + tmp;
+    }
+    Viper.Environment.EndProgram(sum);
+}

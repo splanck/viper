@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # File: tests/golden/CMakeLists.txt
-# Purpose: Golden tests for BASIC diagnostics and IL optimizations.
+# Purpose: Golden tests for BASIC diagnostics, runtime output, and IL optimizations.
+# Uses helper functions from TestHelpers.cmake to reduce boilerplate.
 
 function(viper_add_golden_suite_tests)
     if (TEST basic_error_unknown_var)
@@ -10,1195 +11,309 @@ function(viper_add_golden_suite_tests)
     set(_VIPER_GOLDEN_DIR ${CMAKE_CURRENT_FUNCTION_LIST_DIR})
     set(BASIC_ILC $<TARGET_FILE:viper>)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/unknown_var.stderr EXPECT_UNKNOWN_VAR)
-    string(STRIP "${EXPECT_UNKNOWN_VAR}" EXPECT_UNKNOWN_VAR)
-    viper_add_ctest(basic_error_unknown_var
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/unknown_var.bas
-            "-DEXPECT=${EXPECT_UNKNOWN_VAR}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    # ==================================================================
+    # BASIC compile-error diagnostics (check_error.cmake)
+    # ==================================================================
+    set(_BE ${_VIPER_GOLDEN_DIR}/basic_errors)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/mismatched_next.stderr EXPECT_MISMATCHED_NEXT)
-    string(STRIP "${EXPECT_MISMATCHED_NEXT}" EXPECT_MISMATCHED_NEXT)
-    viper_add_ctest(basic_error_mismatched_next
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/mismatched_next.bas
-            "-DEXPECT=${EXPECT_MISMATCHED_NEXT}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/exit_outside_loop.stderr EXPECT_EXIT_OUTSIDE_LOOP)
-    string(STRIP "${EXPECT_EXIT_OUTSIDE_LOOP}" EXPECT_EXIT_OUTSIDE_LOOP)
-    viper_add_ctest(basic_error_exit_outside_loop
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/exit_outside_loop.bas
-            "-DEXPECT=${EXPECT_EXIT_OUTSIDE_LOOP}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/exit_mismatch.stderr EXPECT_EXIT_MISMATCH)
-    string(STRIP "${EXPECT_EXIT_MISMATCH}" EXPECT_EXIT_MISMATCH)
-    viper_add_ctest(basic_error_exit_mismatch
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/exit_mismatch.bas
-            "-DEXPECT=${EXPECT_EXIT_MISMATCH}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/loop_var_assignment.stderr EXPECT_LOOP_VAR_ASSIGNMENT)
-    string(STRIP "${EXPECT_LOOP_VAR_ASSIGNMENT}" EXPECT_LOOP_VAR_ASSIGNMENT)
-    viper_add_ctest(basic_error_loop_var_assignment
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/loop_var_assignment.bas
-            "-DEXPECT=${EXPECT_LOOP_VAR_ASSIGNMENT}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/loop_var_input.stderr EXPECT_LOOP_VAR_INPUT)
-    string(STRIP "${EXPECT_LOOP_VAR_INPUT}" EXPECT_LOOP_VAR_INPUT)
-    viper_add_ctest(basic_error_loop_var_input
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/loop_var_input.bas
-            "-DEXPECT=${EXPECT_LOOP_VAR_INPUT}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/bad_goto.stderr EXPECT_BAD_GOTO)
-    string(STRIP "${EXPECT_BAD_GOTO}" EXPECT_BAD_GOTO)
-    viper_add_ctest(basic_error_bad_goto
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/bad_goto.bas
-            "-DEXPECT=${EXPECT_BAD_GOTO}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    _golden_error(basic_error_unknown_var ${_BE} unknown_var)
+    _golden_error(basic_error_mismatched_next ${_BE} mismatched_next)
+    _golden_error(basic_error_exit_outside_loop ${_BE} exit_outside_loop)
+    _golden_error(basic_error_exit_mismatch ${_BE} exit_mismatch)
+    _golden_error(basic_error_loop_var_assignment ${_BE} loop_var_assignment)
+    _golden_error(basic_error_loop_var_input ${_BE} loop_var_input)
+    _golden_error(basic_error_bad_goto ${_BE} bad_goto)
+    _golden_error(basic_error_const_div_zero ${_BE} const_div_zero)
+    _golden_error(basic_error_const_divmod_zero ${_BE} const_divmod_zero)
+    _golden_error(basic_error_string_divmod ${_BE} string_divmod)
+    _golden_error(basic_error_bad_string_intrinsics ${_BE} bad_string_intrinsics)
+    _golden_error(basic_error_try_missing_catch ${_BE} try_missing_catch)
+    _golden_error(basic_error_catch_without_try ${_BE} catch_without_try)
+    _golden_error(basic_error_float_to_int ${_BE} float_to_int EXPECT_EXIT_ZERO)
+    _golden_error(basic_error_float_in_string ${_BE} float_in_string)
+    _golden_error(basic_error_bad_conversions ${_BE} bad_conversions)
+    _golden_error(basic_error_bad_math_funcs ${_BE} bad_math_funcs)
+    _golden_error(basic_error_private_method_access ${_BE} private_method_access)
+    _golden_error(basic_error_private_field_access ${_BE} private_field_access)
+    _golden_error(basic_error_namespace_notfound ${_BE} namespace_notfound)
+    _golden_error(basic_error_namespace_ambiguous ${_BE} namespace_ambiguous)
+    _golden_error(basic_error_namespace_duplicate_alias ${_BE} namespace_duplicate_alias)
+    _golden_error(basic_error_using_after_decl ${_BE} using_after_decl)
+    _golden_error(basic_error_namespace_case_insensitive_duplicate ${_BE} namespace_case_insensitive_duplicate)
+    _golden_error(basic_error_reserved_root_user_decl ${_BE} reserved_root_user_decl)
+    _golden_error(basic_error_reserved_root_decl ${_BE} reserved_root_decl)
 
     # '+' concatenation is allowed; ensure no error for string arithmetic.
     viper_add_ctest(basic_error_string_arith
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/string_arith.bas
-            -DEXPECT_EXIT_ZERO=TRUE
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_BE}/string_arith.bas -DEXPECT_EXIT_ZERO=TRUE
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    # USING inside namespace blocks is allowed; ensure no error.
+    viper_add_ctest(basic_using_in_namespace_scoped_ok
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_BE}/using_in_namespace.bas -DEXPECT_EXIT_ZERO=TRUE
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    # Runtime namespaces enabled: USING Viper.* is allowed; expect successful compile
+    viper_add_ctest(basic_error_reserved_root_user_using
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_BE}/reserved_root_user_using.bas -DEXPECT_EXIT_ZERO=TRUE
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    # Inline-expect error tests (EXPECT string passed directly, no .stderr file)
+    viper_add_ctest(basic_error_ambiguous_using_call
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_BE}/ambiguous_using_call.bas
+            "-DEXPECT=ambiguous procedure 'PRINTI64'.* matches: My\\.Console\\.PRINTI64, Viper\\.Terminal\\.PRINTI64"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    viper_add_ctest(basic_error_shadow_builtin_decl
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_BE}/shadow_builtin_decl.bas "-DEXPECT=E_VIPER_BUILTIN_SHADOW"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
     # ------------------------------------------------------------------
     # BASIC examples (smoke): ensure these compile successfully
     # ------------------------------------------------------------------
     viper_add_ctest(example_basic_addfile
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/addfile_main.bas
-            -DEXPECT_EXIT_ZERO=TRUE
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/addfile_main.bas -DEXPECT_EXIT_ZERO=TRUE
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
     viper_add_ctest(example_basic_addfile_ns
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/addfile_ns_main.bas
-            -DEXPECT_EXIT_ZERO=TRUE
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    # String comparison operators are now supported, so string_cmp_order test removed
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/const_div_zero.stderr EXPECT_CONST_DIV_ZERO)
-    string(STRIP "${EXPECT_CONST_DIV_ZERO}" EXPECT_CONST_DIV_ZERO)
-    viper_add_ctest(basic_error_const_div_zero
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/const_div_zero.bas
-            "-DEXPECT=${EXPECT_CONST_DIV_ZERO}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/const_divmod_zero.stderr EXPECT_CONST_DIVMOD_ZERO)
-    string(STRIP "${EXPECT_CONST_DIVMOD_ZERO}" EXPECT_CONST_DIVMOD_ZERO)
-    viper_add_ctest(basic_error_const_divmod_zero
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/const_divmod_zero.bas
-            "-DEXPECT=${EXPECT_CONST_DIVMOD_ZERO}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/string_divmod.stderr EXPECT_STRING_DIVMOD)
-    string(STRIP "${EXPECT_STRING_DIVMOD}" EXPECT_STRING_DIVMOD)
-    viper_add_ctest(basic_error_string_divmod
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/string_divmod.bas
-            "-DEXPECT=${EXPECT_STRING_DIVMOD}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/bad_string_intrinsics.stderr EXPECT_BAD_STRING_INTRINSICS)
-    string(STRIP "${EXPECT_BAD_STRING_INTRINSICS}" EXPECT_BAD_STRING_INTRINSICS)
-    viper_add_ctest(basic_error_bad_string_intrinsics
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/bad_string_intrinsics.bas
-            "-DEXPECT=${EXPECT_BAD_STRING_INTRINSICS}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    # TRY/CATCH structural errors
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/try_missing_catch.stderr EXPECT_TRY_MISS)
-    string(STRIP "${EXPECT_TRY_MISS}" EXPECT_TRY_MISS)
-    viper_add_ctest(basic_error_try_missing_catch
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/try_missing_catch.bas
-            "-DEXPECT=${EXPECT_TRY_MISS}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/catch_without_try.stderr EXPECT_CATCH_WO_TRY)
-    string(STRIP "${EXPECT_CATCH_WO_TRY}" EXPECT_CATCH_WO_TRY)
-    viper_add_ctest(basic_error_catch_without_try
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/catch_without_try.bas
-            "-DEXPECT=${EXPECT_CATCH_WO_TRY}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/float_to_int.stderr EXPECT_FLOAT_TO_INT)
-    string(STRIP "${EXPECT_FLOAT_TO_INT}" EXPECT_FLOAT_TO_INT)
-    viper_add_ctest(basic_error_float_to_int
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/float_to_int.bas
-            -DEXPECT_EXIT_ZERO=TRUE
-            "-DEXPECT=${EXPECT_FLOAT_TO_INT}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/float_in_string.stderr EXPECT_FLOAT_IN_STRING)
-    string(STRIP "${EXPECT_FLOAT_IN_STRING}" EXPECT_FLOAT_IN_STRING)
-    viper_add_ctest(basic_error_float_in_string
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/float_in_string.bas
-            "-DEXPECT=${EXPECT_FLOAT_IN_STRING}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/bad_conversions.stderr EXPECT_BAD_CONVERSIONS)
-    string(STRIP "${EXPECT_BAD_CONVERSIONS}" EXPECT_BAD_CONVERSIONS)
-    viper_add_ctest(basic_error_bad_conversions
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/bad_conversions.bas
-            "-DEXPECT=${EXPECT_BAD_CONVERSIONS}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/bad_math_funcs.stderr EXPECT_BAD_MATH_FUNCS)
-    string(STRIP "${EXPECT_BAD_MATH_FUNCS}" EXPECT_BAD_MATH_FUNCS)
-    viper_add_ctest(basic_error_bad_math_funcs
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/bad_math_funcs.bas
-            "-DEXPECT=${EXPECT_BAD_MATH_FUNCS}"
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/addfile_ns_main.bas -DEXPECT_EXIT_ZERO=TRUE
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
     # ------------------------------------------------------------------
-    # OOP runtime end-to-end examples
+    # OOP error diagnostics
     # ------------------------------------------------------------------
-    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/file_and_stringbuilder.stdout EXPECT_OOP_FILE_SB)
-    string(STRIP "${EXPECT_OOP_FILE_SB}" EXPECT_OOP_FILE_SB)
-    viper_add_ctest(oop_runtime_file_and_stringbuilder
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/file_and_stringbuilder.bas
-            "-DEXPECT=${EXPECT_OOP_FILE_SB}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+    _golden_error(oop_error_overload_ambiguous
+            ${CMAKE_SOURCE_DIR}/src/tests/golden/oop/errors OverloadAmbiguous)
+    _golden_error(oop_error_property_accessor_access
+            ${CMAKE_SOURCE_DIR}/src/tests/golden/oop/errors PropertyAccessorAccess)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/list_counts.stdout EXPECT_OOP_LIST_COUNTS)
-    string(STRIP "${EXPECT_OOP_LIST_COUNTS}" EXPECT_OOP_LIST_COUNTS)
-    viper_add_ctest(oop_runtime_list_counts
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/list_counts.bas
-            "-DEXPECT=${EXPECT_OOP_LIST_COUNTS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+    set(OOP_ERR_DIR ${_VIPER_GOLDEN_DIR}/oop_errors)
+    _golden_error(oop_error_override_nonvirtual ${OOP_ERR_DIR} override_nonvirtual)
+    _golden_error(oop_error_signature_mismatch ${OOP_ERR_DIR} signature_mismatch)
+    _golden_error(oop_error_final_override ${OOP_ERR_DIR} final_override)
+    _golden_error(oop_error_abstract_instantiate ${OOP_ERR_DIR} abstract_instantiate)
+    _golden_error(oop_error_base_not_found ${OOP_ERR_DIR} base_not_found)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/list_ops.stdout EXPECT_OOP_LIST_OPS)
-    string(STRIP "${EXPECT_OOP_LIST_OPS}" EXPECT_OOP_LIST_OPS)
-    viper_add_ctest(oop_runtime_list_ops
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/list_ops.bas
-            "-DEXPECT=${EXPECT_OOP_LIST_OPS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+    # ------------------------------------------------------------------
+    # Type soundness golden tests
+    # ------------------------------------------------------------------
+    _golden_error(basic_error_ts_int_to_string ${_BE} ts_int_to_string)
+    _golden_error(basic_error_ts_wrong_sub_arg ${_BE} ts_wrong_sub_arg)
+    _golden_error(basic_error_ts_wrong_arity ${_BE} ts_wrong_arity)
+    _golden_error(basic_error_ts_string_comparison ${_BE} ts_string_comparison)
+    _golden_error(basic_error_ts_undef_var ${_BE} ts_undef_var)
+    _golden_error(basic_error_ts_const_assign ${_BE} ts_const_assign)
+    _golden_error(basic_error_ts_bool_arith ${_BE} ts_bool_arith)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/seq_ops.stdout EXPECT_OOP_SEQ_OPS)
-    string(STRIP "${EXPECT_OOP_SEQ_OPS}" EXPECT_OOP_SEQ_OPS)
-    viper_add_ctest(oop_runtime_seq_ops
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/seq_ops.bas
-            "-DEXPECT=${EXPECT_OOP_SEQ_OPS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/map_ops.stdout EXPECT_OOP_MAP_OPS)
-    string(STRIP "${EXPECT_OOP_MAP_OPS}" EXPECT_OOP_MAP_OPS)
-    viper_add_ctest(oop_runtime_map_ops
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/map_ops.bas
-            "-DEXPECT=${EXPECT_OOP_MAP_OPS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/file_exists_toggle.stdout EXPECT_OOP_FILE_EXISTS)
-    string(STRIP "${EXPECT_OOP_FILE_EXISTS}" EXPECT_OOP_FILE_EXISTS)
-    viper_add_ctest(oop_runtime_file_exists_toggle
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/file_exists_toggle.bas
-            "-DEXPECT=${EXPECT_OOP_FILE_EXISTS}"
-            -DCLEANUP_FILE=${CMAKE_CURRENT_BINARY_DIR}/tmp_exists.txt
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/io_file_helpers.stdout EXPECT_OOP_IO_FILE_HELPERS)
-    string(STRIP "${EXPECT_OOP_IO_FILE_HELPERS}" EXPECT_OOP_IO_FILE_HELPERS)
-    viper_add_ctest(oop_runtime_io_file_helpers
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/io_file_helpers.bas
-            "-DEXPECT=${EXPECT_OOP_IO_FILE_HELPERS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/dir_seq_wrappers.stdout EXPECT_OOP_DIR_SEQ_WRAPPERS)
-    string(STRIP "${EXPECT_OOP_DIR_SEQ_WRAPPERS}" EXPECT_OOP_DIR_SEQ_WRAPPERS)
-    viper_add_ctest(oop_runtime_dir_seq_wrappers
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/dir_seq_wrappers.bas
-            "-DEXPECT=${EXPECT_OOP_DIR_SEQ_WRAPPERS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # User-defined class ToString() prints qualified name
-    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/user_class_tostring.stdout EXPECT_USER_CLASS_TOSTRING)
-    string(STRIP "${EXPECT_USER_CLASS_TOSTRING}" EXPECT_USER_CLASS_TOSTRING)
-    viper_add_ctest(oop_runtime_user_class_tostring
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/user_class_tostring.bas
-            "-DEXPECT=${EXPECT_USER_CLASS_TOSTRING}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # PRIVATE member access errors
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/private_method_access.stderr EXPECT_PRIVATE_METHOD)
-    string(STRIP "${EXPECT_PRIVATE_METHOD}" EXPECT_PRIVATE_METHOD)
-    viper_add_ctest(basic_error_private_method_access
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/private_method_access.bas
-            "-DEXPECT=${EXPECT_PRIVATE_METHOD}"
+    # GAP tests: BASIC allows these without error
+    viper_add_ctest(basic_error_ts_string_to_int
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_BE}/ts_string_to_int.bas -DEXPECT_EXIT_ZERO=TRUE
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    viper_add_ctest(basic_error_ts_float_divmod
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_BE}/ts_float_divmod.bas -DEXPECT_EXIT_ZERO=TRUE
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    viper_add_ctest(basic_error_ts_wrong_ret_type
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_BE}/ts_wrong_ret_type.bas -DEXPECT_EXIT_ZERO=TRUE
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/private_field_access.stderr EXPECT_PRIVATE_FIELD)
-    string(STRIP "${EXPECT_PRIVATE_FIELD}" EXPECT_PRIVATE_FIELD)
-    viper_add_ctest(basic_error_private_field_access
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/private_field_access.bas
-            "-DEXPECT=${EXPECT_PRIVATE_FIELD}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    # Runtime class readonly property error
+    _golden_error(runtime_classes_readonly_prop_set
+            ${_VIPER_GOLDEN_DIR}/runtime_classes readonly_prop_set)
 
-    # OOP overload/property access diagnostics
-    file(READ ${_VIPER_GOLDEN_DIR}/oop/errors/OverloadAmbiguous.stderr EXPECT_OLOAD_AMBIG)
-    string(STRIP "${EXPECT_OLOAD_AMBIG}" EXPECT_OLOAD_AMBIG)
-    viper_add_ctest(oop_error_overload_ambiguous
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/golden/oop/errors/OverloadAmbiguous.bas
-            "-DEXPECT=${EXPECT_OLOAD_AMBIG}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    # ==================================================================
+    # BASIC run + stdout comparison (check_basic_run_output.cmake)
+    # ==================================================================
 
-    file(READ ${_VIPER_GOLDEN_DIR}/oop/errors/PropertyAccessorAccess.stderr EXPECT_PROP_ACCESS)
-    string(STRIP "${EXPECT_PROP_ACCESS}" EXPECT_PROP_ACCESS)
-    viper_add_ctest(oop_error_property_accessor_access
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/golden/oop/errors/PropertyAccessorAccess.bas
-            "-DEXPECT=${EXPECT_PROP_ACCESS}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    # OOP runtime e2e
+    set(_OOP_RT ${_VIPER_GOLDEN_DIR}/oop_runtime)
+    _golden_basic_run(oop_runtime_file_and_stringbuilder ${_OOP_RT} file_and_stringbuilder file_and_stringbuilder.stdout)
+    _golden_basic_run(oop_runtime_list_counts ${_OOP_RT} list_counts list_counts.stdout)
+    _golden_basic_run(oop_runtime_list_ops ${_OOP_RT} list_ops list_ops.stdout)
+    _golden_basic_run(oop_runtime_seq_ops ${_OOP_RT} seq_ops seq_ops.stdout)
+    _golden_basic_run(oop_runtime_map_ops ${_OOP_RT} map_ops map_ops.stdout)
+    _golden_basic_run(oop_runtime_file_exists_toggle ${_OOP_RT} file_exists_toggle file_exists_toggle.stdout
+            CLEANUP_FILE ${CMAKE_CURRENT_BINARY_DIR}/tmp_exists.txt)
+    _golden_basic_run(oop_runtime_io_file_helpers ${_OOP_RT} io_file_helpers io_file_helpers.stdout)
+    _golden_basic_run(oop_runtime_dir_seq_wrappers ${_OOP_RT} dir_seq_wrappers dir_seq_wrappers.stdout)
+    _golden_basic_run(oop_runtime_user_class_tostring ${_OOP_RT} user_class_tostring user_class_tostring.stdout)
 
-    # Namespace error diagnostics (Track A)
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/namespace_notfound.stderr EXPECT_NS_NOTFOUND)
-    string(STRIP "${EXPECT_NS_NOTFOUND}" EXPECT_NS_NOTFOUND)
-    viper_add_ctest(basic_error_namespace_notfound
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/namespace_notfound.bas
-            "-DEXPECT=${EXPECT_NS_NOTFOUND}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    # Runtime classes
+    set(_RC ${_VIPER_GOLDEN_DIR}/runtime_classes)
+    _golden_basic_run(runtime_classes_string_props ${_RC} string_props string_props.stdout)
+    _golden_basic_run(runtime_classes_string_methods ${_RC} string_methods string_methods.stdout)
+    _golden_basic_run(runtime_classes_sb_basic ${_RC} sb_basic sb_basic.stdout)
+    _golden_basic_run(runtime_classes_string_alias ${_RC} string_alias string_alias.stdout)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/namespace_ambiguous.stderr EXPECT_NS_AMBIGUOUS)
-    string(STRIP "${EXPECT_NS_AMBIGUOUS}" EXPECT_NS_AMBIGUOUS)
-    viper_add_ctest(basic_error_namespace_ambiguous
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/namespace_ambiguous.bas
-            "-DEXPECT=${EXPECT_NS_AMBIGUOUS}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    # Arrays
+    set(_ARR ${_VIPER_GOLDEN_DIR}/arrays)
+    _golden_basic_run(basic_arrays_assign_alias ${_ARR} assign_alias assign_alias.stdout)
+    _golden_basic_run(basic_arrays_resize_breaks_share ${_ARR} resize_breaks_share resize_breaks_share.stdout)
+    _golden_basic_run(basic_arrays_string_store_print ${_ARR} string_array_store_and_print string_array_store_and_print.stdout)
+    _golden_basic_run(basic_arrays_string_overwrite ${_ARR} string_array_overwrite string_array_overwrite.stdout)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/namespace_duplicate_alias.stderr EXPECT_NS_DUP_ALIAS)
-    string(STRIP "${EXPECT_NS_DUP_ALIAS}" EXPECT_NS_DUP_ALIAS)
-    viper_add_ctest(basic_error_namespace_duplicate_alias
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/namespace_duplicate_alias.bas
-            "-DEXPECT=${EXPECT_NS_DUP_ALIAS}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    # OOP golden (virtual dispatch, inheritance, interfaces)
+    set(_OOP ${_VIPER_GOLDEN_DIR}/oop)
+    _golden_basic_run(oop_virtual_dispatch ${_OOP} virtual_dispatch virtual_dispatch.stdout)
+    _golden_basic_run(oop_base_qualifier ${_OOP} base_qualifier base_qualifier.stdout)
+    _golden_basic_run(oop_virtual_no_override ${_OOP} virtual_no_override virtual_no_override.stdout)
+    _golden_basic_run(oop_interface_basic ${_OOP} interface_basic interface_basic.stdout)
+    _golden_basic_run(oop_method_sub_call ${_OOP} method_sub_call method_sub_call.stdout)
+    _golden_basic_run(oop_mutate_and_return ${_OOP} mutate_and_return mutate_and_return.stdout)
+    _golden_basic_run(oop_array_of_objects ${_VIPER_GOLDEN_DIR}/basic/oop array_of_objects array_of_objects.stdout)
+    _golden_basic_run(basic_oop_function_returns_class ${_OOP} function_returns_class function_returns_class.stdout)
+    _golden_basic_run(oop_is_as_operators ${_VIPER_GOLDEN_DIR}/basic/oop is_as_operators is_as_operators.stdout)
 
-    # Phase 2: USING inside namespace blocks is allowed; ensure no error.
-    viper_add_ctest(basic_using_in_namespace_scoped_ok
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/using_in_namespace.bas
-            -DEXPECT_EXIT_ZERO=TRUE
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    # BASIC general
+    set(_BAS ${_VIPER_GOLDEN_DIR}/basic)
+    _golden_basic_run(basic_print_commas_alignment ${_BAS} print_commas print_commas.stdout)
+    _golden_basic_run(basic_namespace_simple ${_BAS} namespace_simple namespace_simple.stdout)
+    _golden_basic_run(basic_namespace_case_insensitive ${_BAS} namespace_case_insensitive namespace_case_insensitive.stdout)
+    _golden_basic_run(basic_namespace_using ${_BAS} namespace_using namespace_using.stdout)
+    _golden_basic_run(basic_namespace_inheritance ${_BAS} namespace_inheritance namespace_inheritance.stdout)
+    _golden_basic_run(basic_viper_root_example ${_BAS} viper_root_example viper_root_example.stdout)
+    _golden_basic_run(basic_do_gosub_loop ${_BAS} do_gosub_loop do_gosub_loop.stdout)
+    _golden_basic_run(basic_int_truthy_condition ${_BAS} int_truthy int_truthy.stdout)
+    _golden_basic_run(basic_shared_var ${_BAS} shared_var shared_var.stdout)
+    _golden_basic_run(basic_not_eof_loop ${_BAS} not_eof_loop not_eof_loop.stdout)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/using_after_decl.stderr EXPECT_USING_AFTER_DECL)
-    string(STRIP "${EXPECT_USING_AFTER_DECL}" EXPECT_USING_AFTER_DECL)
-    viper_add_ctest(basic_error_using_after_decl
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/using_after_decl.bas
-            "-DEXPECT=${EXPECT_USING_AFTER_DECL}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    # TRY/CATCH golden tests
+    set(_TC ${_VIPER_GOLDEN_DIR}/trycatch)
+    _golden_basic_run(basic_trycatch_div_zero ${_TC} try_div_zero try_div_zero.stdout)
+    _golden_basic_run(basic_trycatch_nested_first_catches ${_TC} nested_try_first_catches nested_try_first_catches.stdout)
 
-    # Duplicate procedures detect regardless of case variation
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/namespace_case_insensitive_duplicate.stderr EXPECT_NS_DUP_PROC)
-    string(STRIP "${EXPECT_NS_DUP_PROC}" EXPECT_NS_DUP_PROC)
-    viper_add_ctest(basic_error_namespace_case_insensitive_duplicate
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/namespace_case_insensitive_duplicate.bas
-            "-DEXPECT=${EXPECT_NS_DUP_PROC}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    # BASIC runtime namespace tests
+    set(_BRN ${_VIPER_GOLDEN_DIR}/basic_runtime_ns)
+    _golden_basic_run(basic_runtime_ns_print_using ${_BRN} print_using print_using.stdout)
+    _golden_basic_run(basic_runtime_ns_print_qualified ${_BRN} print_qualified print_qualified.stdout)
+    _golden_basic_run(basic_runtime_ns_using_in_namespace ${_BRN} using_in_namespace using_in_namespace.stdout)
+    _golden_basic_run(basic_runtime_ns_strings_len ${_BRN} strings_len strings_len.stdout)
+    _golden_basic_run(basic_runtime_ns_environment_variables ${_BRN} environment_variables environment_variables.stdout)
+    _golden_basic_run(basic_runtime_ns_diagnostics_assert_success ${_BRN} diagnostics_assert_success diagnostics_assert_success.stdout)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_user_decl.stderr EXPECT_RESERVED_DECL)
-    string(STRIP "${EXPECT_RESERVED_DECL}" EXPECT_RESERVED_DECL)
-    viper_add_ctest(basic_error_reserved_root_user_decl
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_user_decl.bas
-            "-DEXPECT=${EXPECT_RESERVED_DECL}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    # BASIC run error tests (check_basic_run_error.cmake)
+    viper_add_ctest(basic_runtime_ns_diagnostics_assert_trap_message
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_BRN}/diagnostics_assert_trap_msg.bas "-DEXPECT=boom"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_basic_run_error.cmake)
 
-    # Runtime namespaces enabled: USING Viper.* is allowed; expect successful compile
-    viper_add_ctest(basic_error_reserved_root_user_using
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_user_using.bas
-            -DEXPECT_EXIT_ZERO=TRUE
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    viper_add_ctest(basic_runtime_ns_diagnostics_assert_trap_default
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_BRN}/diagnostics_assert_trap_default.bas "-DEXPECT=Assertion failed"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_basic_run_error.cmake)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/vm_trap_loc.stderr EXPECT_VM_TRAP_LOC)
-    string(STRIP "${EXPECT_VM_TRAP_LOC}" EXPECT_VM_TRAP_LOC)
-    viper_add_ctest(vm_trap_loc
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/vm_trap_loc.il
-            "-DEXPECT=${EXPECT_VM_TRAP_LOC}"
-            -P ${_VIPER_GOLDEN_DIR}/check_vm_trap_loc.cmake)
+    # ==================================================================
+    # VM trap location tests (check_vm_trap_loc.cmake)
+    # ==================================================================
+    file(READ ${_VIPER_GOLDEN_DIR}/vm_trap_loc.stderr _expect_trap_loc)
+    string(STRIP "${_expect_trap_loc}" _expect_trap_loc)
+    _golden_vm_trap_loc(vm_trap_loc ${_VIPER_GOLDEN_DIR}/vm_trap_loc.il "${_expect_trap_loc}")
 
     viper_add_ctest(vm_trap_overflow_message
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
             -DIL_FILE=${_VIPER_GOLDEN_DIR}/vm_trap_overflow.il
             -P ${_VIPER_GOLDEN_DIR}/check_vm_trap_overflow.cmake)
 
     set(NUMERICS_IL_DIR ${_VIPER_GOLDEN_DIR}/numerics_il)
+    _golden_vm_trap_loc(numerics_il_i16_add_overflow ${NUMERICS_IL_DIR}/i16_add_overflow.il "Overflow")
+    _golden_vm_trap_loc(numerics_il_int_div_min_overflow ${NUMERICS_IL_DIR}/int_div_min_overflow.il "Overflow")
 
-    viper_add_ctest(numerics_il_i16_add_overflow
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${NUMERICS_IL_DIR}/i16_add_overflow.il
-            -DEXPECT=Overflow
-            -P ${_VIPER_GOLDEN_DIR}/check_vm_trap_loc.cmake)
+    # ==================================================================
+    # IL run + stdout comparison (check_run_output.cmake)
+    # ==================================================================
+    _golden_il_run(numerics_il_i16_mul_ok ${NUMERICS_IL_DIR}/i16_mul_ok.il "30000")
 
-    viper_add_ctest(numerics_il_int_div_min_overflow
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${NUMERICS_IL_DIR}/int_div_min_overflow.il
-            -DEXPECT=Overflow
-            -P ${_VIPER_GOLDEN_DIR}/check_vm_trap_loc.cmake)
-
-    viper_add_ctest(numerics_il_i16_mul_ok
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${NUMERICS_IL_DIR}/i16_mul_ok.il
-            -DEXPECT=30000
-            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
-
-    string(JOIN "\n" EXPECT_NUMERICS_MOD "-1" "1" "-1")
-    viper_add_ctest(numerics_il_mod_sign
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${NUMERICS_IL_DIR}/mod_sign.il
-            "-DEXPECT=${EXPECT_NUMERICS_MOD}"
-            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+    string(JOIN "\n" _expect_mod "-1" "1" "-1")
+    _golden_il_run(numerics_il_mod_sign ${NUMERICS_IL_DIR}/mod_sign.il "${_expect_mod}")
 
     set(ERRORS_MAP_DIR ${_VIPER_GOLDEN_DIR}/errors_map)
-    file(READ ${ERRORS_MAP_DIR}/print_kind_expected.out EXPECT_ERRORS_MAP_PRINT_KIND)
-    string(STRIP "${EXPECT_ERRORS_MAP_PRINT_KIND}" EXPECT_ERRORS_MAP_PRINT_KIND)
-    viper_add_ctest(errors_map_print_kind_from_handler
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${ERRORS_MAP_DIR}/print_kind_from_handler.il
-            "-DEXPECT=${EXPECT_ERRORS_MAP_PRINT_KIND}"
-            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
-
-    file(READ ${ERRORS_MAP_DIR}/div_zero_expected.out EXPECT_ERRORS_MAP_DIV_ZERO)
-    string(STRIP "${EXPECT_ERRORS_MAP_DIV_ZERO}" EXPECT_ERRORS_MAP_DIV_ZERO)
-    viper_add_ctest(errors_map_div_zero
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${ERRORS_MAP_DIR}/div_zero.il
-            "-DEXPECT=${EXPECT_ERRORS_MAP_DIV_ZERO}"
-            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
-
-    # Runtime classes: properties and methods
-    file(READ ${_VIPER_GOLDEN_DIR}/runtime_classes/string_props.stdout EXPECT_STRING_PROPS)
-    string(STRIP "${EXPECT_STRING_PROPS}" EXPECT_STRING_PROPS)
-    viper_add_ctest(runtime_classes_string_props
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/runtime_classes/string_props.bas
-            "-DEXPECT=${EXPECT_STRING_PROPS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/runtime_classes/string_methods.stdout EXPECT_STRING_METHODS)
-    string(STRIP "${EXPECT_STRING_METHODS}" EXPECT_STRING_METHODS)
-    viper_add_ctest(runtime_classes_string_methods
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/runtime_classes/string_methods.bas
-            "-DEXPECT=${EXPECT_STRING_METHODS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # StringBuilder basic: NEW + Append + Length + ToString
-    file(READ ${_VIPER_GOLDEN_DIR}/runtime_classes/sb_basic.stdout EXPECT_SB_BASIC)
-    string(STRIP "${EXPECT_SB_BASIC}" EXPECT_SB_BASIC)
-    viper_add_ctest(runtime_classes_sb_basic
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/runtime_classes/sb_basic.bas
-            "-DEXPECT=${EXPECT_SB_BASIC}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # BASIC STRING alias behaves like Viper.String
-    file(READ ${_VIPER_GOLDEN_DIR}/runtime_classes/string_alias.stdout EXPECT_STRING_ALIAS)
-    string(STRIP "${EXPECT_STRING_ALIAS}" EXPECT_STRING_ALIAS)
-    viper_add_ctest(runtime_classes_string_alias
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/runtime_classes/string_alias.bas
-            "-DEXPECT=${EXPECT_STRING_ALIAS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/runtime_classes/readonly_prop_set.stderr EXPECT_RO_PROP)
-    string(STRIP "${EXPECT_RO_PROP}" EXPECT_RO_PROP)
-    viper_add_ctest(runtime_classes_readonly_prop_set
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/runtime_classes/readonly_prop_set.bas
-            "-DEXPECT=${EXPECT_RO_PROP}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${ERRORS_MAP_DIR}/cast_invalid_expected.out EXPECT_ERRORS_MAP_CAST_INVALID)
-    string(STRIP "${EXPECT_ERRORS_MAP_CAST_INVALID}" EXPECT_ERRORS_MAP_CAST_INVALID)
-    viper_add_ctest(errors_map_cast_invalid
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${ERRORS_MAP_DIR}/cast_invalid.il
-            "-DEXPECT=${EXPECT_ERRORS_MAP_CAST_INVALID}"
-            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
-
-    file(READ ${ERRORS_MAP_DIR}/idx_oob_expected.out EXPECT_ERRORS_MAP_IDX_OOB)
-    string(STRIP "${EXPECT_ERRORS_MAP_IDX_OOB}" EXPECT_ERRORS_MAP_IDX_OOB)
-    viper_add_ctest(errors_map_idx_oob
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${ERRORS_MAP_DIR}/idx_oob.il
-            "-DEXPECT=${EXPECT_ERRORS_MAP_IDX_OOB}"
-            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
-
-    file(READ ${ERRORS_MAP_DIR}/from_err_fnf_expected.out EXPECT_ERRORS_MAP_FROM_ERR_FNF)
-    string(STRIP "${EXPECT_ERRORS_MAP_FROM_ERR_FNF}" EXPECT_ERRORS_MAP_FROM_ERR_FNF)
-    viper_add_ctest(errors_map_from_err_fnf
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${ERRORS_MAP_DIR}/from_err_fnf.il
-            "-DEXPECT=${EXPECT_ERRORS_MAP_FROM_ERR_FNF}"
-            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
-
-    file(READ ${ERRORS_MAP_DIR}/expected.out EXPECT_ERRORS_MAP_FROM_ERR)
-    string(STRIP "${EXPECT_ERRORS_MAP_FROM_ERR}" EXPECT_ERRORS_MAP_FROM_ERR)
-    viper_add_ctest(errors_map_from_err
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${ERRORS_MAP_DIR}/from_err.il
-            "-DEXPECT=${EXPECT_ERRORS_MAP_FROM_ERR}"
-            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+    _golden_il_run_file(errors_map_print_kind_from_handler ${ERRORS_MAP_DIR}/print_kind_from_handler.il ${ERRORS_MAP_DIR}/print_kind_expected.out)
+    _golden_il_run_file(errors_map_div_zero ${ERRORS_MAP_DIR}/div_zero.il ${ERRORS_MAP_DIR}/div_zero_expected.out)
+    _golden_il_run_file(errors_map_cast_invalid ${ERRORS_MAP_DIR}/cast_invalid.il ${ERRORS_MAP_DIR}/cast_invalid_expected.out)
+    _golden_il_run_file(errors_map_idx_oob ${ERRORS_MAP_DIR}/idx_oob.il ${ERRORS_MAP_DIR}/idx_oob_expected.out)
+    _golden_il_run_file(errors_map_from_err_fnf ${ERRORS_MAP_DIR}/from_err_fnf.il ${ERRORS_MAP_DIR}/from_err_fnf_expected.out)
+    _golden_il_run_file(errors_map_from_err ${ERRORS_MAP_DIR}/from_err.il ${ERRORS_MAP_DIR}/expected.out)
 
     set(EH_RUNTIME_DIR ${_VIPER_GOLDEN_DIR}/eh_runtime)
+    _golden_il_run_file(eh_runtime_div_by_zero_with_handler ${EH_RUNTIME_DIR}/div_by_zero_with_handler.il ${EH_RUNTIME_DIR}/div_by_zero_with_handler.out)
+    _golden_il_run_file(eh_runtime_bounds_with_handler ${EH_RUNTIME_DIR}/bounds_with_handler.il ${EH_RUNTIME_DIR}/bounds_with_handler.out)
 
-    file(READ ${EH_RUNTIME_DIR}/div_by_zero_with_handler.out EXPECT_EH_RUNTIME_DIV_ZERO_WITH_HANDLER)
-    string(STRIP "${EXPECT_EH_RUNTIME_DIV_ZERO_WITH_HANDLER}" EXPECT_EH_RUNTIME_DIV_ZERO_WITH_HANDLER)
-    viper_add_ctest(eh_runtime_div_by_zero_with_handler
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${EH_RUNTIME_DIR}/div_by_zero_with_handler.il
-            "-DEXPECT=${EXPECT_EH_RUNTIME_DIV_ZERO_WITH_HANDLER}"
-            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
-
-    file(READ ${EH_RUNTIME_DIR}/bounds_with_handler.out EXPECT_EH_RUNTIME_BOUNDS_WITH_HANDLER)
-    string(STRIP "${EXPECT_EH_RUNTIME_BOUNDS_WITH_HANDLER}" EXPECT_EH_RUNTIME_BOUNDS_WITH_HANDLER)
-    viper_add_ctest(eh_runtime_bounds_with_handler
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${EH_RUNTIME_DIR}/bounds_with_handler.il
-            "-DEXPECT=${EXPECT_EH_RUNTIME_BOUNDS_WITH_HANDLER}"
-            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
-
-    viper_add_ctest(il_opt_const_if
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/il_opt/const_if.in.il
-            -DGOLDEN=${_VIPER_GOLDEN_DIR}/il_opt/const_if.opt.il
-            -P ${_VIPER_GOLDEN_DIR}/il_opt/check_opt.cmake)
-
-    viper_add_ctest(il_opt_arith_id
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/il_opt/arith_id.in.il
-            -DGOLDEN=${_VIPER_GOLDEN_DIR}/il_opt/arith_id.opt.il
-            -P ${_VIPER_GOLDEN_DIR}/il_opt/check_opt.cmake)
-
-    viper_add_ctest(il_opt_math_constfold
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/il_opt/math_constfold.in.il
-            -DGOLDEN=${_VIPER_GOLDEN_DIR}/il_opt/math_constfold.opt.il
-            -DPASSES=constfold
-            -P ${_VIPER_GOLDEN_DIR}/il_opt/check_opt.cmake)
-
-    viper_add_ctest(constfold_add_overflow
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/constfold/constfold_add_overflow.il
-            -DGOLDEN=${_VIPER_GOLDEN_DIR}/constfold/constfold_add_overflow.opt.il
-            -DEXPECT_NONZERO=1
-            -DEXPECT_REGEX=Overflow
-            -P ${_VIPER_GOLDEN_DIR}/constfold/check_constfold.cmake)
-
-    viper_add_ctest(constfold_div_by_zero
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/constfold/constfold_div_by_zero.il
-            -DGOLDEN=${_VIPER_GOLDEN_DIR}/constfold/constfold_div_by_zero.opt.il
-            -DEXPECT_NONZERO=1
-            -DEXPECT_REGEX=DivideByZero
-            -P ${_VIPER_GOLDEN_DIR}/constfold/check_constfold.cmake)
-
-    viper_add_ctest(constfold_rounding
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/constfold/constfold_rounding.il
-            -DGOLDEN=${_VIPER_GOLDEN_DIR}/constfold/constfold_rounding.opt.il
-            -DEXPECT_RESULT=0
-            -DSKIP_RUNTIME=1
-            -P ${_VIPER_GOLDEN_DIR}/constfold/check_constfold.cmake)
-
-    viper_add_ctest(il_opt_cbr_same_target
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/il_opt/cbr_same_target.in.il
-            -DGOLDEN=${_VIPER_GOLDEN_DIR}/il_opt/cbr_same_target.golden
-            -DPASSES=peephole
-            -P ${_VIPER_GOLDEN_DIR}/il_opt/check_opt.cmake)
-    set_tests_properties(il_opt_cbr_same_target PROPERTIES LABELS Smoke)
-
-    viper_add_ctest(il_opt_mem2reg_simple
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/il_opt/mem2reg_simple.in.il
-            -DGOLDEN=${_VIPER_GOLDEN_DIR}/il_opt/mem2reg_simple.opt.il
-            -DPASSES=mem2reg
-            -P ${_VIPER_GOLDEN_DIR}/il_opt/check_opt.cmake)
-
-    viper_add_ctest(il_opt_mem2reg_diamond
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/il_opt/mem2reg_diamond.in.il
-            -DGOLDEN=${_VIPER_GOLDEN_DIR}/il_opt/mem2reg_diamond.opt.il
-            -DPASSES=mem2reg
-            -P ${_VIPER_GOLDEN_DIR}/il_opt/check_opt.cmake)
-
-    viper_add_ctest(il_opt_mem2reg_nested
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/il_opt/mem2reg_nested.in.il
-            -DGOLDEN=${_VIPER_GOLDEN_DIR}/il_opt/mem2reg_nested.opt.il
-            -DPASSES=mem2reg
-            -P ${_VIPER_GOLDEN_DIR}/il_opt/check_opt.cmake)
-
-    viper_add_ctest(il_opt_mem2reg_loop
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/il_opt/mem2reg_loop.in.il
-            -DGOLDEN=${_VIPER_GOLDEN_DIR}/il_opt/mem2reg_loop.opt.il
-            -DPASSES=mem2reg
-            -P ${_VIPER_GOLDEN_DIR}/il_opt/check_opt.cmake)
-
-    viper_add_ctest(il_opt_mem2reg_multi
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/il_opt/mem2reg_multi.in.il
-            -DGOLDEN=${_VIPER_GOLDEN_DIR}/il_opt/mem2reg_multi.opt.il
-            -DPASSES=mem2reg
-            -P ${_VIPER_GOLDEN_DIR}/il_opt/check_opt.cmake)
-
-    viper_add_ctest(basic_fileio_lowering_open_close
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/fileio/lowering_open_close.bas
-            -DGOLDEN=${_VIPER_GOLDEN_DIR}/fileio/lowering_open_close.il
-            -P ${_VIPER_GOLDEN_DIR}/basic_to_il/check_il.cmake)
-
-    viper_add_ctest(basic_fileio_lowering_print_hash_multi
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/fileio/lowering_print_hash_multi.bas
-            -DGOLDEN=${_VIPER_GOLDEN_DIR}/fileio/lowering_print_hash_multi.il
-            -P ${_VIPER_GOLDEN_DIR}/basic_to_il/check_il.cmake)
-
-    # Skip on Windows: GOSUB compilation crashes (to be investigated)
-    if (NOT WIN32)
-        viper_add_ctest(basic_to_il_gosub
-                ${CMAKE_COMMAND}
-                -DILC=${BASIC_ILC}
-                -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_to_il/gosub.bas
-                -DGOLDEN=${_VIPER_GOLDEN_DIR}/basic_to_il/gosub.il
-                -P ${_VIPER_GOLDEN_DIR}/basic_to_il/check_il.cmake)
-    endif ()
-
-    file(READ ${_VIPER_GOLDEN_DIR}/arrays/assign_alias.stdout EXPECT_ASSIGN_ALIAS)
-    string(STRIP "${EXPECT_ASSIGN_ALIAS}" EXPECT_ASSIGN_ALIAS)
-    viper_add_ctest(basic_arrays_assign_alias
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/arrays/assign_alias.bas
-            "-DEXPECT=${EXPECT_ASSIGN_ALIAS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/arrays/resize_breaks_share.stdout EXPECT_ARRAY_RESIZE_BREAKS_SHARE)
-    string(STRIP "${EXPECT_ARRAY_RESIZE_BREAKS_SHARE}" EXPECT_ARRAY_RESIZE_BREAKS_SHARE)
-    viper_add_ctest(basic_arrays_resize_breaks_share
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/arrays/resize_breaks_share.bas
-            "-DEXPECT=${EXPECT_ARRAY_RESIZE_BREAKS_SHARE}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # BUG-032/033: String arrays end-to-end validation
-    file(READ ${_VIPER_GOLDEN_DIR}/arrays/string_array_store_and_print.stdout EXPECT_STRING_ARRAY_STORE_PRINT)
-    string(STRIP "${EXPECT_STRING_ARRAY_STORE_PRINT}" EXPECT_STRING_ARRAY_STORE_PRINT)
-    viper_add_ctest(basic_arrays_string_store_print
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/arrays/string_array_store_and_print.bas
-            "-DEXPECT=${EXPECT_STRING_ARRAY_STORE_PRINT}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # BUG-032: Overwrite semantics (retain new, release old)
-    file(READ ${_VIPER_GOLDEN_DIR}/arrays/string_array_overwrite.stdout EXPECT_STRING_ARRAY_OVERWRITE)
-    string(STRIP "${EXPECT_STRING_ARRAY_OVERWRITE}" EXPECT_STRING_ARRAY_OVERWRITE)
-    viper_add_ctest(basic_arrays_string_overwrite
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/arrays/string_array_overwrite.bas
-            "-DEXPECT=${EXPECT_STRING_ARRAY_OVERWRITE}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-
-    # OOP virtual dispatch and base-qualified direct call
-    file(READ ${_VIPER_GOLDEN_DIR}/oop/virtual_dispatch.stdout EXPECT_OOP_VDISPATCH)
-    string(STRIP "${EXPECT_OOP_VDISPATCH}" EXPECT_OOP_VDISPATCH)
-    viper_add_ctest(oop_virtual_dispatch
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop/virtual_dispatch.bas
-            "-DEXPECT=${EXPECT_OOP_VDISPATCH}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/oop/base_qualifier.stdout EXPECT_OOP_BASE_QUAL)
-    string(STRIP "${EXPECT_OOP_BASE_QUAL}" EXPECT_OOP_BASE_QUAL)
-    viper_add_ctest(oop_base_qualifier
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop/base_qualifier.bas
-            "-DEXPECT=${EXPECT_OOP_BASE_QUAL}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # BUG-OOP-003: Virtual method inherited without override
-    file(READ ${_VIPER_GOLDEN_DIR}/oop/virtual_no_override.stdout EXPECT_OOP_VNOOVERRIDE)
-    string(STRIP "${EXPECT_OOP_VNOOVERRIDE}" EXPECT_OOP_VNOOVERRIDE)
-    viper_add_ctest(oop_virtual_no_override
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop/virtual_no_override.bas
-            "-DEXPECT=${EXPECT_OOP_VNOOVERRIDE}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # BUG-OOP-004: INTERFACE/IMPLEMENTS basic test
-    file(READ ${_VIPER_GOLDEN_DIR}/oop/interface_basic.stdout EXPECT_OOP_IFACE_BASIC)
-    string(STRIP "${EXPECT_OOP_IFACE_BASIC}" EXPECT_OOP_IFACE_BASIC)
-    viper_add_ctest(oop_interface_basic
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop/interface_basic.bas
-            "-DEXPECT=${EXPECT_OOP_IFACE_BASIC}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # OOP IS/AS operators for type checking and safe casts
-    file(READ ${_VIPER_GOLDEN_DIR}/basic/oop/is_as_operators.stdout EXPECT_OOP_IS_AS)
-    string(STRIP "${EXPECT_OOP_IS_AS}" EXPECT_OOP_IS_AS)
-    viper_add_ctest(oop_is_as_operators
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/oop/is_as_operators.bas
-            "-DEXPECT=${EXPECT_OOP_IS_AS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # OOP SUB call as statement
-    file(READ ${_VIPER_GOLDEN_DIR}/oop/method_sub_call.stdout EXPECT_OOP_SUB_CALL)
-    string(STRIP "${EXPECT_OOP_SUB_CALL}" EXPECT_OOP_SUB_CALL)
-    viper_add_ctest(oop_method_sub_call
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop/method_sub_call.bas
-            "-DEXPECT=${EXPECT_OOP_SUB_CALL}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # OOP mutate+return method call
-    file(READ ${_VIPER_GOLDEN_DIR}/oop/mutate_and_return.stdout EXPECT_OOP_MUT_RET)
-    string(STRIP "${EXPECT_OOP_MUT_RET}" EXPECT_OOP_MUT_RET)
-    viper_add_ctest(oop_mutate_and_return
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop/mutate_and_return.bas
-            "-DEXPECT=${EXPECT_OOP_MUT_RET}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # OOP array of objects: DIM a(n) AS Class, get/put, and field access
-    file(READ ${_VIPER_GOLDEN_DIR}/basic/oop/array_of_objects.stdout EXPECT_OOP_ARRAY_OF_OBJECTS)
-    string(STRIP "${EXPECT_OOP_ARRAY_OF_OBJECTS}" EXPECT_OOP_ARRAY_OF_OBJECTS)
-    viper_add_ctest(oop_array_of_objects
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/oop/array_of_objects.bas
-            "-DEXPECT=${EXPECT_OOP_ARRAY_OF_OBJECTS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # Function returning a class type (AS Box)
-    file(READ ${_VIPER_GOLDEN_DIR}/oop/function_returns_class.stdout EXPECT_FUNC_RET_CLASS)
-    string(STRIP "${EXPECT_FUNC_RET_CLASS}" EXPECT_FUNC_RET_CLASS)
-    viper_add_ctest(basic_oop_function_returns_class
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop/function_returns_class.bas
-            "-DEXPECT=${EXPECT_FUNC_RET_CLASS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic/print_commas.stdout EXPECT_BASIC_PRINT_COMMAS)
-    string(STRIP "${EXPECT_BASIC_PRINT_COMMAS}" EXPECT_BASIC_PRINT_COMMAS)
-    viper_add_ctest(basic_print_commas_alignment
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/print_commas.bas
-            "-DEXPECT=${EXPECT_BASIC_PRINT_COMMAS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # Track A namespace golden tests
-    file(READ ${_VIPER_GOLDEN_DIR}/basic/namespace_simple.stdout EXPECT_NS_SIMPLE)
-    string(STRIP "${EXPECT_NS_SIMPLE}" EXPECT_NS_SIMPLE)
-    viper_add_ctest(basic_namespace_simple
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/namespace_simple.bas
-            "-DEXPECT=${EXPECT_NS_SIMPLE}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # Case-insensitive qualified call resolution
-    file(READ ${_VIPER_GOLDEN_DIR}/basic/namespace_case_insensitive.stdout EXPECT_NS_CASE_INS)
-    string(STRIP "${EXPECT_NS_CASE_INS}" EXPECT_NS_CASE_INS)
-    viper_add_ctest(basic_namespace_case_insensitive
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/namespace_case_insensitive.bas
-            "-DEXPECT=${EXPECT_NS_CASE_INS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic/namespace_using.stdout EXPECT_NS_USING)
-    string(STRIP "${EXPECT_NS_USING}" EXPECT_NS_USING)
-    viper_add_ctest(basic_namespace_using
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/namespace_using.bas
-            "-DEXPECT=${EXPECT_NS_USING}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # TRY/CATCH golden tests (exception handling in bytecode VM)
-    file(READ ${_VIPER_GOLDEN_DIR}/trycatch/try_div_zero.stdout EXPECT_TRY_DIV_ZERO)
-    string(STRIP "${EXPECT_TRY_DIV_ZERO}" EXPECT_TRY_DIV_ZERO)
-    viper_add_ctest(basic_trycatch_div_zero
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/trycatch/try_div_zero.bas
-            "-DEXPECT=${EXPECT_TRY_DIV_ZERO}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/trycatch/nested_try_first_catches.stdout EXPECT_TRY_NESTED_INNER)
-    string(STRIP "${EXPECT_TRY_NESTED_INNER}" EXPECT_TRY_NESTED_INNER)
-    viper_add_ctest(basic_trycatch_nested_first_catches
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/trycatch/nested_try_first_catches.bas
-            "-DEXPECT=${EXPECT_TRY_NESTED_INNER}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic/namespace_inheritance.stdout EXPECT_NS_INHERITANCE)
-    string(STRIP "${EXPECT_NS_INHERITANCE}" EXPECT_NS_INHERITANCE)
-    viper_add_ctest(basic_namespace_inheritance
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/namespace_inheritance.bas
-            "-DEXPECT=${EXPECT_NS_INHERITANCE}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic/viper_root_example.stdout EXPECT_VIPER_ROOT)
-    string(STRIP "${EXPECT_VIPER_ROOT}" EXPECT_VIPER_ROOT)
-    viper_add_ctest(basic_viper_root_example
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/viper_root_example.bas
-            "-DEXPECT=${EXPECT_VIPER_ROOT}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # BUG-026: DO WHILE with only GOSUB should not produce empty block
-    file(READ ${_VIPER_GOLDEN_DIR}/basic/do_gosub_loop.stdout EXPECT_DO_GOSUB_LOOP)
-    string(STRIP "${EXPECT_DO_GOSUB_LOOP}" EXPECT_DO_GOSUB_LOOP)
-    viper_add_ctest(basic_do_gosub_loop
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/do_gosub_loop.bas
-            "-DEXPECT=${EXPECT_DO_GOSUB_LOOP}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # Integer truthiness in IF conditions (BUG-012 compatibility)
-    file(READ ${_VIPER_GOLDEN_DIR}/basic/int_truthy.stdout EXPECT_INT_TRUTHY)
-    string(STRIP "${EXPECT_INT_TRUTHY}" EXPECT_INT_TRUTHY)
-    viper_add_ctest(basic_int_truthy_condition
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/int_truthy.bas
-            "-DEXPECT=${EXPECT_INT_TRUTHY}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-
-    # SHARED statement acceptance/behavior
-    file(READ ${_VIPER_GOLDEN_DIR}/basic/shared_var.stdout EXPECT_SHARED_VAR)
-    string(STRIP "${EXPECT_SHARED_VAR}" EXPECT_SHARED_VAR)
-    viper_add_ctest(basic_shared_var
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/shared_var.bas
-            "-DEXPECT=${EXPECT_SHARED_VAR}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    # DO WHILE NOT EOF(#) truthiness
-    file(READ ${_VIPER_GOLDEN_DIR}/basic/not_eof_loop.stdout EXPECT_NOT_EOF)
-    string(STRIP "${EXPECT_NOT_EOF}" EXPECT_NOT_EOF)
-    viper_add_ctest(basic_not_eof_loop
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/not_eof_loop.bas
-            "-DEXPECT=${EXPECT_NOT_EOF}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-
-    file(READ ${_VIPER_GOLDEN_DIR}/quickstart.stdout EXPECT_QUICKSTART)
-    string(STRIP "${EXPECT_QUICKSTART}" EXPECT_QUICKSTART)
-    viper_add_ctest(il_quickstart_example
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/quickstart.il
-            "-DEXPECT=${EXPECT_QUICKSTART}"
-            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
-
-    # IL with namespaced runtime externs should run on the VM
-    file(READ ${_VIPER_GOLDEN_DIR}/il/viper_namespaces/print_i64.stdout EXPECT_VIPER_NS_PRINT_I64)
-    string(STRIP "${EXPECT_VIPER_NS_PRINT_I64}" EXPECT_VIPER_NS_PRINT_I64)
-    viper_add_ctest(il_viper_ns_print_i64
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/il/viper_namespaces/print_i64.il
-            "-DEXPECT=${EXPECT_VIPER_NS_PRINT_I64}"
-            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+    _golden_il_run_file(il_quickstart_example ${_VIPER_GOLDEN_DIR}/quickstart.il ${_VIPER_GOLDEN_DIR}/quickstart.stdout)
+    _golden_il_run_file(il_viper_ns_print_i64 ${_VIPER_GOLDEN_DIR}/il/viper_namespaces/print_i64.il ${_VIPER_GOLDEN_DIR}/il/viper_namespaces/print_i64.stdout)
 
     # When dual-publish is enabled, legacy rt_* alias should still work
     if (VIPER_RUNTIME_NS_DUAL)
-        viper_add_ctest(il_legacy_rt_print_i64
-                ${CMAKE_COMMAND}
-                -DILC=${BASIC_ILC}
-                -DIL_FILE=${_VIPER_GOLDEN_DIR}/il/viper_namespaces/print_i64_legacy.il
-                "-DEXPECT=${EXPECT_VIPER_NS_PRINT_I64}"
-                -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+        file(READ ${_VIPER_GOLDEN_DIR}/il/viper_namespaces/print_i64.stdout _expect_ns_i64)
+        string(STRIP "${_expect_ns_i64}" _expect_ns_i64)
+        _golden_il_run(il_legacy_rt_print_i64
+                ${_VIPER_GOLDEN_DIR}/il/viper_namespaces/print_i64_legacy.il "${_expect_ns_i64}")
     endif ()
 
-    # BASIC calls to Viper.* externs (qualified and via USING)
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_runtime_ns/print_using.stdout EXPECT_BASIC_VIPER_USING)
-    string(STRIP "${EXPECT_BASIC_VIPER_USING}" EXPECT_BASIC_VIPER_USING)
-    viper_add_ctest(basic_runtime_ns_print_using
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/print_using.bas
-            "-DEXPECT=${EXPECT_BASIC_VIPER_USING}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+    # ==================================================================
+    # Exit code tests (check_run_exit_code.cmake)
+    # ==================================================================
+    _golden_exit_code(il_environment_end_program
+            IL_FILE ${_VIPER_GOLDEN_DIR}/il/environment_end_program.il EXIT_CODE 7)
+    _golden_exit_code(basic_runtime_ns_environment_end_program
+            BAS_FILE ${_BRN}/environment_end_program.bas EXIT_CODE 7)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_runtime_ns/print_qualified.stdout EXPECT_BASIC_VIPER_QUAL)
-    string(STRIP "${EXPECT_BASIC_VIPER_QUAL}" EXPECT_BASIC_VIPER_QUAL)
-    viper_add_ctest(basic_runtime_ns_print_qualified
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/print_qualified.bas
-            "-DEXPECT=${EXPECT_BASIC_VIPER_QUAL}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+    # ==================================================================
+    # IL optimizer golden tests (check_opt.cmake)
+    # ==================================================================
+    set(_OPT ${_VIPER_GOLDEN_DIR}/il_opt)
+    _golden_il_opt(il_opt_const_if ${_OPT}/const_if.in.il ${_OPT}/const_if.opt.il)
+    _golden_il_opt(il_opt_arith_id ${_OPT}/arith_id.in.il ${_OPT}/arith_id.opt.il)
+    _golden_il_opt(il_opt_math_constfold ${_OPT}/math_constfold.in.il ${_OPT}/math_constfold.opt.il PASSES constfold)
+    _golden_il_opt(il_opt_cbr_same_target ${_OPT}/cbr_same_target.in.il ${_OPT}/cbr_same_target.golden PASSES peephole)
+    set_tests_properties(il_opt_cbr_same_target PROPERTIES LABELS Smoke)
+    _golden_il_opt(il_opt_mem2reg_simple ${_OPT}/mem2reg_simple.in.il ${_OPT}/mem2reg_simple.opt.il PASSES mem2reg)
+    _golden_il_opt(il_opt_mem2reg_diamond ${_OPT}/mem2reg_diamond.in.il ${_OPT}/mem2reg_diamond.opt.il PASSES mem2reg)
+    _golden_il_opt(il_opt_mem2reg_nested ${_OPT}/mem2reg_nested.in.il ${_OPT}/mem2reg_nested.opt.il PASSES mem2reg)
+    _golden_il_opt(il_opt_mem2reg_loop ${_OPT}/mem2reg_loop.in.il ${_OPT}/mem2reg_loop.opt.il PASSES mem2reg)
+    _golden_il_opt(il_opt_mem2reg_multi ${_OPT}/mem2reg_multi.in.il ${_OPT}/mem2reg_multi.opt.il PASSES mem2reg)
 
-    # USING inside NAMESPACE block should scope imports; fully qualified call prints 99
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_runtime_ns/using_in_namespace.stdout EXPECT_USING_NS)
-    string(STRIP "${EXPECT_USING_NS}" EXPECT_USING_NS)
-    viper_add_ctest(basic_runtime_ns_using_in_namespace
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/using_in_namespace.bas
-            "-DEXPECT=${EXPECT_USING_NS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+    # ==================================================================
+    # Constant folding golden tests (check_constfold.cmake)
+    # ==================================================================
+    set(_CF ${_VIPER_GOLDEN_DIR}/constfold)
+    viper_add_ctest(constfold_add_overflow
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DIL_FILE=${_CF}/constfold_add_overflow.il -DGOLDEN=${_CF}/constfold_add_overflow.opt.il
+            -DEXPECT_NONZERO=1 -DEXPECT_REGEX=Overflow
+            -P ${_CF}/check_constfold.cmake)
+    viper_add_ctest(constfold_div_by_zero
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DIL_FILE=${_CF}/constfold_div_by_zero.il -DGOLDEN=${_CF}/constfold_div_by_zero.opt.il
+            -DEXPECT_NONZERO=1 -DEXPECT_REGEX=DivideByZero
+            -P ${_CF}/check_constfold.cmake)
+    viper_add_ctest(constfold_rounding
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DIL_FILE=${_CF}/constfold_rounding.il -DGOLDEN=${_CF}/constfold_rounding.opt.il
+            -DEXPECT_RESULT=0 -DSKIP_RUNTIME=1
+            -P ${_CF}/check_constfold.cmake)
 
-    # Additional Viper.* families: Strings, Convert
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_runtime_ns/strings_len.stdout EXPECT_VIPER_STR_LEN)
-    string(STRIP "${EXPECT_VIPER_STR_LEN}" EXPECT_VIPER_STR_LEN)
-    viper_add_ctest(basic_runtime_ns_strings_len
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/strings_len.bas
-            "-DEXPECT=${EXPECT_VIPER_STR_LEN}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+    # ==================================================================
+    # BASIC → IL golden tests (check_il.cmake)
+    # ==================================================================
+    set(_FIO ${_VIPER_GOLDEN_DIR}/fileio)
+    _golden_basic_to_il(basic_fileio_lowering_open_close
+            ${_FIO}/lowering_open_close.bas ${_FIO}/lowering_open_close.il)
+    _golden_basic_to_il(basic_fileio_lowering_print_hash_multi
+            ${_FIO}/lowering_print_hash_multi.bas ${_FIO}/lowering_print_hash_multi.il)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_runtime_ns/environment_variables.stdout EXPECT_ENV_VARS)
-    string(STRIP "${EXPECT_ENV_VARS}" EXPECT_ENV_VARS)
-    viper_add_ctest(basic_runtime_ns_environment_variables
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/environment_variables.bas
-            "-DEXPECT=${EXPECT_ENV_VARS}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+    # Skip on Windows: GOSUB compilation crashes (to be investigated)
+    if (NOT WIN32)
+        _golden_basic_to_il(basic_to_il_gosub
+                ${_VIPER_GOLDEN_DIR}/basic_to_il/gosub.bas ${_VIPER_GOLDEN_DIR}/basic_to_il/gosub.il)
+    endif ()
 
-    viper_add_ctest(il_environment_end_program
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DIL_FILE=${_VIPER_GOLDEN_DIR}/il/environment_end_program.il
-            -DEXPECT_EXIT=7
-            -P ${_VIPER_GOLDEN_DIR}/check_run_exit_code.cmake)
-
-    viper_add_ctest(basic_runtime_ns_environment_end_program
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/environment_end_program.bas
-            -DEXPECT_EXIT=7
-            -P ${_VIPER_GOLDEN_DIR}/check_run_exit_code.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_runtime_ns/diagnostics_assert_success.stdout EXPECT_DIAG_ASSERT_OK)
-    string(STRIP "${EXPECT_DIAG_ASSERT_OK}" EXPECT_DIAG_ASSERT_OK)
-    viper_add_ctest(basic_runtime_ns_diagnostics_assert_success
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/diagnostics_assert_success.bas
-            "-DEXPECT=${EXPECT_DIAG_ASSERT_OK}"
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
-
-    viper_add_ctest(basic_runtime_ns_diagnostics_assert_trap_message
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/diagnostics_assert_trap_msg.bas
-            "-DEXPECT=boom"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_basic_run_error.cmake)
-
-    viper_add_ctest(basic_runtime_ns_diagnostics_assert_trap_default
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/diagnostics_assert_trap_default.bas
-            "-DEXPECT=Assertion failed"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_basic_run_error.cmake)
-
-    # Additional families can be added incrementally (Strings.Concat, Convert, Parse, Diagnostics)
-
-    # BASIC error: reserved root declaration under Viper
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_decl.stderr EXPECT_RESERVED_DECL2)
-    string(STRIP "${EXPECT_RESERVED_DECL2}" EXPECT_RESERVED_DECL2)
-    viper_add_ctest(basic_error_reserved_root_decl
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_decl.bas
-            "-DEXPECT=${EXPECT_RESERVED_DECL2}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    # Ambiguous unqualified call when two USING imports provide same name
-    viper_add_ctest(basic_error_ambiguous_using_call
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ambiguous_using_call.bas
-            "-DEXPECT=ambiguous procedure 'PRINTI64'.* matches: My\\.Console\\.PRINTI64, Viper\\.Terminal\\.PRINTI64"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    # Shadowing builtin extern should trigger dedicated error
-    viper_add_ctest(basic_error_shadow_builtin_decl
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/shadow_builtin_decl.bas
-            "-DEXPECT=E_VIPER_BUILTIN_SHADOW"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    # OOP negative diagnostics
-    set(OOP_ERR_DIR ${_VIPER_GOLDEN_DIR}/oop_errors)
-
-    file(READ ${OOP_ERR_DIR}/override_nonvirtual.stderr EXPECT_OOP_ERR_OVR_NONV)
-    string(STRIP "${EXPECT_OOP_ERR_OVR_NONV}" EXPECT_OOP_ERR_OVR_NONV)
-    viper_add_ctest(oop_error_override_nonvirtual
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${OOP_ERR_DIR}/override_nonvirtual.bas
-            "-DEXPECT=${EXPECT_OOP_ERR_OVR_NONV}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${OOP_ERR_DIR}/signature_mismatch.stderr EXPECT_OOP_ERR_SIG_MISMATCH)
-    string(STRIP "${EXPECT_OOP_ERR_SIG_MISMATCH}" EXPECT_OOP_ERR_SIG_MISMATCH)
-    viper_add_ctest(oop_error_signature_mismatch
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${OOP_ERR_DIR}/signature_mismatch.bas
-            "-DEXPECT=${EXPECT_OOP_ERR_SIG_MISMATCH}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${OOP_ERR_DIR}/final_override.stderr EXPECT_OOP_ERR_FINAL)
-    string(STRIP "${EXPECT_OOP_ERR_FINAL}" EXPECT_OOP_ERR_FINAL)
-    viper_add_ctest(oop_error_final_override
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${OOP_ERR_DIR}/final_override.bas
-            "-DEXPECT=${EXPECT_OOP_ERR_FINAL}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${OOP_ERR_DIR}/abstract_instantiate.stderr EXPECT_OOP_ERR_ABSTRACT)
-    string(STRIP "${EXPECT_OOP_ERR_ABSTRACT}" EXPECT_OOP_ERR_ABSTRACT)
-    viper_add_ctest(oop_error_abstract_instantiate
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${OOP_ERR_DIR}/abstract_instantiate.bas
-            "-DEXPECT=${EXPECT_OOP_ERR_ABSTRACT}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${OOP_ERR_DIR}/base_not_found.stderr EXPECT_OOP_ERR_BASE_NOT_FOUND)
-    string(STRIP "${EXPECT_OOP_ERR_BASE_NOT_FOUND}" EXPECT_OOP_ERR_BASE_NOT_FOUND)
-    viper_add_ctest(oop_error_base_not_found
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${OOP_ERR_DIR}/base_not_found.bas
-            "-DEXPECT=${EXPECT_OOP_ERR_BASE_NOT_FOUND}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    # Type soundness golden tests
-    # GAP: BASIC allows string-to-integer assignment without error
-    viper_add_ctest(basic_error_ts_string_to_int
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_string_to_int.bas
-            -DEXPECT_EXIT_ZERO=TRUE
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/ts_int_to_string.stderr EXPECT_TS_INT_TO_STRING)
-    string(STRIP "${EXPECT_TS_INT_TO_STRING}" EXPECT_TS_INT_TO_STRING)
-    viper_add_ctest(basic_error_ts_int_to_string
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_int_to_string.bas
-            "-DEXPECT=${EXPECT_TS_INT_TO_STRING}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/ts_wrong_sub_arg.stderr EXPECT_TS_WRONG_SUB_ARG)
-    string(STRIP "${EXPECT_TS_WRONG_SUB_ARG}" EXPECT_TS_WRONG_SUB_ARG)
-    viper_add_ctest(basic_error_ts_wrong_sub_arg
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_wrong_sub_arg.bas
-            "-DEXPECT=${EXPECT_TS_WRONG_SUB_ARG}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/ts_wrong_arity.stderr EXPECT_TS_WRONG_ARITY)
-    string(STRIP "${EXPECT_TS_WRONG_ARITY}" EXPECT_TS_WRONG_ARITY)
-    viper_add_ctest(basic_error_ts_wrong_arity
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_wrong_arity.bas
-            "-DEXPECT=${EXPECT_TS_WRONG_ARITY}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/ts_string_comparison.stderr EXPECT_TS_STRING_CMP)
-    string(STRIP "${EXPECT_TS_STRING_CMP}" EXPECT_TS_STRING_CMP)
-    viper_add_ctest(basic_error_ts_string_comparison
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_string_comparison.bas
-            "-DEXPECT=${EXPECT_TS_STRING_CMP}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    # GAP: BASIC allows float operands in MOD without error
-    viper_add_ctest(basic_error_ts_float_divmod
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_float_divmod.bas
-            -DEXPECT_EXIT_ZERO=TRUE
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    # GAP: BASIC allows assigning string function return to integer variable
-    viper_add_ctest(basic_error_ts_wrong_ret_type
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_wrong_ret_type.bas
-            -DEXPECT_EXIT_ZERO=TRUE
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/ts_undef_var.stderr EXPECT_TS_UNDEF_VAR)
-    string(STRIP "${EXPECT_TS_UNDEF_VAR}" EXPECT_TS_UNDEF_VAR)
-    viper_add_ctest(basic_error_ts_undef_var
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_undef_var.bas
-            "-DEXPECT=${EXPECT_TS_UNDEF_VAR}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/ts_const_assign.stderr EXPECT_TS_CONST_ASSIGN)
-    string(STRIP "${EXPECT_TS_CONST_ASSIGN}" EXPECT_TS_CONST_ASSIGN)
-    viper_add_ctest(basic_error_ts_const_assign
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_const_assign.bas
-            "-DEXPECT=${EXPECT_TS_CONST_ASSIGN}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/ts_bool_arith.stderr EXPECT_TS_BOOL_ARITH)
-    string(STRIP "${EXPECT_TS_BOOL_ARITH}" EXPECT_TS_BOOL_ARITH)
-    viper_add_ctest(basic_error_ts_bool_arith
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ts_bool_arith.bas
-            "-DEXPECT=${EXPECT_TS_BOOL_ARITH}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 endfunction()

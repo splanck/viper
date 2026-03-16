@@ -191,8 +191,22 @@ int main()
         // Section 1: __const with integer array data (NOT a cstring section).
         ObjSection sec;
         sec.name = "__TEXT,__const";
-        sec.data = {0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // 64
-                    0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; // 128
+        sec.data = {0x40,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00, // 64
+                    0x80,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00}; // 128
         sec.executable = false;
         sec.writable = false;
         sec.alloc = true;

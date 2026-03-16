@@ -383,7 +383,8 @@ void Sema::defineSymbol(const std::string &name, Symbol symbol, SourceLoc locOve
 
 /// @brief Find the most relevant symbol at a given cursor position.
 const ScopedSymbol *Sema::findSymbolAtPosition(const std::string &name,
-                                                uint32_t line, uint32_t col) const
+                                               uint32_t line,
+                                               uint32_t col) const
 {
     const ScopedSymbol *best = nullptr;
     for (const auto &ss : scopedSymbols_)

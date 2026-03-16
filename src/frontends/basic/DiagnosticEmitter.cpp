@@ -118,8 +118,8 @@ void DiagnosticEmitter::printAll(std::ostream &os) const
         std::string locStr =
             dfmt::formatLocation(sm_, e.loc, [](uint32_t line) { return isUnlabeledLine(line); });
         std::string line = getLine(e.loc.file_id, e.loc.line);
-        dfmt::printDiagnostic(os, e.severity, e.code, e.message, locStr, line, e.loc.column,
-                              e.length);
+        dfmt::printDiagnostic(
+            os, e.severity, e.code, e.message, locStr, line, e.loc.column, e.length);
     }
 }
 

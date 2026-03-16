@@ -1,0 +1,18 @@
+module bench;
+
+func start() {
+    var sum: Integer = 0;
+    for i in 0..50000000 {
+        var t1: Integer = i + 1;
+        var t2: Integer = t1 * 2;
+        var t3: Integer = i + 3;
+        var t4: Integer = t2 + t3;
+        var t5: Integer = t4 * 5;
+        var t6: Integer = t5 - i;
+        var t7: Integer = t6 + 7;
+        var t8: Integer = t7 * 3;
+        var t9: Integer = t8 - 11;
+        sum = sum + t9;
+    }
+    Viper.Environment.EndProgram(sum);
+}

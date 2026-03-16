@@ -951,8 +951,7 @@ static bool canBeUsedAsName(const Token &tok)
 {
     if (tok.kind == TokenKind::Identifier)
         return true;
-    return !tok.lexeme.empty() &&
-           std::isalpha(static_cast<unsigned char>(tok.lexeme[0]));
+    return !tok.lexeme.empty() && std::isalpha(static_cast<unsigned char>(tok.lexeme[0]));
 }
 
 /// @brief Parse an ENUM declaration.

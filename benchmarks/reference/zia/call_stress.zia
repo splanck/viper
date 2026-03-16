@@ -1,0 +1,25 @@
+module bench;
+
+func addTriple(a: Integer, b: Integer, c: Integer) -> Integer {
+    return a + b + c;
+}
+
+func mulPair(x: Integer, y: Integer) -> Integer {
+    return x * y;
+}
+
+func compute(n: Integer) -> Integer {
+    var sum: Integer = addTriple(n, n + 1, n + 2);
+    return mulPair(sum, 3);
+}
+
+func start() {
+    var sum: Integer = 0;
+    for i in 0..10000000 {
+        var r1: Integer = compute(i);
+        var r2: Integer = addTriple(i, r1, 1);
+        var r3: Integer = mulPair(r2, 2);
+        sum = sum + r3;
+    }
+    Viper.Environment.EndProgram(sum);
+}
