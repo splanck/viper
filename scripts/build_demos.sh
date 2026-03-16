@@ -1,6 +1,7 @@
 #!/bin/bash
-# Build native binaries for all demos using viper project format
-# Usage: ./scripts/build_demos.sh [--clean]
+# Build native binaries for all demos using the native assembler and linker.
+# This uses zero external tools — no system assembler (cc -c), no system linker (cc/ld).
+# Usage: ./scripts/build_demos_asmlnk.sh [--clean]
 
 set -e
 
@@ -13,11 +14,11 @@ APPS_DIR="$ROOT_DIR/examples/apps"
 
 VIPER="$BUILD_DIR/src/tools/viper/viper"
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+CYAN='\033[0;36m'
+NC='\033[0m'
 
 usage() {
     echo "Usage: $0 [--clean]"
@@ -25,7 +26,6 @@ usage() {
     exit 1
 }
 
-# Parse arguments
 CLEAN=0
 for arg in "$@"; do
     case $arg in
@@ -42,25 +42,12 @@ for arg in "$@"; do
     esac
 done
 
-# Check prerequisites
 if [[ ! -x "$VIPER" ]]; then
     echo -e "${RED}Error: viper tool not found at $VIPER${NC}"
-    echo "Run 'cmake --build build' first"
+    echo "Run './scripts/build_viper.sh' first"
     exit 1
 fi
 
-# Detect architecture
-ARCH=$(uname -m)
-case "$ARCH" in
-    arm64|aarch64) ARCH_FLAG="--arch arm64" ;;
-    x86_64|amd64)  ARCH_FLAG="--arch x64"   ;;
-    *)
-        echo -e "${YELLOW}Warning: Unknown architecture $ARCH — defaulting to host${NC}"
-        ARCH_FLAG=""
-        ;;
-esac
-
-# Create directories
 mkdir -p "$BIN_DIR"
 
 if [[ $CLEAN -eq 1 ]]; then
@@ -68,7 +55,6 @@ if [[ $CLEAN -eq 1 ]]; then
     rm -f "$BIN_DIR"/*
 fi
 
-# Demo configurations: name:project_dir
 BASIC_DEMOS=(
     "chess:${GAMES_DIR}/chess-basic"
     "vtris:${GAMES_DIR}/vtris"
@@ -90,20 +76,32 @@ build_demo() {
     local name="$1"
     local project_dir="$2"
     local exe_file="$BIN_DIR/${name}"
+    local il_file="/tmp/viper_native_build_${name}_$$.il"
 
     if [[ ! -f "$project_dir/viper.project" ]]; then
         echo -e "${RED}  Error: No viper.project found in $project_dir${NC}"
         return 1
     fi
 
-    echo -n "  Compiling... "
-    if ! "$VIPER" build "$project_dir" -o "$exe_file" 2>/tmp/viper_build_err_$$; then
+    # Step 1: Frontend — compile to IL.
+    echo -n "  Frontend -> IL... "
+    if ! "$VIPER" build "$project_dir" -o "$il_file" 2>/tmp/viper_nativebuild_err_$$; then
         echo -e "${RED}FAILED${NC}"
-        head -20 /tmp/viper_build_err_$$
-        rm -f /tmp/viper_build_err_$$
+        head -20 /tmp/viper_nativebuild_err_$$
+        rm -f /tmp/viper_nativebuild_err_$$ "$il_file"
         return 1
     fi
-    rm -f /tmp/viper_build_err_$$
+    echo -e "${GREEN}OK${NC}"
+
+    # Step 2: Native codegen — binary encoder + native linker.
+    echo -n "  Codegen (native asm+link)... "
+    if ! "$VIPER" codegen arm64 "$il_file" --native-asm --native-link -o "$exe_file" 2>/tmp/viper_nativebuild_err_$$; then
+        echo -e "${RED}FAILED${NC}"
+        head -20 /tmp/viper_nativebuild_err_$$
+        rm -f /tmp/viper_nativebuild_err_$$ "$il_file"
+        return 1
+    fi
+    rm -f /tmp/viper_nativebuild_err_$$ "$il_file"
     echo -e "${GREEN}OK${NC}"
 
     local size=$(ls -lh "$exe_file" | awk '{print $5}')
@@ -111,20 +109,27 @@ build_demo() {
     return 0
 }
 
-echo "Building Viper demos as native binaries"
+echo -e "${CYAN}Building Viper demos with native assembler + linker (arm64)${NC}"
+echo -e "${CYAN}Zero external tools — no cc, no ld, no codesign${NC}"
 echo "=============================================="
 echo ""
 
 FAILED=0
 SUCCEEDED=0
+SKIPPED=0
 
 echo "=== BASIC Demos ==="
 echo ""
 
 for demo in "${BASIC_DEMOS[@]}"; do
     IFS=':' read -r name project_dir <<< "$demo"
+    if [[ ! -d "$project_dir" ]]; then
+        echo -e "Skipping $name (${YELLOW}directory not found${NC})"
+        SKIPPED=$((SKIPPED + 1))
+        echo ""
+        continue
+    fi
     echo "Building $name..."
-
     if build_demo "$name" "$project_dir"; then
         SUCCEEDED=$((SUCCEEDED + 1))
     else
@@ -138,8 +143,13 @@ echo ""
 
 for demo in "${ZIA_DEMOS[@]}"; do
     IFS=':' read -r name project_dir <<< "$demo"
+    if [[ ! -d "$project_dir" ]]; then
+        echo -e "Skipping $name (${YELLOW}directory not found${NC})"
+        SKIPPED=$((SKIPPED + 1))
+        echo ""
+        continue
+    fi
     echo "Building $name..."
-
     if build_demo "$name" "$project_dir"; then
         SUCCEEDED=$((SUCCEEDED + 1))
     else
@@ -149,12 +159,13 @@ for demo in "${ZIA_DEMOS[@]}"; do
 done
 
 echo "=============================================="
+TOTAL=$((SUCCEEDED + FAILED + SKIPPED))
+echo -e "Results: ${GREEN}$SUCCEEDED passed${NC}, ${RED}$FAILED failed${NC}, ${YELLOW}$SKIPPED skipped${NC} (of $TOTAL)"
+
 if [[ $FAILED -eq 0 ]]; then
-    echo -e "${GREEN}All $SUCCEEDED demos built successfully!${NC}"
     echo ""
     echo "Binaries are in: $BIN_DIR"
     ls -lh "$BIN_DIR"
 else
-    echo -e "${RED}$FAILED demo(s) failed, $SUCCEEDED succeeded${NC}"
     exit 1
 fi

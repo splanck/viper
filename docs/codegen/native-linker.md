@@ -386,13 +386,13 @@ applier using the appropriate format-specific types.
 
 | Flag | Effect |
 |------|--------|
-| `--native-link` | Force native linker |
-| `--system-link` | Force system linker (`cc`) as fallback |
-| `--native-asm` | Force native assembler (pairs with `--native-link`) |
-| `--system-asm` | Force system assembler as fallback |
+| `--native-link` | Use native linker (this is the default on AArch64) |
+| `--system-link` | Override: use system linker (`cc`) instead |
+| `--native-asm` | Use native assembler (this is the default) |
+| `--system-asm` | Override: use system assembler (`cc -c`) instead |
 
-Default behavior: system linker (the native linker is available for testing and will become the default once
-fully validated with all demos).
+Default behavior: the native assembler and native linker are used by default. Pass `--system-asm` and/or
+`--system-link` to fall back to the system toolchain if needed.
 
 ---
 

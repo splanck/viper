@@ -446,7 +446,8 @@ bool inlineCallSite(Function &caller,
     if (returnsValue && callInstr.result)
     {
         Param retParam;
-        retParam.name = lookupValueName(caller, *callInstr.result, "ret");
+        retParam.name = lookupValueName(caller, *callInstr.result,
+                                       "ret" + std::to_string(*callInstr.result));
         retParam.id = nextId++;
         retParam.type = callee.retType;
         continuation.params.push_back(retParam);
@@ -504,11 +505,24 @@ bool inlineCallSite(Function &caller,
     std::sort(escapedIds.begin(), escapedIds.end());
 
     // Map from original caller temp → new continuation param.
+    // Track names already used in this block to prevent duplicates.
+    std::unordered_set<std::string> usedParamNames;
+    for (const auto &existing : continuation.params)
+        usedParamNames.insert(existing.name);
+
     std::unordered_map<unsigned, unsigned> escapedMap;
     for (unsigned origId : escapedIds)
     {
         Param p;
-        p.name = lookupValueName(caller, origId, "ext");
+        std::string name = lookupValueName(caller, origId, "ext" + std::to_string(origId));
+        // Ensure the name is unique within this block's params. Nested inlining
+        // can produce callees with identical temp names (e.g., both have %t2).
+        if (usedParamNames.count(name))
+            name += "_" + std::to_string(origId);
+        while (usedParamNames.count(name))
+            name += "_";
+        usedParamNames.insert(name);
+        p.name = name;
         p.id = nextId++;
         // Look up the type from the caller's definitions.
         p.type = Type(Type::Kind::I64); // safe default

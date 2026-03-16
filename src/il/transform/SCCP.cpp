@@ -830,8 +830,10 @@ static FoldResult foldConstantMaterialization(const Instr &instr)
         case Opcode::ConstNull:
             return FoldResult::constant(Value::null());
         case Opcode::ConstStr:
-            if (!instr.operands.empty())
-                return FoldResult::constant(instr.operands[0]);
+            // ConstStr is a runtime operation (rt_const_cstr(ptr) → str).
+            // Cannot constant-fold: the operand is GlobalAddr (ptr type) but
+            // the result is str type. Propagating the operand causes type
+            // mismatches at use sites.
             return FoldResult::unknown();
         case Opcode::AddrOf:
             if (!instr.operands.empty())

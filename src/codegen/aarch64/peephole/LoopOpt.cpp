@@ -215,8 +215,10 @@ std::size_t hoistLoopConstants(MFunction &fn)
             const auto &lastInstr = preBlock.instrs.back();
             std::string lastTarget = getBranchTarget(lastInstr);
 
-            if (lastTarget.empty())
+            if (lastTarget.empty() && lastInstr.opc != MOpcode::Ret)
             {
+                // Block falls through to the next block (the loop header).
+                // Ret does NOT fall through — it exits the function.
                 reachesHeader = true;
             }
             else

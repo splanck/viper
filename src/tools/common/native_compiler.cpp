@@ -49,8 +49,8 @@ int compileToNative(const std::string &ilPath, const std::string &outputPath, Ta
 {
     if (arch == TargetArch::ARM64)
     {
-        // Build argv for cmd_codegen_arm64: [file.il, -o, output]
-        std::vector<std::string> storage = {ilPath, "-o", outputPath};
+        // Build argv for cmd_codegen_arm64: [file.il, -o, output, -O1]
+        std::vector<std::string> storage = {ilPath, "-o", outputPath, "-O1"};
         std::vector<char *> argv;
         argv.reserve(storage.size());
         for (auto &s : storage)

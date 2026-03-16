@@ -43,8 +43,10 @@ TEST(Arm64CLI, DeadStripsUnusedRuntimeSymbols)
                            "}\n";
     writeFile(in, il);
 
-    const char *argv[] = {in.c_str(), "-o", exeOut.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    // Use system toolchain for this test — it validates system-linker dead stripping
+    // behavior via nm, which depends on the system linker's symbol table format.
+    const char *argv[] = {in.c_str(), "-o", exeOut.c_str(), "--system-asm", "--system-link"};
+    ASSERT_EQ(cmd_codegen_arm64(5, const_cast<char **>(argv)), 0);
     ASSERT_TRUE(fs::exists(exeOut));
 
     const RunResult nm = run_process({"nm", "-g", exeOut});
