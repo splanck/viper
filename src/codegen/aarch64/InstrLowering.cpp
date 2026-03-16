@@ -88,6 +88,7 @@
 #include "OpcodeMappings.hpp"
 
 #include "il/runtime/RuntimeNameMap.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -635,11 +636,28 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
 
     seq.call = MInstr{MOpcode::Bl, {MOperand::labelOp(mappedCallee)}};
 
+    // Detect variadic callee — AAPCS64 requires anonymous (variadic) args on stack.
+    const bool isVarArg = il::runtime::isVarArgCallee(mappedCallee) ||
+                          il::runtime::isVarArgCallee(callee);
+    std::size_t namedArgCount = SIZE_MAX; // default: all args are "named"
+    if (isVarArg)
+    {
+        // Look up the function's signature to determine the named parameter count.
+        // Variadic args (beyond namedArgCount) must go on stack per AAPCS64.
+        if (const auto *sig = il::runtime::findRuntimeSignature(mappedCallee))
+            namedArgCount = sig->paramTypes.size();
+        else if (const auto *sig2 = il::runtime::findRuntimeSignature(callee))
+            namedArgCount = sig2->paramTypes.size();
+        else
+            namedArgCount = 0; // Conservative: all args to stack for unknown vararg callees
+    }
+
     // First pass: materialize all arguments and collect them
     struct ArgInfo
     {
         uint16_t vreg;
         RegClass cls;
+        bool isVariadic; // true if this arg is past the named parameter boundary
     };
 
     std::vector<ArgInfo> args;
@@ -652,16 +670,23 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
         if (!materializeValueToVReg(
                 arg, bb, ti, fb, out, tempVReg, tempRegClass, nextVRegId, vr, cls))
             return false;
-        args.push_back({vr, cls});
+        const bool variadic = (i - argStart) >= namedArgCount;
+        args.push_back({vr, cls, variadic});
     }
 
-    // Count how many stack slots we need (args beyond register capacity)
+    // Count how many stack slots we need (args beyond register capacity,
+    // plus ALL variadic args which must go on stack per AAPCS64)
     std::size_t gprIdx = 0;
     std::size_t fprIdx = 0;
     std::size_t stackSlots = 0;
     for (const auto &a : args)
     {
-        if (a.cls == RegClass::FPR)
+        if (a.isVariadic)
+        {
+            // AAPCS64: variadic args always go on stack
+            stackSlots++;
+        }
+        else if (a.cls == RegClass::FPR)
         {
             if (fprIdx < ti.f64ArgOrder.size())
                 fprIdx++;
@@ -691,7 +716,18 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
     std::size_t stackOffset = 0;
     for (const auto &a : args)
     {
-        if (a.cls == RegClass::FPR)
+        // AAPCS64: variadic args must always go on the stack, never in registers
+        if (a.isVariadic)
+        {
+            MOpcode storeOpc = (a.cls == RegClass::FPR) ? MOpcode::StrFprSpImm
+                                                        : MOpcode::StrRegSpImm;
+            seq.prefix.push_back(
+                MInstr{storeOpc,
+                       {MOperand::vregOp(a.cls, a.vreg),
+                        MOperand::immOp(static_cast<long long>(stackOffset))}});
+            stackOffset += 8;
+        }
+        else if (a.cls == RegClass::FPR)
         {
             if (fprIdx < ti.f64ArgOrder.size())
             {
@@ -702,7 +738,6 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
             }
             else
             {
-                // Spill to stack - use str for FPR to [sp, #offset]
                 seq.prefix.push_back(
                     MInstr{MOpcode::StrFprSpImm,
                            {MOperand::vregOp(RegClass::FPR, a.vreg),
@@ -721,7 +756,6 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
             }
             else
             {
-                // Spill to stack - use str for GPR to [sp, #offset]
                 seq.prefix.push_back(
                     MInstr{MOpcode::StrRegSpImm,
                            {MOperand::vregOp(RegClass::GPR, a.vreg),

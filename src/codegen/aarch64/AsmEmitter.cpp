@@ -105,6 +105,7 @@
 #include "AsmEmitter.hpp"
 
 #include "FrameCodegen.hpp"
+#include "codegen/common/ICE.hpp"
 #include "codegen/common/LabelUtil.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 
@@ -948,8 +949,11 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
     // avoid duplicate emission when present in the generated switch.
     auto getReg = [](const MOperand &op) -> PhysReg
     {
-        assert(op.kind == MOperand::Kind::Reg && "expected reg operand");
-        assert(op.reg.isPhys && "unallocated vreg reached emitter");
+        if (op.kind != MOperand::Kind::Reg)
+            VIPER_ICE("expected register operand in AArch64 asm emitter");
+        if (!op.reg.isPhys)
+            VIPER_ICE("virtual register v" + std::to_string(op.reg.idOrPhys) +
+                      " reached AArch64 asm emitter (register allocation bug)");
         return static_cast<PhysReg>(op.reg.idOrPhys);
     };
     auto getImm = [](const MOperand &op) -> long long

@@ -27,10 +27,12 @@
 #include "X64BinaryEncoder.hpp"
 #include "X64Encoding.hpp"
 
+#include "codegen/common/ICE.hpp"
 #include "codegen/common/objfile/DebugLineTable.hpp"
 
 #include <cassert>
 #include <cstring>
+#include <string>
 
 namespace viper::codegen::x64::binenc
 {
@@ -39,7 +41,9 @@ namespace viper::codegen::x64::binenc
 
 static PhysReg toPhys(const OpReg &reg)
 {
-    assert(reg.isPhys && "binary encoder expects all registers to be physical");
+    if (!reg.isPhys)
+        VIPER_ICE("virtual register v" + std::to_string(reg.idOrPhys) +
+                  " reached x86-64 binary encoder (register allocation bug)");
     return static_cast<PhysReg>(reg.idOrPhys);
 }
 
@@ -406,13 +410,13 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
             }
             else
             {
-                assert(false && "CALL with unexpected operand type");
+                VIPER_ICE("CALL instruction has unexpected operand type in x86-64 binary encoder");
             }
             return;
         }
     }
 
-    assert(false && "unhandled MOpcode in binary encoder");
+    VIPER_ICE("unhandled MOpcode in x86-64 binary encoder");
 }
 
 // === Nullary instructions ===

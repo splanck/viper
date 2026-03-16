@@ -498,9 +498,52 @@ bool MachOWriter::write(const std::string &path,
               textRelocs.end(),
               [](const MachoReloc &a, const MachoReloc &b) { return a.address > b.address; });
 
+    // --- 4b. Build compact unwind section data (AArch64 only) ---
+    // Collect unwind entries from the text section and generate __compact_unwind
+    // section bytes with relocations pointing back to function symbols.
+    std::vector<uint8_t> unwindData;
+    std::vector<MachoReloc> unwindRelocs;
+    const bool hasUnwind = arch_ == ObjArch::AArch64 && !text.unwindEntries().empty();
+
+    if (hasUnwind)
+    {
+        unwindData.reserve(text.unwindEntries().size() * 32);
+        for (const auto &entry : text.unwindEntries())
+        {
+            const size_t entryOffset = unwindData.size();
+
+            // functionStart (8 bytes) — filled with 0, relocation points to symbol
+            appendLE64(unwindData, 0);
+            // functionLength (4 bytes)
+            appendLE32(unwindData, entry.functionLength);
+            // compactEncoding (4 bytes)
+            appendLE32(unwindData, entry.encoding);
+            // personality (8 bytes) — none for Viper
+            appendLE64(unwindData, 0);
+            // lsda (8 bytes) — none for Viper
+            appendLE64(unwindData, 0);
+
+            // Relocation for functionStart → symbol in __text.
+            // ARM64_RELOC_UNSIGNED, 8-byte, extern, pointing to the function symbol.
+            uint32_t symIdx = 0;
+            auto it = textSymMap.find(entry.symbolIndex);
+            if (it != textSymMap.end())
+                symIdx = it->second;
+
+            // packRelocInfo: symbolnum, pcrel=0, length=3 (8 bytes), extern=1, type=0 (UNSIGNED)
+            uint32_t packed = packRelocInfo(symIdx, 0, 3, 1, 0);
+            unwindRelocs.push_back({static_cast<uint32_t>(entryOffset), packed});
+        }
+
+        // Sort unwind relocations by address descending (Mach-O convention).
+        std::sort(unwindRelocs.begin(),
+                  unwindRelocs.end(),
+                  [](const MachoReloc &a, const MachoReloc &b) { return a.address > b.address; });
+    }
+
     // --- 5. Compute file layout ---
     const bool hasDebugLine = !debugLineData_.empty();
-    const uint32_t nsects = hasDebugLine ? 3 : 2;
+    const uint32_t nsects = 2 + (hasUnwind ? 1 : 0) + (hasDebugLine ? 1 : 0);
     const uint32_t segCmdSize = 72 + nsects * 80;
     uint32_t sizeOfCmds = segCmdSize + kBuildVerCmdSize + kSymtabCmdSize + kDysymtabCmdSize;
     size_t afterHeaders = kHeaderSize + sizeOfCmds;
@@ -509,22 +552,33 @@ bool MachOWriter::write(const std::string &path,
     size_t rodataSize = rodata.bytes().size();
     size_t debugLineSize = hasDebugLine ? debugLineData_.size() : 0;
 
+    size_t unwindSize = unwindData.size();
+
     size_t textFileOff = alignUp(afterHeaders, textAlign);
     size_t constFileOff = alignUp(textFileOff + textSize, constAlign);
     size_t constAddr = constFileOff - textFileOff; // virtual address of __const
 
-    size_t debugLineFileOff = constFileOff + rodataSize;
-    size_t debugLineAddr = constAddr + rodataSize;
+    // __compact_unwind goes after __const (8-byte aligned)
+    size_t unwindFileOff = alignUp(constFileOff + rodataSize, 8);
+    size_t unwindAddr = unwindFileOff - textFileOff;
+
+    size_t debugLineFileOff = hasUnwind ? (unwindFileOff + unwindSize) : (constFileOff + rodataSize);
+    size_t debugLineAddr = debugLineFileOff - textFileOff;
 
     size_t segFileOff = textFileOff;
     // Segment size must encompass all section data.
-    size_t segFileSize = constFileOff + rodataSize + debugLineSize - textFileOff;
-    size_t segVmSize = constAddr + rodataSize + debugLineSize;
+    size_t lastDataEnd = debugLineFileOff + debugLineSize;
+    size_t segFileSize = lastDataEnd - textFileOff;
+    size_t segVmSize = lastDataEnd - textFileOff;
 
-    size_t textRelocOff = constFileOff + rodataSize + debugLineSize;
+    // Relocations go after all section data
+    size_t textRelocOff = lastDataEnd;
     uint32_t nTextRelocs = static_cast<uint32_t>(textRelocs.size());
 
-    size_t symOff = textRelocOff + nTextRelocs * kRelocSize;
+    size_t unwindRelocOff = textRelocOff + nTextRelocs * kRelocSize;
+    uint32_t nUnwindRelocs = static_cast<uint32_t>(unwindRelocs.size());
+
+    size_t symOff = unwindRelocOff + nUnwindRelocs * kRelocSize;
     size_t strOff = symOff + nsyms * kNlistSize;
     size_t totalSize = strOff + strtab.size();
 
@@ -562,6 +616,21 @@ bool MachOWriter::write(const std::string &path,
                     0, // no __const relocations
                     0);
 
+    // __compact_unwind section header
+    if (hasUnwind)
+    {
+        writeSectionHdr(file,
+                        "__compact_unwind",
+                        "__LD",
+                        unwindAddr,
+                        unwindSize,
+                        static_cast<uint32_t>(unwindFileOff),
+                        3, // align = 2^3 = 8
+                        (nUnwindRelocs > 0) ? static_cast<uint32_t>(unwindRelocOff) : 0,
+                        nUnwindRelocs,
+                        0); // no special flags
+    }
+
     // __debug_line section header (in __DWARF segment)
     if (hasDebugLine)
     {
@@ -595,6 +664,13 @@ bool MachOWriter::write(const std::string &path,
     // __const
     padTo(file, constFileOff);
     file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
+
+    // __compact_unwind
+    if (hasUnwind)
+    {
+        padTo(file, unwindFileOff);
+        file.insert(file.end(), unwindData.begin(), unwindData.end());
+    }
 
     // __debug_line
     if (hasDebugLine)
@@ -638,6 +714,10 @@ bool MachOWriter::write(const std::string &path,
 
     // --- Relocation entries ---
     for (const auto &r : textRelocs)
+        writeMachoReloc(file, r.address, r.packed);
+
+    // __compact_unwind relocations
+    for (const auto &r : unwindRelocs)
         writeMachoReloc(file, r.address, r.packed);
 
     // --- Symbol table ---

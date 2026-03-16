@@ -400,6 +400,54 @@ if (NOT TARGET test_x86_peephole)
     viper_add_ctest(test_x86_peephole test_x86_peephole)
 endif ()
 
+if (NOT TARGET test_dataflow_liveness)
+    viper_add_test(
+            test_dataflow_liveness
+            ${VIPER_TESTS_DIR}/unit/codegen/test_dataflow_liveness.cpp)
+    target_link_libraries(test_dataflow_liveness PRIVATE viper_codegen_common)
+    viper_add_ctest(test_dataflow_liveness test_dataflow_liveness)
+endif ()
+
+if (NOT TARGET test_aarch64_pac_bti)
+    viper_add_test(
+            test_aarch64_pac_bti
+            ${VIPER_TESTS_DIR}/unit/codegen/test_aarch64_pac_bti.cpp)
+    target_link_libraries(test_aarch64_pac_bti PRIVATE il_codegen_aarch64)
+    viper_add_ctest(test_aarch64_pac_bti test_aarch64_pac_bti)
+endif ()
+
+if (NOT TARGET test_shared_frame_layout)
+    viper_add_test(
+            test_shared_frame_layout
+            ${VIPER_TESTS_DIR}/unit/codegen/test_shared_frame_layout.cpp)
+    target_link_libraries(test_shared_frame_layout PRIVATE il_codegen_aarch64)
+    viper_add_ctest(test_shared_frame_layout test_shared_frame_layout)
+endif ()
+
+if (NOT TARGET test_ra_victim_selection)
+    viper_add_test(
+            test_ra_victim_selection
+            ${VIPER_TESTS_DIR}/unit/codegen/test_ra_victim_selection.cpp)
+    target_link_libraries(test_ra_victim_selection PRIVATE viper_codegen_common)
+    viper_add_ctest(test_ra_victim_selection test_ra_victim_selection)
+endif ()
+
+if (NOT TARGET test_aarch64_opcode_def)
+    viper_add_test(
+            test_aarch64_opcode_def
+            ${VIPER_TESTS_DIR}/unit/codegen/test_aarch64_opcode_def.cpp)
+    target_link_libraries(test_aarch64_opcode_def PRIVATE il_codegen_aarch64)
+    viper_add_ctest(test_aarch64_opcode_def test_aarch64_opcode_def)
+endif ()
+
+if (NOT TARGET test_aarch64_vararg)
+    viper_add_test(
+            test_aarch64_vararg
+            ${VIPER_TESTS_DIR}/unit/codegen/test_aarch64_vararg.cpp)
+    target_link_libraries(test_aarch64_vararg PRIVATE il_codegen_aarch64 il_runtime)
+    viper_add_ctest(test_aarch64_vararg test_aarch64_vararg)
+endif ()
+
 # Bytecode VM tests
 if (NOT TARGET test_bytecode_vm)
     viper_add_test(test_bytecode_vm ${VIPER_TESTS_DIR}/unit/test_bytecode_vm.cpp)

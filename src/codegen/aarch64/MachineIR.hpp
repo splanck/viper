@@ -45,101 +45,15 @@ namespace viper::codegen::aarch64
 ///
 /// Each opcode represents a target-specific operation that will be emitted
 /// as one or more AArch64 assembly instructions.
+/// @brief Machine IR opcodes for AArch64 code generation.
+///
+/// Generated from MOpcodeDef.inc — the single source of truth for opcode
+/// names. Add new opcodes ONLY in MOpcodeDef.inc; the enum and name table
+/// are auto-generated from that file.
 enum class MOpcode
 {
-    MovRR,
-    MovRI,
-    // Floating-point (64-bit, scalar)
-    FMovRR,
-    FMovRI,
-    FMovGR, // fmov dDst, xSrc (transfer bits from GPR to FPR without conversion)
-    FAddRRR,
-    FSubRRR,
-    FMulRRR,
-    FDivRRR,
-    FCmpRR,
-    // Integer<->Float conversions (64-bit)
-    SCvtF,  // scvtf dDst, xSrc
-    FCvtZS, // fcvtzs xDst, dSrc
-    UCvtF,  // ucvtf dDst, xSrc
-    FCvtZU, // fcvtzu xDst, dSrc
-    // Floating-point rounding
-    FRintN, // frintn dDst, dSrc (round to nearest, ties to even)
-    // Stack pointer adjust (for outgoing arg area)
-    SubSpImm,
-    AddSpImm,
-    // Store to outgoing arg area at [sp, #imm]
-    StrRegSpImm,
-    StrFprSpImm,
-    // Load/store from frame pointer (for locals)
-    LdrRegFpImm, // dst, offset - ldr xN, [x29, #offset]
-    StrRegFpImm, // src, offset - str xN, [x29, #offset]
-    LdrFprFpImm, // dst(FPR), offset - ldr dN, [x29, #offset]
-    StrFprFpImm, // src(FPR), offset - str dN, [x29, #offset]
-    // Phi-edge copies: identical store encoding to Str*FpImm after register
-    // allocation, but the allocator clears the source vreg's dirty flag to
-    // prevent a redundant block-end spill of the same vreg to a separate slot.
-    PhiStoreGPR, // phi edge GPR copy (converted to StrRegFpImm during RA)
-    PhiStoreFPR, // phi edge FPR copy (converted to StrFprFpImm during RA)
-    AddFpImm,    // dst, offset - add xN, x29, #offset (for alloca address computation)
-    // Load/store from arbitrary base register (heap/global)
-    LdrRegBaseImm, // dst, base, offset - ldr xN, [xM, #offset]
-    StrRegBaseImm, // src, base, offset - str xN, [xM, #offset]
-    LdrFprBaseImm, // dst(FPR), base, offset - ldr dN, [xM, #offset]
-    StrFprBaseImm, // src(FPR), base, offset - str dN, [xM, #offset]
-    AddRRR,
-    SubRRR,
-    MulRRR,
-    SmulhRRR, // smulh dst, lhs, rhs (signed multiply high)
-    SDivRRR,  // sdiv dst, lhs, rhs (signed division)
-    UDivRRR,  // udiv dst, lhs, rhs (unsigned division)
-    MSubRRRR, // msub dst, mul1, mul2, sub (dst = sub - mul1*mul2)
-    Cbz,      // cbz reg, label (compare and branch if zero)
-    AndRRR,
-    OrrRRR,
-    EorRRR,
-    AndRI, // and dst, src, #logicalImm  (AArch64 logical immediate)
-    OrrRI, // orr dst, src, #logicalImm
-    EorRI, // eor dst, src, #logicalImm
-    AddRI,
-    SubRI,
-    LslRI,
-    LsrRI,
-    AsrRI,
-    LslvRRR, // lslv dst, lhs, rhs (shift left by register)
-    LsrvRRR, // lsrv dst, lhs, rhs (logical shift right by register)
-    AsrvRRR, // asrv dst, lhs, rhs (arithmetic shift right by register)
-    CmpRR,
-    CmpRI,
-    TstRR, // tst lhs, rhs (bitwise AND, set flags, discard result)
-    Cset,  // dst, cond(code)
-    Br,    // b label
-    BCond, // b.<cond> label
-    Bl,    // bl <label> (call)
-    Blr,   // blr <reg> (indirect call through register)
-    Ret,   // ret (return from function)
-    // Address materialisation for globals (Mach-O style)
-    AdrPage,    // dst, label  => adrp dst, label@PAGE
-    AddPageOff, // dst, base, label => add dst, base, label@PAGEOFF
-    // --- Peephole optimization opcodes ---
-    Cbnz,        // cbnz reg, label (compare and branch if not zero)
-    MAddRRRR,    // madd dst, mul1, mul2, add (dst = add + mul1*mul2)
-    Csel,        // csel dst, trueReg, falseReg, cond
-    LdpRegFpImm, // ldp reg1, reg2, [fp, #offset]
-    StpRegFpImm, // stp reg1, reg2, [fp, #offset]
-    LdpFprFpImm, // ldp d1, d2, [fp, #offset]
-    StpFprFpImm, // stp d1, d2, [fp, #offset]
-    // --- Flag-setting arithmetic (for overflow detection) ---
-    AddsRRR, // adds dst, lhs, rhs (sets NZCV flags)
-    SubsRRR, // subs dst, lhs, rhs (sets NZCV flags)
-    AddsRI,  // adds dst, lhs, #imm (sets NZCV flags)
-    SubsRI,  // subs dst, lhs, #imm (sets NZCV flags)
-    // --- Overflow-checked pseudo-opcodes (expanded by LowerOvf pass) ---
-    AddOvfRRR, // pseudo: overflow-checked add (expanded to AddsRRR + b.vs)
-    SubOvfRRR, // pseudo: overflow-checked sub (expanded to SubsRRR + b.vs)
-    AddOvfRI,  // pseudo: overflow-checked add immediate (expanded to AddsRI + b.vs)
-    SubOvfRI,  // pseudo: overflow-checked sub immediate (expanded to SubsRI + b.vs)
-    MulOvfRRR, // pseudo: overflow-checked mul (expanded to mul + smulh + cmp + b.ne)
+#define VIPER_MIR_OPCODE(name) name,
+#include "codegen/aarch64/MOpcodeDef.inc"
 };
 
 /// @brief Represents a machine register (physical or virtual).

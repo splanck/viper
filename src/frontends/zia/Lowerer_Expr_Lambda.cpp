@@ -36,9 +36,8 @@ static constexpr int kClosureEnvOffset = 8;
 
 LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
 {
-    // Generate unique lambda function name
-    static int lambdaCounter = 0;
-    std::string lambdaName = "__lambda_" + std::to_string(lambdaCounter++);
+    // Generate unique lambda function name (per-instance counter, not static)
+    std::string lambdaName = "__lambda_" + std::to_string(lambdaCounter_++);
 
     // Check if lambda has captured variables
     bool hasCaptures = !expr->captures.empty();

@@ -284,6 +284,11 @@ class Lowerer
     /// @details Uses unordered_map for O(1) lookup instead of O(log n).
     std::unordered_map<std::string, EntityTypeInfo> entityTypes_;
 
+    /// @brief Counter for generating unique lambda function names.
+    /// @details Per-instance (not static) to prevent name collisions when
+    ///          multiple Lowerer instances run in the same process (e.g., LSP).
+    int lambdaCounter_{0};
+
     /// @brief Pending generic entity instantiations that need methods lowered.
     /// @details Populated during expression lowering when generic entities are
     /// constructed, and processed after all declarations are lowered.

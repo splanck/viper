@@ -27,11 +27,13 @@
 #include "codegen/aarch64/FrameCodegen.hpp"
 #include "codegen/aarch64/binenc/A64Encoding.hpp"
 #include "codegen/common/LabelUtil.hpp"
+#include "codegen/common/ICE.hpp"
 #include "codegen/common/objfile/DebugLineTable.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 
 #include <cassert>
 #include <cstring>
+#include <string>
 
 namespace viper::codegen::aarch64::binenc
 {
@@ -55,8 +57,12 @@ static std::string sanitizeLabel(const std::string &name)
 /// Extract PhysReg from a register operand.
 static PhysReg getReg(const MOperand &op)
 {
-    assert(op.kind == MOperand::Kind::Reg && "expected reg operand");
-    assert(op.reg.isPhys && "unallocated vreg reached binary encoder");
+    if (op.kind != MOperand::Kind::Reg)
+        VIPER_ICE("expected register operand in AArch64 binary encoder, got kind=" +
+                  std::to_string(static_cast<int>(op.kind)));
+    if (!op.reg.isPhys)
+        VIPER_ICE("virtual register v" + std::to_string(op.reg.idOrPhys) +
+                  " reached AArch64 binary encoder (register allocation bug)");
     return static_cast<PhysReg>(op.reg.idOrPhys);
 }
 
@@ -90,13 +96,18 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
     currentFn_ = &fn;
 
     // Define function symbol at current offset.
-    text.defineSymbol(fn.name, objfile::SymbolBinding::Global, objfile::SymbolSection::Text);
+    const size_t funcStartOffset = text.currentOffset();
+    const uint32_t funcSymIdx =
+        text.defineSymbol(fn.name, objfile::SymbolBinding::Global, objfile::SymbolSection::Text);
 
     // Leaf function optimization: skip frame when no calls, no callee-saved, no locals.
     // Exclude main because we inject bl calls to runtime init.
     skipFrame_ = fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() &&
                  fn.localFrameSize == 0 && fn.name != "main";
     usePlan_ = !fn.savedGPRs.empty() || fn.localFrameSize > 0;
+
+    // Emit BTI landing pad for indirect call targets (safe NOP on pre-ARMv8.5).
+    emit32(kBtiC, text);
 
     // Emit prologue.
     if (!skipFrame_)
@@ -155,6 +166,47 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
         text.patch32LE(pb.offset, word);
     }
 
+    // Record compact unwind entry for this function.
+    // ARM64 frame-based encoding: bits [31:28] = 0x4 (UNWIND_ARM64_MODE_FRAME)
+    if (!skipFrame_)
+    {
+        uint32_t encoding = 0x04000000u; // UNWIND_ARM64_MODE_FRAME
+
+        // Encode callee-saved GPR pair count (bits [23:20], max 5 pairs: X19-X28)
+        uint32_t gprPairs = static_cast<uint32_t>(fn.savedGPRs.size() + 1) / 2;
+        if (gprPairs > 5)
+            gprPairs = 5;
+        encoding |= (gprPairs << 20);
+
+        // Encode callee-saved FPR pair count (bits [27:24], max 4 pairs: D8-D15)
+        uint32_t fprPairs = static_cast<uint32_t>(fn.savedFPRs.size() + 1) / 2;
+        if (fprPairs > 4)
+            fprPairs = 4;
+        encoding |= (fprPairs << 24);
+
+        const uint32_t funcLen =
+            static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
+
+        objfile::CompactUnwindEntry entry{};
+        entry.symbolIndex = funcSymIdx;
+        entry.functionLength = funcLen;
+        entry.encoding = encoding;
+        text.addUnwindEntry(entry);
+    }
+    else
+    {
+        // Frameless leaf function — UNWIND_ARM64_MODE_FRAMELESS with zero encoding.
+        // Still record an entry so the unwinder knows this function exists.
+        const uint32_t funcLen =
+            static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
+
+        objfile::CompactUnwindEntry entry{};
+        entry.symbolIndex = funcSymIdx;
+        entry.functionLength = funcLen;
+        entry.encoding = 0x02000000u; // UNWIND_ARM64_MODE_FRAMELESS, stack size 0
+        text.addUnwindEntry(entry);
+    }
+
     currentFn_ = nullptr;
 }
 
@@ -167,6 +219,10 @@ void A64BinaryEncoder::encodePrologue(const MFunction &fn, objfile::CodeSection 
     const uint32_t sp = hwGPR(PhysReg::SP);
     const uint32_t fp = hwGPR(PhysReg::X29);
     const uint32_t lr = hwGPR(PhysReg::X30);
+
+    // Sign LR with SP before saving (Pointer Authentication, ARMv8.3+).
+    // Executes as NOP on older hardware.
+    emit32(kPaciasp, cs);
 
     // stp x29, x30, [sp, #-16]!  (pre-indexed, -16/8 = -2)
     emit32(encodePair(kStpGprPre, fp, lr, sp, static_cast<int32_t>(-16 / 8)), cs);
@@ -243,6 +299,10 @@ void A64BinaryEncoder::encodeEpilogue(const MFunction &fn, objfile::CodeSection 
 
     // ldp x29, x30, [sp], #16  → post-indexed, imm7 = 16/8 = 2
     emit32(encodePair(kLdpGprPost, fp, lr, sp, static_cast<int32_t>(16 / 8)), cs);
+
+    // Verify LR signature before return (Pointer Authentication, ARMv8.3+).
+    // Executes as NOP on older hardware.
+    emit32(kAutiasp, cs);
 
     // ret
     emit32(kRet, cs);
