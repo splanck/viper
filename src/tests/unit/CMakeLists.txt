@@ -78,16 +78,12 @@ if (NOT TARGET test_basic_parse_using)
     viper_add_ctest(test_basic_parse_using test_basic_parse_using)
 endif ()
 
-if (NOT TARGET test_namespace_registry)
-    viper_add_test(test_namespace_registry ${VIPER_TESTS_DIR}/unit/test_namespace_registry.cpp)
-    target_link_libraries(test_namespace_registry PRIVATE fe_basic)
-    viper_add_ctest(test_namespace_registry test_namespace_registry)
-endif ()
-
-if (NOT TARGET test_using_context)
-    viper_add_test(test_using_context ${VIPER_TESTS_DIR}/unit/test_using_context.cpp)
-    target_link_libraries(test_using_context PRIVATE fe_basic)
-    viper_add_ctest(test_using_context test_using_context)
+# Consolidated namespace/using tests (8 files → 1, 75 TEST() cases)
+if (NOT TARGET test_basic_namespace_consolidated)
+    viper_add_test(test_basic_namespace_consolidated
+            ${VIPER_TESTS_DIR}/unit/test_basic_namespace_consolidated.cpp)
+    target_link_libraries(test_basic_namespace_consolidated PRIVATE fe_basic)
+    viper_add_ctest(test_basic_namespace_consolidated test_basic_namespace_consolidated)
 endif ()
 
 if (NOT TARGET test_type_resolver)
@@ -96,23 +92,8 @@ if (NOT TARGET test_type_resolver)
     viper_add_ctest(test_type_resolver test_type_resolver)
 endif ()
 
-if (NOT TARGET test_ns_registry_builder)
-    viper_add_test(test_ns_registry_builder ${VIPER_TESTS_DIR}/unit/test_ns_registry_builder.cpp)
-    target_link_libraries(test_ns_registry_builder PRIVATE fe_basic)
-    viper_add_ctest(test_ns_registry_builder test_ns_registry_builder)
-endif ()
-
-if (NOT TARGET test_using_semantics)
-    viper_add_test(test_using_semantics ${VIPER_TESTS_DIR}/unit/test_using_semantics.cpp)
-    target_link_libraries(test_using_semantics PRIVATE fe_basic)
-    viper_add_ctest(test_using_semantics test_using_semantics)
-endif ()
-
-if (NOT TARGET test_ns_resolve_pass)
-    viper_add_test(test_ns_resolve_pass ${VIPER_TESTS_DIR}/unit/test_ns_resolve_pass.cpp)
-    target_link_libraries(test_ns_resolve_pass PRIVATE fe_basic)
-    viper_add_ctest(test_ns_resolve_pass test_ns_resolve_pass)
-endif ()
+## Removed: test_ns_registry_builder, test_using_semantics, test_ns_resolve_pass
+## (consolidated into test_basic_namespace_consolidated)
 
 if (NOT TARGET test_lowerer_namespace)
     viper_add_test(test_lowerer_namespace ${VIPER_TESTS_DIR}/unit/test_lowerer_namespace.cpp)
@@ -120,17 +101,8 @@ if (NOT TARGET test_lowerer_namespace)
     viper_add_ctest(test_lowerer_namespace test_lowerer_namespace)
 endif ()
 
-if (NOT TARGET test_namespace_diagnostics)
-    viper_add_test(test_namespace_diagnostics ${VIPER_TESTS_DIR}/unit/test_namespace_diagnostics.cpp)
-    target_link_libraries(test_namespace_diagnostics PRIVATE fe_basic)
-    viper_add_ctest(test_namespace_diagnostics test_namespace_diagnostics)
-endif ()
-
-if (NOT TARGET test_namespace_integration)
-    viper_add_test(test_namespace_integration ${VIPER_TESTS_DIR}/unit/test_namespace_integration.cpp)
-    target_link_libraries(test_namespace_integration PRIVATE fe_basic)
-    viper_add_ctest(test_namespace_integration test_namespace_integration)
-endif ()
+## Removed: test_namespace_diagnostics, test_namespace_integration
+## (consolidated into test_basic_namespace_consolidated)
 
 # Built-in external types catalog recognition
 if (NOT TARGET test_builtin_external_types)
@@ -139,11 +111,7 @@ if (NOT TARGET test_builtin_external_types)
     viper_add_ctest(test_builtin_external_types test_builtin_external_types)
 endif ()
 
-if (NOT TARGET test_using_compiletime_only)
-    viper_add_test(test_using_compiletime_only ${VIPER_TESTS_DIR}/unit/test_using_compiletime_only.cpp)
-    target_link_libraries(test_using_compiletime_only PRIVATE fe_basic)
-    viper_add_ctest(test_using_compiletime_only test_using_compiletime_only)
-endif ()
+## Removed: test_using_compiletime_only (consolidated into test_basic_namespace_consolidated)
 
 if (NOT TARGET test_basic_proc_diagnostics)
     viper_add_test(test_basic_proc_diagnostics ${VIPER_TESTS_DIR}/unit/test_basic_proc_diagnostics.cpp)
