@@ -1126,4 +1126,18 @@ function(viper_add_il_liveness_tests)
     target_link_libraries(
             test_il_reassociate PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_reassociate test_il_reassociate)
+
+    # Loop rotation tests (Phase III gap fill)
+    viper_add_test(test_il_loop_rotate
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_LoopRotate.cpp)
+    target_link_libraries(
+            test_il_loop_rotate PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform il_analysis)
+    viper_add_ctest(test_il_loop_rotate test_il_loop_rotate)
+
+    # Pipeline interaction tests (Phase III gap fill)
+    viper_add_test(test_il_pipeline_interactions
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_pipeline_interactions.cpp)
+    target_link_libraries(
+            test_il_pipeline_interactions PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_pipeline_interactions test_il_pipeline_interactions)
 endfunction()

@@ -120,7 +120,11 @@ Cross-layer includes require ADR. Never modify `/docs/il-guide.md#reference` wit
 - **E2E:** VM vs native output equivalence
 - Each feature must include a test that fails before implementation and passes after
 - After any build/rename/refactor affecting multiple files, always rebuild and run the full test suite before reporting done. Verify zero regressions.
-- For golden file regeneration, be careful with shell escaping and ensure sed patterns account for indented content (not just line-start anchors).
+- For golden file regeneration, use `./scripts/update_goldens.sh` or be careful with shell escaping.
+- **Assertions:** Use `EXPECT_EQ`/`ASSERT_EQ` (prints actual values on failure), `EXPECT_GT/LT/GE/LE`, `EXPECT_NEAR` (floats), `EXPECT_CONTAINS` (strings), `EXPECT_THROWS`/`EXPECT_NO_THROW`.
+- **Test filtering:** Run single test from multi-test binary: `./build/test_foo --filter=Suite.Name`
+- **Labels:** Use `ctest -L codegen` to run by category. See `src/tests/CMakeLists.txt` for full taxonomy.
+- **Fuzz harnesses:** In `src/tests/fuzz/` (opt-in via `VIPER_ENABLE_FUZZ=ON`). Add harnesses for new parser/input surfaces.
 
 ---
 
