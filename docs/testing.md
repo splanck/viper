@@ -1,32 +1,118 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-03-04
+last-verified: 2026-03-16
 ---
 
 # Testing Guide
 
-This document describes the testing infrastructure for the Viper compiler stack, with a focus on property-based
-differential testing between execution backends.
+This document describes the testing infrastructure for the Viper compiler stack. The test suite
+contains 1,300+ tests across unit, golden, end-to-end, differential, conformance, and fuzz
+categories.
+
+## Test Suite Overview
+
+```
+Unit Tests (src/tests/unit/, src/tests/il/, src/tests/vm/)
+    |  Individual component testing: IL, VM opcodes, codegen, runtime
+    v
+Golden Tests (src/tests/golden/)
+    |  Textual stability: diagnostic messages, IL output, optimizer output
+    v
+End-to-End Tests (src/tests/e2e/)
+    |  Full pipeline: source -> IL -> VM/native -> compare output
+    v
+Differential Tests (src/tests/unit/codegen/)
+    |  VM vs native backend equivalence (property-based)
+    v
+Conformance Tests (src/tests/conformance/)
+    |  Cross-layer arithmetic semantics equivalence
+    v
+Fuzz Tests (src/tests/fuzz/)
+       Continuous fuzzing of parser/lexer inputs
+```
+
+## Running Tests
+
+```bash
+# Build and run all tests
+./scripts/build_viper.sh
+
+# Run all tests (after building)
+ctest --test-dir build
+
+# Run tests by label
+ctest --test-dir build -L codegen          # Code generation tests only
+ctest --test-dir build -L golden           # Golden file tests only
+ctest --test-dir build -L "vm"             # VM tests only
+
+# Run a specific test
+ctest --test-dir build -R test_zia_lexer
+
+# Run tests in parallel
+ctest --test-dir build -j$(nproc)
+
+# Run with verbose output on failure
+ctest --test-dir build --output-on-failure
+
+# List all labels
+ctest --test-dir build --print-labels
+
+# Update golden files after intentional changes
+./scripts/update_goldens.sh                # Update all
+./scripts/update_goldens.sh il_opt         # Update only optimizer goldens
+
+# Run with sanitizers
+./scripts/ci_sanitizer_tests.sh
+```
+
+## Test Labels
+
+| Label | Count | Description |
+|-------|-------|-------------|
+| `basic` | ~94 | BASIC frontend (lexer, parser, sema, lowerer) |
+| `il` | ~186 | IL core (parsing, serialization, verification, analysis, transforms) |
+| `vm` | ~111 | VM runtime (opcodes, traps, debugging, concurrency) |
+| `runtime` | ~318 | C runtime library (strings, collections, I/O, math, etc.) |
+| `codegen` | ~95 | Code generation (x86_64, AArch64, linker, binary encoding) |
+| `oop` | ~31 | Object-oriented programming (classes, inheritance, interfaces) |
+| `golden` | ~203 | Golden file regression (diagnostic messages, IL/optimizer output) |
+| `e2e` | ~19 | End-to-end pipeline tests |
+| `ilopt` | ~4 | IL optimizer pass golden tests |
+| `conformance` | ~10 | Arithmetic semantics cross-layer equivalence |
+| `zia` | ~88 | Zia language frontend tests |
+| `namespace` | ~13 | Namespace/module system tests |
+| `tools` | ~29 | CLI tools, language server tests |
+| `smoke` | ~5 | Quick sanity tests |
+| `tui` | ~28 | Terminal UI / REPL tests |
+| `perf` | — | Performance benchmarks (excluded from default runs) |
+| `slow` | ~1 | Long-running tests (excluded from default runs) |
 
 ## Test Categories
 
 ### Unit Tests
 
-Located in `src/tests/unit/`. Test individual components in isolation:
+Located in `src/tests/unit/`, `src/tests/il/`, `src/tests/vm/`. Test individual components:
 
-- IL core types and operations
-- Verifier checks
-- VM opcode semantics
-- Codegen utilities
+- IL core types, parsing, serialization
+- IL optimizer passes (EHOpt, LoopRotate, Reassociate, SCCP, GVN, etc.)
+- IL verifier checks (positive and negative)
+- VM opcode semantics, traps, debugging
+- Codegen utilities (peephole, register allocation, ISel)
+- Runtime C functions (strings, collections, I/O, math)
+- Frontend parser, sema, lowerer for both Zia and BASIC
 
 ### Golden Tests
 
 Located in `src/tests/golden/`. Test textual stability of outputs:
 
 - IL serialization format
-- Zia/BASIC compiler output
-- Diagnostic messages
+- Zia/BASIC compiler diagnostic messages
+- IL optimizer transformations
+- Constant folding results
+
+Golden tests use 10 CMake runner scripts. Helper functions in `TestHelpers.cmake` reduce
+registration to one line per test.
 
 ### End-to-End Tests
 
@@ -38,8 +124,8 @@ Located in `src/tests/e2e/`. Test complete pipelines:
 
 ### Differential Tests
 
-Located in `src/tests/unit/codegen/`. Verify that VM and native backends produce identical results for the same IL
-programs.
+Located in `src/tests/unit/codegen/`. Verify that VM and native backends produce identical results
+for the same IL programs.
 
 ---
 
@@ -159,6 +245,49 @@ Located in `src/tests/common/CodegenFixture.hpp`. Orchestrates comparison betwee
 
 ---
 
+## Test Framework (TestHarness.hpp)
+
+The framework is a lightweight, header-only, dependency-free test harness in `src/tests/TestHarness.hpp`.
+
+### Assertion Macros
+
+| Macro | Fatal | Description |
+|-------|-------|-------------|
+| `EXPECT_TRUE(expr)` / `ASSERT_TRUE(expr)` | No/Yes | Expression is truthy |
+| `EXPECT_FALSE(expr)` / `ASSERT_FALSE(expr)` | No/Yes | Expression is falsy |
+| `EXPECT_EQ(a, b)` / `ASSERT_EQ(a, b)` | No/Yes | Equality (prints both values) |
+| `EXPECT_NE(a, b)` / `ASSERT_NE(a, b)` | No/Yes | Inequality (prints both values) |
+| `EXPECT_GT(a, b)` / `ASSERT_GT(a, b)` | No/Yes | Greater than |
+| `EXPECT_LT(a, b)` / `ASSERT_LT(a, b)` | No/Yes | Less than |
+| `EXPECT_GE(a, b)` / `ASSERT_GE(a, b)` | No/Yes | Greater or equal |
+| `EXPECT_LE(a, b)` / `ASSERT_LE(a, b)` | No/Yes | Less or equal |
+| `EXPECT_NEAR(a, b, eps)` | No | Float near-equality |
+| `EXPECT_CONTAINS(str, sub)` | No | String contains substring |
+| `EXPECT_THROWS(expr, Type)` | No | Exception of Type thrown |
+| `EXPECT_NO_THROW(expr)` | No | No exception thrown |
+| `VIPER_TEST_SKIP(reason)` | — | Skip test with reason |
+
+Comparison macros (`EQ`, `NE`, `GT`, `LT`, `GE`, `LE`) print actual operand values on failure.
+
+### Command-Line Options
+
+- `--filter=PATTERN` — Run only tests matching glob (e.g., `--filter=ZiaLexer.*`)
+- `--xml=PATH` — Write JUnit XML results for CI integration
+
+### Fixtures (TEST_F)
+
+```cpp
+class MyFixture : public viper_test::TestFixture {
+protected:
+    void SetUp() override { /* before each test */ }
+    void TearDown() override { /* after each test */ }
+};
+
+TEST_F(MyFixture, TestName) {
+    // fixture members accessible here
+}
+```
+
 ## Adding New Tests
 
 ### Unit Test Template
@@ -167,9 +296,9 @@ Located in `src/tests/common/CodegenFixture.hpp`. Orchestrates comparison betwee
 #include "tests/TestHarness.hpp"
 
 TEST(MySuite, MyTest) {
-    // Arrange
-    // Act
-    // Assert
+    EXPECT_EQ(1 + 1, 2);
+    EXPECT_GT(result.size(), 0U);
+    EXPECT_CONTAINS(output, "expected text");
 }
 
 int main(int argc, char **argv) {
@@ -177,6 +306,47 @@ int main(int argc, char **argv) {
     return viper_test::run_all_tests();
 }
 ```
+
+### Golden Error Test
+
+Add a `.bas` + `.stderr` file pair, then one line in `golden/CMakeLists.txt`:
+
+```cmake
+_golden_error(basic_error_my_test ${_BE} my_test)
+```
+
+### Golden Run Test
+
+Add a `.bas` + `.stdout` file pair:
+
+```cmake
+_golden_basic_run(my_run_test ${_DIR} my_program my_program.stdout)
+```
+
+### IL Verifier Negative Test
+
+Add a `.il` + `.expected` file pair in `src/tests/il/negatives/`, then register:
+
+```cmake
+viper_add_ctest(il_verify_negative_my_case
+    ${CMAKE_COMMAND} -DIL_VERIFY=${IL_VERIFY}
+    -DFILE=${_DIR}/my_case.il -DEXPECT_FILE=${_DIR}/my_case.expected
+    -P ${_DIR}/check_negative.cmake)
+```
+
+### Zia Runtime Test
+
+Add a `.zia` file in `tests/runtime/` that prints `RESULT: ok` on success:
+
+```zia
+// test_my_feature.zia
+func main() {
+    // ... test logic ...
+    Say("RESULT: ok")
+}
+```
+
+Register in `src/tests/CMakeLists.txt` under `ZIA_RUNTIME_TESTS`.
 
 ### Differential Test Template
 
@@ -310,10 +480,43 @@ native are not required to match).
 
 ---
 
+## Golden File Update Workflow
+
+When you intentionally change compiler diagnostics, optimizer output, or IL format:
+
+```bash
+# Update all failing golden files
+./scripts/update_goldens.sh
+
+# Update only optimizer golden files
+./scripts/update_goldens.sh il_opt
+
+# Update only BASIC error golden files
+./scripts/update_goldens.sh basic_error
+```
+
+The script runs each golden test, skips those already passing, and re-runs failures with
+`UPDATE_GOLDEN=1` to overwrite expected output files with actual output.
+
+## Fuzz Testing
+
+Fuzz harnesses are in `src/tests/fuzz/` (requires `VIPER_ENABLE_FUZZ=ON`):
+
+- `fuzz_zia_lexer.cpp` — Zia lexer fuzzing via libFuzzer
+- `fuzz_zia_parser.cpp` — Zia parser fuzzing via libFuzzer
+
+```bash
+cmake -S . -B build-fuzz -DVIPER_ENABLE_FUZZ=ON
+cmake --build build-fuzz --target fuzz_zia_lexer
+./build-fuzz/src/tests/fuzz_zia_lexer corpus/ -max_len=4096
+```
+
 ## Future Work
 
-- Add control flow (branches) to IL generator
-- Add floating-point operations
-- Add string and array operations
-- CLI fuzzing tool for continuous differential testing
-- Exception/trap handling tests for concurrency
+- Expand fuzz testing to BASIC lexer/parser, IL parser, IL verifier, VM
+- Full-suite sanitizer CI (ASan + UBSan on all 1,300+ tests)
+- Reusable DifferentialTestFixture for VM vs native comparisons
+- Test consolidation: merge 196 standalone runtime tests into ~30 themed files
+- LoopRotate, GVN, DSE, LICM edge-case tests
+- x86_64 codegen parity with AArch64 test coverage
+- Zia diagnostic golden test directory

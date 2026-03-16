@@ -40,8 +40,7 @@ namespace viper::codegen::ra
 
 /// @brief Result of backward dataflow liveness analysis.
 /// @tparam VregId Type used to identify virtual registers (typically uint16_t).
-template <typename VregId = uint16_t>
-struct DataflowResult
+template <typename VregId = uint16_t> struct DataflowResult
 {
     std::vector<std::unordered_set<VregId>> liveIn;
     std::vector<std::unordered_set<VregId>> liveOut;
@@ -61,11 +60,10 @@ struct DataflowResult
 /// @param maxIter    Safety bound on fixed-point iterations.
 /// @return Computed liveIn and liveOut sets for each block.
 template <typename VregId = uint16_t>
-DataflowResult<VregId>
-solveBackwardDataflow(const std::vector<std::vector<std::size_t>> &succs,
-                      const std::vector<std::unordered_set<VregId>> &gen,
-                      const std::vector<std::unordered_set<VregId>> &kill,
-                      std::size_t maxIter = 1000)
+DataflowResult<VregId> solveBackwardDataflow(const std::vector<std::vector<std::size_t>> &succs,
+                                             const std::vector<std::unordered_set<VregId>> &gen,
+                                             const std::vector<std::unordered_set<VregId>> &kill,
+                                             std::size_t maxIter = 1000)
 {
     const std::size_t n = succs.size();
     assert(gen.size() == n && kill.size() == n);
@@ -122,8 +120,8 @@ solveBackwardDataflow(const std::vector<std::vector<std::size_t>> &succs,
 ///
 /// @param succs Per-block successor indices.
 /// @return Per-block predecessor indices.
-inline std::vector<std::vector<std::size_t>>
-buildPredecessors(const std::vector<std::vector<std::size_t>> &succs)
+inline std::vector<std::vector<std::size_t>> buildPredecessors(
+    const std::vector<std::vector<std::size_t>> &succs)
 {
     std::vector<std::vector<std::size_t>> preds(succs.size());
     for (std::size_t i = 0; i < succs.size(); ++i)

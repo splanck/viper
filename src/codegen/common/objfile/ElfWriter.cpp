@@ -95,6 +95,7 @@ static constexpr uint16_t kSecSymtab = 4;
 static constexpr uint16_t kSecStrtab = 5;
 static constexpr uint16_t kSecShstrtab = 6;
 static constexpr uint16_t kSecNoteGnuStack = 7;
+
 // kNumSections is computed dynamically in write() based on whether debug data is present.
 
 // Helpers: appendLE16/32/64, alignUp, padTo are provided by ObjFileWriterUtil.hpp.

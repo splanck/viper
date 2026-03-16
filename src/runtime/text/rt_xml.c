@@ -51,7 +51,7 @@
 /// @brief Internal XML node structure.
 typedef struct xml_node
 {
-    rt_xml_node_type_t type;        ///< Node type
+    rt_xml_node_type_t type; ///< Node type
     rt_string tag;           ///< Tag name (elements only)
     rt_string content;       ///< Text content (text/comment/cdata)
     void *attributes;        ///< Map of attributes (elements only)

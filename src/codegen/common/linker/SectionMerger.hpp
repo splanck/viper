@@ -38,7 +38,10 @@ namespace viper::codegen::linker
 /// @param layout      Output: merged sections with virtual addresses.
 /// @param err         Error output.
 /// @return true on success.
-bool mergeSections(const std::vector<ObjFile> &objects, LinkPlatform platform, LinkArch arch,
-                   LinkLayout &layout, std::ostream &err);
+bool mergeSections(const std::vector<ObjFile> &objects,
+                   LinkPlatform platform,
+                   LinkArch arch,
+                   LinkLayout &layout,
+                   std::ostream &err);
 
 } // namespace viper::codegen::linker

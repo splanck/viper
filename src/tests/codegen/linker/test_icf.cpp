@@ -45,7 +45,8 @@ static void check(bool cond, const char *msg, int line)
 /// @param func  Function symbol name.
 /// @param code  Machine code bytes.
 /// @param relocs Relocations (symIndex references symbols in this ObjFile).
-static ObjFile makeTextObj(const std::string &name, const std::string &func,
+static ObjFile makeTextObj(const std::string &name,
+                           const std::string &func,
                            const std::vector<uint8_t> &code,
                            const std::vector<ObjReloc> &relocs = {},
                            const std::vector<ObjSymbol> &extraSyms = {})
@@ -88,7 +89,9 @@ static ObjFile makeTextObj(const std::string &name, const std::string &func,
 
 /// Helper: register a function symbol in globalSyms.
 static void registerGlobal(std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
-                           const std::string &name, size_t objIdx, uint32_t secIdx)
+                           const std::string &name,
+                           size_t objIdx,
+                           uint32_t secIdx)
 {
     GlobalSymEntry e;
     e.name = name;
@@ -159,7 +162,7 @@ int main()
         // Both have a Branch26 reloc at offset 0 (symIndex=2 refers to extraSyms[0]).
         ObjReloc rel;
         rel.offset = 0;
-        rel.type = 283; // R_AARCH64_CALL26
+        rel.type = 283;   // R_AARCH64_CALL26
         rel.symIndex = 2; // extraSyms[0]
         rel.addend = 0;
 

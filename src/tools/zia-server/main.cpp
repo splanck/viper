@@ -17,12 +17,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/zia-server/CompilerBridge.hpp"
 #include "tools/lsp-common/Json.hpp"
 #include "tools/lsp-common/JsonRpc.hpp"
 #include "tools/lsp-common/LspHandler.hpp"
 #include "tools/lsp-common/McpHandler.hpp"
 #include "tools/lsp-common/Transport.hpp"
+#include "tools/zia-server/CompilerBridge.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -133,7 +133,8 @@ static int runLspServer(Transport &transport, CompilerBridge &bridge)
             continue;
         }
 
-        std::fprintf(stderr, "[zia-server] method=%s id=%s\n",
+        std::fprintf(stderr,
+                     "[zia-server] method=%s id=%s\n",
                      req.method.c_str(),
                      req.id.isNull() ? "null" : req.id.toCompactString().c_str());
         std::fflush(stderr);

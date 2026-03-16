@@ -96,8 +96,8 @@ std::string LspHandler::handleInitialize(const JsonRpcRequest &req)
     auto result = JsonValue::object({
         {"capabilities", std::move(capabilities)},
         {"serverInfo",
-         JsonValue::object({{"name", JsonValue(config_.serverName)},
-                            {"version", JsonValue(config_.version)}})},
+         JsonValue::object(
+             {{"name", JsonValue(config_.serverName)}, {"version", JsonValue(config_.version)}})},
     });
 
     return buildResponse(req.id, result);
@@ -156,8 +156,9 @@ void LspHandler::handleDidClose(const JsonRpcRequest &req)
 std::string LspHandler::handleCompletion(const JsonRpcRequest &req)
 {
     std::string uri = req.params["textDocument"]["uri"].asString();
-    int line = static_cast<int>(req.params["position"]["line"].asInt()) + 1;     // LSP is 0-based
-    int col = static_cast<int>(req.params["position"]["character"].asInt()) + 1; // Bridge is 1-based
+    int line = static_cast<int>(req.params["position"]["line"].asInt()) + 1; // LSP is 0-based
+    int col =
+        static_cast<int>(req.params["position"]["character"].asInt()) + 1; // Bridge is 1-based
 
     const std::string *content = store_.getContent(uri);
     if (!content)

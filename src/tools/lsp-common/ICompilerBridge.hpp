@@ -66,17 +66,19 @@ class ICompilerBridge
                                                     const std::string &path) = 0;
 
     /// @brief Get type info for the symbol at (line, col).
-    virtual std::string hover(const std::string &source, int line, int col,
+    virtual std::string hover(const std::string &source,
+                              int line,
+                              int col,
                               const std::string &path) = 0;
 
     /// @brief List all top-level declarations in source.
-    virtual std::vector<SymbolInfo> symbols(const std::string &source,
-                                            const std::string &path) = 0;
+    virtual std::vector<SymbolInfo> symbols(const std::string &source, const std::string &path) = 0;
 
     // ── Dump ──
 
     /// @brief Dump IL for source. If optimized, applies O1 optimization.
-    virtual std::string dumpIL(const std::string &source, const std::string &path,
+    virtual std::string dumpIL(const std::string &source,
+                               const std::string &path,
                                bool optimized) = 0;
 
     /// @brief Dump AST for source.

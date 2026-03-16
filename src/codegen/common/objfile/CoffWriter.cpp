@@ -441,8 +441,15 @@ bool CoffWriter::write(const std::string &path,
         std::string debugSecName = "/" + std::to_string(debugLineStrOff);
         uint32_t debugChars =
             kImageScnCntInitData | kImageScnMemDiscardable | kImageScnMemRead | kImageScnAlign1;
-        writeSectionHeader(
-            file, debugSecName.c_str(), 0, 0, debugLineDataSize, debugLineDataOff, 0, 0, debugChars);
+        writeSectionHeader(file,
+                           debugSecName.c_str(),
+                           0,
+                           0,
+                           debugLineDataSize,
+                           debugLineDataOff,
+                           0,
+                           0,
+                           debugChars);
     }
 
     // .text section data

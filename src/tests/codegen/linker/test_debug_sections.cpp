@@ -45,8 +45,7 @@ static void check(bool cond, const char *msg, int line)
 #define CHECK(cond) check((cond), #cond, __LINE__)
 
 /// Helper: create an ObjFile with given sections.
-static ObjFile makeObj(const std::string &name,
-                       const std::vector<ObjSection> &secs)
+static ObjFile makeObj(const std::string &name, const std::vector<ObjSection> &secs)
 {
     ObjFile obj;
     obj.name = name;
@@ -58,11 +57,8 @@ static ObjFile makeObj(const std::string &name,
     return obj;
 }
 
-static ObjSection makeAllocSection(const std::string &name,
-                                   size_t size,
-                                   bool exec,
-                                   bool write,
-                                   uint32_t align = 1)
+static ObjSection makeAllocSection(
+    const std::string &name, size_t size, bool exec, bool write, uint32_t align = 1)
 {
     ObjSection sec;
     sec.name = name;
@@ -74,9 +70,7 @@ static ObjSection makeAllocSection(const std::string &name,
     return sec;
 }
 
-static ObjSection makeDebugSection(const std::string &name,
-                                   size_t size,
-                                   uint32_t align = 1)
+static ObjSection makeDebugSection(const std::string &name, size_t size, uint32_t align = 1)
 {
     ObjSection sec;
     sec.name = name;
@@ -93,10 +87,11 @@ int main()
     // --- Test 1: Debug sections are collected into non-alloc OutputSections ---
     {
         std::vector<ObjFile> objects;
-        objects.push_back(makeObj("a.o", {
-            makeAllocSection(".text", 64, true, false),
-            makeDebugSection(".debug_line", 100),
-        }));
+        objects.push_back(makeObj("a.o",
+                                  {
+                                      makeAllocSection(".text", 64, true, false),
+                                      makeDebugSection(".debug_line", 100),
+                                  }));
 
         LinkLayout layout;
         std::ostringstream err;
@@ -126,11 +121,12 @@ int main()
     // --- Test 2: Non-alloc sections have virtualAddr=0 ---
     {
         std::vector<ObjFile> objects;
-        objects.push_back(makeObj("b.o", {
-            makeAllocSection(".text", 64, true, false),
-            makeAllocSection(".rodata", 32, false, false),
-            makeDebugSection(".debug_line", 50),
-        }));
+        objects.push_back(makeObj("b.o",
+                                  {
+                                      makeAllocSection(".text", 64, true, false),
+                                      makeAllocSection(".rodata", 32, false, false),
+                                      makeDebugSection(".debug_line", 50),
+                                  }));
 
         LinkLayout layout;
         std::ostringstream err;
@@ -153,11 +149,12 @@ int main()
     // --- Test 3: Non-alloc sections sort after alloc sections ---
     {
         std::vector<ObjFile> objects;
-        objects.push_back(makeObj("c.o", {
-            makeDebugSection(".debug_line", 50),
-            makeAllocSection(".text", 64, true, false),
-            makeAllocSection(".data", 32, false, true),
-        }));
+        objects.push_back(makeObj("c.o",
+                                  {
+                                      makeDebugSection(".debug_line", 50),
+                                      makeAllocSection(".text", 64, true, false),
+                                      makeAllocSection(".data", 32, false, true),
+                                  }));
 
         LinkLayout layout;
         std::ostringstream err;
@@ -179,14 +176,16 @@ int main()
     // --- Test 4: Multiple debug sections from multiple objects are merged by name ---
     {
         std::vector<ObjFile> objects;
-        objects.push_back(makeObj("d1.o", {
-            makeAllocSection(".text", 32, true, false),
-            makeDebugSection(".debug_line", 40),
-        }));
-        objects.push_back(makeObj("d2.o", {
-            makeAllocSection(".text", 32, true, false),
-            makeDebugSection(".debug_line", 60),
-        }));
+        objects.push_back(makeObj("d1.o",
+                                  {
+                                      makeAllocSection(".text", 32, true, false),
+                                      makeDebugSection(".debug_line", 40),
+                                  }));
+        objects.push_back(makeObj("d2.o",
+                                  {
+                                      makeAllocSection(".text", 32, true, false),
+                                      makeDebugSection(".debug_line", 60),
+                                  }));
 
         LinkLayout layout;
         std::ostringstream err;
@@ -238,9 +237,10 @@ int main()
     // --- Test 6: Empty debug sections are not collected ---
     {
         std::vector<ObjFile> objects;
-        objects.push_back(makeObj("e.o", {
-            makeAllocSection(".text", 64, true, false),
-        }));
+        objects.push_back(makeObj("e.o",
+                                  {
+                                      makeAllocSection(".text", 64, true, false),
+                                  }));
         // Add an object with an empty debug section.
         {
             ObjSection emptySec;
@@ -288,9 +288,11 @@ int main()
         // Compare alloc section VAs.
         size_t allocCountWith = 0, allocCountWithout = 0;
         for (const auto &sec : withDebug.sections)
-            if (sec.alloc) allocCountWith++;
+            if (sec.alloc)
+                allocCountWith++;
         for (const auto &sec : withoutDebug.sections)
-            if (sec.alloc) allocCountWithout++;
+            if (sec.alloc)
+                allocCountWithout++;
 
         CHECK(allocCountWith == allocCountWithout);
 
@@ -323,10 +325,11 @@ int main()
         // Fill with recognizable pattern.
         for (int i = 0; i < 64; ++i)
             debugSec.data.push_back(static_cast<uint8_t>(i));
-        objects.push_back(makeObj("h.o", {
-            makeAllocSection(".text", 32, true, false),
-            debugSec,
-        }));
+        objects.push_back(makeObj("h.o",
+                                  {
+                                      makeAllocSection(".text", 32, true, false),
+                                      debugSec,
+                                  }));
 
         LinkLayout layout;
         std::ostringstream err;
@@ -346,10 +349,11 @@ int main()
     // --- Test 9: macOS arm64 page size with debug sections ---
     {
         std::vector<ObjFile> objects;
-        objects.push_back(makeObj("i.o", {
-            makeAllocSection(".text", 64, true, false),
-            makeDebugSection(".debug_line", 50),
-        }));
+        objects.push_back(makeObj("i.o",
+                                  {
+                                      makeAllocSection(".text", 64, true, false),
+                                      makeDebugSection(".debug_line", 50),
+                                  }));
 
         LinkLayout layout;
         std::ostringstream err;

@@ -102,7 +102,7 @@ void emitBindEntry(std::vector<uint8_t> &bindData,
 
 /// Look up the dylib ordinal for a symbol. Returns 1 (libSystem) as default.
 static uint32_t lookupOrdinal(const std::string &symName,
-                               const std::unordered_map<std::string, uint32_t> &symOrdinals)
+                              const std::unordered_map<std::string, uint32_t> &symOrdinals)
 {
     auto it = symOrdinals.find(symName);
     return (it != symOrdinals.end()) ? it->second : 1;

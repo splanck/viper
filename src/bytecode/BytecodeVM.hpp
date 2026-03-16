@@ -83,11 +83,11 @@ enum class TrapKind : uint8_t
     NetworkError = 11,    ///< Network I/O failure (connection, DNS, TLS, etc.).
 
     // --- BytecodeVM-specific kinds ---
-    NullPointer = 100,    ///< Null pointer dereference.
-    StackOverflow = 101,  ///< Call stack depth exceeded kMaxCallDepth.
-    InvalidOpcode = 102,  ///< Unrecognized or unsupported opcode.
+    NullPointer = 100,   ///< Null pointer dereference.
+    StackOverflow = 101, ///< Call stack depth exceeded kMaxCallDepth.
+    InvalidOpcode = 102, ///< Unrecognized or unsupported opcode.
 
-    None = 255            ///< No trap (sentinel for normal execution).
+    None = 255 ///< No trap (sentinel for normal execution).
 };
 
 /// @brief VM execution state.

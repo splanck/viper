@@ -134,10 +134,14 @@ inline constexpr uint8_t scaleLog2(uint8_t scale)
 {
     switch (scale)
     {
-        case 1: return 0;
-        case 2: return 1;
-        case 4: return 2;
-        case 8: return 3;
+        case 1:
+            return 0;
+        case 2:
+            return 1;
+        case 4:
+            return 2;
+        case 8:
+            return 3;
         default:
             assert(false && "invalid SIB scale factor");
             return 0;
@@ -149,10 +153,14 @@ inline constexpr uint8_t scaleLog2(uint8_t scale)
 inline constexpr uint8_t computeRex(bool w, bool r, bool x, bool b)
 {
     uint8_t rex = 0x40;
-    if (w) rex |= 0x08;
-    if (r) rex |= 0x04;
-    if (x) rex |= 0x02;
-    if (b) rex |= 0x01;
+    if (w)
+        rex |= 0x08;
+    if (r)
+        rex |= 0x04;
+    if (x)
+        rex |= 0x02;
+    if (b)
+        rex |= 0x01;
     return rex;
 }
 
@@ -169,7 +177,7 @@ inline constexpr bool needsRex(bool w, bool r, bool x, bool b)
 /// Returns 0 for opcodes that don't use this simple pattern.
 struct RegRegOp
 {
-    uint8_t primary;  ///< Primary opcode byte (or 0x0F escape prefix).
+    uint8_t primary;   ///< Primary opcode byte (or 0x0F escape prefix).
     uint8_t secondary; ///< Secondary byte after 0F (0 if single-byte opcode).
     bool regIsDst;     ///< True if ModR/M reg field is the destination.
 };
@@ -179,17 +187,28 @@ inline constexpr RegRegOp regRegOpcode(MOpcode op)
 {
     switch (op)
     {
-        case MOpcode::MOVrr:    return {0x89, 0, false}; // reg=src, r/m=dst
-        case MOpcode::ADDrr:    return {0x01, 0, false}; // reg=src, r/m=dst
-        case MOpcode::SUBrr:    return {0x29, 0, false};
-        case MOpcode::ANDrr:    return {0x21, 0, false};
-        case MOpcode::ORrr:     return {0x09, 0, false};
-        case MOpcode::XORrr:    return {0x31, 0, false};
-        case MOpcode::CMPrr:    return {0x39, 0, false};
-        case MOpcode::TESTrr:   return {0x85, 0, false};
-        case MOpcode::IMULrr:   return {0x0F, 0xAF, true}; // reg=dst, r/m=src
-        case MOpcode::CMOVNErr: return {0x0F, 0x45, true}; // reg=dst, r/m=src
-        case MOpcode::XORrr32:  return {0x31, 0, false};
+        case MOpcode::MOVrr:
+            return {0x89, 0, false}; // reg=src, r/m=dst
+        case MOpcode::ADDrr:
+            return {0x01, 0, false}; // reg=src, r/m=dst
+        case MOpcode::SUBrr:
+            return {0x29, 0, false};
+        case MOpcode::ANDrr:
+            return {0x21, 0, false};
+        case MOpcode::ORrr:
+            return {0x09, 0, false};
+        case MOpcode::XORrr:
+            return {0x31, 0, false};
+        case MOpcode::CMPrr:
+            return {0x39, 0, false};
+        case MOpcode::TESTrr:
+            return {0x85, 0, false};
+        case MOpcode::IMULrr:
+            return {0x0F, 0xAF, true}; // reg=dst, r/m=src
+        case MOpcode::CMOVNErr:
+            return {0x0F, 0x45, true}; // reg=dst, r/m=src
+        case MOpcode::XORrr32:
+            return {0x31, 0, false};
         default:
             assert(false && "not a reg-reg GPR opcode");
             return {0, 0, false};
@@ -201,11 +220,16 @@ inline constexpr uint8_t regImmExt(MOpcode op)
 {
     switch (op)
     {
-        case MOpcode::ADDri: return 0; // /0
-        case MOpcode::ORri:  return 1; // /1
-        case MOpcode::ANDri: return 4; // /4
-        case MOpcode::XORri: return 6; // /6
-        case MOpcode::CMPri: return 7; // /7
+        case MOpcode::ADDri:
+            return 0; // /0
+        case MOpcode::ORri:
+            return 1; // /1
+        case MOpcode::ANDri:
+            return 4; // /4
+        case MOpcode::XORri:
+            return 6; // /6
+        case MOpcode::CMPri:
+            return 7; // /7
         default:
             assert(false && "not a reg-imm ALU opcode");
             return 0;
@@ -217,9 +241,15 @@ inline constexpr uint8_t shiftExt(MOpcode op)
 {
     switch (op)
     {
-        case MOpcode::SHLri: case MOpcode::SHLrc: return 4; // /4
-        case MOpcode::SHRri: case MOpcode::SHRrc: return 5; // /5
-        case MOpcode::SARri: case MOpcode::SARrc: return 7; // /7
+        case MOpcode::SHLri:
+        case MOpcode::SHLrc:
+            return 4; // /4
+        case MOpcode::SHRri:
+        case MOpcode::SHRrc:
+            return 5; // /5
+        case MOpcode::SARri:
+        case MOpcode::SARrc:
+            return 7; // /7
         default:
             assert(false && "not a shift opcode");
             return 0;
@@ -229,29 +259,42 @@ inline constexpr uint8_t shiftExt(MOpcode op)
 /// SSE instruction descriptor for scalar double operations.
 struct SseOp
 {
-    uint8_t prefix;   ///< Mandatory prefix: 0xF2, 0x66, or 0 (none for MOVUPS).
-    uint8_t opcode;   ///< Opcode byte after 0F.
-    bool regIsDst;    ///< True if ModR/M reg field is the destination.
-    bool needsRexW;   ///< True if REX.W is needed (CVTSI2SD, CVTTSD2SI, MOVQrx).
+    uint8_t prefix; ///< Mandatory prefix: 0xF2, 0x66, or 0 (none for MOVUPS).
+    uint8_t opcode; ///< Opcode byte after 0F.
+    bool regIsDst;  ///< True if ModR/M reg field is the destination.
+    bool needsRexW; ///< True if REX.W is needed (CVTSI2SD, CVTTSD2SI, MOVQrx).
 };
 
 inline constexpr SseOp sseOpcode(MOpcode op)
 {
     switch (op)
     {
-        case MOpcode::FADD:      return {0xF2, 0x58, true, false};
-        case MOpcode::FSUB:      return {0xF2, 0x5C, true, false};
-        case MOpcode::FMUL:      return {0xF2, 0x59, true, false};
-        case MOpcode::FDIV:      return {0xF2, 0x5E, true, false};
-        case MOpcode::UCOMIS:    return {0x66, 0x2E, true, false};
-        case MOpcode::CVTSI2SD:  return {0xF2, 0x2A, true, true};
-        case MOpcode::CVTTSD2SI: return {0xF2, 0x2C, true, true};
-        case MOpcode::MOVQrx:    return {0x66, 0x6E, true, true};
-        case MOpcode::MOVSDrr:   return {0xF2, 0x10, true, false};
-        case MOpcode::MOVSDrm:   return {0xF2, 0x11, false, false}; // store: reg=src
-        case MOpcode::MOVSDmr:   return {0xF2, 0x10, true, false};  // load: reg=dst
-        case MOpcode::MOVUPSrm:  return {0x00, 0x11, false, false}; // store: no prefix
-        case MOpcode::MOVUPSmr:  return {0x00, 0x10, true, false};  // load: no prefix
+        case MOpcode::FADD:
+            return {0xF2, 0x58, true, false};
+        case MOpcode::FSUB:
+            return {0xF2, 0x5C, true, false};
+        case MOpcode::FMUL:
+            return {0xF2, 0x59, true, false};
+        case MOpcode::FDIV:
+            return {0xF2, 0x5E, true, false};
+        case MOpcode::UCOMIS:
+            return {0x66, 0x2E, true, false};
+        case MOpcode::CVTSI2SD:
+            return {0xF2, 0x2A, true, true};
+        case MOpcode::CVTTSD2SI:
+            return {0xF2, 0x2C, true, true};
+        case MOpcode::MOVQrx:
+            return {0x66, 0x6E, true, true};
+        case MOpcode::MOVSDrr:
+            return {0xF2, 0x10, true, false};
+        case MOpcode::MOVSDrm:
+            return {0xF2, 0x11, false, false}; // store: reg=src
+        case MOpcode::MOVSDmr:
+            return {0xF2, 0x10, true, false}; // load: reg=dst
+        case MOpcode::MOVUPSrm:
+            return {0x00, 0x11, false, false}; // store: no prefix
+        case MOpcode::MOVUPSmr:
+            return {0x00, 0x10, true, false}; // load: no prefix
         default:
             assert(false && "not an SSE opcode");
             return {0, 0, false, false};

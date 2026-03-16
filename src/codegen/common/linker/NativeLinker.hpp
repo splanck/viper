@@ -34,8 +34,8 @@ namespace viper::codegen::linker
 /// Options for the native linker.
 struct NativeLinkerOptions
 {
-    std::string objPath;              ///< Path to the user's compiled .o file.
-    std::string exePath;              ///< Output executable path.
+    std::string objPath;                   ///< Path to the user's compiled .o file.
+    std::string exePath;                   ///< Output executable path.
     std::vector<std::string> archivePaths; ///< Runtime archive .a paths (in dependency order).
     LinkPlatform platform = detectLinkPlatform();
     LinkArch arch = detectLinkArch();

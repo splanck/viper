@@ -40,6 +40,7 @@ static constexpr uint32_t IMAGE_SCN_MEM_READ = 0x40000000;
 static constexpr uint32_t IMAGE_SCN_MEM_WRITE = 0x80000000;
 
 #pragma pack(push, 1)
+
 struct CoffHeader
 {
     uint16_t Machine;
@@ -77,18 +78,21 @@ struct CoffSymbol
     union
     {
         char ShortName[8];
+
         struct
         {
             uint32_t Zeros;
             uint32_t Offset;
         } LongName;
     } Name;
+
     uint32_t Value;
     int16_t SectionNumber;
     uint16_t Type;
     uint8_t StorageClass;
     uint8_t NumberOfAuxSymbols;
 };
+
 #pragma pack(pop)
 } // namespace coff
 
@@ -103,16 +107,15 @@ static uint16_t readLE16(const uint8_t *p)
     return static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8);
 }
 
-template <typename T>
-static const T *coffAt(const uint8_t *data, size_t size, size_t offset)
+template <typename T> static const T *coffAt(const uint8_t *data, size_t size, size_t offset)
 {
     if (offset + sizeof(T) > size)
         return nullptr;
     return reinterpret_cast<const T *>(data + offset);
 }
 
-bool readCoffObj(const uint8_t *data, size_t size, const std::string &name, ObjFile &obj,
-                 std::ostream &err)
+bool readCoffObj(
+    const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err)
 {
     if (size < sizeof(coff::CoffHeader))
     {
@@ -161,7 +164,8 @@ bool readCoffObj(const uint8_t *data, size_t size, const std::string &name, ObjF
     const size_t secOff = sizeof(coff::CoffHeader) + hdr->SizeOfOptionalHeader;
     for (uint16_t i = 0; i < hdr->NumberOfSections; ++i)
     {
-        const auto *sh = coffAt<coff::SectionHeader>(data, size, secOff + i * sizeof(coff::SectionHeader));
+        const auto *sh =
+            coffAt<coff::SectionHeader>(data, size, secOff + i * sizeof(coff::SectionHeader));
         if (!sh)
             break;
 
@@ -187,9 +191,9 @@ bool readCoffObj(const uint8_t *data, size_t size, const std::string &name, ObjF
 
         sec.executable = (sh->Characteristics & coff::IMAGE_SCN_MEM_EXECUTE) != 0;
         sec.writable = (sh->Characteristics & coff::IMAGE_SCN_MEM_WRITE) != 0;
-        sec.alloc = (sh->Characteristics & (coff::IMAGE_SCN_CNT_CODE |
-                                             coff::IMAGE_SCN_CNT_INITIALIZED_DATA |
-                                             coff::IMAGE_SCN_CNT_UNINITIALIZED_DATA)) != 0;
+        sec.alloc = (sh->Characteristics &
+                     (coff::IMAGE_SCN_CNT_CODE | coff::IMAGE_SCN_CNT_INITIALIZED_DATA |
+                      coff::IMAGE_SCN_CNT_UNINITIALIZED_DATA)) != 0;
 
         // Extract alignment from COFF characteristics (bits 20-23).
         const uint32_t alignBits = (sh->Characteristics >> 20) & 0xF;
@@ -276,7 +280,8 @@ bool readCoffObj(const uint8_t *data, size_t size, const std::string &name, ObjF
         }
 
         // Map 1-based COFF section number to our section index.
-        if (sym->SectionNumber > 0 && static_cast<uint16_t>(sym->SectionNumber) <= hdr->NumberOfSections)
+        if (sym->SectionNumber > 0 &&
+            static_cast<uint16_t>(sym->SectionNumber) <= hdr->NumberOfSections)
             os.sectionIndex = static_cast<uint32_t>(sym->SectionNumber);
         os.offset = sym->Value;
 

@@ -32,7 +32,7 @@ namespace viper::codegen::objfile
 /// Mach-O object file writer for macOS (x86_64 and AArch64).
 class MachOWriter : public ObjectFileWriter
 {
-public:
+  public:
     explicit MachOWriter(ObjArch arch) : arch_(arch) {}
 
     bool write(const std::string &path,
@@ -40,7 +40,7 @@ public:
                const CodeSection &rodata,
                std::ostream &err) override;
 
-private:
+  private:
     ObjArch arch_;
 };
 

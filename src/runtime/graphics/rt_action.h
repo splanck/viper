@@ -32,15 +32,16 @@ extern "C"
     // Axis Constants (for gamepad analog bindings)
     //=========================================================================
 
-typedef enum {
-    VIPER_AXIS_LEFT_X        = 0,
-    VIPER_AXIS_LEFT_Y        = 1,
-    VIPER_AXIS_RIGHT_X       = 2,
-    VIPER_AXIS_RIGHT_Y       = 3,
-    VIPER_AXIS_LEFT_TRIGGER  = 4,
-    VIPER_AXIS_RIGHT_TRIGGER = 5,
-    VIPER_AXIS_MAX           = 6,
-} viper_axis_t;
+    typedef enum
+    {
+        VIPER_AXIS_LEFT_X = 0,
+        VIPER_AXIS_LEFT_Y = 1,
+        VIPER_AXIS_RIGHT_X = 2,
+        VIPER_AXIS_RIGHT_Y = 3,
+        VIPER_AXIS_LEFT_TRIGGER = 4,
+        VIPER_AXIS_RIGHT_TRIGGER = 5,
+        VIPER_AXIS_MAX = 6,
+    } viper_axis_t;
 
     //=========================================================================
     // Action System Lifecycle

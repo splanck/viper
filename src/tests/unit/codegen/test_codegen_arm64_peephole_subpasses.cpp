@@ -62,8 +62,8 @@ TEST(AArch64PeepholeSubpasses, AddFpImmZeroIdentity)
     auto &bb = fn.blocks.back();
 
     bb.instrs.push_back(
-        MInstr{MOpcode::FAddRI,
-               {MOperand::regOp(PhysReg::D0), MOperand::regOp(PhysReg::D0), MOperand::immOp(0)}});
+        MInstr{MOpcode::FAddRRR,
+               {MOperand::regOp(PhysReg::V0), MOperand::regOp(PhysReg::V0), MOperand::regOp(PhysReg::V1)}});
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
     size_t before = bb.instrs.size();
@@ -85,7 +85,7 @@ TEST(AArch64PeepholeSubpasses, RemoveRedundantBranchToFallthrough)
     auto &next = fn.blocks[1];
 
     // b next (redundant — falls through)
-    entry.instrs.push_back(MInstr{MOpcode::B, {MOperand::labelOp("next")}});
+    entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("next")}});
     next.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
     auto stats = runPeephole(fn);
@@ -94,7 +94,7 @@ TEST(AArch64PeepholeSubpasses, RemoveRedundantBranchToFallthrough)
     bool hasBranch = false;
     for (const auto &i : fn.blocks[0].instrs)
     {
-        if (i.opc == MOpcode::B)
+        if (i.opc == MOpcode::Br)
             hasBranch = true;
     }
     // The entry block should be empty or have no branch to "next"
@@ -167,7 +167,7 @@ TEST(AArch64PeepholeSubpasses, MultiplePassesInteract)
     entry.instrs.push_back(
         MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(0)}});
     // branch to next (BranchOpt should remove)
-    entry.instrs.push_back(MInstr{MOpcode::B, {MOperand::labelOp("target")}});
+    entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("target")}});
 
     target.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
@@ -175,7 +175,7 @@ TEST(AArch64PeepholeSubpasses, MultiplePassesInteract)
 
     // All three optimizations should fire
     EXPECT_GT(stats.identityMovesRemoved, 0);
-    EXPECT_GT(stats.cmpZeroToTstCount, 0);
+    EXPECT_GT(stats.cmpZeroToTst, 0);
     EXPECT_GT(stats.branchesToNextRemoved, 0);
 }
 

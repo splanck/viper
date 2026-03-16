@@ -134,7 +134,9 @@ uint64_t hashCandidate(const ObjSection &sec, const std::vector<RelocSig> &sigs)
 }
 
 /// Check if two candidates are truly identical (not just hash-equal).
-bool candidatesIdentical(const std::vector<ObjFile> &objects, const Candidate &a, const Candidate &b)
+bool candidatesIdentical(const std::vector<ObjFile> &objects,
+                         const Candidate &a,
+                         const Candidate &b)
 {
     const auto &secA = objects[a.objIdx].sections[a.secIdx];
     const auto &secB = objects[b.objIdx].sections[b.secIdx];
@@ -293,8 +295,7 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
                 if (it != globalSyms.end())
                 {
                     it->second.objIndex = canonCand.objIdx;
-                    it->second.secIndex =
-                        static_cast<uint32_t>(canonCand.secIdx);
+                    it->second.secIndex = static_cast<uint32_t>(canonCand.secIdx);
                     it->second.offset = 0;
                 }
 

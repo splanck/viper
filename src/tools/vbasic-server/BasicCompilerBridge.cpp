@@ -83,9 +83,9 @@ CompileResult BasicCompilerBridge::compile(const std::string &source, const std:
 // --- IDE Features ---
 
 std::vector<CompletionInfo> BasicCompilerBridge::completions(const std::string &source,
-                                                              int line,
-                                                              int col,
-                                                              const std::string &path)
+                                                             int line,
+                                                             int col,
+                                                             const std::string &path)
 {
     auto items = completionEngine_->complete(source, line, col, path);
     std::vector<CompletionInfo> result;
@@ -245,7 +245,7 @@ std::string BasicCompilerBridge::hover(const std::string &source,
 }
 
 std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
-                                                      const std::string &path)
+                                                     const std::string &path)
 {
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = source, .path = path};
@@ -300,8 +300,7 @@ std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
     // Procedures
     for (const auto &[name, sig] : sema.procs())
     {
-        std::string kind =
-            sig.kind == ProcSignature::Kind::Function ? "function" : "function";
+        std::string kind = sig.kind == ProcSignature::Kind::Function ? "function" : "function";
         out.push_back({name, kind, "", false, false});
     }
 
@@ -317,8 +316,8 @@ std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
 // --- Dump ---
 
 std::string BasicCompilerBridge::dumpIL(const std::string &source,
-                                         const std::string &path,
-                                         bool optimized)
+                                        const std::string &path,
+                                        bool optimized)
 {
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = source, .path = path};

@@ -1,6 +1,37 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # File: tests/CMakeLists.txt
 # Purpose: Configure test suites.
+#
+# ============================================================================
+# Viper Test Suite — Quick Reference
+# ============================================================================
+# Labels (use with ctest -L <label>):
+#   basic       — BASIC frontend tests (lexer, parser, sema, lowerer)
+#   il          — IL core tests (parsing, serialization, verification, analysis)
+#   vm          — VM runtime tests (opcodes, traps, debugging, concurrency)
+#   runtime     — C runtime library tests (strings, collections, I/O, etc.)
+#   codegen     — Code generation tests (x86_64, AArch64, linker, binary encoding)
+#   oop         — Object-oriented programming tests
+#   golden      — Golden file regression tests (diagnostic messages, IL output)
+#   e2e         — End-to-end pipeline tests (source -> IL -> VM/native -> compare)
+#   ilopt       — IL optimizer pass tests
+#   conformance — Arithmetic semantics cross-layer equivalence
+#   zia         — Zia language frontend tests
+#   namespace   — Namespace/module system tests
+#   tools       — CLI tool tests, language server tests
+#   smoke       — Quick sanity tests
+#   unit        — Focused unit tests for support libraries
+#   perf        — Performance benchmarks (excluded from default runs)
+#   slow        — Long-running tests (excluded from default runs)
+#   tui         — Terminal UI / REPL tests
+#
+# Common commands:
+#   ctest --test-dir build                     # Run all tests
+#   ctest --test-dir build -L codegen          # Run codegen tests only
+#   ctest --test-dir build -R test_zia_lexer   # Run specific test
+#   ctest --test-dir build --print-labels      # List all labels
+#   ctest --test-dir build -j$(nproc)          # Parallel execution
+# ============================================================================
 
 cmake_minimum_required(VERSION 3.20)
 

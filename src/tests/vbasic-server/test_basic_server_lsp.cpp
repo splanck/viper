@@ -19,12 +19,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "tests/TestHarness.hpp"
-#include "tools/vbasic-server/BasicCompilerBridge.hpp"
 #include "tools/lsp-common/DocumentStore.hpp"
 #include "tools/lsp-common/Json.hpp"
 #include "tools/lsp-common/JsonRpc.hpp"
 #include "tools/lsp-common/LspHandler.hpp"
 #include "tools/lsp-common/Transport.hpp"
+#include "tools/vbasic-server/BasicCompilerBridge.hpp"
 
 #include <string>
 #include <vector>
@@ -61,8 +61,7 @@ static JsonRpcRequest makeReq(const std::string &method,
 }
 
 /// Helper: build a notification (null id).
-static JsonRpcRequest makeNotif(const std::string &method,
-                                JsonValue params = JsonValue::object({}))
+static JsonRpcRequest makeNotif(const std::string &method, JsonValue params = JsonValue::object({}))
 {
     return {method, std::move(params), JsonValue()};
 }
@@ -162,8 +161,7 @@ TEST(BasicLsp, DidChangeUpdatesDiagnostics)
              {"version", JsonValue(2)},
          })},
         {"contentChanges",
-         JsonValue::array({JsonValue::object(
-             {{"text", JsonValue("PRINT x +\nEND\n")}})})},
+         JsonValue::array({JsonValue::object({{"text", JsonValue("PRINT x +\nEND\n")}})})},
     });
     handler.handleRequest(makeNotif("textDocument/didChange", std::move(changeParams)));
 
@@ -274,8 +272,8 @@ TEST(BasicLsp, HoverOnVariable)
         {"textDocument", JsonValue::object({{"uri", JsonValue("file:///test.bas")}})},
         {"position", JsonValue::object({{"line", JsonValue(1)}, {"character", JsonValue(6)}})},
     });
-    auto resp = parseResponse(
-        handler.handleRequest(makeReq("textDocument/hover", std::move(hoverParams))));
+    auto resp =
+        parseResponse(handler.handleRequest(makeReq("textDocument/hover", std::move(hoverParams))));
 
     EXPECT_FALSE(resp["result"].isNull());
     auto contents = resp["result"]["contents"];
@@ -309,8 +307,8 @@ TEST(BasicLsp, HoverOnWhitespaceReturnsNull)
         {"textDocument", JsonValue::object({{"uri", JsonValue("file:///test.bas")}})},
         {"position", JsonValue::object({{"line", JsonValue(0)}, {"character", JsonValue(0)}})},
     });
-    auto resp = parseResponse(
-        handler.handleRequest(makeReq("textDocument/hover", std::move(hoverParams))));
+    auto resp =
+        parseResponse(handler.handleRequest(makeReq("textDocument/hover", std::move(hoverParams))));
 
     EXPECT_TRUE(resp["result"].isNull());
 }

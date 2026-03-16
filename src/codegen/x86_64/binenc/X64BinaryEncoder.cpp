@@ -92,7 +92,8 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
         for (const auto &instr : block.instructions)
         {
             if (debugLines_ && instr.loc.hasLine())
-                debugLines_->addEntry(text.currentOffset(), instr.loc.file_id, instr.loc.line, instr.loc.column);
+                debugLines_->addEntry(
+                    text.currentOffset(), instr.loc.file_id, instr.loc.line, instr.loc.column);
             encodeInstruction(instr, text, rodata, isDarwin);
         }
     }

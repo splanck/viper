@@ -41,7 +41,7 @@ namespace
 /// @brief Predecessor edge information precomputed for O(1) lookup.
 struct PredInfo
 {
-    size_t edgeCount = 0;          ///< Total predecessor edge count (including self-loops).
+    size_t edgeCount = 0;                 ///< Total predecessor edge count (including self-loops).
     il::core::BasicBlock *pred = nullptr; ///< First non-self predecessor block (if any).
     il::core::Instr *predTerm = nullptr;  ///< Terminator of that predecessor.
 };

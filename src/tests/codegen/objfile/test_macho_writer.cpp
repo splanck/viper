@@ -21,8 +21,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "codegen/common/objfile/MachOWriter.hpp"
 #include "codegen/common/objfile/CodeSection.hpp"
+#include "codegen/common/objfile/MachOWriter.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 
 #include <cstdio>
@@ -52,7 +52,8 @@ static void check(bool cond, const char *msg, int line)
 static std::vector<uint8_t> readFile(const std::string &path)
 {
     std::ifstream ifs(path, std::ios::binary | std::ios::ate);
-    if (!ifs) return {};
+    if (!ifs)
+        return {};
     auto sz = ifs.tellg();
     ifs.seekg(0);
     std::vector<uint8_t> data(static_cast<size_t>(sz));
@@ -67,10 +68,8 @@ static uint16_t readLE16(const std::vector<uint8_t> &d, size_t off)
 
 static uint32_t readLE32(const std::vector<uint8_t> &d, size_t off)
 {
-    return static_cast<uint32_t>(d[off])
-           | (static_cast<uint32_t>(d[off + 1]) << 8)
-           | (static_cast<uint32_t>(d[off + 2]) << 16)
-           | (static_cast<uint32_t>(d[off + 3]) << 24);
+    return static_cast<uint32_t>(d[off]) | (static_cast<uint32_t>(d[off + 1]) << 8) |
+           (static_cast<uint32_t>(d[off + 2]) << 16) | (static_cast<uint32_t>(d[off + 3]) << 24);
 }
 
 static uint64_t readLE64(const std::vector<uint8_t> &d, size_t off)

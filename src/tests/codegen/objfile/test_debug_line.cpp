@@ -40,7 +40,10 @@ static void check(bool cond, const char *msg, int line)
 #define CHECK(cond) check((cond), #cond, __LINE__)
 
 /// Read a little-endian uint16 from a byte buffer.
-static uint16_t readLE16(const uint8_t *p) { return static_cast<uint16_t>(p[0] | (p[1] << 8)); }
+static uint16_t readLE16(const uint8_t *p)
+{
+    return static_cast<uint16_t>(p[0] | (p[1] << 8));
+}
 
 /// Read a little-endian uint32 from a byte buffer.
 static uint32_t readLE32(const uint8_t *p)

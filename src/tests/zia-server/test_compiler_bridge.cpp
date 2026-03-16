@@ -157,14 +157,13 @@ TEST(CompilerBridge, HoverOnFunctionParameter)
 {
     CompilerBridge bridge;
     // Line 3: "    return a + b;" — cursor on 'a' at col 12
-    std::string source =
-        "module Test;\n"
-        "func add(a: Integer, b: Integer) -> Integer {\n"
-        "    return a + b;\n"
-        "}\n"
-        "func start() {\n"
-        "    Viper.Terminal.SayInt(add(1, 2));\n"
-        "}\n";
+    std::string source = "module Test;\n"
+                         "func add(a: Integer, b: Integer) -> Integer {\n"
+                         "    return a + b;\n"
+                         "}\n"
+                         "func start() {\n"
+                         "    Viper.Terminal.SayInt(add(1, 2));\n"
+                         "}\n";
     auto result = bridge.hover(source, 3, 12, "test.zia");
     EXPECT_FALSE(result.empty());
     EXPECT_TRUE(result.find("a") != std::string::npos);
@@ -186,19 +185,18 @@ TEST(CompilerBridge, HoverOnEntityTypeName)
 {
     CompilerBridge bridge;
     // Line 10: "    var s: Ship = new Ship();" — cursor on 'Ship' type annotation at col 12
-    std::string source =
-        "module Test;\n"
-        "\n"
-        "entity Ship {\n"
-        "    hide Integer speed;\n"
-        "    expose func init() {\n"
-        "        speed = 0;\n"
-        "    }\n"
-        "}\n"
-        "\n"
-        "func start() {\n"
-        "    var s: Ship = new Ship();\n"
-        "}\n";
+    std::string source = "module Test;\n"
+                         "\n"
+                         "entity Ship {\n"
+                         "    hide Integer speed;\n"
+                         "    expose func init() {\n"
+                         "        speed = 0;\n"
+                         "    }\n"
+                         "}\n"
+                         "\n"
+                         "func start() {\n"
+                         "    var s: Ship = new Ship();\n"
+                         "}\n";
     auto result = bridge.hover(source, 11, 12, "test.zia");
     EXPECT_FALSE(result.empty());
     EXPECT_TRUE(result.find("entity Ship") != std::string::npos);
@@ -208,19 +206,18 @@ TEST(CompilerBridge, HoverOnEntityFieldInsideBody)
 {
     CompilerBridge bridge;
     // Line 7: "        return speed;" — cursor on 'speed' at col 16
-    std::string source =
-        "module Test;\n"
-        "\n"
-        "entity Ship {\n"
-        "    hide Integer speed;\n"
-        "\n"
-        "    expose func getSpeed() -> Integer {\n"
-        "        return speed;\n"
-        "    }\n"
-        "}\n"
-        "\n"
-        "func start() {\n"
-        "}\n";
+    std::string source = "module Test;\n"
+                         "\n"
+                         "entity Ship {\n"
+                         "    hide Integer speed;\n"
+                         "\n"
+                         "    expose func getSpeed() -> Integer {\n"
+                         "        return speed;\n"
+                         "    }\n"
+                         "}\n"
+                         "\n"
+                         "func start() {\n"
+                         "}\n";
     auto result = bridge.hover(source, 7, 16, "test.zia");
     EXPECT_FALSE(result.empty());
     EXPECT_TRUE(result.find("speed") != std::string::npos);
@@ -232,23 +229,22 @@ TEST(CompilerBridge, HoverOnMethodViaDot)
 {
     CompilerBridge bridge;
     // Line 14: "    var r = s.getSpeed();" — cursor on 'getSpeed' at col 17
-    std::string source =
-        "module Test;\n"                                  // 1
-        "\n"                                              // 2
-        "entity Ship {\n"                                 // 3
-        "    hide Integer speed;\n"                       // 4
-        "    expose func init() {\n"                      // 5
-        "        speed = 0;\n"                            // 6
-        "    }\n"                                         // 7
-        "    expose func getSpeed() -> Integer {\n"       // 8
-        "        return speed;\n"                         // 9
-        "    }\n"                                         // 10
-        "}\n"                                             // 11
-        "\n"                                              // 12
-        "func start() {\n"                                // 13
-        "    var s = new Ship();\n"                       // 14
-        "    var r = s.getSpeed();\n"                     // 15
-        "}\n";                                            // 16
+    std::string source = "module Test;\n"                            // 1
+                         "\n"                                        // 2
+                         "entity Ship {\n"                           // 3
+                         "    hide Integer speed;\n"                 // 4
+                         "    expose func init() {\n"                // 5
+                         "        speed = 0;\n"                      // 6
+                         "    }\n"                                   // 7
+                         "    expose func getSpeed() -> Integer {\n" // 8
+                         "        return speed;\n"                   // 9
+                         "    }\n"                                   // 10
+                         "}\n"                                       // 11
+                         "\n"                                        // 12
+                         "func start() {\n"                          // 13
+                         "    var s = new Ship();\n"                 // 14
+                         "    var r = s.getSpeed();\n"               // 15
+                         "}\n";                                      // 16
     // Line 15: "    var r = s.getSpeed();" — 's' at col 13, '.' at 14, 'g' at 15
     auto result = bridge.hover(source, 15, 15, "test.zia");
     EXPECT_FALSE(result.empty());
@@ -260,20 +256,19 @@ TEST(CompilerBridge, HoverOnFieldViaDot)
 {
     CompilerBridge bridge;
     // Line 11: "    s.speed = 10;" — 's' at col 5, '.' at 6, 'speed' starts at col 7
-    std::string source =
-        "module Test;\n"                                  // 1
-        "\n"                                              // 2
-        "entity Ship {\n"                                 // 3
-        "    expose Integer speed;\n"                     // 4
-        "    expose func init() {\n"                      // 5
-        "        speed = 0;\n"                            // 6
-        "    }\n"                                         // 7
-        "}\n"                                             // 8
-        "\n"                                              // 9
-        "func start() {\n"                                // 10
-        "    var s = new Ship();\n"                       // 11
-        "    s.speed = 10;\n"                             // 12
-        "}\n";                                            // 13
+    std::string source = "module Test;\n"              // 1
+                         "\n"                          // 2
+                         "entity Ship {\n"             // 3
+                         "    expose Integer speed;\n" // 4
+                         "    expose func init() {\n"  // 5
+                         "        speed = 0;\n"        // 6
+                         "    }\n"                     // 7
+                         "}\n"                         // 8
+                         "\n"                          // 9
+                         "func start() {\n"            // 10
+                         "    var s = new Ship();\n"   // 11
+                         "    s.speed = 10;\n"         // 12
+                         "}\n";                        // 13
     auto result = bridge.hover(source, 12, 7, "test.zia");
     EXPECT_FALSE(result.empty());
     EXPECT_TRUE(result.find("speed") != std::string::npos);
@@ -310,13 +305,12 @@ TEST(CompilerBridge, HoverOnModuleAlias)
 {
     CompilerBridge bridge;
     // Line 2: "bind IO = Viper.Terminal;" — cursor on 'IO' at col 6
-    std::string source =
-        "module Test;\n"
-        "bind IO = Viper.Terminal;\n"
-        "\n"
-        "func start() {\n"
-        "    IO.Say(\"hello\");\n"
-        "}\n";
+    std::string source = "module Test;\n"
+                         "bind IO = Viper.Terminal;\n"
+                         "\n"
+                         "func start() {\n"
+                         "    IO.Say(\"hello\");\n"
+                         "}\n";
     auto result = bridge.hover(source, 2, 6, "test.zia");
     EXPECT_FALSE(result.empty());
     EXPECT_TRUE(result.find("IO") != std::string::npos);
@@ -328,13 +322,12 @@ TEST(CompilerBridge, HoverOnRuntimeMethod)
 {
     CompilerBridge bridge;
     // Line 5: "    IO.Say("hi");" — dotPrefix="IO", identifier="Say"
-    std::string source =
-        "module Test;\n"                                  // 1
-        "bind IO = Viper.Terminal;\n"                     // 2
-        "\n"                                              // 3
-        "func start() {\n"                                // 4
-        "    IO.Say(\"hi\");\n"                           // 5
-        "}\n";                                            // 6
+    std::string source = "module Test;\n"              // 1
+                         "bind IO = Viper.Terminal;\n" // 2
+                         "\n"                          // 3
+                         "func start() {\n"            // 4
+                         "    IO.Say(\"hi\");\n"       // 5
+                         "}\n";                        // 6
     // 'Say' starts at col 8 in "    IO.Say("hi");"
     auto result = bridge.hover(source, 5, 8, "test.zia");
     EXPECT_FALSE(result.empty());
@@ -345,12 +338,11 @@ TEST(CompilerBridge, HoverOnFinalVariable)
 {
     CompilerBridge bridge;
     // Line 4: "    Viper.Terminal.SayInt(MAX);" — 'MAX' starts at col 27
-    std::string source =
-        "module Test;\n"
-        "final MAX = 100;\n"
-        "func start() {\n"
-        "    Viper.Terminal.SayInt(MAX);\n"
-        "}\n";
+    std::string source = "module Test;\n"
+                         "final MAX = 100;\n"
+                         "func start() {\n"
+                         "    Viper.Terminal.SayInt(MAX);\n"
+                         "}\n";
     auto result = bridge.hover(source, 4, 27, "test.zia");
     EXPECT_FALSE(result.empty());
     EXPECT_TRUE(result.find("MAX") != std::string::npos);
@@ -360,14 +352,13 @@ TEST(CompilerBridge, HoverOnFunctionCallSite)
 {
     CompilerBridge bridge;
     // Line 6: "    Viper.Terminal.SayInt(add(1, 2));" — 'add' starts at col 27
-    std::string source =
-        "module Test;\n"
-        "func add(a: Integer, b: Integer) -> Integer {\n"
-        "    return a + b;\n"
-        "}\n"
-        "func start() {\n"
-        "    Viper.Terminal.SayInt(add(1, 2));\n"
-        "}\n";
+    std::string source = "module Test;\n"
+                         "func add(a: Integer, b: Integer) -> Integer {\n"
+                         "    return a + b;\n"
+                         "}\n"
+                         "func start() {\n"
+                         "    Viper.Terminal.SayInt(add(1, 2));\n"
+                         "}\n";
     auto result = bridge.hover(source, 6, 27, "test.zia");
     EXPECT_FALSE(result.empty());
     EXPECT_TRUE(result.find("func add") != std::string::npos);

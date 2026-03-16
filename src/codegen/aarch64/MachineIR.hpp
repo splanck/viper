@@ -232,8 +232,8 @@ struct MOperand
 /// source registers/immediates.
 struct MInstr
 {
-    MOpcode opc{};               ///< The operation to perform.
-    std::vector<MOperand> ops{}; ///< Instruction operands.
+    MOpcode opc{};                ///< The operation to perform.
+    std::vector<MOperand> ops{};  ///< Instruction operands.
     il::support::SourceLoc loc{}; ///< Source location (for debug info).
 };
 

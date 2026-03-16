@@ -64,14 +64,13 @@ LinkLayout makeMinimalLayout()
     OutputSection text;
     text.name = ".text";
     text.alloc = true;
-    text.execPermission = true;
-    // Minimal code: x86_64 ret (0xC3) or AArch64 ret (0xD65F03C0)
+    text.executable = true;
+    // Minimal code: x86_64 ret (0xC3)
     text.data = {0xC3};
-    text.fileOffset = 0x200;
     text.virtualAddr = 0x1000;
     layout.sections.push_back(std::move(text));
 
-    layout.entryPointVA = 0x1000;
+    layout.entryAddr = 0x1000;
     return layout;
 }
 

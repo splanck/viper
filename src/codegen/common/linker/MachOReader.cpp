@@ -113,8 +113,7 @@ struct relocation_info
 
 } // namespace macho
 
-template <typename T>
-static const T *readAt(const uint8_t *data, size_t size, size_t offset)
+template <typename T> static const T *readAt(const uint8_t *data, size_t size, size_t offset)
 {
     if (offset + sizeof(T) > size)
         return nullptr;
@@ -137,8 +136,8 @@ static uint32_t readLE32(const uint8_t *p)
 }
 
 /// Extract relocation addend from instruction bytes (Mach-O has no explicit addend).
-static int64_t extractMachOAddend(const uint8_t *sectionData, size_t sectionSize, size_t offset,
-                                   uint32_t relocType, bool isArm64)
+static int64_t extractMachOAddend(
+    const uint8_t *sectionData, size_t sectionSize, size_t offset, uint32_t relocType, bool isArm64)
 {
     if (isArm64)
     {
@@ -161,8 +160,8 @@ static int64_t extractMachOAddend(const uint8_t *sectionData, size_t sectionSize
     }
 }
 
-bool readMachOObj(const uint8_t *data, size_t size, const std::string &name, ObjFile &obj,
-                  std::ostream &err)
+bool readMachOObj(
+    const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err)
 {
     const auto *hdr = readAt<macho::mach_header_64>(data, size, 0);
     if (!hdr || hdr->magic != macho::MH_MAGIC_64)
@@ -221,10 +220,8 @@ bool readMachOObj(const uint8_t *data, size_t size, const std::string &name, Obj
                 std::string secName = trimNul(sec->sectname, 16);
 
                 // Skip debug and metadata sections that don't belong in the output.
-                if (segName == "__DWARF" ||
-                    (sec->flags & macho::S_ATTR_DEBUG) != 0 ||
-                    secName == "__compact_unwind" ||
-                    secName == "__eh_frame")
+                if (segName == "__DWARF" || (sec->flags & macho::S_ATTR_DEBUG) != 0 ||
+                    secName == "__compact_unwind" || secName == "__eh_frame")
                 {
                     machoSecMap.push_back(0); // Unmapped.
                     ++machoSecIdx;
@@ -241,8 +238,7 @@ bool readMachOObj(const uint8_t *data, size_t size, const std::string &name, Obj
                 // .o files don't have segment permission bits, but each section header
                 // carries the intended segment name (__TEXT vs __DATA).
                 const uint32_t secType = sec->flags & 0xFF;
-                os.writable = (segName == "__DATA") ||
-                              (secType == macho::S_ZEROFILL) ||
+                os.writable = (segName == "__DATA") || (secType == macho::S_ZEROFILL) ||
                               (secType == macho::S_THREAD_LOCAL_REGULAR) ||
                               (secType == macho::S_THREAD_LOCAL_ZEROFILL) ||
                               (secType == macho::S_THREAD_LOCAL_VARIABLES) ||
@@ -260,8 +256,8 @@ bool readMachOObj(const uint8_t *data, size_t size, const std::string &name, Obj
                 // Zerofill sections (S_ZEROFILL, S_THREAD_LOCAL_ZEROFILL) have
                 // offset=0 in .o files — they carry no file data. Reading from
                 // offset 0 would incorrectly copy the Mach-O header bytes.
-                const bool isZerofill = (secType == macho::S_ZEROFILL) ||
-                                         (secType == macho::S_THREAD_LOCAL_ZEROFILL);
+                const bool isZerofill =
+                    (secType == macho::S_ZEROFILL) || (secType == macho::S_THREAD_LOCAL_ZEROFILL);
 
                 if (isZerofill && sec->size > 0)
                 {
@@ -316,8 +312,8 @@ bool readMachOObj(const uint8_t *data, size_t size, const std::string &name, Obj
                     else
                     {
                         // Extract addend from instruction bytes.
-                        rel.addend = extractMachOAddend(os.data.data(), os.data.size(),
-                                                        rel.offset, rel.type, isArm64);
+                        rel.addend = extractMachOAddend(
+                            os.data.data(), os.data.size(), rel.offset, rel.type, isArm64);
                     }
 
                     os.relocs.push_back(rel);
@@ -373,7 +369,8 @@ bool readMachOObj(const uint8_t *data, size_t size, const std::string &name, Obj
 
         for (uint32_t i = 0; i < nsyms; ++i)
         {
-            const auto *nl = readAt<macho::nlist_64>(data, size, symoff + i * sizeof(macho::nlist_64));
+            const auto *nl =
+                readAt<macho::nlist_64>(data, size, symoff + i * sizeof(macho::nlist_64));
             if (!nl)
                 break;
 

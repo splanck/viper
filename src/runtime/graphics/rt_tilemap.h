@@ -26,12 +26,13 @@ extern "C"
 {
 #endif
 
-/// Tile collision type constants.
-typedef enum {
-    RT_TILE_COLLISION_NONE       = 0, ///< No collision (passable).
-    RT_TILE_COLLISION_SOLID      = 1, ///< Fully solid (blocks movement).
-    RT_TILE_COLLISION_ONE_WAY_UP = 2, ///< One-way platform (passable from below).
-} rt_tilemap_collision_t;
+    /// Tile collision type constants.
+    typedef enum
+    {
+        RT_TILE_COLLISION_NONE = 0,       ///< No collision (passable).
+        RT_TILE_COLLISION_SOLID = 1,      ///< Fully solid (blocks movement).
+        RT_TILE_COLLISION_ONE_WAY_UP = 2, ///< One-way platform (passable from below).
+    } rt_tilemap_collision_t;
 
     //=========================================================================
     // Tilemap Creation

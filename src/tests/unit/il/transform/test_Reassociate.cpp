@@ -53,9 +53,14 @@ TEST(Reassociate, SwapsConstBeforeTemp)
 
     BasicBlock entry;
     entry.label = "entry";
-    { Param p; p.name = "x"; p.type = Type(Type::Kind::I64); p.id = 0; entry.params.push_back(std::move(p)); }
-    entry.instructions.push_back(
-        makeBinary(Opcode::Add, 1, Value::constInt(1), Value::temp(0)));
+    {
+        Param p;
+        p.name = "x";
+        p.type = Type(Type::Kind::I64);
+        p.id = 0;
+        entry.params.push_back(std::move(p));
+    }
+    entry.instructions.push_back(makeBinary(Opcode::Add, 1, Value::constInt(1), Value::temp(0)));
 
     Instr ret;
     ret.op = Opcode::Ret;
@@ -83,9 +88,14 @@ TEST(Reassociate, DoesNotSwapSubOperands)
 
     BasicBlock entry;
     entry.label = "entry";
-    { Param p; p.name = "x"; p.type = Type(Type::Kind::I64); p.id = 0; entry.params.push_back(std::move(p)); }
-    entry.instructions.push_back(
-        makeBinary(Opcode::Sub, 1, Value::constInt(10), Value::temp(0)));
+    {
+        Param p;
+        p.name = "x";
+        p.type = Type(Type::Kind::I64);
+        p.id = 0;
+        entry.params.push_back(std::move(p));
+    }
+    entry.instructions.push_back(makeBinary(Opcode::Sub, 1, Value::constInt(10), Value::temp(0)));
 
     Instr ret;
     ret.op = Opcode::Ret;
@@ -114,9 +124,14 @@ TEST(Reassociate, LeavesAlreadyCanonical)
 
     BasicBlock entry;
     entry.label = "entry";
-    { Param p; p.name = "x"; p.type = Type(Type::Kind::I64); p.id = 0; entry.params.push_back(std::move(p)); }
-    entry.instructions.push_back(
-        makeBinary(Opcode::Add, 1, Value::temp(0), Value::constInt(1)));
+    {
+        Param p;
+        p.name = "x";
+        p.type = Type(Type::Kind::I64);
+        p.id = 0;
+        entry.params.push_back(std::move(p));
+    }
+    entry.instructions.push_back(makeBinary(Opcode::Add, 1, Value::temp(0), Value::constInt(1)));
 
     Instr ret;
     ret.op = Opcode::Ret;
@@ -148,10 +163,15 @@ TEST(Reassociate, CanonicalizesAllCommutativeOps)
 
         BasicBlock entry;
         entry.label = "entry";
-        { Param p; p.name = "x"; p.type = Type(Type::Kind::I64); p.id = 0; entry.params.push_back(std::move(p)); }
+        {
+            Param p;
+            p.name = "x";
+            p.type = Type(Type::Kind::I64);
+            p.id = 0;
+            entry.params.push_back(std::move(p));
+        }
         // const first, temp second — should swap
-        entry.instructions.push_back(
-            makeBinary(op, 1, Value::constInt(42), Value::temp(0)));
+        entry.instructions.push_back(makeBinary(op, 1, Value::constInt(42), Value::temp(0)));
 
         Instr ret;
         ret.op = Opcode::Ret;

@@ -60,11 +60,11 @@ static int64_t screenfx_rand(int64_t *state)
 struct screenfx_effect
 {
     rt_screenfx_type_t type; ///< Effect type.
-    int64_t color;         ///< Color (RGBA).
-    int64_t intensity;     ///< Intensity (for shake).
-    int64_t duration;      ///< Total duration (ms).
-    int64_t elapsed;       ///< Elapsed time (ms).
-    int64_t decay;         ///< Decay rate (for shake).
+    int64_t color;           ///< Color (RGBA).
+    int64_t intensity;       ///< Intensity (for shake).
+    int64_t duration;        ///< Total duration (ms).
+    int64_t elapsed;         ///< Elapsed time (ms).
+    int64_t decay;           ///< Decay rate (for shake).
 };
 
 /// Internal manager structure.

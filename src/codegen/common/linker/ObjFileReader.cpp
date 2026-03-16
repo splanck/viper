@@ -45,21 +45,21 @@ ObjFileFormat detectFormat(const uint8_t *data, size_t size)
     return ObjFileFormat::Unknown;
 }
 
-bool readObjFile(const uint8_t *data, size_t size, const std::string &name, ObjFile &obj,
-                 std::ostream &err)
+bool readObjFile(
+    const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err)
 {
     const ObjFileFormat fmt = detectFormat(data, size);
     switch (fmt)
     {
-    case ObjFileFormat::ELF:
-        return readElfObj(data, size, name, obj, err);
-    case ObjFileFormat::MachO:
-        return readMachOObj(data, size, name, obj, err);
-    case ObjFileFormat::COFF:
-        return readCoffObj(data, size, name, obj, err);
-    case ObjFileFormat::Unknown:
-        err << "error: " << name << ": unknown object file format\n";
-        return false;
+        case ObjFileFormat::ELF:
+            return readElfObj(data, size, name, obj, err);
+        case ObjFileFormat::MachO:
+            return readMachOObj(data, size, name, obj, err);
+        case ObjFileFormat::COFF:
+            return readCoffObj(data, size, name, obj, err);
+        case ObjFileFormat::Unknown:
+            err << "error: " << name << ": unknown object file format\n";
+            return false;
     }
     return false;
 }

@@ -35,7 +35,7 @@ namespace viper::codegen::objfile
 /// ELF convention: offset 0 is the empty string (single NUL byte).
 class StringTable
 {
-public:
+  public:
     /// Initialize with a single NUL byte at offset 0 (empty string).
     StringTable();
 
@@ -46,12 +46,18 @@ public:
     uint32_t find(std::string_view str) const;
 
     /// Raw table bytes (NUL-separated strings).
-    const std::vector<char> &data() const { return data_; }
+    const std::vector<char> &data() const
+    {
+        return data_;
+    }
 
     /// Total byte size of the table.
-    uint32_t size() const { return static_cast<uint32_t>(data_.size()); }
+    uint32_t size() const
+    {
+        return static_cast<uint32_t>(data_.size());
+    }
 
-private:
+  private:
     std::vector<char> data_;
     std::unordered_map<std::string, uint32_t> offsets_;
 };

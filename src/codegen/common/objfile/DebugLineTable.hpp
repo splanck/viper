@@ -28,7 +28,7 @@ namespace viper::codegen
 /// A single address-to-line mapping entry.
 struct AddressLineEntry
 {
-    uint64_t address;  ///< Code offset (relative to .text start).
+    uint64_t address;   ///< Code offset (relative to .text start).
     uint32_t fileIndex; ///< 1-based file index.
     uint32_t line;      ///< 1-based line number.
     uint32_t column;    ///< 1-based column number (0 = unknown).
@@ -46,7 +46,10 @@ class DebugLineTable
     void addEntry(uint64_t address, uint32_t fileIndex, uint32_t line, uint32_t column = 0);
 
     /// Return true if no entries have been recorded.
-    [[nodiscard]] bool empty() const { return entries_.empty(); }
+    [[nodiscard]] bool empty() const
+    {
+        return entries_.empty();
+    }
 
     /// Encode the collected data as a DWARF v5 .debug_line section.
     /// @param addressSize 4 for 32-bit, 8 for 64-bit.

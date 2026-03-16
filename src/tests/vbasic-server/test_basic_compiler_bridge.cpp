@@ -175,8 +175,7 @@ TEST(BasicBridge, SymbolsIncludesProcedures)
 {
     BasicCompilerBridge bridge;
     // BASIC lexer uppercases: "Hello" → "HELLO"
-    auto syms = bridge.symbols(
-        "SUB Hello()\n  PRINT \"hi\"\nEND SUB\nHello\nEND\n", "test.bas");
+    auto syms = bridge.symbols("SUB Hello()\n  PRINT \"hi\"\nEND SUB\nHello\nEND\n", "test.bas");
     bool foundHello = false;
     for (const auto &s : syms)
     {

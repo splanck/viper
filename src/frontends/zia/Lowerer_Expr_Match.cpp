@@ -300,7 +300,8 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
             for (size_t i = 0; i < pattern.subpatterns.size(); ++i)
             {
                 bool isLast = (i + 1 == pattern.subpatterns.size());
-                size_t nextAltBlock = isLast ? failureBlock : createBlock("match_or_" + std::to_string(i + 1));
+                size_t nextAltBlock =
+                    isLast ? failureBlock : createBlock("match_or_" + std::to_string(i + 1));
                 emitPatternTest(pattern.subpatterns[i], scrutinee, successBlock, nextAltBlock);
                 if (!isLast)
                 {
