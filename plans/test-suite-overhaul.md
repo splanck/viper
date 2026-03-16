@@ -145,6 +145,16 @@ Convert 131 `viper_add_ctest` calls to one-liners. Target: ~200 lines from ~1200
 ### B1. Runtime standalone tests (196 files → ~30-40 themed files)
 196 files in `src/tests/runtime/` use raw `main()+assert()` — no test names, no failure output, each compiles as its own binary.
 
+**STATUS:** The namespace group (8 files) was consolidated as proof of concept. The runtime
+consolidation was attempted with two approaches:
+- **Namespace wrapping** (v2): Failed — `#include <string>` inside a namespace pollutes std
+- **Full TEST() macro conversion** (v1): Works (proven with namespace tests) but requires
+  per-file attention for helper functions, commented-out tests, conflicting names, and
+  `test_result()` patterns. 48 files use `test_result()`, 2 override `malloc`.
+
+**Approach for remaining work:** Use the proven TEST() macro conversion (as done for namespace
+tests). Process ~10 files per session, verifying each group compiles and passes.
+
 **Consolidation groups** (merge by subsystem, convert to `TEST()` macro):
 
 | Group | Source Files | Target File |
