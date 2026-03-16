@@ -796,9 +796,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_scene PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_scene test_rt_scene)
 
-    viper_add_test(test_rt_spritebatch ${VIPER_TESTS_DIR}/runtime/RTSpriteBatchTests.cpp)
-    target_link_libraries(test_rt_spritebatch PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-    viper_add_ctest(test_rt_spritebatch test_rt_spritebatch)
+    # Consolidated: RTSpriteBatchTests + RTSpriteSheetTests → test_rt_sprite_consolidated
+    viper_add_test(test_rt_sprite_consolidated ${VIPER_TESTS_DIR}/runtime/test_rt_sprite_consolidated.cpp)
+    target_link_libraries(test_rt_sprite_consolidated PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_sprite_consolidated test_rt_sprite_consolidated)
 
     viper_add_test(test_rt_listview ${VIPER_TESTS_DIR}/runtime/RTListViewTests.cpp)
     target_link_libraries(test_rt_listview PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -1316,9 +1317,7 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_iter PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_iter test_rt_iter)
 
-    viper_add_test(test_rt_spritesheet ${VIPER_TESTS_DIR}/runtime/RTSpriteSheetTests.cpp)
-    target_link_libraries(test_rt_spritesheet PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-    viper_add_ctest(test_rt_spritesheet test_rt_spritesheet)
+    ## Removed: test_rt_spritesheet (consolidated into test_rt_sprite_consolidated)
 
     viper_add_test(test_rt_physics2d ${VIPER_TESTS_DIR}/runtime/RTPhysics2DTests.cpp)
     target_link_libraries(test_rt_physics2d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
