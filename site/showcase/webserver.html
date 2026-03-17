@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Web Server — Viper Showcase</title>
+  <meta name="description" content="A multi-threaded HTTP server with routing, request logging, and static file serving. Demonstrates Viper's networking and threading capabilities.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="./" class="active">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <a href="./">Showcase</a> / <span>Web Server</span>
+</div>
+
+<div class="section">
+  <div class="prose" style="max-width: 800px; margin: 0 auto;">
+    <h1>Web Server</h1>
+
+    <p>
+      <span class="showcase-badge badge-zia">Zia</span>
+      <span class="badge-loc">1,352 LOC</span>
+    </p>
+
+    <p>A multi-threaded HTTP server with routing, request logging, and static file serving. Demonstrates Viper's networking and threading capabilities.</p>
+
+    <div class="screenshot-placeholder">Screenshot coming soon</div>
+
+    <h2>Features</h2>
+    <ul>
+      <li>HTTP request parsing and routing</li>
+      <li>Static file serving with content-type detection</li>
+      <li>JSON API endpoints</li>
+      <li>Thread pool for concurrent request handling</li>
+      <li>Request logging system</li>
+      <li>Dynamic route handler registration</li>
+    </ul>
+
+    <h2>Build &amp; Run</h2>
+    <pre><code><span class="comment"># Build all demos</span>
+<span class="cmd">./scripts/build_demos.sh</span>
+
+<span class="comment"># Run this demo</span>
+<span class="cmd">viper run examples/apps/webserver/</span></code></pre>
+
+    <p><a href="https://github.com/splanck/viper/tree/master/examples/apps/webserver/">View source on GitHub &rarr;</a></p>
+
+    <p><a href="./">&larr; Back to Showcase</a></p>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../features/native-targets.html">Native Targets</a>
+      <a href="../features/two-languages.html">Languages</a>
+      <a href="../features/runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

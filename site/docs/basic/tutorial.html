@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BASIC Tutorial — Viper</title>
+  <meta name="description" content="Viper documentation: BASIC Tutorial">
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="icon" href="../../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../../docs/" class="active">Docs</a>
+    <a href="../../learn/">Learn</a>
+    <a href="../../showcase/">Showcase</a>
+    <a href="../../performance/">Performance</a>
+    <a href="../../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../../">Home</a> / <a href="../../docs">Docs</a> / <span>BASIC Tutorial</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#table-of-contents">Table of Contents</a></li>
+        <li><a href="#1-first-steps-printing-and-expressions">1. First Steps: Printing and Expressions</a></li>
+        <li><a href="#2-variables-and-types">2. Variables and Types</a></li>
+        <li><a href="#3-control-flow">3. Control Flow</a></li>
+        <li><a href="#4-procedures-and-functions">4. Procedures and Functions</a></li>
+        <li><a href="#5-objects">5. Objects</a></li>
+        <li><a href="#6-organizing-code-with-namespaces">6. Organizing Code with Namespaces</a></li>
+        <li><a href="#7-console-and-file-i-o">7. Console and File I/O</a></li>
+        <li><a href="#8-error-handling">8. Error Handling</a></li>
+        <li><a href="#9-example-projects">9. Example Projects</a></li>
+        <li><a href="#10-where-to-go-next">10. Where to Go Next</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>BASIC Tutorial</h1>
+<h1 id="viper-basic-tutorial">Viper BASIC — Tutorial</h1>
+<p>Learn Viper BASIC by example. For a complete reference, see <strong>[BASIC Reference](basic-reference.md)</strong>.</p>
+<blockquote><p>**What is Viper BASIC?**</p></blockquote>
+<blockquote><p>A compact, modernized BASIC designed for clarity: <code>LET</code> for assignment, clean arrays, short-circuit booleans,</p></blockquote>
+<blockquote><p>lightweight objects, and straightforward console/file I/O. It runs on Viper&#x27;s VM and can be lowered to native code.</p></blockquote>
+<p>---</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ol>
+<li>[First Steps: Printing and Expressions](#1-first-steps-printing-and-expressions)</li>
+<li>[Variables and Types](#2-variables-and-types)</li>
+<li>[Control Flow](#3-control-flow)</li>
+<li>[Procedures and Functions](#4-procedures-and-functions)</li>
+<li>[Objects](#5-objects)</li>
+<li>[Organizing Code with Namespaces](#6-organizing-code-with-namespaces)</li>
+<li>[Console and File I/O](#7-console-and-file-io)</li>
+<li>[Error Handling](#8-error-handling)</li>
+<li>[Example Projects](#9-example-projects)</li>
+<li>[Where to Go Next](#10-where-to-go-next)</li>
+</ul>
+<p>---</p>
+<h2 id="1-first-steps-printing-and-expressions">1. First Steps: Printing and Expressions</h2>
+<pre><code data-lang="basic">
+10 PRINT &quot;Hello, world!&quot;
+20 PRINT 1 + 2 * 3       &#x27; 7
+30 PRINT &quot;A&quot;; &quot;B&quot;        &#x27; &quot;AB&quot; (no newline)
+</code></pre>
+<p><strong>Key points:</strong></p>
+<ul>
+<li>Line numbers are optional</li>
+<li>Use <code>:</code> to put multiple statements on one line</li>
+<li><code>&#x27;</code> starts a single-line comment</li>
+<li><code>;</code> in PRINT suppresses the newline between values</li>
+</ul>
+<p>---</p>
+<h2 id="2-variables-and-types">2. Variables and Types</h2>
+<h3 id="assignment-with-let">Assignment with LET</h3>
+<p>Assignments <strong>require</strong> <code>LET</code>. Variables can be declared implicitly by assigning, or explicitly with <code>DIM</code> to pin a</p>
+<p>type.</p>
+<pre><code data-lang="basic">
+10 LET I = 42
+20 DIM Flag AS BOOLEAN
+30 LET Flag = TRUE
+</code></pre>
+<h3 id="arrays">Arrays</h3>
+<p>Arrays <strong>require</strong> <code>DIM</code> and are zero-based:</p>
+<pre><code data-lang="basic">
+10 DIM A(3)              &#x27; indices 0..2
+20 LET A(0) = 42
+30 LET A(1) = 100
+40 PRINT A(0)            &#x27; 42
+</code></pre>
+<h3 id="type-suffixes">Type Suffixes</h3>
+<table><thead><tr>
+<th>Suffix</th>
+<th>Type</th>
+</tr></thead><tbody>
+<tr>
+<td>`!`</td>
+<td>Float</td>
+</tr>
+<tr>
+<td>`#`</td>
+<td>Float</td>
+</tr>
+<tr>
+<td>`$`</td>
+<td>String</td>
+</tr>
+<tr>
+<td>`%`</td>
+<td>Integer</td>
+</tr>
+<tr>
+<td>`&amp;`</td>
+<td>Integer</td>
+</tr>
+</tbody></table>
+<pre><code data-lang="basic">
+10 LET S$ = &quot;hello&quot;
+20 LET F# = 3.14
+30 LET I% = 42
+</code></pre>
+<p>---</p>
+<h2 id="3-control-flow">3. Control Flow</h2>
+<h3 id="if-then-else">IF ... THEN ... ELSE</h3>
+<pre><code data-lang="basic">
+10 IF N = 0 THEN
+20   PRINT &quot;zero&quot;
+30 ELSEIF N &lt; 0 THEN
+40   PRINT &quot;negative&quot;
+50 ELSE
+60   PRINT &quot;positive&quot;
+70 END IF
+</code></pre>
+<h3 id="for-next">FOR ... NEXT</h3>
+<pre><code data-lang="basic">
+10 FOR I = 1 TO 5
+20   PRINT I
+30 NEXT
+
+&#x27; With STEP
+40 FOR I = 10 TO 1 STEP -2
+50   PRINT I
+60 NEXT
+</code></pre>
+<h3 id="do-loop">DO ... LOOP</h3>
+<pre><code data-lang="basic">
+&#x27; Condition at start
+10 DO WHILE X &lt; 10
+20   PRINT X
+30   LET X = X + 1
+40 LOOP
+
+&#x27; Condition at end
+50 LET I = 3
+60 DO
+70   LET I = I - 1
+80   PRINT I
+90 LOOP UNTIL I = 0
+</code></pre>
+<h3 id="while-wend">WHILE ... WEND</h3>
+<pre><code data-lang="basic">
+10 LET X = 0
+20 WHILE X &lt; 3
+30   PRINT X
+40   LET X = X + 1
+50 WEND
+</code></pre>
+<h3 id="short-circuit-operators">Short-Circuit Operators</h3>
+<p>Use <code>ANDALSO</code> and <code>ORELSE</code> for short-circuit evaluation:</p>
+<pre><code data-lang="basic">
+10 IF A &lt;&gt; 0 ANDALSO (B / A) &gt; 2 THEN
+20   PRINT &quot;Safe division&quot;
+30 END IF
+
+40 IF X = 0 ORELSE Y / X &gt; 1 THEN
+50   PRINT &quot;Conditional evaluation&quot;
+60 END IF
+</code></pre>
+<blockquote><p>**Note:** <code>AND</code> and <code>OR</code> always evaluate both operands. Use <code>ANDALSO</code> and <code>ORELSE</code> to avoid errors like division by</p></blockquote>
+<blockquote><p>zero.</p></blockquote>
+<p>---</p>
+<h2 id="4-procedures-and-functions">4. Procedures and Functions</h2>
+<h3 id="subroutines-sub">Subroutines (SUB)</h3>
+<p>Subroutines are called as statements. Parentheses are recommended and required when passing</p>
+<p>arguments. For zero-argument SUBs, the parser also accepts the legacy form without</p>
+<p>parentheses in statement position.</p>
+<pre><code data-lang="basic">
+10 SUB GREET(NAME$)
+20   PRINT &quot;Hello, &quot;; NAME$
+30 END SUB
+
+40 GREET(&quot;Ada&quot;)          &#x27; Statement call with parentheses
+50 GREET                 &#x27; Legacy: zero-arg call without parentheses (statement form)
+</code></pre>
+<h3 id="functions-function">Functions (FUNCTION)</h3>
+<p>Functions return values and are used in expressions:</p>
+<pre><code data-lang="basic">
+10 FUNCTION SQUARE(N)
+20   RETURN N * N
+30 END FUNCTION
+
+40 LET X = SQUARE(9)     &#x27; X = 81
+50 PRINT SQUARE(5)       &#x27; 25
+</code></pre>
+<h3 id="exporting-functions">Exporting Functions</h3>
+<p>Use <code>EXPORT</code> before <code>FUNCTION</code> or <code>SUB</code> to make a procedure visible to other</p>
+<p>modules in a mixed-language project:</p>
+<pre><code data-lang="basic">
+EXPORT FUNCTION Factorial(n AS LONG) AS LONG
+    IF n &lt;= 1 THEN
+        Factorial = 1
+    ELSE
+        Factorial = n * Factorial(n - 1)
+    END IF
+END FUNCTION
+</code></pre>
+<h3 id="importing-foreign-functions">Importing Foreign Functions</h3>
+<p>Use <code>DECLARE FOREIGN</code> to declare a function defined in another module (e.g., a</p>
+<p>Zia library). The declaration has no body:</p>
+<pre><code data-lang="basic">
+DECLARE FOREIGN FUNCTION ZiaHelper(n AS LONG) AS LONG
+DECLARE FOREIGN SUB InitSystem()
+
+PRINT ZiaHelper(42)
+InitSystem()
+</code></pre>
+<p>For full details on mixed-language projects, see the</p>
+<p>[Cross-Language Interop Guide](interop.md).</p>
+<p>---</p>
+<h2 id="5-objects">5. Objects</h2>
+<p>Viper BASIC supports lightweight object-oriented programming with classes, methods, constructors, and destructors.</p>
+<p>Array fields in classes</p>
+<p>-----------------------</p>
+<p>Fields may be scalars or arrays. Declare array fields with dimensions inside <code>CLASS</code>; access elements with</p>
+<p><code>obj.field(index)</code> similarly to regular arrays. When an array field declares a fixed extent, the constructor initializes</p>
+<p>it to that length; otherwise, assign an array handle at runtime before use.</p>
+<pre><code data-lang="basic">
+10 CLASS Board
+20   DIM cells(4) AS INTEGER   &#x27; array field
+30 END CLASS
+
+40 DIM b AS Board
+50 LET b = NEW Board()               &#x27; cells() allocated length 4 by constructor
+60 LET b.cells(0) = 1
+70 LET b.cells(1) = 2
+80 PRINT b.cells(0) + b.cells(1)     &#x27; 3
+</code></pre>
+<p>Notes:</p>
+<ul>
+<li>Single-dimension array field access is supported using <code>obj.field(i)</code>. Multi-dimension field access will be added;</li>
+</ul>
+<p>non-member arrays already support multiple indices.</p>
+<ul>
+<li>String array fields are supported; assignment manages string lifetimes under the hood.</li>
+</ul>
+<h3 id="basic-class">Basic Class</h3>
+<pre><code data-lang="basic">
+10 CLASS Counter
+20   X AS INTEGER
+30
+40   SUB NEW()
+50     LET ME.X = 0
+60   END SUB
+70
+80   SUB INCREMENT()
+90     LET ME.X = ME.X + 1
+100  END SUB
+110
+120  FUNCTION VALUE()
+130    RETURN ME.X
+140  END FUNCTION
+150 END CLASS
+
+160 DIM C AS Counter
+170 LET C = NEW Counter()
+180 C.INCREMENT()
+190 C.INCREMENT()
+200 PRINT C.VALUE()        &#x27; 2
+210 DELETE C
+</code></pre>
+<p><strong>Key points:</strong></p>
+<ul>
+<li><code>ME</code> refers to the current instance (like <code>this</code> in C++ or <code>self</code> in Python)</li>
+<li>Inside a class method, unqualified method calls implicitly target <code>ME</code>. For example, <code>Increment()</code> is equivalent to</li>
+</ul>
+<p><code>ME.Increment()</code>.</p>
+<ul>
+<li><code>NEW</code> is a special constructor method</li>
+<li><code>DELETE</code> frees the object (calls <code>DESTRUCTOR</code> if defined)</li>
+</ul>
+<p>Common mistakes and tips:</p>
+<ul>
+<li>Missing parentheses when passing arguments will be rejected with a clear diagnostic.</li>
+<li>For readability and consistency, prefer parentheses even for zero-argument calls.</li>
+<li>Avoid naming a field and a method with the same (case-insensitive) name when the field is an array. Array-field access</li>
+</ul>
+<p>uses the same <code>obj.field(...)</code> syntax as method calls; the compiler resolves <code>obj.field(i)</code> as array access only when</p>
+<p>the field is declared as an array. Non-array fields with the same name as methods are treated as methods in calls (</p>
+<p>e.g., <code>obj.Value()</code>).</p>
+<h3 id="destructors">Destructors</h3>
+<pre><code data-lang="basic">
+10 CLASS FileHandler
+20   FH AS INTEGER
+30
+40   SUB NEW(FILENAME$)
+50     OPEN FILENAME$ FOR OUTPUT AS #1
+60     LET ME.FH = 1
+70   END SUB
+80
+90   DESTRUCTOR()
+100    IF ME.FH &lt;&gt; 0 THEN CLOSE #ME.FH
+110  END DESTRUCTOR
+120 END CLASS
+</code></pre>
+<p><strong>Note:</strong> Destructors are automatically called when an object is deleted or goes out of scope.</p>
+<p>---</p>
+<h2 id="6-organizing-code-with-namespaces">6. Organizing Code with Namespaces</h2>
+<p>Namespaces help you organize classes and avoid name collisions in larger programs.</p>
+<h3 id="declaring-namespaces">Declaring Namespaces</h3>
+<p>Use <code>NAMESPACE</code> blocks to group related types. Dotted paths create nested namespaces:</p>
+<pre><code data-lang="basic">
+NAMESPACE Graphics.Rendering
+  CLASS Renderer
+    WIDTH AS I64
+    HEIGHT AS I64
+  END CLASS
+END NAMESPACE
+
+NAMESPACE Graphics.UI
+  CLASS Button
+    LABEL AS STR
+  END CLASS
+END NAMESPACE
+</code></pre>
+<p><strong>Fully-qualified names:</strong></p>
+<pre><code data-lang="basic">
+DIM R AS Graphics.Rendering.Renderer
+DIM B AS Graphics.UI.Button
+</code></pre>
+<h3 id="using-the-using-directive">Using the USING Directive</h3>
+<p>Import types from a namespace for unqualified references:</p>
+<pre><code data-lang="basic">
+USING Graphics.Rendering
+
+DIM R AS Renderer          REM Unqualified via USING
+</code></pre>
+<p><strong>Placement rules:</strong></p>
+<ul>
+<li><code>USING</code> must appear at file scope</li>
+<li><code>USING</code> must come before <code>NAMESPACE</code>, <code>CLASS</code>, or <code>INTERFACE</code> declarations</li>
+<li>Each file&#x27;s <code>USING</code> directives are file-scoped</li>
+</ul>
+<h3 id="creating-namespace-aliases">Creating Namespace Aliases</h3>
+<p>Create shorthand names for long namespace paths:</p>
+<pre><code data-lang="basic">
+USING GR = Graphics.Rendering
+USING UI = Graphics.UI
+
+DIM RENDERER AS GR.Renderer
+DIM BUTTON AS UI.Button
+</code></pre>
+<h3 id="type-resolution-precedence">Type Resolution Precedence</h3>
+<p>When you reference a type without qualification, the compiler searches in order:</p>
+<ol>
+<li>Current namespace</li>
+<li>Parent namespaces (walking up the hierarchy)</li>
+<li>Imported namespaces via <code>USING</code> (in declaration order)</li>
+<li>Global namespace</li>
+</ul>
+<h3 id="handling-ambiguity">Handling Ambiguity</h3>
+<p>If multiple imported namespaces contain the same type name:</p>
+<pre><code data-lang="basic">
+USING Collections
+USING Utilities
+
+REM If both define &quot;List&quot;:
+DIM MYLIST AS List          REM Error: ambiguous reference
+
+REM Fix 1: Use fully-qualified name
+DIM MYLIST AS Collections.List
+
+REM Fix 2: Use alias
+USING Coll = Collections
+DIM MYLIST AS Coll.List
+</code></pre>
+<h3 id="case-insensitivity">Case Insensitivity</h3>
+<p>All namespace and type names are case-insensitive:</p>
+<pre><code data-lang="basic">
+NAMESPACE MyLib
+  CLASS Helper
+  END CLASS
+END NAMESPACE
+
+REM All equivalent:
+DIM H1 AS MyLib.Helper
+DIM H2 AS MYLIB.HELPER
+DIM H3 AS mylib.helper
+</code></pre>
+<p>---</p>
+<h2 id="7-console-and-file-i-o">7. Console and File I/O</h2>
+<h3 id="console-input-output">Console Input/Output</h3>
+<pre><code data-lang="basic">
+10 INPUT &quot;What is your name? &quot;, NAME$
+20 PRINT &quot;Hello, &quot;; NAME$
+
+&#x27; LINE INPUT reads an entire line
+30 LINE INPUT &quot;Enter a line: &quot;, LINE$
+40 PRINT &quot;You entered: &quot;; LINE$
+</code></pre>
+<h3 id="file-operations">File Operations</h3>
+<pre><code data-lang="basic">
+10 OPEN &quot;output.txt&quot; FOR OUTPUT AS #1
+20 PRINT #1, &quot;Hello, file!&quot;
+30 PRINT #1, &quot;Line 2&quot;
+40 CLOSE #1
+
+50 OPEN &quot;output.txt&quot; FOR INPUT AS #2
+60 WHILE NOT EOF(#2)
+70   LINE INPUT #2, L$
+80   PRINT L$
+90 WEND
+100 CLOSE #2
+</code></pre>
+<p><strong>File modes:</strong></p>
+<ul>
+<li><code>INPUT</code> — Read from file</li>
+<li><code>OUTPUT</code> — Write to file (overwrites)</li>
+<li><code>APPEND</code> — Write to file (appends)</li>
+<li><code>BINARY</code> — Binary read/write</li>
+</ul>
+<p>---</p>
+<h2 id="8-error-handling">8. Error Handling</h2>
+<h3 id="on-error-goto">ON ERROR GOTO</h3>
+<pre><code data-lang="basic">
+10 ON ERROR GOTO 100
+20 OPEN &quot;missing.txt&quot; FOR INPUT AS #1
+30 PRINT &quot;File opened successfully&quot;
+40 CLOSE #1
+50 END
+
+100 REM Error handler
+110 PRINT &quot;Error: Could not open file&quot;
+120 RESUME 0
+</code></pre>
+<p><strong>Resume options:</strong></p>
+<ul>
+<li><code>RESUME</code> — Retry the statement that caused the error</li>
+<li><code>RESUME NEXT</code> — Continue with the next statement</li>
+<li><code>RESUME &lt;line&gt;</code> — Jump to a specific line (use <code>RESUME 0</code> to end)</li>
+</ul>
+<p>---</p>
+<h2 id="9-example-projects">9. Example Projects</h2>
+<h3 id="example-a-number-guessing-game">Example A: Number Guessing Game</h3>
+<pre><code data-lang="basic">
+10 RANDOMIZE TIMER
+20 LET SECRET = INT(RND() * 100) + 1
+30 LET ATTEMPTS = 0
+
+40 DO
+50   INPUT &quot;Guess a number (1-100): &quot;, GUESS
+60   LET ATTEMPTS = ATTEMPTS + 1
+70
+80   IF GUESS = SECRET THEN
+90     PRINT &quot;Correct! You won in &quot;; ATTEMPTS; &quot; attempts!&quot;
+100    EXIT DO
+110  ELSEIF GUESS &lt; SECRET THEN
+120    PRINT &quot;Higher!&quot;
+130  ELSE
+140    PRINT &quot;Lower!&quot;
+150  END IF
+160 LOOP
+</code></pre>
+<h3 id="example-b-file-copy-utility">Example B: File Copy Utility</h3>
+<pre><code data-lang="basic">
+10 LINE INPUT &quot;Source file: &quot;, SOURCE$
+20 LINE INPUT &quot;Destination file: &quot;, DEST$
+
+30 ON ERROR GOTO 200
+
+40 OPEN SOURCE$ FOR INPUT AS #1
+50 OPEN DEST$ FOR OUTPUT AS #2
+
+60 WHILE NOT EOF(#1)
+70   LINE INPUT #1, LINE$
+80   PRINT #2, LINE$
+90 WEND
+
+100 CLOSE #1
+110 CLOSE #2
+120 PRINT &quot;File copied successfully!&quot;
+130 END
+
+200 REM Error handler
+210 PRINT &quot;Error: Could not copy file&quot;
+220 RESUME 0
+</code></pre>
+<p>---</p>
+<h2 id="10-where-to-go-next">10. Where to Go Next</h2>
+<p><strong>Learn More:</strong></p>
+<ul>
+<li><strong>[BASIC Reference](basic-reference.md)</strong> — Complete language reference</li>
+<li><strong>[IL Guide](il-guide.md)</strong> — Understanding the intermediate language</li>
+</ul>
+<p><strong>Explore Examples:</strong></p>
+<ul>
+<li>Browse <code>examples/basic/</code> for more sample programs</li>
+<li>Check <code>src/tests/golden/basic/</code> for test cases</li>
+</ul>
+<p><strong>Advanced Topics:</strong></p>
+<ul>
+<li>Object-oriented patterns: builders, resource guards with <code>DESTRUCTOR</code></li>
+<li>Namespace organization strategies for large projects</li>
+<li>Error handling best practices</li>
+<li>[Cross-Language Interop](interop.md) — Mixed BASIC + Zia projects</li>
+</ul>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../../features/native-targets.html">Native Targets</a>
+      <a href="../../features/two-languages.html">Languages</a>
+      <a href="../../features/runtime.html">Runtime Library</a>
+      <a href="../../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../../docs/getting-started.html">Getting Started</a>
+      <a href="../../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../../docs/runtime/">Runtime API</a>
+      <a href="../../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../../contributing/">Contributing</a>
+      <a href="../../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../../main.js"></script>
+</body>
+</html>

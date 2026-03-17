@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Memory Management — Viper</title>
+  <meta name="description" content="Viper documentation: Memory Management">
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="icon" href="../../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../../docs/" class="active">Docs</a>
+    <a href="../../learn/">Learn</a>
+    <a href="../../showcase/">Showcase</a>
+    <a href="../../performance/">Performance</a>
+    <a href="../../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../../">Home</a> / <a href="../../docs">Docs</a> / <span>Memory Management</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#architecture-overview">Architecture Overview</a></li>
+        <li><a href="#heap-object-header">Heap Object Header</a></li>
+        <li><a href="#reference-counting">Reference Counting</a></li>
+        <li><a href="#pool-allocator">Pool Allocator</a></li>
+        <li><a href="#cycle-detecting-garbage-collector">Cycle-Detecting Garbage Collector</a></li>
+        <li><a href="#weak-references-and-finalizers">Weak References and Finalizers</a></li>
+        <li><a href="#per-type-ownership-reference">Per-Type Ownership Reference</a></li>
+        <li><a href="#compiler-lifetime-emission">Compiler Lifetime Emission</a></li>
+        <li><a href="#known-unsoundness">Known Unsoundness</a></li>
+        <li><a href="#v1-0-roadmap">v1.0 Roadmap</a></li>
+        <li><a href="#quick-reference">Quick Reference</a></li>
+        <li><a href="#glossary">Glossary</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>Memory Management</h1>
+<h1 id="viper-memory-management">Viper Memory Management</h1>
+<blockquote><p>**Status**: Active reference. Some aspects (particularly Zia frontend lifetime</p></blockquote>
+<blockquote><p>management) are incomplete — see [Known Unsoundness](#known-unsoundness) and</p></blockquote>
+<blockquote><p>[v1.0 Roadmap](#v10-roadmap).</p></blockquote>
+<blockquote><p></p></blockquote>
+<blockquote><p>**Audience**: Runtime developers, language users, future contributors.</p></blockquote>
+<p>Viper uses a <strong>hybrid memory model</strong>: atomic reference counting as the primary</p>
+<p>lifetime mechanism, a slab pool allocator for small strings, and an opt-in</p>
+<p>cycle-detecting garbage collector for breaking reference cycles. There is no</p>
+<p>generational collector, no arena allocator, and no tracing GC. The design</p>
+<p>prioritises determinism and low latency over throughput.</p>
+<p>---</p>
+<h2 id="architecture-overview">Architecture Overview</h2>
+<pre><code data-lang="text">
+┌───────────────────────────────────────────────────────────────┐
+│                     Viper Program                             │
+│  (Zia / BASIC source → IL → VM or Native)                    │
+└──────────────────────────┬────────────────────────────────────┘
+                           │ calls
+┌──────────────────────────▼────────────────────────────────────┐
+│                   Unified Heap API                            │
+│   rt_heap_alloc · rt_heap_retain · rt_heap_release            │
+│   rt_obj_new_i64 · rt_string_from_bytes                       │
+│                                                               │
+│   ┌─────────────────────┐  ┌───────────────────────────────┐  │
+│   │  Pool Allocator     │  │  System Allocator             │  │
+│   │  (strings ≤ 512B)   │  │  (arrays, objects, large str) │  │
+│   │  Lock-free freelists │  │  malloc / calloc / free       │  │
+│   │  4 size classes      │  │                               │  │
+│   └─────────────────────┘  └───────────────────────────────┘  │
+│                                                               │
+│   ┌─────────────────────────────────────────────────────────┐ │
+│   │  Cycle-Detecting GC (opt-in)                            │ │
+│   │  rt_gc_track · rt_gc_collect · rt_weakref_*             │ │
+│   └─────────────────────────────────────────────────────────┘ │
+└───────────────────────────────────────────────────────────────┘
+</code></pre>
+<p>Every heap object — string, array, or runtime object — is allocated through</p>
+<p><code>rt_heap_alloc()</code> and prefixed by a common header:</p>
+<pre><code data-lang="text">
+Memory layout:
+┌──────────────────────────┬─────────────────────────┐
+│     rt_heap_hdr_t        │       Payload            │
+│  (metadata + refcount)   │  (string/array/object)   │
+└──────────────────────────┴─────────────────────────┘
+^                          ^
+header address             payload pointer (returned to caller)
+</code></pre>
+<p><strong>Key source files:</strong></p>
+<table><thead><tr>
+<th>File</th>
+<th>Role</th>
+</tr></thead><tbody>
+<tr>
+<td>`src/runtime/core/rt_heap.h`</td>
+<td>Header struct, allocation API</td>
+</tr>
+<tr>
+<td>`src/runtime/core/rt_heap.c`</td>
+<td>Allocation, retain/release, realloc</td>
+</tr>
+<tr>
+<td>`src/runtime/core/rt_pool.h` / `.c`</td>
+<td>Slab pool allocator</td>
+</tr>
+<tr>
+<td>`src/runtime/core/rt_gc.h` / `.c`</td>
+<td>Cycle GC and weak references</td>
+</tr>
+<tr>
+<td>`src/runtime/oop/rt_object.h` / `.c`</td>
+<td>Object allocation, finalizers, resurrection</td>
+</tr>
+<tr>
+<td>`src/runtime/core/rt_string.h` / `rt_string_ops.c`</td>
+<td>String refcounting and operations</td>
+</tr>
+<tr>
+<td>`src/runtime/core/rt_memory.c`</td>
+<td>General-purpose allocation shim (`rt_alloc`)</td>
+</tr>
+</tbody></table>
+<p>---</p>
+<h2 id="heap-object-header">Heap Object Header</h2>
+<p>Every heap-allocated runtime value is preceded by <code>rt_heap_hdr_t</code>:</p>
+<pre><code data-lang="c">
+typedef struct rt_heap_hdr {
+    uint32_t magic;                // 0x52504956 (&#x27;VIPR&#x27;) — corruption sentinel
+    uint16_t kind;                 // RT_HEAP_STRING(1) | RT_HEAP_ARRAY(2) | RT_HEAP_OBJECT(3)
+    uint16_t elem_kind;            // RT_ELEM_NONE(0) | I32(1) | I64(2) | F64(3) | U8(4) | STR(5) | BOX(6)
+    uint32_t flags;                // bit0 = disposed, bit1 = pool-allocated
+    size_t   refcnt;               // Atomic reference count; 1 at creation; SIZE_MAX = immortal
+    size_t   len;                  // Current logical length (elements)
+    size_t   cap;                  // Allocated capacity (elements)
+    size_t   alloc_size;           // Total allocation bytes (header + payload)
+    int64_t  class_id;             // Runtime class ID (objects only)
+    rt_heap_finalizer_t finalizer; // Optional cleanup callback (objects only)
+} rt_heap_hdr_t;
+</code></pre>
+<p><strong>Invariants:</strong></p>
+<ul>
+<li><code>magic == 0x52504956</code> — validated in debug builds via <code>RT_HEAP_VALIDATE</code></li>
+<li><code>refcnt == 1</code> on fresh allocation; caller owns the initial reference</li>
+<li><code>refcnt == SIZE_MAX</code> = immortal (never freed; used for string literals)</li>
+<li><code>len &lt;= cap</code> maintained by all mutating operations</li>
+<li>Payload address = <code>(uint8_t*)header + sizeof(rt_heap_hdr_t)</code></li>
+<li>Header address = <code>(uint8_t*)payload - sizeof(rt_heap_hdr_t)</code></li>
+</ul>
+<p>---</p>
+<h2 id="reference-counting">Reference Counting</h2>
+<h3 id="core-api">Core API</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Behaviour</th>
+</tr></thead><tbody>
+<tr>
+<td>`rt_heap_retain(payload)`</td>
+<td>Atomic increment. No-op for NULL. Traps on overflow (`SIZE_MAX - 1`).</td>
+</tr>
+<tr>
+<td>`rt_heap_release(payload)`</td>
+<td>Atomic decrement. Frees (pool or system) when count reaches zero.</td>
+</tr>
+<tr>
+<td>`rt_heap_release_deferred(payload)`</td>
+<td>Decrement without freeing at zero. Caller must later call `rt_heap_free_zero_ref`.</td>
+</tr>
+<tr>
+<td>`rt_heap_free_zero_ref(payload)`</td>
+<td>Free only if refcount is already zero. No-op otherwise.</td>
+</tr>
+</tbody></table>
+<h3 id="memory-ordering">Memory Ordering</h3>
+<p>The refcount protocol follows the standard release-acquire pattern used by</p>
+<p><code>std::shared_ptr</code>:</p>
+<ul>
+<li><strong>Retain</strong>: <code>__ATOMIC_RELAXED</code> — visibility is sufficient; no ordering constraint.</li>
+<li><strong>Release (decrement)</strong>: <code>__ATOMIC_RELEASE</code> — ensures all writes to the object</li>
+</ul>
+<p>happen-before the decrement is visible to other threads.</p>
+<ul>
+<li><strong>Release (at zero)</strong>: <code>__atomic_thread_fence(__ATOMIC_ACQUIRE)</code> — ensures the</li>
+</ul>
+<p>releasing thread sees all prior writes before freeing.</p>
+<h3 id="string-refcounting">String Refcounting</h3>
+<p>Strings have wrapper functions that dispatch to the heap API:</p>
+<ul>
+<li><code>rt_string_ref(s)</code> → <code>rt_heap_retain</code> (returns same pointer for chaining)</li>
+<li><code>rt_string_unref(s)</code> → <code>rt_heap_release</code></li>
+<li><code>rt_str_retain_maybe(s)</code> / <code>rt_str_release_maybe(s)</code> — NULL-safe variants</li>
+</ul>
+<p><strong>Immortal strings</strong>: Literal strings created via <code>rt_str_from_lit()</code> or</p>
+<p><code>rt_const_cstr()</code> have <code>refcnt == SIZE_MAX</code> and are never freed. The</p>
+<p>retain/release fast path checks for this and short-circuits.</p>
+<p><strong>String interning</strong>: <code>rt_string_intern(s)</code> inserts into a global hash table</p>
+<p>(FNV-1a, open-addressing, 5/8 load factor). Interned strings are effectively</p>
+<p>immortal — retained by the intern table until <code>rt_string_intern_drain()</code> is</p>
+<p>called (currently only used in tests).</p>
+<h3 id="object-refcounting">Object Refcounting</h3>
+<p>Objects use a two-step release pattern that allows finalizer interleaving:</p>
+<pre><code data-lang="text">
+1. rt_obj_release_check0(obj)  → decrements refcount (deferred)
+                                  returns 1 if count reached zero
+2. [caller runs custom cleanup]
+3. rt_obj_free(obj)            → invokes finalizer, then rt_heap_free_zero_ref
+</code></pre>
+<p>This split exists because finalizers may need the object&#x27;s allocation to remain</p>
+<p>valid (e.g., to read fields during cleanup).</p>
+<h3 id="consume-semantics">Consume Semantics</h3>
+<p>Some operations consume their operands — they release the input references</p>
+<p>and return a new reference:</p>
+<ul>
+<li><code>rt_str_concat(a, b)</code> releases both <code>a</code> and <code>b</code>, returns a new string</li>
+</ul>
+<p>(or reuses <code>a</code> in-place if uniquely owned with sufficient capacity)</p>
+<h3 id="debug-tracing">Debug Tracing</h3>
+<p>Define <code>VIPER_RC_DEBUG</code> to enable stderr logging of every retain/release with</p>
+<p>the payload address and resulting refcount.</p>
+<p>---</p>
+<h2 id="pool-allocator">Pool Allocator</h2>
+<p>The pool reduces <code>malloc</code>/<code>free</code> overhead for small, frequently-allocated objects</p>
+<p>(primarily short strings).</p>
+<h3 id="size-classes">Size Classes</h3>
+<table><thead><tr>
+<th>Class</th>
+<th>Block Size</th>
+<th>Blocks/Slab</th>
+</tr></thead><tbody>
+<tr>
+<td>`RT_POOL_64`</td>
+<td>64 bytes</td>
+<td>64</td>
+</tr>
+<tr>
+<td>`RT_POOL_128`</td>
+<td>128 bytes</td>
+<td>64</td>
+</tr>
+<tr>
+<td>`RT_POOL_256`</td>
+<td>256 bytes</td>
+<td>64</td>
+</tr>
+<tr>
+<td>`RT_POOL_512`</td>
+<td>512 bytes</td>
+<td>64</td>
+</tr>
+</tbody></table>
+<p>Allocations larger than 512 bytes fall through to <code>malloc</code>/<code>free</code>.</p>
+<h3 id="design">Design</h3>
+<ul>
+<li><strong>Lock-free freelists</strong> using tagged pointers: 48-bit address + 16-bit version</li>
+</ul>
+<p>counter for ABA prevention via CAS.</p>
+<ul>
+<li><strong>Slab allocation</strong>: when a freelist is empty, a new slab of 64 blocks is</li>
+</ul>
+<p>allocated from the system, all blocks are pushed onto the freelist, and one is</p>
+<p>returned.</p>
+<ul>
+<li><strong>Freed blocks are zeroed</strong> (<code>memset(0)</code>) before returning to the freelist.</li>
+<li><strong>Only strings use the pool</strong>: arrays and objects may need <code>realloc()</code>, which</li>
+</ul>
+<p>is incompatible with pool-allocated memory.</p>
+<h3 id="lifetime">Lifetime</h3>
+<ul>
+<li>Pool memory is <strong>never returned to the OS</strong>. Freed blocks stay on the freelist</li>
+</ul>
+<p>for reuse.</p>
+<ul>
+<li><code>rt_pool_shutdown()</code> exists to release all slabs but is <strong>never called</strong> in the</li>
+</ul>
+<p>current codebase.</p>
+<ul>
+<li><code>rt_pool_stats(class_idx, &amp;allocated, &amp;free)</code> provides per-class diagnostics.</li>
+</ul>
+<p>---</p>
+<h2 id="cycle-detecting-garbage-collector">Cycle-Detecting Garbage Collector</h2>
+<h3 id="purpose">Purpose</h3>
+<p>Reference counting cannot reclaim cycles (A → B → A). The cycle GC supplements</p>
+<p>refcounting by detecting and breaking unreachable reference cycles among</p>
+<p>explicitly registered objects.</p>
+<h3 id="algorithm-trial-deletion-mark-sweep">Algorithm: Trial-Deletion Mark-Sweep</h3>
+<p>The collector runs synchronously in four phases:</p>
+<pre><code data-lang="text">
+Phase 1 — Initialize
+  For each tracked object: trial_rc = 1, color = white
+
+Phase 2 — Trial Decrement
+  For each tracked object, call its traverse function.
+  For each child that is also tracked: decrement child&#x27;s trial_rc.
+  After this phase, objects with trial_rc &lt;= 0 are only referenced
+  by other tracked objects (candidate cycle members).
+
+Phase 3 — Scan (Mark Reachable)
+  Objects with trial_rc &gt; 0 have external references → mark black.
+  Recursively mark all children reachable from black objects.
+
+Phase 4 — Collect
+  White (unmarked) objects are unreachable cycle members.
+  Untrack them, clear their weak references, invoke finalizers, free.
+</code></pre>
+<p>The <code>trial_rc = 1</code> assumption means the algorithm assumes exactly one external</p>
+<p>reference per tracked object. After trial decrements from tracked children,</p>
+<p>objects that still have <code>trial_rc &gt; 0</code> are provably reachable. This is</p>
+<p>conservative — it may not detect all cycles in one pass if objects have multiple</p>
+<p>external references — but it is always safe.</p>
+<h3 id="registration">Registration</h3>
+<p>Objects must be <strong>explicitly registered</strong> for cycle collection:</p>
+<pre><code data-lang="c">
+rt_gc_track(obj, traverse_fn);   // Register as potentially cyclic
+rt_gc_untrack(obj);              // Remove before manual free
+rt_gc_is_tracked(obj);           // Query tracking status
+</code></pre>
+<p>The <code>traverse_fn</code> callback must enumerate all strong references held by the</p>
+<p>object by calling <code>visitor(child, ctx)</code> for each one.</p>
+<h3 id="triggering">Triggering</h3>
+<p>The collector <strong>never runs automatically</strong>. It must be explicitly invoked:</p>
+<pre><code data-lang="c">
+int64_t freed = rt_gc_collect();  // Run one collection pass
+</code></pre>
+<p>Exposed to Viper programs as <code>Viper.Memory.GC.Collect()</code>.</p>
+<h3 id="thread-safety">Thread Safety</h3>
+<p>The GC state (tracked-object table, weak reference registry) is protected by a</p>
+<p>global mutex (<code>pthread_mutex_t</code> on Unix, <code>CRITICAL_SECTION</code> on Windows).</p>
+<p>Finalizers run outside the lock to avoid deadlocks.</p>
+<h3 id="statistics">Statistics</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Returns</th>
+</tr></thead><tbody>
+<tr>
+<td>`rt_gc_tracked_count()`</td>
+<td>Number of currently tracked objects</td>
+</tr>
+<tr>
+<td>`rt_gc_total_collected()`</td>
+<td>Cumulative objects freed by cycle collection</td>
+</tr>
+<tr>
+<td>`rt_gc_pass_count()`</td>
+<td>Number of `rt_gc_collect()` invocations</td>
+</tr>
+</tbody></table>
+<h3 id="limitations">Limitations</h3>
+<ul>
+<li><strong>Linear scan</strong>: <code>find_entry()</code> is O(N) over the tracked-object array. Will</li>
+</ul>
+<p>degrade with thousands of tracked objects.</p>
+<ul>
+<li><strong>No automatic triggering</strong>: cycles accumulate silently unless the program</li>
+</ul>
+<p>explicitly calls <code>GC.Collect()</code>.</p>
+<ul>
+<li><strong>Must not be called from finalizers</strong>: the GC holds the mutex during</li>
+</ul>
+<p>collection; a finalizer calling <code>rt_gc_collect()</code> would deadlock.</p>
+<ul>
+<li><strong>Synchronous</strong>: stop-the-world; no concurrent or incremental mode.</li>
+</ul>
+<p>---</p>
+<h2 id="weak-references-and-finalizers">Weak References and Finalizers</h2>
+<h3 id="zeroing-weak-references">Zeroing Weak References</h3>
+<pre><code data-lang="c">
+rt_weakref *rt_weakref_new(target);     // Create (does NOT retain target)
+void       *rt_weakref_get(ref);        // Dereference (NULL if target freed)
+int8_t      rt_weakref_alive(ref);      // Check if target alive
+void        rt_weakref_free(ref);       // Destroy handle (does not affect target)
+</code></pre>
+<p>When a target object is freed, <code>rt_gc_clear_weak_refs(target)</code> automatically</p>
+<p>nullifies all weak references pointing to it. This is called from <code>rt_obj_free()</code></p>
+<p>and from the GC collector before freeing cycle garbage.</p>
+<p>Implementation: hash table of per-target weak reference chains (64 buckets),</p>
+<p>protected by the GC mutex.</p>
+<h3 id="finalizers">Finalizers</h3>
+<pre><code data-lang="c">
+rt_obj_set_finalizer(obj, fn);  // Install callback (one per object, replaces previous)
+</code></pre>
+<ul>
+<li>Invoked from <code>rt_obj_free()</code> when refcount has already reached zero.</li>
+<li>Only works for <code>RT_HEAP_OBJECT</code> kind (not strings or arrays).</li>
+<li>Runs <strong>before</strong> the heap storage is freed.</li>
+<li>Must not call <code>rt_gc_collect()</code>.</li>
+</ul>
+<h3 id="object-resurrection">Object Resurrection</h3>
+<pre><code data-lang="c">
+rt_obj_resurrect(obj);  // Set refcount from 0 → 1 (inside finalizer only)
+</code></pre>
+<p>Allows finalizers to prevent deallocation by resetting the refcount. After</p>
+<p><code>rt_obj_resurrect()</code>, <code>rt_heap_free_zero_ref()</code> observes a non-zero refcount and</p>
+<p>skips deallocation. The caller must re-install the finalizer before returning the</p>
+<p>object to users.</p>
+<p><strong>Use case</strong>: Vec2/Vec3 thread-local pool recycling. When the pool has space, the</p>
+<p>finalizer resurrects the object and pushes it back to the LIFO pool for reuse</p>
+<p>without <code>malloc</code>/<code>free</code> overhead.</p>
+<p>---</p>
+<h2 id="per-type-ownership-reference">Per-Type Ownership Reference</h2>
+<table><thead><tr>
+<th>Type</th>
+<th>Allocation</th>
+<th>Ownership</th>
+<th>Element Management</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>**Strings**</td>
+<td>Pool (≤512B) or malloc</td>
+<td>Refcounted</td>
+<td>N/A</td>
+<td>Immortal literals, interning, `rt_str_concat` consumes both operands</td>
+</tr>
+<tr>
+<td>**Lists**</td>
+<td>malloc</td>
+<td>Refcounted</td>
+<td>Auto retain/release</td>
+<td>`rt_list_i64` for unboxed ints (no per-element refcounting)</td>
+</tr>
+<tr>
+<td>**Sequences**</td>
+<td>malloc</td>
+<td>Refcounted</td>
+<td>**NOT managed**</td>
+<td>Caller must manage element lifetimes</td>
+</tr>
+<tr>
+<td>**Maps**</td>
+<td>malloc</td>
+<td>Refcounted</td>
+<td>Keys copied, values retained</td>
+<td>String-keyed</td>
+</tr>
+<tr>
+<td>**LazySeq**</td>
+<td>malloc</td>
+<td>**Manual destroy**</td>
+<td>On-demand generation</td>
+<td>Not refcounted; requires `rt_lazyseq_destroy()`</td>
+</tr>
+<tr>
+<td>**Boxed values**</td>
+<td>malloc</td>
+<td>Refcounted</td>
+<td>Type-tagged (I64/F64/I1/STR)</td>
+<td>Unbox does not consume the box</td>
+</tr>
+<tr>
+<td>**Objects/Entities**</td>
+<td>malloc</td>
+<td>Refcounted</td>
+<td>Optional finalizer</td>
+<td>Optional GC tracking for cycles</td>
+</tr>
+<tr>
+<td>**Vec2/Vec3**</td>
+<td>Thread-local pool (cap 32)</td>
+<td>Refcounted + resurrection</td>
+<td>Immutable values</td>
+<td>Pool recycling via finalizer</td>
+</tr>
+<tr>
+<td>**Files**</td>
+<td>Stack (`RtFile`)</td>
+<td>Caller-owned</td>
+<td>POSIX fd</td>
+<td>Manual close or finalizer-based cleanup</td>
+</tr>
+<tr>
+<td>**Network**</td>
+<td>malloc</td>
+<td>Refcounted</td>
+<td>N/A</td>
+<td>Manual `close()` available</td>
+</tr>
+<tr>
+<td>**GUI Widgets**</td>
+<td>malloc</td>
+<td>Refcounted (vgfx)</td>
+<td>Widget tree</td>
+<td>Managed by GUI framework</td>
+</tr>
+<tr>
+<td>**LRU Cache**</td>
+<td>malloc</td>
+<td>Refcounted</td>
+<td>Values are **weak** (non-retained)</td>
+<td>Finalizer frees internal nodes and bucket array</td>
+</tr>
+<tr>
+<td>**WeakMap**</td>
+<td>malloc</td>
+<td>Refcounted</td>
+<td>Keys retained, values **weak**</td>
+<td>Values may be collected independently</td>
+</tr>
+</tbody></table>
+<h3 id="strings">Strings</h3>
+<ul>
+<li>Created via <code>rt_string_from_bytes(bytes, len)</code> — heap-backed, refcount=1</li>
+<li>Created via <code>rt_const_cstr(literal)</code> — immortal wrapper, never freed</li>
+<li>Pool-allocated when total size (header + payload) ≤ 512 bytes</li>
+<li><code>rt_string_intern(s)</code> returns the canonical pointer; enables O(1) pointer</li>
+</ul>
+<p>equality. The intern table retains its own reference.</p>
+<ul>
+<li><code>rt_str_concat(a, b)</code> <strong>consumes both operands</strong> (releases a and b). May</li>
+</ul>
+<p>append in-place if <code>a</code> is uniquely owned with sufficient capacity.</p>
+<ul>
+<li>UTF-8 encoded, null-terminated. Byte-based indexing (not codepoint).</li>
+</ul>
+<h3 id="lists">Lists</h3>
+<ul>
+<li>Elements are retained on store (<code>push</code>, <code>set</code>), released on removal</li>
+</ul>
+<p>(<code>remove_at</code>, <code>clear</code>, destructor).</p>
+<ul>
+<li>The list itself is refcounted.</li>
+<li><code>rt_list_i64</code> is a typed variant for unboxed int64 elements with no</li>
+</ul>
+<p>per-element refcounting — separate <code>len</code>/<code>cap</code> via <code>rt_heap_set_len</code>.</p>
+<ul>
+<li>Backing array grows geometrically (doubling).</li>
+</ul>
+<h3 id="sequences-seq">Sequences (Seq)</h3>
+<ul>
+<li>The container itself is refcounted.</li>
+<li><strong>Elements are NOT individually reference-counted.</strong> The base <code>rt_seq</code> stores</li>
+</ul>
+<p>opaque <code>void*</code> pointers without retaining or releasing them.</p>
+<ul>
+<li>This means: placing refcounted objects into a Seq without retaining them is</li>
+</ul>
+<p>unsafe; the Seq may outlive the elements. Similarly, destroying a Seq does not</p>
+<p>release its elements.</p>
+<h3 id="lazyseq">LazySeq</h3>
+<ul>
+<li><strong>Not refcounted</strong> — caller owns the handle.</li>
+<li>Must be destroyed with <code>rt_lazyseq_destroy()</code>.</li>
+<li>Viper has no <code>using</code>/<code>Dispose</code> pattern, so this requires manual lifecycle</li>
+</ul>
+<p>management in user code.</p>
+<ul>
+<li>Lazy sequences can be infinite; collector operations (<code>ToSeq</code>, <code>Count</code>) may</li>
+</ul>
+<p>not terminate.</p>
+<h3 id="mixed-ownership-in-caches">Mixed Ownership in Caches</h3>
+<ul>
+<li><strong>LRU Cache</strong>: GC object containing a <code>malloc</code>&#x27;d bucket array and node chain.</li>
+</ul>
+<p>Values are weak (non-retained). Finalizer frees all internal allocations.</p>
+<ul>
+<li><strong>WeakMap</strong>: GC object with <code>malloc</code>&#x27;d hash table. Keys are retained; values</li>
+</ul>
+<p>are weak. Stale value pointers may be returned if the value was collected.</p>
+<p>---</p>
+<h2 id="compiler-lifetime-emission">Compiler Lifetime Emission</h2>
+<p>This section documents what each compiler frontend does (and doesn&#x27;t do) about</p>
+<p>object lifetimes. This is the most important section for understanding the</p>
+<p>soundness of Viper programs.</p>
+<h3 id="basic-frontend">BASIC Frontend</h3>
+<p>The BASIC lowerer (<code>src/frontends/basic/lower/Emitter.cpp</code>) emits explicit</p>
+<p>retain/release calls:</p>
+<ul>
+<li><strong>Strings</strong>: <code>deferReleaseStr(v)</code> queues a temporary for cleanup.</li>
+</ul>
+<p><code>releaseDeferredTemps()</code> emits <code>rt_str_release_maybe</code> at scope boundaries.</p>
+<ul>
+<li><strong>Objects</strong>: <code>deferReleaseObj(v, className)</code> queues objects.</li>
+</ul>
+<p><code>rt_obj_release_check0</code> + <code>rt_obj_free</code> emitted at scope boundaries.</p>
+<ul>
+<li><strong>Arrays</strong>: <code>emitArrayRelease()</code> emits type-specific release calls</li>
+</ul>
+<p>(<code>rt_arr_str_release</code>, <code>rt_arr_obj_release</code>, <code>rt_arr_f64_release</code>,</p>
+<p><code>rt_arr_i64_release</code>) at function exit.</p>
+<ul>
+<li><strong>Array stores</strong>: retain new value, release old value (<code>emitArrayStore</code>).</li>
+<li><strong>Object assignment</strong>: <code>rt_obj_retain_maybe</code> on new value, <code>rt_obj_release_check0</code></li>
+</ul>
+<p>+ <code>rt_obj_free</code> on old value.</p>
+<p><strong>Result</strong>: BASIC programs have well-managed lifetimes. Temporaries are tracked</p>
+<p>and released at scope boundaries. Arrays and objects are cleaned up at function</p>
+<p>exit.</p>
+<h3 id="zia-frontend">Zia Frontend</h3>
+<p>The Zia lowerer emits <strong>zero</strong> retain/release calls. Confirmed by searching all</p>
+<p>Zia lowerer source files — no calls to <code>rt_heap_retain</code>, <code>rt_heap_release</code>,</p>
+<p><code>rt_string_ref</code>, <code>rt_string_unref</code>, <code>rt_obj_retain_maybe</code>, or</p>
+<p><code>rt_obj_release_check0</code>.</p>
+<p>Zia relies entirely on runtime ownership conventions:</p>
+<ul>
+<li>Runtime functions that create values return them with refcount=1.</li>
+<li>The caller &quot;owns&quot; this reference by convention.</li>
+<li><strong>There is no mechanism to release these references when they go out of scope.</strong></li>
+</ul>
+<p><strong>Result</strong>: Every intermediate string, object, or collection created during Zia</p>
+<p>expression evaluation accumulates in memory until process exit. In a tight loop</p>
+<p>doing string concatenation or object creation, this means unbounded memory</p>
+<p>growth.</p>
+<h3 id="vm-runner-cpp">VM (Runner.cpp)</h3>
+<p>The VM has minimal explicit lifecycle management — only one <code>rt_string_unref</code></p>
+<p>call (for command-line argument passing). The VM relies on runtime functions to</p>
+<p>manage their own internal retain/release.</p>
+<p>---</p>
+<h2 id="known-unsoundness">Known Unsoundness</h2>
+<p>Severity-ordered list of memory management gaps:</p>
+<h3 id="1-critical-zia-programs-leak-all-temporaries">1. CRITICAL: Zia Programs Leak All Temporaries</h3>
+<p>No compiler-inserted release means every intermediate string, object, or</p>
+<p>collection created during expression evaluation accumulates until process exit.</p>
+<p>This affects any non-trivial Zia program.</p>
+<p><strong>Example</strong>: <code>Str.ToUpper(Str.Concat(a, b))</code> creates an intermediate concat</p>
+<p>result that is never released.</p>
+<h3 id="2-high-no-automatic-gc-triggering">2. HIGH: No Automatic GC Triggering</h3>
+<p>The cycle collector only runs when explicitly called via</p>
+<p><code>Viper.Memory.GC.Collect()</code>. Programs that create cyclic object graphs (e.g.,</p>
+<p>doubly-linked lists, parent-child entity references) without calling</p>
+<p><code>GC.Collect()</code> will leak those cycles indefinitely.</p>
+<h3 id="3-high-seq-elements-not-lifetime-managed">3. HIGH: Seq Elements Not Lifetime-Managed</h3>
+<p><code>rt_seq</code> does not retain or release elements. This creates two hazards:</p>
+<ul>
+<li><strong>Dangling references</strong>: an element may be freed while still referenced by the</li>
+</ul>
+<p>Seq.</p>
+<ul>
+<li><strong>Leaks</strong>: destroying a Seq does not release its elements.</li>
+</ul>
+<h3 id="4-medium-lazyseq-requires-manual-destroy">4. MEDIUM: LazySeq Requires Manual Destroy</h3>
+<p>LazySeq handles are not refcounted and require explicit <code>destroy()</code> calls.</p>
+<p>Viper has no <code>using</code>/<code>Dispose</code> language-level pattern, making it easy to</p>
+<p>forget cleanup.</p>
+<h3 id="5-medium-pool-memory-never-returned-to-os">5. MEDIUM: Pool Memory Never Returned to OS</h3>
+<p>The slab allocator retains all allocated slabs for the process lifetime.</p>
+<p>For long-running processes that create many short strings early, this memory</p>
+<p>remains allocated even if never used again. <code>rt_pool_shutdown()</code> is called</p>
+<p>at process exit via the <code>atexit</code> handler (see §Shutdown Cleanup below) but</p>
+<p>not during normal execution.</p>
+<h3 id="6-medium-no-shutdown-cleanup-path-resolved">6. ~~MEDIUM: No Shutdown Cleanup Path~~ — RESOLVED</h3>
+<p><strong>Fixed.</strong> An <code>atexit</code> handler (<code>rt_global_shutdown</code> in <code>rt_heap.c</code>) is now</p>
+<p>registered on first heap allocation. It runs the following cleanup in order:</p>
+<ol>
+<li><code>rt_gc_run_all_finalizers()</code> — runs finalizers on all GC-tracked objects</li>
+</ul>
+<p>(flushes files, closes sockets, releases audio/GPU handles)</p>
+<ol>
+<li><code>rt_audio_shutdown()</code> — destroys the audio device (idempotent no-op if</li>
+</ul>
+<p>audio was never initialized or already shut down)</p>
+<ol>
+<li><code>rt_legacy_context_shutdown()</code> — closes BASIC file channels, releases</li>
+</ul>
+<p>argument storage and type registry held by the static legacy context</p>
+<ol>
+<li><code>rt_string_intern_drain()</code> — frees the interned string table</li>
+<li><code>rt_gc_shutdown()</code> — frees the GC tracking hash table and weak-ref buckets</li>
+<li><code>rt_pool_shutdown()</code> — frees all pool slabs</li>
+</ul>
+<p>This runs on all <code>exit()</code> paths: normal return, <code>rt_env_exit()</code>,</p>
+<p><code>rt_abort()</code>/<code>vm_trap()</code>, Ctrl-C (SIGINT), and <code>rt_trap_div0()</code>. The</p>
+<p>stack-overflow handler uses <code>_exit(1)</code> and intentionally bypasses cleanup</p>
+<p>(stack is blown; running arbitrary code is unsafe).</p>
+<h3 id="7-low-interned-strings-are-immortal">7. LOW: Interned Strings Are Immortal</h3>
+<p>The intern table retains strings forever during normal execution. Programs</p>
+<p>that intern many unique strings will see monotonically growing memory.</p>
+<p><code>rt_string_intern_drain()</code> is called at process exit via the <code>atexit</code></p>
+<p>handler.</p>
+<h3 id="8-low-gc-tracking-uses-linear-scan">8. LOW: GC Tracking Uses Linear Scan</h3>
+<p><code>find_entry()</code> in <code>rt_gc.c</code> is O(N) over the tracked-object array. This will</p>
+<p>degrade with thousands of tracked objects.</p>
+<p>---</p>
+<h2 id="v1-0-roadmap">v1.0 Roadmap</h2>
+<p>Proposed improvements in priority order. The goal is a coherent, user-transparent</p>
+<p>memory management story where Viper programs don&#x27;t leak by default.</p>
+<h3 id="p0-zia-compiler-inserted-retain-release">P0: Zia Compiler-Inserted Retain/Release</h3>
+<p>Mirror the BASIC lowerer&#x27;s <code>deferReleaseStr</code>/<code>deferReleaseObj</code> pattern in the</p>
+<p>Zia frontend:</p>
+<ul>
+<li>Track all temporaries created during expression evaluation.</li>
+<li>At statement boundaries, emit <code>rt_str_release_maybe</code> / <code>rt_obj_release_check0</code></li>
+</ul>
+<p>+ <code>rt_obj_free</code> for each temporary.</p>
+<ul>
+<li>At function exit, release all local variables holding refcounted types.</li>
+</ul>
+<p>This is the single highest-impact change for memory correctness.</p>
+<h3 id="p1-automatic-gc-triggering">P1: Automatic GC Triggering</h3>
+<p>Add a configurable allocation-count threshold (e.g., every N allocations to</p>
+<p>tracked objects, run a collection pass). Must be opt-in or have a sensible</p>
+<p>default to avoid latency spikes in real-time programs (games, audio).</p>
+<p>Options:</p>
+<ul>
+<li>Allocation-count threshold (simplest)</li>
+<li>Byte-pressure threshold (more precise)</li>
+<li>Periodic timer (least intrusive but less responsive)</li>
+</ul>
+<h3 id="p2-using-dispose-pattern">P2: `using` / Dispose Pattern</h3>
+<p>Add a <code>using</code> statement to Zia for deterministic cleanup:</p>
+<pre><code data-lang="rust">
+using reader = IO.File.OpenReader(&quot;data.txt&quot;)
+    &#x27; reader is automatically closed at block exit
+end using
+</code></pre>
+<p>Requires:</p>
+<ul>
+<li>A <code>Dispose()</code> interface convention.</li>
+<li>Compiler support for <code>using</code> blocks that emit cleanup code in all exit paths</li>
+</ul>
+<p>(normal, exception, early return).</p>
+<ul>
+<li>Apply to: LazySeq, file handles, network connections, database connections.</li>
+</ul>
+<h3 id="p3-pool-memory-budget">P3: Pool Memory Budget</h3>
+<p>Add a configurable memory budget for the pool allocator. When pool usage exceeds</p>
+<p>the budget, return slabs to the OS. Requires tracking total allocated bytes per</p>
+<p>size class and implementing a slab-return path.</p>
+<h3 id="p4-shutdown-cleanup-done">~~P4: Shutdown Cleanup~~ — DONE</h3>
+<p>Implemented via <code>rt_global_shutdown()</code> in <code>rt_heap.c</code>, registered as an</p>
+<p><code>atexit</code> handler on first heap allocation. The shutdown sequence runs:</p>
+<p>GC finalizer sweep → audio shutdown → legacy context cleanup → string</p>
+<p>intern drain → GC table teardown → pool slab release. Thread pools are</p>
+<p>GC-tracked so the finalizer sweep joins worker threads. See §6 above.</p>
+<h3 id="p5-gc-performance">P5: GC Performance</h3>
+<ul>
+<li>Replace the linear <code>find_entry</code> with a hash table lookup.</li>
+<li>Consider lock-free data structures for the tracked-object table.</li>
+<li>Evaluate concurrent or incremental collection for large tracked-object sets.</li>
+</ul>
+<p>---</p>
+<h2 id="quick-reference">Quick Reference</h2>
+<h3 id="allocation-lifetime-api">Allocation &amp; Lifetime API</h3>
+<table><thead><tr>
+<th>Operation</th>
+<th>API Call</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>Allocate string</td>
+<td>`rt_string_from_bytes(bytes, len)`</td>
+<td>refcount=1; pool if ≤512B</td>
+</tr>
+<tr>
+<td>Allocate object</td>
+<td>`rt_obj_new_i64(class_id, size)`</td>
+<td>refcount=1</td>
+</tr>
+<tr>
+<td>Retain</td>
+<td>`rt_heap_retain(p)` or `rt_string_ref(s)`</td>
+<td>Atomic increment</td>
+</tr>
+<tr>
+<td>Release</td>
+<td>`rt_heap_release(p)` or `rt_string_unref(s)`</td>
+<td>Frees at zero</td>
+</tr>
+<tr>
+<td>Deferred release</td>
+<td>`rt_heap_release_deferred(p)` then `rt_heap_free_zero_ref(p)`</td>
+<td>Two-step pattern</td>
+</tr>
+<tr>
+<td>Set finalizer</td>
+<td>`rt_obj_set_finalizer(obj, fn)`</td>
+<td>Objects only; one per object</td>
+</tr>
+<tr>
+<td>Resurrect</td>
+<td>`rt_obj_resurrect(obj)`</td>
+<td>Inside finalizer only; 0→1</td>
+</tr>
+<tr>
+<td>Create weak ref</td>
+<td>`rt_weakref_new(target)`</td>
+<td>Does NOT retain target</td>
+</tr>
+<tr>
+<td>Read weak ref</td>
+<td>`rt_weakref_get(ref)`</td>
+<td>Returns NULL if target freed</td>
+</tr>
+<tr>
+<td>Track for GC</td>
+<td>`rt_gc_track(obj, traverse_fn)`</td>
+<td>Required for cycle detection</td>
+</tr>
+<tr>
+<td>Collect cycles</td>
+<td>`rt_gc_collect()`</td>
+<td>Synchronous; returns count freed</td>
+</tr>
+<tr>
+<td>Intern string</td>
+<td>`rt_string_intern(s)`</td>
+<td>Returns canonical pointer</td>
+</tr>
+<tr>
+<td>Mark disposed</td>
+<td>`rt_heap_mark_disposed(p)`</td>
+<td>Debug aid; atomic flag</td>
+</tr>
+<tr>
+<td>Pool stats</td>
+<td>`rt_pool_stats(class, &amp;alloc, &amp;free)`</td>
+<td>Per-class diagnostics</td>
+</tr>
+</tbody></table>
+<h3 id="ownership-rules">Ownership Rules</h3>
+<ol>
+<li>Every <code>rt_heap_alloc</code> / <code>rt_obj_new_i64</code> / <code>rt_string_from_bytes</code> returns</li>
+</ul>
+<p>ownership (refcount=1). The caller is responsible for releasing.</p>
+<ol>
+<li><code>rt_heap_retain</code> / <code>rt_string_ref</code> to share ownership.</li>
+<li><code>rt_heap_release</code> / <code>rt_string_unref</code> to relinquish ownership.</li>
+<li>The last release frees the object.</li>
+<li>Immortal strings (literals, interned) skip the retain/release cycle entirely.</li>
+<li>**List elements** are auto-managed by the list (retained on store, released</li>
+</ul>
+<p>on removal).</p>
+<ol>
+<li>**Seq elements** are **NOT** auto-managed — caller&#x27;s responsibility.</li>
+<li>The cycle GC only helps objects explicitly registered via <code>rt_gc_track</code>.</li>
+<li><code>rt_str_concat</code> consumes both operands — do not use <code>a</code> or <code>b</code> after calling.</li>
+</ul>
+<p>---</p>
+<h2 id="glossary">Glossary</h2>
+<table><thead><tr>
+<th>Term</th>
+<th>Definition</th>
+</tr></thead><tbody>
+<tr>
+<td>**Immortal string**</td>
+<td>A string with `refcnt == SIZE_MAX`; never freed. Created by `rt_str_from_lit()` or `rt_const_cstr()`.</td>
+</tr>
+<tr>
+<td>**Pool-allocated**</td>
+<td>Memory sourced from the slab allocator. Identified by `RT_HEAP_FLAG_POOLED` (bit 1) in the header flags.</td>
+</tr>
+<tr>
+<td>**Trial deletion**</td>
+<td>The algorithm used by the cycle GC: temporarily decrement refcounts to identify objects only reachable through cycles.</td>
+</tr>
+<tr>
+<td>**Object resurrection**</td>
+<td>Re-arming an object&#x27;s refcount from 0→1 inside a finalizer, preventing deallocation. Used for pool recycling.</td>
+</tr>
+<tr>
+<td>**Deferred release**</td>
+<td>Decrementing the refcount without immediately freeing, allowing cleanup code to run while the allocation remains valid.</td>
+</tr>
+<tr>
+<td>**Tagged pointer**</td>
+<td>A pointer with metadata (version counter) packed in unused upper bits. Used by the pool freelist for ABA prevention.</td>
+</tr>
+<tr>
+<td>**Consume semantics**</td>
+<td>A function that releases its operand references and returns a new reference. Callers must not use the operands after the call.</td>
+</tr>
+</tbody></table>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../../features/native-targets.html">Native Targets</a>
+      <a href="../../features/two-languages.html">Languages</a>
+      <a href="../../features/runtime.html">Runtime Library</a>
+      <a href="../../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../../docs/getting-started.html">Getting Started</a>
+      <a href="../../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../../docs/runtime/">Runtime API</a>
+      <a href="../../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../../contributing/">Contributing</a>
+      <a href="../../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../../main.js"></script>
+</body>
+</html>

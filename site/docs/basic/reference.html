@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BASIC Language Reference — Viper</title>
+  <meta name="description" content="Viper documentation: BASIC Language Reference">
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="icon" href="../../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../../docs/" class="active">Docs</a>
+    <a href="../../learn/">Learn</a>
+    <a href="../../showcase/">Showcase</a>
+    <a href="../../performance/">Performance</a>
+    <a href="../../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../../">Home</a> / <a href="../../docs">Docs</a> / <span>BASIC Language Reference</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#key-language-features">Key Language Features</a></li>
+        <li><a href="#table-of-contents">Table of Contents</a></li>
+        <li><a href="#statements-a-z">Statements A–Z</a></li>
+        <li><a href="#runtime-classes-viper">Runtime Classes (Viper.*)</a></li>
+        <li><a href="#expressions-operators">Expressions &amp; operators</a></li>
+        <li><a href="#built-in-functions">Built-in functions</a></li>
+        <li><a href="#viperlib-namespaces">ViperLib &amp; Namespaces</a></li>
+        <li><a href="#reserved-root">Reserved Root</a></li>
+        <li><a href="#namespaces-using">Namespaces &amp; USING</a></li>
+        <li><a href="#keyword-index">Keyword index</a></li>
+        <li><a href="#runtime-classes-usage-examples">Runtime Classes Usage Examples</a></li>
+        <li><a href="#oop-semantics">OOP Semantics</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>BASIC Language Reference</h1>
+<h1 id="viper-basic-reference">Viper BASIC — Reference</h1>
+<p>Complete language reference for Viper BASIC. This document describes <strong>statements</strong>, <strong>expressions &amp; operators</strong>, *</p>
+<p><em>built-in functions<strong>, </strong>object features<strong>, and </strong>I/O</em><em>. For a tutorial introduction, see </em></p>
+<p><em>[BASIC Tutorial](basic-language.md)</em>*.</p>
+<p>---</p>
+<h2 id="key-language-features">Key Language Features</h2>
+<ul>
+<li><strong>Assignment</strong>: Requires <code>LET</code> keyword (e.g., <code>LET X = 2</code>)</li>
+<li><strong>Function calls</strong>: Use <code>Name(args)</code> with parentheses (required in expressions). For statement-form</li>
+</ul>
+<p>SUB calls, parentheses are required when passing arguments; the legacy paren-less form for zero-arg</p>
+<p>SUBs is accepted in statement position.</p>
+<ul>
+<li><strong>Built-ins</strong>: Must be called with parentheses, even with zero arguments (<code>RND()</code>, <code>INKEY$()</code>)</li>
+<li><strong>Arrays</strong>: One-dimensional, zero-based; require <code>DIM</code> or <code>REDIM</code></li>
+<li><strong>Short-circuit operators</strong>: <code>ANDALSO</code> and <code>ORELSE</code> (vs. <code>AND</code> and <code>OR</code>)</li>
+<li><strong>Functions</strong>: Return values with <code>RETURN</code>; subroutines use <code>SUB</code></li>
+<li><strong>Objects</strong>: <code>CLASS</code>, methods, fields, <code>ME</code>, <code>NEW</code>, <code>DELETE</code>, optional <code>DESTRUCTOR</code></li>
+<li><strong>Enums</strong>: <code>ENUM...END ENUM</code> blocks with named integer constants and dot-notation access</li>
+</ul>
+<p>---</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li>[Statements A–Z](#statements-az)</li>
+<li>[Expressions &amp; Operators](#expressions--operators)</li>
+<li>[Built-in Functions](#built-in-functions)</li>
+<li>[Namespaces &amp; USING](#namespaces--using)</li>
+<li>[ViperLib &amp; Namespaces](#viperlib--namespaces)</li>
+<li>[Reserved Root](#reserved-root)</li>
+<li>[Keyword Index](#keyword-index)</li>
+<li>[Runtime Classes (Viper.*)](#runtime-classes-viper)</li>
+<li>[Runtime Classes Usage Examples](#runtime-classes-usage-examples)</li>
+</ul>
+<p>---</p>
+<h2 id="statements-a-z">Statements A–Z</h2>
+<h3 id="">&#x27;</h3>
+<p>Comment. A leading apostrophe starts a comment.</p>
+<pre><code data-lang="basic">
+10 &#x27; Single-line comment
+20 PRINT &quot;Hello&quot;
+</code></pre>
+<h3 id="class-new-delete">CLASS / NEW / DELETE</h3>
+<p>Defines classes with scalar or array fields; construct with NEW, optionally free with DELETE. Array fields may be</p>
+<p>declared with dimensions and accessed using <code>obj.field(index)</code>.</p>
+<pre><code data-lang="basic">
+10 CLASS Counter
+20   X AS INTEGER
+30   SUB NEW()
+40     LET ME.X = 0
+50   END SUB
+60   SUB INC()
+70     LET ME.X = ME.X + 1
+80   END SUB
+90 END CLASS
+
+100 DIM c AS Counter
+110 LET c = NEW Counter()
+120 c.INC()
+130 PRINT c.X
+140 DELETE c
+</code></pre>
+<p>Array fields:</p>
+<pre><code data-lang="basic">
+10 CLASS Buffer
+20   DIM data(8) AS INTEGER
+30 END CLASS
+
+40 DIM b AS Buffer
+50 LET b = NEW Buffer()      &#x27; data() allocated length 8 by constructor
+60 LET b.data(0) = 42
+70 PRINT b.data(0)
+</code></pre>
+<p>Notes:</p>
+<ul>
+<li>When an array field includes dimensions in the class definition, the constructor allocates the array to the specified</li>
+</ul>
+<p>length.</p>
+<ul>
+<li>String array fields are supported; element loads/stores retain/release strings automatically.</li>
+</ul>
+<h3 id="beep">BEEP</h3>
+<p>Emits a beep or bell sound.</p>
+<pre><code data-lang="basic">
+10 BEEP
+20 PRINT &quot;Alert!&quot;
+</code></pre>
+<h3 id="cls">CLS</h3>
+<p>Clears the screen and moves the cursor home (1,1). No-op when stdout is not a TTY.</p>
+<pre><code data-lang="basic">
+10 CLS
+20 PRINT &quot;Clean screen&quot;
+</code></pre>
+<h3 id="close">CLOSE</h3>
+<p>Closes an open file number.</p>
+<pre><code data-lang="basic">
+10 OPEN &quot;out.txt&quot; FOR OUTPUT AS #1
+20 PRINT #1, &quot;Hello&quot;
+30 CLOSE #1
+</code></pre>
+<h3 id="color">COLOR</h3>
+<p>Sets terminal foreground and background colors. Uses values 0-7 for normal colors, 8-15 for bright colors, or -1 to</p>
+<p>leave unchanged.</p>
+<pre><code data-lang="basic">
+10 COLOR 15, 1   &#x27; Bright white on blue
+20 PRINT &quot;Colored text&quot;
+30 COLOR -1, -1  &#x27; Reset to defaults
+</code></pre>
+<h3 id="destructor">DESTRUCTOR</h3>
+<p>Optional destructor called on DELETE and finalization.</p>
+<pre><code data-lang="basic">
+10 CLASS WithFile
+20   FH AS INTEGER
+30   SUB NEW()
+40     OPEN &quot;out.txt&quot; FOR OUTPUT AS #1
+50   END SUB
+60   DESTRUCTOR()
+70     CLOSE #1
+80   END DESTRUCTOR
+90 END CLASS
+</code></pre>
+<h3 id="dim">DIM</h3>
+<p>Declares a variable or array. Required for arrays; optional for scalars (to pin type).</p>
+<pre><code data-lang="basic">
+10 DIM A(5)           &#x27; array 0..4
+20 DIM Flag AS BOOLEAN
+</code></pre>
+<h3 id="do-loop">DO ... LOOP</h3>
+<p>Loop with condition at start or end (DO WHILE/UNTIL … LOOP or DO … LOOP UNTIL/WHILE).</p>
+<pre><code data-lang="basic">
+10 LET I = 3
+20 DO
+30   LET I = I - 1
+40 LOOP UNTIL I = 0
+</code></pre>
+<h3 id="end">END</h3>
+<p>Terminates program execution immediately.</p>
+<pre><code data-lang="basic">
+10 PRINT &quot;before end&quot;
+20 END
+30 PRINT &quot;this never prints&quot;
+</code></pre>
+<h3 id="enum">ENUM</h3>
+<p>Declares a named set of integer constants. Variants are auto-numbered from 0, or may specify explicit values.</p>
+<pre><code data-lang="basic">
+ENUM Direction
+  NORTH           &#x27; 0
+  SOUTH           &#x27; 1
+  EAST            &#x27; 2
+  WEST            &#x27; 3
+END ENUM
+
+LET d = Direction.NORTH
+</code></pre>
+<p>Explicit and mixed values:</p>
+<pre><code data-lang="basic">
+ENUM Priority
+  LOW             &#x27; 0
+  MEDIUM = 5      &#x27; 5
+  HIGH            &#x27; 6
+  CRITICAL        &#x27; 7
+END ENUM
+</code></pre>
+<p>Negative values are supported (<code>BACKWARD = -1</code>). Duplicate variant names produce a compile error.</p>
+<h3 id="exit">EXIT</h3>
+<p>Exits the nearest loop (EXIT FOR / EXIT DO).</p>
+<pre><code data-lang="basic">
+10 FOR I = 1 TO 10
+20   IF I = 3 THEN EXIT FOR
+30   PRINT I
+40 NEXT
+</code></pre>
+<h3 id="for-next">FOR ... NEXT</h3>
+<p>Counted loop; optional STEP.</p>
+<pre><code data-lang="basic">
+10 FOR I = 1 TO 5
+20   PRINT I
+30 NEXT
+</code></pre>
+<h3 id="gosub">GOSUB</h3>
+<p>Subroutine call to a line label; returns with RETURN (statement-form).</p>
+<pre><code data-lang="basic">
+10 GOSUB 100
+20 PRINT &quot;back&quot;
+30 END
+100 PRINT &quot;in subroutine&quot;
+110 RETURN
+</code></pre>
+<p>---</p>
+<h2 id="runtime-classes-viper">Runtime Classes (Viper.*)</h2>
+<p>Runtime classes are built-in types provided by the Viper runtime and exposed under the <code>Viper.*</code> namespace. They behave</p>
+<p>like objects with properties and methods but are implemented by canonical runtime extern functions. The receiver (</p>
+<p>instance) is passed as the first argument when lowering to the runtime.</p>
+<ul>
+<li>Properties/methods lower to canonical <code>Viper.*</code> externs with the receiver as arg0.</li>
+<li>Behavior and traps match the underlying runtime helpers.</li>
+<li>BASIC <code>STRING</code> is an alias of <code>Viper.String</code>.</li>
+<li>Optional <code>NEW</code> is available when a constructor helper is defined.</li>
+</ul>
+<h3 id="example-viper-string">Example: `Viper.String`</h3>
+<pre><code data-lang="basic">
+10 DIM s AS Viper.String
+20 LET s = &quot;hello&quot;
+30 PRINT s.Length              &#x27; prints 5
+40 PRINT s.Substring(1, 3)     &#x27; zero-based start, length → &quot;ell&quot;
+45 PRINT s.Mid(1)              &#x27; suffix from index 1 → &quot;ello&quot;
+50 LET s2 = NEW Viper.String(&quot;abc&quot;)  &#x27; optional: requires ctor helper
+</code></pre>
+<p>Lowering equivalence (receiver as first argument):</p>
+<ul>
+<li><code>s.Length</code> → <code>Viper.String.get_Length(s)</code></li>
+<li><code>s.Substring(i, n)</code> → <code>Viper.String.Substring(s, i, n)</code></li>
+<li><code>s.Mid(i)</code> → <code>Viper.String.Mid(s, i)</code> — suffix from position i (no length)</li>
+<li><code>NEW Viper.String(x)</code> → <code>Viper.String.FromStr(x)</code> (when available)</li>
+</ul>
+<p>Null and bounds:</p>
+<ul>
+<li>Accessing a property/method on a null receiver traps.</li>
+<li><code>Substring</code> traps on invalid inputs consistent with runtime rules; zero-length results return the empty string.</li>
+</ul>
+<p>BASIC <code>STRING</code> alias:</p>
+<pre><code data-lang="basic">
+10 DIM s AS STRING
+20 LET s = &quot;abcd&quot;
+30 PRINT s.Length   &#x27; same as Viper.String
+</code></pre>
+<h3 id="viper-string-api">`Viper.String` API</h3>
+<p>Properties:</p>
+<ul>
+<li><code>Length: i64</code> → <code>Viper.String.get_Length(string)</code></li>
+<li><code>IsEmpty: i1</code> → <code>Viper.String.get_IsEmpty(string)</code></li>
+</ul>
+<p>Methods:</p>
+<ul>
+<li><code>Substring(i64 start, i64 length) -&gt; string</code> → <code>Viper.String.Substring(string, i64, i64)</code></li>
+<li><code>Mid(i64 start) -&gt; string</code> → <code>Viper.String.Mid(string, i64)</code> — suffix from start (no length)</li>
+<li><code>Concat(string other) -&gt; string</code> → <code>Viper.String.Concat(string, string)</code></li>
+</ul>
+<p>Constructor helper (optional):</p>
+<ul>
+<li><code>FromStr(string s) -&gt; string</code> → <code>Viper.String.FromStr(string)</code></li>
+</ul>
+<h3 id="viper-collections-list-non-generic">`Viper.Collections.List` (non-generic)</h3>
+<p>Canonical, non-generic list that stores object references (opaque <code>obj</code>). Type safety is enforced by user code; the</p>
+<p>runtime does not check element types.</p>
+<p>Properties:</p>
+<ul>
+<li><code>Len: i64</code> → <code>Viper.Collections.List.get_Length(obj)</code></li>
+</ul>
+<p>Methods:</p>
+<ul>
+<li><code>Push(obj value) -&gt; void</code> → <code>Viper.Collections.List.Push(obj,obj)</code></li>
+<li><code>Clear() -&gt; void</code> → <code>Viper.Collections.List.Clear(obj)</code></li>
+<li><code>RemoveAt(i64 index) -&gt; void</code> → <code>Viper.Collections.List.RemoveAt(obj,i64)</code></li>
+<li><code>Get(i64 index) -&gt; obj</code> → <code>Viper.Collections.List.Get(obj,i64)</code></li>
+<li><code>Set(i64 index, obj value) -&gt; void</code> → <code>Viper.Collections.List.Set(obj,i64,obj)</code></li>
+</ul>
+<p>Semantics:</p>
+<ul>
+<li>Indexes are zero-based. Negative or out-of-range indexes trap at runtime (bounds error).</li>
+<li><code>Clear()</code> resets <code>Len</code> to 0.</li>
+<li>Elements are stored as opaque references; no automatic type conversions are performed.</li>
+</ul>
+<h3 id="goto">GOTO</h3>
+<p>Unconditional jump to a numeric line label.</p>
+<pre><code data-lang="basic">
+10 GOTO 40
+20 PRINT &quot;skipped&quot;
+40 PRINT &quot;landed&quot;
+</code></pre>
+<h3 id="if-then">IF ... THEN</h3>
+<p>Conditional execution; optional ELSEIF / ELSE; terminated by END IF.</p>
+<pre><code data-lang="basic">
+10 IF X = 0 THEN
+20   PRINT &quot;zero&quot;
+30 ELSEIF X &lt; 0 THEN
+40   PRINT &quot;negative&quot;
+50 ELSE
+60   PRINT &quot;positive&quot;
+70 END IF
+</code></pre>
+<h3 id="input">INPUT</h3>
+<p>Reads tokens from standard input into variables.</p>
+<pre><code data-lang="basic">
+10 INPUT &quot;Name? &quot;, N$
+20 PRINT &quot;Hello, &quot;; N$
+</code></pre>
+<h3 id="let">LET</h3>
+<p>Assignment to a variable, array element, or field. Required for assignment statements.</p>
+<pre><code data-lang="basic">
+10 LET X = 2
+20 DIM A(3)
+30 LET A(0) = X
+</code></pre>
+<h3 id="line-input">LINE INPUT</h3>
+<p>Reads an entire line into a string variable.</p>
+<pre><code data-lang="basic">
+10 LINE INPUT &quot;Line? &quot;, L$
+20 PRINT &quot;You typed: &quot;; L$
+</code></pre>
+<h3 id="locate">LOCATE</h3>
+<p>Moves the terminal cursor to a 1-based row and column position. No-op when stdout is not a TTY.</p>
+<pre><code data-lang="basic">
+10 CLS
+20 LOCATE 10, 20
+30 PRINT &quot;Centered&quot;
+</code></pre>
+<h3 id="on-error-goto">ON ERROR GOTO</h3>
+<p>Installs an error handler at a line label.</p>
+<pre><code data-lang="basic">
+10 ON ERROR GOTO 100
+20 OPEN &quot;missing.txt&quot; FOR INPUT AS #1
+30 PRINT &quot;opened&quot;
+40 END
+100 PRINT &quot;failed to open&quot;
+110 RESUME 0
+</code></pre>
+<h3 id="try-catch">TRY … CATCH</h3>
+<p>Structured error handling that scopes a handler to a lexical block.</p>
+<p>Syntax:</p>
+<pre><code data-lang="basic">
+TRY
+  &#x27; protected statements
+CATCH [errVar]
+  &#x27; handler statements
+END TRY
+</code></pre>
+<p>Behavior:</p>
+<ul>
+<li>Errors raised in the TRY body transfer to the CATCH block.</li>
+<li>After the CATCH block finishes, execution continues after <code>END TRY</code>.</li>
+<li><code>errVar</code> (optional) is a local INTEGER (i64) visible only within the CATCH block.</li>
+<li>Inside CATCH, <code>ERR()</code> returns the error code (same meaning as in <code>ON ERROR</code> handlers).</li>
+<li>Nested TRY/CATCH is allowed; handlers stack in last-in–first-out order.</li>
+<li>Interaction with <code>ON ERROR GOTO</code>: a TRY installs a handler on top of any existing handler and pops it at <code>END TRY</code> (</li>
+</ul>
+<p>the outer <code>ON ERROR</code> handler remains active).</p>
+<p>Examples</p>
+<p>Divide by zero is caught and control resumes after the block:</p>
+<pre><code data-lang="basic">
+10 TRY
+20   LET Z = 0
+25   LET X = 1 / Z
+30   PRINT &quot;nope&quot;
+40 CATCH e
+50   PRINT &quot;caught &quot;; STR$(ERR())
+60 END TRY
+70 PRINT &quot;after&quot;
+</code></pre>
+<p>Output:</p>
+<pre><code data-lang="text">
+caught 0
+after
+</code></pre>
+<p>Nested TRY where the inner handler fires and does not leak outward:</p>
+<pre><code data-lang="basic">
+10 TRY
+20   TRY
+30     OPEN &quot;missing.txt&quot; FOR INPUT AS #1
+40     PRINT &quot;opened&quot;
+50   CATCH
+60     PRINT &quot;inner&quot;
+70   END TRY
+80   PRINT &quot;outer-body&quot;
+90 CATCH
+100  PRINT &quot;outer&quot;
+110 END TRY
+</code></pre>
+<p>Output:</p>
+<pre><code data-lang="text">
+inner
+outer-body
+</code></pre>
+<h3 id="open">OPEN</h3>
+<p>Opens a file and assigns it a file number (#).</p>
+<pre><code data-lang="basic">
+10 OPEN &quot;out.txt&quot; FOR OUTPUT AS #1
+20 PRINT #1, &quot;Hello&quot;
+30 CLOSE #1
+</code></pre>
+<h3 id="print">PRINT</h3>
+<p>Writes to the console. &#x27;;&#x27; suppresses newline; &#x27;,&#x27; aligns to columns.</p>
+<pre><code data-lang="basic">
+10 PRINT &quot;Hello, world&quot;
+20 PRINT &quot;A&quot;; &quot;B&quot;      &#x27; prints AB (no newline between)
+30 PRINT &quot;A&quot;, &quot;B&quot;      &#x27; prints in columns
+</code></pre>
+<h3 id="print">PRINT #</h3>
+<p>Writes to a file using PRINT formatting.</p>
+<pre><code data-lang="basic">
+10 OPEN &quot;log.txt&quot; FOR OUTPUT AS #1
+20 PRINT #1, &quot;Started&quot;
+30 CLOSE #1
+</code></pre>
+<h3 id="randomize">RANDOMIZE</h3>
+<p>Seeds the random number generator with a given value or current time.</p>
+<pre><code data-lang="basic">
+10 RANDOMIZE 12345    &#x27; Use specific seed
+20 PRINT RND()        &#x27; Reproducible sequence
+</code></pre>
+<pre><code data-lang="basic">
+10 RANDOMIZE TIMER    &#x27; Seed from current time
+20 PRINT RND()        &#x27; Different each run
+</code></pre>
+<h3 id="redim">REDIM</h3>
+<p>Resizes an existing array (contents may be reinitialized).</p>
+<pre><code data-lang="basic">
+10 DIM A(2)           &#x27; 0..1
+20 REDIM A(10)        &#x27; 0..9
+</code></pre>
+<h3 id="resume">RESUME</h3>
+<p>Resumes execution after an error; forms: RESUME, RESUME NEXT, RESUME 0.</p>
+<pre><code data-lang="basic">
+100 PRINT &quot;failed to open&quot;
+110 RESUME 0
+</code></pre>
+<h3 id="return">RETURN</h3>
+<p>Returns from a FUNCTION to its caller, or from a GOSUB subroutine to its call site.</p>
+<pre><code data-lang="basic">
+10 FUNCTION F(N)
+20   IF N &lt; 0 THEN RETURN -1
+30   RETURN N * 2
+40 END FUNCTION
+</code></pre>
+<pre><code data-lang="basic">
+10 GOSUB 100
+20 PRINT &quot;back&quot;
+30 END
+100 PRINT &quot;in subroutine&quot;
+110 RETURN   &#x27; RETURN with no value in GOSUB context
+</code></pre>
+<h3 id="seek">SEEK</h3>
+<p>Sets or queries the file position for a file number.</p>
+<pre><code data-lang="basic">
+10 OPEN &quot;data.bin&quot; FOR BINARY AS #1
+20 SEEK #1, 0        &#x27; go to start
+30 CLOSE #1
+</code></pre>
+<h3 id="select-case">SELECT CASE</h3>
+<p>Multi-way branch on a value; range and relational cases supported.</p>
+<pre><code data-lang="basic">
+10 SELECT CASE N
+20 CASE &lt; 0: PRINT &quot;neg&quot;
+30 CASE 0:   PRINT &quot;zero&quot;
+40 CASE 1 TO 9: PRINT &quot;small&quot;
+50 CASE ELSE: PRINT &quot;big&quot;
+60 END SELECT
+</code></pre>
+<h3 id="sub-function">SUB / FUNCTION</h3>
+<p>Declares procedures and functions. Functions return a value via RETURN.</p>
+<pre><code data-lang="basic">
+10 SUB HELLO(S$)
+20   PRINT &quot;Hello, &quot;; S$
+30 END SUB
+
+40 FUNCTION SQUARE(N)
+50   RETURN N * N
+60 END FUNCTION
+
+70 HELLO(&quot;Ada&quot;)            &#x27; statement call (parentheses required)
+80 LET X = SQUARE(9)       &#x27; function in expression
+</code></pre>
+<h3 id="while-wend">WHILE ... WEND</h3>
+<p>Loop while a condition is true.</p>
+<pre><code data-lang="basic">
+10 LET I = 0
+20 WHILE I &lt; 3
+30   PRINT I
+40   LET I = I + 1
+50 WEND
+</code></pre>
+<h3 id="write">WRITE #</h3>
+<p>Writes comma-delimited data with quotes, to a file number.</p>
+<pre><code data-lang="basic">
+10 OPEN &quot;out.csv&quot; FOR OUTPUT AS #1
+20 WRITE #1, 1, &quot;two&quot;, 3.0
+30 CLOSE #1
+</code></pre>
+<h2 id="expressions-operators">Expressions &amp; operators</h2>
+<ul>
+<li>Arithmetic: <code>+ - * / \</code> (integer division), <code>MOD</code></li>
+<li>Comparison: <code>= &lt;&gt; &lt; &lt;= &gt; &gt;=</code></li>
+<li>Booleans: <code>NOT</code>, <code>AND</code>, <code>OR</code>, <strong><code>ANDALSO</code></strong>, <strong><code>ORELSE</code></strong> (short‑circuit)</li>
+<li>String concatenation: <code>+</code></li>
+</ul>
+<p><strong>Precedence (high → low)</strong>: unary (<code>NOT</code>), <code>* / \ MOD</code>, <code>+ -</code>, comparisons, <code>ANDALSO/ORELSE</code>, <code>AND/OR</code>.</p>
+<h2 id="built-in-functions">Built-in functions</h2>
+<p>The following built-ins are available. Use them in expressions (e.g., <code>LET X = ABS(-3)</code>).</p>
+<table><thead><tr>
+<th>Name</th>
+<th>Args</th>
+<th>Returns</th>
+</tr></thead><tbody>
+<tr>
+<td>ABS</td>
+<td>1</td>
+<td>Numeric</td>
+</tr>
+<tr>
+<td>ASC</td>
+<td>1</td>
+<td>Integer</td>
+</tr>
+<tr>
+<td>ATN</td>
+<td>1</td>
+<td>Float</td>
+</tr>
+<tr>
+<td>CDBL</td>
+<td>1</td>
+<td>Float</td>
+</tr>
+<tr>
+<td>CEIL</td>
+<td>1</td>
+<td>Numeric</td>
+</tr>
+<tr>
+<td>CHR$</td>
+<td>1</td>
+<td>String</td>
+</tr>
+<tr>
+<td>CINT</td>
+<td>1</td>
+<td>Integer</td>
+</tr>
+<tr>
+<td>CLNG</td>
+<td>1</td>
+<td>Integer</td>
+</tr>
+<tr>
+<td>COS</td>
+<td>1</td>
+<td>Float</td>
+</tr>
+<tr>
+<td>CSNG</td>
+<td>1</td>
+<td>Float</td>
+</tr>
+<tr>
+<td>EOF</td>
+<td>1</td>
+<td>Integer</td>
+</tr>
+<tr>
+<td>ERR</td>
+<td>0</td>
+<td>Integer</td>
+</tr>
+<tr>
+<td>EXP</td>
+<td>1</td>
+<td>Float</td>
+</tr>
+<tr>
+<td>FIX</td>
+<td>1</td>
+<td>Numeric</td>
+</tr>
+<tr>
+<td>FLOOR</td>
+<td>1</td>
+<td>Numeric</td>
+</tr>
+<tr>
+<td>GETKEY$</td>
+<td>0</td>
+<td>String</td>
+</tr>
+<tr>
+<td>INKEY$</td>
+<td>0</td>
+<td>String</td>
+</tr>
+<tr>
+<td>INSTR</td>
+<td>2–3</td>
+<td>Integer</td>
+</tr>
+<tr>
+<td>INT</td>
+<td>1</td>
+<td>Numeric</td>
+</tr>
+<tr>
+<td>LCASE$</td>
+<td>1</td>
+<td>String</td>
+</tr>
+<tr>
+<td>LEFT$</td>
+<td>2</td>
+<td>String</td>
+</tr>
+<tr>
+<td>LEN</td>
+<td>1</td>
+<td>Integer</td>
+</tr>
+<tr>
+<td>LOC</td>
+<td>1</td>
+<td>Integer</td>
+</tr>
+<tr>
+<td>LOF</td>
+<td>1</td>
+<td>Integer</td>
+</tr>
+<tr>
+<td>LOG</td>
+<td>1</td>
+<td>Float</td>
+</tr>
+<tr>
+<td>LTRIM$</td>
+<td>1</td>
+<td>String</td>
+</tr>
+<tr>
+<td>MID$</td>
+<td>2–3</td>
+<td>String</td>
+</tr>
+<tr>
+<td>POW</td>
+<td>2</td>
+<td>Numeric</td>
+</tr>
+<tr>
+<td>RIGHT$</td>
+<td>2</td>
+<td>String</td>
+</tr>
+<tr>
+<td>RND</td>
+<td>0</td>
+<td>Float</td>
+</tr>
+<tr>
+<td>ROUND</td>
+<td>1–2</td>
+<td>Numeric</td>
+</tr>
+<tr>
+<td>RTRIM$</td>
+<td>1</td>
+<td>String</td>
+</tr>
+<tr>
+<td>SGN</td>
+<td>1</td>
+<td>Integer</td>
+</tr>
+<tr>
+<td>SIN</td>
+<td>1</td>
+<td>Float</td>
+</tr>
+<tr>
+<td>SQR</td>
+<td>1</td>
+<td>Float</td>
+</tr>
+<tr>
+<td>STR$</td>
+<td>1</td>
+<td>String</td>
+</tr>
+<tr>
+<td>TAN</td>
+<td>1</td>
+<td>Float</td>
+</tr>
+<tr>
+<td>TIMER</td>
+<td>0</td>
+<td>Float</td>
+</tr>
+<tr>
+<td>TRIM$</td>
+<td>1</td>
+<td>String</td>
+</tr>
+<tr>
+<td>UCASE$</td>
+<td>1</td>
+<td>String</td>
+</tr>
+<tr>
+<td>VAL</td>
+<td>1</td>
+<td>Float</td>
+</tr>
+</tbody></table>
+<h3 id="built-in-examples">Built-in examples</h3>
+<p><strong>Numeric</strong></p>
+<pre><code data-lang="basic">
+10 PRINT ABS(-3)         &#x27; 3
+20 PRINT SQR(9)          &#x27; 3
+30 PRINT INT(3.9)        &#x27; 3
+40 PRINT FIX(-3.9)       &#x27; -3
+50 PRINT ROUND(2.6)      &#x27; 3
+60 PRINT FLOOR(2.6)      &#x27; 2
+70 PRINT CEIL(2.1)       &#x27; 3
+80 PRINT POW(2, 10)      &#x27; 1024
+90 PRINT SIN(0), COS(0)  &#x27; 0  1
+100 PRINT TAN(0)          &#x27; 0
+110 PRINT ATN(1) * 4      &#x27; 3.14159... (pi)
+120 PRINT EXP(1)          &#x27; 2.71828... (e)
+130 PRINT LOG(2.71828)    &#x27; ~1  (natural log)
+140 PRINT SGN(-5)         &#x27; -1
+150 PRINT SGN(0)          &#x27; 0
+160 PRINT TIMER           &#x27; seconds since midnight
+170 PRINT ERR()           &#x27; current error code (0 = none)
+</code></pre>
+<p><strong>String</strong></p>
+<pre><code data-lang="basic">
+10 PRINT LEN(&quot;abc&quot;)            &#x27; 3
+20 PRINT LEFT$(&quot;hello&quot;, 2)     &#x27; &quot;he&quot;
+30 PRINT RIGHT$(&quot;hello&quot;, 3)    &#x27; &quot;llo&quot;
+40 PRINT MID$(&quot;hello&quot;, 2, 2)   &#x27; &quot;el&quot;
+50 PRINT INSTR(&quot;banana&quot;, &quot;na&quot;) &#x27; 3
+60 PRINT LTRIM$(&quot;  hi&quot;)        &#x27; &quot;hi&quot;
+70 PRINT RTRIM$(&quot;hi  &quot;)        &#x27; &quot;hi&quot;
+80 PRINT TRIM$(&quot;  hi  &quot;)       &#x27; &quot;hi&quot;
+90 PRINT UCASE$(&quot;hi&quot;)          &#x27; &quot;HI&quot;
+100 PRINT LCASE$(&quot;HI&quot;)         &#x27; &quot;hi&quot;
+110 PRINT CHR$(65)             &#x27; &quot;A&quot;
+120 PRINT ASC(&quot;A&quot;)             &#x27; 65
+</code></pre>
+<p><strong>Conversion &amp; random</strong></p>
+<pre><code data-lang="basic">
+10 PRINT CINT(3.9)             &#x27; 4
+20 PRINT CLNG(3.9)             &#x27; 4
+30 PRINT CSNG(3.5)             &#x27; 3.5
+40 PRINT CDBL(3.5)             &#x27; 3.5
+50 PRINT VAL(&quot;42&quot;)             &#x27; 42
+60 PRINT STR$(42)              &#x27; &quot; 42&quot;
+70 PRINT RND()                 &#x27; 0 &lt;= x &lt; 1
+</code></pre>
+<p><strong>Keyboard</strong></p>
+<pre><code data-lang="basic">
+10 LET K$ = INKEY$()
+20 IF K$ = &quot;&quot; THEN K$ = GETKEY$()
+30 PRINT &quot;Key: &quot;; K$
+</code></pre>
+<p><strong>File query</strong></p>
+<pre><code data-lang="basic">
+10 OPEN &quot;in.txt&quot; FOR INPUT AS #1
+20 PRINT EOF(#1)         &#x27; 0 until end of file
+30 PRINT LOF(#1)         &#x27; file length in bytes
+40 PRINT LOC(#1)         &#x27; current byte position
+50 CLOSE #1
+</code></pre>
+<h2 id="viperlib-namespaces">ViperLib &amp; Namespaces</h2>
+<p>ViperLib exposes procedures and types under the reserved <code>Viper.*</code> root namespace. You can call</p>
+<p>procedures fully qualified, or import a namespace with <code>USING</code>.</p>
+<ul>
+<li>Fully qualified:</li>
+</ul>
+<pre><code data-lang="basic">
+Viper.Terminal.PrintI64(42)
+</code></pre>
+<ul>
+<li>With USING (same line using <code>:</code>):</li>
+</ul>
+<pre><code data-lang="basic">
+USING Viper.Terminal : PrintI64(42)
+</code></pre>
+<ul>
+<li>Or as two lines:</li>
+</ul>
+<pre><code data-lang="basic">
+USING Viper.Terminal
+PrintI64(42)
+</code></pre>
+<h3 id="runtime-procedures">Runtime Procedures</h3>
+<p>All runtime procedures are available under canonical <code>Viper.<em></code> namespace names. Legacy <code>rt_</em></code> aliases are maintained for</p>
+<p>compatibility. Signatures shown as <code>Name(params)-&gt;result</code>.</p>
+<h4 id="viper-terminal">Viper.Terminal</h4>
+<p>Console I/O operations:</p>
+<ul>
+<li><code>Viper.Terminal.PrintI64(i64)-&gt;void</code> — Print an integer to console</li>
+<li><code>Viper.Terminal.PrintF64(f64)-&gt;void</code> — Print a floating-point number to console</li>
+<li><code>Viper.Terminal.PrintStr(str)-&gt;void</code> — Print a string to console</li>
+<li><code>Viper.Terminal.ReadLine()-&gt;str?</code> — Read a line from console input (returns null on EOF)</li>
+</ul>
+<h4 id="viper-string">Viper.String</h4>
+<p>String manipulation:</p>
+<ul>
+<li><code>Viper.String.get_Length(str)-&gt;i64</code> — Get string length</li>
+<li><code>Viper.String.Mid(str, i64, i64)-&gt;str</code> — Extract substring (start, length)</li>
+<li><code>Viper.String.Concat(str, str)-&gt;str</code> — Concatenate two strings</li>
+<li><code>Viper.String.SplitFields(str, ptr str, i64)-&gt;i64</code> — Split string into fields</li>
+<li><code>Viper.String.FromI16(i16)-&gt;str</code> — Convert int16 to string</li>
+<li><code>Viper.String.FromI32(i32)-&gt;str</code> — Convert int32 to string</li>
+<li><code>Viper.String.FromSingle(f64)-&gt;str</code> — Convert float to string (formats with single precision)</li>
+<li><code>Viper.Text.StringBuilder.New()-&gt;ptr</code> — Create a new StringBuilder instance</li>
+</ul>
+<h4 id="viper-convert">Viper.Convert</h4>
+<p>Type conversion:</p>
+<ul>
+<li><code>Viper.Convert.ToInt64(str)-&gt;i64</code> — Convert string to integer (throws on error)</li>
+<li><code>Viper.Convert.ToDouble(str)-&gt;f64</code> — Convert string to double (throws on error)</li>
+<li><code>Viper.Convert.ToString_Int(i64)-&gt;str</code> — Convert integer to string</li>
+<li><code>Viper.Convert.ToString_Double(f64)-&gt;str</code> — Convert double to string</li>
+</ul>
+<h4 id="viper-parse">Viper.Parse</h4>
+<p>Type parsing (with explicit error handling):</p>
+<ul>
+<li><code>Viper.Parse.Int64(cstr, ptr i64)-&gt;i32</code> — Parse int64, returns success code</li>
+<li><code>Viper.Parse.Double(cstr, ptr f64)-&gt;i32</code> — Parse double, returns success code</li>
+</ul>
+<h4 id="viper-diagnostics">Viper.Diagnostics</h4>
+<p>Error and diagnostic utilities:</p>
+<ul>
+<li><code>Viper.Diagnostics.Trap(str)-&gt;void</code> — Trigger a runtime trap with message</li>
+</ul>
+<h3 id="runtime-types">Runtime Types</h3>
+<p>ViperLib classes are recognized under <code>Viper.*</code>. These namespaced runtime types are known to the compiler for</p>
+<p>declarations and construction. Their method surfaces are being exposed progressively.</p>
+<h4 id="viper">Viper</h4>
+<p>Core types:</p>
+<ul>
+<li><code>Viper.Object</code> — Base class for all objects</li>
+<li><code>Viper.String</code> — Managed string type</li>
+</ul>
+<h4 id="viper-text">Viper.Text</h4>
+<p>Text processing types:</p>
+<ul>
+<li><code>Viper.Text.StringBuilder</code> — Mutable string builder (can be constructed with NEW)</li>
+</ul>
+<h4 id="viper-io">Viper.IO</h4>
+<p>I/O types:</p>
+<ul>
+<li><code>Viper.IO.File</code> — File operations class</li>
+</ul>
+<h4 id="viper-collections">Viper.Collections</h4>
+<p>Collection types:</p>
+<ul>
+<li><code>Viper.Collections.List</code> — Dynamic list container</li>
+</ul>
+<h3 id="examples">Examples</h3>
+<p>Using runtime procedures:</p>
+<pre><code data-lang="basic">
+USING Viper.Terminal
+USING Viper.String
+
+PrintStr(&quot;Length: &quot;)
+PrintI64(Len(&quot;hello&quot;))
+PrintStr(Concat(&quot;hello&quot;, &quot; world&quot;))
+</code></pre>
+<p>Using runtime types:</p>
+<pre><code data-lang="basic">
+DIM sb AS Viper.Text.StringBuilder
+LET sb = NEW Viper.Text.StringBuilder()
+</code></pre>
+<h3 id="migration-note">Migration Note</h3>
+<p>Legacy <code>rt_<em></code> function names (e.g., <code>rt_print_str</code>, <code>rt_str_len</code>) are maintained as aliases to their canonical <code>Viper.</em></code></p>
+<p>counterparts. New code should use the canonical names.</p>
+<h2 id="reserved-root">Reserved Root</h2>
+<p>The <code>Viper</code> root namespace is reserved for ViperLib. User code may not declare symbols under <code>Viper</code> (for</p>
+<p>example, <code>NAMESPACE Viper.Tools</code> is an error). You may import and call <code>Viper.*</code> library procedures, but define your own</p>
+<p>symbols under a different root.</p>
+<h2 id="namespaces-using">Namespaces &amp; USING</h2>
+<p><strong>IMPORTANT</strong>: USING directives are <strong>file-scoped only</strong> and must appear at the top of the file before any declarations.</p>
+<p>USING directives cannot appear inside NAMESPACE, CLASS, or INTERFACE blocks.</p>
+<h3 id="correct-usage">Correct Usage</h3>
+<pre><code data-lang="basic">
+&#x27; ✓ CORRECT: USING at file scope, before declarations
+USING Viper.Terminal
+
+NAMESPACE App
+  SUB Main()
+    &#x27; Use imported namespace without qualification
+    PrintI64(99)
+    &#x27; Or fully qualified (always works)
+    Viper.Terminal.PrintI64(99)
+  END SUB
+END NAMESPACE
+
+App.Main()
+</code></pre>
+<h3 id="incorrect-usage">Incorrect Usage</h3>
+<pre><code data-lang="basic">
+&#x27; ✗ WRONG: USING after NAMESPACE declaration (Error: E_NS_005)
+NAMESPACE App
+  SUB Main()
+  END SUB
+END NAMESPACE
+
+USING Viper.Terminal  &#x27; Error: USING must appear before all declarations
+</code></pre>
+<pre><code data-lang="basic">
+&#x27; ✗ WRONG: USING inside NAMESPACE block (Error: E_NS_008)
+NAMESPACE App
+  USING Viper.Terminal  &#x27; Error: USING inside NAMESPACE block not allowed
+  SUB Main()
+  END SUB
+END NAMESPACE
+</code></pre>
+<h3 id="using-rules">USING Rules</h3>
+<ol>
+<li>**File scope only**: USING must be at file scope, not inside any block</li>
+<li>**Before declarations**: USING must appear before any NAMESPACE, CLASS, or INTERFACE declarations</li>
+<li>**File-scoped effect**: Each file&#x27;s USING directives do not affect other compilation units</li>
+<li>**Two forms**:</li>
+<li>Simple: <code>USING Viper.Terminal</code> (imports all from namespace)</li>
+<li>Aliased: <code>USING VC = Viper.Terminal</code> (creates shorthand alias)</li>
+</ul>
+<p>For complete namespace documentation, see [Namespace Reference](basic-namespaces.md).</p>
+<h2 id="keyword-index">Keyword index</h2>
+<p>(All keywords are case-insensitive.)</p>
+<h3 id="a">A</h3>
+<ul>
+<li><code>ABS</code></li>
+<li><code>ABSTRACT</code></li>
+<li><code>ADDFILE</code></li>
+<li><code>ADDRESSOF</code></li>
+<li><code>ALTSCREEN</code></li>
+<li><code>AND</code></li>
+<li><code>ANDALSO</code></li>
+<li><code>APPEND</code></li>
+<li><code>AS</code></li>
+</ul>
+<h3 id="b">B</h3>
+<ul>
+<li><code>BASE</code></li>
+<li><code>BEEP</code></li>
+<li><code>BINARY</code></li>
+<li><code>BOOLEAN</code></li>
+<li><code>BYREF</code></li>
+<li><code>BYVAL</code></li>
+</ul>
+<h3 id="c">C</h3>
+<ul>
+<li><code>CASE</code></li>
+<li><code>CATCH</code></li>
+<li><code>CEIL</code></li>
+<li><code>CLASS</code></li>
+<li><code>CLOSE</code></li>
+<li><code>CLS</code></li>
+<li><code>COLOR</code></li>
+<li><code>CONST</code></li>
+<li><code>COS</code></li>
+<li><code>CURSOR</code></li>
+</ul>
+<h3 id="d">D</h3>
+<ul>
+<li><code>DELETE</code></li>
+<li><code>DESTRUCTOR</code></li>
+<li><code>DIM</code></li>
+<li><code>DO</code></li>
+</ul>
+<h3 id="e">E</h3>
+<ul>
+<li><code>EACH</code></li>
+<li><code>ELSE</code></li>
+<li><code>ELSEIF</code></li>
+<li><code>END</code></li>
+<li><code>ENUM</code></li>
+<li><code>EOF</code></li>
+<li><code>ERROR</code></li>
+<li><code>EXIT</code></li>
+</ul>
+<h3 id="f">F</h3>
+<ul>
+<li><code>FALSE</code></li>
+<li><code>FINAL</code></li>
+<li><code>FINALLY</code></li>
+<li><code>FLOOR</code></li>
+<li><code>FOR</code></li>
+<li><code>FUNCTION</code></li>
+</ul>
+<h3 id="g">G</h3>
+<ul>
+<li><code>GET</code></li>
+<li><code>GOSUB</code></li>
+<li><code>GOTO</code></li>
+</ul>
+<h3 id="i">I</h3>
+<ul>
+<li><code>IF</code></li>
+<li><code>IMPLEMENTS</code></li>
+<li><code>IN</code></li>
+<li><code>INPUT</code></li>
+<li><code>INTERFACE</code></li>
+<li><code>IS</code></li>
+</ul>
+<h3 id="l">L</h3>
+<ul>
+<li><code>LBOUND</code></li>
+<li><code>LET</code></li>
+<li><code>LINE</code></li>
+<li><code>LOC</code></li>
+<li><code>LOCATE</code></li>
+<li><code>LOF</code></li>
+<li><code>LOOP</code></li>
+</ul>
+<h3 id="m">M</h3>
+<ul>
+<li><code>ME</code></li>
+<li><code>MOD</code></li>
+</ul>
+<h3 id="n">N</h3>
+<ul>
+<li><code>NAMESPACE</code></li>
+<li><code>NEW</code></li>
+<li><code>NEXT</code></li>
+<li><code>NOT</code></li>
+<li><code>NOTHING</code></li>
+</ul>
+<h3 id="o">O</h3>
+<ul>
+<li><code>OFF</code></li>
+<li><code>ON</code></li>
+<li><code>OPEN</code></li>
+<li><code>OR</code></li>
+<li><code>ORELSE</code></li>
+<li><code>OUTPUT</code></li>
+<li><code>OVERRIDE</code></li>
+</ul>
+<h3 id="p">P</h3>
+<ul>
+<li><code>POW</code></li>
+<li><code>PRESERVE</code></li>
+<li><code>PRINT</code></li>
+<li><code>PRIVATE</code></li>
+<li><code>PROPERTY</code></li>
+<li><code>PUBLIC</code></li>
+</ul>
+<h3 id="r">R</h3>
+<ul>
+<li><code>RANDOM</code></li>
+<li><code>RANDOMIZE</code></li>
+<li><code>REDIM</code></li>
+<li><code>RESUME</code></li>
+<li><code>RETURN</code></li>
+<li><code>RND</code></li>
+</ul>
+<h3 id="s">S</h3>
+<ul>
+<li><code>SEEK</code></li>
+<li><code>SELECT</code></li>
+<li><code>SET</code></li>
+<li><code>SHARED</code></li>
+<li><code>SIN</code></li>
+<li><code>SLEEP</code></li>
+<li><code>SQR</code></li>
+<li><code>STATIC</code></li>
+<li><code>STEP</code></li>
+<li><code>SUB</code></li>
+<li><code>SWAP</code></li>
+</ul>
+<h3 id="t">T</h3>
+<ul>
+<li><code>THEN</code></li>
+<li><code>TO</code></li>
+<li><code>TRUE</code></li>
+<li><code>TRY</code></li>
+<li><code>TYPE</code></li>
+</ul>
+<h3 id="u">U</h3>
+<ul>
+<li><code>UBOUND</code></li>
+<li><code>UNTIL</code></li>
+<li><code>USING</code></li>
+</ul>
+<h3 id="v">V</h3>
+<ul>
+<li><code>VIRTUAL</code></li>
+</ul>
+<h3 id="w">W</h3>
+<ul>
+<li><code>WEND</code></li>
+<li><code>WHILE</code></li>
+<li><code>WRITE</code></li>
+</ul>
+<h3 id="try-catch-and-on-error-interop">TRY/CATCH and ON ERROR Interop</h3>
+<p>TRY/CATCH composes with legacy <code>ON ERROR GOTO</code> as a nested handler:</p>
+<ul>
+<li>Precedence: a TRY installs a fresh error handler on top of any active <code>ON ERROR GOTO</code> handler.</li>
+<li>Restoration: when the TRY region finishes without error, the TRY handler is popped and the prior <code>ON ERROR GOTO</code></li>
+</ul>
+<p>handler remains in effect.</p>
+<ul>
+<li>Catch resumption: the CATCH body terminates by resuming to the first block after the TRY via a resume token. A</li>
+</ul>
+<p><code>RESUME</code> inside a CATCH is allowed but typically unnecessary because the compiler emits a <code>resume.label</code> to the join</p>
+<p>point.</p>
+<p>Example:</p>
+<p>10 ON ERROR GOTO Outer</p>
+<p>20 TRY</p>
+<p>30   &#x27; protected code</p>
+<p>40 CATCH err</p>
+<p>50   &#x27; handle inner error (err is i64 here)</p>
+<p>60 END TRY</p>
+<p>70 &#x27; Outer ON ERROR handler still active</p>
+<p>80 END</p>
+<p>100 Outer:</p>
+<p>110 RESUME NEXT</p>
+<p>Semantics:</p>
+<ul>
+<li>Inner exceptions raised between lines 20–39 are caught by the TRY handler.</li>
+<li>After <code>END TRY</code>, the previously active <code>ON ERROR GOTO Outer</code> handler continues to apply.</li>
+</ul>
+<h2 id="runtime-classes-usage-examples">Runtime Classes Usage Examples</h2>
+<p>Runtime-backed classes expose an object surface (properties, methods, constructors) that lower to canonical extern</p>
+<p>functions provided by the runtime. Two families are currently available:</p>
+<ul>
+<li>Viper.String (aliased in BASIC as STRING)</li>
+<li>Viper.Text.StringBuilder</li>
+</ul>
+<p>These object members are functional equivalents of the procedural helpers under Viper.String.<em> and Viper.Text.</em>. The</p>
+<p>compiler lowers property and method calls to the corresponding extern with the receiver as argument 0.</p>
+<p>Examples:</p>
+<pre><code data-lang="basic">
+10 DIM s AS STRING                 &#x27; STRING is an alias of Viper.String
+20 LET s = &quot;hello&quot;
+30 Viper.Terminal.PrintI64(s.Length)
+40 Viper.Terminal.PrintStr(s.Substring(2, 3))  &#x27; zero-based start, length 3
+
+100 DIM sb AS Viper.Text.StringBuilder
+110 LET sb = NEW Viper.Text.StringBuilder()
+120 &#x27; Depending on your build, APPEND may be a reserved keyword; use the procedural form below if needed.
+130 &#x27; sb.Append(&quot;X&quot;)
+140 &#x27; or equivalently (procedural): sb = Viper.Text.StringBuilder.Append(sb, &quot;X&quot;)
+150 Viper.Terminal.PrintI64(sb.Length)
+160 Viper.Terminal.PrintStr(sb.ToString())
+</code></pre>
+<p>Conventions and semantics:</p>
+<ul>
+<li>Properties and methods lower to canonical externs with the receiver as arg0.</li>
+<li>Examples: s.Length → call @Viper.String.Length(s);</li>
+</ul>
+<p>s.Substring(i,n) → call @Viper.String.Substring(s,i,n);</p>
+<p>s.Mid(i) → call @Viper.String.Mid(s,i);</p>
+<p>sb.ToString() → call @Viper.Text.StringBuilder.ToString(sb)</p>
+<ul>
+<li>STRING alias: The BASIC type STRING is the same nominal runtime class as Viper.String.</li>
+<li>Index base: Substring uses the same convention as MID$ — start is 0-based; length is a count.</li>
+<li>Null receivers trap: Accessing a property or method on a null object raises a runtime trap that can be caught with</li>
+</ul>
+<p>TRY/CATCH.</p>
+<ul>
+<li>Procedural equivalence: For every object member there is a procedural helper under Viper.String.* or Viper.Text.*</li>
+</ul>
+<p>with the receiver passed explicitly as the first argument. Use these forms where convenient or when a member name</p>
+<p>collides with a BASIC keyword (e.g., APPEND).</p>
+<p>Cross-reference: See [ViperLib &amp; Namespaces](#viperlib--namespaces) for procedural helpers under</p>
+<p>Viper.String.<em> and Viper.Text.</em>.</p>
+<p>---</p>
+<h2 id="oop-semantics">OOP Semantics</h2>
+<h3 id="inheritance">Inheritance</h3>
+<p>Single inheritance only (<code>CLASS B : A</code>). Namespaces may qualify base names, e.g. <code>CLASS B : Foo.Bar.A</code>.</p>
+<h3 id="method-modifiers">Method modifiers</h3>
+<ul>
+<li><code>VIRTUAL</code>: Declares a new virtual method. A vtable slot is introduced if the name does not already exist in a base.</li>
+<li><code>OVERRIDE</code>: Reuses the slot of the closest base virtual with the same name. Signature must match exactly.</li>
+<li><code>ABSTRACT</code>: Method has no body; must be implemented in a non-abstract descendant.</li>
+<li><code>FINAL</code>: Prevents further overrides in descendants.</li>
+<li><code>PUBLIC|PRIVATE</code>: Access control enforced at call/field-access sites.</li>
+</ul>
+<p>Constructors (<code>SUB NEW</code>) may not be marked <code>VIRTUAL</code>, <code>OVERRIDE</code>, <code>ABSTRACT</code>, or <code>FINAL</code>.</p>
+<h3 id="slot-assignment">Slot assignment</h3>
+<p>Slot numbering is base-first, stable, and append-only: a class inherits its base&#x27;s vtable verbatim, each new <code>VIRTUAL</code></p>
+<p>appends one entry, and <code>OVERRIDE</code> keeps the base slot number. This guarantees deterministic ABI layout.</p>
+<h3 id="virtual-dispatch">Virtual dispatch</h3>
+<ul>
+<li>Virtual calls dispatch through the vtable using the receiver&#x27;s dynamic type.</li>
+<li>Non-virtual methods use direct calls.</li>
+<li><code>BASE.M(...)</code> is a direct call to the immediate base class implementation.</li>
+</ul>
+<h3 id="interfaces-and-rtti">Interfaces and RTTI</h3>
+<p>Interfaces are nominal: the name identifies the contract. A class lists one or more interface names on its declaration.</p>
+<pre><code data-lang="basic">
+INTERFACE I
+  SUB Speak()
+  FUNCTION F() AS I64
+END INTERFACE
+
+CLASS A IMPLEMENTS I
+  OVERRIDE SUB Speak(): END SUB
+  OVERRIDE FUNCTION F() AS I64: RETURN 0: END FUNCTION
+END CLASS
+</code></pre>
+<p>Each interface assigns slot indices to members in declaration order. A class that implements multiple interfaces has one</p>
+<p>itable per interface. Dispatch materializes the callee pointer from the itable and emits <code>call.indirect</code>.</p>
+<p>RTTI operators:</p>
+<ul>
+<li><code>expr IS Class</code> — true iff the dynamic type equals or derives from the class.</li>
+<li><code>expr IS Interface</code> — true iff the dynamic type implements the interface.</li>
+<li><code>expr AS Class</code> — returns the object when IS succeeds; otherwise NULL.</li>
+<li><code>expr AS Interface</code> — returns the object when IS succeeds; otherwise NULL.</li>
+</ul>
+<h3 id="static-members">Static members</h3>
+<ul>
+<li><code>STATIC SUB NEW()</code> runs once per class during module initialization before user code.</li>
+<li>Static fields lower to module-scope globals; reads/writes are independent of any instance.</li>
+<li>Static methods do not receive <code>ME</code>; referencing <code>ME</code> in a static method is a semantic error.</li>
+</ul>
+<h3 id="properties">Properties</h3>
+<p>A <code>PROPERTY</code> defines up to two accessors (<code>GET</code> and <code>SET</code>). Accessor-level access modifiers are supported.</p>
+<p>Property sugar:</p>
+<ul>
+<li><code>x.Name</code> → <code>get_Name(x)</code> ; <code>x.Name = v</code> → <code>set_Name(x, v)</code> (instance)</li>
+<li><code>C.Name</code> → <code>get_Name()</code> ; <code>C.Name = v</code> → <code>set_Name(v)</code> (static)</li>
+</ul>
+<h3 id="destructors-and-disposal">Destructors and disposal</h3>
+<ul>
+<li>Chaining order: derived body runs first, then base, continuing up the chain.</li>
+<li>One instance destructor per class; no parameters or return value.</li>
+<li><code>STATIC DESTRUCTOR</code> runs at program shutdown in class declaration order.</li>
+<li><code>DISPOSE expr</code> invokes the derived→base destructor chain and releases storage when retain count drops to zero.</li>
+<li>Disposing <code>NULL</code> is a no-op; double dispose traps in debug builds.</li>
+</ul>
+<h3 id="overload-resolution">Overload resolution</h3>
+<p>Conversions: only widening numeric (INTEGER→DOUBLE) are permitted implicitly. For each viable candidate, parameters are</p>
+<p>scored positionally: exact match (+2), widening numeric (+1), otherwise not viable. The best total score wins; ties are</p>
+<p>ambiguous. Property accessors (<code>get_<em>/set_</em></code>) participate as ordinary candidates.</p>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../../features/native-targets.html">Native Targets</a>
+      <a href="../../features/two-languages.html">Languages</a>
+      <a href="../../features/runtime.html">Runtime Library</a>
+      <a href="../../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../../docs/getting-started.html">Getting Started</a>
+      <a href="../../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../../docs/runtime/">Runtime API</a>
+      <a href="../../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../../contributing/">Contributing</a>
+      <a href="../../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../../main.js"></script>
+</body>
+</html>

@@ -1,0 +1,1525 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zia Language Reference — Viper</title>
+  <meta name="description" content="Viper documentation: Zia Language Reference">
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="icon" href="../../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../../docs/" class="active">Docs</a>
+    <a href="../../learn/">Learn</a>
+    <a href="../../showcase/">Showcase</a>
+    <a href="../../performance/">Performance</a>
+    <a href="../../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../../">Home</a> / <a href="../../docs">Docs</a> / <span>Zia Language Reference</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#key-language-features">Key Language Features</a></li>
+        <li><a href="#table-of-contents">Table of Contents</a></li>
+        <li><a href="#program-structure">Program Structure</a></li>
+        <li><a href="#lexical-elements">Lexical Elements</a></li>
+        <li><a href="#types">Types</a></li>
+        <li><a href="#expressions">Expressions</a></li>
+        <li><a href="#statements">Statements</a></li>
+        <li><a href="#declarations">Declarations</a></li>
+        <li><a href="#entity-types">Entity Types</a></li>
+        <li><a href="#value-types">Value Types</a></li>
+        <li><a href="#interfaces">Interfaces</a></li>
+        <li><a href="#enums">Enums</a></li>
+        <li><a href="#modules-and-imports">Modules and Imports</a></li>
+        <li><a href="#namespaces">Namespaces</a></li>
+        <li><a href="#runtime-library-access">Runtime Library Access</a></li>
+        <li><a href="#operator-precedence">Operator Precedence</a></li>
+        <li><a href="#reserved-words">Reserved Words</a></li>
+        <li><a href="#grammar-summary">Grammar Summary</a></li>
+        <li><a href="#see-also">See Also</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>Zia Language Reference</h1>
+<h1 id="zia-reference">Zia — Reference</h1>
+<p>Complete language reference for Zia. This document describes <strong>syntax</strong>, <strong>types</strong>, <strong>statements</strong>, <strong>expressions</strong>, <strong>declarations</strong>, and <strong>runtime integration</strong>. For a tutorial introduction, see <strong>[Zia Getting Started](zia-getting-started.md)</strong>.</p>
+<p>---</p>
+<h2 id="key-language-features">Key Language Features</h2>
+<ul>
+<li><strong>Static typing</strong>: All variables have compile-time types with inference</li>
+<li><strong>Entity types</strong>: Reference semantics with identity, methods, inheritance, properties, static members, and destructors</li>
+<li><strong>Value types</strong>: Copy semantics with stack allocation</li>
+<li><strong>Interfaces</strong>: Contracts with full runtime itable dispatch</li>
+<li><strong>Enums</strong>: Named sets of integer constants with exhaustiveness checking in match</li>
+<li><strong>Generics</strong>: Parameterized types and functions with optional constraints (<code>List[T]</code>, <code>func max[T: Comparable]</code>)</li>
+<li><strong>Exception handling</strong>: <code>try</code>/<code>catch</code>/<code>finally</code> with structured error propagation</li>
+<li><strong>Modules</strong>: File-based modules with bind system</li>
+<li><strong>C-like syntax</strong>: Familiar braces, semicolons, and operators</li>
+<li><strong>Runtime library</strong>: Full access to Viper.* classes</li>
+</ul>
+<p>---</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li>[Program Structure](#program-structure)</li>
+<li>[Lexical Elements](#lexical-elements)</li>
+<li>[Types](#types)</li>
+<li>[Expressions](#expressions)</li>
+<li>[Statements](#statements) (includes try/catch/finally)</li>
+<li>[Declarations](#declarations) (includes default parameters)</li>
+<li>[Entity Types](#entity-types) (includes properties, static members, destructors)</li>
+<li>[Value Types](#value-types)</li>
+<li>[Interfaces](#interfaces)</li>
+<li>[Enums](#enums)</li>
+<li>[Modules and Imports](#modules-and-imports)</li>
+<li>[Namespaces](#namespaces)</li>
+<li>[Runtime Library Access](#runtime-library-access)</li>
+<li>[Operator Precedence](#operator-precedence)</li>
+<li>[Reserved Words](#reserved-words)</li>
+</ul>
+<p>---</p>
+<h2 id="program-structure">Program Structure</h2>
+<p>A Zia source file has the following structure:</p>
+<pre><code data-lang="viper">
+module ModuleName;
+
+// Bind declarations (bring other modules into scope)
+bind &quot;path/to/module&quot;;
+
+// Global variable declarations
+var globalVar: Type = value;
+final CONSTANT = value;
+
+// Type declarations (entity, value, interface)
+entity MyEntity { ... }
+value MyValue { ... }
+interface MyInterface { ... }
+
+// Function declarations
+func functionName(params) -&gt; ReturnType { ... }
+
+// Entry point
+func start() { ... }
+</code></pre>
+<h3 id="entry-point">Entry Point</h3>
+<p>The <code>start()</code> function is the program entry point. It takes no parameters and returns void:</p>
+<pre><code data-lang="viper">
+func start() {
+    // Program execution begins here
+}
+</code></pre>
+<p>---</p>
+<h2 id="lexical-elements">Lexical Elements</h2>
+<h3 id="comments">Comments</h3>
+<pre><code data-lang="viper">
+// Single-line comment
+
+/* Multi-line
+   comment */
+</code></pre>
+<h3 id="identifiers">Identifiers</h3>
+<p>Identifiers start with a letter or underscore, followed by letters, digits, or underscores:</p>
+<pre><code data-lang="text">
+identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
+</code></pre>
+<h3 id="literals">Literals</h3>
+<h4 id="integer-literals">Integer Literals</h4>
+<pre><code data-lang="viper">
+42          // Decimal
+0xFF        // Hexadecimal
+0b1010      // Binary
+()          // Unit literal (void value)
+</code></pre>
+<h4 id="floating-point-literals">Floating-Point Literals</h4>
+<pre><code data-lang="viper">
+3.14159     // Decimal
+1e10        // Scientific notation
+2.5e-3      // Scientific with negative exponent
+</code></pre>
+<h4 id="string-literals">String Literals</h4>
+<pre><code data-lang="viper">
+&quot;Hello, World!&quot;           // Basic string
+&quot;Line 1\nLine 2&quot;          // With escape sequences
+&quot;Value: ${expression}&quot;    // String interpolation
+</code></pre>
+<p><strong>Escape sequences:</strong></p>
+<table><thead><tr>
+<th>Sequence</th>
+<th>Meaning</th>
+</tr></thead><tbody>
+<tr>
+<td>`\n`</td>
+<td>Newline</td>
+</tr>
+<tr>
+<td>`\t`</td>
+<td>Tab</td>
+</tr>
+<tr>
+<td>`\r`</td>
+<td>Carriage return</td>
+</tr>
+<tr>
+<td>`\\`</td>
+<td>Backslash</td>
+</tr>
+<tr>
+<td>`\&quot;`</td>
+<td>Double quote</td>
+</tr>
+<tr>
+<td>`\&#x27;`</td>
+<td>Single quote</td>
+</tr>
+<tr>
+<td>`\0`</td>
+<td>Null character</td>
+</tr>
+<tr>
+<td>`\xNN`</td>
+<td>Hex byte (two hex digits)</td>
+</tr>
+<tr>
+<td>`\uXXXX`</td>
+<td>Unicode code point (four hex digits, UTF-8 encoded)</td>
+</tr>
+<tr>
+<td>`\$`</td>
+<td>Dollar sign (in interpolated strings)</td>
+</tr>
+</tbody></table>
+<h4 id="boolean-literals">Boolean Literals</h4>
+<pre><code data-lang="viper">
+true
+false
+</code></pre>
+<h4 id="null-literal">Null Literal</h4>
+<pre><code data-lang="viper">
+null    // Used with optional types
+</code></pre>
+<p>---</p>
+<h2 id="types">Types</h2>
+<h3 id="primitive-types">Primitive Types</h3>
+<table><thead><tr>
+<th>Type</th>
+<th>Description</th>
+<th>Default Value</th>
+</tr></thead><tbody>
+<tr>
+<td>`Boolean`</td>
+<td>True or false</td>
+<td>`false`</td>
+</tr>
+<tr>
+<td>`Integer`</td>
+<td>64-bit signed integer</td>
+<td>`0`</td>
+</tr>
+<tr>
+<td>`Number`</td>
+<td>64-bit floating-point</td>
+<td>`0.0`</td>
+</tr>
+<tr>
+<td>`Ptr`</td>
+<td>Raw pointer / opaque handle (for interop)</td>
+<td>`null`</td>
+</tr>
+<tr>
+<td>`String`</td>
+<td>UTF-8 string</td>
+<td>`&quot;&quot;`</td>
+</tr>
+</tbody></table>
+<h3 id="optional-types">Optional Types</h3>
+<p>Optional types can hold a value or <code>null</code>:</p>
+<pre><code data-lang="viper">
+var name: String? = null;   // Optional string
+var count: Integer? = 42;   // Optional with value
+</code></pre>
+<p>Optional values support safe access with <code>?.</code>, defaults with <code>??</code>, and force-unwrap with <code>!</code>.</p>
+<h3 id="generic-types">Generic Types</h3>
+<p>Parameterized types with type arguments:</p>
+<pre><code data-lang="viper">
+List[Integer]           // List of integers
+List[Player]            // List of entity instances
+Map[String, Integer]    // Map from strings to integers
+</code></pre>
+<p>Map keys are restricted to <code>String</code>.</p>
+<h3 id="entity-types">Entity Types</h3>
+<p>Reference types defined with the <code>entity</code> keyword:</p>
+<pre><code data-lang="viper">
+var player: Player = new Player();
+</code></pre>
+<h3 id="value-types">Value Types</h3>
+<p>Copy-semantics types defined with the <code>value</code> keyword:</p>
+<pre><code data-lang="viper">
+var point: Point;
+</code></pre>
+<h3 id="tuple-types">Tuple Types</h3>
+<p>Tuple types group multiple values into a single type:</p>
+<pre><code data-lang="viper">
+var pair: (Integer, String) = (42, &quot;hello&quot;);
+var x = pair.0;     // Access by index
+</code></pre>
+<h3 id="fixed-size-array-types">Fixed-Size Array Types</h3>
+<p>Arrays with a compile-time size:</p>
+<pre><code data-lang="viper">
+var grid: Integer[100];     // Fixed array of 100 integers
+</code></pre>
+<h3 id="set-types">Set Types</h3>
+<p>Sets hold unique values. Created with set literals or the <code>Set</code> constructor:</p>
+<pre><code data-lang="viper">
+var s: Set[Integer] = {1, 2, 3};
+</code></pre>
+<h3 id="function-types">Function Types</h3>
+<p>Function signatures as types:</p>
+<pre><code data-lang="viper">
+(Integer, Integer) -&gt; Integer   // Function taking two ints, returning int
+() -&gt; void                      // Function taking nothing, returning void
+</code></pre>
+<p>---</p>
+<h2 id="expressions">Expressions</h2>
+<h3 id="literals">Literals</h3>
+<pre><code data-lang="viper">
+42                  // Integer literal
+3.14                // Number literal
+&quot;hello&quot;             // String literal
+true                // Boolean literal
+null                // Null literal
+</code></pre>
+<h3 id="identifiers">Identifiers</h3>
+<pre><code data-lang="viper">
+variableName        // Variable reference
+</code></pre>
+<h3 id="unary-operators">Unary Operators</h3>
+<table><thead><tr>
+<th>Operator</th>
+<th>Description</th>
+<th>Example</th>
+</tr></thead><tbody>
+<tr>
+<td>`-`</td>
+<td>Negation</td>
+<td>`-x`</td>
+</tr>
+<tr>
+<td>`!` / `not`</td>
+<td>Logical NOT</td>
+<td>`!flag` or `not flag`</td>
+</tr>
+<tr>
+<td>`~`</td>
+<td>Bitwise NOT</td>
+<td>`~bits`</td>
+</tr>
+<tr>
+<td>`&amp;`</td>
+<td>Function reference</td>
+<td>`&amp;myFunc`</td>
+</tr>
+</tbody></table>
+<h3 id="function-references">Function References</h3>
+<p>The <code>&amp;</code> operator obtains a reference (pointer) to a function, which can be stored in a variable or passed as an argument:</p>
+<pre><code data-lang="viper">
+bind Viper.Threads;
+
+func handler(arg: Ptr) {
+    // Handle something
+}
+
+func takeCallback(callback: Ptr) {
+    // Use the callback
+}
+
+func start() {
+    var h = &amp;handler;           // Get function reference
+    takeCallback(&amp;handler);     // Pass function reference directly
+
+    // With Thread.Start
+    var thread = Thread.Start(&amp;handler, 0);
+}
+</code></pre>
+<p><strong>Notes:</strong></p>
+<ul>
+<li>The <code>&amp;</code> operator can only be applied to function names, not variables or expressions</li>
+<li>Function references are stored as <code>Ptr</code> type</li>
+<li>Use with <code>Viper.Threads.Thread.Start()</code> to spawn threads with custom entry points</li>
+</ul>
+<h3 id="binary-operators">Binary Operators</h3>
+<h4 id="arithmetic">Arithmetic</h4>
+<table><thead><tr>
+<th>Operator</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`+`</td>
+<td>Addition</td>
+</tr>
+<tr>
+<td>`-`</td>
+<td>Subtraction</td>
+</tr>
+<tr>
+<td>`*`</td>
+<td>Multiplication</td>
+</tr>
+<tr>
+<td>`/`</td>
+<td>Division</td>
+</tr>
+<tr>
+<td>`%`</td>
+<td>Modulo</td>
+</tr>
+</tbody></table>
+<h4 id="comparison">Comparison</h4>
+<table><thead><tr>
+<th>Operator</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`==`</td>
+<td>Equal</td>
+</tr>
+<tr>
+<td>`!=`</td>
+<td>Not equal</td>
+</tr>
+<tr>
+<td>`&lt;`</td>
+<td>Less than</td>
+</tr>
+<tr>
+<td>`&lt;=`</td>
+<td>Less or equal</td>
+</tr>
+<tr>
+<td>`&gt;`</td>
+<td>Greater than</td>
+</tr>
+<tr>
+<td>`&gt;=`</td>
+<td>Greater or equal</td>
+</tr>
+</tbody></table>
+<h4 id="logical-short-circuit">Logical (Short-Circuit)</h4>
+<table><thead><tr>
+<th>Operator</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`&amp;&amp;` / `and`</td>
+<td>Logical AND</td>
+</tr>
+<tr>
+<td>`</td>
+<td></td>
+<td>` / `or`</td>
+<td>Logical OR</td>
+</tr>
+</tbody></table>
+<h4 id="bitwise">Bitwise</h4>
+<table><thead><tr>
+<th>Operator</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`&amp;`</td>
+<td>Bitwise AND</td>
+</tr>
+<tr>
+<td>`</td>
+<td>`</td>
+<td>Bitwise OR</td>
+</tr>
+<tr>
+<td>`^`</td>
+<td>Bitwise XOR</td>
+</tr>
+</tbody></table>
+<h4 id="assignment">Assignment</h4>
+<table><thead><tr>
+<th>Operator</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`=`</td>
+<td>Assignment</td>
+</tr>
+<tr>
+<td>`+=`</td>
+<td>Add and assign</td>
+</tr>
+<tr>
+<td>`-=`</td>
+<td>Subtract and assign</td>
+</tr>
+<tr>
+<td>`*=`</td>
+<td>Multiply and assign</td>
+</tr>
+<tr>
+<td>`/=`</td>
+<td>Divide and assign</td>
+</tr>
+<tr>
+<td>`%=`</td>
+<td>Modulo and assign</td>
+</tr>
+</tbody></table>
+<p>Compound assignment operators desugar to <code>a = a op b</code> at parse time. The left-hand side must be a mutable variable, field, or indexed expression.</p>
+<h3 id="ternary-operator">Ternary Operator</h3>
+<pre><code data-lang="viper">
+condition ? thenValue : elseValue
+</code></pre>
+<h3 id="match-expression">Match Expression</h3>
+<pre><code data-lang="viper">
+var result = match value {
+    0 =&gt; &quot;zero&quot;;
+    n if n &gt; 0 =&gt; &quot;positive&quot;;
+    _ =&gt; &quot;negative&quot;;
+};
+</code></pre>
+<h3 id="field-access">Field Access</h3>
+<pre><code data-lang="viper">
+object.field            // Access field
+object.method()         // Call method
+</code></pre>
+<h3 id="optional-chaining-and-unwrapping">Optional Chaining and Unwrapping</h3>
+<pre><code data-lang="viper">
+object?.field           // Null if object is null, otherwise optional field value
+object?.field?.subfield // Chained optional access
+value ?? defaultValue   // Returns defaultValue if value is null
+value!                  // Force-unwrap: converts T? to T, traps if null
+</code></pre>
+<p>The force-unwrap operator <code>!</code> asserts that an optional value is non-null and extracts</p>
+<p>the inner value. If the value is null at runtime, the program terminates. Use after</p>
+<p>a null guard or when you are certain the value is non-null:</p>
+<pre><code data-lang="viper">
+if maybePage == null { return null; }
+var page = maybePage!;              // Safe: null was handled above
+</code></pre>
+<h3 id="indexing">Indexing</h3>
+<pre><code data-lang="viper">
+list[index]             // Access list element
+map[&quot;key&quot;]              // Access map value (keys are String)
+</code></pre>
+<h3 id="block-expressions">Block Expressions</h3>
+<p>A block can produce a value when the last statement is an expression without a trailing semicolon:</p>
+<pre><code data-lang="viper">
+var x = {
+    var a = 10;
+    var b = 20;
+    a + b           // Block evaluates to 30
+};
+</code></pre>
+<h3 id="if-expressions">If Expressions</h3>
+<p><code>if</code>/<code>else</code> can be used as value-producing expressions:</p>
+<pre><code data-lang="viper">
+var sign = if x &gt; 0 { &quot;positive&quot; } else { &quot;non-positive&quot; };
+</code></pre>
+<p>Both branches must be present and produce the same type.</p>
+<h3 id="try-expression">Try Expression</h3>
+<p>The postfix <code>?</code> operator propagates null or error values from an expression. If the operand is null (or an error), the enclosing function returns immediately with that null/error. Otherwise, the inner value is unwrapped:</p>
+<pre><code data-lang="viper">
+func findUser(id: Integer) -&gt; User? {
+    var record = database.lookup(id)?;  // Returns null if lookup returns null
+    return record.toUser();
+}
+</code></pre>
+<h3 id="function-method-calls">Function/Method Calls</h3>
+<pre><code data-lang="viper">
+functionName(arg1, arg2)
+object.methodName(arg1)
+</code></pre>
+<h4 id="named-arguments">Named Arguments</h4>
+<p>Arguments can be passed by name using <code>name: value</code> syntax:</p>
+<pre><code data-lang="viper">
+func createRect(x: Integer, y: Integer, w: Integer, h: Integer) -&gt; Rect { ... }
+
+var r = createRect(x: 10, y: 20, w: 100, h: 50);
+</code></pre>
+<h3 id="object-creation">Object Creation</h3>
+<pre><code data-lang="viper">
+new EntityType()        // Create entity instance
+</code></pre>
+<h3 id="value-type-initialization-struct-literals">Value Type Initialization (Struct Literals)</h3>
+<p>Value types can be initialized with field assignments:</p>
+<pre><code data-lang="viper">
+value Point {
+    Integer x;
+    Integer y;
+}
+
+var p = Point { x = 10, y = 20 };
+</code></pre>
+<h3 id="tuple-expressions">Tuple Expressions</h3>
+<p>Tuples group multiple values. Access elements with <code>.0</code>, <code>.1</code>, etc.:</p>
+<pre><code data-lang="viper">
+var pair = (42, &quot;hello&quot;);
+var num = pair.0;           // 42
+var str = pair.1;           // &quot;hello&quot;
+</code></pre>
+<h3 id="collection-literals">Collection Literals</h3>
+<pre><code data-lang="viper">
+var list = [1, 2, 3];              // List[Integer]
+var map = {&quot;key&quot;: 42, &quot;other&quot;: 7}; // Map[String, Integer]
+var set = {1, 2, 3};               // Set[Integer]
+</code></pre>
+<h3 id="range-expressions">Range Expressions</h3>
+<pre><code data-lang="viper">
+start..end              // Exclusive range [start, end)
+start..=end             // Inclusive range [start, end]
+</code></pre>
+<h3 id="type-operations">Type Operations</h3>
+<pre><code data-lang="viper">
+value is Type           // Type check (returns Boolean)
+value as Type           // Type cast
+</code></pre>
+<h3 id="lambda-expressions">Lambda Expressions</h3>
+<pre><code data-lang="viper">
+(x) =&gt; x + 1                    // Single parameter
+(a, b) =&gt; a + b                 // Multiple parameters
+(x: Integer) =&gt; x * 2           // Typed parameter
+</code></pre>
+<p>---</p>
+<h2 id="statements">Statements</h2>
+<h3 id="variable-declaration">Variable Declaration</h3>
+<pre><code data-lang="viper">
+var name = value;                   // Type inferred
+var name: Type = value;             // Explicit type
+var name: Type;                     // Default initialized
+final name = value;                 // Immutable
+</code></pre>
+<h3 id="expression-statement">Expression Statement</h3>
+<p>Any expression can be used as a statement:</p>
+<pre><code data-lang="viper">
+functionCall();
+object.method();
+x = x + 1;
+</code></pre>
+<h3 id="block-statement">Block Statement</h3>
+<pre><code data-lang="viper">
+{
+    statement1;
+    statement2;
+}
+</code></pre>
+<h3 id="if-statement">If Statement</h3>
+<pre><code data-lang="viper">
+if condition {
+    // then branch
+}
+
+if condition {
+    // then branch
+} else {
+    // else branch
+}
+
+if condition1 {
+    // first branch
+} else if condition2 {
+    // second branch
+} else {
+    // else branch
+}
+</code></pre>
+<p>Note: Parentheses around conditions are optional.</p>
+<h3 id="while-statement">While Statement</h3>
+<pre><code data-lang="viper">
+while condition {
+    // body
+}
+</code></pre>
+<h3 id="for-statement-c-style">For Statement (C-style)</h3>
+<pre><code data-lang="viper">
+for (init; condition; update) {
+    // body
+}
+
+// Example
+for (var i = 0; i &lt; 10; i = i + 1) {
+    // body
+}
+</code></pre>
+<h3 id="for-in-statement">For-In Statement</h3>
+<pre><code data-lang="viper">
+for variable in iterable {
+    // body
+}
+
+// List iteration
+for item in list {
+    // item is element type
+}
+
+// Map iteration (keys only)
+for key in map {
+    // key is String
+}
+
+// Map iteration with tuple destructuring
+for (key, value) in map {
+    // key is String, value is map value type
+}
+
+// Range iteration
+for i in 0..10 {        // 0 to 9
+    // body
+}
+
+for i in 0..=10 {       // 0 to 10
+    // body
+}
+</code></pre>
+<h3 id="return-statement">Return Statement</h3>
+<pre><code data-lang="viper">
+return;                 // Return void
+return expression;      // Return value
+</code></pre>
+<h3 id="break-statement">Break Statement</h3>
+<pre><code data-lang="viper">
+break;                  // Exit innermost loop
+</code></pre>
+<h3 id="continue-statement">Continue Statement</h3>
+<pre><code data-lang="viper">
+continue;               // Skip to next iteration
+</code></pre>
+<h3 id="guard-statement">Guard Statement</h3>
+<pre><code data-lang="viper">
+guard condition else {
+    return;             // Must exit scope
+}
+// condition is true here
+</code></pre>
+<h3 id="match-statement">Match Statement</h3>
+<pre><code data-lang="viper">
+match value {
+    pattern1 =&gt; { /* body */ }
+    pattern2 =&gt; { /* body */ }
+    _ =&gt; { /* default */ }
+}
+</code></pre>
+<p>Supported patterns:</p>
+<ul>
+<li><code>_</code> wildcard</li>
+<li>Literals (<code>0</code>, <code>&quot;text&quot;</code>, <code>true</code>, <code>false</code>, <code>null</code>)</li>
+<li>Binding identifiers (<code>x</code>)</li>
+<li>Tuple patterns with two elements (<code>(x, y)</code>)</li>
+<li>Constructor patterns (<code>Point(x, y)</code>, <code>Some(value)</code>, <code>None</code>)</li>
+<li>Guards (<code>pattern if condition =&gt; ...</code>)</li>
+</ul>
+<h3 id="try-catch-finally-statement">Try/Catch/Finally Statement</h3>
+<p>Structured exception handling for runtime errors:</p>
+<pre><code data-lang="viper">
+try {
+    riskyOperation();
+} catch (e: Error) {
+    handleError(e);
+} finally {
+    cleanup();
+}
+</code></pre>
+<ul>
+<li>The <code>try</code> block is always required.</li>
+<li>The <code>catch</code> block receives the error object. The catch variable name and type annotation are required.</li>
+<li>The <code>finally</code> block runs whether or not an exception was thrown.</li>
+<li>Both <code>catch</code> and <code>finally</code> are optional, but at least one must be present.</li>
+</ul>
+<h3 id="throw-statement">Throw Statement</h3>
+<p>Raises a runtime error:</p>
+<pre><code data-lang="viper">
+throw someErrorValue;
+</code></pre>
+<p>---</p>
+<h2 id="declarations">Declarations</h2>
+<h3 id="function-declaration">Function Declaration</h3>
+<pre><code data-lang="viper">
+func functionName(param1: Type1, param2: Type2) -&gt; ReturnType {
+    // body
+    return value;
+}
+
+// Void return
+func noReturn(param: Type) {
+    // body
+}
+</code></pre>
+<h4 id="default-parameter-values">Default Parameter Values</h4>
+<p>Parameters may have default values. When a call omits trailing arguments, the default expressions are used:</p>
+<pre><code data-lang="viper">
+func greet(name: String, greeting: String = &quot;Hello&quot;) -&gt; String {
+    return greeting + &quot;, &quot; + name;
+}
+
+func start() {
+    var msg1 = greet(&quot;Alice&quot;, &quot;Hi&quot;);    // &quot;Hi, Alice&quot;
+    var msg2 = greet(&quot;Bob&quot;);            // &quot;Hello, Bob&quot;
+}
+</code></pre>
+<p>Default values must be trailing — a parameter with a default cannot be followed by a parameter without one.</p>
+<h3 id="generic-function-declaration">Generic Function Declaration</h3>
+<p>Functions can be parameterized over types with optional constraints:</p>
+<pre><code data-lang="viper">
+func identity[T](x: T) -&gt; T {
+    return x;
+}
+
+func findMax[T: Comparable](a: T, b: T) -&gt; T {
+    if a &gt; b { return a; }
+    return b;
+}
+</code></pre>
+<p>Type parameters are declared in <code>[...]</code> after the function name. Constraints (like <code>T: Comparable</code>) restrict the type parameter to types implementing the named interface.</p>
+<h3 id="global-variable-declaration">Global Variable Declaration</h3>
+<pre><code data-lang="viper">
+var globalName: Type = initialValue;
+final CONSTANT = value;
+</code></pre>
+<p>---</p>
+<h2 id="entity-types">Entity Types</h2>
+<p>Entities are reference types with identity, stored on the heap.</p>
+<h3 id="entity-declaration">Entity Declaration</h3>
+<pre><code data-lang="viper">
+entity EntityName {
+    // Fields
+    Type fieldName;
+
+    // Initializer method
+    func init(params) {
+        fieldName = value;
+    }
+
+    // Methods
+    func methodName(params) -&gt; ReturnType {
+        return value;
+    }
+}
+</code></pre>
+<h3 id="field-visibility">Field Visibility</h3>
+<p>Fields and methods can be marked with visibility:</p>
+<pre><code data-lang="viper">
+entity Player {
+    Integer health;         // Default visibility
+    hide Integer secret;    // Private field
+    expose String name;     // Public field
+}
+</code></pre>
+<h3 id="entity-inheritance">Entity Inheritance</h3>
+<pre><code data-lang="viper">
+entity ChildEntity extends ParentEntity {
+    // Additional fields and methods
+}
+</code></pre>
+<h4 id="the-super-keyword">The `super` Keyword</h4>
+<p>Within a child entity, <code>super</code> refers to the parent entity&#x27;s implementation. Use it to call the parent&#x27;s methods:</p>
+<pre><code data-lang="viper">
+entity Child extends Parent {
+    override func greet() -&gt; String {
+        return super.greet() + &quot; (child)&quot;;
+    }
+}
+</code></pre>
+<h4 id="the-override-keyword">The `override` Keyword</h4>
+<p>Methods that override a parent&#x27;s method must be marked with <code>override</code>:</p>
+<pre><code data-lang="viper">
+entity Base {
+    func describe() -&gt; String { return &quot;Base&quot;; }
+}
+
+entity Derived extends Base {
+    override func describe() -&gt; String { return &quot;Derived&quot;; }
+}
+</code></pre>
+<h3 id="creating-entities">Creating Entities</h3>
+<pre><code data-lang="viper">
+var entity = new EntityType();
+entity.init(args);
+</code></pre>
+<h3 id="self-reference">Self Reference</h3>
+<p>Within methods, fields can be accessed directly or with <code>self</code>:</p>
+<pre><code data-lang="viper">
+entity Counter {
+    Integer count;
+
+    func increment() {
+        count = count + 1;      // Direct access
+        self.count = self.count + 1;  // Explicit self
+    }
+}
+</code></pre>
+<h3 id="properties">Properties</h3>
+<p>Properties provide computed get/set accessors for entity fields:</p>
+<pre><code data-lang="viper">
+entity Temperature {
+    Number celsius;
+
+    property fahrenheit: Number {
+        get { return self.celsius * 1.8 + 32.0; }
+        set(value) { self.celsius = (value - 32.0) / 1.8; }
+    }
+}
+</code></pre>
+<ul>
+<li>The <code>get</code> body returns the computed value.</li>
+<li>The <code>set</code> body receives a <code>value</code> parameter (name declared in parentheses).</li>
+<li>Either <code>get</code> or <code>set</code> may be omitted for read-only or write-only properties.</li>
+<li>Properties are accessed like fields: <code>temp.fahrenheit</code> calls the getter, <code>temp.fahrenheit = 212.0</code> calls the setter.</li>
+</ul>
+<h3 id="static-members">Static Members</h3>
+<p>Fields and methods marked <code>static</code> belong to the entity type, not to instances:</p>
+<pre><code data-lang="viper">
+entity Counter {
+    static Integer instanceCount;
+
+    static func getCount() -&gt; Integer {
+        return instanceCount;
+    }
+
+    func init() {
+        instanceCount = instanceCount + 1;
+    }
+}
+</code></pre>
+<ul>
+<li>Static fields are stored as module-level globals (not per-instance).</li>
+<li>Static methods have no <code>self</code> parameter.</li>
+<li>Access via the entity name: <code>Counter.getCount()</code>, <code>Counter.instanceCount</code>.</li>
+</ul>
+<h3 id="destructors">Destructors</h3>
+<p>The <code>deinit</code> block defines cleanup logic that runs when an object is destroyed:</p>
+<pre><code data-lang="viper">
+entity FileHandle {
+    Integer fd;
+
+    deinit {
+        // Cleanup code — release resources
+        closeFile(self.fd);
+    }
+}
+</code></pre>
+<ul>
+<li>At most one <code>deinit</code> block per entity.</li>
+<li>The destructor automatically releases reference-typed fields after the user body executes.</li>
+<li>The generated IL function is named <code>__dtor_TypeName</code>.</li>
+</ul>
+<p>---</p>
+<h2 id="value-types">Value Types</h2>
+<p>Value types have copy semantics — assignments copy the entire value.</p>
+<h3 id="value-declaration">Value Declaration</h3>
+<pre><code data-lang="viper">
+value ValueName {
+    // Fields
+    Type fieldName;
+
+    // Methods
+    func methodName(params) -&gt; ReturnType {
+        return value;
+    }
+}
+</code></pre>
+<h3 id="using-value-types">Using Value Types</h3>
+<pre><code data-lang="viper">
+value Point {
+    Integer x;
+    Integer y;
+
+    func init(px: Integer, py: Integer) {
+        x = px;
+        y = py;
+    }
+}
+
+func start() {
+    var p: Point;
+    p.init(10, 20);
+}
+</code></pre>
+<p>---</p>
+<h2 id="interfaces">Interfaces</h2>
+<p>Interfaces define contracts that entities and values can implement.</p>
+<h3 id="interface-declaration">Interface Declaration</h3>
+<pre><code data-lang="viper">
+interface InterfaceName {
+    func methodSignature(params) -&gt; ReturnType;
+}
+</code></pre>
+<h3 id="implementing-interfaces">Implementing Interfaces</h3>
+<pre><code data-lang="viper">
+entity MyEntity implements InterfaceName {
+    expose func methodSignature(params) -&gt; ReturnType {
+        // Implementation
+    }
+}
+</code></pre>
+<p>Implementing methods must be marked <code>expose</code> (public visibility).</p>
+<h3 id="interface-dispatch">Interface Dispatch</h3>
+<p>Interface-typed variables use runtime itable dispatch. Calling a method on an interface variable performs a lookup through the interface table (itable) to find the correct implementation:</p>
+<pre><code data-lang="viper">
+interface IShape {
+    func area() -&gt; Number;
+}
+
+entity Circle implements IShape {
+    expose Number radius;
+    expose func area() -&gt; Number { return 3.14 * self.radius * self.radius; }
+}
+
+func printArea(s: IShape) {
+    // Runtime dispatch via itable lookup
+    var a = s.area();
+}
+</code></pre>
+<p>At module initialization, a <code>__zia_iface_init</code> function registers each interface and binds implementation itables. Method calls on interface-typed parameters use <code>rt_get_interface_impl</code> to find the function pointer at the correct slot, then invoke it via indirect call.</p>
+<p>---</p>
+<h2 id="enums">Enums</h2>
+<p>Enums define a type with a fixed set of named integer constants. Each variant is lowered to an <code>I64</code> constant at the IL level — no new opcodes or runtime support required.</p>
+<h3 id="declaration">Declaration</h3>
+<pre><code data-lang="viper">
+enum Color {
+    Red,
+    Green,
+    Blue,
+}
+</code></pre>
+<p>Variants are automatically numbered starting from 0. A trailing comma after the last variant is permitted.</p>
+<h3 id="explicit-values">Explicit Values</h3>
+<p>Variants may specify explicit integer values. Unspecified variants auto-increment from the previous value.</p>
+<pre><code data-lang="viper">
+enum HttpStatus {
+    OK = 200,
+    NOT_FOUND = 404,
+    INTERNAL_ERROR = 500,
+}
+</code></pre>
+<p>Mixed auto-increment and explicit values:</p>
+<pre><code data-lang="viper">
+enum Priority {
+    Low,          // 0
+    Medium = 5,   // 5
+    High,         // 6
+    Critical,     // 7
+}
+</code></pre>
+<p>Negative values are supported: <code>Backward = -1</code>.</p>
+<h3 id="variant-access">Variant Access</h3>
+<p>Access variants with dot notation:</p>
+<pre><code data-lang="viper">
+var c: Color = Color.Red;
+var s = HttpStatus.NOT_FOUND;
+</code></pre>
+<p>Enum values can be compared with <code>==</code> and <code>!=</code>:</p>
+<pre><code data-lang="viper">
+if c != Color.Red {
+    // ...
+}
+</code></pre>
+<h3 id="visibility">Visibility</h3>
+<p>Use <code>expose</code> to make an enum accessible from other modules:</p>
+<pre><code data-lang="viper">
+expose enum Direction {
+    North,
+    South,
+    East,
+    West,
+}
+</code></pre>
+<h3 id="match-exhaustiveness">Match Exhaustiveness</h3>
+<p>When matching on an enum, the compiler verifies that all variants are covered:</p>
+<pre><code data-lang="viper">
+// Error: Non-exhaustive patterns: missing variants Direction.East, Direction.West
+match dir {
+    Direction.North =&gt; handleNorth();
+    Direction.South =&gt; handleSouth();
+}
+</code></pre>
+<p>Use the wildcard <code>_</code> to cover remaining variants:</p>
+<pre><code data-lang="viper">
+match dir {
+    Direction.North =&gt; handleNorth();
+    _ =&gt; handleOther();
+}
+</code></pre>
+<h3 id="as-function-parameters-and-return-types">As Function Parameters and Return Types</h3>
+<p>Enums can be used as parameter types, return types, and variable types:</p>
+<pre><code data-lang="viper">
+func describeColor(c: Color) -&gt; String {
+    return match c {
+        Color.Red =&gt; &quot;red&quot;,
+        Color.Green =&gt; &quot;green&quot;,
+        Color.Blue =&gt; &quot;blue&quot;,
+    };
+}
+</code></pre>
+<h3 id="grammar">Grammar</h3>
+<pre><code data-lang="text">
+enumDecl    ::= [&quot;expose&quot;] &quot;enum&quot; IDENT &quot;{&quot; enumVariant (&quot;,&quot; enumVariant)* [&quot;,&quot;] &quot;}&quot;
+enumVariant ::= IDENT [&quot;=&quot; [&quot;-&quot;] INTEGER]
+</code></pre>
+<p>---</p>
+<h2 id="modules-and-imports">Modules and Imports</h2>
+<h3 id="module-declaration">Module Declaration</h3>
+<p>Every source file begins with a module declaration:</p>
+<pre><code data-lang="viper">
+module ModuleName;
+</code></pre>
+<h3 id="bind-declaration">Bind Declaration</h3>
+<p>Bind modules or runtime namespaces to use their types and functions:</p>
+<pre><code data-lang="viper">
+// File binds - import Zia source files
+bind &quot;path/to/module&quot;;          // Relative or simple path
+bind &quot;./sibling&quot;;               // Same directory
+bind &quot;../parent/module&quot;;        // Parent directory
+bind &quot;./utils&quot; as U;            // With alias
+
+// Namespace binds - import Viper runtime namespaces
+bind Viper.Terminal;            // Import all symbols
+bind Viper.Graphics;            // Now Canvas, Sprite, etc. available
+bind Viper.Math as M;           // With alias: M.Sqrt(), M.Sin()
+bind Viper.Terminal { Say };    // Import specific symbols only
+</code></pre>
+<p><strong>File Path Resolution:</strong></p>
+<ul>
+<li><code>&quot;./foo&quot;</code> — Resolves to <code>foo.zia</code> in the same directory</li>
+<li><code>&quot;../bar&quot;</code> — Resolves to <code>bar.zia</code> in parent directory</li>
+<li><code>&quot;name&quot;</code> — Resolves to <code>name.zia</code> in the same directory</li>
+</ul>
+<p><strong>Namespace Imports:</strong></p>
+<p>When you bind a runtime namespace like <code>Viper.Terminal</code>, all its functions</p>
+<p>become available without qualification:</p>
+<pre><code data-lang="viper">
+bind Viper.Terminal;
+
+Say(&quot;Hello!&quot;);           // Instead of Viper.Terminal.Say(&quot;Hello!&quot;)
+var name = ReadLine();   // Instead of Viper.Terminal.ReadLine()
+</code></pre>
+<p>You can also use an alias to avoid conflicts:</p>
+<pre><code data-lang="viper">
+bind Viper.Terminal as T;
+
+T.Say(&quot;Hello!&quot;);
+</code></pre>
+<p>Or import only specific items:</p>
+<pre><code data-lang="viper">
+bind Viper.Terminal { Say, ReadLine };
+
+Say(&quot;Hello!&quot;);      // Works
+// Print(&quot;x&quot;);      // Error: Print not imported
+</code></pre>
+<h3 id="circular-bind-protection">Circular Bind Protection</h3>
+<p>The compiler detects circular binds and reports an error. Maximum bind depth is 50 levels.</p>
+<p>---</p>
+<h2 id="namespaces">Namespaces</h2>
+<p>Namespaces organize declarations under qualified names to prevent name collisions and provide logical grouping.</p>
+<h3 id="basic-namespace">Basic Namespace</h3>
+<pre><code data-lang="viper">
+namespace MyLib {
+    func helper() -&gt; Integer {
+        return 42;
+    }
+
+    entity Parser {
+        Integer value;
+
+        func parse(input: String) -&gt; Boolean {
+            return true;
+        }
+    }
+}
+</code></pre>
+<p>Access namespaced members using dot notation:</p>
+<pre><code data-lang="viper">
+var result = MyLib.helper();
+var p = new MyLib.Parser();
+</code></pre>
+<h3 id="dotted-namespace-names">Dotted Namespace Names</h3>
+<p>Namespaces can use dotted names for nested organization:</p>
+<pre><code data-lang="viper">
+namespace MyLib.Internal {
+    func secret() -&gt; String {
+        return &quot;hidden&quot;;
+    }
+}
+
+// Access:
+var s = MyLib.Internal.secret();
+</code></pre>
+<h3 id="nested-namespaces">Nested Namespaces</h3>
+<p>Namespaces can be nested within other namespaces:</p>
+<pre><code data-lang="viper">
+namespace Outer {
+    namespace Inner {
+        func nested() -&gt; Integer {
+            return 100;
+        }
+    }
+}
+
+// Access:
+var n = Outer.Inner.nested();
+</code></pre>
+<h3 id="what-can-be-in-a-namespace">What Can Be in a Namespace</h3>
+<p>Namespaces can contain:</p>
+<ul>
+<li>Functions</li>
+<li>Entity types</li>
+<li>Value types</li>
+<li>Interfaces</li>
+<li>Global variables (final or var)</li>
+<li>Other namespaces</li>
+</ul>
+<pre><code data-lang="viper">
+namespace Config {
+    final VERSION = 42;
+    var debug = false;
+
+    value Point {
+        Integer x;
+        Integer y;
+    }
+
+    interface Configurable {
+        func configure();
+    }
+
+    entity Settings {
+        String name;
+    }
+}
+</code></pre>
+<h3 id="built-in-namespaces">Built-in Namespaces</h3>
+<p>The <code>Viper.*</code> namespaces (Viper.Terminal, Viper.Math, etc.) use the same namespace mechanism as user-defined namespaces.</p>
+<p>---</p>
+<h2 id="runtime-library-access">Runtime Library Access</h2>
+<p>Zia programs have access to the full Viper Runtime through the <code>Viper.*</code> namespace.</p>
+<h3 id="common-runtime-classes">Common Runtime Classes</h3>
+<h4 id="terminal-i-o">Terminal I/O</h4>
+<pre><code data-lang="viper">
+bind Viper.Terminal;
+
+// Output with newline
+Say(str);            // Print string with newline
+SayBool(b);          // Print boolean with newline
+SayInt(i);           // Print integer with newline
+SayNum(f);           // Print float with newline
+
+// Output without newline
+Print(str);          // Print string without newline
+PrintInt(i);         // Print integer without newline
+PrintNum(f);         // Print float without newline
+PrintF64(f);         // Print f64 (low-level)
+PrintI64(i);         // Print i64 (low-level)
+PrintStr(str);       // Print string (low-level)
+
+// Input
+ReadLine();          // Read a line (returns String?)
+GetKey();            // Block until key press, return key string
+GetKeyTimeout(ms);   // Read key with timeout in ms (returns &quot;&quot; on timeout)
+InKey();             // Non-blocking key check (returns &quot;&quot; if no key)
+
+// Terminal control
+Bell();              // Emit bell character
+Clear();             // Clear screen
+SetAltScreen(e);     // Enable/disable alternate screen buffer
+SetColor(fg, bg);    // Set foreground/background color (0-15)
+SetCursorVisible(v); // Show/hide cursor
+SetPosition(r, c);   // Move cursor to row/col (1-based)
+
+// Buffered output
+BeginBatch();        // Start batch output
+EndBatch();          // End batch output and flush
+Flush();             // Flush output buffer
+</code></pre>
+<h4 id="time">Time</h4>
+<pre><code data-lang="viper">
+// SleepMs is available under Viper.Time (RT_ALIAS from ClockSleep)
+Viper.Time.SleepMs(ms);         // Sleep for milliseconds
+Viper.Time.GetTickCount();       // Milliseconds since epoch
+</code></pre>
+<h4 id="math">Math</h4>
+<pre><code data-lang="viper">
+bind Viper.Math;
+
+Abs(x);                  // Absolute value (f64)
+AbsInt(x);               // Absolute value (i64)
+Sqrt(x);                 // Square root
+Sin(x);                  // Sine
+Cos(x);                  // Cosine
+Atan2(y, x);             // Two-argument arctangent
+Clamp(x, lo, hi);        // Clamp f64 to range
+ClampInt(x, lo, hi);     // Clamp i64 to range
+Floor(x);                // Floor
+Ceil(x);                 // Ceiling
+// ... and many more (see Viper.Math.* in runtime.def)
+</code></pre>
+<h4 id="random">Random</h4>
+<pre><code data-lang="viper">
+// Use the fully qualified name, or bind Viper.Math and use Viper.Math.Random.NextInt
+Viper.Math.Random.NextInt(max);   // Random integer [0, max)
+</code></pre>
+<h4 id="collections">Collections</h4>
+<pre><code data-lang="viper">
+// List operations
+list.add(value);                    // Add element
+list.get(index);                    // Get element
+list.set(index, value);             // Set element
+list.Length;                        // Get count
+list.remove(index);                 // Remove element
+
+// Map operations (keys are String)
+map.set(&quot;key&quot;, value);              // Set or replace value
+map.put(&quot;key&quot;, value);              // Alias for set
+map.get(&quot;key&quot;);                     // Get value (null if missing)
+map.getOr(&quot;key&quot;, fallback);         // Get or default
+map.setIfMissing(&quot;key&quot;, value);     // Set only if missing
+map.has(&quot;key&quot;);                     // Key exists?
+map.containsKey(&quot;key&quot;);             // Alias for has
+map.remove(&quot;key&quot;);                  // Remove entry
+map.clear();                        // Remove all entries
+map.keys();                         // Sequence of keys
+map.values();                       // Sequence of values
+map.Length;                         // Entry count
+</code></pre>
+<p>For complete runtime documentation, see <strong>[Runtime Library Reference](viperlib/README.md)</strong>.</p>
+<p>---</p>
+<h2 id="operator-precedence">Operator Precedence</h2>
+<p>From highest to lowest:</p>
+<table><thead><tr>
+<th>Precedence</th>
+<th>Operators</th>
+<th>Associativity</th>
+</tr></thead><tbody>
+<tr>
+<td>1</td>
+<td>`()` `[]` `.` `?.`</td>
+<td>Left</td>
+</tr>
+<tr>
+<td>2</td>
+<td>`-` `!`/`not` `~` `&amp;` (unary)</td>
+<td>Right</td>
+</tr>
+<tr>
+<td>3</td>
+<td>`*` `/` `%`</td>
+<td>Left</td>
+</tr>
+<tr>
+<td>4</td>
+<td>`+` `-`</td>
+<td>Left</td>
+</tr>
+<tr>
+<td>5</td>
+<td>`&lt;` `&lt;=` `&gt;` `&gt;=`</td>
+<td>Left</td>
+</tr>
+<tr>
+<td>6</td>
+<td>`==` `!=`</td>
+<td>Left</td>
+</tr>
+<tr>
+<td>7</td>
+<td>`&amp;`</td>
+<td>Left</td>
+</tr>
+<tr>
+<td>8</td>
+<td>`^`</td>
+<td>Left</td>
+</tr>
+<tr>
+<td>9</td>
+<td>`</td>
+<td>`</td>
+<td>Left</td>
+</tr>
+<tr>
+<td>10</td>
+<td>`&amp;&amp;` / `and`</td>
+<td>Left</td>
+</tr>
+<tr>
+<td>11</td>
+<td>`</td>
+<td></td>
+<td>` / `or`</td>
+<td>Left</td>
+</tr>
+<tr>
+<td>12</td>
+<td>`??`</td>
+<td>Left</td>
+</tr>
+<tr>
+<td>13</td>
+<td>`..` `..=`</td>
+<td>Left</td>
+</tr>
+<tr>
+<td>14</td>
+<td>`? :`</td>
+<td>Right</td>
+</tr>
+<tr>
+<td>15</td>
+<td>`=` `+=` `-=` `*=` `/=` `%=`</td>
+<td>Right</td>
+</tr>
+</tbody></table>
+<p>---</p>
+<h2 id="reserved-words">Reserved Words</h2>
+<p>The following words are reserved and cannot be used as identifiers:</p>
+<h3 id="keywords">Keywords</h3>
+<pre><code data-lang="text">
+and         as          bind        break       catch
+continue    deinit      else        entity      enum
+expose      extends     false       final       finally
+for         func        guard       hide        if
+implements  in          interface   is          match
+module      namespace   new         not         null
+or          override    property    return      self
+static      super       throw       true        try
+value       var         while
+</code></pre>
+<h3 id="reserved-for-future-use">Reserved for Future Use</h3>
+<p>The following keywords are recognized by the lexer but have no current semantics:</p>
+<pre><code data-lang="text">
+let         weak
+</code></pre>
+<h3 id="type-names">Type Names</h3>
+<pre><code data-lang="text">
+Boolean     Bytes       Integer     List        Map
+Number      Ptr         Set         String
+</code></pre>
+<p>---</p>
+<h2 id="grammar-summary">Grammar Summary</h2>
+<h3 id="module">Module</h3>
+<pre><code data-lang="text">
+module      ::= &quot;module&quot; IDENT &quot;;&quot; bind* decl*
+bind        ::= &quot;bind&quot; STRING [&quot;as&quot; IDENT] &quot;;&quot;
+              | &quot;bind&quot; qualifiedName [&quot;as&quot; IDENT] [&quot;{&quot; identList &quot;}&quot;] &quot;;&quot;
+</code></pre>
+<h3 id="declarations">Declarations</h3>
+<pre><code data-lang="text">
+decl        ::= entityDecl | valueDecl | interfaceDecl | enumDecl | funcDecl | varDecl | namespaceDecl
+entityDecl  ::= &quot;entity&quot; IDENT [&quot;extends&quot; IDENT] [&quot;implements&quot; identList] &quot;{&quot; member* &quot;}&quot;
+valueDecl   ::= &quot;value&quot; IDENT [&quot;implements&quot; identList] &quot;{&quot; member* &quot;}&quot;
+interfaceDecl ::= &quot;interface&quot; IDENT &quot;{&quot; methodSig* &quot;}&quot;
+enumDecl    ::= [&quot;expose&quot;] &quot;enum&quot; IDENT &quot;{&quot; enumVariant (&quot;,&quot; enumVariant)* [&quot;,&quot;] &quot;}&quot;
+enumVariant ::= IDENT [&quot;=&quot; [&quot;-&quot;] INTEGER]
+funcDecl    ::= &quot;func&quot; IDENT [&quot;[&quot; genericParams &quot;]&quot;] &quot;(&quot; params &quot;)&quot; [&quot;-&gt;&quot; type] block
+genericParams ::= IDENT [&quot;:&quot; IDENT] (&quot;,&quot; IDENT [&quot;:&quot; IDENT])*
+param       ::= IDENT &quot;:&quot; type [&quot;=&quot; expr]
+varDecl     ::= (&quot;var&quot; | &quot;final&quot;) IDENT [&quot;:&quot; type] [&quot;=&quot; expr] &quot;;&quot;
+namespaceDecl ::= &quot;namespace&quot; qualifiedName &quot;{&quot; decl* &quot;}&quot;
+qualifiedName ::= IDENT (&quot;.&quot; IDENT)*
+member      ::= [&quot;expose&quot; | &quot;hide&quot;] [&quot;static&quot; | &quot;override&quot;] (fieldDecl | funcDecl | propertyDecl | deinitDecl)
+propertyDecl ::= &quot;property&quot; IDENT &quot;:&quot; type &quot;{&quot; [&quot;get&quot; block] [&quot;set&quot; &quot;(&quot; IDENT &quot;)&quot; block] &quot;}&quot;
+deinitDecl  ::= &quot;deinit&quot; block
+</code></pre>
+<h3 id="statements">Statements</h3>
+<pre><code data-lang="text">
+stmt        ::= block | varStmt | ifStmt | whileStmt | forStmt | forInStmt
+              | returnStmt | breakStmt | continueStmt | guardStmt | matchStmt
+              | tryStmt | throwStmt | exprStmt
+block       ::= &quot;{&quot; stmt* &quot;}&quot;
+ifStmt      ::= &quot;if&quot; expr block [&quot;else&quot; (ifStmt | block)]
+whileStmt   ::= &quot;while&quot; expr block
+forStmt     ::= &quot;for&quot; &quot;(&quot; [varStmt | exprStmt] expr &quot;;&quot; expr &quot;)&quot; block
+forInStmt   ::= &quot;for&quot; IDENT &quot;in&quot; expr block
+returnStmt  ::= &quot;return&quot; [expr] &quot;;&quot;
+breakStmt   ::= &quot;break&quot; &quot;;&quot;
+continueStmt ::= &quot;continue&quot; &quot;;&quot;
+guardStmt   ::= &quot;guard&quot; expr &quot;else&quot; block
+matchStmt   ::= &quot;match&quot; expr &quot;{&quot; matchArm* &quot;}&quot;
+matchArm    ::= pattern [&quot;if&quot; expr] &quot;=&gt;&quot; (block | expr &quot;;&quot;)
+tryStmt     ::= &quot;try&quot; block [&quot;catch&quot; &quot;(&quot; IDENT &quot;:&quot; type &quot;)&quot; block] [&quot;finally&quot; block]
+throwStmt   ::= &quot;throw&quot; expr &quot;;&quot;
+exprStmt    ::= expr &quot;;&quot;
+</code></pre>
+<h3 id="expressions">Expressions</h3>
+<pre><code data-lang="text">
+expr        ::= assignment
+assignment  ::= ternary [(&quot;=&quot; | &quot;+=&quot; | &quot;-=&quot; | &quot;*=&quot; | &quot;/=&quot; | &quot;%=&quot;) assignment]
+ternary     ::= logicalOr [&quot;?&quot; expr &quot;:&quot; ternary]
+logicalOr   ::= logicalAnd (&quot;||&quot; logicalAnd)*
+logicalAnd  ::= equality (&quot;&amp;&amp;&quot; equality)*
+equality    ::= comparison ((&quot;==&quot; | &quot;!=&quot;) comparison)*
+comparison  ::= additive ((&quot;&lt;&quot; | &quot;&lt;=&quot; | &quot;&gt;&quot; | &quot;&gt;=&quot;) additive)*
+additive    ::= multiplicative ((&quot;+&quot; | &quot;-&quot;) multiplicative)*
+multiplicative ::= unary ((&quot;*&quot; | &quot;/&quot; | &quot;%&quot;) unary)*
+unary       ::= (&quot;-&quot; | &quot;!&quot; | &quot;~&quot; | &quot;&amp;&quot;) unary | postfix
+postfix     ::= primary (call | index | field | optionalChain | &quot;!&quot; | &quot;?&quot; | &quot;as&quot; type | &quot;is&quot; type)*
+primary     ::= literal | IDENT | &quot;(&quot; expr &quot;)&quot; | &quot;(&quot; expr &quot;,&quot; exprList &quot;)&quot;
+              | &quot;new&quot; type &quot;(&quot; args &quot;)&quot; | type &quot;{&quot; fieldInits &quot;}&quot;
+              | &quot;[&quot; exprList &quot;]&quot; | &quot;{&quot; mapEntries &quot;}&quot; | &quot;{&quot; exprList &quot;}&quot;
+              | &quot;if&quot; expr block &quot;else&quot; block | block
+</code></pre>
+<h3 id="types">Types</h3>
+<pre><code data-lang="text">
+type        ::= IDENT [&quot;[&quot; typeList &quot;]&quot;] [&quot;?&quot;]
+              | IDENT &quot;[&quot; INTEGER &quot;]&quot;
+              | &quot;(&quot; typeList &quot;)&quot; [&quot;-&gt;&quot; type]
+</code></pre>
+<p>---</p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li>[Zia Getting Started](zia-getting-started.md) — Tutorial introduction</li>
+<li>[Runtime Library Reference](viperlib/README.md) — Complete API documentation</li>
+<li>[IL Guide](il-guide.md) — Understanding compiled output</li>
+<li>[Frontend How-To](frontend-howto.md) — Building language frontends</li>
+</ul>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../../features/native-targets.html">Native Targets</a>
+      <a href="../../features/two-languages.html">Languages</a>
+      <a href="../../features/runtime.html">Runtime Library</a>
+      <a href="../../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../../docs/getting-started.html">Getting Started</a>
+      <a href="../../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../../docs/runtime/">Runtime API</a>
+      <a href="../../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../../contributing/">Contributing</a>
+      <a href="../../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../../main.js"></script>
+</body>
+</html>

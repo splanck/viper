@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Real Applications — Viper</title>
+  <meta name="description" content="Real applications built with Viper: a 73K-line SQL database, an IDE with IntelliSense, a chess engine with AI, a multi-threaded web server, and more.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="../showcase/">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <a href="../">Features</a> / <span>Real Applications</span>
+</div>
+
+<div class="section">
+  <div class="prose" style="max-width: 800px; margin: 0 auto;">
+    <h1>Real Applications</h1>
+
+    <p>Viper isn't a "hello world" compiler. The examples directory contains <strong>production-quality applications and games</strong> totaling over 100,000 lines of code &mdash; all written in Viper's own languages and compiling to native binaries.</p>
+
+    <h2>Applications</h2>
+
+    <table>
+      <thead><tr><th>Project</th><th>Language</th><th>LOC</th><th>Highlights</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><a href="../showcase/sqldb.html"><strong>SQL Database</strong></a></td>
+          <td>Zia</td>
+          <td>73,701</td>
+          <td>PostgreSQL-compatible with MVCC, WAL, B-tree indexes, wire protocol, stored procedures</td>
+        </tr>
+        <tr>
+          <td><a href="../showcase/viperide.html"><strong>ViperIDE</strong></a></td>
+          <td>Zia</td>
+          <td>2,792</td>
+          <td>Tabbed editor, IntelliSense, syntax highlighting, integrated build, settings persistence</td>
+        </tr>
+        <tr>
+          <td><a href="../showcase/paint.html"><strong>Paint</strong></a></td>
+          <td>Zia</td>
+          <td>2,410</td>
+          <td>8 drawing tools, color picker, undo/redo, Canvas-based rendering</td>
+        </tr>
+        <tr>
+          <td><a href="../showcase/webserver.html"><strong>Web Server</strong></a></td>
+          <td>Zia</td>
+          <td>1,352</td>
+          <td>Multi-threaded HTTP, routing, static file serving, JSON API endpoints</td>
+        </tr>
+        <tr>
+          <td><strong>Archive Utility</strong></td>
+          <td>Zia</td>
+          <td>893</td>
+          <td>DEFLATE compression, AES-256 encryption, custom VARC format</td>
+        </tr>
+        <tr>
+          <td><strong>Telnet</strong></td>
+          <td>Zia</td>
+          <td>491</td>
+          <td>TCP client/server, session management, multi-client threading</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Games (Zia)</h2>
+
+    <table>
+      <thead><tr><th>Project</th><th>LOC</th><th>Highlights</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><a href="../showcase/sidescroller.html"><strong>Nova Run</strong></a></td>
+          <td>6,592</td>
+          <td>2D platformer with physics, parallax scrolling, particle effects, 5 levels, boss fights</td>
+        </tr>
+        <tr>
+          <td><a href="../showcase/chess.html"><strong>Chess</strong></a></td>
+          <td>2,937</td>
+          <td>Alpha-beta AI with transposition tables, drag-drop GUI, full rule enforcement</td>
+        </tr>
+        <tr>
+          <td><strong>Centipede</strong></td>
+          <td>2,553</td>
+          <td>Multiple enemy types, mushroom fields, particle effects, level progression</td>
+        </tr>
+        <tr>
+          <td><a href="../showcase/pacman.html"><strong>Pac-Man</strong></a></td>
+          <td>2,207</td>
+          <td>Ghost AI personalities (Blinky, Pinky, Inky, Clyde), BFS pathfinding, Canvas rendering</td>
+        </tr>
+        <tr>
+          <td><strong>Frogger</strong></td>
+          <td>754</td>
+          <td>Multi-lane traffic and river crossing, sprite-based rendering</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Games (BASIC)</h2>
+
+    <table>
+      <thead><tr><th>Project</th><th>LOC</th><th>Highlights</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Monopoly</strong></td>
+          <td>2,004</td>
+          <td>4-player board game with AI, property trading, ANSI board rendering</td>
+        </tr>
+        <tr>
+          <td><strong>Chess</strong></td>
+          <td>1,609</td>
+          <td>Minimax AI, ANSI board, full rule enforcement in classic BASIC</td>
+        </tr>
+        <tr>
+          <td><strong>Pac-Man</strong></td>
+          <td>1,514</td>
+          <td>Terminal-based, ghost FSM (chase/scatter/frightened), OOP entity design</td>
+        </tr>
+        <tr>
+          <td><strong>Frogger</strong></td>
+          <td>1,320</td>
+          <td>OOP class design, non-blocking input, module system stress test</td>
+        </tr>
+        <tr>
+          <td><strong>Centipede</strong></td>
+          <td>1,214</td>
+          <td>OOP entities with inheritance, collision system, level progression</td>
+        </tr>
+        <tr>
+          <td><strong>VTris</strong></td>
+          <td>1,132</td>
+          <td>All 7 tetrominoes, rotation, line clearing, high score leaderboard</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>What This Proves</h2>
+
+    <p>A 73,000-line SQL database with MVCC and a wire protocol isn't a toy example. A chess engine with transposition tables and a drag-drop GUI isn't a demo. These are real applications that exercise every layer of the platform:</p>
+
+    <ul>
+      <li><strong>Language features</strong> &mdash; Classes, inheritance, generics, pattern matching, modules</li>
+      <li><strong>Runtime capabilities</strong> &mdash; Graphics, networking, threading, crypto, file I/O</li>
+      <li><strong>Compiler quality</strong> &mdash; These programs run correctly at scale, handling edge cases across 73K+ lines</li>
+      <li><strong>Performance</strong> &mdash; Games run at interactive frame rates; the database handles concurrent transactions</li>
+    </ul>
+
+    <p>Browse all demos in the <a href="../showcase/">Showcase</a>.</p>
+
+  </div>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="zero-deps.html">Zero Dependencies</a>
+      <a href="native-targets.html">Native Targets</a>
+      <a href="two-languages.html">Languages</a>
+      <a href="runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

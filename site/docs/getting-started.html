@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Getting Started — Viper</title>
+  <meta name="description" content="Viper documentation: Getting Started">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/" class="active">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="../showcase/">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <span>Getting Started</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#platform-guides">Platform Guides</a></li>
+        <li><a href="#prerequisites">Prerequisites</a></li>
+        <li><a href="#building-viper">Building Viper</a></li>
+        <li><a href="#verify-the-installation">Verify the Installation</a></li>
+        <li><a href="#create-a-new-project">Create a New Project</a></li>
+        <li><a href="#quick-start-run-your-first-program">Quick Start: Run Your First Program</a></li>
+        <li><a href="#try-the-interactive-repl">Try the Interactive REPL</a></li>
+        <li><a href="#working-with-il-programs">Working with IL Programs</a></li>
+        <li><a href="#command-reference">Command Reference</a></li>
+        <li><a href="#key-concepts">Key Concepts</a></li>
+        <li><a href="#what-to-read-next">What to Read Next</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>Getting Started</h1>
+<h1 id="getting-started-with-viper">Getting Started with Viper</h1>
+<p>Welcome to Viper! This guide will help you build and run the Viper compiler toolchain.</p>
+<p>---</p>
+<h2 id="platform-guides">Platform Guides</h2>
+<p>For detailed, platform-specific installation instructions (prerequisites, exact install commands, and troubleshooting):</p>
+<ul>
+<li><strong>[macOS](getting-started/macos.md)</strong></li>
+<li><strong>[Linux](getting-started/linux.md)</strong></li>
+<li><strong>[Windows](getting-started/windows.md)</strong></li>
+</ul>
+<p>---</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<p>Before you begin, ensure you have:</p>
+<ul>
+<li><strong>CMake</strong> ≥ 3.20</li>
+<li><strong>C++20 Compiler</strong>: GCC, Clang, or MSVC</li>
+<li><strong>Ninja</strong> (optional): For faster multi-config builds</li>
+<li><strong>Python 3.x</strong> (optional): For helper scripts in <code>scripts/</code></li>
+</ul>
+<p>---</p>
+<h2 id="building-viper">Building Viper</h2>
+<p>The build script configures, compiles, tests, and installs Viper in one step:</p>
+<pre><code data-lang="sh">
+./scripts/build_viper.sh
+</code></pre>
+<p>On Windows, use <code>scripts/build_viper.cmd</code> instead.</p>
+<p>---</p>
+<h2 id="verify-the-installation">Verify the Installation</h2>
+<p>After building, confirm the primary tool works correctly:</p>
+<pre><code data-lang="sh">
+viper --version
+</code></pre>
+<p>This should display the Viper version and IL version without errors.</p>
+<p>---</p>
+<h2 id="create-a-new-project">Create a New Project</h2>
+<p>Use <code>viper init</code> to scaffold a new project:</p>
+<pre><code data-lang="sh">
+viper init my-app
+</code></pre>
+<p>This creates a project directory with a manifest and entry-point source file:</p>
+<pre><code data-lang="text">
+my-app/
+  viper.project    # Project manifest (name, version, language, entry point)
+  main.zia         # Entry-point source file
+</code></pre>
+<p>Run the new project:</p>
+<pre><code data-lang="sh">
+viper run my-app
+</code></pre>
+<h3 id="options">Options</h3>
+<table><thead><tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr></thead><tbody>
+<tr>
+<td>`--lang zia`</td>
+<td>Create a Zia project</td>
+<td>`zia`</td>
+</tr>
+<tr>
+<td>`--lang basic`</td>
+<td>Create a BASIC project</td>
+<td>—</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="sh">
+# Create a Zia project (default)
+viper init my-app
+
+# Create a BASIC project
+viper init calculator --lang basic
+</code></pre>
+<p>---</p>
+<h2 id="quick-start-run-your-first-program">Quick Start: Run Your First Program</h2>
+<h3 id="basic">BASIC</h3>
+<pre><code data-lang="sh">
+viper run examples/basic/ex1_hello_cond.bas
+</code></pre>
+<p><strong>Expected output:</strong></p>
+<pre><code data-lang="text">
+Hello, World!
+Condition is true
+</code></pre>
+<h3 id="zia">Zia</h3>
+<p>Create a file <code>hello.zia</code>:</p>
+<pre><code data-lang="rust">
+module Hello;
+
+func start() {
+    Viper.Terminal.Say(&quot;Hello, World!&quot;);
+}
+</code></pre>
+<p>Run it:</p>
+<pre><code data-lang="sh">
+viper run hello.zia
+</code></pre>
+<p><strong>Expected output:</strong></p>
+<pre><code data-lang="text">
+Hello, World!
+</code></pre>
+<p>---</p>
+<h2 id="try-the-interactive-repl">Try the Interactive REPL</h2>
+<p>For quick experimentation, launch the interactive REPL:</p>
+<pre><code data-lang="sh">
+viper repl
+</code></pre>
+<p>The REPL lets you type Zia code and see results immediately:</p>
+<pre><code data-lang="text">
+zia&gt; &quot;Hello from the REPL&quot;
+Hello from the REPL
+zia&gt; 2 + 3 * 4
+14
+zia&gt; var x = 42
+zia&gt; x
+42
+zia&gt; func square(n: Integer) -&gt; Integer { return n * n; }
+zia&gt; square(7)
+49
+</code></pre>
+<p>Type <code>.help</code> for available commands and <code>.quit</code> to exit. See the [REPL Guide](repl.md) for full documentation.</p>
+<p>---</p>
+<h2 id="working-with-il-programs">Working with IL Programs</h2>
+<p>You can inspect the generated IL or run IL programs directly:</p>
+<pre><code data-lang="sh">
+# Emit IL from BASIC
+viper build examples/basic/ex1_hello_cond.bas
+
+# Emit IL from Zia
+viper build hello.zia
+
+# Save IL to a file
+viper build examples/basic/ex1_hello_cond.bas -o hello.il
+
+# Run the IL program directly
+ilrun hello.il
+</code></pre>
+<p>For more examples, see the <strong>[BASIC Tutorial](basic-language.md)</strong>,</p>
+<p><strong>[Zia Tutorial](zia-getting-started.md)</strong>, and the <code>examples/</code> and <code>demos/</code> directories.</p>
+<p>---</p>
+<h2 id="command-reference">Command Reference</h2>
+<h3 id="primary-tools">Primary Tools</h3>
+<table><thead><tr>
+<th>Tool</th>
+<th>Purpose</th>
+<th>Example</th>
+</tr></thead><tbody>
+<tr>
+<td>`viper`</td>
+<td>Unified compiler driver — run and build</td>
+<td>`viper run program.zia`</td>
+</tr>
+<tr>
+<td>`viper init`</td>
+<td>Scaffold a new project</td>
+<td>`viper init my-app`</td>
+</tr>
+<tr>
+<td>`vbasic`</td>
+<td>Run/compile BASIC programs</td>
+<td>`vbasic script.bas`</td>
+</tr>
+<tr>
+<td>`zia`</td>
+<td>Run/compile Zia programs</td>
+<td>`zia program.zia`</td>
+</tr>
+<tr>
+<td>`ilrun`</td>
+<td>Execute IL programs</td>
+<td>`ilrun program.il`</td>
+</tr>
+<tr>
+<td>`il-verify`</td>
+<td>Verify IL correctness</td>
+<td>`il-verify program.il`</td>
+</tr>
+<tr>
+<td>`il-dis`</td>
+<td>Disassemble IL</td>
+<td>`il-dis program.il`</td>
+</tr>
+</tbody></table>
+<blockquote><p>**Note:** <code>viper run</code> is the recommended way to run programs. It auto-detects the language</p></blockquote>
+<p>and can run entire project directories.</p>
+<p>---</p>
+<h2 id="key-concepts">Key Concepts</h2>
+<h3 id="unified-error-model">Unified Error Model</h3>
+<p>All frontends, IL, and the VM share a consistent error and trap model. Diagnostics remain uniform regardless of entry</p>
+<p>point.</p>
+<blockquote><p>**Learn more:** See [specs/errors.md](specs/errors.md) for trap kinds, handler semantics, and BASIC <code>ON ERROR</code> lowering rules.</p></blockquote>
+<h3 id="deterministic-numerics">Deterministic Numerics</h3>
+<p>Viper guarantees consistent numeric behavior across all platforms and execution modes:</p>
+<ul>
+<li><strong>Overflow checking</strong>: Integer arithmetic traps on overflow instead of wrapping</li>
+<li><strong>Division operators</strong>: <code>/</code> performs floating-point division; <code>\</code> truncates toward zero</li>
+<li><strong>Modulo</strong>: <code>MOD</code> preserves the dividend&#x27;s sign</li>
+<li><strong>Rounding</strong>: All rounding uses banker&#x27;s rounding (ties-to-even)</li>
+<li><strong>Conversions</strong>: Casts use checked variants that trap when values are out of range</li>
+<li><strong>String conversions</strong>: <code>VAL</code> and <code>STR$</code> guarantee round-trip consistency</li>
+</ul>
+<blockquote><p>**Learn more:** See [specs/numerics.md](specs/numerics.md) for complete numeric semantics.</p></blockquote>
+<p>---</p>
+<h2 id="what-to-read-next">What to Read Next</h2>
+<p><strong>Language Documentation:</strong></p>
+<ul>
+<li><strong>[BASIC Tutorial](basic-language.md)</strong> — Learn Viper BASIC by example</li>
+<li><strong>[BASIC Reference](basic-reference.md)</strong> — Complete BASIC language reference</li>
+<li><strong>[Zia Tutorial](zia-getting-started.md)</strong> — Learn Zia by example</li>
+<li><strong>[Zia Reference](zia-reference.md)</strong> — Complete Zia language reference</li>
+<li><strong>[IL Guide](il-guide.md)</strong> — Comprehensive IL documentation</li>
+</ul>
+<p><strong>Implementation Guides:</strong></p>
+<ul>
+<li><strong>[Frontend How-To](frontend-howto.md)</strong> — Build your own language frontend</li>
+</ul>
+<p><strong>Developer Documentation:</strong></p>
+<ul>
+<li>[architecture.md](architecture.md) — System architecture overview</li>
+<li>[vm.md](vm.md) — VM and runtime internals</li>
+<li>[contributor-guide.md](contributor-guide.md) — Contribution guidelines</li>
+</ul>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../features/native-targets.html">Native Targets</a>
+      <a href="../features/two-languages.html">Languages</a>
+      <a href="../features/runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

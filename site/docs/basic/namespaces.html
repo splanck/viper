@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Namespace Reference — Viper</title>
+  <meta name="description" content="Viper documentation: Namespace Reference">
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="icon" href="../../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../../docs/" class="active">Docs</a>
+    <a href="../../learn/">Learn</a>
+    <a href="../../showcase/">Showcase</a>
+    <a href="../../performance/">Performance</a>
+    <a href="../../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../../">Home</a> / <a href="../../docs">Docs</a> / <span>Namespace Reference</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#track-a-implementation-complete">Track A Implementation — Complete</a></li>
+        <li><a href="#known-limitations">Known Limitations</a></li>
+        <li><a href="#namespace-declaration">NAMESPACE Declaration</a></li>
+        <li><a href="#using-directive">USING Directive</a></li>
+        <li><a href="#type-resolution">Type Resolution</a></li>
+        <li><a href="#reserved-namespaces">Reserved Namespaces</a></li>
+        <li><a href="#diagnostics-reference">Diagnostics Reference</a></li>
+        <li><a href="#common-pitfalls-and-solutions">Common Pitfalls and Solutions</a></li>
+        <li><a href="#multi-file-compilation">Multi-File Compilation</a></li>
+        <li><a href="#best-practices">Best Practices</a></li>
+        <li><a href="#viper-runtime-namespace-implemented">Viper.* Runtime Namespace (Implemented)</a></li>
+        <li><a href="#future-enhancements-track-b">Future Enhancements (Track B)</a></li>
+        <li><a href="#summary">Summary</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>Namespace Reference</h1>
+<h1 id="viper-basic-namespaces-reference">Viper BASIC Namespaces — Reference</h1>
+<p>This document provides a complete reference for the namespace feature in Viper BASIC (Track A implementation). For</p>
+<p>tutorial-style examples, see [basic-language.md](basic-language.md). For grammar details,</p>
+<p>see [basic-grammar.md](basic-grammar.md).</p>
+<h2 id="overview">Overview</h2>
+<p>Namespaces organize types (classes and interfaces) into hierarchical groups, preventing name collisions and improving</p>
+<p>code clarity. The namespace system includes:</p>
+<ul>
+<li><strong>Namespace aliases</strong>: Create shorthand names for long namespace paths</li>
+<li><strong>NAMESPACE declarations</strong>: Define nested namespace hierarchies</li>
+<li><strong>Type resolution</strong>: Automatic search through namespace hierarchy and imports</li>
+<li><strong>USING directives</strong>: Import namespaces for unqualified type references</li>
+</ul>
+<h2 id="track-a-implementation-complete">Track A Implementation — Complete</h2>
+<p>Track A is fully implemented and includes:</p>
+<ul>
+<li>Syntax: <code>NAMESPACE A.B ... END NAMESPACE</code> (dotted segments form a nested hierarchy)</li>
+<li>Declarations: procedures (SUB/FUNCTION) and types inside a namespace are considered fully-qualified at that path (</li>
+</ul>
+<p>e.g., <code>A.B.F</code>, <code>A.Point</code>)</p>
+<ul>
+<li><strong>USING directives</strong>: Import namespaces for unqualified type references (both simple and aliased forms)</li>
+<li><strong>Namespace aliases</strong>: Create shorthand names with <code>USING Alias = Full.Path</code></li>
+<li>Type resolution algorithm: searches current namespace → parent namespaces → USING imports → global</li>
+<li>Calls:</li>
+<li>Qualified: <code>A.B.F()</code> calls the exact fully-qualified procedure</li>
+<li>Unqualified: resolves via current namespace, parent-walk, and USING imports</li>
+<li>Case-insensitive: all segments and identifiers are matched ignoring case. The following are equivalent: <code>Namespace</code>,</li>
+</ul>
+<p><code>NAMESPACE</code>, <code>nameSpace</code>; and <code>A.B.F</code> ≡ <code>a.b.f</code> for lookup and duplicate checks</p>
+<ul>
+<li>Nine diagnostic error codes (E_NS_001 through E_NS_009) for comprehensive error handling</li>
+</ul>
+<h3 id="basic-examples">Basic Examples</h3>
+<p>1) Flattened namespace call (t01)</p>
+<pre><code data-lang="basic">
+NAMESPACE A
+  SUB F: PRINT &quot;ok&quot;: END SUB
+END NAMESPACE
+
+A.F()   &#x27; qualified call
+</code></pre>
+<p>Output:</p>
+<pre><code data-lang="text">
+ok
+</code></pre>
+<p>2) Nested namespace call (t02)</p>
+<pre><code data-lang="basic">
+NAMESPACE A.B
+  SUB F: PRINT &quot;ok&quot;: END SUB
+END NAMESPACE
+
+A.B.F() &#x27; fully-qualified call
+</code></pre>
+<p>Output:</p>
+<pre><code data-lang="text">
+ok
+</code></pre>
+<p>3) Parent-walk resolution within nested namespace (t03)</p>
+<pre><code data-lang="basic">
+NAMESPACE A.B
+  SUB F: PRINT &quot;ok&quot;: END SUB
+  SUB Main
+    F()   &#x27; unqualified; resolves to A.B.F via parent-walk
+  END SUB
+END NAMESPACE
+
+A.B.Main()
+</code></pre>
+<p>Output:</p>
+<pre><code data-lang="text">
+ok
+</code></pre>
+<p>4) Cross-file usage with USING directive</p>
+<p>File 1 defines:</p>
+<pre><code data-lang="basic">
+NAMESPACE Lib
+  SUB Ping: PRINT &quot;pong&quot;: END SUB
+END NAMESPACE
+</code></pre>
+<p>File 2 imports and calls:</p>
+<pre><code data-lang="basic">
+USING Lib
+
+Lib.Ping()   &#x27; qualified call works
+Ping()       &#x27; unqualified call works via USING
+</code></pre>
+<p>Both calls succeed. Without the USING directive, only the qualified call (<code>Lib.Ping()</code>) would work.</p>
+<h3 id="notes-on-case-insensitivity">Notes on Case-Insensitivity</h3>
+<ul>
+<li>Identifiers and each segment of qualified names are compared case-insensitively</li>
+<li>Canonicalization uses ASCII lowercase for resolution and duplicate checks</li>
+<li>Examples (all equivalent): <code>A.B.F</code>, <code>a.b.f</code>, <code>A.b.f</code>, <code>a.B.F</code></li>
+</ul>
+<h2 id="known-limitations">Known Limitations</h2>
+<p>Current implementation has the following limitations:</p>
+<ul>
+<li><strong>Case-sensitive qualified procedure calls</strong>: Lowercase qualified calls like <code>a.b.f()</code> fail when the procedure is</li>
+</ul>
+<p>defined as <code>A.B.F()</code>. This is a bug; all lookups should be case-insensitive per the specification.</p>
+<ul>
+<li><strong>File-scoped USING only</strong>: USING directives are not inherited across compilation units; each file must declare its</li>
+</ul>
+<p>own imports.</p>
+<ul>
+<li><strong>Qualified names in DIM AS</strong>: Parser does not yet support dotted paths like <code>DIM p AS Graphics.Point</code>. Use USING</li>
+</ul>
+<p>directives to enable unqualified type references.</p>
+<h2 id="namespace-declaration">NAMESPACE Declaration</h2>
+<h3 id="syntax">Syntax</h3>
+<pre><code data-lang="basic">
+NAMESPACE A.B.C
+  CLASS MyClass
+    ...
+  END CLASS
+
+  INTERFACE MyInterface
+    ...
+  END INTERFACE
+END NAMESPACE
+</code></pre>
+<h3 id="rules">Rules</h3>
+<ol>
+<li>**Dotted paths**: <code>NAMESPACE A.B.C</code> creates a three-level hierarchy (A::B::C)</li>
+<li>**Merged namespaces**: Multiple <code>NAMESPACE</code> blocks with the same path contribute to the same namespace</li>
+<li>**Nested declarations**: Namespaces can contain CLASS, INTERFACE, and nested NAMESPACE blocks</li>
+<li>**Case insensitive**: All namespace identifiers follow BASIC case-insensitive semantics</li>
+<li>**Global scope**: NAMESPACE blocks must appear at file scope (not inside other blocks)</li>
+</ul>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="basic">
+NAMESPACE Collections
+  CLASS List
+    DIM size AS I64
+  END CLASS
+END NAMESPACE
+
+NAMESPACE Collections
+  CLASS Dictionary
+    DIM count AS I64
+  END CLASS
+END NAMESPACE
+
+REM Both List and Dictionary belong to Collections namespace
+</code></pre>
+<h3 id="qualified-names">Qualified Names</h3>
+<p>Types declared in namespaces have fully-qualified names:</p>
+<pre><code data-lang="basic">
+NAMESPACE Graphics.Rendering
+  CLASS Camera
+  END CLASS
+END NAMESPACE
+
+REM Fully-qualified reference:
+DIM cam AS Graphics.Rendering.Camera
+</code></pre>
+<h2 id="using-directive">USING Directive</h2>
+<h3 id="syntax">Syntax</h3>
+<p>The USING directive has two forms:</p>
+<ol>
+<li>**Simple import**: <code>USING NamespacePath</code></li>
+<li>**Aliased import**: <code>USING Alias = NamespacePath</code></li>
+</ul>
+<pre><code data-lang="basic">
+USING Collections
+USING Graphics.Rendering
+USING GFX = Graphics.Rendering
+</code></pre>
+<h3 id="placement-rules">Placement Rules</h3>
+<p><strong>CRITICAL</strong>: USING directives must satisfy strict placement constraints:</p>
+<ol>
+<li>**File scope only**: Cannot appear inside NAMESPACE, CLASS, or INTERFACE blocks</li>
+<li>**Before all declarations**: Must appear before any NAMESPACE, CLASS, or INTERFACE declarations</li>
+<li>**File-scoped effect**: Each file&#x27;s USING directives do not affect other compilation units</li>
+</ul>
+<pre><code data-lang="basic">
+REM ✓ CORRECT: USING comes first
+USING Collections
+
+NAMESPACE App
+  CLASS MyApp
+  END CLASS
+END NAMESPACE
+
+REM ✗ WRONG: USING after NAMESPACE
+NAMESPACE App
+  CLASS MyApp
+  END CLASS
+END NAMESPACE
+
+USING Collections    REM Error: E_NS_005
+</code></pre>
+<h3 id="semantics">Semantics</h3>
+<p><strong>Simple form</strong> (<code>USING Collections</code>):</p>
+<ul>
+<li>Makes all types from the namespace available for unqualified lookup</li>
+<li>Multiple USING directives accumulate</li>
+<li>Order matters: earlier imports checked first during resolution</li>
+</ul>
+<p><strong>Alias form</strong> (<code>USING Coll = Collections</code>):</p>
+<ul>
+<li>Creates a shorthand alias for the namespace path</li>
+<li>Alias can be used in type references: <code>Coll.List</code></li>
+<li>Aliases must be unique within a file</li>
+</ul>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="basic">
+USING Collections
+USING Utils.Helpers
+USING DB = Application.Database
+
+NAMESPACE Collections
+  CLASS List
+  END CLASS
+END NAMESPACE
+
+NAMESPACE Application.Database
+  CLASS Connection
+  END CLASS
+END NAMESPACE
+
+REM Unqualified via USING Collections
+DIM myList AS List
+
+REM Via alias
+DIM conn AS DB.Connection
+</code></pre>
+<h2 id="type-resolution">Type Resolution</h2>
+<h3 id="resolution-algorithm">Resolution Algorithm</h3>
+<p>When resolving an unqualified type reference (e.g., <code>MyClass</code>), the compiler searches in this order:</p>
+<ol>
+<li>**Current namespace**: Types declared in the same namespace as the reference</li>
+<li>**Parent namespaces**: Walk up the namespace hierarchy to the root</li>
+<li>**USING imports**: Search imported namespaces in declaration order</li>
+<li>**Global namespace**: Types declared at global scope</li>
+</ul>
+<p><strong>Fully-qualified references</strong> (e.g., <code>A.B.MyClass</code>) bypass this search and resolve directly.</p>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="basic">
+USING Foundation
+
+NAMESPACE Foundation
+  CLASS Entity
+  END CLASS
+END NAMESPACE
+
+NAMESPACE App.Domain
+  CLASS Service
+    REM Resolution order:
+    REM 1. App.Domain (current)
+    REM 2. App (parent)
+    REM 3. Global root (parent)
+    REM 4. Foundation (via USING)
+    DIM entity AS Entity    REM Found via USING Foundation
+  END CLASS
+END NAMESPACE
+</code></pre>
+<h3 id="case-insensitivity">Case Insensitivity</h3>
+<p>All namespace and type lookups are case-insensitive:</p>
+<pre><code data-lang="basic">
+NAMESPACE MyLib
+  CLASS Helper
+  END CLASS
+END NAMESPACE
+
+REM All equivalent:
+DIM h1 AS MyLib.Helper
+DIM h2 AS MYLIB.HELPER
+DIM h3 AS mylib.helper
+DIM h4 AS MyLib.HELPER
+</code></pre>
+<h2 id="reserved-namespaces">Reserved Namespaces</h2>
+<p>The <code>Viper</code> root namespace is <strong>reserved</strong> for future built-in libraries (Track B). User code cannot:</p>
+<ul>
+<li>Declare namespaces under <code>Viper</code> (e.g., <code>NAMESPACE Viper.MyLib</code>)</li>
+<li>Use <code>USING Viper</code> (the root itself)</li>
+</ul>
+<p>This ensures future compatibility with ViperLib.</p>
+<pre><code data-lang="basic">
+REM ✗ WRONG: Reserved namespace
+NAMESPACE Viper.MyLib    REM Error: E_NS_009
+END NAMESPACE
+
+REM ✗ WRONG: Reserved root
+USING Viper              REM Error: E_NS_009
+</code></pre>
+<h2 id="diagnostics-reference">Diagnostics Reference</h2>
+<p>The namespace system defines nine error codes covering all failure modes.</p>
+<table><thead><tr>
+<th>Code</th>
+<th>Category</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>E_NS_001</td>
+<td>Not Found</td>
+<td>Namespace does not exist</td>
+</tr>
+<tr>
+<td>E_NS_002</td>
+<td>Not Found</td>
+<td>Type not found in namespace</td>
+</tr>
+<tr>
+<td>E_NS_003</td>
+<td>Ambiguity</td>
+<td>Type reference is ambiguous</td>
+</tr>
+<tr>
+<td>E_NS_004</td>
+<td>Duplicate</td>
+<td>Alias already defined</td>
+</tr>
+<tr>
+<td>E_NS_005</td>
+<td>Placement</td>
+<td>USING after declaration</td>
+</tr>
+<tr>
+<td>E_NS_006</td>
+<td>Structure</td>
+<td>Nested USING not allowed</td>
+</tr>
+<tr>
+<td>E_NS_007</td>
+<td>Reserved</td>
+<td>Global type shadowed by namespace</td>
+</tr>
+<tr>
+<td>E_NS_008</td>
+<td>Placement</td>
+<td>USING inside namespace block</td>
+</tr>
+<tr>
+<td>E_NS_009</td>
+<td>Reserved</td>
+<td>Viper namespace reserved</td>
+</tr>
+</tbody></table>
+<h3 id="e-ns-001-namespace-not-found">E_NS_001: Namespace Not Found</h3>
+<p><strong>Cause</strong>: USING directive references a namespace that doesn&#x27;t exist.</p>
+<pre><code data-lang="basic">
+USING NonExistent    REM Error: E_NS_001
+
+END
+</code></pre>
+<p><strong>Message</strong>: <code>namespace not found: &#x27;NONEXISTENT&#x27;</code></p>
+<p><strong>Fix</strong>: Ensure the namespace is declared before using it (possibly in another file).</p>
+<p>---</p>
+<h3 id="e-ns-002-type-not-found-in-namespace">E_NS_002: Type Not Found in Namespace</h3>
+<p><strong>Cause</strong>: Fully-qualified reference to a type that doesn&#x27;t exist in the specified namespace.</p>
+<pre><code data-lang="basic">
+NAMESPACE Collections
+  CLASS List
+  END CLASS
+END NAMESPACE
+
+DIM d AS Collections.Dictionary    REM Error: E_NS_002
+</code></pre>
+<p><strong>Message</strong>: <code>type &#x27;DICTIONARY&#x27; not found in namespace &#x27;COLLECTIONS&#x27;</code></p>
+<p><strong>Fix</strong>: Check spelling or declare the missing type.</p>
+<p>---</p>
+<h3 id="e-ns-003-ambiguous-type-reference">E_NS_003: Ambiguous Type Reference</h3>
+<p><strong>Cause</strong>: Multiple imported namespaces contain types with the same name.</p>
+<pre><code data-lang="basic">
+USING A
+USING B
+
+NAMESPACE A
+  CLASS Thing
+    DIM x AS I64
+  END CLASS
+END NAMESPACE
+
+NAMESPACE B
+  CLASS Thing
+    DIM y AS I64
+  END CLASS
+END NAMESPACE
+
+CLASS MyClass : Thing    REM Error: E_NS_003
+  DIM z AS I64
+END CLASS
+END
+</code></pre>
+<p><strong>Message</strong>: <code>ambiguous type reference &#x27;THING&#x27; (candidates: A.THING, B.THING)</code></p>
+<p><strong>Candidate list is sorted alphabetically for stability.</strong></p>
+<p><strong>Fixes</strong>:</p>
+<ol>
+<li>Use fully-qualified name:</li>
+</ul>
+<pre><code data-lang="basic">
+CLASS MyClass : A.Thing
+</code></pre>
+<ol>
+<li>Use namespace alias:</li>
+</ul>
+<pre><code data-lang="basic">
+USING AliasA = A
+CLASS MyClass : AliasA.Thing
+</code></pre>
+<p>---</p>
+<h3 id="e-ns-004-duplicate-alias">E_NS_004: Duplicate Alias</h3>
+<p><strong>Cause</strong>: Same alias defined twice in the same file.</p>
+<pre><code data-lang="basic">
+USING Coll = Collections
+USING Coll = Utilities    REM Error: E_NS_004
+</code></pre>
+<p><strong>Message</strong>: <code>duplicate alias &#x27;COLL&#x27;</code></p>
+<p><strong>Fix</strong>: Use unique aliases for different namespaces.</p>
+<p><strong>Note</strong>: This error is difficult to demonstrate in single-file tests due to ordering constraints (USING must come</p>
+<p>before namespace declarations, but checking namespace existence happens before checking duplicate aliases).</p>
+<p>---</p>
+<h3 id="e-ns-005-using-after-declaration">E_NS_005: USING After Declaration</h3>
+<p><strong>Cause</strong>: USING directive appears after a NAMESPACE, CLASS, or INTERFACE declaration.</p>
+<pre><code data-lang="basic">
+NAMESPACE App
+  CLASS MyApp
+  END CLASS
+END NAMESPACE
+
+USING Collections    REM Error: E_NS_005
+
+END
+</code></pre>
+<p><strong>Message</strong>: <code>USING must appear before all declarations</code></p>
+<p><strong>Fix</strong>: Move all USING directives to the top of the file.</p>
+<p>---</p>
+<h3 id="e-ns-006-nested-using-not-allowed">E_NS_006: Nested USING Not Allowed</h3>
+<p><strong>Cause</strong>: USING directive inside a NAMESPACE or CLASS block.</p>
+<pre><code data-lang="basic">
+NAMESPACE App
+  USING Collections    REM Error: E_NS_006
+END NAMESPACE
+</code></pre>
+<p><strong>Message</strong>: <code>USING cannot be nested inside namespace or class blocks</code></p>
+<p><strong>Fix</strong>: Move USING to file scope.</p>
+<p>---</p>
+<h3 id="e-ns-007-global-type-shadowed">E_NS_007: Global Type Shadowed</h3>
+<p><strong>Cause</strong>: A namespace type shadows a global type (reserved for future use).</p>
+<p><strong>Note</strong>: This diagnostic is defined but not actively enforced in Track A.</p>
+<p>---</p>
+<h3 id="e-ns-008-using-inside-namespace-block">E_NS_008: USING Inside Namespace Block</h3>
+<p><strong>Cause</strong>: USING directive appears inside a NAMESPACE block.</p>
+<pre><code data-lang="basic">
+NAMESPACE App
+  USING Collections    REM Error: E_NS_008
+
+  CLASS MyClass
+  END CLASS
+END NAMESPACE
+
+END
+</code></pre>
+<p><strong>Message</strong>: <code>USING inside NAMESPACE block not allowed</code></p>
+<p><strong>Fix</strong>: Move USING to file scope before all NAMESPACE declarations.</p>
+<p>---</p>
+<h3 id="e-ns-009-reserved-viper-namespace">E_NS_009: Reserved Viper Namespace</h3>
+<p><strong>Cause</strong>: User code attempts to declare or use the reserved <code>Viper</code> root namespace.</p>
+<pre><code data-lang="basic">
+REM Example 1: Declaration
+NAMESPACE Viper.MyLib    REM Error: E_NS_009
+  CLASS Helper
+  END CLASS
+END NAMESPACE
+
+REM Example 2: USING
+USING Viper              REM Error: E_NS_009
+</code></pre>
+<p><strong>Message</strong>: <code>namespace &#x27;VIPER&#x27; is reserved for built-in libraries</code></p>
+<p><strong>Fix</strong>: Use a different root namespace for user code.</p>
+<p>---</p>
+<h2 id="common-pitfalls-and-solutions">Common Pitfalls and Solutions</h2>
+<h3 id="pitfall-1-ambiguous-references">Pitfall 1: Ambiguous References</h3>
+<p><strong>Problem</strong>: Importing multiple namespaces that define the same type name.</p>
+<pre><code data-lang="basic">
+USING Collections
+USING Utilities
+
+REM Both define &quot;List&quot;
+DIM myList AS List    REM Error: E_NS_003
+</code></pre>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>**Fully-qualify the reference**:</li>
+</ul>
+<pre><code data-lang="basic">
+DIM myList AS Collections.List
+</code></pre>
+<ol>
+<li>**Use namespace aliases**:</li>
+</ul>
+<pre><code data-lang="basic">
+USING Coll = Collections
+USING Util = Utilities
+DIM myList AS Coll.List
+</code></pre>
+<ol>
+<li>**Remove unnecessary USING directives**:</li>
+</ul>
+<pre><code data-lang="basic">
+USING Collections    REM Only import what you need
+DIM myList AS List
+</code></pre>
+<p>---</p>
+<h3 id="pitfall-2-wrong-using-placement">Pitfall 2: Wrong USING Placement</h3>
+<p><strong>Problem</strong>: Placing USING after declarations.</p>
+<pre><code data-lang="basic">
+NAMESPACE App
+END NAMESPACE
+
+USING Collections    REM Error: E_NS_005
+</code></pre>
+<p><strong>Solution</strong>: Always put USING directives at the top of the file:</p>
+<pre><code data-lang="basic">
+USING Collections
+
+NAMESPACE App
+END NAMESPACE
+</code></pre>
+<p>---</p>
+<h3 id="pitfall-3-using-inside-namespace">Pitfall 3: USING Inside Namespace</h3>
+<p><strong>Problem</strong>: Attempting to scope USING to a specific namespace.</p>
+<pre><code data-lang="basic">
+NAMESPACE App
+  USING Collections    REM Error: E_NS_008
+END NAMESPACE
+</code></pre>
+<p><strong>Solution</strong>: USING is always file-scoped. Put it at file scope:</p>
+<pre><code data-lang="basic">
+USING Collections
+
+NAMESPACE App
+  REM Collections is now available
+END NAMESPACE
+</code></pre>
+<p>---</p>
+<h3 id="pitfall-4-reserved-viper-namespace">Pitfall 4: Reserved Viper Namespace</h3>
+<p><strong>Problem</strong>: Trying to use <code>Viper</code> for user code.</p>
+<pre><code data-lang="basic">
+NAMESPACE Viper.MyApp    REM Error: E_NS_009
+</code></pre>
+<p><strong>Solution</strong>: Choose a different root namespace:</p>
+<pre><code data-lang="basic">
+NAMESPACE MyCompany.MyApp
+</code></pre>
+<p>---</p>
+<h3 id="pitfall-5-case-mismatches-not-an-error">Pitfall 5: Case Mismatches (Not an Error)</h3>
+<p><strong>Not a problem</strong>: BASIC is case-insensitive, so these are all valid:</p>
+<pre><code data-lang="basic">
+NAMESPACE MyLib
+  CLASS Helper
+  END CLASS
+END NAMESPACE
+
+DIM h1 AS MyLib.Helper     REM OK
+DIM h2 AS MYLIB.HELPER     REM OK (same as above)
+DIM h3 AS mylib.helper     REM OK (same as above)
+</code></pre>
+<p>This is intentional BASIC behavior, not a pitfall.</p>
+<p>---</p>
+<h2 id="multi-file-compilation">Multi-File Compilation</h2>
+<h3 id="file-scoped-using">File-Scoped USING</h3>
+<p>Each file&#x27;s USING directives are <strong>file-scoped</strong> and do not affect other files:</p>
+<p><strong>file1.bas</strong>:</p>
+<pre><code data-lang="basic">
+USING Collections
+
+NAMESPACE App
+  CLASS MyApp : List    REM OK: List available via USING
+  END CLASS
+END NAMESPACE
+</code></pre>
+<p><strong>file2.bas</strong>:</p>
+<pre><code data-lang="basic">
+NAMESPACE App
+  CLASS OtherApp : Collections.List    REM Must fully-qualify: no USING here
+  END CLASS
+END NAMESPACE
+</code></pre>
+<h3 id="namespace-merging-across-files">Namespace Merging Across Files</h3>
+<p>Multiple files can contribute to the same namespace:</p>
+<p><strong>file1.bas</strong>:</p>
+<pre><code data-lang="basic">
+NAMESPACE Collections
+  CLASS List
+  END CLASS
+END NAMESPACE
+</code></pre>
+<p><strong>file2.bas</strong>:</p>
+<pre><code data-lang="basic">
+NAMESPACE Collections
+  CLASS Dictionary
+  END CLASS
+END NAMESPACE
+</code></pre>
+<p>Both <code>List</code> and <code>Dictionary</code> belong to <code>Collections</code> namespace after linking.</p>
+<p>---</p>
+<h2 id="best-practices">Best Practices</h2>
+<ol>
+<li>**Use namespaces for organization**: Group related types together</li>
+<li>**Avoid deep nesting**: Keep namespace hierarchies shallow (2-3 levels)</li>
+<li>**Choose descriptive names**: <code>Graphics.Rendering</code> is better than <code>Gfx.Rnd</code></li>
+<li>**Use aliases for long paths**: <code>USING GFX = Graphics.Rendering.Advanced</code></li>
+<li>**Minimize USING imports**: Only import what you need to reduce ambiguity</li>
+<li>**Prefer qualification over USING**: For rarely-used types, use fully-qualified names</li>
+<li>**Document public namespaces**: Add comments explaining the purpose of each namespace</li>
+<li>**Reserve root namespaces**: Choose a company or project root (e.g., <code>MyCompany.*</code>)</li>
+</ul>
+<p>---</p>
+<h2 id="viper-runtime-namespace-implemented">Viper.* Runtime Namespace (Implemented)</h2>
+<p>ViperLib exposes runtime functions and types under the reserved <code>Viper.*</code> root namespace. This</p>
+<p>canonical namespace organization is now implemented and available in IL and BASIC code.</p>
+<h3 id="runtime-functions-by-namespace">Runtime Functions by Namespace</h3>
+<h4 id="viper-terminal">Viper.Terminal</h4>
+<p>Console I/O operations:</p>
+<ul>
+<li><code>Viper.Terminal.PrintStr(str)-&gt;void</code> — Print string</li>
+<li><code>Viper.Terminal.PrintI64(i64)-&gt;void</code> — Print integer</li>
+<li><code>Viper.Terminal.PrintF64(f64)-&gt;void</code> — Print double</li>
+<li><code>Viper.Terminal.ReadLine()-&gt;str</code> — Read line from console</li>
+</ul>
+<h4 id="viper-string">Viper.String</h4>
+<p>String manipulation:</p>
+<ul>
+<li><code>Viper.String.Concat(str,str)-&gt;str</code> — Concatenate strings</li>
+<li><code>Viper.String.FromI16(i16)-&gt;str</code> — Convert int16 to string</li>
+<li><code>Viper.String.FromI32(i32)-&gt;str</code> — Convert int32 to string</li>
+<li><code>Viper.String.FromSingle(f64)-&gt;str</code> — Convert float to string (formats with single precision)</li>
+<li><code>Viper.String.get_Length(str)-&gt;i64</code> — String length</li>
+<li><code>Viper.String.Mid(str,i64)-&gt;str</code> — Substring from position to end</li>
+<li><code>Viper.String.MidLen(str,i64,i64)-&gt;str</code> — Substring with start and length</li>
+<li><code>Viper.String.SplitFields(str,ptr,i64)-&gt;i64</code> — Split into fields</li>
+<li><code>Viper.Text.StringBuilder.New()-&gt;obj</code> — Create StringBuilder</li>
+</ul>
+<h4 id="viper-core-convert">Viper.Core.Convert</h4>
+<p>Type conversion:</p>
+<ul>
+<li><code>Viper.Core.Convert.ToDouble(str)-&gt;f64</code> — String to double (throws on error)</li>
+<li><code>Viper.Core.Convert.ToInt64(str)-&gt;i64</code> — String to int (throws on error)</li>
+<li><code>Viper.Core.Convert.ToString_Double(f64)-&gt;str</code> — Convert double to string</li>
+<li><code>Viper.Core.Convert.ToString_Int(i64)-&gt;str</code> — Convert int64 to string</li>
+</ul>
+<h4 id="viper-core-parse">Viper.Core.Parse</h4>
+<p>Type parsing with explicit error codes:</p>
+<ul>
+<li><code>Viper.Core.Parse.Double(ptr,ptr)-&gt;i64</code> — Parse double</li>
+<li><code>Viper.Core.Parse.Int64(ptr,ptr)-&gt;i64</code> — Parse int64</li>
+</ul>
+<h4 id="viper-core-diagnostics">Viper.Core.Diagnostics</h4>
+<p>Error and diagnostic utilities:</p>
+<ul>
+<li><code>Viper.Core.Diagnostics.Trap(str)-&gt;void</code> — Trigger runtime trap</li>
+</ul>
+<h3 id="runtime-classes-viper">Runtime Classes (Viper.*)</h3>
+<p>Canonical runtime classes are exposed under the <code>Viper.*</code> root and are used directly by the BASIC frontend. These are</p>
+<p>first‑class and tested:</p>
+<h4 id="viper-core">Viper.Core</h4>
+<ul>
+<li><code>Viper.Core.Object</code> — Base class for all objects</li>
+<li>Methods:</li>
+<li><code>Equals(OBJECT other) -&gt; BOOL</code> — reference equality by default</li>
+<li><code>HashCode() -&gt; I64</code> — process‑consistent hash derived from the object pointer</li>
+<li><code>IsNull() -&gt; BOOL</code> — returns true if the object reference is null</li>
+<li><code>ToString() -&gt; STRING</code> — default returns the class qualified name</li>
+<li><code>TypeId() -&gt; I64</code> — returns the compile-time type identifier</li>
+<li><code>TypeName() -&gt; STRING</code> — returns the fully-qualified class name</li>
+<li><code>Viper.String</code> — Managed string type (BASIC <code>STRING</code> is an alias)</li>
+<li>Properties: <code>Length -&gt; I64</code>, <code>IsEmpty -&gt; BOOL</code></li>
+<li>Methods:</li>
+<li><code>Substring(I64 start, I64 length) -&gt; STRING</code> — Extract substring</li>
+<li><code>Concat(STRING other) -&gt; STRING</code> — Concatenate strings</li>
+<li><code>Left(I64 count) -&gt; STRING</code> — First N characters</li>
+<li><code>Right(I64 count) -&gt; STRING</code> — Last N characters</li>
+<li><code>Mid(I64 start) -&gt; STRING</code> — Substring from position to end</li>
+<li><code>MidLen(I64 start, I64 length) -&gt; STRING</code> — Substring with length</li>
+<li><code>Trim() -&gt; STRING</code> — Remove leading/trailing whitespace</li>
+<li><code>TrimStart() -&gt; STRING</code> — Remove leading whitespace</li>
+<li><code>TrimEnd() -&gt; STRING</code> — Remove trailing whitespace</li>
+<li><code>ToUpper() -&gt; STRING</code> — Convert to uppercase</li>
+<li><code>ToLower() -&gt; STRING</code> — Convert to lowercase</li>
+<li><code>IndexOf(STRING needle) -&gt; I64</code> — Find first occurrence (1-based, 0 if not found)</li>
+<li><code>IndexOfFrom(I64 start, STRING needle) -&gt; I64</code> — Find from position</li>
+<li><code>Chr(I64 code) -&gt; STRING</code> — Character from ASCII code (static)</li>
+<li><code>Asc() -&gt; I64</code> — ASCII code of first character</li>
+</ul>
+<h4 id="viper-text">Viper.Text</h4>
+<ul>
+<li><code>Viper.Text.StringBuilder</code> — Mutable string builder</li>
+<li>Ctor: <code>NEW()</code></li>
+<li>Properties: <code>Length -&gt; I64</code>, <code>Capacity -&gt; I64</code></li>
+<li>Methods: <code>Append(STRING) -&gt; OBJECT</code> (returns the builder for chaining), <code>Clear() -&gt; VOID</code>, <code>ToString() -&gt; STRING</code></li>
+</ul>
+<h4 id="viper-io">Viper.IO</h4>
+<ul>
+<li><code>Viper.IO.File</code> — File operations class (static utility)</li>
+<li>Methods (static): <code>Exists(STRING) -&gt; BOOL</code>, <code>ReadAllText(STRING) -&gt; STRING</code>,</li>
+</ul>
+<p><code>WriteAllText(STRING,STRING) -&gt; VOID</code>, <code>Delete(STRING) -&gt; VOID</code></p>
+<h4 id="viper-collections">Viper.Collections</h4>
+<ul>
+<li><code>Viper.Collections.List</code> — Dynamic list of object references (non‑generic)</li>
+<li>Ctor: <code>NEW()</code>; Properties: <code>Len -&gt; I64</code>, <code>IsEmpty -&gt; BOOL</code></li>
+<li>Methods: <code>Clear()</code>, <code>Find(OBJECT)-&gt;I64</code>, <code>First()-&gt;OBJECT</code>, <code>Flip()</code>, <code>Get(I64)-&gt;OBJECT</code>, <code>Has(OBJECT)-&gt;BOOL</code>, <code>Insert(I64,OBJECT)</code>, <code>Last()-&gt;OBJECT</code>, <code>Pop()-&gt;OBJECT</code>, <code>Push(OBJECT)</code>, <code>Remove(OBJECT)-&gt;BOOL</code>, <code>RemoveAt(I64)</code>, <code>Set(I64,OBJECT)</code>, <code>Slice(I64,I64)-&gt;List</code>, <code>Sort()</code>, <code>SortDesc()</code></li>
+</ul>
+<h4 id="viper-math">Viper.Math</h4>
+<ul>
+<li><code>Viper.Math</code> — Mathematical functions (static utility)</li>
+<li>Methods (static):</li>
+<li><code>Abs(F64) -&gt; F64</code> — Absolute value (float)</li>
+<li><code>AbsInt(I64) -&gt; I64</code> — Absolute value (integer)</li>
+<li><code>Sqrt(F64) -&gt; F64</code> — Square root</li>
+<li><code>Sin(F64) -&gt; F64</code> — Sine (radians)</li>
+<li><code>Cos(F64) -&gt; F64</code> — Cosine (radians)</li>
+<li><code>Tan(F64) -&gt; F64</code> — Tangent (radians)</li>
+<li><code>Atan(F64) -&gt; F64</code> — Arctangent (radians)</li>
+<li><code>Floor(F64) -&gt; F64</code> — Round down</li>
+<li><code>Ceil(F64) -&gt; F64</code> — Round up</li>
+<li><code>Pow(F64, F64) -&gt; F64</code> — Power function</li>
+<li><code>Log(F64) -&gt; F64</code> — Natural logarithm</li>
+<li><code>Exp(F64) -&gt; F64</code> — Exponential (e^x)</li>
+<li><code>Sgn(F64) -&gt; F64</code> — Sign (-1, 0, +1) for float</li>
+<li><code>SgnInt(I64) -&gt; I64</code> — Sign (-1, 0, +1) for integer</li>
+<li><code>Min(F64, F64) -&gt; F64</code> — Minimum of two floats</li>
+<li><code>Max(F64, F64) -&gt; F64</code> — Maximum of two floats</li>
+<li><code>MinInt(I64, I64) -&gt; I64</code> — Minimum of two integers</li>
+<li><code>MaxInt(I64, I64) -&gt; I64</code> — Maximum of two integers</li>
+</ul>
+<h4 id="viper-math-random">Viper.Math.Random</h4>
+<ul>
+<li><code>Viper.Math.Random</code> — Random number generation class (constructor seeds the RNG)</li>
+<li>Methods:</li>
+<li><code>Next() -&gt; F64</code> — Return next random number in [0, 1)</li>
+<li><code>NextInt(I64 n) -&gt; I64</code> — Return next random integer in [0, n)</li>
+<li><code>Seed(I64) -&gt; VOID</code> — Seed the random number generator</li>
+</ul>
+<h4 id="viper-environment">Viper.Environment</h4>
+<ul>
+<li><code>Viper.Environment</code> — Command-line and environment (static utility)</li>
+<li>Methods (static):</li>
+<li><code>GetArgumentCount() -&gt; I64</code> — Number of command-line arguments</li>
+<li><code>GetArgument(I64 index) -&gt; STRING</code> — Get argument by index (0-based)</li>
+<li><code>GetCommandLine() -&gt; STRING</code> — Full command line as single string</li>
+</ul>
+<h4 id="viper-time">Viper.Time</h4>
+<ul>
+<li><code>Viper.Time</code> — Time and timing utilities (static utility)</li>
+<li>Methods (static):</li>
+<li><code>GetTickCount() -&gt; I64</code> — Milliseconds since program start (alias for <code>Viper.Time.Clock.Ticks</code>)</li>
+<li><code>SleepMs(I64 ms) -&gt; VOID</code> — Pause execution for milliseconds (alias for <code>Viper.Time.Clock.Sleep</code>)</li>
+</ul>
+<h4 id="viper-terminal">Viper.Terminal</h4>
+<ul>
+<li><code>Viper.Terminal</code> — Terminal/console control (static utility)</li>
+<li>Methods (static):</li>
+<li><code>Bell() -&gt; VOID</code> — Sound terminal bell</li>
+<li><code>Clear() -&gt; VOID</code> — Clear the screen</li>
+<li><code>GetKey() -&gt; STRING</code> — Wait for and return keypress</li>
+<li><code>GetKeyTimeout(I64 ms) -&gt; STRING</code> — Wait with timeout (empty if timeout)</li>
+<li><code>InKey() -&gt; STRING</code> — Non-blocking key check (empty if no key)</li>
+<li><code>SetAltScreen(I64 enable) -&gt; VOID</code> — Switch to/from alternate screen buffer</li>
+<li><code>SetColor(I64 fg, I64 bg) -&gt; VOID</code> — Set foreground/background colors</li>
+<li><code>SetCursorVisible(I64 visible) -&gt; VOID</code> — Show/hide cursor (0=hide, 1=show)</li>
+<li><code>SetPosition(I64 row, I64 col) -&gt; VOID</code> — Move cursor position</li>
+</ul>
+<p><strong>Note:</strong> Legacy <code>Viper.System.<em></code> aliases have been removed. Use the canonical <code>Viper.</em></code> names.</p>
+<h3 id="legacy-aliases">Legacy Aliases</h3>
+<p>For backward compatibility, legacy <code>rt_*</code> function names are maintained as aliases when built with</p>
+<p><code>-DVIPER_RUNTIME_NS_DUAL=ON</code> (currently the default). Examples:</p>
+<ul>
+<li><code>rt_print_str</code> → <code>Viper.Terminal.PrintStr</code></li>
+<li><code>rt_print_i64</code> → <code>Viper.Terminal.PrintI64</code></li>
+<li><code>rt_str_len</code> → <code>Viper.String.Length</code></li>
+</ul>
+<p>New code should use the canonical <code>Viper.*</code> names.</p>
+<h3 id="oop-runtime-vs-procedural-helpers">OOP Runtime vs Procedural Helpers</h3>
+<p>The OOP <code>Viper.*</code> classes are the preferred surface for new code. The legacy procedural helpers (e.g.,</p>
+<p><code>Viper.String.Length</code>, <code>Viper.IO.*</code>) remain available and are used internally by some lowering bridges for backwards</p>
+<p>compatibility. Migration is straightforward: replace procedural calls with equivalent class property/method calls as</p>
+<p>listed above.</p>
+<h3 id="examples">Examples</h3>
+<p>Object methods on user classes:</p>
+<pre><code data-lang="basic">
+NAMESPACE App
+  CLASS C
+  END CLASS
+END NAMESPACE
+
+DIM o AS App.C
+o = NEW App.C()
+PRINT o.ToString()   &#x27; prints &quot;App.C&quot;
+PRINT o.Equals(o)    &#x27; 1
+</code></pre>
+<p>Working with strings via Viper.String:</p>
+<pre><code data-lang="basic">
+DIM s AS Viper.String
+s = &quot;  Hello World  &quot;
+PRINT s.Length            &#x27; 15
+PRINT s.IsEmpty           &#x27; 0
+PRINT s.Trim()            &#x27; &quot;Hello World&quot;
+PRINT s.ToUpper()         &#x27; &quot;  HELLO WORLD  &quot;
+PRINT s.Left(7)           &#x27; &quot;  Hello&quot;
+PRINT s.Right(7)          &#x27; &quot;World  &quot;
+PRINT s.IndexOf(&quot;World&quot;)  &#x27; 9
+PRINT s.Substring(3, 5)   &#x27; &quot;Hello&quot;
+</code></pre>
+<p>StringBuilder for efficient text composition:</p>
+<pre><code data-lang="basic">
+DIM sb AS Viper.Text.StringBuilder
+sb = NEW Viper.Text.StringBuilder()
+sb.Append(&quot;hello&quot;).Append(&quot;, world&quot;)
+PRINT sb.ToString()
+</code></pre>
+<p>File I/O using Viper.IO.File:</p>
+<pre><code data-lang="basic">
+USING Viper.IO
+File.WriteAllText(&quot;out.txt&quot;, &quot;data&quot;)
+IF File.Exists(&quot;out.txt&quot;) THEN
+  PRINT File.ReadAllText(&quot;out.txt&quot;)
+  File.Delete(&quot;out.txt&quot;)
+END IF
+</code></pre>
+<p>In‑memory collections with List:</p>
+<pre><code data-lang="basic">
+DIM list AS Viper.Collections.List
+list = NEW Viper.Collections.List()
+list.Push(NEW App.C())
+PRINT list.Length
+PRINT list.Get(0).ToString()
+list.Set(0, list)
+list.RemoveAt(0)
+list.Clear()
+</code></pre>
+<p>Mathematical functions with Viper.Math:</p>
+<pre><code data-lang="basic">
+USING Viper
+PRINT Math.Sqrt(16)          &#x27; 4
+PRINT Math.Abs(-3.14)        &#x27; 3.14
+PRINT Math.Sin(0)            &#x27; 0
+PRINT Math.Pow(2, 10)        &#x27; 1024
+PRINT Math.Min(5.0, 3.0)     &#x27; 3
+PRINT Math.MaxInt(10, 20)    &#x27; 20
+</code></pre>
+<p>Random numbers with Viper.Math.Random:</p>
+<pre><code data-lang="basic">
+USING Viper.Math
+DIM rng AS Random
+rng = NEW Random()           &#x27; Constructor seeds the RNG
+rng.Seed(12345)              &#x27; Re-seed for reproducibility
+DIM r AS DOUBLE
+r = rng.Next()               &#x27; Returns value in [0, 1)
+PRINT r
+</code></pre>
+<p>Command-line arguments with Viper.Environment:</p>
+<pre><code data-lang="basic">
+USING Viper
+DIM argc AS INTEGER
+argc = Environment.GetArgumentCount()
+PRINT &quot;Arguments: &quot;; argc
+FOR i = 0 TO argc - 1
+  PRINT &quot;  &quot;; i; &quot;: &quot;; Environment.GetArgument(i)
+NEXT i
+</code></pre>
+<p>Timing with Viper.Time:</p>
+<pre><code data-lang="basic">
+USING Viper
+DIM start AS LONG
+start = Time.GetTickCount()
+&#x27; ... do work ...
+Time.SleepMs(100)            &#x27; Pause 100ms
+PRINT &quot;Elapsed: &quot;; Time.GetTickCount() - start; &quot;ms&quot;
+</code></pre>
+<p>Terminal control with Viper.Terminal:</p>
+<pre><code data-lang="basic">
+USING Viper
+Terminal.Clear()                    &#x27; Clear screen
+Terminal.SetColor(14, 1)            &#x27; Yellow on blue
+Terminal.SetPosition(10, 20)        &#x27; Move cursor
+PRINT &quot;Hello!&quot;
+Terminal.SetCursorVisible(0)        &#x27; Hide cursor
+DIM key AS STRING
+key = Terminal.GetKeyTimeout(5000)  &#x27; Wait 5 seconds for key
+IF key &lt;&gt; &quot;&quot; THEN PRINT &quot;You pressed: &quot;; key
+Terminal.SetCursorVisible(1)        &#x27; Show cursor
+</code></pre>
+<h4 id="viper-graphics">Viper.Graphics</h4>
+<p>The Graphics namespace provides 2D rendering, image manipulation, and game development utilities.</p>
+<p><strong>Viper.Graphics.Canvas</strong> — Window and drawing surface:</p>
+<ul>
+<li>Ctor: <code>NEW(STRING title, I64 width, I64 height)</code></li>
+<li>Properties:</li>
+<li><code>Width -&gt; I64</code> (read-only) — Canvas width in pixels</li>
+<li><code>Height -&gt; I64</code> (read-only) — Canvas height in pixels</li>
+<li><code>ShouldClose -&gt; I64</code> (read-only) — 1 if window close requested</li>
+<li>Methods:</li>
+<li><code>Clear(I64 color) -&gt; VOID</code> — Fill with solid color</li>
+<li><code>Plot(I64 x, I64 y, I64 color) -&gt; VOID</code> — Set single pixel</li>
+<li><code>Line(I64 x1, I64 y1, I64 x2, I64 y2, I64 color) -&gt; VOID</code> — Draw line</li>
+<li><code>Box(I64 x, I64 y, I64 w, I64 h, I64 color) -&gt; VOID</code> — Filled rectangle</li>
+<li><code>Frame(I64 x, I64 y, I64 w, I64 h, I64 color) -&gt; VOID</code> — Rectangle outline</li>
+<li><code>Disc(I64 cx, I64 cy, I64 r, I64 color) -&gt; VOID</code> — Filled circle</li>
+<li><code>Ring(I64 cx, I64 cy, I64 r, I64 color) -&gt; VOID</code> — Circle outline</li>
+<li><code>Text(I64 x, I64 y, STRING text, I64 color) -&gt; VOID</code> — Draw text</li>
+<li><code>Blit(I64 x, I64 y, PIXELS src) -&gt; VOID</code> — Draw pixels (no alpha)</li>
+<li><code>BlitAlpha(I64 x, I64 y, PIXELS src) -&gt; VOID</code> — Draw with alpha blending</li>
+<li><code>BlitRegion(I64 x, I64 y, PIXELS src, I64 sx, I64 sy, I64 sw, I64 sh) -&gt; VOID</code> — Draw region</li>
+<li><code>GradientH(I64 x, I64 y, I64 w, I64 h, I64 c1, I64 c2) -&gt; VOID</code> — Horizontal gradient</li>
+<li><code>GradientV(I64 x, I64 y, I64 w, I64 h, I64 c1, I64 c2) -&gt; VOID</code> — Vertical gradient</li>
+<li><code>Poll() -&gt; I64</code> — Process events, return event type</li>
+<li><code>KeyHeld(I64 keycode) -&gt; I64</code> — Check if key is held down</li>
+<li><code>Flip() -&gt; VOID</code> — Present frame and limit FPS</li>
+</ul>
+<p><strong>Viper.Graphics.Color</strong> — Color utilities (static class):</p>
+<ul>
+<li>Methods (static):</li>
+<li><code>RGB(I64 r, I64 g, I64 b) -&gt; I64</code> — Create color from RGB (0-255)</li>
+<li><code>RGBA(I64 r, I64 g, I64 b, I64 a) -&gt; I64</code> — Create color with alpha</li>
+<li><code>FromHSL(I64 h, I64 s, I64 l) -&gt; I64</code> — Create from HSL (h:0-360, s:0-100, l:0-100)</li>
+<li><code>GetR(I64 color) -&gt; I64</code> — Extract red component</li>
+<li><code>GetG(I64 color) -&gt; I64</code> — Extract green component</li>
+<li><code>GetB(I64 color) -&gt; I64</code> — Extract blue component</li>
+<li><code>GetA(I64 color) -&gt; I64</code> — Extract alpha component</li>
+<li><code>Lerp(I64 c1, I64 c2, I64 t) -&gt; I64</code> — Linear interpolation (t:0-100)</li>
+<li><code>Brighten(I64 color, I64 amount) -&gt; I64</code> — Increase brightness</li>
+<li><code>Darken(I64 color, I64 amount) -&gt; I64</code> — Decrease brightness</li>
+</ul>
+<p><strong>Viper.Graphics.Pixels</strong> — Software image buffer:</p>
+<ul>
+<li>Ctor: <code>NEW(I64 width, I64 height)</code></li>
+<li>Properties:</li>
+<li><code>Width -&gt; I64</code> (read-only) — Image width in pixels</li>
+<li><code>Height -&gt; I64</code> (read-only) — Image height in pixels</li>
+<li>Methods:</li>
+<li><code>Get(I64 x, I64 y) -&gt; I64</code> — Get pixel color at position</li>
+<li><code>Set(I64 x, I64 y, I64 color) -&gt; VOID</code> — Set pixel color</li>
+<li><code>Fill(I64 color) -&gt; VOID</code> — Fill entire image with color</li>
+<li><code>Clear() -&gt; VOID</code> — Clear to transparent black</li>
+<li><code>Copy(I64 dx, I64 dy, PIXELS src, I64 sx, I64 sy, I64 sw, I64 sh) -&gt; VOID</code> — Copy region</li>
+<li><code>Clone() -&gt; PIXELS</code> — Create copy of image</li>
+<li><code>Scale(I64 w, I64 h) -&gt; PIXELS</code> — Nearest-neighbor scale</li>
+<li><code>Resize(I64 w, I64 h) -&gt; PIXELS</code> — Bilinear interpolation scale</li>
+<li><code>FlipH() -&gt; PIXELS</code> — Flip horizontally</li>
+<li><code>FlipV() -&gt; PIXELS</code> — Flip vertically</li>
+<li><code>RotateCW() -&gt; PIXELS</code> — Rotate 90° clockwise</li>
+<li><code>RotateCCW() -&gt; PIXELS</code> — Rotate 90° counter-clockwise</li>
+<li><code>Rotate180() -&gt; PIXELS</code> — Rotate 180°</li>
+<li><code>Invert() -&gt; PIXELS</code> — Invert RGB colors</li>
+<li><code>Grayscale() -&gt; PIXELS</code> — Convert to grayscale</li>
+<li><code>Tint(I64 color) -&gt; PIXELS</code> — Apply color tint (multiply blend)</li>
+<li><code>Blur(I64 radius) -&gt; PIXELS</code> — Apply box blur (radius 1-10)</li>
+<li><code>SaveBmp(STRING path) -&gt; I64</code> — Save as BMP file</li>
+<li><code>ToBytes() -&gt; BYTES</code> — Get raw pixel data</li>
+</ul>
+<p><strong>Viper.Graphics.Sprite</strong> — Animated sprite for 2D games:</p>
+<ul>
+<li>Ctor: <code>NEW(PIXELS pixels)</code> — Create sprite from image</li>
+<li>Properties:</li>
+<li><code>X -&gt; I64</code> — X position</li>
+<li><code>Y -&gt; I64</code> — Y position</li>
+<li><code>Width -&gt; I64</code> (read-only) — Sprite width</li>
+<li><code>Height -&gt; I64</code> (read-only) — Sprite height</li>
+<li><code>ScaleX -&gt; I64</code> — Horizontal scale (100 = 100%)</li>
+<li><code>ScaleY -&gt; I64</code> — Vertical scale (100 = 100%)</li>
+<li><code>Rotation -&gt; I64</code> — Rotation in degrees</li>
+<li><code>Visible -&gt; I64</code> — Visibility flag (0/1)</li>
+<li><code>Frame -&gt; I64</code> — Current animation frame</li>
+<li><code>FrameCount -&gt; I64</code> (read-only) — Number of animation frames</li>
+<li>Methods:</li>
+<li><code>Draw(CANVAS canvas) -&gt; VOID</code> — Draw sprite to canvas</li>
+<li><code>SetOrigin(I64 x, I64 y) -&gt; VOID</code> — Set rotation/scale origin</li>
+<li><code>AddFrame(PIXELS pixels) -&gt; VOID</code> — Add animation frame</li>
+<li><code>SetFrameDelay(I64 ms) -&gt; VOID</code> — Set animation delay</li>
+<li><code>Update() -&gt; VOID</code> — Advance animation based on time</li>
+<li><code>Overlaps(SPRITE other) -&gt; I64</code> — AABB collision check</li>
+<li><code>Contains(I64 px, I64 py) -&gt; I64</code> — Point-in-sprite test</li>
+<li><code>Move(I64 dx, I64 dy) -&gt; VOID</code> — Move by delta</li>
+</ul>
+<p><strong>Viper.Graphics.Tilemap</strong> — Tile-based map rendering:</p>
+<ul>
+<li>Ctor: <code>NEW(I64 width, I64 height, I64 tileWidth, I64 tileHeight)</code> — Create tilemap (size in tiles)</li>
+<li>Properties:</li>
+<li><code>Width -&gt; I64</code> (read-only) — Map width in tiles</li>
+<li><code>Height -&gt; I64</code> (read-only) — Map height in tiles</li>
+<li><code>TileWidth -&gt; I64</code> (read-only) — Tile width in pixels</li>
+<li><code>TileHeight -&gt; I64</code> (read-only) — Tile height in pixels</li>
+<li><code>TileCount -&gt; I64</code> (read-only) — Number of tiles in tileset</li>
+<li>Methods:</li>
+<li><code>SetTileset(PIXELS pixels) -&gt; VOID</code> — Set tileset image</li>
+<li><code>SetTile(I64 x, I64 y, I64 tileIndex) -&gt; VOID</code> — Set tile at position</li>
+<li><code>GetTile(I64 x, I64 y) -&gt; I64</code> — Get tile at position</li>
+<li><code>Fill(I64 tileIndex) -&gt; VOID</code> — Fill all tiles</li>
+<li><code>Clear() -&gt; VOID</code> — Clear all tiles to 0</li>
+<li><code>FillRect(I64 x, I64 y, I64 w, I64 h, I64 tileIndex) -&gt; VOID</code> — Fill region</li>
+<li><code>Draw(CANVAS canvas, I64 offsetX, I64 offsetY) -&gt; VOID</code> — Draw entire map</li>
+<li><code>DrawRegion(CANVAS c, I64 ox, I64 oy, I64 vx, I64 vy, I64 vw, I64 vh) -&gt; VOID</code> — Draw visible region</li>
+<li><code>ToTileX(I64 pixelX) -&gt; I64</code> — Convert pixel X to tile X</li>
+<li><code>ToTileY(I64 pixelY) -&gt; I64</code> — Convert pixel Y to tile Y</li>
+<li><code>ToPixelX(I64 tileX) -&gt; I64</code> — Convert tile X to pixel X</li>
+<li><code>ToPixelY(I64 tileY) -&gt; I64</code> — Convert tile Y to pixel Y</li>
+</ul>
+<p><strong>Viper.Graphics.Camera</strong> — 2D viewport camera:</p>
+<ul>
+<li>Ctor: <code>NEW(I64 viewWidth, I64 viewHeight)</code> — Create camera with viewport size</li>
+<li>Properties:</li>
+<li><code>X -&gt; I64</code> — Camera world X position</li>
+<li><code>Y -&gt; I64</code> — Camera world Y position</li>
+<li><code>Zoom -&gt; I64</code> — Zoom level (100 = 100%)</li>
+<li><code>Rotation -&gt; I64</code> — Rotation in degrees</li>
+<li><code>Width -&gt; I64</code> (read-only) — Viewport width</li>
+<li><code>Height -&gt; I64</code> (read-only) — Viewport height</li>
+<li>Methods:</li>
+<li><code>Follow(I64 worldX, I64 worldY) -&gt; VOID</code> — Center on position</li>
+<li><code>ToScreenX(I64 worldX) -&gt; I64</code> — Convert world to screen X</li>
+<li><code>ToScreenY(I64 worldY) -&gt; I64</code> — Convert world to screen Y</li>
+<li><code>ToWorldX(I64 screenX) -&gt; I64</code> — Convert screen to world X</li>
+<li><code>ToWorldY(I64 screenY) -&gt; I64</code> — Convert screen to world Y</li>
+<li><code>Move(I64 dx, I64 dy) -&gt; VOID</code> — Move by delta</li>
+<li><code>SetBounds(I64 minX, I64 minY, I64 maxX, I64 maxY) -&gt; VOID</code> — Constrain camera</li>
+<li><code>ClearBounds() -&gt; VOID</code> — Remove constraints</li>
+</ul>
+<p>Graphics example - drawing and sprites:</p>
+<pre><code data-lang="basic">
+&#x27; Create a window
+DIM canvas AS Viper.Graphics.Canvas
+canvas = NEW Viper.Graphics.Canvas(&quot;My Game&quot;, 800, 600)
+
+&#x27; Create colors
+DIM red AS INTEGER, blue AS INTEGER
+red = Viper.Graphics.Color.RGB(255, 0, 0)
+blue = Viper.Graphics.Color.RGB(0, 0, 255)
+
+&#x27; Create and configure a sprite
+DIM spriteImg AS Viper.Graphics.Pixels
+spriteImg = NEW Viper.Graphics.Pixels(32, 32)
+spriteImg.Fill(red)
+
+DIM player AS Viper.Graphics.Sprite
+player = NEW Viper.Graphics.Sprite(spriteImg)
+player.X = 100
+player.Y = 100
+
+&#x27; Game loop
+WHILE canvas.ShouldClose = 0
+    canvas.Poll()
+
+    &#x27; Move with arrow keys
+    IF canvas.KeyHeld(262) THEN player.X = player.X + 2  &#x27; Right
+    IF canvas.KeyHeld(263) THEN player.X = player.X - 2  &#x27; Left
+
+    &#x27; Draw
+    canvas.Clear(blue)
+    player.Draw(canvas)
+    canvas.Flip()
+WEND
+END
+</code></pre>
+<p>---</p>
+<h2 id="future-enhancements-track-b">Future Enhancements (Track B)</h2>
+<p>The following features are planned for future releases:</p>
+<ul>
+<li><strong>Namespace forwarding</strong>: Re-export types from other namespaces</li>
+<li><strong>Namespace-level visibility</strong>: Control which types are exported from a namespace</li>
+<li><strong>Nested namespace imports</strong>: <code>USING Graphics.Rendering.*</code> to import all types</li>
+</ul>
+<p>These features are not yet implemented in Track A.</p>
+<p>---</p>
+<h2 id="summary">Summary</h2>
+<p>Viper BASIC namespaces provide:</p>
+<ul>
+<li><strong>Clarity</strong>: Fully-qualified names show exactly where types come from</li>
+<li><strong>Collision avoidance</strong>: Multiple libraries can define the same type names</li>
+<li><strong>Convenience</strong>: USING directives reduce verbosity</li>
+<li><strong>Organization</strong>: Group related types hierarchically</li>
+</ul>
+<p>The system is designed to be simple, predictable, and compatible with BASIC&#x27;s case-insensitive semantics.</p>
+<p>For more examples, see the golden tests in <code>src/tests/golden/basic/namespace_*.bas</code> and the e2e tests in</p>
+<p><code>src/tests/e2e/test_namespace_e2e.cpp</code>.</p>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../../features/native-targets.html">Native Targets</a>
+      <a href="../../features/two-languages.html">Languages</a>
+      <a href="../../features/runtime.html">Runtime Library</a>
+      <a href="../../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../../docs/getting-started.html">Getting Started</a>
+      <a href="../../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../../docs/runtime/">Runtime API</a>
+      <a href="../../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../../contributing/">Contributing</a>
+      <a href="../../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../../main.js"></script>
+</body>
+</html>

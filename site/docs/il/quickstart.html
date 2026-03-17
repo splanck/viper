@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IL Quickstart — Viper</title>
+  <meta name="description" content="Viper documentation: IL Quickstart">
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="icon" href="../../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../../docs/" class="active">Docs</a>
+    <a href="../../learn/">Learn</a>
+    <a href="../../showcase/">Showcase</a>
+    <a href="../../performance/">Performance</a>
+    <a href="../../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../../">Home</a> / <a href="../../docs">Docs</a> / <span>IL Quickstart</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#what-is-viper-il">What is Viper IL?</a></li>
+        <li><a href="#quick-start-your-first-il-program">Quick Start: Your First IL Program</a></li>
+        <li><a href="#il-structure-explained">IL Structure Explained</a></li>
+        <li><a href="#basic-il-examples">Basic IL Examples</a></li>
+        <li><a href="#il-toolchain">IL Toolchain</a></li>
+        <li><a href="#next-steps">Next Steps</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>IL Quickstart</h1>
+<h1 id="viper-il-quickstart">Viper IL — Quickstart</h1>
+<p>Get started with Viper&#x27;s Intermediate Language (IL) in minutes. This guide shows you how to write, verify, and execute</p>
+<p>IL programs.</p>
+<p>---</p>
+<h2 id="what-is-viper-il">What is Viper IL?</h2>
+<p>Viper IL is a <strong>typed, readable intermediate language</strong> that serves as the core of the Viper toolchain:</p>
+<ul>
+<li><strong>Frontends</strong> (Zia, BASIC, etc.) compile to IL</li>
+<li><strong>VM</strong> executes IL directly via VM execution</li>
+<li><strong>Verifier</strong> checks IL for safety and correctness</li>
+<li><strong>Transforms</strong> (SimplifyCFG, Liveness, etc.) optimize IL</li>
+<li><strong>Backends</strong> compile IL to native code</li>
+</ul>
+<p>IL is designed to be <strong>human-readable</strong> and <strong>easy to inspect</strong>, making it ideal for learning compiler concepts and</p>
+<p>debugging.</p>
+<p>---</p>
+<h2 id="quick-start-your-first-il-program">Quick Start: Your First IL Program</h2>
+<h3 id="1-write-a-simple-function">1. Write a Simple Function</h3>
+<p>Create a file <code>hello.il</code>:</p>
+<pre><code data-lang="llvm">
+il 0.2.0
+
+extern @Viper.Terminal.PrintStr(str) -&gt; void
+global const str @.msg = &quot;Hello, Viper IL!&quot;
+
+func @main() -&gt; i64 {
+entry:
+  %msg = const_str @.msg
+  call @Viper.Terminal.PrintStr(%msg)
+  ret 0
+}
+</code></pre>
+<p>Compatibility:</p>
+<ul>
+<li>When built with <code>-DVIPER_RUNTIME_NS_DUAL=ON</code>, legacy <code>@rt_*</code> externs are accepted as aliases of <code>@Viper.*</code>.</li>
+<li>New code should emit <code>@Viper.*</code>.</li>
+</ul>
+<h3 id="2-verify-the-il">2. Verify the IL</h3>
+<pre><code data-lang="sh">
+il-verify hello.il
+</code></pre>
+<p>The verifier checks types, control flow, and instruction well-formedness. No output means success!</p>
+<h3 id="3-run-the-program">3. Run the Program</h3>
+<pre><code data-lang="sh">
+viper -run hello.il
+</code></pre>
+<p>Output:</p>
+<pre><code data-lang="text">
+Hello, Viper IL!
+</code></pre>
+<p>---</p>
+<h2 id="il-structure-explained">IL Structure Explained</h2>
+<h3 id="version-header">Version Header</h3>
+<p>Every IL file starts with a version declaration:</p>
+<pre><code data-lang="llvm">
+il 0.2.0
+</code></pre>
+<p>This pins the expected IL grammar version.</p>
+<h3 id="extern-declarations">Extern Declarations</h3>
+<p>Declare runtime functions you&#x27;ll call:</p>
+<pre><code data-lang="llvm">
+extern @Viper.Terminal.PrintI64(i64) -&gt; void
+extern @Viper.String.Concat(str, str) -&gt; str
+</code></pre>
+<h3 id="global-constants">Global Constants</h3>
+<p>Define immutable data:</p>
+<pre><code data-lang="llvm">
+global const str @.hello = &quot;Hello!&quot;
+global const i64 @.answer = 42
+</code></pre>
+<h3 id="functions">Functions</h3>
+<p>Functions contain basic blocks and instructions:</p>
+<pre><code data-lang="llvm">
+func @square(i64 %x) -&gt; i64 {
+entry:
+  %result = mul %x, %x
+  ret %result
+}
+</code></pre>
+<p><strong>Key points:</strong></p>
+<ul>
+<li><code>@name</code> — Function symbol</li>
+<li><code>%var</code> — SSA register (assigned once, used many times)</li>
+<li><code>entry:</code> — First basic block label</li>
+<li><code>ret</code> — Return terminator (required at end of block)</li>
+</ul>
+<p>---</p>
+<h2 id="basic-il-examples">Basic IL Examples</h2>
+<h3 id="arithmetic">Arithmetic</h3>
+<pre><code data-lang="llvm">
+func @add(i64 %a, i64 %b) -&gt; i64 {
+entry:
+  %sum = add %a, %b
+  ret %sum
+}
+</code></pre>
+<h3 id="control-flow">Control Flow</h3>
+<pre><code data-lang="llvm">
+func @max(i64 %a, i64 %b) -&gt; i64 {
+entry:
+  %cond = scmp_gt %a, %b
+  cbr %cond, greater, less_or_equal
+
+greater:
+  ret %a
+
+less_or_equal:
+  ret %b
+}
+</code></pre>
+<h3 id="calling-functions">Calling Functions</h3>
+<pre><code data-lang="llvm">
+func @square(i64 %x) -&gt; i64 {
+entry:
+  %result = mul %x, %x
+  ret %result
+}
+
+func @call_square(i64 %y) -&gt; i64 {
+entry:
+  %result = call @square(%y)
+  ret %result
+}
+</code></pre>
+<h3 id="switch-statements">Switch Statements</h3>
+<pre><code data-lang="llvm">
+func @classify(i64 %n) -&gt; i64 {
+entry:
+  %n32:i32 = cast.si_narrow.chk %n
+  switch.i32 %n32, ^default, 0 -&gt; ^zero, 1 -&gt; ^one, 2 -&gt; ^two
+
+default:
+  ret 99
+
+zero:
+  ret 0
+
+one:
+  ret 10
+
+two:
+  ret 20
+}
+</code></pre>
+<p>---</p>
+<h2 id="il-toolchain">IL Toolchain</h2>
+<h3 id="verify-il">Verify IL</h3>
+<p>Check IL files for correctness:</p>
+<pre><code data-lang="sh">
+il-verify program.il
+</code></pre>
+<p>The verifier catches:</p>
+<ul>
+<li>Type mismatches</li>
+<li>Missing terminators</li>
+<li>Invalid control flow</li>
+<li>Undefined references</li>
+</ul>
+<h3 id="disassemble-il">Disassemble IL</h3>
+<p>Pretty-print IL files:</p>
+<pre><code data-lang="sh">
+il-dis program.il
+</code></pre>
+<h3 id="execute-il">Execute IL</h3>
+<p>Run IL programs on the VM:</p>
+<pre><code data-lang="sh">
+viper -run program.il
+</code></pre>
+<h3 id="transform-il">Transform IL</h3>
+<p>Apply optimization passes:</p>
+<pre><code data-lang="sh">
+viper il-opt program.il --passes &quot;simplify-cfg&quot; -o optimized.il
+</code></pre>
+<p>Preset pipelines via <code>viper il-opt</code>:</p>
+<pre><code data-lang="sh">
+# O1 (default): simplify-cfg + mem2reg + SCCP + LICM + peephole + DCE
+viper il-opt program.il --pipeline O1 -o program.o1.il
+
+# O2: adds loop-simplify + loop-unroll + indvars + inline + GVN + EarlyCSE + DSE + late-cleanup
+viper il-opt program.il --pipeline O2 -o program.o2.il
+
+# Custom sequence
+viper il-opt program.il --passes &quot;simplify-cfg,mem2reg,sccp,dce&quot; -o out.il
+</code></pre>
+<p>Available passes: <code>check-opt</code>, <code>dce</code>, <code>dse</code>, <code>earlycse</code>, <code>gvn</code>, <code>indvars</code>, <code>inline</code>, <code>late-cleanup</code>, <code>licm</code>, <code>loop-simplify</code>, <code>loop-unroll</code>, <code>mem2reg</code>, <code>peephole</code>, <code>sccp</code>, <code>simplify-cfg</code></p>
+<p>---</p>
+<h2 id="next-steps">Next Steps</h2>
+<p><strong>Learn More:</strong></p>
+<ul>
+<li><strong>[IL Reference](il-reference.md)</strong> — Complete instruction catalog</li>
+<li><strong>[IL Guide](il-guide.md)</strong> — Comprehensive guide with examples</li>
+<li><strong>[Frontend How-To](frontend-howto.md)</strong> — Build your own frontend</li>
+</ul>
+<p><strong>Explore:</strong></p>
+<ul>
+<li>Check <code>src/tests/golden/il/</code> for more IL examples</li>
+<li>Run <code>viper --help</code> for all available options</li>
+<li>Experiment with optimization passes</li>
+</ul>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../../features/native-targets.html">Native Targets</a>
+      <a href="../../features/two-languages.html">Languages</a>
+      <a href="../../features/runtime.html">Runtime Library</a>
+      <a href="../../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../../docs/getting-started.html">Getting Started</a>
+      <a href="../../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../../docs/runtime/">Runtime API</a>
+      <a href="../../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../../contributing/">Contributing</a>
+      <a href="../../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../../main.js"></script>
+</body>
+</html>

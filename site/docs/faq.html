@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FAQ — Viper</title>
+  <meta name="description" content="Viper documentation: FAQ">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/" class="active">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="../showcase/">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <span>FAQ</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#general">General</a></li>
+        <li><a href="#getting-started">Getting Started</a></li>
+        <li><a href="#zia-language">Zia Language</a></li>
+        <li><a href="#basic-language">BASIC Language</a></li>
+        <li><a href="#il-intermediate-language">IL (Intermediate Language)</a></li>
+        <li><a href="#vm-and-runtime">VM and Runtime</a></li>
+        <li><a href="#development-and-contributing">Development and Contributing</a></li>
+        <li><a href="#quick-reference">Quick Reference</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>FAQ</h1>
+<h1 id="viper-faq">Viper FAQ</h1>
+<p>Frequently asked questions about the Viper compiler toolchain.</p>
+<p>---</p>
+<h2 id="general">General</h2>
+<h3 id="1-what-is-viper">1. What is Viper?</h3>
+<p>Viper is an IL-based compiler toolchain that includes multiple language frontends (Zia and BASIC), an intermediate</p>
+<p>language (IL), virtual machine, and native code generator. It&#x27;s designed as a research and educational platform for</p>
+<p>exploring language implementation, compiler design, and runtime systems.</p>
+<h3 id="2-what-makes-viper-different">2. What makes Viper different?</h3>
+<p>Viper uses a modern compiler architecture with an IL that separates language semantics</p>
+<p>from execution. Programs can run in a VM for development/debugging or be compiled to native code for performance. The IL</p>
+<p>layer makes it easy to add new language frontends—Zia and BASIC both compile to the same IL and share a common</p>
+<p>runtime.</p>
+<h3 id="3-is-viper-suitable-for-production-use">3. Is Viper suitable for production use?</h3>
+<p>No. Viper is an experimental research project at an early stage. While it implements substantial subsets of Zia and</p>
+<p>BASIC, it&#x27;s intended for education, experimentation, and compiler research rather than production use.</p>
+<p>---</p>
+<h2 id="getting-started">Getting Started</h2>
+<h3 id="4-how-do-i-build-viper">4. How do I build Viper?</h3>
+<pre><code data-lang="bash">
+./scripts/build_viper.sh
+</code></pre>
+<p>Requirements: CMake 3.20+, Clang or GCC with C++20 support. See the top-level README for platform-specific details.</p>
+<h3 id="5-how-do-i-run-a-program">5. How do I run a program?</h3>
+<pre><code data-lang="bash">
+viper run myprogram.zia
+viper run myprogram.bas
+</code></pre>
+<p>You can also run an entire project directory:</p>
+<pre><code data-lang="bash">
+viper run demos/zia/frogger/
+viper run demos/basic/vtris/
+</code></pre>
+<p>The standalone tools <code>vbasic</code>, <code>zia</code>, and <code>ilrun</code> are also available:</p>
+<pre><code data-lang="bash">
+vbasic myprogram.bas
+zia myprogram.zia
+ilrun program.il
+</code></pre>
+<h3 id="6-where-can-i-find-example-programs">6. Where can I find example programs?</h3>
+<ul>
+<li><code>/demos/zia/frogger/</code> - Full Frogger game in Zia demonstrating modules and game architecture</li>
+<li><code>/demos/zia/centipede/</code> - Centipede game in Zia</li>
+<li><code>/demos/zia/pacman/</code> - Pac-Man game in Zia</li>
+<li><code>/demos/basic/vtris/</code> - Full Tetris game demonstrating OOP, graphics, and game loop patterns (BASIC)</li>
+<li><code>/demos/basic/chess/</code> - Chess game in BASIC</li>
+<li><code>/examples/basic/</code> - BASIC example programs</li>
+<li><code>/src/tests/golden/zia/</code> - Zia test programs showing specific language features</li>
+<li><code>/src/tests/golden/basic/</code> - BASIC test programs showing specific language features</li>
+</ul>
+<h3 id="7-what-platforms-does-viper-support">7. What platforms does Viper support?</h3>
+<p>Viper builds and runs on:</p>
+<ul>
+<li><strong>macOS</strong> (Apple Silicon and Intel)</li>
+<li><strong>Linux</strong> (x86-64)</li>
+<li><strong>Windows</strong> (x86-64)</li>
+</ul>
+<p>Native code generation targets x86-64 (System V and Windows x64 ABIs) and AArch64.</p>
+<p>---</p>
+<h2 id="zia-language">Zia Language</h2>
+<h3 id="8-what-is-zia">8. What is Zia?</h3>
+<p>Zia is Viper&#x27;s primary language, designed as a modern, clean systems programming language. It includes:</p>
+<ul>
+<li>Module system for code organization</li>
+<li>Entity types (similar to classes) with methods and fields</li>
+<li>Strong static typing (Integer, Boolean, String, etc.)</li>
+<li>Structured control flow (if/else, while, for, match)</li>
+<li>Functions with type annotations</li>
+<li>Bind system for multi-file projects</li>
+<li>First-class support for the Viper runtime library</li>
+</ul>
+<h3 id="9-how-do-i-write-a-simple-zia-program">9. How do I write a simple Zia program?</h3>
+<pre><code data-lang="rust">
+module Main;
+
+func start() {
+    Viper.Terminal.Say(&quot;Hello, world!&quot;);
+}
+</code></pre>
+<p>Run it with:</p>
+<pre><code data-lang="bash">
+./build/src/tools/zia/zia hello.zia
+</code></pre>
+<h3 id="10-what-are-entities-in-zia">10. What are entities in Zia?</h3>
+<p>Entities are Zia&#x27;s object-oriented construct, similar to classes:</p>
+<pre><code data-lang="rust">
+entity Counter {
+    expose Integer value;
+
+    expose func init(start: Integer) {
+        value = start;
+    }
+
+    expose func increment() {
+        value = value + 1;
+    }
+}
+</code></pre>
+<p>Use <code>expose</code> to make fields and methods visible outside the entity.</p>
+<h3 id="11-how-do-i-organize-multi-file-zia-projects">11. How do I organize multi-file Zia projects?</h3>
+<p>Use modules and binds:</p>
+<pre><code data-lang="rust">
+module MyModule;
+
+bind &quot;./OtherModule&quot;;
+
+func useOther() {
+    OtherModule.someFunction();
+}
+</code></pre>
+<p>See <code>/demos/zia/frogger/</code> for a complete multi-module game example.</p>
+<p>---</p>
+<h2 id="basic-language">BASIC Language</h2>
+<h3 id="12-what-basic-dialect-does-viper-implement">12. What BASIC dialect does Viper implement?</h3>
+<p>Viper BASIC is inspired by classic BASIC (especially QBasic/QuickBASIC) with modern extensions. It includes:</p>
+<ul>
+<li>Structured control flow (If/Then/Else, For/Next, While/Wend, Do/Loop, Select Case)</li>
+<li>Procedures (Sub/Function) with parameters</li>
+<li>Object-oriented programming (Class, Sub New, method calls)</li>
+<li>Arrays (single and multi-dimensional)</li>
+<li>String manipulation</li>
+<li>File I/O</li>
+<li>ANSI terminal graphics (COLOR, LOCATE, CLS)</li>
+</ul>
+<h3 id="13-does-viper-basic-support-object-oriented-programming">13. Does Viper BASIC support object-oriented programming?</h3>
+<p>Yes! Viper BASIC includes:</p>
+<ul>
+<li>Class definitions with fields and methods</li>
+<li>Constructors (<code>Sub New</code>)</li>
+<li>Object instantiation (<code>New</code> keyword)</li>
+<li>Reference-based object semantics</li>
+<li>Method calls and field access</li>
+</ul>
+<p>See <code>/demos/basic/vtris/</code> for extensive OOP examples.</p>
+<h3 id="14-are-there-any-known-language-limitations-or-gotchas">14. Are there any known language limitations or gotchas?</h3>
+<p>Key limitations to be aware of:</p>
+<ul>
+<li><strong>Case-insensitive</strong> identifiers (parameter names can collide with field names)</li>
+<li><strong>No local array copying</strong> from object fields (use class-level temp arrays as workaround)</li>
+<li><strong>Object assignment creates references</strong>, not copies (use <code>New</code> for independent objects)</li>
+<li><strong>No SET/CALL keywords</strong> (direct assignment only)</li>
+<li><strong>Type suffixes required</strong> for string functions (use <code>Str$</code>, <code>Chr$</code>, not <code>Str</code>, <code>Chr</code>)</li>
+</ul>
+<p>See <code>/docs/bugs/viper_bugs.md</code> for documented issues and workarounds.</p>
+<h3 id="15-how-do-i-use-the-addfile-keyword-for-modular-programs">15. How do I use the AddFile keyword for modular programs?</h3>
+<p>Use <code>AddFile</code> to include other BASIC source files:</p>
+<pre><code data-lang="basic">
+AddFile &quot;utilities.bas&quot;
+AddFile &quot;../../lib/graphics.bas&quot;
+
+&#x27; Now you can use classes/functions from included files
+Dim helper As HelperClass
+helper = New HelperClass()
+</code></pre>
+<p>Paths are relative to the file containing the <code>AddFile</code> statement.</p>
+<p>---</p>
+<h2 id="il-intermediate-language">IL (Intermediate Language)</h2>
+<h3 id="19-what-is-the-viper-il">19. What is the Viper IL?</h3>
+<p>The Viper Intermediate Language is a low-level, typed, control-flow graph representation that sits between frontends (</p>
+<p>Zia, BASIC) and backends (VM or native code). It&#x27;s similar to LLVM IR or .NET CIL but designed specifically for this</p>
+<p>project&#x27;s needs.</p>
+<p>See <code>/docs/il-guide.md</code> for the complete IL specification.</p>
+<h3 id="20-can-i-write-il-code-directly">20. Can I write IL code directly?</h3>
+<p>Yes! The IL has a textual assembly syntax. You can write <code>.il</code> files and run them:</p>
+<pre><code data-lang="bash">
+./build/src/tools/viper/viper run myprogram.il
+</code></pre>
+<p>Tools available:</p>
+<ul>
+<li><code>il-dis</code> - Disassembler</li>
+<li><code>il-verify</code> - IL verifier</li>
+<li><code>ilrun</code> - IL runner</li>
+</ul>
+<h3 id="21-how-does-the-compilation-pipeline-work">21. How does the compilation pipeline work?</h3>
+<pre><code data-lang="text">
+Source (Zia/BASIC) → Parser → Semantic Analysis → IL Generation → IL Transforms →
+  ├─→ VM (for development/debugging)
+  └─→ Native Codegen (for performance)
+</code></pre>
+<p>The IL layer provides optimization passes, verification, and serialization. Different backends can consume the same IL.</p>
+<p>---</p>
+<h2 id="vm-and-runtime">VM and Runtime</h2>
+<h3 id="22-what-s-the-difference-between-vm-and-native-execution">22. What&#x27;s the difference between VM and native execution?</h3>
+<ul>
+<li><strong>VM</strong>: Executes IL directly. Slower but includes debugging support (breakpoints, stepping, watches).</li>
+</ul>
+<p>Default execution mode.</p>
+<ul>
+<li><strong>Native</strong>: Compiles IL to machine code. Much faster but fewer debugging features.</li>
+</ul>
+<p>For development, use VM mode. For performance testing, use native compilation.</p>
+<h3 id="23-how-do-i-debug-programs">23. How do I debug programs?</h3>
+<p>The VM supports source-level debugging:</p>
+<pre><code data-lang="bash">
+# Set breakpoint and run
+./build/src/tools/viper/viper front basic -run program.bas -break program.bas:42
+
+# Use debugger commands
+# (watch variables, step through code, inspect state)
+</code></pre>
+<p>See VM debugging tests in <code>/src/tests/vm/</code> for examples.</p>
+<h3 id="24-what-runtime-functions-are-available">24. What runtime functions are available?</h3>
+<p>Both frontends (Zia, BASIC) share the same runtime library. Built-in functions include:</p>
+<ul>
+<li><strong>Math</strong>: <code>Sin</code>, <code>Cos</code>, <code>Tan</code>, <code>Sqrt</code>, <code>Abs</code>, <code>Round</code>, <code>Trunc</code></li>
+<li><strong>String</strong>: <code>Length</code>/<code>Len</code>, <code>Copy</code>/<code>Mid$</code>, <code>Concat</code>, <code>Trim</code></li>
+<li><strong>I/O</strong>: <code>Print</code>/<code>Write</code>, <code>Input</code>/<code>Read</code></li>
+<li><strong>Graphics</strong>: <code>Color</code>, <code>Locate</code>, <code>Cls</code></li>
+<li><strong>Conversion</strong>: <code>ToString_Int</code>/<code>Str$</code>, <code>ToInt</code>/<code>Val</code></li>
+</ul>
+<p>See the respective builtin registries in <code>/src/frontends/zia/</code> and <code>/src/frontends/basic/builtins/</code></p>
+<p>for language-specific function lists.</p>
+<p>---</p>
+<h2 id="development-and-contributing">Development and Contributing</h2>
+<h3 id="25-how-do-i-add-a-new-built-in-function">25. How do I add a new built-in function?</h3>
+<ol>
+<li>Add the function signature to the builtin registry for the frontend</li>
+<li>Implement the lowering logic in the frontend</li>
+<li>Add the runtime implementation in <code>/src/runtime/</code></li>
+<li>Add tests</li>
+</ul>
+<p>See <code>/docs/frontend-howto.md</code> for detailed guidance.</p>
+<h3 id="26-how-do-i-report-bugs-or-request-features">26. How do I report bugs or request features?</h3>
+<ul>
+<li><strong>Bugs</strong>: Add to <code>/docs/bugs/viper_bugs.md</code> or open an issue</li>
+<li><strong>Features</strong>: Open a discussion or create an issue describing the use case</li>
+<li><strong>Contributing</strong>: Follow the Conventional Commits format for commit messages</li>
+</ul>
+<h3 id="27-where-can-i-find-more-documentation">27. Where can I find more documentation?</h3>
+<p>Key documentation files:</p>
+<ul>
+<li><code>/docs/il-guide.md</code> - Complete IL specification (normative reference)</li>
+<li><code>/docs/architecture.md</code> - System architecture overview</li>
+<li><code>/docs/codemap.md</code> - Source code organization and navigation</li>
+<li><code>/docs/frontend-howto.md</code> - Guide to frontend development</li>
+<li><code>/docs/zia-getting-started.md</code> - Zia language tutorial</li>
+<li><code>/docs/zia-reference.md</code> - Zia language reference</li>
+<li><code>/docs/basic-language.md</code> - BASIC language tutorial</li>
+<li><code>/docs/basic-reference.md</code> - BASIC language reference</li>
+<li><code>/CLAUDE.md</code> - Development workflow and contribution guidelines</li>
+</ul>
+<p>For code-level documentation, see header comments in source files.</p>
+<p>---</p>
+<h2 id="quick-reference">Quick Reference</h2>
+<p><strong>Build and run a Zia program:</strong></p>
+<pre><code data-lang="bash">
+cmake --build build -j
+./build/src/tools/zia/zia program.zia
+</code></pre>
+<p><strong>Build and run a BASIC program:</strong></p>
+<pre><code data-lang="bash">
+./build/src/tools/vbasic/vbasic program.bas
+</code></pre>
+<p><strong>Run with debugging:</strong></p>
+<pre><code data-lang="bash">
+./build/src/tools/ilrun/ilrun program.il --break main:10
+</code></pre>
+<p><strong>View generated IL:</strong></p>
+<pre><code data-lang="bash">
+./build/src/tools/zia/zia program.zia --emit-il
+./build/src/tools/vbasic/vbasic program.bas --emit-il
+</code></pre>
+<p><strong>Run tests:</strong></p>
+<pre><code data-lang="bash">
+ctest --test-dir build --output-on-failure
+</code></pre>
+<p><strong>Format code:</strong></p>
+<pre><code data-lang="bash">
+clang-format -i &lt;files&gt;
+</code></pre>
+<p>---</p>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../features/native-targets.html">Native Targets</a>
+      <a href="../features/two-languages.html">Languages</a>
+      <a href="../features/runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

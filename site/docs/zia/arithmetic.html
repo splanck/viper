@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arithmetic Semantics — Viper</title>
+  <meta name="description" content="Viper documentation: Arithmetic Semantics">
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="icon" href="../../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../../docs/" class="active">Docs</a>
+    <a href="../../learn/">Learn</a>
+    <a href="../../showcase/">Showcase</a>
+    <a href="../../performance/">Performance</a>
+    <a href="../../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../../">Home</a> / <a href="../../docs">Docs</a> / <span>Arithmetic Semantics</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#integer-arithmetic">Integer Arithmetic</a></li>
+        <li><a href="#shift-operations">Shift Operations</a></li>
+        <li><a href="#floating-point-arithmetic">Floating-Point Arithmetic</a></li>
+        <li><a href="#type-conversions">Type Conversions</a></li>
+        <li><a href="#frontend-promotion-rules">Frontend Promotion Rules</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>Arithmetic Semantics</h1>
+<h1 id="viper-arithmetic-semantics-reference">Viper Arithmetic Semantics Reference</h1>
+<p>This document specifies the exact arithmetic semantics that Viper guarantees across</p>
+<p>all execution layers (VM, AArch64 native, x86-64 native) and both frontends</p>
+<p>(Zia, BASIC). These guarantees are tested by the conformance test suite in</p>
+<p><code>src/tests/conformance/</code>.</p>
+<h2 id="integer-arithmetic">Integer Arithmetic</h2>
+<p>All integer arithmetic operates on <strong>I64</strong> (64-bit signed two&#x27;s complement).</p>
+<p>There are no sub-width arithmetic instructions; narrowing is explicit via cast</p>
+<p>opcodes.</p>
+<h3 id="wrapping-arithmetic">Wrapping Arithmetic</h3>
+<table><thead><tr>
+<th>Opcode</th>
+<th>Behavior</th>
+<th>On Overflow</th>
+</tr></thead><tbody>
+<tr>
+<td>`add`</td>
+<td>Two&#x27;s complement addition</td>
+<td>Silent wrap</td>
+</tr>
+<tr>
+<td>`sub`</td>
+<td>Two&#x27;s complement subtraction</td>
+<td>Silent wrap</td>
+</tr>
+<tr>
+<td>`mul`</td>
+<td>Two&#x27;s complement multiplication</td>
+<td>Silent wrap</td>
+</tr>
+</tbody></table>
+<p>These never trap. <code>INT64_MAX + 1</code> silently wraps to <code>INT64_MIN</code>.</p>
+<h3 id="checked-overflow-trapping-arithmetic">Checked (Overflow-Trapping) Arithmetic</h3>
+<table><thead><tr>
+<th>Opcode</th>
+<th>Behavior</th>
+<th>On Overflow</th>
+</tr></thead><tbody>
+<tr>
+<td>`iadd.ovf`</td>
+<td>Signed addition with overflow check</td>
+<td>**Trap**</td>
+</tr>
+<tr>
+<td>`isub.ovf`</td>
+<td>Signed subtraction with overflow check</td>
+<td>**Trap**</td>
+</tr>
+<tr>
+<td>`imul.ovf`</td>
+<td>Signed multiplication with overflow check</td>
+<td>**Trap**</td>
+</tr>
+</tbody></table>
+<p>These support sub-width type annotations (I32, I16). The overflow check uses</p>
+<p>the type&#x27;s range: <code>iadd.ovf : i32</code> traps when the result exceeds <code>INT32_MAX</code> or</p>
+<p>falls below <code>INT32_MIN</code>.</p>
+<p>Zia uses checked variants when <code>overflowChecks</code> is enabled in compiler options.</p>
+<h3 id="division">Division</h3>
+<table><thead><tr>
+<th>Opcode</th>
+<th>Truncation</th>
+<th>Div-by-zero</th>
+<th>MIN/-1</th>
+</tr></thead><tbody>
+<tr>
+<td>`sdiv`</td>
+<td>Toward zero (C99)</td>
+<td>**Trap**</td>
+<td>**Trap**</td>
+</tr>
+<tr>
+<td>`sdiv.chk0`</td>
+<td>Toward zero (C99)</td>
+<td>**Trap**</td>
+<td>**Trap**</td>
+</tr>
+<tr>
+<td>`udiv`</td>
+<td>Toward zero</td>
+<td>**Trap**</td>
+<td>N/A</td>
+</tr>
+<tr>
+<td>`udiv.chk0`</td>
+<td>Toward zero</td>
+<td>**Trap**</td>
+<td>N/A</td>
+</tr>
+</tbody></table>
+<p>Both <code>sdiv</code> and <code>sdiv.chk0</code> trap on divide-by-zero and <code>MIN / -1</code>. The <code>.chk0</code></p>
+<p>suffix is a naming convention inherited from early design; behavior is identical</p>
+<p>in the current VM.</p>
+<p><strong>Division truncation direction</strong>: <code>7 / -2 = -3</code>, <code>-7 / 2 = -3</code>.</p>
+<h3 id="remainder-modulo">Remainder (Modulo)</h3>
+<table><thead><tr>
+<th>Opcode</th>
+<th>Sign rule</th>
+<th>Div-by-zero</th>
+<th>MIN%-1</th>
+</tr></thead><tbody>
+<tr>
+<td>`srem`</td>
+<td>Dividend&#x27;s sign</td>
+<td>**Trap**</td>
+<td>`0` (no trap)</td>
+</tr>
+<tr>
+<td>`srem.chk0`</td>
+<td>Dividend&#x27;s sign</td>
+<td>**Trap**</td>
+<td>`0` (no trap)</td>
+</tr>
+<tr>
+<td>`urem`</td>
+<td>Unsigned</td>
+<td>**Trap**</td>
+<td>N/A</td>
+</tr>
+<tr>
+<td>`urem.chk0`</td>
+<td>Unsigned</td>
+<td>**Trap**</td>
+<td>N/A</td>
+</tr>
+</tbody></table>
+<p><strong>Remainder sign rule</strong> (C99): <code>-7 % 2 = -1</code>, <code>7 % -2 = 1</code>, <code>-7 % -2 = -1</code>.</p>
+<p><code>MIN % -1 = 0</code> is mathematically correct and does not trap.</p>
+<h3 id="bitwise-operations">Bitwise Operations</h3>
+<table><thead><tr>
+<th>Opcode</th>
+<th>Behavior</th>
+</tr></thead><tbody>
+<tr>
+<td>`and`</td>
+<td>Bitwise AND (I64)</td>
+</tr>
+<tr>
+<td>`or`</td>
+<td>Bitwise OR (I64)</td>
+</tr>
+<tr>
+<td>`xor`</td>
+<td>Bitwise XOR (I64)</td>
+</tr>
+</tbody></table>
+<p>All operate on full 64-bit values.</p>
+<h2 id="shift-operations">Shift Operations</h2>
+<table><thead><tr>
+<th>Opcode</th>
+<th>Direction</th>
+<th>Extension</th>
+<th>Masking</th>
+</tr></thead><tbody>
+<tr>
+<td>`shl`</td>
+<td>Left</td>
+<td>N/A</td>
+<td>`shift &amp; 63`</td>
+</tr>
+<tr>
+<td>`ashr`</td>
+<td>Right</td>
+<td>Sign-extending (arithmetic)</td>
+<td>`shift &amp; 63`</td>
+</tr>
+<tr>
+<td>`lshr`</td>
+<td>Right</td>
+<td>Zero-extending (logical)</td>
+<td>`shift &amp; 63`</td>
+</tr>
+</tbody></table>
+<p><strong>Shift masking</strong>: Shift amounts are masked to <code>[0, 63]</code>, matching x86-64</p>
+<p>hardware behavior. <code>shl(1, 64)</code> produces <code>1</code> (shift amount becomes 0).</p>
+<p>This is <strong>not</strong> undefined behavior.</p>
+<p><strong>AShr sign extension</strong>: <code>ashr(-1, 63)</code> produces <code>-1</code> (all ones).</p>
+<p><strong>LShr zero extension</strong>: <code>lshr(-1, 63)</code> produces <code>1</code>.</p>
+<h2 id="floating-point-arithmetic">Floating-Point Arithmetic</h2>
+<p>All floating-point operations use <strong>F64</strong> (IEEE-754 binary64, double precision).</p>
+<h3 id="basic-operations">Basic Operations</h3>
+<table><thead><tr>
+<th>Opcode</th>
+<th>Behavior</th>
+</tr></thead><tbody>
+<tr>
+<td>`fadd`</td>
+<td>IEEE-754 addition</td>
+</tr>
+<tr>
+<td>`fsub`</td>
+<td>IEEE-754 subtraction</td>
+</tr>
+<tr>
+<td>`fmul`</td>
+<td>IEEE-754 multiplication</td>
+</tr>
+<tr>
+<td>`fdiv`</td>
+<td>IEEE-754 division</td>
+</tr>
+</tbody></table>
+<p><strong>Rounding mode</strong>: Round-to-nearest-even (hardware default). Not configurable.</p>
+<h3 id="special-values">Special Values</h3>
+<table><thead><tr>
+<th>Expression</th>
+<th>Result</th>
+</tr></thead><tbody>
+<tr>
+<td>`x + NaN`</td>
+<td>`NaN` (propagates)</td>
+</tr>
+<tr>
+<td>`0.0 / 0.0`</td>
+<td>`NaN`</td>
+</tr>
+<tr>
+<td>`1.0 / 0.0`</td>
+<td>`+Inf`</td>
+</tr>
+<tr>
+<td>`-1.0 / 0.0`</td>
+<td>`-Inf`</td>
+</tr>
+<tr>
+<td>`Inf + Inf`</td>
+<td>`Inf`</td>
+</tr>
+<tr>
+<td>`Inf - Inf`</td>
+<td>`NaN`</td>
+</tr>
+<tr>
+<td>`Inf * 0.0`</td>
+<td>`NaN`</td>
+</tr>
+</tbody></table>
+<h3 id="floating-point-comparisons">Floating-Point Comparisons</h3>
+<table><thead><tr>
+<th>Opcode</th>
+<th>`NaN` behavior</th>
+<th>Meaning</th>
+</tr></thead><tbody>
+<tr>
+<td>`fcmp.eq`</td>
+<td>`false`</td>
+<td>Ordered equal</td>
+</tr>
+<tr>
+<td>`fcmp.ne`</td>
+<td>`true`</td>
+<td>Unordered not-equal</td>
+</tr>
+<tr>
+<td>`fcmp.lt`</td>
+<td>`false`</td>
+<td>Ordered less-than</td>
+</tr>
+<tr>
+<td>`fcmp.le`</td>
+<td>`false`</td>
+<td>Ordered less-or-equal</td>
+</tr>
+<tr>
+<td>`fcmp.gt`</td>
+<td>`false`</td>
+<td>Ordered greater-than</td>
+</tr>
+<tr>
+<td>`fcmp.ge`</td>
+<td>`false`</td>
+<td>Ordered greater-or-equal</td>
+</tr>
+<tr>
+<td>`fcmp.ord`</td>
+<td>`false`</td>
+<td>Both operands are not NaN</td>
+</tr>
+<tr>
+<td>`fcmp.uno`</td>
+<td>`true`</td>
+<td>At least one operand is NaN</td>
+</tr>
+</tbody></table>
+<p>All ordered comparisons return <code>false</code> when either operand is NaN.</p>
+<p><code>fcmp.ne</code> is unordered: returns <code>true</code> when either operand is NaN.</p>
+<h2 id="type-conversions">Type Conversions</h2>
+<h3 id="integer-to-float">Integer-to-Float</h3>
+<table><thead><tr>
+<th>Opcode</th>
+<th>Behavior</th>
+</tr></thead><tbody>
+<tr>
+<td>`sitofp`</td>
+<td>Signed I64 to F64. Exact for values with &lt;= 53 significant bits; rounded otherwise.</td>
+</tr>
+<tr>
+<td>`cast.si_to_fp`</td>
+<td>Same semantics as `sitofp`.</td>
+</tr>
+<tr>
+<td>`cast.ui_to_fp`</td>
+<td>Unsigned I64 to F64.</td>
+</tr>
+</tbody></table>
+<h3 id="float-to-integer">Float-to-Integer</h3>
+<table><thead><tr>
+<th>Opcode</th>
+<th>Behavior</th>
+<th>NaN</th>
+<th>Out-of-range</th>
+</tr></thead><tbody>
+<tr>
+<td>`fptosi`</td>
+<td>Truncation toward zero</td>
+<td>**Trap**</td>
+<td>**Trap**</td>
+</tr>
+<tr>
+<td>`cast.fp_to_si.rte.chk`</td>
+<td>Round-to-even, then convert</td>
+<td>**Trap**</td>
+<td>**Trap**</td>
+</tr>
+<tr>
+<td>`cast.fp_to_ui.rte.chk`</td>
+<td>Round-to-even, then convert (unsigned)</td>
+<td>**Trap**</td>
+<td>**Trap**</td>
+</tr>
+</tbody></table>
+<p>In the VM, <code>fptosi</code> traps on NaN and overflow (not UB). Native backends must</p>
+<p>preserve this behavior.</p>
+<p><code>fptosi(1.9)</code> produces <code>1</code> (truncation toward zero).</p>
+<p><code>fptosi(-1.9)</code> produces <code>-1</code> (truncation toward zero).</p>
+<h3 id="integer-narrowing">Integer Narrowing</h3>
+<table><thead><tr>
+<th>Opcode</th>
+<th>Behavior</th>
+<th>Out-of-range</th>
+</tr></thead><tbody>
+<tr>
+<td>`cast.si_narrow.chk`</td>
+<td>I64 to I32 or I16 (signed)</td>
+<td>**Trap**</td>
+</tr>
+<tr>
+<td>`cast.ui_narrow.chk`</td>
+<td>I64 to I32 or I16 (unsigned)</td>
+<td>**Trap**</td>
+</tr>
+</tbody></table>
+<h2 id="frontend-promotion-rules">Frontend Promotion Rules</h2>
+<h3 id="zia">Zia</h3>
+<p>Type hierarchy: <code>Byte &lt; Integer &lt; Number</code></p>
+<table><thead><tr>
+<th>Expression</th>
+<th>IL Emitted</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>`Integer + Integer`</td>
+<td>`add` (or `iadd.ovf` if overflow checks)</td>
+<td></td>
+</tr>
+<tr>
+<td>`Number + Number`</td>
+<td>`fadd`</td>
+<td></td>
+</tr>
+<tr>
+<td>`Integer + Number`</td>
+<td>`sitofp` on Integer operand, then `fadd`</td>
+<td>Implicit widening</td>
+</tr>
+<tr>
+<td>`Integer / Integer`</td>
+<td>`sdiv` (or `sdiv.chk0` if overflow checks)</td>
+<td>Truncation toward zero</td>
+</tr>
+<tr>
+<td>`Integer % Integer`</td>
+<td>`srem` (or `srem.chk0` if overflow checks)</td>
+<td>Dividend sign</td>
+</tr>
+<tr>
+<td>`Byte + Integer`</td>
+<td>`add` (both I64 at IL level)</td>
+<td>Byte is I32 in sema, but I64 in IL</td>
+</tr>
+</tbody></table>
+<h3 id="basic">BASIC</h3>
+<p>Type hierarchy: <code>INTEGER% (I16) &lt; LONG&amp; (I64) &lt; SINGLE! (F64) &lt; DOUBLE# (F64)</code></p>
+<table><thead><tr>
+<th>Expression</th>
+<th>IL Emitted</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>`A% + B%`</td>
+<td>`add`</td>
+<td>I64 result</td>
+</tr>
+<tr>
+<td>`A + B` (float)</td>
+<td>`fadd`</td>
+<td></td>
+</tr>
+<tr>
+<td>`A \ B` (integer div)</td>
+<td>`sdiv.chk0`</td>
+<td>Always checked, always I64</td>
+</tr>
+<tr>
+<td>`A MOD B`</td>
+<td>`srem.chk0`</td>
+<td>Always checked, always I64</td>
+</tr>
+<tr>
+<td>`A / B` (float div)</td>
+<td>`fdiv`</td>
+<td>Both promoted to F64</td>
+</tr>
+<tr>
+<td>`TRUE`</td>
+<td>`-1` (I64)</td>
+<td>BASIC uses `-1` for true</td>
+</tr>
+</tbody></table>
+<p><strong>Key difference</strong>: BASIC integer division and modulo always use checked variants</p>
+<p>(<code>sdiv.chk0</code>, <code>srem.chk0</code>), while Zia defaults to unchecked (<code>sdiv</code>, <code>srem</code>)</p>
+<p>unless <code>overflowChecks</code> is enabled.</p>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../../features/native-targets.html">Native Targets</a>
+      <a href="../../features/two-languages.html">Languages</a>
+      <a href="../../features/runtime.html">Runtime Library</a>
+      <a href="../../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../../docs/getting-started.html">Getting Started</a>
+      <a href="../../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../../docs/runtime/">Runtime API</a>
+      <a href="../../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../../contributing/">Contributing</a>
+      <a href="../../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../../main.js"></script>
+</body>
+</html>

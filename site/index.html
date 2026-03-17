@@ -18,8 +18,10 @@
   <a href="/" class="nav-logo"><img src="logo.png" alt="Viper logo">Viper</a>
   <div class="nav-links">
     <a href="docs/">Docs</a>
-    <a href="showcase.html">Showcase</a>
-    <a href="https://github.com/splanck/viper/releases">Download</a>
+    <a href="learn/">Learn</a>
+    <a href="showcase/">Showcase</a>
+    <a href="performance/">Performance</a>
+    <a href="blog/">Blog</a>
     <a href="https://github.com/splanck/viper">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
@@ -41,28 +43,28 @@
 
 <!-- ===== Stats Bar ===== -->
 <div class="stats-bar">
-  <div class="stats-bar-inner">
-    <div class="stat-item">
+  <div class="stats-bar-inner reveal-stagger">
+    <div class="stat-item reveal">
       <span class="stat-value">509K</span>
       <span class="stat-label">Lines of Code</span>
     </div>
-    <div class="stat-item">
+    <div class="stat-item reveal">
       <span class="stat-value">0</span>
       <span class="stat-label">External Dependencies</span>
     </div>
-    <div class="stat-item">
+    <div class="stat-item reveal">
       <span class="stat-value">6</span>
       <span class="stat-label">Native Targets</span>
     </div>
-    <div class="stat-item">
+    <div class="stat-item reveal">
       <span class="stat-value">226+</span>
       <span class="stat-label">Runtime Classes</span>
     </div>
-    <div class="stat-item">
+    <div class="stat-item reveal">
       <span class="stat-value">13+</span>
       <span class="stat-label">Optimizer Passes</span>
     </div>
-    <div class="stat-item">
+    <div class="stat-item reveal">
       <span class="stat-value">1,984</span>
       <span class="stat-label">Tests</span>
     </div>
@@ -71,10 +73,10 @@
 
 <!-- ===== Code Sample Tabs ===== -->
 <div class="section">
-  <h2 class="section-title">See It in Action</h2>
-  <p class="section-subtitle">Write in Zia or BASIC. Compile to typed IL. Run in the VM or go native.</p>
+  <h2 class="section-title reveal">See It in Action</h2>
+  <p class="section-subtitle reveal">Write in Zia or BASIC. Compile to typed IL. Run in the VM or go native.</p>
 
-  <div class="code-tabs">
+  <div class="code-tabs reveal">
     <div class="code-tab-bar">
       <button class="code-tab-btn active" data-tab="zia">Zia</button>
       <button class="code-tab-btn" data-tab="basic">BASIC</button>
@@ -130,29 +132,29 @@ entry_0:
 <!-- ===== Performance ===== -->
 <div class="section-alt">
   <div class="section">
-    <h2 class="section-title">Performance</h2>
-    <p class="section-subtitle">Native ARM64 code generated from scratch &mdash; no LLVM, no external toolchain</p>
+    <h2 class="section-title reveal">Performance</h2>
+    <p class="section-subtitle reveal">Native ARM64 code generated from scratch &mdash; no LLVM, no external toolchain</p>
 
-    <div class="perf-highlights">
-      <div class="perf-highlight-card perf-win">
+    <div class="perf-highlights reveal-stagger">
+      <div class="perf-highlight-card perf-win reveal">
         <span class="perf-big">1.8x</span>
         <span class="perf-desc">faster than <strong>C -O2</strong> on branch-heavy code</span>
       </div>
-      <div class="perf-highlight-card perf-win">
+      <div class="perf-highlight-card perf-win reveal">
         <span class="perf-big">2.2x</span>
         <span class="perf-desc">faster than <strong>Rust -O</strong> on division workloads</span>
       </div>
-      <div class="perf-highlight-card perf-win">
+      <div class="perf-highlight-card perf-win reveal">
         <span class="perf-big">8/9</span>
         <span class="perf-desc">benchmarks <strong>faster than C -O0</strong></span>
       </div>
-      <div class="perf-highlight-card">
+      <div class="perf-highlight-card reveal">
         <span class="perf-big">100x</span>
         <span class="perf-desc">faster than <strong>Python</strong> across the board</span>
       </div>
     </div>
 
-    <div class="perf-table-wrap">
+    <div class="perf-table-wrap reveal">
       <table class="perf-table">
         <thead>
           <tr>
@@ -256,104 +258,104 @@ entry_0:
 
 <!-- ===== Features ===== -->
 <div class="section">
-  <h2 class="section-title">Why Viper?</h2>
-  <p class="section-subtitle">A complete platform built entirely from scratch</p>
+  <h2 class="section-title reveal">Why Viper?</h2>
+  <p class="section-subtitle reveal">A complete platform built entirely from scratch</p>
 
-  <div class="feature-grid">
-    <div class="feature-card">
-      <div class="feature-icon">&#9878;</div>
+  <div class="feature-grid reveal-stagger">
+    <a href="features/zero-deps.html" class="feature-card reveal">
+      <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l7 4v5c0 5.25-3.5 9.74-7 11-3.5-1.26-7-5.75-7-11V6l7-4z"/></svg></div>
       <h3>Zero Dependencies</h3>
       <p>No LLVM, no Boost, no SDL, no libcurl. Custom assemblers, linkers, optimizer passes, and a 226-class runtime &mdash; every line is Viper's own.</p>
-    </div>
+    </a>
 
-    <div class="feature-card">
-      <div class="feature-icon">&#9889;</div>
+    <a href="features/native-targets.html" class="feature-card reveal">
+      <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/></svg></div>
       <h3>6 Native Targets</h3>
       <p>Hand-written binary encoders and linkers emit ELF, Mach-O, and PE executables for both ARM64 and x86-64 &mdash; with PAC/BTI security hardening on AArch64.</p>
-    </div>
+    </a>
 
-    <div class="feature-card">
-      <div class="feature-icon">&#9998;</div>
+    <a href="features/two-languages.html" class="feature-card reveal">
+      <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
       <h3>Two Languages, One IL</h3>
       <p>Zia (modern: entities, generics, pattern matching) and BASIC (classic with OOP) both compile through a typed SSA intermediate language. Build your own frontend too.</p>
-    </div>
+    </a>
 
-    <div class="feature-card">
-      <div class="feature-icon">&#9671;</div>
+    <a href="features/optimizer.html" class="feature-card reveal">
+      <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></div>
       <h3>13+ Optimizer Passes</h3>
       <p>SCCP, GVN, LICM, inlining, loop unrolling, strength reduction, dead store elimination with MemorySSA, and more &mdash; plus backend peephole optimizers.</p>
-    </div>
+    </a>
 
-    <div class="feature-card">
-      <div class="feature-icon">&#9776;</div>
+    <a href="features/runtime.html" class="feature-card reveal">
+      <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div>
       <h3>Full-Stack Runtime</h3>
       <p>Graphics, sprites, tilemaps, audio, HTTP, WebSocket, TLS, crypto, threading, GUI widgets, JSON/YAML/XML parsing, 2D physics &mdash; all from scratch in portable C.</p>
-    </div>
+    </a>
 
-    <div class="feature-card">
-      <div class="feature-icon">&#9678;</div>
+    <a href="features/determinism.html" class="feature-card reveal">
+      <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
       <h3>VM/Native Determinism</h3>
       <p>Every program produces identical output on the VM and as a native binary. Iterate fast on the interpreter, ship native with confidence.</p>
-    </div>
+    </a>
 
-    <div class="feature-card">
-      <div class="feature-icon">&#9881;</div>
+    <a href="features/applications.html" class="feature-card reveal">
+      <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="2" y1="9" x2="22" y2="9"/></svg></div>
       <h3>Real Applications</h3>
       <p>Chess with AI, a SQL database, a multi-threaded web server, an IDE with IntelliSense, Pac-Man &mdash; all written in Viper's own languages.</p>
-    </div>
+    </a>
 
-    <div class="feature-card">
-      <div class="feature-icon">&#9873;</div>
+    <a href="features/cross-platform.html" class="feature-card reveal">
+      <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg></div>
       <h3>Cross-Platform</h3>
       <p>macOS, Linux, and Windows with full parity. Platform-native graphics (Cocoa/X11/Win32), audio (AudioQueue/ALSA/WASAPI), and networking.</p>
-    </div>
+    </a>
 
-    <div class="feature-card">
-      <div class="feature-icon">&#9745;</div>
+    <a href="features/testing.html" class="feature-card reveal">
+      <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l7 4v5c0 5.25-3.5 9.74-7 11-3.5-1.26-7-5.75-7-11V6l7-4z"/><polyline points="9 12 11 14 15 10"/></svg></div>
       <h3>Battle-Tested</h3>
       <p>1,984 tests across unit, golden, E2E, and fuzz suites. Sanitizer CI (ASan, UBSan, TSan). 509K lines of production code. 4,197 commits.</p>
-    </div>
+    </a>
   </div>
 </div>
 
 <!-- ===== Showcase Preview ===== -->
 <div class="section-alt">
 <div class="section">
-  <h2 class="section-title">Built with Viper</h2>
-  <p class="section-subtitle">Real applications and games built on the platform</p>
+  <h2 class="section-title reveal">Built with Viper</h2>
+  <p class="section-subtitle reveal">Real applications and games built on the platform</p>
 
-  <div class="showcase-grid">
-    <a href="https://github.com/splanck/viper/tree/master/examples/apps/sqldb" class="showcase-card">
+  <div class="showcase-grid reveal-stagger">
+    <a href="showcase/sqldb.html" class="showcase-card reveal">
       <h3>SQL Database</h3>
       <p>PostgreSQL-compatible engine with MVCC, WAL, B-tree indexes, and wire protocol.</p>
       <span class="showcase-badge badge-app">App</span>
     </a>
 
-    <a href="https://github.com/splanck/viper/tree/master/examples/apps/viperide" class="showcase-card">
+    <a href="showcase/viperide.html" class="showcase-card reveal">
       <h3>Viper IDE</h3>
       <p>Code editor with tabs, find/replace, syntax highlighting, and integrated build.</p>
       <span class="showcase-badge badge-app">App</span>
     </a>
 
-    <a href="https://github.com/splanck/viper/tree/master/examples/games/chess" class="showcase-card">
+    <a href="showcase/chess.html" class="showcase-card reveal">
       <h3>Chess</h3>
       <p>Full chess engine with alpha-beta AI, transposition tables, and canvas UI.</p>
       <span class="showcase-badge badge-zia">Zia</span>
     </a>
 
-    <a href="https://github.com/splanck/viper/tree/master/examples/games/sidescroller" class="showcase-card">
+    <a href="showcase/sidescroller.html" class="showcase-card reveal">
       <h3>Sidescroller</h3>
       <p>2D platformer with physics, parallax scrolling, particles, and boss fights.</p>
       <span class="showcase-badge badge-zia">Zia</span>
     </a>
 
-    <a href="https://github.com/splanck/viper/tree/master/examples/apps/paint" class="showcase-card">
+    <a href="showcase/paint.html" class="showcase-card reveal">
       <h3>Paint</h3>
       <p>Drawing application with 8 tools, shapes, color picker, and undo/redo.</p>
       <span class="showcase-badge badge-app">App</span>
     </a>
 
-    <a href="https://github.com/splanck/viper/tree/master/examples/games/pacman" class="showcase-card">
+    <a href="showcase/pacman.html" class="showcase-card reveal">
       <h3>Pac-Man</h3>
       <p>Arcade clone with ghost AI, animations, and tile-based rendering.</p>
       <span class="showcase-badge badge-zia">Zia</span>
@@ -367,32 +369,32 @@ entry_0:
 <!-- ===== Architecture ===== -->
 <div class="section-alt">
   <div class="section">
-    <h2 class="section-title">Architecture</h2>
-    <p class="section-subtitle">From source to native binary through a typed intermediate language</p>
+    <h2 class="section-title reveal">Architecture</h2>
+    <p class="section-subtitle reveal">From source to native binary through a typed intermediate language</p>
 
-    <div class="arch-diagram">
-      <div class="arch-box">Source Languages (Zia, BASIC)</div>
-      <div class="arch-arrow">&#9660;</div>
-      <div class="arch-box">Frontend (Parser + Semantics + Lowering)</div>
-      <div class="arch-arrow">&#9660;</div>
+    <div class="arch-diagram reveal">
+      <div class="arch-box arch-source">Source Languages (Zia, BASIC)</div>
+      <svg class="arch-connector" width="2" height="32" aria-hidden="true"><line x1="1" y1="0" x2="1" y2="32" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4" class="arch-flow"/></svg>
+      <div class="arch-box arch-frontend">Frontend (Parser + Semantics + Lowering)</div>
+      <svg class="arch-connector" width="2" height="32" aria-hidden="true"><line x1="1" y1="0" x2="1" y2="32" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4" class="arch-flow"/></svg>
       <div class="arch-box primary">Viper IL (Typed SSA) + Verifier + Optimizer</div>
-      <div class="arch-arrow">&#9660;</div>
+      <svg class="arch-connector" width="2" height="32" aria-hidden="true"><line x1="1" y1="0" x2="1" y2="32" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4" class="arch-flow"/></svg>
       <div class="arch-split">
         <div class="arch-box">Virtual Machine</div>
         <div class="arch-box">Native Backend (ARM64, x86-64)</div>
       </div>
-      <div class="arch-arrow">&#9660;</div>
-      <div class="arch-box">Viper Runtime (Collections, I/O, Graphics, Audio, GUI, Network, Threads, ...)</div>
+      <svg class="arch-connector" width="2" height="32" aria-hidden="true"><line x1="1" y1="0" x2="1" y2="32" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4" class="arch-flow"/></svg>
+      <div class="arch-box arch-runtime">Viper Runtime (Collections, I/O, Graphics, Audio, GUI, Network, Threads, ...)</div>
     </div>
   </div>
 </div>
 
 <!-- ===== Quick Install ===== -->
 <div class="section">
-  <h2 class="section-title">Get Started</h2>
-  <p class="section-subtitle">Clone, build, and run your first program in under a minute</p>
+  <h2 class="section-title reveal">Get Started</h2>
+  <p class="section-subtitle reveal">Clone, build, and run your first program in under a minute</p>
 
-  <div class="install-block">
+  <div class="install-block reveal">
     <pre><span class="comment"># Clone and build</span>
 <span class="cmd">git clone https://github.com/splanck/viper.git</span>
 <span class="cmd">cd viper</span>
@@ -414,12 +416,33 @@ entry_0:
 
 <!-- ===== Footer ===== -->
 <footer class="site-footer">
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
-  <div class="footer-links">
-    <a href="https://github.com/splanck/viper">GitHub</a>
-    <a href="docs/">Documentation</a>
-    <a href="https://github.com/splanck/viper/blob/master/LICENSE">License</a>
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="features/zero-deps.html">Zero Dependencies</a>
+      <a href="features/native-targets.html">Native Targets</a>
+      <a href="features/two-languages.html">Languages</a>
+      <a href="features/runtime.html">Runtime Library</a>
+      <a href="performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="docs/getting-started.html">Getting Started</a>
+      <a href="docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="docs/runtime/">Runtime API</a>
+      <a href="docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="contributing/">Contributing</a>
+      <a href="blog/">Blog</a>
+      <a href="https://github.com/splanck/viper/blob/master/LICENSE">License</a>
+    </div>
   </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="main.js"></script>

@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contributing — Viper</title>
+  <meta name="description" content="Viper documentation: Contributing">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/" class="active">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="../showcase/">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <span>Contributing</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#contributing">Contributing</a></li>
+        <li><a href="#style-guide">Style Guide</a></li>
+        <li><a href="#testing">Testing</a></li>
+        <li><a href="#frontend-internals">Frontend Internals</a></li>
+        <li><a href="#debugging">Debugging</a></li>
+        <li><a href="#migrations">Migrations</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>Contributing</h1>
+<h1 id="contributor-guide">Contributor Guide</h1>
+<p>&lt;a id=&quot;contributing&quot;&gt;&lt;/a&gt;</p>
+<h2 id="contributing">Contributing</h2>
+<ul>
+<li>The repository includes a lightweight <code>Analysis</code> library in <code>src/il/analysis</code>.</li>
+</ul>
+<p>Run the tests under <code>src/tests/analysis</code> when modifying these utilities.</p>
+<p>&lt;a id=&quot;style-guide&quot;&gt;&lt;/a&gt;</p>
+<h2 id="style-guide">Style Guide</h2>
+<p>See [CLAUDE.md](../CLAUDE.md) for project-wide policies. This guide defines</p>
+<p>comment conventions and file headers for the Viper codebase. All contributors</p>
+<p>must follow these rules when adding new code or updating existing files.</p>
+<h3 id="file-naming">File naming</h3>
+<p>Use <code>.cpp</code> for implementation files and <code>.hpp</code> for headers. Do not use <code>.cc</code>. Use <code>.hpp</code> for C++ headers and <code>.h</code> for C runtime headers.</p>
+<h3 id="file-headers">File headers</h3>
+<p>Every source and header file begins with a short block comment that explains</p>
+<p>the file&#x27;s role. Use this template:</p>
+<pre><code data-lang="cpp">
+// File: &lt;path/to/file&gt;
+// Purpose: &lt;one line&gt;
+// Key invariants: &lt;state what must hold&gt;
+// Ownership/Lifetime: &lt;who allocates and frees&gt;
+// Perf/Threading notes: &lt;hot paths or concurrency&gt;
+// Links: &lt;specs, ADRs, docs&gt;
+</code></pre>
+<h4 id="notes">Notes</h4>
+<ul>
+<li>Keep lines concise and factual.</li>
+<li>Omit fields that do not apply rather than leaving placeholders.</li>
+</ul>
+<h4 id="example">Example</h4>
+<pre><code data-lang="cpp">
+// foo/Bar.hpp
+// Purpose: Declares the Bar helper.
+// Key invariants: ID remains unique.
+// Ownership/Lifetime: Caller frees instances.
+// Links: docs/codemap.md
+</code></pre>
+<h3 id="doxygen-api-comments">Doxygen API comments</h3>
+<p>Public classes, functions, and members use Doxygen comments with triple</p>
+<p>slashes. Common tags:</p>
+<ul>
+<li><code>@brief</code> – one line summary.</li>
+<li><code>@invariant</code> – conditions that always hold.</li>
+<li><code>@note</code> – extra context or links.</li>
+<li><code>@param</code> – describe each parameter.</li>
+<li><code>@return</code> – state what the function yields.</li>
+</ul>
+<p>Keep comments under ~100 characters per line.</p>
+<h3 id="members-and-attributes">Members and attributes</h3>
+<p>Member variables have short trailing comments focusing on meaning</p>
+<p>or units:</p>
+<pre><code data-lang="cpp">
+int count; ///&lt; Number of active users.
+</code></pre>
+<p>Avoid repeating type information or restating obvious details.</p>
+<h3 id="naming-and-tone">Naming and tone</h3>
+<ul>
+<li>Be direct and neutral; avoid marketing phrases.</li>
+<li>Link to related docs or ADRs with Markdown links when relevant.</li>
+<li>Prefer verbs for functions, nouns for classes, and short <code>snake_case</code> names for variables.</li>
+</ul>
+<h3 id="spacing-and-indentation">Spacing and indentation</h3>
+<p>Use 4-space indentation, Allman braces, and blank lines to keep code readable.</p>
+<h4 id="good">Good</h4>
+<pre><code data-lang="cpp">
+// foo/Calc.cpp
+// Purpose: Example with spacing.
+
+#include &quot;Calc.hpp&quot;
+
+namespace il {
+
+/// @brief Adds two numbers.
+int add(int a, int b)
+{
+    return a + b;
+}
+
+} // namespace il
+</code></pre>
+<h4 id="bad">Bad</h4>
+<pre><code data-lang="cpp">
+//foo/Calc.cpp
+#include &quot;Calc.hpp&quot;
+namespace il{int add(int a,int b){return a+b;}}
+</code></pre>
+<p>The bad example lacks blank lines, uses cramped K&amp;R braces, and omits the standard</p>
+<p>4-space indentation, making it difficult to read.</p>
+<h3 id="examples">Examples</h3>
+<h4 id="class">Class</h4>
+<pre><code data-lang="cpp">
+// foo/Bar.hpp
+/// @brief Manages frobnications.
+/// @invariant ID is unique per instance.
+/// @ownership Caller owns instances.
+/// @note See [IL spec](il-reference.md).
+class Bar {
+public:
+  /// @brief Perform one step.
+  void step();
+
+private:
+  int id; ///&lt; Unique identifier.
+};
+</code></pre>
+<h4 id="function">Function</h4>
+<pre><code data-lang="cpp">
+/// @brief Adds two integers.
+/// @param a First operand.
+/// @param b Second operand.
+/// @return Sum of `a` and `b`.
+int add(int a, int b);
+</code></pre>
+<h4 id="enum">Enum</h4>
+<pre><code data-lang="cpp">
+/// @brief Token categories.
+/// @note Must align with the IL lexer.
+enum class TokenKind {
+  Identifier, ///&lt; Alphanumeric symbol.
+  Number,     ///&lt; Numeric literal.
+  EndOfFile,  ///&lt; Sentinel.
+};
+</code></pre>
+<p>&lt;a id=&quot;testing&quot;&gt;&lt;/a&gt;</p>
+<h2 id="testing">Testing</h2>
+<h3 id="tolerance-checks-for-float-e2e">Tolerance checks for float e2e</h3>
+<p>Floating point outputs in end-to-end tests can vary slightly. To keep tests stable, expectations are</p>
+<p>stored in files containing lines such as:</p>
+<pre><code data-lang="text">
+EXPECT≈ 3.14 0.05
+</code></pre>
+<p>The <code>tests/e2e/support/FloatOut</code> helper reads program output and these expectation files and fails</p>
+<p>if any absolute difference exceeds the specified tolerance. The CMake test driver runs this helper</p>
+<p>after executing the sample.</p>
+<p>&lt;a id=&quot;frontend-internals&quot;&gt;&lt;/a&gt;</p>
+<h2 id="frontend-internals">Frontend Internals</h2>
+<p>&lt;a id=&quot;frontend-internals-parser&quot;&gt;&lt;/a&gt;</p>
+<h3 id="parser">Parser</h3>
+<p>The lexer recognizes single-line comments beginning with an apostrophe <code>&#x27;</code></p>
+<p>or the keyword <code>REM</code>. <code>REM</code> is case-insensitive and only treated as a</p>
+<p>comment when it appears at the start of a line or after whitespace.</p>
+<p>Characters are skipped until the end of the line, and no comment tokens</p>
+<p>are produced. Line and column counters continue to advance so subsequent</p>
+<p>tokens report accurate locations.</p>
+<p>&lt;a id=&quot;frontend-internals-semantics&quot;&gt;&lt;/a&gt;</p>
+<h3 id="semantics">Semantics</h3>
+<p>The semantic analyzer walks the BASIC AST to perform checks and annotate</p>
+<p>structures for later phases.</p>
+<h4 id="proctable">ProcTable</h4>
+<p>A <code>ProcTable</code> maps each declared FUNCTION or SUB to its signature: kind,</p>
+<p>return type inferred from the name suffix, and parameter types along with array</p>
+<p>flags. This table enables call checking in later passes.</p>
+<h4 id="two-pass-analysis">Two-pass Analysis</h4>
+<p>Semantic analysis runs in two phases. First all procedure declarations are</p>
+<p>registered in the <code>ProcTable</code>. In the second pass each procedure body is</p>
+<p>checked followed by the top-level statements. This enables calls to functions</p>
+<p>that are defined later in the file and supports recursion.</p>
+<p>Example diagnostics emitted by the analyzer:</p>
+<pre><code data-lang="text">
+10 FUNCTION F(A, A)
+              ^
+error[B1005]: duplicate parameter &#x27;A&#x27;
+
+30 SUB S(X#())
+        ^
+error[B2004]: array parameter must be i64[] or str[]
+
+50 FUNCTION S()
+            ^
+error[B1004]: duplicate procedure &#x27;S&#x27;
+</code></pre>
+<h4 id="scope-stack">Scope stack</h4>
+<p>Each <code>FUNCTION</code> or <code>SUB</code> is analyzed with a stack of lexical scopes. A new</p>
+<p>scope is pushed when entering a nested block and popped on exit. <code>DIM</code> adds a</p>
+<p>symbol to the current scope; the name may shadow one from an outer scope but</p>
+<p>redeclaring within the same scope is rejected.</p>
+<h4 id="return-path-analysis">Return-path analysis</h4>
+<p>Functions must return a value along every control-flow path. The analyzer</p>
+<p>implements a simple structural check:</p>
+<ul>
+<li><code>RETURN</code> with an expression marks a returning path.</li>
+<li><code>IF</code>/<code>ELSEIF</code>/<code>ELSE</code> returns only when all arms return.</li>
+<li><code>WHILE</code> and <code>FOR</code> are assumed to possibly skip execution or loop forever and</li>
+</ul>
+<p>therefore do not guarantee a return.</p>
+<ul>
+<li>For a sequence of statements, only the final statement is considered.</li>
+</ul>
+<p>If analysis fails, <code>missing return in FUNCTION &lt;name&gt;</code> is reported at the</p>
+<p><code>END FUNCTION</code> keyword. This pass is conservative and does not attempt deep</p>
+<p>flow analysis (e.g., constant conditions or loop bounds).</p>
+<p>&lt;a id=&quot;frontend-internals-analysis&quot;&gt;&lt;/a&gt;</p>
+<h3 id="analysis-utilities">Analysis Utilities</h3>
+<h4 id="cfg">CFG</h4>
+<p>On-demand helpers to query basic block successors and predecessors without</p>
+<p>constructing an explicit graph.</p>
+<pre><code data-lang="cpp">
+using namespace viper::analysis;
+CFGContext ctx(module);
+auto succ = successors(ctx, block);
+auto pred = predecessors(ctx, block);
+</code></pre>
+<h4 id="orders">Orders</h4>
+<p>Standard depth-first orders are available without materializing a graph.</p>
+<pre><code data-lang="cpp">
+auto po = postOrder(ctx, fn);      // entry last
+auto rpo = reversePostOrder(ctx, fn); // entry first
+</code></pre>
+<h4 id="acyclicity-topological-order">Acyclicity &amp; Topological Order</h4>
+<p>Cycle detection and topological sorting are available for DAG-restricted</p>
+<p>analyses.</p>
+<pre><code data-lang="cpp">
+bool ok = isAcyclic(ctx, fn);      // false if any cycle exists
+auto topo = topoOrder(ctx, fn);    // empty if cyclic
+</code></pre>
+<p>These helpers gate passes like the mem2reg v2 prototype, which operates only</p>
+<p>on acyclic control-flow graphs.</p>
+<h4 id="dominators">Dominators</h4>
+<p>Computes immediate dominators using the algorithm of Cooper, Harvey, and</p>
+<p>Kennedy (&quot;A Simple, Fast Dominance Algorithm&quot;). The function iterates to a</p>
+<p>fixed point over reverse post-order, yielding a tree of parent links and</p>
+<p>children for easy traversal. Complexity is linear in practice and worst-case</p>
+<p>\(O(V \times E)\).</p>
+<h4 id="il-utilities">IL utilities</h4>
+<p>Helpers in <code>src/il/utils</code> provide light-weight queries on basic blocks and</p>
+<p>instructions, such as checking block membership or retrieving a block&#x27;s</p>
+<p>terminator. They depend only on <code>il_core</code>, allowing passes to use them without</p>
+<p>pulling in the Analysis layer.</p>
+<p>&lt;a id=&quot;frontend-internals-ir-builder&quot;&gt;&lt;/a&gt;</p>
+<h3 id="ir-builder-helpers">IR Builder Helpers</h3>
+<p>The IR builder provides convenience routines for constructing control flow with</p>
+<p>block parameters and branch arguments.</p>
+<h4 id="creating-blocks">Creating Blocks</h4>
+<pre><code data-lang="cpp">
+Module m;
+IRBuilder b(m);
+Function &amp;f = b.startFunction(&quot;f&quot;, Type(Type::Kind::Void), {});
+BasicBlock &amp;loop = b.createBlock(f, &quot;loop&quot;, {{&quot;i&quot;, Type(Type::Kind::I64)}});
+</code></pre>
+<p><code>createBlock</code> assigns value identifiers to each parameter automatically.</p>
+<h4 id="accessing-block-parameters">Accessing Block Parameters</h4>
+<pre><code data-lang="cpp">
+Value i = b.blockParam(loop, 0);
+</code></pre>
+<h4 id="branches-with-arguments">Branches with Arguments</h4>
+<pre><code data-lang="cpp">
+b.br(loop, {Value::constInt(0)});               // unconditional
+b.cbr(i, loop, {i}, loop, {i});                 // conditional
+</code></pre>
+<p>Both helpers assert that the number of arguments matches the destination block&#x27;s</p>
+<p>parameter list.</p>
+<p>&lt;a id=&quot;debugging&quot;&gt;&lt;/a&gt;</p>
+<h2 id="debugging">Debugging</h2>
+<h3 id="breakpoints-and-source-tracing">Breakpoints and Source Tracing</h3>
+<h4 id="breaking-on-source-lines">Breaking on source lines</h4>
+<p><code>viper</code> can halt execution before running a specific source line.</p>
+<h4 id="flags">Flags</h4>
+<ul>
+<li><code>--break &lt;file:line&gt;</code>: Generic breakpoint flag. If the argument contains a path separator or dot, it is interpreted as</li>
+</ul>
+<p>a source-line breakpoint.</p>
+<ul>
+<li><code>--break-src &lt;file:line&gt;</code>: Explicit source-line breakpoint.</li>
+</ul>
+<p>Paths are normalized before comparison, including platform separators and <code>.</code>/<code>..</code> segments. When the normalized path</p>
+<p>does not match the location recorded in the IL, <code>viper</code> falls back to comparing only the basename.</p>
+<p>Specifying the same breakpoint more than once coalesces into a single breakpoint. When multiple instructions map to the</p>
+<p>same source line, <code>viper</code> reports the breakpoint once per line until control transfers to a different basic block.</p>
+<h4 id="examples">Examples</h4>
+<pre><code data-lang="sh">
+# Path normalization: break at the first PRINT in math_basics.bas
+viper front basic -run ./examples/basic/../basic/math_basics.bas \
+  --break ./examples/basic/../basic/math_basics.bas:4 --trace=src
+
+# Basename fallback with the explicit flag
+viper front basic -run examples/basic/sine_cosine.bas \
+  --break-src sine_cosine.bas:5 --trace=src
+</code></pre>
+<h3 id="verifying-inkey-getkey-locally">Verifying INKEY$/GETKEY$ Locally</h3>
+<p>These built-in functions interact with the terminal and require manual testing to verify behavior.</p>
+<h4 id="non-blocking-read-inkey">Non-blocking read (INKEY$)</h4>
+<pre><code data-lang="sh">
+viper front basic -run examples/inkey_smoke.bas
+</code></pre>
+<p>Expected: Program polls once, prints &quot;No key&quot; (or the key code if pressed quickly), and exits immediately without</p>
+<p>blocking.</p>
+<h4 id="blocking-read-getkey">Blocking read (GETKEY$)</h4>
+<p>Create a temporary test file and run:</p>
+<pre><code data-lang="sh">
+echo &#x27;COLOR 7,0: PRINT &quot;Press a key&quot;: k$ = GETKEY$(): PRINT &quot;Got:&quot;; ASC(k$)&#x27; &gt; /tmp/getkey.bas
+viper front basic -run /tmp/getkey.bas
+</code></pre>
+<p>Expected: Program waits for one keystroke, then prints the ASCII code and exits.</p>
+<p><strong>Note:</strong> INKEY$ never blocks; GETKEY$ waits for input. Both functions require parentheses even though they take zero</p>
+<p>arguments.</p>
+<h3 id="debugging-basic-recursion-failures">Debugging BASIC Recursion Failures</h3>
+<p>Use the factorial example to inspect recursive calls.</p>
+<pre><code data-lang="sh">
+viper -run src/tests/e2e/factorial.bas --trace=src \
+    --break-src src/tests/e2e/factorial.bas:5 \
+    --debug-cmds examples/il/debug_script.txt
+</code></pre>
+<p>The <code>--trace=src</code> flag prints each executed instruction with the originating</p>
+<p>file and line. The <code>--break-src</code> flag pauses before the recursive call. The</p>
+<p>debug script steps twice and then continues so you can watch the call enter</p>
+<p>and return.</p>
+<p>Check the trace for a <code>RETURN</code> at the end of <code>FACT</code>; missing returns suggest</p>
+<p>the recursion never reaches the base case. At startup the trace should show</p>
+<p><code>fn=@main</code> followed by a call to <code>@fact</code>. If <code>@main</code> is absent or never calls</p>
+<p>the function, the program may have been lowered incorrectly.</p>
+<p>&lt;a id=&quot;migrations&quot;&gt;&lt;/a&gt;</p>
+<h2 id="migrations">Migrations</h2>
+<p>No active migrations are in flight. Follow release notes and ADRs for future migration plans.</p>
+<p>Sources:</p>
+<ul>
+<li>docs/contributor-guide.md#contributing</li>
+<li>docs/contributor-guide.md#style-guide</li>
+<li>docs/contributor-guide.md#testing</li>
+<li>docs/contributor-guide.md#frontend-internals-parser</li>
+<li>docs/contributor-guide.md#frontend-internals-semantics</li>
+<li>docs/contributor-guide.md#frontend-internals-analysis</li>
+<li>docs/contributor-guide.md#frontend-internals-ir-builder</li>
+<li>archive/docs/debugging.md</li>
+<li>archive/docs/dev/debug-recursion.md</li>
+</ul>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../features/native-targets.html">Native Targets</a>
+      <a href="../features/two-languages.html">Languages</a>
+      <a href="../features/runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

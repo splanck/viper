@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Architecture — Viper</title>
+  <meta name="description" content="Viper documentation: Architecture">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/" class="active">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="../showcase/">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <span>Architecture</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#table-of-contents">Table of Contents</a></li>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#architecture-design-philosophy">Architecture &amp; Design Philosophy</a></li>
+        <li><a href="#key-components">Key Components</a></li>
+        <li><a href="#execution-model">Execution Model</a></li>
+        <li><a href="#dispatch-strategies">Dispatch Strategies</a></li>
+        <li><a href="#memory-model">Memory Model</a></li>
+        <li><a href="#exception-trap-handling">Exception &amp; Trap Handling</a></li>
+        <li><a href="#runtime-integration">Runtime Integration</a></li>
+        <li><a href="#debug-tracing">Debug &amp; Tracing</a></li>
+        <li><a href="#source-code-guide">Source Code Guide</a></li>
+        <li><a href="#performance-features">Performance Features</a></li>
+        <li><a href="#best-practices">Best Practices</a></li>
+        <li><a href="#further-reading">Further Reading</a></li>
+        <li><a href="#performance-tuning-and-benchmarking">Performance Tuning and Benchmarking</a></li>
+        <li><a href="#dispatch-modes">Dispatch Modes</a></li>
+        <li><a href="#switch-backend-heuristics">Switch Backend Heuristics</a></li>
+        <li><a href="#benchmarking">Benchmarking</a></li>
+        <li><a href="#runtime-abi-reference">Runtime ABI Reference</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>Architecture</h1>
+<h1 id="viper-vm-architecture-implementation-guide">Viper VM — Architecture &amp; Implementation Guide</h1>
+<p>Comprehensive guide to the Viper Virtual Machine (VM), which executes Viper IL</p>
+<p>programs. This document covers the VM&#x27;s design philosophy, architecture, execution model, and source code organization.</p>
+<p>---</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ol>
+<li>[Overview](#overview)</li>
+<li>[Architecture &amp; Design Philosophy](#architecture--design-philosophy)</li>
+<li>[Key Components](#key-components)</li>
+<li>[Execution Model](#execution-model)</li>
+<li>[Dispatch Strategies](#dispatch-strategies)</li>
+<li>[Memory Model](#memory-model)</li>
+<li>[Exception &amp; Trap Handling](#exception--trap-handling)</li>
+<li>[Runtime Integration](#runtime-integration)</li>
+<li>[Debug &amp; Tracing](#debug--tracing)</li>
+<li>[Source Code Guide](#source-code-guide)</li>
+<li>[Performance Features](#performance-features)</li>
+</ul>
+<p>---</p>
+<h2 id="overview">Overview</h2>
+<h3 id="what-is-the-viper-vm">What is the Viper VM?</h3>
+<p>The Viper VM is the primary execution engine for programs written in Viper&#x27;s Intermediate Language (</p>
+<p>IL). It serves as the primary execution engine for the Viper toolchain, providing:</p>
+<ul>
+<li><strong>Deterministic execution</strong> of IL programs</li>
+<li><strong>Debugging and tracing</strong> capabilities</li>
+<li><strong>Exception handling</strong> with structured error recovery</li>
+<li><strong>Runtime function calls</strong> via the RuntimeBridge</li>
+<li><strong>Multiple dispatch strategies</strong> optimized for different use cases</li>
+</ul>
+<h3 id="key-characteristics">Key Characteristics</h3>
+<table><thead><tr>
+<th>Feature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>**Architecture**</td>
+<td>Stack-based interpreter with SSA register file</td>
+</tr>
+<tr>
+<td>**Dispatch**</td>
+<td>Pluggable (function table, switch, computed goto)</td>
+</tr>
+<tr>
+<td>**Memory**</td>
+<td>Frame-local operand stack with explicit allocation via `alloca` (64KB default)</td>
+</tr>
+<tr>
+<td>**Error Handling**</td>
+<td>Structured exception handling with trap metadata</td>
+</tr>
+<tr>
+<td>**Debugging**</td>
+<td>Built-in breakpoints, stepping, and tracing</td>
+</tr>
+<tr>
+<td>**Performance**</td>
+<td>Tail-call optimization, opcode counting, inline caching</td>
+</tr>
+</tbody></table>
+<p>---</p>
+<h2 id="architecture-design-philosophy">Architecture &amp; Design Philosophy</h2>
+<h3 id="core-principles">Core Principles</h3>
+<p>The VM design prioritizes several key principles:</p>
+<ol>
+<li>**Modularity**: Pluggable dispatch strategies allow optimization without changing the core interpreter</li>
+<li>**Inspectability**: Comprehensive tracing and debugging support for all execution paths</li>
+<li>**Correctness**: Deterministic execution with explicit error handling</li>
+<li>**Performance**: Multiple optimization layers (TCO, inline caching, threaded dispatch)</li>
+<li>**Simplicity**: Clean separation between interpretation, runtime, and tooling</li>
+</ul>
+<h3 id="high-level-architecture">High-Level Architecture</h3>
+<pre><code data-lang="text">
+┌─────────────────────────────────────────────────────────┐
+│                      VM (Interpreter)                    │
+├─────────────────────────────────────────────────────────┤
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │
+│  │   Dispatch   │  │   Opcode     │  │    Debug     │ │
+│  │   Strategy   │──│   Handlers   │──│   Control    │ │
+│  └──────────────┘  └──────────────┘  └──────────────┘ │
+│                           │                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │
+│  │    Frame     │  │    Trap      │  │    Trace     │ │
+│  │   Manager    │  │   Handler    │  │     Sink     │ │
+│  └──────────────┘  └──────────────┘  └──────────────┘ │
+└─────────────────────────────────────────────────────────┘
+         │                    │                    │
+         ▼                    ▼                    ▼
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  IL Module   │    │   Runtime    │    │   External   │
+│  (readonly)  │    │    Bridge    │    │   Callbacks  │
+└──────────────┘    └──────────────┘    └──────────────┘
+</code></pre>
+<h3 id="component-relationships">Component Relationships</h3>
+<ul>
+<li><strong>VM</strong> owns: Dispatch driver, trace sink, debug controller, function/string maps</li>
+<li><strong>VM</strong> borrows: IL Module (must outlive VM), optional debug script</li>
+<li><strong>Frame</strong> owns: Register file, operand stack, exception handlers</li>
+<li><strong>RuntimeBridge</strong> provides: C runtime function invocation, trap reporting</li>
+</ul>
+<p>---</p>
+<h2 id="key-components">Key Components</h2>
+<h3 id="1-vm-class-src-vm-vm-hpp">1. VM Class (`src/vm/VM.hpp`)</h3>
+<p>The main interpreter class that orchestrates execution:</p>
+<pre><code data-lang="cpp">
+class VM {
+    // Module and configuration
+    const il::core::Module&amp; mod;                    // IL module (non-owning)
+    std::shared_ptr&lt;ProgramState&gt; programState_;    // Shared globals/context
+    TraceSink tracer;                               // Trace output
+    DebugCtrl debug;                                // Breakpoint controller
+    std::unique_ptr&lt;DispatchDriver&gt; dispatchDriver; // Pluggable dispatch
+    DispatchKind dispatchKind;                      // Active strategy type
+
+    // Execution state
+    uint64_t instrCount;                // Executed instructions
+    uint64_t maxSteps;                  // Step limit (0 = unlimited)
+    std::size_t stackBytes_;            // Per-frame stack size (default 64KB)
+    std::vector&lt;ExecState*&gt; execStack;  // Active execution stack for unwinding
+
+    // Caching and lookup (string_view keys for zero-copy)
+    FnMap fnMap;                                    // Function lookup table
+    StrMap inlineLiteralCache;                      // String literal handles (RAII)
+    std::unordered_map&lt;const BasicBlock*, const Function*&gt; blockToFunction;
+    std::unordered_map&lt;const Function*, size_t&gt; regCountCache_;
+
+    // Buffer pools for allocation reuse
+    std::vector&lt;std::vector&lt;uint8_t&gt;&gt; stackBufferPool_;
+    std::vector&lt;std::vector&lt;Slot&gt;&gt; regFilePool_;
+
+    // Exception handling
+    TrapContext currentContext;         // Active instruction context
+    TrapState lastTrap;                 // Last trap for diagnostics
+    TrapToken trapToken;                // Error payload for trap.err
+
+    // Polling and profiling
+    uint32_t pollEveryN_;               // Host callback frequency
+    std::function&lt;bool(VM&amp;)&gt; pollCallback_;
+#if VIPER_VM_OPCOUNTS
+    std::array&lt;uint64_t, kNumOpcodes&gt; opCounts_;  // Per-opcode counters
+#endif
+
+    // Per-VM extern registry (optional)
+    ExternRegistry* externRegistry_;    // Custom function resolution
+};
+</code></pre>
+<p><strong>Key responsibilities:</strong></p>
+<ul>
+<li>Module initialization and function lookup</li>
+<li>Dispatch strategy selection and lifecycle</li>
+<li>String literal caching and lifetime management</li>
+<li>Buffer pooling for recursive call efficiency</li>
+<li>Trap context tracking and formatting</li>
+<li>Debug breakpoint coordination</li>
+<li>Host polling for embedded applications</li>
+</ul>
+<h3 id="2-frame-src-vm-vm-hpp">2. Frame (`src/vm/VM.hpp`)</h3>
+<p>Represents a single function activation record:</p>
+<pre><code data-lang="cpp">
+struct Frame {
+    // Nested types for exception handling
+    struct HandlerRecord {
+        const BasicBlock* handler;  // Handler block
+        size_t ipSnapshot;          // IP to restore
+    };
+    struct ResumeState {
+        const BasicBlock* block;    // Faulting block
+        size_t faultIp, nextIp;     // Instruction pointers
+        bool valid;
+    };
+
+    const Function* func;                          // Active function (non-owning)
+    std::vector&lt;Slot&gt; regs;                        // SSA register file
+    static constexpr size_t kDefaultStackSize = 65536;  // 64KB
+    std::vector&lt;uint8_t&gt; stack;                    // Operand stack (alloca)
+    size_t sp = 0;                                 // Stack pointer in bytes
+    std::vector&lt;std::optional&lt;Slot&gt;&gt; params;       // Pending block parameters
+    std::vector&lt;HandlerRecord&gt; ehStack;            // Exception handlers
+    VmError activeError{};                         // Current error payload
+    ResumeState resumeState{};                     // Resumption metadata
+};
+</code></pre>
+<p><strong>Key responsibilities:</strong></p>
+<ul>
+<li>SSA value storage in register file</li>
+<li>Stack allocation via <code>alloca</code> instruction (bump <code>sp</code> within <code>stack</code>)</li>
+<li>Block parameter passing</li>
+<li>Exception handler stack management</li>
+<li>Resume state for error recovery</li>
+</ul>
+<h3 id="3-slot-src-vm-vm-hpp">3. Slot (`src/vm/VM.hpp`)</h3>
+<p>Tagged union for runtime values:</p>
+<pre><code data-lang="cpp">
+union Slot {
+    int64_t i64;      // Integer value
+    double f64;       // Floating-point value
+    void* ptr;        // Generic pointer
+    rt_string str;    // Runtime string handle
+};
+</code></pre>
+<p>All IL values are represented as <code>Slot</code> during execution. Type safety is enforced by the IL verifier and opcode</p>
+<p>handlers.</p>
+<h3 id="4-dispatch-drivers">4. Dispatch Drivers</h3>
+<p>Pluggable strategies for instruction fetch-decode-execute:</p>
+<ul>
+<li><strong>FnTableDispatchDriver</strong>: Uses function pointer table lookup</li>
+<li><strong>SwitchDispatchDriver</strong>: Uses switch statement (inline handlers)</li>
+<li><strong>ThreadedDispatchDriver</strong>: Uses computed goto (GCC/Clang only)</li>
+</ul>
+<p>Selected at VM construction via <code>DispatchKind</code> enum.</p>
+<h3 id="5-opcode-handlers-src-vm-ophandlers-hpp">5. Opcode Handlers (`src/vm/OpHandlers*.hpp`)</h3>
+<p>Category-organized functions that implement IL instructions:</p>
+<ul>
+<li><strong>Control</strong> (<code>OpHandlers_Control.hpp</code>): <code>br</code>, <code>cbr</code>, <code>call</code>, <code>ret</code>, <code>switch</code></li>
+<li><strong>Integer</strong> (<code>OpHandlers_Int.hpp</code>): <code>add</code>, <code>mul</code>, <code>icmp_*</code>, <code>scmp_*</code></li>
+<li><strong>Float</strong> (<code>OpHandlers_Float.hpp</code>): <code>fadd</code>, <code>fmul</code>, <code>fcmp_*</code></li>
+<li><strong>Memory</strong> (<code>OpHandlers_Memory.hpp</code>): <code>alloca</code>, <code>load</code>, <code>store</code>, <code>gep</code></li>
+</ul>
+<p>Each handler has signature:</p>
+<pre><code data-lang="cpp">
+ExecResult handler(VM&amp; vm, Frame&amp; fr, const Instr&amp; in,
+                  const BlockMap&amp; blocks,
+                  const BasicBlock*&amp; bb, size_t&amp; ip);
+</code></pre>
+<p>---</p>
+<h2 id="execution-model">Execution Model</h2>
+<h3 id="execution-flow">Execution Flow</h3>
+<pre><code data-lang="text">
+1. VM::run()
+   ├─ Lookup &quot;main&quot; function
+   └─ Call execFunction()
+      ├─ setupFrame() → Initialize registers, stack, block map
+      └─ runFunctionLoop()
+         └─ dispatchDriver-&gt;run()
+            └─ Loop:
+               ├─ selectInstruction() → Fetch next instruction
+               ├─ executeOpcode() → Dispatch to handler
+               ├─ handleDebugBreak() → Check breakpoints
+               └─ finalizeDispatch() → Update IP, check for return
+</code></pre>
+<h3 id="instruction-execution-cycle">Instruction Execution Cycle</h3>
+<p>For each instruction:</p>
+<ol>
+<li>**Select**: <code>selectInstruction()</code> identifies the next instruction</li>
+<li>**Trace**: <code>traceInstruction()</code> emits trace output if enabled</li>
+<li>**Execute**: Handler updates frame state and returns <code>ExecResult</code></li>
+<li>**Finalize**: <code>finalizeDispatch()</code> processes jumps/returns</li>
+</ul>
+<h3 id="control-flow">Control Flow</h3>
+<p><strong>Basic blocks:</strong></p>
+<ul>
+<li>Execution starts at the <code>entry</code> block</li>
+<li>Terminators (<code>ret</code>, <code>br</code>, <code>cbr</code>, <code>switch</code>) transfer control</li>
+<li>Block parameters are transferred before entering a new block</li>
+</ul>
+<p><strong>Function calls:</strong></p>
+<ul>
+<li><code>call</code> opcode pushes a new frame onto the execution stack</li>
+<li>Arguments are evaluated and passed as block parameters</li>
+<li>Return value is propagated back via <code>Slot</code></li>
+</ul>
+<p><strong>Tail calls:</strong></p>
+<ul>
+<li>Detected via <code>call.tail</code> attribute</li>
+<li>Reuses current frame instead of allocating new one</li>
+<li>Eliminates stack growth for recursive functions</li>
+</ul>
+<p>---</p>
+<h2 id="dispatch-strategies">Dispatch Strategies</h2>
+<h3 id="1-function-table-dispatch-default">1. Function Table Dispatch (Default)</h3>
+<p>Uses a compile-time generated array of function pointers:</p>
+<pre><code data-lang="cpp">
+// Generated in HandlerTable.hpp
+static const OpcodeHandlerTable&amp; getOpcodeHandlers() {
+    static OpcodeHandlerTable table = {
+        &amp;handleAdd,    // Opcode::Add
+        &amp;handleSub,    // Opcode::Sub
+        // ... one entry per opcode
+    };
+    return table;
+}
+</code></pre>
+<p><strong>Pros:</strong> Simple, portable, easy to debug</p>
+<p><strong>Cons:</strong> Indirect call overhead per instruction</p>
+<h3 id="2-switch-dispatch">2. Switch Dispatch</h3>
+<p>Expands all handlers inline within a giant switch statement:</p>
+<pre><code data-lang="cpp">
+while (true) {
+    Opcode op = fetchOpcode(state);
+    switch (op) {
+        case Opcode::Add: inline_handle_Add(state); break;
+        case Opcode::Sub: inline_handle_Sub(state); break;
+        // ... case per opcode
+    }
+}
+</code></pre>
+<p><strong>Pros:</strong> Better branch prediction, potential for inlining</p>
+<p><strong>Cons:</strong> Large code size, longer compile time</p>
+<h3 id="3-threaded-dispatch-gcc-clang">3. Threaded Dispatch (GCC/Clang)</h3>
+<p>Uses computed goto with label addresses:</p>
+<pre><code data-lang="cpp">
+static void* kOpLabels[] = { &amp;&amp;LBL_Add, &amp;&amp;LBL_Sub, /* ... */ };
+
+#define DISPATCH_TO(opcode) goto *kOpLabels[opcode]
+
+for (;;) {
+    DISPATCH_TO(fetchOpcode(state));
+
+    LBL_Add: inline_handle_Add(state); DISPATCH_TO(fetchNext());
+    LBL_Sub: inline_handle_Sub(state); DISPATCH_TO(fetchNext());
+    // ... label per opcode
+}
+</code></pre>
+<p><strong>Pros:</strong> Fastest dispatch, direct jump to handlers</p>
+<p><strong>Cons:</strong> Compiler-specific, large code size</p>
+<h3 id="selecting-a-dispatch-strategy">Selecting a Dispatch Strategy</h3>
+<p>The dispatch strategy is selected at VM construction via environment variable:</p>
+<pre><code data-lang="bash">
+# Use function table dispatch (portable, moderate performance)
+VIPER_DISPATCH=table ./viper -run program.il
+
+# Use switch statement dispatch (good cache locality)
+VIPER_DISPATCH=switch ./viper -run program.il
+
+# Use threaded dispatch (fastest, requires GCC/Clang)
+VIPER_DISPATCH=threaded ./viper -run program.il
+</code></pre>
+<p><strong>Default:</strong> Threaded if supported (<code>VIPER_THREADING_SUPPORTED=1</code>), otherwise Switch.</p>
+<h3 id="shared-dispatch-loop">Shared Dispatch Loop</h3>
+<p>All strategies share a common dispatch loop (<code>runSharedDispatchLoop</code>) that handles:</p>
+<ul>
+<li>State reset per iteration (<code>beginDispatch</code>)</li>
+<li>Instruction selection (<code>selectInstruction</code>)</li>
+<li>Debug hooks (<code>VIPER_VM_DISPATCH_BEFORE/AFTER</code>)</li>
+<li>Trap handling for threaded dispatch</li>
+<li>Finalization and exit conditions (<code>finalizeDispatch</code>)</li>
+</ul>
+<p>The strategy only implements <code>executeInstruction()</code> to map opcodes to handlers.</p>
+<h3 id="dispatch-loop-performance-optimizations">Dispatch Loop Performance Optimizations</h3>
+<p>The shared dispatch loop includes several optimizations:</p>
+<ol>
+<li>**Cached strategy properties**: <code>requiresTrapCatch()</code> and <code>handlesFinalizationInternally()</code></li>
+</ul>
+<p>are cached once at loop entry to avoid virtual call overhead per instruction.</p>
+<ol>
+<li>**Branch hints**: <code>[[likely]]</code> and <code>[[unlikely]]</code> attributes guide code layout for hot paths.</li>
+</ul>
+<ol>
+<li>**Zero-cost hooks**: <code>VIPER_VM_DISPATCH_BEFORE</code> and <code>VIPER_VM_DISPATCH_AFTER</code> macros</li>
+</ul>
+<p>compile to nothing when disabled. When opcode counting is enabled (<code>VIPER_VM_OPCOUNTS=1</code>),</p>
+<p>the counter increment is gated by a runtime flag (<code>config.enableOpcodeCounts</code>).</p>
+<ol>
+<li>**Efficient polling**: <code>VIPER_VM_DISPATCH_AFTER</code> only increments the poll counter when</li>
+</ul>
+<p>polling is active (<code>interruptEveryN &gt; 0</code>), avoiding wasted cycles in the common case.</p>
+<h3 id="instrumentation-hooks">Instrumentation Hooks</h3>
+<p>The VM provides compile-time configurable hooks for profiling and embedding:</p>
+<pre><code data-lang="cpp">
+// In VMConfig.hpp - define before including VM headers
+#define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE) \
+    do { myProfiler.onInstruction(ST, OPCODE); } while(0)
+
+#define VIPER_VM_DISPATCH_AFTER(ST, OPCODE) \
+    do { myProfiler.afterInstruction(ST, OPCODE); } while(0)
+</code></pre>
+<p><strong>Predefined behavior:</strong></p>
+<ul>
+<li><code>VIPER_VM_DISPATCH_BEFORE</code>: Increments per-opcode counters when <code>VIPER_VM_OPCOUNTS=1</code></li>
+<li><code>VIPER_VM_DISPATCH_AFTER</code>: Calls poll callback every N instructions if configured</li>
+</ul>
+<h3 id="per-opcode-counters">Per-Opcode Counters</h3>
+<p>Enable compile-time opcode counting:</p>
+<pre><code data-lang="cpp">
+#define VIPER_VM_OPCOUNTS 1  // Default: enabled
+</code></pre>
+<p>Access counters at runtime:</p>
+<pre><code data-lang="cpp">
+vm.resetOpcodeCounts();
+vm.run();
+auto counts = vm.getOpcodeCounts();  // Returns array&lt;uint64_t, kNumOpcodes&gt;
+for (auto [opcode, count] : vm.getNonZeroOpcodeCounts()) {
+    std::cout &lt;&lt; opcodeMnemonic(opcode) &lt;&lt; &quot;: &quot; &lt;&lt; count &lt;&lt; &quot;\n&quot;;
+}
+</code></pre>
+<p>Disable via environment: <code>VIPER_ENABLE_OPCOUNTS=0</code></p>
+<h3 id="benchmark-harness">Benchmark Harness</h3>
+<p>The <code>viper bench</code> command provides a built-in benchmark harness for comparing dispatch strategies:</p>
+<pre><code data-lang="sh">
+# Run all three strategies with 3 iterations each
+viper bench program.il
+
+# Run a specific strategy with 5 iterations
+viper bench program.il -n 5 --table
+
+# Run multiple files with JSON output
+viper bench file1.il file2.il --json
+
+# Limit execution with max-steps
+viper bench program.il --max-steps 1000000
+</code></pre>
+<p><strong>Output format (text):</strong></p>
+<pre><code data-lang="text">
+BENCH &lt;file&gt; &lt;strategy&gt; instr=&lt;N&gt; time_ms=&lt;T&gt; insns_per_sec=&lt;R&gt;
+</code></pre>
+<p><strong>Output format (JSON):</strong></p>
+<pre><code data-lang="json">
+[
+  {
+    &quot;file&quot;: &quot;program.il&quot;,
+    &quot;strategy&quot;: &quot;table&quot;,
+    &quot;success&quot;: true,
+    &quot;instructions&quot;: 7000004,
+    &quot;time_ms&quot;: 3618.33,
+    &quot;insns_per_sec&quot;: 1934596,
+    &quot;return_value&quot;: 0
+  }
+]
+</code></pre>
+<p><strong>Strategy selection flags:</strong></p>
+<ul>
+<li><code>--table</code>: Run only FnTable dispatch</li>
+<li><code>--switch</code>: Run only Switch dispatch</li>
+<li><code>--threaded</code>: Run only Threaded dispatch</li>
+<li>(default): Run all three strategies</li>
+</ul>
+<p><strong>Example benchmark IL programs</strong> are available in <code>examples/il/benchmarks/</code>:</p>
+<ul>
+<li><code>arith_stress.il</code>: Heavy arithmetic workload</li>
+<li><code>branch_stress.il</code>: Branch-heavy control flow</li>
+<li><code>call_stress.il</code>: Function call overhead testing</li>
+<li><code>mixed_stress.il</code>: Combined workload</li>
+<li><code>string_stress.il</code>: String operations</li>
+</ul>
+<p>---</p>
+<h2 id="memory-model">Memory Model</h2>
+<h3 id="register-file">Register File</h3>
+<p>Each frame has an SSA register file sized to the function&#x27;s register count:</p>
+<pre><code data-lang="cpp">
+frame.regs.resize(func-&gt;registerCount);
+</code></pre>
+<p>Registers are indexed by SSA value ID. Each register is written once and read many times (SSA property).</p>
+<h3 id="operand-stack">Operand Stack</h3>
+<p>Each frame has an operand stack for <code>alloca</code> allocations. The default capacity</p>
+<p>is 64KB (<code>Frame::kDefaultStackSize</code>):</p>
+<pre><code data-lang="cpp">
+std::vector&lt;uint8_t&gt; stack; // capacity ~= 64KB by default
+size_t sp = 0;  // Stack pointer in bytes
+</code></pre>
+<p><strong>Usage:</strong></p>
+<ul>
+<li><code>alloca N</code> allocates N bytes on the stack</li>
+<li>Returns a <code>ptr</code> pointing into <code>stack</code> at offset <code>sp</code></li>
+<li>Stack grows upward (<code>sp</code> increases)</li>
+<li>No explicit deallocation (frame-scoped)</li>
+</ul>
+<p><strong>Limits:</strong></p>
+<ul>
+<li>Default 64KB size per frame (<code>Frame::kDefaultStackSize</code>)</li>
+<li>Overflow causes trap</li>
+<li>Suitable for temporaries, strings, and moderate-sized arrays (e.g., 80×25 screen buffers)</li>
+</ul>
+<h3 id="string-handles">String Handles</h3>
+<p>Strings are managed by the runtime as opaque handles (<code>rt_string</code>):</p>
+<ul>
+<li><strong>Global strings</strong>: Cached in <code>strMap</code>, lifetime = VM lifetime</li>
+<li><strong>Inline literals</strong>: Cached in <code>inlineLiteralCache</code>, supports embedded NULs</li>
+<li><strong>Runtime strings</strong>: Created by runtime functions, reference-counted</li>
+</ul>
+<p>The VM releases all cached handles in its destructor.</p>
+<p>---</p>
+<h2 id="exception-trap-handling">Exception &amp; Trap Handling</h2>
+<h3 id="trap-types">Trap Types</h3>
+<p>Defined in <code>Trap.hpp</code>:</p>
+<pre><code data-lang="cpp">
+enum class TrapKind {
+    DivideByZero,     // Integer division by zero
+    Overflow,         // Arithmetic overflow
+    InvalidCast,      // Type conversion failure
+    DomainError,      // Semantic violation
+    Bounds,           // Array bounds check
+    FileNotFound,     // File I/O error
+    EOF,              // End of file
+    IOError,          // Generic I/O failure
+    InvalidOperation, // Invalid state transition
+    RuntimeError      // Catch-all
+};
+</code></pre>
+<h3 id="exception-handler-stack">Exception Handler Stack</h3>
+<p>Each frame maintains an exception handler stack (<code>Frame::ehStack</code>) using the <code>HandlerRecord</code> type</p>
+<p>defined in Frame (see [Key Components](#key-components)).</p>
+<p><strong>IL instructions:</strong></p>
+<ul>
+<li><code>eh.push label handler</code> — Push handler onto stack</li>
+<li><code>eh.pop</code> — Pop handler from stack</li>
+<li><code>eh.entry</code> — Mark entry point of handler block</li>
+</ul>
+<h3 id="trap-dispatch">Trap Dispatch</h3>
+<p>When a trap occurs:</p>
+<ol>
+<li>**Capture context**: Function, block, instruction, source location</li>
+<li>**Search for handler**: Walk <code>ehStack</code> for active handler</li>
+<li>**Dispatch or unwind**:</li>
+<li><strong>Handler found</strong>: Jump to handler block, set <code>activeError</code></li>
+<li><strong>No handler</strong>: Throw <code>TrapDispatchSignal</code> to unwind stack</li>
+<li>**Resume**: Handler uses <code>resume.same</code>, <code>resume.next</code>, or <code>resume.label</code></li>
+</ul>
+<h3 id="structured-error-payload">Structured Error Payload</h3>
+<pre><code data-lang="cpp">
+struct VmError {
+    TrapKind kind;     // Error classification
+    int32_t code;      // Secondary code
+    uint64_t ip;       // Instruction pointer
+    int32_t line;      // Source line (-1 if unknown)
+};
+</code></pre>
+<p>Accessible via:</p>
+<ul>
+<li><code>trap.kind</code> — Read current trap kind</li>
+<li><code>err.get_kind %e</code> — Extract kind from error value</li>
+<li><code>err.get_code %e</code> — Extract code from error value</li>
+</ul>
+<p>---</p>
+<h2 id="runtime-integration">Runtime Integration</h2>
+<h3 id="runtimebridge-src-vm-runtimebridge-hpp">RuntimeBridge (`src/vm/RuntimeBridge.hpp`)</h3>
+<p>Adapter between VM and C runtime library:</p>
+<pre><code data-lang="cpp">
+class RuntimeBridge {
+    static Slot call(RuntimeCallContext&amp; ctx,
+                    const std::string&amp; name,
+                    const std::vector&lt;Slot&gt;&amp; args,
+                    ...);
+
+    static void trap(TrapKind kind, const std::string&amp; msg, ...);
+    static const RuntimeCallContext* activeContext();
+};
+</code></pre>
+<p><strong>Call flow:</strong></p>
+<ol>
+<li>IL <code>call @Viper.Terminal.PrintI64(args)</code> instruction (or legacy <code>@rt_*</code> alias)</li>
+<li>Handler evaluates arguments into <code>Slot</code> vector</li>
+<li><code>RuntimeBridge::call()</code> looks up function descriptor by canonical name</li>
+<li>C function is invoked with marshalled arguments</li>
+<li>Return value is marshalled back to <code>Slot</code></li>
+</ul>
+<p><strong>Note:</strong> The runtime supports both canonical <code>@Viper.<em></code> names and legacy <code>@rt_</em></code> aliases when built with</p>
+<p><code>-DVIPER_RUNTIME_NS_DUAL=ON</code>.</p>
+<h3 id="runtime-call-context">Runtime Call Context</h3>
+<p>Tracks active runtime call for trap diagnostics:</p>
+<pre><code data-lang="cpp">
+struct RuntimeCallContext {
+    SourceLoc loc;                      // Call site location
+    std::string function;               // Calling IL function
+    std::string block;                  // Calling block
+    const RuntimeDescriptor* descriptor; // Runtime function
+    Slot* argBegin;                     // Argument array
+    size_t argCount;                    // Argument count
+};
+</code></pre>
+<p>Populated before each runtime call, cleared after.</p>
+<h3 id="external-function-registry">External Function Registry</h3>
+<p>Custom functions can be registered:</p>
+<pre><code data-lang="cpp">
+struct ExternDesc {
+    std::string name;
+    void* ptr;
+    // ... signature metadata
+};
+
+RuntimeBridge::registerExtern(desc);
+</code></pre>
+<p>Enables embedding applications to extend the runtime.</p>
+<p>---</p>
+<h2 id="debug-tracing">Debug &amp; Tracing</h2>
+<h3 id="trace-sink">Trace Sink</h3>
+<p>Configurable output for instruction tracing:</p>
+<pre><code data-lang="cpp">
+struct TraceConfig {
+    bool enabled;           // Enable tracing
+    bool ilTrace;           // Trace IL instructions
+    bool boolTrace;         // Trace boolean values
+    bool srcTrace;          // Trace source locations
+};
+</code></pre>
+<p>Output format:</p>
+<pre><code data-lang="text">
+[func:block:ip] opcode operands → result
+</code></pre>
+<h3 id="debug-controller">Debug Controller</h3>
+<p>Manages breakpoints and stepping:</p>
+<pre><code data-lang="cpp">
+class DebugCtrl {
+    // Breakpoints
+    void addBreakLabel(std::string label);
+    void addBreakSrcLine(std::string file, int line);
+    void clearBreaks();
+
+    // Stepping
+    void requestStep(uint64_t count);
+    bool shouldBreak(/* context */);
+};
+</code></pre>
+<p><strong>Breakpoint types:</strong></p>
+<ul>
+<li>Block label breakpoints</li>
+<li>Source line breakpoints</li>
+<li>Step count breakpoints</li>
+</ul>
+<h3 id="debug-scripting">Debug Scripting</h3>
+<p>Optional command script for automated debugging:</p>
+<pre><code data-lang="cpp">
+class DebugScript {
+    virtual Action onBreakpoint(VM&amp; vm, Frame&amp; fr) = 0;
+};
+</code></pre>
+<p>Allows programmatic control of execution (continue, step, inspect, etc.).</p>
+<h3 id="memory-watches">Memory Watches</h3>
+<p>Monitor memory access for debugging:</p>
+<pre><code data-lang="cpp">
+debug.addMemWatch(addr, size, &quot;tag&quot;);
+auto hits = debug.drainMemWatchEvents();
+</code></pre>
+<p>Tracks reads/writes to specific memory ranges.</p>
+<p>---</p>
+<h2 id="source-code-guide">Source Code Guide</h2>
+<h3 id="directory-structure">Directory Structure</h3>
+<pre><code data-lang="text">
+src/vm/
+├── VM.hpp/cpp                  # Main VM class and core interpreter logic
+├── VMContext.hpp/cpp           # Execution context helpers
+├── VMConfig.hpp                # Build configuration
+├── VMConstants.hpp             # VM constants
+├── VMInit.cpp                  # VM initialization
+├── Runner.cpp                  # Public API facade
+│
+├── OpHandlers.hpp/cpp          # Handler aggregation and table generation
+├── OpHandlerUtils.hpp/cpp      # Handler utility functions
+├── OpHandlerAccess.hpp         # Handler access utilities
+├── OpcodeHandlerHelpers.hpp    # Common handler helper functions
+├── OpHandlers_Control.hpp      # Control flow handlers
+├── OpHandlers_Int.hpp          # Integer arithmetic handlers
+├── OpHandlers_Float.hpp        # Float arithmetic handlers
+├── OpHandlers_Memory.hpp       # Memory operation handlers
+├── IntOpSupport.hpp            # Integer operation support
+│
+├── DispatchStrategy.hpp/cpp    # Pluggable dispatch strategies
+├── DispatchMacros.hpp          # Dispatch loop macros and hooks
+│
+├── ops/
+│   ├── Op_CallRet.cpp          # Call/return implementation
+│   ├── Op_BranchSwitch.cpp     # Branch/switch implementation
+│   ├── Op_TrapEh.cpp           # Trap/exception handling
+│   ├── common/Branching.*      # Branch target resolution helpers
+│   ├── schema/ops.yaml         # Opcode schema definitions
+│   └── generated/              # Generated dispatch tables and handlers
+│       ├── HandlerTable.hpp    # Static handler function table
+│       ├── InlineHandlers*.inc # Inline handler implementations
+│       ├── SwitchDispatch*.inc # Switch dispatch implementations
+│       └── Threaded*.inc       # Threaded dispatch labels/cases
+│
+├── RuntimeBridge.hpp/cpp       # Runtime integration
+├── Marshal.hpp/cpp             # Value marshalling
+│
+├── Trap.hpp/cpp                # Trap definitions and formatting
+├── TrapInvariants.hpp          # Trap assertion helpers
+├── DiagFormat.hpp/cpp          # Diagnostic message formatting
+├── err_bridge.hpp/cpp          # Error bridge helpers
+│
+├── control_flow.hpp/cpp        # Control flow utilities
+├── tco.hpp/cpp                 # Tail-call optimization
+├── ViperStringHandle.hpp       # RAII string handle wrapper
+│
+├── int_ops_arith.cpp           # Integer arithmetic implementations
+├── int_ops_cmp.cpp             # Integer comparison implementations
+├── int_ops_convert.cpp         # Integer conversion implementations
+├── fp_ops.cpp                  # Floating-point implementations
+├── mem_ops.cpp                 # Memory operation implementations
+│
+├── ThreadsRuntime.cpp          # Viper.Threads runtime support
+│
+└── debug/                      # Debug and tracing subsystem
+    └── *.cpp                   # Debug controller, trace, scripting
+</code></pre>
+<h3 id="key-files-by-functionality">Key Files by Functionality</h3>
+<p><strong>Core Interpreter:</strong></p>
+<ul>
+<li><code>VM.hpp</code>, <code>VM.cpp</code> — Main interpreter class</li>
+<li><code>VMContext.hpp</code> — Shared execution helpers</li>
+<li><code>Runner.cpp</code> — Public API facade</li>
+</ul>
+<p><strong>Dispatch:</strong></p>
+<ul>
+<li><code>VM.cpp</code> — Dispatch driver implementations</li>
+<li><code>ops/generated/</code> — Generated dispatch tables</li>
+</ul>
+<p><strong>Opcode Handlers:</strong></p>
+<ul>
+<li><code>OpHandlers*.hpp</code> — Handler declarations by category</li>
+<li><code>ops/Op_*.cpp</code> — Complex handler implementations</li>
+<li><code>int_ops_*.cpp</code>, <code>fp_ops.cpp</code>, <code>mem_ops.cpp</code> — Arithmetic implementations</li>
+</ul>
+<p><strong>Exception Handling:</strong></p>
+<ul>
+<li><code>Trap.hpp</code>, <code>Trap.cpp</code> — Trap types and formatting</li>
+<li><code>err_bridge.hpp</code> — Error bridge integration</li>
+<li><code>ops/Op_TrapEh.cpp</code> — Exception handler opcodes</li>
+</ul>
+<p><strong>Runtime Integration:</strong></p>
+<ul>
+<li><code>RuntimeBridge.hpp</code>, <code>RuntimeBridge.cpp</code> — C runtime adapter</li>
+<li><code>Marshal.hpp</code>, <code>Marshal.cpp</code> — Value marshalling</li>
+</ul>
+<p><strong>Debugging:</strong></p>
+<ul>
+<li><code>debug/Debug.cpp</code> — Breakpoint management</li>
+<li><code>debug/DebugScript.cpp</code> — Debug scripting support</li>
+<li><code>debug/Trace.cpp</code> — Trace output formatting</li>
+<li><code>debug/VM_DebugUtils.cpp</code> — Debug utility helpers</li>
+<li><code>debug/VMDebug.cpp</code> — Debug integration</li>
+</ul>
+<p>---</p>
+<h2 id="performance-features">Performance Features</h2>
+<h3 id="tail-call-optimization">Tail-Call Optimization</h3>
+<p>Enabled by default (<code>VIPER_VM_TAILCALL</code>):</p>
+<pre><code data-lang="cpp">
+// Detect tail call
+if (instr.isTailCall()) {
+    // Reuse current frame
+    return executeTailCall(fr, callee, args);
+}
+</code></pre>
+<p>Eliminates stack growth for recursive functions.</p>
+<h3 id="opcode-counting">Opcode Counting</h3>
+<p>Compile-time flag (<code>VIPER_VM_OPCOUNTS</code>):</p>
+<pre><code data-lang="cpp">
+#if VIPER_VM_OPCOUNTS
+std::array&lt;uint64_t, kNumOpcodes&gt; opCounts_;
+#endif
+</code></pre>
+<p>Tracks execution count per opcode for profiling.</p>
+<p><strong>API:</strong></p>
+<pre><code data-lang="cpp">
+const auto&amp; counts = vm.opcodeCounts();
+auto top = vm.topOpcodes(10);  // Top 10 opcodes
+vm.resetOpcodeCounts();
+</code></pre>
+<h3 id="execution-context-optimization">Execution Context Optimization</h3>
+<p>The VM execution context has been optimized to minimize overhead on the hot path:</p>
+<p><strong>ExecState-based dispatch:</strong> The dispatch macros (<code>VIPER_VM_DISPATCH_BEFORE</code>, <code>VIPER_VM_DISPATCH_AFTER</code>) use</p>
+<p><code>ExecState</code> directly instead of <code>VMContext</code>, avoiding an extra indirection per instruction:</p>
+<pre><code data-lang="cpp">
+// Hot path uses ExecState directly
+VIPER_VM_DISPATCH_BEFORE(state, opcode);  // state is ExecState&amp;
+
+// ExecState.config includes all per-instruction configuration
+struct PollConfig {
+    uint32_t interruptEveryN;
+    std::function&lt;bool(VM&amp;)&gt; pollCallback;
+    bool enableOpcodeCounts;  // Direct access for opcode counting
+};
+</code></pre>
+<p><strong>VMContext for external APIs:</strong> The <code>VMContext</code> wrapper is still used for external APIs (<code>stepOnce</code>, <code>fetchOpcode</code>,</p>
+<p><code>handleTrapDispatch</code>) to provide a stable interface, but it&#x27;s not required on the per-instruction hot path.</p>
+<h3 id="execution-stack-pre-allocation">Execution Stack Pre-allocation</h3>
+<p>The execution stack (<code>execStack</code>) tracks active <code>ExecState</code> pointers for trap unwinding and debugging:</p>
+<pre><code data-lang="cpp">
+// Pre-allocated to kExecStackInitialCapacity (64) in VM constructor
+std::vector&lt;ExecState*&gt; execStack;
+
+// Unified RAII guard for stack management
+struct ExecStackGuard {
+    VM&amp; vm;
+    ExecState* state;
+    ExecStackGuard(VM&amp; vmRef, ExecState&amp; stRef) noexcept;
+    ~ExecStackGuard() noexcept;
+};
+</code></pre>
+<p><strong>Optimizations:</strong></p>
+<ul>
+<li>Pre-allocated capacity eliminates heap allocation for typical call depths</li>
+<li>Unified <code>ExecStackGuard</code> in VM.hpp removes code duplication</li>
+<li><code>noexcept</code> specifiers enable compiler optimizations</li>
+</ul>
+<h3 id="inline-string-literal-cache">Inline String Literal Cache</h3>
+<p>Caches runtime handles for string literals:</p>
+<pre><code data-lang="cpp">
+std::unordered_map&lt;std::string_view, ViperStringHandle, ...&gt; inlineLiteralCache;
+</code></pre>
+<p><strong>Optimizations:</strong></p>
+<ul>
+<li>Pre-populated during VM construction by scanning all ConstStr operands in the module</li>
+<li>Fast path uses <code>find()</code> for pre-populated strings (common case)</li>
+<li>Fallback <code>try_emplace</code> only for edge cases (dynamically generated strings)</li>
+<li>Eliminates repeated allocation and map insertion for frequently used literals</li>
+</ul>
+<h3 id="switch-cache">Switch Cache</h3>
+<p>Memoizes switch dispatch data:</p>
+<pre><code data-lang="cpp">
+struct SwitchCache {
+    std::unordered_map&lt;int32_t, const BasicBlock*&gt; caseMap;
+    const BasicBlock* defaultTarget;
+};
+</code></pre>
+<p>Amortizes switch table construction across iterations.</p>
+<h3 id="frame-buffer-pooling">Frame Buffer Pooling</h3>
+<p>The VM maintains pools for frequently allocated frame resources:</p>
+<p><strong>Stack Buffer Pool:</strong></p>
+<ul>
+<li>Reuses operand stack buffers across function calls</li>
+<li>Pre-sized to <code>Frame::kDefaultStackSize</code> (64KB)</li>
+<li>Eliminates allocation overhead for recursive functions</li>
+</ul>
+<p><strong>Register File Pool:</strong></p>
+<ul>
+<li>Reuses SSA register file vectors</li>
+<li>Sized by <code>clear()</code> and <code>resize()</code> rather than reallocation</li>
+<li>Reduces heap churn during deep call stacks</li>
+</ul>
+<p><strong>Benefit:</strong> Recursive functions like factorial(n) allocate only once per unique call depth,</p>
+<p>then reuse pooled buffers for subsequent calls. This significantly reduces GC pressure and</p>
+<p>improves cache locality.</p>
+<h3 id="host-polling">Host Polling</h3>
+<p>Configurable interrupt callback:</p>
+<pre><code data-lang="cpp">
+vm.setPollConfig(everyN, [](VM&amp; vm) {
+    // Host logic (UI events, etc.)
+    return true;  // Continue execution
+});
+</code></pre>
+<p>Allows embedding applications to maintain responsiveness.</p>
+<p>---</p>
+<h2 id="best-practices">Best Practices</h2>
+<h3 id="for-vm-developers">For VM Developers</h3>
+<ol>
+<li>**Opcode Handlers**: Keep handlers simple and delegate to helper functions</li>
+<li>**Error Handling**: Use <code>RuntimeBridge::trap()</code> for runtime errors</li>
+<li>**Caching**: Consider caching hot lookups (strings, functions, blocks)</li>
+<li>**Debugging**: Add trace points for complex operations</li>
+<li>**Testing**: Write unit tests for each handler</li>
+</ul>
+<h3 id="for-il-generators">For IL Generators</h3>
+<ol>
+<li>**SSA Form**: Ensure proper SSA (single assignment per register)</li>
+<li>**Terminators**: Every block must end with a terminator</li>
+<li>**Type Safety**: Match operand types to instruction signatures</li>
+<li>**Exception Handlers**: Properly nest <code>eh.push</code>/<code>eh.pop</code> pairs</li>
+<li>**Stack Usage**: Keep <code>alloca</code> sizes within frame limits (~64KB by default)</li>
+</ul>
+<h3 id="for-embedders">For Embedders</h3>
+<ol>
+<li>**Configuration**: Choose appropriate dispatch strategy</li>
+<li>**Polling**: Set reasonable interrupt frequency</li>
+<li>**Externs**: Register custom functions before execution</li>
+<li>**Tracing**: Enable tracing for debugging, disable for production</li>
+<li>**Error Handling**: Catch and handle <code>TrapDispatchSignal</code> if needed</li>
+</ul>
+<p>---</p>
+<h2 id="further-reading">Further Reading</h2>
+<p><strong>Viper Documentation:</strong></p>
+<ul>
+<li><strong>[IL Guide](il-guide.md)</strong> — IL specification and semantics</li>
+<li><strong>[IL Reference](il-reference.md)</strong> — Complete opcode catalog</li>
+<li><strong>[Getting Started](getting-started.md)</strong> — Build and run Viper</li>
+</ul>
+<p><strong>Developer Documentation</strong> (in <code>/devdocs</code>):**</p>
+<ul>
+<li><code>runtime-vm.md</code> — VM and runtime internals (detailed)</li>
+<li><code>architecture.md</code> — Overall system architecture</li>
+<li><code>specs/errors.md</code> — Error handling specification</li>
+<li><code>vm-*.md</code> — VM-specific topics (stepping, profiling, etc.)</li>
+</ul>
+<p><strong>Source Code:</strong></p>
+<ul>
+<li><code>src/vm/</code> — VM implementation</li>
+<li><code>src/runtime/</code> — C runtime library</li>
+<li><code>src/tests/vm/</code> — VM unit tests</li>
+</ul>
+<h2 id="performance-tuning-and-benchmarking">Performance Tuning and Benchmarking</h2>
+<p>This guide summarizes runtime tuning knobs for the VM and how to benchmark dispatch performance across modes.</p>
+<h2 id="dispatch-modes">Dispatch Modes</h2>
+<ul>
+<li>Env <code>VIPER_DISPATCH</code>:</li>
+<li><code>table</code>: function-table dispatch via <code>executeOpcode</code></li>
+<li><code>switch</code>: inline switch dispatch with generated handlers</li>
+<li><code>threaded</code>: computed goto (if built with <code>VIPER_VM_THREADED</code>)</li>
+</ul>
+<ul>
+<li>Env <code>VIPER_ENABLE_OPCOUNTS</code> (default on): enable per-opcode execution counters. You can query counts via</li>
+</ul>
+<p><code>Runner::opcodeCounts()</code> or the <code>--count</code> flag in <code>viper -run</code>.</p>
+<ul>
+<li>Env <code>VIPER_INTERRUPT_EVERY_N</code>: periodically invoke a host callback every N instructions (see</li>
+</ul>
+<p><code>RunConfig::interruptEveryN</code>).</p>
+<h2 id="switch-backend-heuristics">Switch Backend Heuristics</h2>
+<p>Switch dispatch selects a backend per instruction. Heuristics can be tuned via env:</p>
+<ul>
+<li><code>VIPER_SWITCH_DENSE_MAX_RANGE</code> (default <code>4096</code>): maximum value range to consider a dense jump table.</li>
+<li><code>VIPER_SWITCH_DENSE_MIN_DENSITY</code> (default <code>0.60</code>): minimum case density for dense backend.</li>
+<li><code>VIPER_SWITCH_HASH_MIN_CASES</code> (default <code>64</code>): minimum number of cases before hashing is considered.</li>
+<li><code>VIPER_SWITCH_HASH_MAX_DENSITY</code> (default <code>0.15</code>): maximum density to prefer hashed backend.</li>
+</ul>
+<p>If <code>VIPER_SWITCH_MODE</code> is set to <code>dense|sorted|hashed|linear|auto</code>, it overrides the heuristic for all instructions.</p>
+<h2 id="benchmarking">Benchmarking</h2>
+<p>Use the helper script to compare dispatch performance across modes:</p>
+<ul>
+<li>Script: <code>scripts/vm_benchmark.sh</code></li>
+</ul>
+<p>Environment variables:</p>
+<ul>
+<li><code>IL_DIR</code> (default <code>examples/il/benchmarks</code>): directory of IL programs to benchmark (relative to repo root).</li>
+<li><code>ILC_BIN</code>: optional path to <code>viper</code>; otherwise auto-detected under <code>build/</code>.</li>
+<li><code>RUNS_PER_CASE</code> (default <code>5</code>): number of runs per (mode, program) pair.</li>
+</ul>
+<p>Each invocation writes a timestamped section header and a per-row timestamp, along with averages and min/max timings,</p>
+<p>the actual dispatch kind, and instruction counts extracted from <code>--count</code> and <code>--time</code> summaries.</p>
+<p>Example:</p>
+<pre><code data-lang="bash">
+RUNS_PER_CASE=5 IL_DIR=&#x27;src/tests/il/e2e&#x27; scripts/vm_benchmark.sh
+</code></pre>
+<p>The script sets <code>VIPER_DEBUG_VM=1</code> so the VM prints the resolved dispatch kind, and <code>VIPER_ENABLE_OPCOUNTS=1</code> to capture</p>
+<p>counts.</p>
+<h3 id="concurrency-model">Concurrency Model</h3>
+<p>Each <code>VM</code> instance is single‑threaded: only one host thread may execute within a given VM instance at a time. To</p>
+<p>parallelize at the <em>embedder</em> level, create one VM per host thread (each VM has its own program state).</p>
+<p>For <em>language-level</em> shared-memory threads (<code>Viper.Threads</code>), the VM spawns a new host thread and runs a new VM instance</p>
+<p>that shares a single <code>VM::ProgramState</code> (shared globals + shared <code>RtContext</code>) with its parent. This preserves the “one</p>
+<p>host thread per VM instance” invariant while allowing a Viper program to share memory across its threads.</p>
+<p>The active VM is tracked via a thread‑local guard (see <code>ActiveVMGuard</code> in <code>src/vm/VMContext.*</code>), which binds the VM and</p>
+<p>its runtime context for the duration of execution. In debug builds, attempting to activate a different VM while one is</p>
+<p>already active on the same thread triggers an assertion.</p>
+<p>---</p>
+<h2 id="runtime-abi-reference">Runtime ABI Reference</h2>
+<p>Extern symbols in IL map to C functions declared in <code>src/runtime/rt.hpp</code>. This section documents the core ABI surface</p>
+<p>available to both the VM and native backends. For the complete list see [runtime-api-complete.md](runtime-api-complete.md).</p>
+<h3 id="runtime-symbol-naming">Runtime symbol naming</h3>
+<ul>
+<li>Canonical entry points use dotted <code>Viper.*</code> names emitted by frontends (catalogued in <code>src/il/runtime/RuntimeSignatures.hpp</code>).</li>
+<li>Native backends rewrite these to C symbols via <code>il::runtime::mapCanonicalRuntimeName</code> and the alias table in <code>src/il/runtime/RuntimeNameMap.hpp</code>.</li>
+<li>When built with <code>-DVIPER_RUNTIME_NS_DUAL=ON</code>, legacy <code>@rt_*</code> externs are accepted as aliases of <code>@Viper.*</code>.</li>
+</ul>
+<h3 id="math">Math</h3>
+<table><thead><tr>
+<th>Symbol</th>
+<th>Signature</th>
+<th>Semantics</th>
+</tr></thead><tbody>
+<tr>
+<td>`@rt_sqrt`</td>
+<td>`f64 -&gt; f64`</td>
+<td>square root</td>
+</tr>
+<tr>
+<td>`@rt_floor`</td>
+<td>`f64 -&gt; f64`</td>
+<td>floor</td>
+</tr>
+<tr>
+<td>`@rt_ceil`</td>
+<td>`f64 -&gt; f64`</td>
+<td>ceiling</td>
+</tr>
+<tr>
+<td>`@rt_sin`</td>
+<td>`f64 -&gt; f64`</td>
+<td>sine</td>
+</tr>
+<tr>
+<td>`@rt_cos`</td>
+<td>`f64 -&gt; f64`</td>
+<td>cosine</td>
+</tr>
+<tr>
+<td>`@rt_pow_f64_chkdom`</td>
+<td>`f64, f64 -&gt; f64`</td>
+<td>power</td>
+</tr>
+<tr>
+<td>`@rt_abs_i64`</td>
+<td>`i64 -&gt; i64`</td>
+<td>absolute value (integer, traps on overflow)</td>
+</tr>
+<tr>
+<td>`@rt_abs_f64`</td>
+<td>`f64 -&gt; f64`</td>
+<td>absolute value (float)</td>
+</tr>
+</tbody></table>
+<h3 id="string-operations">String operations</h3>
+<table><thead><tr>
+<th>Symbol</th>
+<th>Signature</th>
+<th>Semantics</th>
+</tr></thead><tbody>
+<tr>
+<td>`@rt_str_len`</td>
+<td>`str -&gt; i64`</td>
+<td>Return length of string in bytes</td>
+</tr>
+<tr>
+<td>`@rt_str_concat`</td>
+<td>`str, str -&gt; str`</td>
+<td>Concatenate two strings; consumes both operands</td>
+</tr>
+<tr>
+<td>`@rt_str_substr`</td>
+<td>`str, i64, i64 -&gt; str`</td>
+<td>Extract substring (0-based start, length)</td>
+</tr>
+<tr>
+<td>`@rt_str_left`</td>
+<td>`str, i64 -&gt; str`</td>
+<td>Leftmost n characters</td>
+</tr>
+<tr>
+<td>`@rt_str_right`</td>
+<td>`str, i64 -&gt; str`</td>
+<td>Rightmost n characters</td>
+</tr>
+<tr>
+<td>`@rt_str_mid`</td>
+<td>`str, i64 -&gt; str`</td>
+<td>Substring from start (1-based) to end</td>
+</tr>
+<tr>
+<td>`@rt_str_mid_len`</td>
+<td>`str, i64, i64 -&gt; str`</td>
+<td>Substring from start (1-based) with length</td>
+</tr>
+<tr>
+<td>`@rt_str_index_of`</td>
+<td>`str, str -&gt; i64`</td>
+<td>Find needle; returns 1-based index or 0</td>
+</tr>
+<tr>
+<td>`@rt_str_trim`</td>
+<td>`str -&gt; str`</td>
+<td>Remove leading and trailing whitespace</td>
+</tr>
+<tr>
+<td>`@rt_str_ucase`</td>
+<td>`str -&gt; str`</td>
+<td>Convert ASCII to uppercase</td>
+</tr>
+<tr>
+<td>`@rt_str_lcase`</td>
+<td>`str -&gt; str`</td>
+<td>Convert ASCII to lowercase</td>
+</tr>
+<tr>
+<td>`@rt_str_chr`</td>
+<td>`i64 -&gt; str`</td>
+<td>Single-character string from ASCII code</td>
+</tr>
+<tr>
+<td>`@rt_str_asc`</td>
+<td>`str -&gt; i64`</td>
+<td>ASCII code of first character</td>
+</tr>
+<tr>
+<td>`@rt_str_eq`</td>
+<td>`str, str -&gt; i1`</td>
+<td>Compare two strings for equality</td>
+</tr>
+</tbody></table>
+<h3 id="console-i-o">Console I/O</h3>
+<table><thead><tr>
+<th>Symbol</th>
+<th>Signature</th>
+<th>Semantics</th>
+</tr></thead><tbody>
+<tr>
+<td>`@rt_print_str`</td>
+<td>`str -&gt; void`</td>
+<td>Print string to stdout</td>
+</tr>
+<tr>
+<td>`@rt_print_i64`</td>
+<td>`i64 -&gt; void`</td>
+<td>Print 64-bit integer to stdout</td>
+</tr>
+<tr>
+<td>`@rt_print_f64`</td>
+<td>`f64 -&gt; void`</td>
+<td>Print float to stdout</td>
+</tr>
+<tr>
+<td>`@rt_input_line`</td>
+<td>`void -&gt; str`</td>
+<td>Read a line from stdin</td>
+</tr>
+</tbody></table>
+<h3 id="conversion">Conversion</h3>
+<table><thead><tr>
+<th>Symbol</th>
+<th>Signature</th>
+<th>Semantics</th>
+</tr></thead><tbody>
+<tr>
+<td>`@rt_to_int`</td>
+<td>`str -&gt; i64`</td>
+<td>Parse decimal integer from string</td>
+</tr>
+<tr>
+<td>`@rt_to_double`</td>
+<td>`str -&gt; f64`</td>
+<td>Parse floating-point from string</td>
+</tr>
+<tr>
+<td>`@rt_int_to_str`</td>
+<td>`i64 -&gt; str`</td>
+<td>Convert integer to decimal string</td>
+</tr>
+<tr>
+<td>`@rt_f64_to_str`</td>
+<td>`f64 -&gt; str`</td>
+<td>Convert float to decimal string</td>
+</tr>
+<tr>
+<td>`@rt_val`</td>
+<td>`str -&gt; f64`</td>
+<td>Parse leading numeric prefix</td>
+</tr>
+</tbody></table>
+<h3 id="terminal-control">Terminal control</h3>
+<table><thead><tr>
+<th>Symbol</th>
+<th>Signature</th>
+<th>Semantics</th>
+</tr></thead><tbody>
+<tr>
+<td>`@rt_term_cls`</td>
+<td>`void -&gt; void`</td>
+<td>Clear screen and home cursor</td>
+</tr>
+<tr>
+<td>`@rt_term_color_i32`</td>
+<td>`i32, i32 -&gt; void`</td>
+<td>Set foreground/background</td>
+</tr>
+<tr>
+<td>`@rt_term_locate_i32`</td>
+<td>`i32, i32 -&gt; void`</td>
+<td>Move cursor (1-based row, col)</td>
+</tr>
+<tr>
+<td>`@rt_term_cursor_visible_i32`</td>
+<td>`i32 -&gt; void`</td>
+<td>Show/hide cursor</td>
+</tr>
+</tbody></table>
+<h3 id="time-random">Time &amp; random</h3>
+<table><thead><tr>
+<th>Symbol</th>
+<th>Signature</th>
+<th>Semantics</th>
+</tr></thead><tbody>
+<tr>
+<td>`@rt_timer_ms`</td>
+<td>`void -&gt; i64`</td>
+<td>Monotonic millisecond timestamp</td>
+</tr>
+<tr>
+<td>`@rt_rnd`</td>
+<td>`void -&gt; f64`</td>
+<td>Random f64 in [0,1)</td>
+</tr>
+<tr>
+<td>`@rt_randomize_i64`</td>
+<td>`i64 -&gt; void`</td>
+<td>Seed RNG</td>
+</tr>
+</tbody></table>
+<h3 id="environment">Environment</h3>
+<table><thead><tr>
+<th>Symbol</th>
+<th>Signature</th>
+<th>Semantics</th>
+</tr></thead><tbody>
+<tr>
+<td>`@rt_args_count`</td>
+<td>`void -&gt; i64`</td>
+<td>Number of command-line arguments</td>
+</tr>
+<tr>
+<td>`@rt_args_get`</td>
+<td>`i64 -&gt; str`</td>
+<td>Argument at zero-based index</td>
+</tr>
+<tr>
+<td>`@rt_env_is_native`</td>
+<td>`void -&gt; i1`</td>
+<td>1 for native binary, 0 for VM</td>
+</tr>
+</tbody></table>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../features/native-targets.html">Native Targets</a>
+      <a href="../features/two-languages.html">Languages</a>
+      <a href="../features/runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

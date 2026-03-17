@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zero Dependencies — Viper</title>
+  <meta name="description" content="Viper is built entirely from scratch with zero external dependencies. Custom assemblers, linkers, optimizer passes, and a 229-class runtime — every line is Viper's own.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="../showcase/">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <a href="../">Features</a> / <span>Zero Dependencies</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#what-we-replaced">What We Replaced</a></li>
+        <li><a href="#assemblers">Binary Encoders</a></li>
+        <li><a href="#linker">Native Linker</a></li>
+        <li><a href="#object-files">Object File Writers</a></li>
+        <li><a href="#optimizer">Optimizer Passes</a></li>
+        <li><a href="#runtime">Runtime Library</a></li>
+        <li><a href="#data-structures">Data Structures</a></li>
+        <li><a href="#why">Why It Matters</a></li>
+        <li><a href="#scale">By the Numbers</a></li>
+      </ul>
+    </nav>
+  </aside>
+
+  <main class="page-main prose">
+    <h1 id="overview">Zero Dependencies</h1>
+
+    <p>Viper has <strong>no external dependencies</strong>. No LLVM, no Boost, no SDL, no OpenSSL, no libcurl, no nlohmann/json, no Qt. Every component of the compiler, runtime, and toolchain is written from scratch in C++ and C.</p>
+
+    <p>This isn't a philosophical choice about purity &mdash; it's a practical decision that gives Viper complete control over its compilation pipeline, enables portability to unusual targets (like ViperDOS), and makes the entire system auditable and educational.</p>
+
+    <h2 id="what-we-replaced">What Typical Projects Use vs. What Viper Builds</h2>
+
+    <p>Here's what a typical compiler or language runtime would pull in as external dependencies, and what Viper builds instead:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Subsystem</th>
+          <th>Typical External Library</th>
+          <th>Viper</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Code generation</td><td>LLVM, GNU binutils</td><td>Custom binary encoders (x86-64 + AArch64)</td></tr>
+        <tr><td>Linking</td><td>GNU ld, Apple ld, lld</td><td>Custom linker (ELF, Mach-O, PE)</td></tr>
+        <tr><td>Object files</td><td>LLVM MC, binutils</td><td>Custom writers for 3 formats</td></tr>
+        <tr><td>Optimization</td><td>LLVM passes</td><td>28 custom IL optimizer passes</td></tr>
+        <tr><td>Graphics</td><td>SDL2, SFML, DirectX</td><td>ViperGFX (Cocoa / X11 / Win32)</td></tr>
+        <tr><td>Audio</td><td>OpenAL, PortAudio</td><td>Custom (AudioQueue / ALSA / WASAPI)</td></tr>
+        <tr><td>Networking</td><td>libcurl, Boost.Asio</td><td>Custom TCP/UDP/HTTP/WebSocket/TLS</td></tr>
+        <tr><td>Compression</td><td>zlib, libzip</td><td>Custom DEFLATE implementation</td></tr>
+        <tr><td>Cryptography</td><td>OpenSSL, libsodium</td><td>Custom AES, SHA-256, Blake2b, Argon2, TLS</td></tr>
+        <tr><td>JSON/XML/YAML</td><td>nlohmann, rapidjson, libxml2</td><td>Custom parsers for all formats</td></tr>
+        <tr><td>GUI framework</td><td>Qt, GTK, wxWidgets</td><td>Custom widget system</td></tr>
+        <tr><td>Collections</td><td>Boost, EASTL</td><td>Custom SmallVector, Arena, LRUCache, etc.</td></tr>
+        <tr><td>Regex</td><td>PCRE2, Boost.Regex</td><td>Custom Pattern engine</td></tr>
+        <tr><td>Thread pool</td><td>Intel TBB, Boost</td><td>Custom thread pool + primitives</td></tr>
+        <tr><td>Date/time</td><td>Boost.DateTime</td><td>Custom DateTime, Duration, Stopwatch</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="assemblers">Custom Binary Encoders</h2>
+
+    <p>Viper doesn't call out to <code>as</code>, <code>nasm</code>, or LLVM to generate machine code. It has its own binary encoders that translate Machine IR directly into raw bytes:</p>
+
+    <ul>
+      <li><strong>x86-64 Encoder</strong> (1,451 LOC) &mdash; REX prefixes, ModR/M/SIB byte construction, displacement/immediate packing, RIP-relative addressing</li>
+      <li><strong>AArch64 Encoder</strong> (1,883 LOC) &mdash; Fixed-width 32-bit instruction encoding, ADRP+ADD page-relative pairs, STP/LDP prologue synthesis</li>
+    </ul>
+
+    <p>These encoders handle all the gnarly details: register encoding, addressing mode selection, immediate field sizing, and relocation emission.</p>
+
+    <h2 id="linker">Custom Native Linker</h2>
+
+    <p>The native linker is <strong>8,162 lines</strong> of hand-written code that takes object files and produces executables. No <code>ld</code>, no <code>lld</code>, no external toolchain:</p>
+
+    <ul>
+      <li><strong>Archive reader</strong> &mdash; Parses GNU, BSD, and COFF archive formats (.a / .lib)</li>
+      <li><strong>Symbol resolver</strong> &mdash; Iterative demand-pull resolution with Global &gt; Weak &gt; Undefined precedence</li>
+      <li><strong>Section merger</strong> &mdash; Classifies and concatenates .text, .rodata, .data, .bss with proper alignment</li>
+      <li><strong>Relocation applier</strong> &mdash; Format-dispatched patching: PCRel32, Abs64, Branch26, Page21/PageOff12</li>
+      <li><strong>Dead code stripping</strong> &mdash; Eliminates unreferenced sections</li>
+      <li><strong>ICF</strong> &mdash; Identical Code Folding to reduce binary size</li>
+    </ul>
+
+    <p>Three executable writers produce platform-native binaries:</p>
+
+    <table>
+      <thead><tr><th>Format</th><th>Platform</th><th>Key Details</th></tr></thead>
+      <tbody>
+        <tr><td>ELF</td><td>Linux</td><td>Static ET_EXEC, PT_GNU_STACK (NX), .rela relocations</td></tr>
+        <tr><td>Mach-O</td><td>macOS</td><td>MH_EXECUTE|MH_PIE, __PAGEZERO, 16KB pages on ARM64, code signing</td></tr>
+        <tr><td>PE</td><td>Windows</td><td>PE32+, NX_COMPAT, HIGH_ENTROPY_VA, 1MB stack reserve</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="object-files">Custom Object File Writers</h2>
+
+    <p>Before linking, the compiler writes relocatable object files in all three major formats (3,618 LOC total):</p>
+
+    <ul>
+      <li><strong>ELF writer</strong> &mdash; EM_X86_64 and EM_AARCH64, .rela sections with explicit addends</li>
+      <li><strong>Mach-O writer</strong> &mdash; 0xFEEDFACF magic, underscore-prefixed symbols, compact 8-byte relocations, LC_BUILD_VERSION</li>
+      <li><strong>COFF writer</strong> &mdash; IMAGE_FILE_MACHINE_AMD64/ARM64, 10-byte relocations with implicit addends</li>
+    </ul>
+
+    <h2 id="optimizer">28 Optimization Passes</h2>
+
+    <p>The IL optimizer is a full optimization pipeline comparable to what LLVM provides, built entirely from scratch:</p>
+
+    <table>
+      <thead><tr><th>Pass</th><th>What It Does</th></tr></thead>
+      <tbody>
+        <tr><td>SCCP</td><td>Sparse Conditional Constant Propagation &mdash; propagates constants through the CFG</td></tr>
+        <tr><td>GVN</td><td>Global Value Numbering &mdash; eliminates redundant computations</td></tr>
+        <tr><td>LICM</td><td>Loop-Invariant Code Motion &mdash; hoists invariants out of loops</td></tr>
+        <tr><td>Mem2Reg</td><td>Promotes stack allocas to SSA registers</td></tr>
+        <tr><td>DCE</td><td>Dead Code Elimination</td></tr>
+        <tr><td>DSE</td><td>Dead Store Elimination with MemorySSA</td></tr>
+        <tr><td>Inline</td><td>Cost-model based function inlining</td></tr>
+        <tr><td>EarlyCSE</td><td>Common Subexpression Elimination</td></tr>
+        <tr><td>SimplifyCFG</td><td>Control flow simplification (block merging, jump threading)</td></tr>
+        <tr><td>ConstFold</td><td>Constant folding and arithmetic simplification</td></tr>
+        <tr><td>LoopUnroll</td><td>Loop unrolling with cost model</td></tr>
+        <tr><td>LoopRotate</td><td>Rotates loops for better optimization</td></tr>
+        <tr><td>LoopSimplify</td><td>Canonicalizes loop structure</td></tr>
+        <tr><td>IndVarSimplify</td><td>Induction variable optimization</td></tr>
+        <tr><td>Reassociate</td><td>Expression reassociation</td></tr>
+        <tr><td>CheckOpt</td><td>Overflow check redundancy elimination</td></tr>
+        <tr><td>SiblingRecursion</td><td>Sibling call optimization</td></tr>
+        <tr><td>EHOpt</td><td>Exception handling optimization</td></tr>
+      </tbody>
+    </table>
+
+    <p>Plus backend peephole optimizers for each architecture: strength reduction (div &rarr; shift), copy propagation, branch optimization, dead MIR elimination, and loop-invariant constant hoisting.</p>
+
+    <h2 id="runtime">229-Class Runtime Library</h2>
+
+    <p>The runtime is <strong>146,872 lines of portable C</strong> implementing 229 classes across 12 modules. Every class is hand-written &mdash; no external libraries:</p>
+
+    <table>
+      <thead><tr><th>Module</th><th>Classes</th><th>Highlights</th></tr></thead>
+      <tbody>
+        <tr><td>Collections</td><td>19+</td><td>List, Map, Set, TreeMap, BloomFilter, LRUCache, Trie, WeakMap</td></tr>
+        <tr><td>Graphics</td><td>10+</td><td>Canvas, Sprite, Tilemap, Camera, Pixels, Scene graph</td></tr>
+        <tr><td>Audio</td><td>4</td><td>Sound effects, music streaming, voice</td></tr>
+        <tr><td>Network</td><td>12+</td><td>TCP, UDP, HTTP, WebSocket, TLS, DNS, REST client</td></tr>
+        <tr><td>Crypto</td><td>7</td><td>AES, SHA-256, Blake2b, PBKDF2, Argon2, Bcrypt</td></tr>
+        <tr><td>Text</td><td>20+</td><td>JSON, XML, YAML, TOML, CSV, Markdown, HTML, Regex</td></tr>
+        <tr><td>I/O</td><td>15+</td><td>File, Directory, Stream, Archive, Compress, Watcher</td></tr>
+        <tr><td>Threading</td><td>14+</td><td>Thread pool, channels, mutex, async/await, futures</td></tr>
+        <tr><td>Game</td><td>12+</td><td>Physics 2D, particles, tweening, state machines, path following</td></tr>
+        <tr><td>GUI</td><td>8+</td><td>Buttons, labels, text input, sliders, modals</td></tr>
+        <tr><td>Math</td><td>10+</td><td>Vec2/Vec3, Mat3/Mat4, Quaternions, Perlin noise, splines</td></tr>
+        <tr><td>Time</td><td>8</td><td>Clock, DateTime, Duration, Stopwatch, Countdown</td></tr>
+      </tbody>
+    </table>
+
+    <p>Platform-specific backends use only OS-native APIs:</p>
+    <ul>
+      <li><strong>Graphics:</strong> Cocoa (macOS), X11 (Linux), Win32 (Windows)</li>
+      <li><strong>Audio:</strong> AudioQueue (macOS), ALSA (Linux), WASAPI (Windows)</li>
+      <li><strong>Networking:</strong> POSIX sockets + WinSock, with custom TLS</li>
+    </ul>
+
+    <h2 id="data-structures">Custom Data Structures</h2>
+
+    <p>Even foundational utilities are built in-house rather than pulling in Boost or similar:</p>
+
+    <ul>
+      <li><strong>SmallVector</strong> &mdash; Stack-optimized vector with inline storage for small sizes</li>
+      <li><strong>Arena</strong> &mdash; Bump-allocated arena with tracked destructor support</li>
+      <li><strong>StringInterner</strong> &mdash; String deduplication pool for deterministic symbol names</li>
+      <li><strong>DiagExpected</strong> &mdash; Result/Expected type for error propagation</li>
+      <li><strong>SourceManager</strong> &mdash; Source file tracking with line/column mapping</li>
+      <li><strong>Diagnostics</strong> &mdash; Full diagnostic engine with error codes and source locations</li>
+    </ul>
+
+    <h2 id="why">Why It Matters</h2>
+
+    <h3>Complete Control</h3>
+    <p>When a bug appears in the linker, the optimizer, or the runtime &mdash; we fix it directly. No waiting for upstream releases, no version conflicts, no ABI compatibility concerns.</p>
+
+    <h3>Portability</h3>
+    <p>Viper can target platforms where external libraries don't exist. ViperDOS runs on bare-metal x86 with no OS &mdash; something impossible if the compiler depended on LLVM or SDL.</p>
+
+    <h3>Auditability</h3>
+    <p>Every line of code in Viper's output binary was written by the Viper project. No hidden transitive dependencies, no supply chain concerns for the compiler itself.</p>
+
+    <h3>Educational Value</h3>
+    <p>Students and hobbyists can read the complete source of a working assembler, linker, optimizer, and runtime. There's no black box.</p>
+
+    <h2 id="scale">By the Numbers</h2>
+
+    <table>
+      <thead><tr><th>Metric</th><th>Count</th></tr></thead>
+      <tbody>
+        <tr><td>Total production LOC</td><td>510,024</td></tr>
+        <tr><td>Runtime LOC (C)</td><td>146,872</td></tr>
+        <tr><td>Binary encoder LOC</td><td>3,334</td></tr>
+        <tr><td>Native linker LOC</td><td>8,162</td></tr>
+        <tr><td>Object file writer LOC</td><td>3,618</td></tr>
+        <tr><td>Optimizer passes</td><td>28</td></tr>
+        <tr><td>Runtime classes</td><td>229</td></tr>
+        <tr><td>External dependencies</td><td><strong>0</strong></td></tr>
+      </tbody>
+    </table>
+
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="zero-deps.html">Zero Dependencies</a>
+      <a href="native-targets.html">Native Targets</a>
+      <a href="two-languages.html">Languages</a>
+      <a href="runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

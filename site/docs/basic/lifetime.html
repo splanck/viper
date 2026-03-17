@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lifetime Model — Viper</title>
+  <meta name="description" content="Viper documentation: Lifetime Model">
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="icon" href="../../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../../docs/" class="active">Docs</a>
+    <a href="../../learn/">Learn</a>
+    <a href="../../showcase/">Showcase</a>
+    <a href="../../performance/">Performance</a>
+    <a href="../../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../../">Home</a> / <a href="../../docs">Docs</a> / <span>Lifetime Model</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#reference-counting-rc">Reference Counting (RC)</a></li>
+        <li><a href="#explicit-disposal">Explicit Disposal</a></li>
+        <li><a href="#destructors">Destructors</a></li>
+        <li><a href="#static-destructors">Static Destructors</a></li>
+        <li><a href="#cyclic-references">Cyclic References</a></li>
+        <li><a href="#guidance">Guidance</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>Lifetime Model</h1>
+<h1 id="lifetime-model">Lifetime Model</h1>
+<p>Viper BASIC uses deterministic lifetimes with reference counting and explicit disposal. This section summarizes the</p>
+<p>model and best practices.</p>
+<h2 id="reference-counting-rc">Reference Counting (RC)</h2>
+<ul>
+<li>Objects are heap-allocated with a shared header that tracks a reference count.</li>
+<li>Passing objects to procedures follows a borrow/return pattern; ownership is not implicitly transferred.</li>
+<li>When the last reference is released, storage is reclaimed; if a destructor exists, it runs before free.</li>
+</ul>
+<h2 id="explicit-disposal">Explicit Disposal</h2>
+<ul>
+<li>Disposing <code>NULL</code> is a no-op.</li>
+<li>Multiple disposals of the same object are a programming error; debug builds trap to aid diagnosis.</li>
+<li>Use <code>DISPOSE obj</code> to deterministically destroy an instance when it goes out of scope or when you finish with it</li>
+</ul>
+<p>earlier.</p>
+<h2 id="destructors">Destructors</h2>
+<ul>
+<li>Avoid side effects that rely on object fields after disposal; fields may be released before the destructor returns.</li>
+<li>Destructors chain from most-derived to base, automatically.</li>
+<li>Each class may declare one destructor (<code>DESTRUCTOR ... END DESTRUCTOR</code>) that runs before storage is freed.</li>
+</ul>
+<h2 id="static-destructors">Static Destructors</h2>
+<ul>
+<li>A <code>STATIC DESTRUCTOR</code> runs once at program shutdown. Use this for module-level cleanup (e.g., releasing global</li>
+</ul>
+<p>resources).</p>
+<ul>
+<li>Shutdown order is class declaration order within the module.</li>
+</ul>
+<h2 id="cyclic-references">Cyclic References</h2>
+<p>Reference counting cannot automatically detect cyclic references (objects that reference each other, forming a cycle).</p>
+<p>When cycles exist, the objects in the cycle will never have their reference count reach zero, causing a memory leak.</p>
+<h3 id="common-cycle-patterns">Common Cycle Patterns</h3>
+<pre><code data-lang="basic">
+&#x27; Simple cycle: A -&gt; B -&gt; A
+DIM a AS MyClass = NEW MyClass()
+DIM b AS MyClass = NEW MyClass()
+a.Other = b
+b.Other = a
+&#x27; Neither a nor b can be freed automatically
+</code></pre>
+<pre><code data-lang="basic">
+&#x27; Self-reference: A -&gt; A
+DIM node AS Node = NEW Node()
+node.Next = node
+&#x27; node can never be freed automatically
+</code></pre>
+<h3 id="breaking-cycles">Breaking Cycles</h3>
+<p>Cycles must be broken manually before the objects go out of scope:</p>
+<pre><code data-lang="basic">
+&#x27; Break the cycle before leaving scope
+a.Other = NULL
+&#x27; Now b can be freed when it goes out of scope
+&#x27; And a can be freed after that
+</code></pre>
+<p>For complex data structures like doubly-linked lists or graphs, use <code>DISPOSE</code> with explicit</p>
+<p>cleanup that clears cyclic references:</p>
+<pre><code data-lang="basic">
+&#x27; Clean up a doubly-linked list
+DIM current AS Node = head
+WHILE current &lt;&gt; NULL
+    DIM next AS Node = current.Next
+    current.Prev = NULL
+    current.Next = NULL
+    DISPOSE current
+    current = next
+WEND
+</code></pre>
+<h3 id="design-patterns-to-avoid-cycles">Design Patterns to Avoid Cycles</h3>
+<ol>
+<li>**Use weak references**: Store parent references as unmanaged pointers when possible.</li>
+<li>**Use hierarchical ownership**: One object owns another; the child does not reference the parent.</li>
+<li>**Break cycles in destructors**: Clear back-references in your destructor before the object is freed.</li>
+<li>**Use explicit cleanup methods**: Provide a <code>Close()</code> or <code>Release()</code> method that breaks cycles.</li>
+</ul>
+<h3 id="detection">Detection</h3>
+<p>Viper does not include automatic cycle detection. If you suspect a memory leak from cycles:</p>
+<ol>
+<li>Review object relationships for potential cycles</li>
+<li>Use debug builds with refcount tracing (<code>-DVIPER_RC_DEBUG=1</code>)</li>
+<li>Profile memory usage over time to identify growing allocations</li>
+</ul>
+<h2 id="guidance">Guidance</h2>
+<ul>
+<li>Be mindful of cyclic references; break them explicitly before objects go out of scope.</li>
+<li>Do not dispose <code>ME</code> inside a destructor; this is diagnosed as an error to prevent recursion.</li>
+<li>Prefer <code>DISPOSE</code> when you want timely cleanup of scarce resources (file handles, OS objects) and ordering relative to</li>
+</ul>
+<p>surrounding code matters.</p>
+<ul>
+<li>Use static destructors for module-scoped resources that must outlive all user code in the module.</li>
+</ul>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../../features/native-targets.html">Native Targets</a>
+      <a href="../../features/two-languages.html">Languages</a>
+      <a href="../../features/runtime.html">Runtime Library</a>
+      <a href="../../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../../docs/getting-started.html">Getting Started</a>
+      <a href="../../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../../docs/runtime/">Runtime API</a>
+      <a href="../../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../../contributing/">Contributing</a>
+      <a href="../../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../../main.js"></script>
+</body>
+</html>
