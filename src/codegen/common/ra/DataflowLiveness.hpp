@@ -29,9 +29,12 @@
 
 #pragma once
 
+#include "codegen/common/ICE.hpp"
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -79,8 +82,8 @@ DataflowResult<VregId> solveBackwardDataflow(const std::vector<std::vector<std::
     {
         if (++iteration > maxIter)
         {
-            assert(false && "Liveness dataflow did not converge");
-            break;
+            VIPER_ICE("liveness dataflow did not converge after " +
+                      std::to_string(maxIter) + " iterations");
         }
         changed = false;
 

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cross-Platform — Viper</title>
+  <meta name="description" content="Viper runs on macOS, Linux, and Windows with full feature parity. Platform-native graphics, audio, and networking with zero external dependencies.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="../showcase/">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <a href="../">Features</a> / <span>Cross-Platform</span>
+</div>
+
+<div class="section">
+  <div class="prose" style="max-width: 800px; margin: 0 auto;">
+    <h1>Cross-Platform</h1>
+
+    <p>Every feature in Viper works on <strong>macOS, Linux, and Windows</strong> with full parity. This isn't "it compiles on Linux" &mdash; it means platform-native graphics, audio, networking, and threading on all three operating systems, both ARM64 and x86-64.</p>
+
+    <h2>Supported Platforms</h2>
+
+    <table>
+      <thead><tr><th>Platform</th><th>Architectures</th><th>Compiler</th></tr></thead>
+      <tbody>
+        <tr><td>macOS</td><td>ARM64 (Apple Silicon), x86-64 (Intel)</td><td>Apple Clang</td></tr>
+        <tr><td>Linux</td><td>x86-64, ARM64</td><td>Clang, GCC 11+</td></tr>
+        <tr><td>Windows</td><td>x86-64, ARM64</td><td>MSVC, Clang-CL</td></tr>
+        <tr><td>ViperDOS</td><td>x86 (bare metal)</td><td>Cross-compilation</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Platform-Native Backends</h2>
+
+    <p>Instead of using cross-platform abstraction libraries (SDL, Qt), Viper calls OS-native APIs directly:</p>
+
+    <table>
+      <thead><tr><th>Subsystem</th><th>macOS</th><th>Linux</th><th>Windows</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Graphics</strong></td><td>Cocoa / Core Graphics</td><td>X11 / Xlib</td><td>Win32 GDI</td></tr>
+        <tr><td><strong>Audio</strong></td><td>AudioQueue Services</td><td>ALSA</td><td>WASAPI</td></tr>
+        <tr><td><strong>Networking</strong></td><td colspan="2">POSIX sockets (BSD)</td><td>WinSock2</td></tr>
+        <tr><td><strong>Threading</strong></td><td colspan="2">pthreads</td><td>Win32 CreateThread</td></tr>
+        <tr><td><strong>File I/O</strong></td><td colspan="2">POSIX (open, read, write)</td><td>Win32 + POSIX compat</td></tr>
+        <tr><td><strong>Atomics</strong></td><td colspan="2">GCC/Clang __atomic builtins</td><td>_Interlocked* intrinsics</td></tr>
+        <tr><td><strong>Memory barriers</strong></td><td>ARM64: __dmb</td><td>ARM64: __dmb / x86: MFENCE</td><td>_ReadWriteBarrier</td></tr>
+        <tr><td><strong>TLS</strong></td><td colspan="2">_Thread_local / __thread</td><td>__declspec(thread)</td></tr>
+      </tbody>
+    </table>
+
+    <h2>The Abstraction Layer</h2>
+
+    <p>All platform differences are handled in a single file: <code>rt_platform.h</code> (666 lines). It provides:</p>
+
+    <ul>
+      <li><strong>Platform detection macros</strong> &mdash; <code>RT_PLATFORM_WINDOWS</code>, <code>RT_PLATFORM_MACOS</code>, <code>RT_PLATFORM_LINUX</code>, <code>RT_PLATFORM_VIPERDOS</code></li>
+      <li><strong>Compiler detection</strong> &mdash; <code>RT_COMPILER_MSVC</code>, <code>RT_COMPILER_GCC_LIKE</code></li>
+      <li><strong>Portable atomic operations</strong> &mdash; 32-bit, 64-bit, pointer, and size_t variants</li>
+      <li><strong>Memory barrier abstractions</strong> &mdash; DMB on ARM64, MFENCE on x86, compiler barriers</li>
+      <li><strong>Thread-local storage</strong> &mdash; <code>RT_THREAD_LOCAL</code> macro</li>
+      <li><strong>High-resolution timing</strong> &mdash; <code>clock_gettime()</code> on POSIX, <code>QueryPerformanceCounter</code> on Windows</li>
+      <li><strong>POSIX compatibility shims</strong> &mdash; Windows remappings for <code>lseek64</code>, <code>strtok_r</code>, path separators</li>
+    </ul>
+
+    <p>The rest of the 146K-line runtime compiles identically on all platforms, using only these portable abstractions.</p>
+
+    <h2>Build System Parity</h2>
+
+    <table>
+      <thead><tr><th>Platform</th><th>Build Command</th><th>Demo Command</th></tr></thead>
+      <tbody>
+        <tr><td>macOS / Linux</td><td><code>./scripts/build_viper.sh</code></td><td><code>./scripts/build_demos.sh</code></td></tr>
+        <tr><td>Windows</td><td><code>.\scripts\build_viper.cmd</code></td><td><code>.\scripts\build_demos.cmd</code></td></tr>
+        <tr><td>ViperDOS</td><td><code>./scripts/build_viperdos.sh</code></td><td>N/A (boots in QEMU)</td></tr>
+      </tbody>
+    </table>
+
+    <p>All build scripts auto-detect the OS, available compilers, and core count for parallel builds. CMake 3.20+ with C++20 support is the only requirement.</p>
+
+    <h2>Native Code Generation</h2>
+
+    <p>The compiler generates native executables for all 6 platform+architecture combinations:</p>
+
+    <ul>
+      <li><strong>ELF</strong> for Linux (x86-64 + ARM64)</li>
+      <li><strong>Mach-O</strong> for macOS (x86-64 + ARM64 with 16KB page alignment)</li>
+      <li><strong>PE</strong> for Windows (x86-64 + ARM64)</li>
+    </ul>
+
+    <p>No external assembler, linker, or toolchain needed. See <a href="native-targets.html">6 Native Targets</a> for details.</p>
+
+  </div>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="zero-deps.html">Zero Dependencies</a>
+      <a href="native-targets.html">Native Targets</a>
+      <a href="two-languages.html">Languages</a>
+      <a href="runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

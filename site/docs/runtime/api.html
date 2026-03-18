@@ -1,0 +1,3231 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Complete API Reference — Viper</title>
+  <meta name="description" content="Viper documentation: Complete API Reference">
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="icon" href="../../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../../docs/" class="active">Docs</a>
+    <a href="../../learn/">Learn</a>
+    <a href="../../showcase/">Showcase</a>
+    <a href="../../performance/">Performance</a>
+    <a href="../../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../../">Home</a> / <a href="../../docs">Docs</a> / <span>Complete API Reference</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#table-of-contents">Table of Contents</a></li>
+        <li><a href="#viper-math-bits">Viper.Math.Bits</a></li>
+        <li><a href="#viper-core-box">Viper.Core.Box</a></li>
+        <li><a href="#viper-core-convert">Viper.Core.Convert</a></li>
+        <li><a href="#viper-time-datetime">Viper.Time.DateTime</a></li>
+        <li><a href="#viper-core-diagnostics">Viper.Core.Diagnostics</a></li>
+        <li><a href="#viper-exec">Viper.Exec</a></li>
+        <li><a href="#viper-fmt">Viper.Fmt</a></li>
+        <li><a href="#viper-io">Viper.IO</a></li>
+        <li><a href="#viper-log">Viper.Log</a></li>
+        <li><a href="#viper-machine">Viper.Machine</a></li>
+        <li><a href="#viper-core-parse">Viper.Core.Parse</a></li>
+        <li><a href="#viper-math-random">Viper.Math.Random</a></li>
+        <li><a href="#viper-sound">Viper.Sound</a></li>
+        <li><a href="#viper-string">Viper.String</a></li>
+        <li><a href="#viper-string-additional-utilities">Viper.String (Additional Utilities)</a></li>
+        <li><a href="#viper-text">Viper.Text</a></li>
+        <li><a href="#viper-math-vec2">Viper.Math.Vec2</a></li>
+        <li><a href="#viper-math-vec3">Viper.Math.Vec3</a></li>
+        <li><a href="#appendix-type-abbreviations">Appendix: Type Abbreviations</a></li>
+        <li><a href="#viper-collections">Viper.Collections</a></li>
+        <li><a href="#viper-time-stopwatch">Viper.Time.Stopwatch</a></li>
+        <li><a href="#see-also">See Also</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>Complete API Reference</h1>
+<h1 id="viper-runtime-api-complete-reference">Viper Runtime API - Complete Reference</h1>
+<p>This document provides comprehensive documentation for all Viper runtime namespaces. It supplements the main runtime reference in <code>bible/appendices/d-runtime-reference.md</code>.</p>
+<p><strong>Auto-generated from:</strong> <code>src/il/runtime/runtime.def</code></p>
+<p><strong>Total Functions:</strong> 2,902</p>
+<p><strong>Total Classes:</strong> 197</p>
+<blockquote><p>**Note:** This document covers a subset of the runtime API. Many newer namespaces and functions</p></blockquote>
+<blockquote><p>are not yet documented here. See <code>src/il/runtime/runtime.def</code> for the complete list.</p></blockquote>
+<p>---</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li>[Viper.Collections](#vipercollections) - Data structures (Bytes, Seq, List, Map, etc.)</li>
+<li>[Viper.Core.Box](#vipercorebox) - Value boxing/unboxing</li>
+<li>[Viper.Core.Convert](#vipercoreconvert) - Type conversions</li>
+<li>[Viper.Core.Diagnostics](#vipercorediagnostics) - Assertions and debugging</li>
+<li>[Viper.Core.Parse](#vipercoreparse) - String parsing</li>
+<li>[Viper.Exec](#viperexec) - Process execution</li>
+<li>[Viper.Fmt](#viperfmt) - Number formatting</li>
+<li>[Viper.IO](#viperio) - File and directory operations</li>
+<li>[Viper.Log](#viperlog) - Logging utilities</li>
+<li>[Viper.Machine](#vipermachine) - System information</li>
+<li>[Viper.Math.Bits](#vipermathbits) - Bitwise operations</li>
+<li>[Viper.Math.Random](#vipermathrandom) - Random number generation</li>
+<li>[Viper.Math.Vec2](#vipermathvec2) - 2D vector math</li>
+<li>[Viper.Math.Vec3](#vipermathvec3) - 3D vector math</li>
+<li>[Viper.Sound](#vipersound) - Audio playback</li>
+<li>[Viper.String](#viperstring) - String manipulation</li>
+<li>[Viper.Text](#vipertext) - Text processing utilities</li>
+<li>[Viper.Time.DateTime](#vipertimedatetime) - Date and time operations</li>
+<li>[Viper.Time.Stopwatch](#vipertimestopwatch) - High-precision timing</li>
+</ul>
+<blockquote><p>**Note:** The table of contents lists sections alphabetically by namespace. Sections in the document</p></blockquote>
+<blockquote><p>body appear in the original authoring order; use the links above to navigate.</p></blockquote>
+<p>---</p>
+<h2 id="viper-math-bits">Viper.Math.Bits</h2>
+<p>Bitwise operations for low-level integer manipulation. All functions work with 64-bit integers.</p>
+<h3 id="functions">Functions</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`And(a, b)`</td>
+<td>`i64(i64, i64)`</td>
+<td>Bitwise AND of two integers</td>
+</tr>
+<tr>
+<td>`Clear(x, pos)`</td>
+<td>`i64(i64, i64)`</td>
+<td>Clear bit at position to 0</td>
+</tr>
+<tr>
+<td>`Count(x)`</td>
+<td>`i64(i64)`</td>
+<td>Count number of set bits (popcount)</td>
+</tr>
+<tr>
+<td>`Flip(x)`</td>
+<td>`i64(i64)`</td>
+<td>Flip all bits (bitwise complement)</td>
+</tr>
+<tr>
+<td>`Get(x, pos)`</td>
+<td>`i1(i64, i64)`</td>
+<td>Get bit at position (0-63)</td>
+</tr>
+<tr>
+<td>`LeadZ(x)`</td>
+<td>`i64(i64)`</td>
+<td>Count leading zero bits</td>
+</tr>
+<tr>
+<td>`Not(x)`</td>
+<td>`i64(i64)`</td>
+<td>Bitwise NOT (one&#x27;s complement)</td>
+</tr>
+<tr>
+<td>`Or(a, b)`</td>
+<td>`i64(i64, i64)`</td>
+<td>Bitwise OR of two integers</td>
+</tr>
+<tr>
+<td>`Rotl(x, n)`</td>
+<td>`i64(i64, i64)`</td>
+<td>Rotate left by n bits</td>
+</tr>
+<tr>
+<td>`Rotr(x, n)`</td>
+<td>`i64(i64, i64)`</td>
+<td>Rotate right by n bits</td>
+</tr>
+<tr>
+<td>`Set(x, pos)`</td>
+<td>`i64(i64, i64)`</td>
+<td>Set bit at position to 1</td>
+</tr>
+<tr>
+<td>`Shl(x, n)`</td>
+<td>`i64(i64, i64)`</td>
+<td>Shift left by n bits</td>
+</tr>
+<tr>
+<td>`Shr(x, n)`</td>
+<td>`i64(i64, i64)`</td>
+<td>Arithmetic shift right by n bits</td>
+</tr>
+<tr>
+<td>`Swap(x)`</td>
+<td>`i64(i64)`</td>
+<td>Byte-swap (endian conversion)</td>
+</tr>
+<tr>
+<td>`Toggle(x, pos)`</td>
+<td>`i64(i64, i64)`</td>
+<td>Toggle bit at position</td>
+</tr>
+<tr>
+<td>`TrailZ(x)`</td>
+<td>`i64(i64)`</td>
+<td>Count trailing zero bits</td>
+</tr>
+<tr>
+<td>`Ushr(x, n)`</td>
+<td>`i64(i64, i64)`</td>
+<td>Logical (unsigned) shift right</td>
+</tr>
+<tr>
+<td>`Xor(a, b)`</td>
+<td>`i64(i64, i64)`</td>
+<td>Bitwise XOR of two integers</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+// Bitwise operations
+var flags = Viper.Math.Bits.Or(0x01, 0x04);  // flags = 0x05
+var masked = Viper.Math.Bits.And(flags, 0x0F);
+
+// Bit manipulation
+var value = 0;
+value = Viper.Math.Bits.Set(value, 3);    // Set bit 3: value = 8
+var isSet = Viper.Math.Bits.Get(value, 3); // true
+
+// Counting
+var ones = Viper.Math.Bits.Count(0xFF);   // 8 set bits
+var leading = Viper.Math.Bits.LeadZ(0x0F); // 60 leading zeros
+</code></pre>
+<p>---</p>
+<h2 id="viper-core-box">Viper.Core.Box</h2>
+<p>Boxing and unboxing of primitive values to/from objects. Used for storing primitives in collections.</p>
+<h3 id="functions">Functions</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`EqF64(box, val)`</td>
+<td>`i1(obj, f64)`</td>
+<td>Compare box with float</td>
+</tr>
+<tr>
+<td>`EqI64(box, val)`</td>
+<td>`i1(obj, i64)`</td>
+<td>Compare box with integer</td>
+</tr>
+<tr>
+<td>`EqStr(box, val)`</td>
+<td>`i1(obj, str)`</td>
+<td>Compare box with string</td>
+</tr>
+<tr>
+<td>`F64(value)`</td>
+<td>`obj(f64)`</td>
+<td>Box a float</td>
+</tr>
+<tr>
+<td>`I1(value)`</td>
+<td>`obj(i64)`</td>
+<td>Box a boolean (as integer)</td>
+</tr>
+<tr>
+<td>`I64(value)`</td>
+<td>`obj(i64)`</td>
+<td>Box an integer</td>
+</tr>
+<tr>
+<td>`Str(value)`</td>
+<td>`obj(str)`</td>
+<td>Box a string</td>
+</tr>
+<tr>
+<td>`ToF64(box)`</td>
+<td>`f64(obj)`</td>
+<td>Unbox to float</td>
+</tr>
+<tr>
+<td>`ToI1(box)`</td>
+<td>`i64(obj)`</td>
+<td>Unbox to boolean</td>
+</tr>
+<tr>
+<td>`ToI64(box)`</td>
+<td>`i64(obj)`</td>
+<td>Unbox to integer</td>
+</tr>
+<tr>
+<td>`ToStr(box)`</td>
+<td>`str(obj)`</td>
+<td>Unbox to string</td>
+</tr>
+<tr>
+<td>`Type(box)`</td>
+<td>`i64(obj)`</td>
+<td>Get boxed value type tag</td>
+</tr>
+<tr>
+<td>`ValueType(size)`</td>
+<td>`obj(i64)`</td>
+<td>Allocate heap memory for a value type</td>
+</tr>
+</tbody></table>
+<h3 id="type-constants">Type Constants</h3>
+<ul>
+<li><code>0</code> = Integer (i64)</li>
+<li><code>1</code> = Float (f64)</li>
+<li><code>2</code> = Boolean (i1)</li>
+<li><code>3</code> = String (str)</li>
+</ul>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+// Boxing values for heterogeneous collections
+var boxedInt = Viper.Core.Box.I64(42);
+var boxedStr = Viper.Core.Box.Str(&quot;hello&quot;);
+
+// Type checking
+var type = Viper.Core.Box.Type(boxedInt);  // 0 (integer)
+
+// Unboxing
+var value = Viper.Core.Box.ToI64(boxedInt);  // 42
+</code></pre>
+<p>---</p>
+<h2 id="viper-core-convert">Viper.Core.Convert</h2>
+<p>Type conversion functions between strings and numeric types.</p>
+<h3 id="functions">Functions</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`NumToInt(n)`</td>
+<td>`i64(f64)`</td>
+<td>Convert float to integer (truncate toward zero)</td>
+</tr>
+<tr>
+<td>`ToDouble(s)`</td>
+<td>`f64(str)`</td>
+<td>Parse string to float</td>
+</tr>
+<tr>
+<td>`ToInt(s)`</td>
+<td>`i64(str)`</td>
+<td>Parse string to integer</td>
+</tr>
+<tr>
+<td>`ToInt64(s)`</td>
+<td>`i64(str)`</td>
+<td>Parse string to 64-bit integer</td>
+</tr>
+<tr>
+<td>`ToString_Double(n)`</td>
+<td>`str(f64)`</td>
+<td>Convert float to string</td>
+</tr>
+<tr>
+<td>`ToString_Int(n)`</td>
+<td>`str(i64)`</td>
+<td>Convert integer to string</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+var n = Viper.Core.Convert.ToInt(&quot;42&quot;);        // 42
+var f = Viper.Core.Convert.ToDouble(&quot;3.14&quot;);   // 3.14
+var s = Viper.Core.Convert.ToString_Int(100);  // &quot;100&quot;
+</code></pre>
+<p>---</p>
+<h2 id="viper-time-datetime">Viper.Time.DateTime</h2>
+<p>Date and time operations using Unix timestamps (seconds since epoch).</p>
+<h3 id="functions">Functions</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`AddDays(ts, days)`</td>
+<td>`i64(i64, i64)`</td>
+<td>Add days to timestamp</td>
+</tr>
+<tr>
+<td>`AddSeconds(ts, secs)`</td>
+<td>`i64(i64, i64)`</td>
+<td>Add seconds to timestamp</td>
+</tr>
+<tr>
+<td>`Create(y,m,d,h,min,s)`</td>
+<td>`i64(i64,i64,i64,i64,i64,i64)`</td>
+<td>Create timestamp from components</td>
+</tr>
+<tr>
+<td>`Day(ts)`</td>
+<td>`i64(i64)`</td>
+<td>Extract day (1-31)</td>
+</tr>
+<tr>
+<td>`DayOfWeek(ts)`</td>
+<td>`i64(i64)`</td>
+<td>Day of week (0=Sunday, 6=Saturday)</td>
+</tr>
+<tr>
+<td>`Diff(ts1, ts2)`</td>
+<td>`i64(i64, i64)`</td>
+<td>Difference in seconds</td>
+</tr>
+<tr>
+<td>`Format(ts, fmt)`</td>
+<td>`str(i64, str)`</td>
+<td>Format timestamp using strftime specifiers</td>
+</tr>
+<tr>
+<td>`Hour(ts)`</td>
+<td>`i64(i64)`</td>
+<td>Extract hour (0-23)</td>
+</tr>
+<tr>
+<td>`Minute(ts)`</td>
+<td>`i64(i64)`</td>
+<td>Extract minute (0-59)</td>
+</tr>
+<tr>
+<td>`Month(ts)`</td>
+<td>`i64(i64)`</td>
+<td>Extract month (1-12)</td>
+</tr>
+<tr>
+<td>`Now()`</td>
+<td>`i64()`</td>
+<td>Current Unix timestamp (seconds)</td>
+</tr>
+<tr>
+<td>`NowMs()`</td>
+<td>`i64()`</td>
+<td>Current Unix timestamp (milliseconds)</td>
+</tr>
+<tr>
+<td>`ParseDate(s)`</td>
+<td>`i64(str)`</td>
+<td>Parse date string to timestamp</td>
+</tr>
+<tr>
+<td>`ParseISO(s)`</td>
+<td>`i64(str)`</td>
+<td>Parse ISO 8601 string to timestamp</td>
+</tr>
+<tr>
+<td>`ParseTime(s)`</td>
+<td>`i64(str)`</td>
+<td>Parse time string to timestamp</td>
+</tr>
+<tr>
+<td>`Second(ts)`</td>
+<td>`i64(i64)`</td>
+<td>Extract second (0-59)</td>
+</tr>
+<tr>
+<td>`ToISO(ts)`</td>
+<td>`str(i64)`</td>
+<td>Convert to ISO 8601 string</td>
+</tr>
+<tr>
+<td>`ToLocal(ts)`</td>
+<td>`str(i64)`</td>
+<td>Convert to local time string</td>
+</tr>
+<tr>
+<td>`TryParse(s)`</td>
+<td>`i64(str)`</td>
+<td>Try parse date/time string, return timestamp or -1</td>
+</tr>
+<tr>
+<td>`Year(ts)`</td>
+<td>`i64(i64)`</td>
+<td>Extract year</td>
+</tr>
+</tbody></table>
+<h3 id="format-specifiers">Format Specifiers</h3>
+<ul>
+<li><code>%Y</code> - Year (4 digits)</li>
+<li><code>%m</code> - Month (01-12)</li>
+<li><code>%d</code> - Day (01-31)</li>
+<li><code>%H</code> - Hour (00-23)</li>
+<li><code>%M</code> - Minute (00-59)</li>
+<li><code>%S</code> - Second (00-59)</li>
+</ul>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+var now = Viper.Time.DateTime.Now();
+var year = Viper.Time.DateTime.Year(now);
+var formatted = Viper.Time.DateTime.Format(now, &quot;%Y-%m-%d %H:%M:%S&quot;);
+var iso = Viper.Time.DateTime.ToISO(now);  // &quot;2024-01-15T10:30:00Z&quot;
+
+var tomorrow = Viper.Time.DateTime.AddDays(now, 1);
+var future = Viper.Time.DateTime.Create(2025, 6, 15, 12, 0, 0);
+</code></pre>
+<p>---</p>
+<h2 id="viper-core-diagnostics">Viper.Core.Diagnostics</h2>
+<p>Assertion functions and debugging utilities. Stopwatch (timing) is in <code>Viper.Time.Stopwatch</code>.</p>
+<h3 id="functions">Functions</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Assert(cond, msg)`</td>
+<td>`void(i1, str)`</td>
+<td>Assert condition is true</td>
+</tr>
+<tr>
+<td>`AssertEq(a, b, msg)`</td>
+<td>`void(i64, i64, str)`</td>
+<td>Assert integers equal</td>
+</tr>
+<tr>
+<td>`AssertEqNum(a, b, msg)`</td>
+<td>`void(f64, f64, str)`</td>
+<td>Assert floats equal</td>
+</tr>
+<tr>
+<td>`AssertEqStr(a, b, msg)`</td>
+<td>`void(str, str, str)`</td>
+<td>Assert strings equal</td>
+</tr>
+<tr>
+<td>`AssertFail(msg)`</td>
+<td>`void(str)`</td>
+<td>Always fail with message</td>
+</tr>
+<tr>
+<td>`AssertGt(a, b, msg)`</td>
+<td>`void(i64, i64, str)`</td>
+<td>Assert a &gt; b</td>
+</tr>
+<tr>
+<td>`AssertGte(a, b, msg)`</td>
+<td>`void(i64, i64, str)`</td>
+<td>Assert a &gt;= b</td>
+</tr>
+<tr>
+<td>`AssertLt(a, b, msg)`</td>
+<td>`void(i64, i64, str)`</td>
+<td>Assert a &lt; b</td>
+</tr>
+<tr>
+<td>`AssertLte(a, b, msg)`</td>
+<td>`void(i64, i64, str)`</td>
+<td>Assert a &lt;= b</td>
+</tr>
+<tr>
+<td>`AssertNeq(a, b, msg)`</td>
+<td>`void(i64, i64, str)`</td>
+<td>Assert integers not equal</td>
+</tr>
+<tr>
+<td>`AssertNotNull(obj, msg)`</td>
+<td>`void(obj, str)`</td>
+<td>Assert object is not null</td>
+</tr>
+<tr>
+<td>`AssertNull(obj, msg)`</td>
+<td>`void(obj, str)`</td>
+<td>Assert object is null</td>
+</tr>
+<tr>
+<td>`Trap(msg)`</td>
+<td>`void(str)`</td>
+<td>Trigger runtime trap with message</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+// Assertions
+Viper.Core.Diagnostics.Assert(x &gt; 0, &quot;x must be positive&quot;);
+Viper.Core.Diagnostics.AssertEq(result, expected, &quot;result mismatch&quot;);
+Viper.Core.Diagnostics.AssertNotNull(obj, &quot;object is null&quot;);
+
+// Trigger a fatal trap
+Viper.Core.Diagnostics.Trap(&quot;unreachable code reached&quot;);
+</code></pre>
+<p>---</p>
+<h2 id="viper-exec">Viper.Exec</h2>
+<p>Execute external processes and capture output.</p>
+<h3 id="functions">Functions</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Run(cmd)`</td>
+<td>`i64(str)`</td>
+<td>Run command, return exit code</td>
+</tr>
+<tr>
+<td>`RunArgs(cmd, args)`</td>
+<td>`i64(str, obj)`</td>
+<td>Run with arguments list</td>
+</tr>
+<tr>
+<td>`Capture(cmd)`</td>
+<td>`str(str)`</td>
+<td>Run and capture stdout</td>
+</tr>
+<tr>
+<td>`CaptureArgs(cmd, args)`</td>
+<td>`str(str, obj)`</td>
+<td>Run with args, capture stdout</td>
+</tr>
+<tr>
+<td>`Shell(cmd)`</td>
+<td>`i64(str)`</td>
+<td>Run via shell (sh -c)</td>
+</tr>
+<tr>
+<td>`ShellCapture(cmd)`</td>
+<td>`str(str)`</td>
+<td>Shell command, capture output</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+// Run command
+var exitCode = Viper.Exec.Run(&quot;ls&quot;);
+
+// Capture output
+var output = Viper.Exec.Capture(&quot;date&quot;);
+Viper.Terminal.Say(&quot;Date: &quot; + output);
+
+// With arguments
+var args = Viper.Collections.List.New();
+Viper.Collections.List.Push(args, &quot;-l&quot;);
+Viper.Collections.List.Push(args, &quot;-a&quot;);
+var listing = Viper.Exec.CaptureArgs(&quot;ls&quot;, args);
+
+// Shell command (supports pipes, redirects)
+var result = Viper.Exec.ShellCapture(&quot;cat /etc/passwd | grep root&quot;);
+</code></pre>
+<p>---</p>
+<h2 id="viper-fmt">Viper.Fmt</h2>
+<p>Number formatting utilities.</p>
+<h3 id="functions">Functions</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Bin(n)`</td>
+<td>`str(i64)`</td>
+<td>Format integer as binary string (no prefix)</td>
+</tr>
+<tr>
+<td>`Bool(v)`</td>
+<td>`str(i1)`</td>
+<td>Format boolean as &quot;true&quot; or &quot;false&quot;</td>
+</tr>
+<tr>
+<td>`BoolYN(v)`</td>
+<td>`str(i1)`</td>
+<td>Format boolean as &quot;Yes&quot; or &quot;No&quot;</td>
+</tr>
+<tr>
+<td>`Currency(n, decimals, symbol)`</td>
+<td>`str(f64, i64, str)`</td>
+<td>Format as currency (e.g., &quot;$1,234.56&quot;)</td>
+</tr>
+<tr>
+<td>`Hex(n)`</td>
+<td>`str(i64)`</td>
+<td>Format integer as lowercase hex (no prefix)</td>
+</tr>
+<tr>
+<td>`HexPad(n, width)`</td>
+<td>`str(i64, i64)`</td>
+<td>Format as padded hex (e.g., &quot;00ff&quot;)</td>
+</tr>
+<tr>
+<td>`Int(n)`</td>
+<td>`str(i64)`</td>
+<td>Format integer as decimal string</td>
+</tr>
+<tr>
+<td>`IntGrouped(n, sep)`</td>
+<td>`str(i64, str)`</td>
+<td>Format with thousands separator</td>
+</tr>
+<tr>
+<td>`IntPad(n, width, pad)`</td>
+<td>`str(i64, i64, str)`</td>
+<td>Format with left padding</td>
+</tr>
+<tr>
+<td>`IntRadix(n, radix)`</td>
+<td>`str(i64, i64)`</td>
+<td>Format in base 2-36</td>
+</tr>
+<tr>
+<td>`Num(n)`</td>
+<td>`str(f64)`</td>
+<td>Format float with default precision</td>
+</tr>
+<tr>
+<td>`NumFixed(n, decimals)`</td>
+<td>`str(f64, i64)`</td>
+<td>Format with fixed decimal places</td>
+</tr>
+<tr>
+<td>`NumPct(n, decimals)`</td>
+<td>`str(f64, i64)`</td>
+<td>Format as percentage (e.g., &quot;50.00%&quot;)</td>
+</tr>
+<tr>
+<td>`NumSci(n, decimals)`</td>
+<td>`str(f64, i64)`</td>
+<td>Format in scientific notation</td>
+</tr>
+<tr>
+<td>`Oct(n)`</td>
+<td>`str(i64)`</td>
+<td>Format integer as octal string (no prefix)</td>
+</tr>
+<tr>
+<td>`Ordinal(n)`</td>
+<td>`str(i64)`</td>
+<td>Format as ordinal (e.g., &quot;1st&quot;, &quot;2nd&quot;)</td>
+</tr>
+<tr>
+<td>`Size(n)`</td>
+<td>`str(i64)`</td>
+<td>Format byte count as human-readable size</td>
+</tr>
+<tr>
+<td>`ToWords(n)`</td>
+<td>`str(i64)`</td>
+<td>Convert integer to English words</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+var hex = Viper.Fmt.IntRadix(255, 16);      // &quot;ff&quot;
+var bin = Viper.Fmt.IntRadix(10, 2);        // &quot;1010&quot;
+var padded = Viper.Fmt.IntPad(42, 5, &quot;0&quot;);  // &quot;00042&quot;
+var fixed = Viper.Fmt.NumFixed(3.14159, 2); // &quot;3.14&quot;
+var size = Viper.Fmt.Size(1536);            // &quot;1.5 KB&quot;
+var grp = Viper.Fmt.IntGrouped(1234567, &quot;,&quot;); // &quot;1,234,567&quot;
+var words = Viper.Fmt.ToWords(42);          // &quot;forty-two&quot;
+</code></pre>
+<p>---</p>
+<h2 id="viper-io">Viper.IO</h2>
+<p>File and directory operations.</p>
+<h3 id="viper-io-file">Viper.IO.File</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Exists(path)`</td>
+<td>`bool(str)`</td>
+<td>Check if file exists</td>
+</tr>
+<tr>
+<td>`Delete(path)`</td>
+<td>`void(str)`</td>
+<td>Delete file</td>
+</tr>
+<tr>
+<td>`Copy(src, dst)`</td>
+<td>`void(str, str)`</td>
+<td>Copy file</td>
+</tr>
+<tr>
+<td>`Move(src, dst)`</td>
+<td>`void(str, str)`</td>
+<td>Move/rename file</td>
+</tr>
+<tr>
+<td>`Touch(path)`</td>
+<td>`void(str)`</td>
+<td>Create empty file or update mtime</td>
+</tr>
+<tr>
+<td>`Size(path)`</td>
+<td>`i64(str)`</td>
+<td>Get file size in bytes</td>
+</tr>
+<tr>
+<td>`Modified(path)`</td>
+<td>`i64(str)`</td>
+<td>Get modification timestamp</td>
+</tr>
+<tr>
+<td>`ReadAllText(path)`</td>
+<td>`str(str)`</td>
+<td>Read entire file as string</td>
+</tr>
+<tr>
+<td>`ReadAllBytes(path)`</td>
+<td>`obj(str)`</td>
+<td>Read file as byte array</td>
+</tr>
+<tr>
+<td>`ReadAllLines(path)`</td>
+<td>`obj(str)`</td>
+<td>Read file as list of lines</td>
+</tr>
+<tr>
+<td>`WriteAllText(path, text)`</td>
+<td>`void(str, str)`</td>
+<td>Write string to file</td>
+</tr>
+<tr>
+<td>`WriteAllBytes(path, data)`</td>
+<td>`void(str, obj)`</td>
+<td>Write bytes to file</td>
+</tr>
+<tr>
+<td>`Append(path, text)`</td>
+<td>`void(str, str)`</td>
+<td>Append text to file</td>
+</tr>
+<tr>
+<td>`AppendLine(path, text)`</td>
+<td>`void(str, str)`</td>
+<td>Append line to file</td>
+</tr>
+</tbody></table>
+<h3 id="viper-io-dir">Viper.IO.Dir</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Exists(path)`</td>
+<td>`bool(str)`</td>
+<td>Check if directory exists</td>
+</tr>
+<tr>
+<td>`Make(path)`</td>
+<td>`void(str)`</td>
+<td>Create directory</td>
+</tr>
+<tr>
+<td>`MakeAll(path)`</td>
+<td>`void(str)`</td>
+<td>Create directory and parents</td>
+</tr>
+<tr>
+<td>`Remove(path)`</td>
+<td>`void(str)`</td>
+<td>Remove empty directory</td>
+</tr>
+<tr>
+<td>`RemoveAll(path)`</td>
+<td>`void(str)`</td>
+<td>Remove directory recursively</td>
+</tr>
+<tr>
+<td>`Move(src, dst)`</td>
+<td>`void(str, str)`</td>
+<td>Move/rename directory</td>
+</tr>
+<tr>
+<td>`Current()`</td>
+<td>`str()`</td>
+<td>Get current working directory</td>
+</tr>
+<tr>
+<td>`SetCurrent(path)`</td>
+<td>`void(str)`</td>
+<td>Change working directory</td>
+</tr>
+<tr>
+<td>`List(path)`</td>
+<td>`ptr(str)`</td>
+<td>List all entries</td>
+</tr>
+<tr>
+<td>`Files(path)`</td>
+<td>`ptr(str)`</td>
+<td>List files only</td>
+</tr>
+<tr>
+<td>`Dirs(path)`</td>
+<td>`ptr(str)`</td>
+<td>List subdirectories only</td>
+</tr>
+<tr>
+<td>`Entries(path)`</td>
+<td>`obj(str)`</td>
+<td>List entries as sequence</td>
+</tr>
+</tbody></table>
+<h3 id="viper-io-path">Viper.IO.Path</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Join(a, b)`</td>
+<td>`str(str, str)`</td>
+<td>Join path components</td>
+</tr>
+<tr>
+<td>`Dir(path)`</td>
+<td>`str(str)`</td>
+<td>Get directory part</td>
+</tr>
+<tr>
+<td>`Name(path)`</td>
+<td>`str(str)`</td>
+<td>Get filename with extension</td>
+</tr>
+<tr>
+<td>`Stem(path)`</td>
+<td>`str(str)`</td>
+<td>Get filename without extension</td>
+</tr>
+<tr>
+<td>`Ext(path)`</td>
+<td>`str(str)`</td>
+<td>Get extension (with dot)</td>
+</tr>
+<tr>
+<td>`WithExt(path, ext)`</td>
+<td>`str(str, str)`</td>
+<td>Replace extension</td>
+</tr>
+<tr>
+<td>`Abs(path)`</td>
+<td>`str(str)`</td>
+<td>Get absolute path</td>
+</tr>
+<tr>
+<td>`Norm(path)`</td>
+<td>`str(str)`</td>
+<td>Normalize path (remove . and ..)</td>
+</tr>
+<tr>
+<td>`IsAbs(path)`</td>
+<td>`bool(str)`</td>
+<td>Check if path is absolute</td>
+</tr>
+<tr>
+<td>`Sep()`</td>
+<td>`str()`</td>
+<td>Get path separator (&quot;/&quot; or &quot;\\&quot;)</td>
+</tr>
+</tbody></table>
+<h3 id="viper-io-binfile">Viper.IO.BinFile</h3>
+<p>Binary file operations with random access.</p>
+<table><thead><tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Open(path, mode)`</td>
+<td>`obj(str, str)`</td>
+<td>Open file (&quot;r&quot;, &quot;w&quot;, &quot;rw&quot;)</td>
+</tr>
+<tr>
+<td>`Close(file)`</td>
+<td>`void(obj)`</td>
+<td>Close file</td>
+</tr>
+<tr>
+<td>`Flush(file)`</td>
+<td>`void(obj)`</td>
+<td>Flush buffers</td>
+</tr>
+<tr>
+<td>`get_Eof`</td>
+<td>`bool(obj)`</td>
+<td>Check if at end of file</td>
+</tr>
+<tr>
+<td>`get_Pos`</td>
+<td>`i64(obj)`</td>
+<td>Get current position</td>
+</tr>
+<tr>
+<td>`Seek(file, pos)`</td>
+<td>`void(obj, i64)`</td>
+<td>Seek to position</td>
+</tr>
+<tr>
+<td>`ReadI8/I16/I32/I64`</td>
+<td>various</td>
+<td>Read integers</td>
+</tr>
+<tr>
+<td>`ReadF32/F64`</td>
+<td>various</td>
+<td>Read floats</td>
+</tr>
+<tr>
+<td>`WriteI8/I16/I32/I64`</td>
+<td>various</td>
+<td>Write integers</td>
+</tr>
+<tr>
+<td>`WriteF32/F64`</td>
+<td>various</td>
+<td>Write floats</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+// File operations
+if (Viper.IO.File.Exists(&quot;data.txt&quot;)) {
+    var content = Viper.IO.File.ReadAllText(&quot;data.txt&quot;);
+    Viper.IO.File.WriteAllText(&quot;backup.txt&quot;, content);
+}
+
+// Directory operations
+Viper.IO.Dir.MakeAll(&quot;/tmp/myapp/data&quot;);
+var files = Viper.IO.Dir.Files(&quot;/tmp/myapp&quot;);
+
+// Path manipulation
+var full = Viper.IO.Path.Join(&quot;/home/user&quot;, &quot;documents/file.txt&quot;);
+var dir = Viper.IO.Path.Dir(full);   // &quot;/home/user/documents&quot;
+var name = Viper.IO.Path.Name(full); // &quot;file.txt&quot;
+var stem = Viper.IO.Path.Stem(full); // &quot;file&quot;
+var ext = Viper.IO.Path.Ext(full);   // &quot;.txt&quot;
+</code></pre>
+<p>---</p>
+<h2 id="viper-log">Viper.Log</h2>
+<p>Logging utilities with configurable log levels.</p>
+<h3 id="log-levels">Log Levels</h3>
+<table><thead><tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`DEBUG`</td>
+<td>0</td>
+<td>Debug messages</td>
+</tr>
+<tr>
+<td>`INFO`</td>
+<td>1</td>
+<td>Informational messages</td>
+</tr>
+<tr>
+<td>`WARN`</td>
+<td>2</td>
+<td>Warnings</td>
+</tr>
+<tr>
+<td>`ERROR`</td>
+<td>3</td>
+<td>Errors</td>
+</tr>
+<tr>
+<td>`OFF`</td>
+<td>4</td>
+<td>Disable logging</td>
+</tr>
+</tbody></table>
+<h3 id="functions">Functions</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Debug(msg)`</td>
+<td>`void(str)`</td>
+<td>Log debug message</td>
+</tr>
+<tr>
+<td>`Info(msg)`</td>
+<td>`void(str)`</td>
+<td>Log info message</td>
+</tr>
+<tr>
+<td>`Warn(msg)`</td>
+<td>`void(str)`</td>
+<td>Log warning message</td>
+</tr>
+<tr>
+<td>`Error(msg)`</td>
+<td>`void(str)`</td>
+<td>Log error message</td>
+</tr>
+<tr>
+<td>`get_Level`</td>
+<td>`i64()`</td>
+<td>Get current log level</td>
+</tr>
+<tr>
+<td>`set_Level(level)`</td>
+<td>`void(i64)`</td>
+<td>Set log level</td>
+</tr>
+<tr>
+<td>`Enabled(level)`</td>
+<td>`bool(i64)`</td>
+<td>Check if level is enabled</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+// Set log level
+Viper.Log.set_Level(Viper.Log.get_DEBUG);
+
+// Log messages
+Viper.Log.Debug(&quot;Processing item &quot; + Viper.Core.Convert.ToString_Int(i));
+Viper.Log.Info(&quot;Server started on port 8080&quot;);
+Viper.Log.Warn(&quot;Connection pool running low&quot;);
+Viper.Log.Error(&quot;Failed to connect to database&quot;);
+</code></pre>
+<p>---</p>
+<h2 id="viper-machine">Viper.Machine</h2>
+<p>System and hardware information.</p>
+<h3 id="properties">Properties</h3>
+<table><thead><tr>
+<th>Property</th>
+<th>Type</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`get_OS`</td>
+<td>`str()`</td>
+<td>Operating system name</td>
+</tr>
+<tr>
+<td>`get_OSVer`</td>
+<td>`str()`</td>
+<td>OS version string</td>
+</tr>
+<tr>
+<td>`get_Cores`</td>
+<td>`i64()`</td>
+<td>Number of CPU cores</td>
+</tr>
+<tr>
+<td>`get_MemTotal`</td>
+<td>`i64()`</td>
+<td>Total system memory (bytes)</td>
+</tr>
+<tr>
+<td>`get_MemFree`</td>
+<td>`i64()`</td>
+<td>Available memory (bytes)</td>
+</tr>
+<tr>
+<td>`get_Endian`</td>
+<td>`str()`</td>
+<td>Byte order (&quot;little&quot; or &quot;big&quot;)</td>
+</tr>
+<tr>
+<td>`get_Host`</td>
+<td>`str()`</td>
+<td>Hostname</td>
+</tr>
+<tr>
+<td>`get_User`</td>
+<td>`str()`</td>
+<td>Current username</td>
+</tr>
+<tr>
+<td>`get_Home`</td>
+<td>`str()`</td>
+<td>User home directory</td>
+</tr>
+<tr>
+<td>`get_Temp`</td>
+<td>`str()`</td>
+<td>Temp directory path</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+Viper.Terminal.Say(&quot;OS: &quot; + Viper.Machine.get_OS);
+Viper.Terminal.Say(&quot;Cores: &quot; + Viper.Core.Convert.ToString_Int(Viper.Machine.get_Cores));
+Viper.Terminal.Say(&quot;Memory: &quot; + Viper.Core.Convert.ToString_Int(Viper.Machine.get_MemTotal / 1048576) + &quot; MB&quot;);
+</code></pre>
+<p>---</p>
+<h2 id="viper-core-parse">Viper.Core.Parse</h2>
+<p>Safe string parsing with error handling.</p>
+<h3 id="functions">Functions</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`BoolOr(s, default)`</td>
+<td>`i1(str, i1)`</td>
+<td>Parse boolean or return default</td>
+</tr>
+<tr>
+<td>`IntOr(s, default)`</td>
+<td>`i64(str, i64)`</td>
+<td>Parse integer or return default</td>
+</tr>
+<tr>
+<td>`IntRadix(s, radix, default)`</td>
+<td>`i64(str, i64, i64)`</td>
+<td>Parse integer in given base</td>
+</tr>
+<tr>
+<td>`IsInt(s)`</td>
+<td>`i1(str)`</td>
+<td>Check if string is a valid integer</td>
+</tr>
+<tr>
+<td>`IsNum(s)`</td>
+<td>`i1(str)`</td>
+<td>Check if string is a valid number</td>
+</tr>
+<tr>
+<td>`NumOr(s, default)`</td>
+<td>`f64(str, f64)`</td>
+<td>Parse float or return default</td>
+</tr>
+<tr>
+<td>`TryBool(s, out)`</td>
+<td>`i1(str, ptr)`</td>
+<td>Try parse boolean, write result to ptr</td>
+</tr>
+<tr>
+<td>`TryInt(s, out)`</td>
+<td>`i1(str, ptr)`</td>
+<td>Try parse integer, write result to ptr</td>
+</tr>
+<tr>
+<td>`TryNum(s, out)`</td>
+<td>`i1(str, ptr)`</td>
+<td>Try parse float, write result to ptr</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+// Safe parsing with defaults
+var port = Viper.Core.Parse.IntOr(portStr, 8080);
+var timeout = Viper.Core.Parse.NumOr(timeoutStr, 30.0);
+var enabled = Viper.Core.Parse.BoolOr(enabledStr, false);
+
+// Validation
+if (Viper.Core.Parse.IsInt(input)) {
+    var value = Viper.Core.Convert.ToInt(input);
+}
+
+// Parse hex
+var color = Viper.Core.Parse.IntRadix(&quot;FF00FF&quot;, 16, 0);
+</code></pre>
+<p>---</p>
+<h2 id="viper-math-random">Viper.Math.Random</h2>
+<p>Deterministic pseudo-random number generation using a 64-bit LCG (Knuth MMIX constants). Produces identical sequences across all platforms for a given seed.</p>
+<h3 id="functions">Functions</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Chance(p)`</td>
+<td>`i64(f64)`</td>
+<td>Return 1 with probability p (0.0-1.0), else 0</td>
+</tr>
+<tr>
+<td>`Dice(sides)`</td>
+<td>`i64(i64)`</td>
+<td>Random integer in [1, sides]</td>
+</tr>
+<tr>
+<td>`Exponential(lambda)`</td>
+<td>`f64(f64)`</td>
+<td>Random value from exponential distribution</td>
+</tr>
+<tr>
+<td>`Gaussian(mean, stddev)`</td>
+<td>`f64(f64, f64)`</td>
+<td>Random value from normal distribution</td>
+</tr>
+<tr>
+<td>`New(seed)`</td>
+<td>`obj(i64)`</td>
+<td>Create a Random instance seeded with given value</td>
+</tr>
+<tr>
+<td>`Next()`</td>
+<td>`f64()`</td>
+<td>Random float in [0.0, 1.0)</td>
+</tr>
+<tr>
+<td>`NextInt(max)`</td>
+<td>`i64(i64)`</td>
+<td>Random integer in [0, max)</td>
+</tr>
+<tr>
+<td>`Range(min, max)`</td>
+<td>`i64(i64, i64)`</td>
+<td>Random integer in [min, max] (inclusive)</td>
+</tr>
+<tr>
+<td>`Seed(value)`</td>
+<td>`void(i64)`</td>
+<td>Seed the global generator</td>
+</tr>
+<tr>
+<td>`Shuffle(seq)`</td>
+<td>`void(obj)`</td>
+<td>Fisher-Yates shuffle a Seq in place</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+// Seed for reproducibility
+Viper.Math.Random.Seed(12345);
+
+// Random values
+var roll = Viper.Math.Random.Dice(6);           // Dice roll 1-6
+var chance = Viper.Math.Random.Next();           // 0.0 to 1.0
+var percent = Viper.Math.Random.NextInt(100);    // 0 to 99
+var range = Viper.Math.Random.Range(10, 20);     // 10 to 20
+var coin = Viper.Math.Random.Chance(0.5);        // 50% true
+</code></pre>
+<p>---</p>
+<h2 id="viper-sound">Viper.Sound</h2>
+<p>Audio playback for sound effects and music.</p>
+<h3 id="viper-sound-audio-global">Viper.Sound.Audio (Global)</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Init()`</td>
+<td>`i64()`</td>
+<td>Initialize audio system</td>
+</tr>
+<tr>
+<td>`Shutdown()`</td>
+<td>`void()`</td>
+<td>Shutdown audio</td>
+</tr>
+<tr>
+<td>`SetMasterVolume(vol)`</td>
+<td>`void(i64)`</td>
+<td>Set master volume (0-100)</td>
+</tr>
+<tr>
+<td>`GetMasterVolume()`</td>
+<td>`i64()`</td>
+<td>Get master volume</td>
+</tr>
+<tr>
+<td>`PauseAll()`</td>
+<td>`void()`</td>
+<td>Pause all playback</td>
+</tr>
+<tr>
+<td>`ResumeAll()`</td>
+<td>`void()`</td>
+<td>Resume all playback</td>
+</tr>
+<tr>
+<td>`StopAllSounds()`</td>
+<td>`void()`</td>
+<td>Stop all sounds</td>
+</tr>
+</tbody></table>
+<h3 id="viper-sound-sound-effects">Viper.Sound.Sound (Effects)</h3>
+<table><thead><tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Load(path)`</td>
+<td>`obj(str)`</td>
+<td>Load sound file</td>
+</tr>
+<tr>
+<td>`Free(sound)`</td>
+<td>`void(obj)`</td>
+<td>Free sound</td>
+</tr>
+<tr>
+<td>`Play(sound)`</td>
+<td>`i64(obj)`</td>
+<td>Play sound, return voice ID</td>
+</tr>
+<tr>
+<td>`PlayEx(sound, vol, pan)`</td>
+<td>`i64(obj, i64, i64)`</td>
+<td>Play with volume/pan</td>
+</tr>
+<tr>
+<td>`PlayLoop(sound, vol, pan)`</td>
+<td>`i64(obj, i64, i64)`</td>
+<td>Play looping</td>
+</tr>
+</tbody></table>
+<h3 id="viper-sound-voice-playback-control">Viper.Sound.Voice (Playback Control)</h3>
+<table><thead><tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Stop(voice)`</td>
+<td>`void(i64)`</td>
+<td>Stop voice</td>
+</tr>
+<tr>
+<td>`SetVolume(voice, vol)`</td>
+<td>`void(i64, i64)`</td>
+<td>Set voice volume</td>
+</tr>
+<tr>
+<td>`SetPan(voice, pan)`</td>
+<td>`void(i64, i64)`</td>
+<td>Set voice pan (-100 to 100)</td>
+</tr>
+<tr>
+<td>`IsPlaying(voice)`</td>
+<td>`bool(i64)`</td>
+<td>Check if playing</td>
+</tr>
+</tbody></table>
+<h3 id="viper-sound-music-streaming">Viper.Sound.Music (Streaming)</h3>
+<table><thead><tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Load(path)`</td>
+<td>`obj(str)`</td>
+<td>Load music file</td>
+</tr>
+<tr>
+<td>`Free(music)`</td>
+<td>`void(obj)`</td>
+<td>Free music</td>
+</tr>
+<tr>
+<td>`Play(music, loops)`</td>
+<td>`void(obj, i64)`</td>
+<td>Play music (-1=infinite)</td>
+</tr>
+<tr>
+<td>`Stop(music)`</td>
+<td>`void(obj)`</td>
+<td>Stop music</td>
+</tr>
+<tr>
+<td>`Pause(music)`</td>
+<td>`void(obj)`</td>
+<td>Pause music</td>
+</tr>
+<tr>
+<td>`Resume(music)`</td>
+<td>`void(obj)`</td>
+<td>Resume music</td>
+</tr>
+<tr>
+<td>`SetVolume(music, vol)`</td>
+<td>`void(obj, i64)`</td>
+<td>Set volume</td>
+</tr>
+<tr>
+<td>`IsPlaying(music)`</td>
+<td>`bool(obj)`</td>
+<td>Check if playing</td>
+</tr>
+<tr>
+<td>`Seek(music, ms)`</td>
+<td>`void(obj, i64)`</td>
+<td>Seek to position</td>
+</tr>
+<tr>
+<td>`get_Position`</td>
+<td>`i64(obj)`</td>
+<td>Get position in ms</td>
+</tr>
+<tr>
+<td>`get_Duration`</td>
+<td>`i64(obj)`</td>
+<td>Get duration in ms</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+// Initialize audio
+Viper.Sound.Audio.Init();
+
+// Load and play sound effect
+var explosion = Viper.Sound.Sound.Load(&quot;assets/explosion.wav&quot;);
+Viper.Sound.Sound.Play(explosion);
+
+// Background music
+var bgm = Viper.Sound.Music.Load(&quot;assets/music.ogg&quot;);
+Viper.Sound.Music.Play(bgm, -1);  // Loop forever
+Viper.Sound.Music.SetVolume(bgm, 50);
+</code></pre>
+<p>---</p>
+<h2 id="viper-string">Viper.String</h2>
+<p>Core string manipulation functions.</p>
+<h3 id="functions">Functions</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Asc(s)`</td>
+<td>`i64(str)`</td>
+<td>Code point of first character</td>
+</tr>
+<tr>
+<td>`Chr(code)`</td>
+<td>`str(i64)`</td>
+<td>Character from Unicode code point</td>
+</tr>
+<tr>
+<td>`Cmp(a, b)`</td>
+<td>`i64(str, str)`</td>
+<td>Lexicographic compare (-1, 0, 1)</td>
+</tr>
+<tr>
+<td>`CmpNoCase(a, b)`</td>
+<td>`i64(str, str)`</td>
+<td>Case-insensitive compare (-1, 0, 1)</td>
+</tr>
+<tr>
+<td>`Concat(a, b)`</td>
+<td>`str(str, str)`</td>
+<td>Concatenate two strings</td>
+</tr>
+<tr>
+<td>`Count(s, sub)`</td>
+<td>`i64(str, str)`</td>
+<td>Count non-overlapping occurrences of sub</td>
+</tr>
+<tr>
+<td>`EndsWith(s, suffix)`</td>
+<td>`i1(str, str)`</td>
+<td>Check if string ends with suffix</td>
+</tr>
+<tr>
+<td>`Flip(s)`</td>
+<td>`str(str)`</td>
+<td>Reverse string</td>
+</tr>
+<tr>
+<td>`get_IsEmpty(s)`</td>
+<td>`i1(str)`</td>
+<td>Check if empty (length == 0)</td>
+</tr>
+<tr>
+<td>`get_Length(s)`</td>
+<td>`i64(str)`</td>
+<td>Get string length in characters</td>
+</tr>
+<tr>
+<td>`Has(s, sub)`</td>
+<td>`i1(str, str)`</td>
+<td>Check if string contains substring</td>
+</tr>
+<tr>
+<td>`IndexOf(s, sub)`</td>
+<td>`i64(str, str)`</td>
+<td>Find first occurrence (-1 if not found)</td>
+</tr>
+<tr>
+<td>`IndexOfFrom(s, start, sub)`</td>
+<td>`i64(str, i64, str)`</td>
+<td>Find from position</td>
+</tr>
+<tr>
+<td>`Left(s, n)`</td>
+<td>`str(str, i64)`</td>
+<td>Get leftmost n characters</td>
+</tr>
+<tr>
+<td>`Mid(s, start)`</td>
+<td>`str(str, i64)`</td>
+<td>Substring from position to end</td>
+</tr>
+<tr>
+<td>`MidLen(s, start, len)`</td>
+<td>`str(str, i64, i64)`</td>
+<td>Substring with explicit length</td>
+</tr>
+<tr>
+<td>`PadLeft(s, width, pad)`</td>
+<td>`str(str, i64, str)`</td>
+<td>Left-pad to minimum width</td>
+</tr>
+<tr>
+<td>`PadRight(s, width, pad)`</td>
+<td>`str(str, i64, str)`</td>
+<td>Right-pad to minimum width</td>
+</tr>
+<tr>
+<td>`Repeat(s, n)`</td>
+<td>`str(str, i64)`</td>
+<td>Repeat string n times</td>
+</tr>
+<tr>
+<td>`Replace(s, old, new)`</td>
+<td>`str(str, str, str)`</td>
+<td>Replace all occurrences of old with new</td>
+</tr>
+<tr>
+<td>`Right(s, n)`</td>
+<td>`str(str, i64)`</td>
+<td>Get rightmost n characters</td>
+</tr>
+<tr>
+<td>`Split(s, delim)`</td>
+<td>`obj(str, str)`</td>
+<td>Split into Seq of strings</td>
+</tr>
+<tr>
+<td>`StartsWith(s, prefix)`</td>
+<td>`i1(str, str)`</td>
+<td>Check if string starts with prefix</td>
+</tr>
+<tr>
+<td>`Substring(s, start, end)`</td>
+<td>`str(str, i64, i64)`</td>
+<td>Substring by start/end indices</td>
+</tr>
+<tr>
+<td>`ToLower(s)`</td>
+<td>`str(str)`</td>
+<td>Convert to lowercase</td>
+</tr>
+<tr>
+<td>`ToUpper(s)`</td>
+<td>`str(str)`</td>
+<td>Convert to uppercase</td>
+</tr>
+<tr>
+<td>`Trim(s)`</td>
+<td>`str(str)`</td>
+<td>Trim whitespace from both ends</td>
+</tr>
+<tr>
+<td>`TrimEnd(s)`</td>
+<td>`str(str)`</td>
+<td>Trim trailing whitespace</td>
+</tr>
+<tr>
+<td>`TrimStart(s)`</td>
+<td>`str(str)`</td>
+<td>Trim leading whitespace</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+var s = &quot;  Hello, World!  &quot;;
+var trimmed = Viper.String.Trim(s);        // &quot;Hello, World!&quot;
+var upper = Viper.String.ToUpper(trimmed); // &quot;HELLO, WORLD!&quot;
+var words = Viper.String.Split(trimmed, &quot; &quot;);
+var has = Viper.String.Has(s, &quot;World&quot;);    // true
+var pos = Viper.String.IndexOf(s, &quot;World&quot;); // 9
+
+var padded = Viper.String.PadLeft(&quot;42&quot;, 5, &quot;0&quot;);  // &quot;00042&quot;
+var repeated = Viper.String.Repeat(&quot;-&quot;, 20);      // &quot;--------------------&quot;
+</code></pre>
+<p>---</p>
+<h2 id="viper-string-additional-utilities">Viper.String (Additional Utilities)</h2>
+<p>Additional string utilities and conversion functions. All are part of the <code>Viper.String</code> namespace.</p>
+<h3 id="functions">Functions</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Equals(a, b)`</td>
+<td>`i1(str, str)`</td>
+<td>String equality check</td>
+</tr>
+<tr>
+<td>`FromI16(n)`</td>
+<td>`str(i16)`</td>
+<td>16-bit integer to string</td>
+</tr>
+<tr>
+<td>`FromI32(n)`</td>
+<td>`str(i32)`</td>
+<td>32-bit integer to string</td>
+</tr>
+<tr>
+<td>`FromSingle(n)`</td>
+<td>`str(f64)`</td>
+<td>Format float using single-precision display format</td>
+</tr>
+<tr>
+<td>`FromStr(s)`</td>
+<td>`str(str)`</td>
+<td>Clone/copy string</td>
+</tr>
+<tr>
+<td>`Join(sep, list)`</td>
+<td>`str(str, obj)`</td>
+<td>Join a Seq of strings with separator</td>
+</tr>
+<tr>
+<td>`SplitFields(s, arr, max)`</td>
+<td>`i64(str, ptr, i64)`</td>
+<td>Split on whitespace fields into raw array</td>
+</tr>
+</tbody></table>
+<blockquote><p>**Note**: For integer/double to string conversion, use <code>Viper.Core.Convert.ToString_Int</code> and <code>Viper.Core.Convert.ToString_Double</code>.</p></blockquote>
+<p>---</p>
+<h2 id="viper-text">Viper.Text</h2>
+<p>Text processing utilities including encoding, CSV, GUID, templates, and patterns.</p>
+<h3 id="viper-text-codec">Viper.Text.Codec</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Base64Enc(s)`</td>
+<td>`str(str)`</td>
+<td>Encode to Base64</td>
+</tr>
+<tr>
+<td>`Base64Dec(s)`</td>
+<td>`str(str)`</td>
+<td>Decode from Base64</td>
+</tr>
+<tr>
+<td>`HexEnc(s)`</td>
+<td>`str(str)`</td>
+<td>Encode to hex string</td>
+</tr>
+<tr>
+<td>`HexDec(s)`</td>
+<td>`str(str)`</td>
+<td>Decode from hex string</td>
+</tr>
+<tr>
+<td>`UrlEncode(s)`</td>
+<td>`str(str)`</td>
+<td>URL-encode string</td>
+</tr>
+<tr>
+<td>`UrlDecode(s)`</td>
+<td>`str(str)`</td>
+<td>URL-decode string</td>
+</tr>
+</tbody></table>
+<h3 id="viper-text-csv">Viper.Text.Csv</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Parse(text)`</td>
+<td>`obj(str)`</td>
+<td>Parse CSV to list of lists</td>
+</tr>
+<tr>
+<td>`ParseWith(text, delim)`</td>
+<td>`obj(str, str)`</td>
+<td>Parse with custom delimiter</td>
+</tr>
+<tr>
+<td>`ParseLine(line)`</td>
+<td>`obj(str)`</td>
+<td>Parse single CSV line</td>
+</tr>
+<tr>
+<td>`ParseLineWith(line, delim)`</td>
+<td>`obj(str, str)`</td>
+<td>Parse line with delimiter</td>
+</tr>
+<tr>
+<td>`Format(data)`</td>
+<td>`str(obj)`</td>
+<td>Format list of lists to CSV</td>
+</tr>
+<tr>
+<td>`FormatWith(data, delim)`</td>
+<td>`str(obj, str)`</td>
+<td>Format with custom delimiter</td>
+</tr>
+<tr>
+<td>`FormatLine(row)`</td>
+<td>`str(obj)`</td>
+<td>Format single row</td>
+</tr>
+<tr>
+<td>`FormatLineWith(row, delim)`</td>
+<td>`str(obj, str)`</td>
+<td>Format row with delimiter</td>
+</tr>
+</tbody></table>
+<h3 id="viper-text-guid">Viper.Text.Guid</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`New()`</td>
+<td>`str()`</td>
+<td>Generate new UUID v4</td>
+</tr>
+<tr>
+<td>`get_Empty`</td>
+<td>`str()`</td>
+<td>Get empty GUID (all zeros)</td>
+</tr>
+<tr>
+<td>`IsValid(s)`</td>
+<td>`bool(str)`</td>
+<td>Validate GUID format</td>
+</tr>
+<tr>
+<td>`ToBytes(s)`</td>
+<td>`obj(str)`</td>
+<td>Convert to 16 bytes</td>
+</tr>
+<tr>
+<td>`FromBytes(b)`</td>
+<td>`str(obj)`</td>
+<td>Convert from 16 bytes</td>
+</tr>
+</tbody></table>
+<h3 id="viper-text-stringbuilder">Viper.Text.StringBuilder</h3>
+<table><thead><tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`New()`</td>
+<td>`obj()`</td>
+<td>Create new StringBuilder</td>
+</tr>
+<tr>
+<td>`Append(sb, s)`</td>
+<td>`obj(obj, str)`</td>
+<td>Append string</td>
+</tr>
+<tr>
+<td>`AppendLine(sb, s)`</td>
+<td>`obj(obj, str)`</td>
+<td>Append string + newline</td>
+</tr>
+<tr>
+<td>`Clear(sb)`</td>
+<td>`void(obj)`</td>
+<td>Clear contents</td>
+</tr>
+<tr>
+<td>`ToString(sb)`</td>
+<td>`str(obj)`</td>
+<td>Get built string</td>
+</tr>
+<tr>
+<td>`get_Length`</td>
+<td>`i64(obj)`</td>
+<td>Current length</td>
+</tr>
+<tr>
+<td>`get_Capacity`</td>
+<td>`i64(obj)`</td>
+<td>Current capacity</td>
+</tr>
+</tbody></table>
+<h3 id="viper-text-pattern-regex">Viper.Text.Pattern (Regex)</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`IsMatch(text, pattern)`</td>
+<td>`bool(str, str)`</td>
+<td>Test if pattern matches</td>
+</tr>
+<tr>
+<td>`Find(text, pattern)`</td>
+<td>`str(str, str)`</td>
+<td>Find first match</td>
+</tr>
+<tr>
+<td>`FindFrom(text, pattern, start)`</td>
+<td>`str(str, str, i64)`</td>
+<td>Find from position</td>
+</tr>
+<tr>
+<td>`FindPos(text, pattern)`</td>
+<td>`i64(str, str)`</td>
+<td>Find position of match</td>
+</tr>
+<tr>
+<td>`FindAll(text, pattern)`</td>
+<td>`obj(str, str)`</td>
+<td>Find all matches</td>
+</tr>
+<tr>
+<td>`Replace(text, pattern, repl)`</td>
+<td>`str(str, str, str)`</td>
+<td>Replace all matches</td>
+</tr>
+<tr>
+<td>`ReplaceFirst(text, pattern, repl)`</td>
+<td>`str(str, str, str)`</td>
+<td>Replace first match</td>
+</tr>
+<tr>
+<td>`Split(text, pattern)`</td>
+<td>`obj(str, str)`</td>
+<td>Split by pattern</td>
+</tr>
+<tr>
+<td>`Escape(s)`</td>
+<td>`str(str)`</td>
+<td>Escape regex metacharacters</td>
+</tr>
+</tbody></table>
+<h3 id="viper-text-template">Viper.Text.Template</h3>
+<p>Simple string templating with <code>{{key}}</code> placeholders.</p>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Render(template, map)`</td>
+<td>`str(str, obj)`</td>
+<td>Render with map</td>
+</tr>
+<tr>
+<td>`RenderSeq(template, seq)`</td>
+<td>`str(str, obj)`</td>
+<td>Render with sequence</td>
+</tr>
+<tr>
+<td>`RenderWith(template, map, open, close)`</td>
+<td>`str(str, obj, str, str)`</td>
+<td>Custom delimiters</td>
+</tr>
+<tr>
+<td>`Has(template, key)`</td>
+<td>`bool(str, str)`</td>
+<td>Check for placeholder</td>
+</tr>
+<tr>
+<td>`Keys(template)`</td>
+<td>`obj(str)`</td>
+<td>Get all placeholder names</td>
+</tr>
+<tr>
+<td>`Escape(s)`</td>
+<td>`str(str)`</td>
+<td>Escape template syntax</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+// Base64 encoding
+var encoded = Viper.Text.Codec.Base64Enc(&quot;Hello, World!&quot;);
+var decoded = Viper.Text.Codec.Base64Dec(encoded);
+
+// CSV parsing
+var csv = &quot;name,age,city\nAlice,30,NYC\nBob,25,LA&quot;;
+var data = Viper.Text.Csv.Parse(csv);
+
+// GUID generation
+var id = Viper.Text.Guid.New();  // &quot;550e8400-e29b-41d4-a716-446655440000&quot;
+
+// StringBuilder for efficient string building
+var sb = Viper.Text.StringBuilder.New();
+Viper.Text.StringBuilder.Append(sb, &quot;Hello&quot;);
+Viper.Text.StringBuilder.AppendLine(sb, &quot; World!&quot;);
+var result = Viper.Text.StringBuilder.ToString(sb);
+
+// Pattern matching
+var emails = Viper.Text.Pattern.FindAll(text, &quot;[a-z]+@[a-z]+\\.[a-z]+&quot;);
+var cleaned = Viper.Text.Pattern.Replace(html, &quot;&lt;[^&gt;]+&gt;&quot;, &quot;&quot;);
+
+// Templating
+var template = &quot;Hello, {{name}}! You have {{count}} messages.&quot;;
+var vars = Viper.Collections.Map.New();
+Viper.Collections.Map.SetStr(vars, &quot;name&quot;, &quot;Alice&quot;);
+Viper.Collections.Map.SetStr(vars, &quot;count&quot;, &quot;5&quot;);
+var message = Viper.Text.Template.Render(template, vars);
+</code></pre>
+<p>---</p>
+<h2 id="viper-math-vec2">Viper.Math.Vec2</h2>
+<p>2D vector mathematics for games and graphics.</p>
+<h3 id="functions">Functions</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Add(a, b)`</td>
+<td>`obj(obj, obj)`</td>
+<td>Vector addition</td>
+</tr>
+<tr>
+<td>`Angle(v)`</td>
+<td>`f64(obj)`</td>
+<td>Angle in radians</td>
+</tr>
+<tr>
+<td>`Cross(a, b)`</td>
+<td>`f64(obj, obj)`</td>
+<td>Cross product (2D: scalar result)</td>
+</tr>
+<tr>
+<td>`Dist(a, b)`</td>
+<td>`f64(obj, obj)`</td>
+<td>Distance between vectors</td>
+</tr>
+<tr>
+<td>`Div(v, scalar)`</td>
+<td>`obj(obj, f64)`</td>
+<td>Scalar division</td>
+</tr>
+<tr>
+<td>`Dot(a, b)`</td>
+<td>`f64(obj, obj)`</td>
+<td>Dot product</td>
+</tr>
+<tr>
+<td>`get_X(v)`</td>
+<td>`f64(obj)`</td>
+<td>Get X component</td>
+</tr>
+<tr>
+<td>`get_Y(v)`</td>
+<td>`f64(obj)`</td>
+<td>Get Y component</td>
+</tr>
+<tr>
+<td>`Len(v)`</td>
+<td>`f64(obj)`</td>
+<td>Vector length (magnitude)</td>
+</tr>
+<tr>
+<td>`LenSq(v)`</td>
+<td>`f64(obj)`</td>
+<td>Length squared</td>
+</tr>
+<tr>
+<td>`Lerp(a, b, t)`</td>
+<td>`obj(obj, obj, f64)`</td>
+<td>Linear interpolation</td>
+</tr>
+<tr>
+<td>`Mul(v, scalar)`</td>
+<td>`obj(obj, f64)`</td>
+<td>Scalar multiplication</td>
+</tr>
+<tr>
+<td>`Neg(v)`</td>
+<td>`obj(obj)`</td>
+<td>Negate vector</td>
+</tr>
+<tr>
+<td>`New(x, y)`</td>
+<td>`obj(f64, f64)`</td>
+<td>Create vector</td>
+</tr>
+<tr>
+<td>`Norm(v)`</td>
+<td>`obj(obj)`</td>
+<td>Normalize to unit length</td>
+</tr>
+<tr>
+<td>`One()`</td>
+<td>`obj()`</td>
+<td>Unit vector (1, 1)</td>
+</tr>
+<tr>
+<td>`Rotate(v, angle)`</td>
+<td>`obj(obj, f64)`</td>
+<td>Rotate by angle (radians)</td>
+</tr>
+<tr>
+<td>`Sub(a, b)`</td>
+<td>`obj(obj, obj)`</td>
+<td>Vector subtraction</td>
+</tr>
+<tr>
+<td>`Zero()`</td>
+<td>`obj()`</td>
+<td>Zero vector (0, 0)</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+var pos = Viper.Math.Vec2.New(100.0, 200.0);
+var vel = Viper.Math.Vec2.New(5.0, -3.0);
+
+// Movement
+pos = Viper.Math.Vec2.Add(pos, vel);
+
+// Distance calculation
+var target = Viper.Math.Vec2.New(300.0, 400.0);
+var dist = Viper.Math.Vec2.Dist(pos, target);
+
+// Normalize velocity
+var dir = Viper.Math.Vec2.Norm(vel);
+var speed = Viper.Math.Vec2.Length(vel);
+
+// Interpolation
+var midpoint = Viper.Math.Vec2.Lerp(pos, target, 0.5);
+</code></pre>
+<p>---</p>
+<h2 id="viper-math-vec3">Viper.Math.Vec3</h2>
+<p>3D vector mathematics.</p>
+<h3 id="functions">Functions</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Add(a, b)`</td>
+<td>`obj(obj, obj)`</td>
+<td>Vector addition</td>
+</tr>
+<tr>
+<td>`Cross(a, b)`</td>
+<td>`obj(obj, obj)`</td>
+<td>Cross product (3D: vector result)</td>
+</tr>
+<tr>
+<td>`Dist(a, b)`</td>
+<td>`f64(obj, obj)`</td>
+<td>Distance between vectors</td>
+</tr>
+<tr>
+<td>`Div(v, scalar)`</td>
+<td>`obj(obj, f64)`</td>
+<td>Scalar division</td>
+</tr>
+<tr>
+<td>`Dot(a, b)`</td>
+<td>`f64(obj, obj)`</td>
+<td>Dot product</td>
+</tr>
+<tr>
+<td>`get_X(v)`</td>
+<td>`f64(obj)`</td>
+<td>Get X component</td>
+</tr>
+<tr>
+<td>`get_Y(v)`</td>
+<td>`f64(obj)`</td>
+<td>Get Y component</td>
+</tr>
+<tr>
+<td>`get_Z(v)`</td>
+<td>`f64(obj)`</td>
+<td>Get Z component</td>
+</tr>
+<tr>
+<td>`Len(v)`</td>
+<td>`f64(obj)`</td>
+<td>Vector length (magnitude)</td>
+</tr>
+<tr>
+<td>`LenSq(v)`</td>
+<td>`f64(obj)`</td>
+<td>Length squared</td>
+</tr>
+<tr>
+<td>`Lerp(a, b, t)`</td>
+<td>`obj(obj, obj, f64)`</td>
+<td>Linear interpolation</td>
+</tr>
+<tr>
+<td>`Mul(v, scalar)`</td>
+<td>`obj(obj, f64)`</td>
+<td>Scalar multiplication</td>
+</tr>
+<tr>
+<td>`Neg(v)`</td>
+<td>`obj(obj)`</td>
+<td>Negate vector</td>
+</tr>
+<tr>
+<td>`New(x, y, z)`</td>
+<td>`obj(f64, f64, f64)`</td>
+<td>Create vector</td>
+</tr>
+<tr>
+<td>`Norm(v)`</td>
+<td>`obj(obj)`</td>
+<td>Normalize to unit length</td>
+</tr>
+<tr>
+<td>`One()`</td>
+<td>`obj()`</td>
+<td>Unit vector (1, 1, 1)</td>
+</tr>
+<tr>
+<td>`Sub(a, b)`</td>
+<td>`obj(obj, obj)`</td>
+<td>Vector subtraction</td>
+</tr>
+<tr>
+<td>`Zero()`</td>
+<td>`obj()`</td>
+<td>Zero vector (0, 0, 0)</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+var pos = Viper.Math.Vec3.New(10.0, 20.0, 30.0);
+var forward = Viper.Math.Vec3.New(0.0, 0.0, 1.0);
+var up = Viper.Math.Vec3.New(0.0, 1.0, 0.0);
+
+// Cross product for perpendicular vector
+var right = Viper.Math.Vec3.Cross(forward, up);
+
+// Normalize
+var dir = Viper.Math.Vec3.Norm(pos);
+</code></pre>
+<p>---</p>
+<h2 id="appendix-type-abbreviations">Appendix: Type Abbreviations</h2>
+<p>These abbreviations appear in IL function signatures throughout this document.</p>
+<blockquote><p>**Note:** <code>f32</code> does not exist as a primitive in the IL type system (see <code>src/il/core/Type.hpp</code>).</p></blockquote>
+<blockquote><p>BASIC <code>SINGLE</code> values are widened to <code>f64</code> during lowering. The <code>i8</code> type also does not appear</p></blockquote>
+<blockquote><p>in the IL type enum; it is used only in C runtime return values for boolean-style results.</p></blockquote>
+<table><thead><tr>
+<th>Abbreviation</th>
+<th>Full Type</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`f64`</td>
+<td>`double`</td>
+<td>64-bit IEEE 754 float</td>
+</tr>
+<tr>
+<td>`i1`</td>
+<td>`bool`</td>
+<td>Boolean (1-bit integer)</td>
+</tr>
+<tr>
+<td>`i16`</td>
+<td>`short`</td>
+<td>16-bit signed integer</td>
+</tr>
+<tr>
+<td>`i32`</td>
+<td>`int`</td>
+<td>32-bit signed integer</td>
+</tr>
+<tr>
+<td>`i64`</td>
+<td>`long`</td>
+<td>64-bit signed integer</td>
+</tr>
+<tr>
+<td>`obj`</td>
+<td>`object`</td>
+<td>Object reference (heap pointer with refcount)</td>
+</tr>
+<tr>
+<td>`ptr`</td>
+<td>`pointer`</td>
+<td>Raw unmanaged pointer</td>
+</tr>
+<tr>
+<td>`str`</td>
+<td>`string`</td>
+<td>Interned string value</td>
+</tr>
+<tr>
+<td>`void`</td>
+<td>`unit`</td>
+<td>No return value</td>
+</tr>
+</tbody></table>
+<p>---</p>
+<p>---</p>
+<h2 id="viper-collections">Viper.Collections</h2>
+<p>Comprehensive collection types for data storage and manipulation.</p>
+<h3 id="viper-collections-bytes">Viper.Collections.Bytes</h3>
+<p>Raw byte array for binary data manipulation.</p>
+<table><thead><tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`New(size)`</td>
+<td>`obj(i64)`</td>
+<td>Create byte array of size</td>
+</tr>
+<tr>
+<td>`get_Length(bytes)`</td>
+<td>`i64(obj)`</td>
+<td>Get length</td>
+</tr>
+<tr>
+<td>`Get(bytes, idx)`</td>
+<td>`i64(obj, i64)`</td>
+<td>Get byte at index (0-255)</td>
+</tr>
+<tr>
+<td>`Set(bytes, idx, val)`</td>
+<td>`void(obj, i64, i64)`</td>
+<td>Set byte at index</td>
+</tr>
+<tr>
+<td>`Clone(bytes)`</td>
+<td>`obj(obj)`</td>
+<td>Deep copy</td>
+</tr>
+<tr>
+<td>`Slice(bytes, start, end)`</td>
+<td>`obj(obj, i64, i64)`</td>
+<td>Extract slice</td>
+</tr>
+<tr>
+<td>`Copy(dst, dstOff, src, srcOff, len)`</td>
+<td>`void(...)`</td>
+<td>Copy bytes</td>
+</tr>
+<tr>
+<td>`Fill(bytes, value)`</td>
+<td>`void(obj, i64)`</td>
+<td>Fill with value</td>
+</tr>
+<tr>
+<td>`Find(bytes, value)`</td>
+<td>`i64(obj, i64)`</td>
+<td>Find byte (-1 if not found)</td>
+</tr>
+<tr>
+<td>`FromStr(s)`</td>
+<td>`obj(str)`</td>
+<td>Create from string (UTF-8)</td>
+</tr>
+<tr>
+<td>`ToStr(bytes)`</td>
+<td>`str(obj)`</td>
+<td>Convert to string</td>
+</tr>
+<tr>
+<td>`FromBase64(s)`</td>
+<td>`obj(str)`</td>
+<td>Decode from Base64</td>
+</tr>
+<tr>
+<td>`ToBase64(bytes)`</td>
+<td>`str(obj)`</td>
+<td>Encode to Base64</td>
+</tr>
+<tr>
+<td>`FromHex(s)`</td>
+<td>`obj(str)`</td>
+<td>Decode from hex string</td>
+</tr>
+<tr>
+<td>`ToHex(bytes)`</td>
+<td>`str(obj)`</td>
+<td>Encode to hex string</td>
+</tr>
+</tbody></table>
+<h3 id="viper-collections-seq">Viper.Collections.Seq</h3>
+<p>Dynamic sequence (array list) that can hold any object type.</p>
+<table><thead><tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Clear(seq)`</td>
+<td>`void(obj)`</td>
+<td>Clear all items</td>
+</tr>
+<tr>
+<td>`Clone(seq)`</td>
+<td>`obj(obj)`</td>
+<td>Deep copy</td>
+</tr>
+<tr>
+<td>`Find(seq, val)`</td>
+<td>`i64(obj, obj)`</td>
+<td>Find index (-1 if not found)</td>
+</tr>
+<tr>
+<td>`First(seq)`</td>
+<td>`obj(obj)`</td>
+<td>Get first item</td>
+</tr>
+<tr>
+<td>`get_Cap(seq)`</td>
+<td>`i64(obj)`</td>
+<td>Get capacity</td>
+</tr>
+<tr>
+<td>`get_IsEmpty(seq)`</td>
+<td>`i1(obj)`</td>
+<td>Check if empty</td>
+</tr>
+<tr>
+<td>`get_Length(seq)`</td>
+<td>`i64(obj)`</td>
+<td>Get length</td>
+</tr>
+<tr>
+<td>`Get(seq, idx)`</td>
+<td>`obj(obj, i64)`</td>
+<td>Get item at index</td>
+</tr>
+<tr>
+<td>`Has(seq, val)`</td>
+<td>`i1(obj, obj)`</td>
+<td>Check if contains</td>
+</tr>
+<tr>
+<td>`Insert(seq, idx, val)`</td>
+<td>`void(obj, i64, obj)`</td>
+<td>Insert at index</td>
+</tr>
+<tr>
+<td>`Last(seq)`</td>
+<td>`obj(obj)`</td>
+<td>Get last item</td>
+</tr>
+<tr>
+<td>`New()`</td>
+<td>`obj()`</td>
+<td>Create empty sequence</td>
+</tr>
+<tr>
+<td>`Peek(seq)`</td>
+<td>`obj(obj)`</td>
+<td>Get last without removing</td>
+</tr>
+<tr>
+<td>`Pop(seq)`</td>
+<td>`obj(obj)`</td>
+<td>Remove and return last</td>
+</tr>
+<tr>
+<td>`Push(seq, val)`</td>
+<td>`void(obj, obj)`</td>
+<td>Add to end</td>
+</tr>
+<tr>
+<td>`PushAll(seq, other)`</td>
+<td>`void(obj, obj)`</td>
+<td>Add all from another sequence</td>
+</tr>
+<tr>
+<td>`Remove(seq, idx)`</td>
+<td>`obj(obj, i64)`</td>
+<td>Remove at index</td>
+</tr>
+<tr>
+<td>`Reverse(seq)`</td>
+<td>`void(obj)`</td>
+<td>Reverse in place</td>
+</tr>
+<tr>
+<td>`Set(seq, idx, val)`</td>
+<td>`void(obj, i64, obj)`</td>
+<td>Set item at index</td>
+</tr>
+<tr>
+<td>`Shuffle(seq)`</td>
+<td>`void(obj)`</td>
+<td>Shuffle randomly using global RNG</td>
+</tr>
+<tr>
+<td>`Slice(seq, start, end)`</td>
+<td>`obj(obj, i64, i64)`</td>
+<td>Extract slice as new sequence</td>
+</tr>
+<tr>
+<td>`Sort(seq)`</td>
+<td>`void(obj)`</td>
+<td>Sort ascending in place</td>
+</tr>
+<tr>
+<td>`SortDesc(seq)`</td>
+<td>`void(obj)`</td>
+<td>Sort descending in place</td>
+</tr>
+<tr>
+<td>`WithCapacity(cap)`</td>
+<td>`obj(i64)`</td>
+<td>Create with pre-allocated capacity</td>
+</tr>
+</tbody></table>
+<h3 id="viper-collections-list">Viper.Collections.List</h3>
+<p>Ordered list with value-semantics API.</p>
+<table><thead><tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Clear(list)`</td>
+<td>`void(obj)`</td>
+<td>Clear all items</td>
+</tr>
+<tr>
+<td>`Find(list, val)`</td>
+<td>`i64(obj, obj)`</td>
+<td>Find index (-1 if not found)</td>
+</tr>
+<tr>
+<td>`First(list)`</td>
+<td>`obj(obj)`</td>
+<td>Get first item</td>
+</tr>
+<tr>
+<td>`Flip(list)`</td>
+<td>`void(obj)`</td>
+<td>Reverse list in place</td>
+</tr>
+<tr>
+<td>`get_IsEmpty(list)`</td>
+<td>`i1(obj)`</td>
+<td>Check if list is empty</td>
+</tr>
+<tr>
+<td>`get_Length(list)`</td>
+<td>`i64(obj)`</td>
+<td>Get item count</td>
+</tr>
+<tr>
+<td>`Get(list, idx)`</td>
+<td>`obj(obj, i64)`</td>
+<td>Get item at index</td>
+</tr>
+<tr>
+<td>`Has(list, val)`</td>
+<td>`i1(obj, obj)`</td>
+<td>Check if contains value</td>
+</tr>
+<tr>
+<td>`Insert(list, idx, val)`</td>
+<td>`void(obj, i64, obj)`</td>
+<td>Insert at index</td>
+</tr>
+<tr>
+<td>`Last(list)`</td>
+<td>`obj(obj)`</td>
+<td>Get last item</td>
+</tr>
+<tr>
+<td>`New()`</td>
+<td>`obj()`</td>
+<td>Create empty list</td>
+</tr>
+<tr>
+<td>`Pop(list)`</td>
+<td>`obj(obj)`</td>
+<td>Remove and return last item</td>
+</tr>
+<tr>
+<td>`Push(list, val)`</td>
+<td>`void(obj, obj)`</td>
+<td>Add to end</td>
+</tr>
+<tr>
+<td>`Remove(list, val)`</td>
+<td>`i1(obj, obj)`</td>
+<td>Remove first occurrence</td>
+</tr>
+<tr>
+<td>`RemoveAt(list, idx)`</td>
+<td>`void(obj, i64)`</td>
+<td>Remove at index</td>
+</tr>
+<tr>
+<td>`Set(list, idx, val)`</td>
+<td>`void(obj, i64, obj)`</td>
+<td>Set item at index</td>
+</tr>
+<tr>
+<td>`Slice(list, start, end)`</td>
+<td>`obj(obj, i64, i64)`</td>
+<td>Extract slice as new list</td>
+</tr>
+<tr>
+<td>`Sort(list)`</td>
+<td>`void(obj)`</td>
+<td>Sort ascending in place</td>
+</tr>
+<tr>
+<td>`SortDesc(list)`</td>
+<td>`void(obj)`</td>
+<td>Sort descending in place</td>
+</tr>
+</tbody></table>
+<h3 id="viper-collections-map">Viper.Collections.Map</h3>
+<p>Hash map with string keys.</p>
+<table><thead><tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Clear(map)`</td>
+<td>`void(obj)`</td>
+<td>Clear all entries</td>
+</tr>
+<tr>
+<td>`Get(map, key)`</td>
+<td>`obj(obj, str)`</td>
+<td>Get value (null if missing)</td>
+</tr>
+<tr>
+<td>`GetFloat(map, key)`</td>
+<td>`f64(obj, str)`</td>
+<td>Get float value</td>
+</tr>
+<tr>
+<td>`GetFloatOr(map, key, default)`</td>
+<td>`f64(obj, str, f64)`</td>
+<td>Get float or default</td>
+</tr>
+<tr>
+<td>`GetInt(map, key)`</td>
+<td>`i64(obj, str)`</td>
+<td>Get integer value</td>
+</tr>
+<tr>
+<td>`GetIntOr(map, key, default)`</td>
+<td>`i64(obj, str, i64)`</td>
+<td>Get integer or default</td>
+</tr>
+<tr>
+<td>`GetOr(map, key, default)`</td>
+<td>`obj(obj, str, obj)`</td>
+<td>Get or return default</td>
+</tr>
+<tr>
+<td>`GetStr(map, key)`</td>
+<td>`str(obj, str)`</td>
+<td>Get string value</td>
+</tr>
+<tr>
+<td>`GetStrOr(map, key, default)`</td>
+<td>`str(obj, str, str)`</td>
+<td>Get string or default</td>
+</tr>
+<tr>
+<td>`get_IsEmpty(map)`</td>
+<td>`i1(obj)`</td>
+<td>Check if empty</td>
+</tr>
+<tr>
+<td>`get_Length(map)`</td>
+<td>`i64(obj)`</td>
+<td>Get entry count</td>
+</tr>
+<tr>
+<td>`Has(map, key)`</td>
+<td>`i1(obj, str)`</td>
+<td>Check if key exists</td>
+</tr>
+<tr>
+<td>`Keys(map)`</td>
+<td>`obj(obj)`</td>
+<td>Get all keys as Seq</td>
+</tr>
+<tr>
+<td>`New()`</td>
+<td>`obj()`</td>
+<td>Create empty map</td>
+</tr>
+<tr>
+<td>`Remove(map, key)`</td>
+<td>`i1(obj, str)`</td>
+<td>Remove key</td>
+</tr>
+<tr>
+<td>`Set(map, key, val)`</td>
+<td>`void(obj, str, obj)`</td>
+<td>Set key-value pair (boxed)</td>
+</tr>
+<tr>
+<td>`SetFloat(map, key, val)`</td>
+<td>`void(obj, str, f64)`</td>
+<td>Set float value</td>
+</tr>
+<tr>
+<td>`SetIfMissing(map, key, val)`</td>
+<td>`i1(obj, str, obj)`</td>
+<td>Set only if key absent</td>
+</tr>
+<tr>
+<td>`SetInt(map, key, val)`</td>
+<td>`void(obj, str, i64)`</td>
+<td>Set integer value</td>
+</tr>
+<tr>
+<td>`SetStr(map, key, val)`</td>
+<td>`void(obj, str, str)`</td>
+<td>Set string value</td>
+</tr>
+<tr>
+<td>`Values(map)`</td>
+<td>`obj(obj)`</td>
+<td>Get all values as Seq</td>
+</tr>
+</tbody></table>
+<h3 id="viper-collections-stack">Viper.Collections.Stack</h3>
+<p>LIFO (Last In, First Out) stack.</p>
+<table><thead><tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`New()`</td>
+<td>`obj()`</td>
+<td>Create empty stack</td>
+</tr>
+<tr>
+<td>`get_Length(stack)`</td>
+<td>`i64(obj)`</td>
+<td>Get size</td>
+</tr>
+<tr>
+<td>`get_IsEmpty(stack)`</td>
+<td>`bool(obj)`</td>
+<td>Check if empty</td>
+</tr>
+<tr>
+<td>`Push(stack, val)`</td>
+<td>`void(obj, obj)`</td>
+<td>Push item</td>
+</tr>
+<tr>
+<td>`Pop(stack)`</td>
+<td>`obj(obj)`</td>
+<td>Pop and return top</td>
+</tr>
+<tr>
+<td>`Peek(stack)`</td>
+<td>`obj(obj)`</td>
+<td>Get top without removing</td>
+</tr>
+<tr>
+<td>`Clear(stack)`</td>
+<td>`void(obj)`</td>
+<td>Clear all items</td>
+</tr>
+</tbody></table>
+<h3 id="viper-collections-queue">Viper.Collections.Queue</h3>
+<p>FIFO (First In, First Out) queue.</p>
+<table><thead><tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`New()`</td>
+<td>`obj()`</td>
+<td>Create empty queue</td>
+</tr>
+<tr>
+<td>`get_Length(queue)`</td>
+<td>`i64(obj)`</td>
+<td>Get size</td>
+</tr>
+<tr>
+<td>`get_IsEmpty(queue)`</td>
+<td>`bool(obj)`</td>
+<td>Check if empty</td>
+</tr>
+<tr>
+<td>`Add(queue, val)`</td>
+<td>`void(obj, obj)`</td>
+<td>Enqueue item</td>
+</tr>
+<tr>
+<td>`Take(queue)`</td>
+<td>`obj(obj)`</td>
+<td>Dequeue and return front</td>
+</tr>
+<tr>
+<td>`Peek(queue)`</td>
+<td>`obj(obj)`</td>
+<td>Get front without removing</td>
+</tr>
+<tr>
+<td>`Clear(queue)`</td>
+<td>`void(obj)`</td>
+<td>Clear all items</td>
+</tr>
+</tbody></table>
+<h3 id="viper-collections-ring">Viper.Collections.Ring</h3>
+<p>Fixed-capacity circular buffer.</p>
+<table><thead><tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`New(capacity)`</td>
+<td>`obj(i64)`</td>
+<td>Create with fixed capacity</td>
+</tr>
+<tr>
+<td>`get_Length(ring)`</td>
+<td>`i64(obj)`</td>
+<td>Get current size</td>
+</tr>
+<tr>
+<td>`get_Cap(ring)`</td>
+<td>`i64(obj)`</td>
+<td>Get capacity</td>
+</tr>
+<tr>
+<td>`get_IsEmpty(ring)`</td>
+<td>`bool(obj)`</td>
+<td>Check if empty</td>
+</tr>
+<tr>
+<td>`get_IsFull(ring)`</td>
+<td>`bool(obj)`</td>
+<td>Check if full</td>
+</tr>
+<tr>
+<td>`Push(ring, val)`</td>
+<td>`void(obj, obj)`</td>
+<td>Add (overwrites oldest if full)</td>
+</tr>
+<tr>
+<td>`Pop(ring)`</td>
+<td>`obj(obj)`</td>
+<td>Remove and return oldest</td>
+</tr>
+<tr>
+<td>`Peek(ring)`</td>
+<td>`obj(obj)`</td>
+<td>Get oldest without removing</td>
+</tr>
+<tr>
+<td>`Get(ring, idx)`</td>
+<td>`obj(obj, i64)`</td>
+<td>Get item at index</td>
+</tr>
+<tr>
+<td>`Clear(ring)`</td>
+<td>`void(obj)`</td>
+<td>Clear all items</td>
+</tr>
+</tbody></table>
+<h3 id="viper-collections-bag">Viper.Collections.Bag</h3>
+<p>Unordered set of unique strings.</p>
+<table><thead><tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`New()`</td>
+<td>`obj()`</td>
+<td>Create empty bag</td>
+</tr>
+<tr>
+<td>`get_Length(bag)`</td>
+<td>`i64(obj)`</td>
+<td>Get size</td>
+</tr>
+<tr>
+<td>`get_IsEmpty(bag)`</td>
+<td>`bool(obj)`</td>
+<td>Check if empty</td>
+</tr>
+<tr>
+<td>`Put(bag, item)`</td>
+<td>`bool(obj, str)`</td>
+<td>Add item (returns false if existed)</td>
+</tr>
+<tr>
+<td>`Drop(bag, item)`</td>
+<td>`bool(obj, str)`</td>
+<td>Remove item</td>
+</tr>
+<tr>
+<td>`Has(bag, item)`</td>
+<td>`bool(obj, str)`</td>
+<td>Check if contains</td>
+</tr>
+<tr>
+<td>`Clear(bag)`</td>
+<td>`void(obj)`</td>
+<td>Clear all items</td>
+</tr>
+<tr>
+<td>`Items(bag)`</td>
+<td>`obj(obj)`</td>
+<td>Get all items as Seq</td>
+</tr>
+<tr>
+<td>`Merge(bag1, bag2)`</td>
+<td>`obj(obj, obj)`</td>
+<td>Union of two bags</td>
+</tr>
+<tr>
+<td>`Common(bag1, bag2)`</td>
+<td>`obj(obj, obj)`</td>
+<td>Intersection</td>
+</tr>
+<tr>
+<td>`Diff(bag1, bag2)`</td>
+<td>`obj(obj, obj)`</td>
+<td>Difference</td>
+</tr>
+</tbody></table>
+<h3 id="viper-collections-heap">Viper.Collections.Heap</h3>
+<p>Priority queue (min-heap or max-heap).</p>
+<table><thead><tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`New()`</td>
+<td>`obj()`</td>
+<td>Create min-heap</td>
+</tr>
+<tr>
+<td>`NewMax(isMax)`</td>
+<td>`obj(bool)`</td>
+<td>Create max-heap if true</td>
+</tr>
+<tr>
+<td>`get_Length(heap)`</td>
+<td>`i64(obj)`</td>
+<td>Get size</td>
+</tr>
+<tr>
+<td>`get_IsEmpty(heap)`</td>
+<td>`bool(obj)`</td>
+<td>Check if empty</td>
+</tr>
+<tr>
+<td>`get_IsMax(heap)`</td>
+<td>`bool(obj)`</td>
+<td>Check if max-heap</td>
+</tr>
+<tr>
+<td>`Push(heap, priority, val)`</td>
+<td>`void(obj, i64, obj)`</td>
+<td>Add with priority</td>
+</tr>
+<tr>
+<td>`Pop(heap)`</td>
+<td>`obj(obj)`</td>
+<td>Remove and return highest priority</td>
+</tr>
+<tr>
+<td>`Peek(heap)`</td>
+<td>`obj(obj)`</td>
+<td>Get highest priority without removing</td>
+</tr>
+<tr>
+<td>`TryPop(heap)`</td>
+<td>`obj(obj)`</td>
+<td>Pop or return null</td>
+</tr>
+<tr>
+<td>`TryPeek(heap)`</td>
+<td>`obj(obj)`</td>
+<td>Peek or return null</td>
+</tr>
+<tr>
+<td>`Clear(heap)`</td>
+<td>`void(obj)`</td>
+<td>Clear all items</td>
+</tr>
+<tr>
+<td>`ToSeq(heap)`</td>
+<td>`obj(obj)`</td>
+<td>Convert to sequence</td>
+</tr>
+</tbody></table>
+<h3 id="viper-collections-treemap">Viper.Collections.TreeMap</h3>
+<p>Sorted map with string keys (red-black tree).</p>
+<table><thead><tr>
+<th>Method</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`New()`</td>
+<td>`obj()`</td>
+<td>Create empty tree map</td>
+</tr>
+<tr>
+<td>`get_Length(map)`</td>
+<td>`i64(obj)`</td>
+<td>Get entry count</td>
+</tr>
+<tr>
+<td>`get_IsEmpty(map)`</td>
+<td>`bool(obj)`</td>
+<td>Check if empty</td>
+</tr>
+<tr>
+<td>`Get(map, key)`</td>
+<td>`obj(obj, str)`</td>
+<td>Get value</td>
+</tr>
+<tr>
+<td>`Set(map, key, val)`</td>
+<td>`void(obj, str, obj)`</td>
+<td>Set key-value pair</td>
+</tr>
+<tr>
+<td>`Has(map, key)`</td>
+<td>`bool(obj, str)`</td>
+<td>Check if key exists</td>
+</tr>
+<tr>
+<td>`Drop(map, key)`</td>
+<td>`bool(obj, str)`</td>
+<td>Remove key</td>
+</tr>
+<tr>
+<td>`Clear(map)`</td>
+<td>`void(obj)`</td>
+<td>Clear all entries</td>
+</tr>
+<tr>
+<td>`Keys(map)`</td>
+<td>`obj(obj)`</td>
+<td>Get keys (sorted)</td>
+</tr>
+<tr>
+<td>`Values(map)`</td>
+<td>`obj(obj)`</td>
+<td>Get values (key-sorted)</td>
+</tr>
+<tr>
+<td>`First(map)`</td>
+<td>`str(obj)`</td>
+<td>Get smallest key</td>
+</tr>
+<tr>
+<td>`Last(map)`</td>
+<td>`str(obj)`</td>
+<td>Get largest key</td>
+</tr>
+<tr>
+<td>`Floor(map, key)`</td>
+<td>`str(obj, str)`</td>
+<td>Largest key &lt;= given</td>
+</tr>
+<tr>
+<td>`Ceil(map, key)`</td>
+<td>`str(obj, str)`</td>
+<td>Smallest key &gt;= given</td>
+</tr>
+</tbody></table>
+<h3 id="collection-examples">Collection Examples</h3>
+<pre><code data-lang="rust">
+// Bytes for binary data
+var data = Viper.Collections.Bytes.New(1024);
+Viper.Collections.Bytes.Set(data, 0, 0xFF);
+var hex = Viper.Collections.Bytes.ToHex(data);
+
+// Seq for dynamic arrays
+var items = Viper.Collections.Seq.New();
+Viper.Collections.Seq.Push(items, &quot;apple&quot;);
+Viper.Collections.Seq.Push(items, &quot;banana&quot;);
+var first = Viper.Collections.Seq.First(items);
+
+// List for simple collections
+var numbers = Viper.Collections.List.New();
+Viper.Collections.List.Push(numbers, Viper.Core.Box.I64(1));
+Viper.Collections.List.Push(numbers, Viper.Core.Box.I64(2));
+var count = Viper.Collections.List.get_Length(numbers);
+
+// Map for key-value storage
+var config = Viper.Collections.Map.New();
+Viper.Collections.Map.Set(config, &quot;host&quot;, &quot;localhost&quot;);
+Viper.Collections.Map.Set(config, &quot;port&quot;, &quot;8080&quot;);
+var host = Viper.Collections.Map.Get(config, &quot;host&quot;);
+
+// Stack for LIFO operations
+var stack = Viper.Collections.Stack.New();
+Viper.Collections.Stack.Push(stack, &quot;first&quot;);
+Viper.Collections.Stack.Push(stack, &quot;second&quot;);
+var top = Viper.Collections.Stack.Pop(stack);  // &quot;second&quot;
+
+// Queue for FIFO operations
+var queue = Viper.Collections.Queue.New();
+Viper.Collections.Queue.Add(queue, &quot;task1&quot;);
+Viper.Collections.Queue.Add(queue, &quot;task2&quot;);
+var next = Viper.Collections.Queue.Take(queue);  // &quot;task1&quot;
+
+// Heap for priority queue
+var pq = Viper.Collections.Heap.New();
+Viper.Collections.Heap.Push(pq, 3, &quot;low priority&quot;);
+Viper.Collections.Heap.Push(pq, 1, &quot;high priority&quot;);
+var urgent = Viper.Collections.Heap.Pop(pq);  // &quot;high priority&quot;
+
+// TreeMap for sorted keys
+var sorted = Viper.Collections.TreeMap.New();
+Viper.Collections.TreeMap.Set(sorted, &quot;zebra&quot;, &quot;last&quot;);
+Viper.Collections.TreeMap.Set(sorted, &quot;apple&quot;, &quot;first&quot;);
+var smallest = Viper.Collections.TreeMap.First(sorted);  // &quot;apple&quot;
+</code></pre>
+<p>---</p>
+<h2 id="viper-time-stopwatch">Viper.Time.Stopwatch</h2>
+<p>High-precision timing for performance measurement. Stopwatch objects are heap-allocated.</p>
+<h3 id="functions-and-methods">Functions and Methods</h3>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`get_ElapsedMs(sw)`</td>
+<td>`i64(obj)`</td>
+<td>Elapsed time in milliseconds</td>
+</tr>
+<tr>
+<td>`get_ElapsedNs(sw)`</td>
+<td>`i64(obj)`</td>
+<td>Elapsed time in nanoseconds</td>
+</tr>
+<tr>
+<td>`get_ElapsedUs(sw)`</td>
+<td>`i64(obj)`</td>
+<td>Elapsed time in microseconds</td>
+</tr>
+<tr>
+<td>`get_IsRunning(sw)`</td>
+<td>`i1(obj)`</td>
+<td>Check if the stopwatch is running</td>
+</tr>
+<tr>
+<td>`New()`</td>
+<td>`obj()`</td>
+<td>Create a new stopped stopwatch</td>
+</tr>
+<tr>
+<td>`Reset(sw)`</td>
+<td>`void(obj)`</td>
+<td>Reset accumulated time to zero (stops)</td>
+</tr>
+<tr>
+<td>`Restart(sw)`</td>
+<td>`void(obj)`</td>
+<td>Reset and immediately start</td>
+</tr>
+<tr>
+<td>`Start(sw)`</td>
+<td>`void(obj)`</td>
+<td>Start or resume timing</td>
+</tr>
+<tr>
+<td>`StartNew()`</td>
+<td>`obj()`</td>
+<td>Create and immediately start a stopwatch</td>
+</tr>
+<tr>
+<td>`Stop(sw)`</td>
+<td>`void(obj)`</td>
+<td>Stop (pause) timing</td>
+</tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<pre><code data-lang="rust">
+// Measure execution time
+var sw = Viper.Time.Stopwatch.StartNew();
+// ... code to measure ...
+sw.Stop();
+var elapsed = sw.get_ElapsedMs;
+Viper.Terminal.Say(&quot;Took &quot; + elapsed + &quot; ms&quot;);
+
+// Reusable stopwatch
+var timer = Viper.Time.Stopwatch.New();
+timer.Start();
+// ... first section ...
+timer.Stop();
+var section1 = timer.get_ElapsedUs;
+timer.Restart();
+// ... second section ...
+timer.Stop();
+var section2 = timer.get_ElapsedUs;
+</code></pre>
+<p>---</p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li>[VM Documentation](vm.md) - VM architecture and runtime details</li>
+<li>[Zia Language Reference](zia-reference.md) - Zia programming language reference</li>
+<li>[Zia Getting Started](zia-getting-started.md) - Zia quick-start guide</li>
+</ul>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../../features/native-targets.html">Native Targets</a>
+      <a href="../../features/two-languages.html">Languages</a>
+      <a href="../../features/runtime.html">Runtime Library</a>
+      <a href="../../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../../docs/getting-started.html">Getting Started</a>
+      <a href="../../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../../docs/runtime/">Runtime API</a>
+      <a href="../../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../../contributing/">Contributing</a>
+      <a href="../../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../../main.js"></script>
+</body>
+</html>

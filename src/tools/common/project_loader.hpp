@@ -64,7 +64,7 @@ struct ProjectConfig
     std::vector<std::string> basicFiles;
 
     /// @brief Optimization level string ("O0", "O1", "O2").
-    std::string optimizeLevel{"O0"};
+    std::string optimizeLevel{"O1"};
 
     /// @brief Enable runtime bounds checks.
     bool boundsChecks{true};

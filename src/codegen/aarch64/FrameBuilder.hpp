@@ -38,6 +38,7 @@
 
 #include "MachineIR.hpp"
 #include "TargetAArch64.hpp"
+#include "codegen/common/FrameLayout.hpp"
 
 namespace viper::codegen::aarch64
 {
@@ -57,7 +58,7 @@ namespace viper::codegen::aarch64
 /// @invariant All offsets are negative (below the frame pointer).
 /// @invariant Stack slots are 8-byte aligned minimum; 16-byte alignment is
 ///            maintained for the overall frame.
-class FrameBuilder
+class FrameBuilder : public common::FrameLayout
 {
   public:
     explicit FrameBuilder(MFunction &fn) noexcept : fn_(&fn)
@@ -78,19 +79,19 @@ class FrameBuilder
     /// @param tempId The IL temporary identifier.
     /// @param sizeBytes Size of the slot in bytes.
     /// @param alignBytes Alignment requirement (default: 8 bytes for 64-bit values).
-    void addLocal(unsigned tempId, int sizeBytes, int alignBytes = kSlotSizeBytes);
+    void addLocal(unsigned tempId, int sizeBytes, int alignBytes = kSlotSizeBytes) override;
 
     /// @brief Returns the assigned FP-relative offset for a local variable.
     /// @param tempId The IL temporary identifier.
     /// @return Negative offset from the frame pointer.
-    int localOffset(unsigned tempId) const;
+    int localOffset(unsigned tempId) const override;
 
     /// @brief Ensure a spill slot exists for a virtual register.
     /// @param vreg Virtual register identifier.
     /// @param sizeBytes Size of the spill slot (default: 8 bytes).
     /// @param alignBytes Alignment requirement (default: 8 bytes).
     /// @return FP-relative offset of the spill slot.
-    int ensureSpill(uint16_t vreg, int sizeBytes = kSlotSizeBytes, int alignBytes = kSlotSizeBytes);
+    int ensureSpill(uint16_t vreg, int sizeBytes = kSlotSizeBytes, int alignBytes = kSlotSizeBytes) override;
 
     /// @brief Ensure a spill slot for @p vreg, reusing a dead slot if available.
     ///
@@ -117,11 +118,17 @@ class FrameBuilder
     /// @param bytes Maximum bytes needed for outgoing arguments.
     void setMaxOutgoingBytes(int bytes);
 
+    /// @brief FrameLayout interface: reserve outgoing argument space.
+    void setMaxOutgoing(int bytes) override { setMaxOutgoingBytes(bytes); }
+
     /// @brief Finalize frame layout and compute total frame size.
     ///
     /// Must be called once after all locals and spills are declared.
     /// Assigns final offsets and ensures proper stack alignment.
-    void finalize();
+    void finalize() override;
+
+    /// @brief FrameLayout interface: get the total frame size after finalize().
+    int totalBytes() const override { return fn_ ? fn_->localFrameSize : 0; }
 
     /// @brief Notify the frame builder that a new basic block is starting.
     ///

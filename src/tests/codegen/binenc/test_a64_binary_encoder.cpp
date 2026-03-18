@@ -86,7 +86,7 @@ static MOperand label(const std::string &name)
 }
 
 // Encode a single-block leaf function with given instructions.
-// Returns the word at instruction index `idx` (skipping any prologue).
+// Returns the word at instruction index `idx` (skipping BTI prefix).
 static uint32_t encodeSingleInstr(const std::vector<MInstr> &instrs, size_t idx = 0)
 {
     MFunction fn;
@@ -104,11 +104,13 @@ static uint32_t encodeSingleInstr(const std::vector<MInstr> &instrs, size_t idx 
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
     // Leaf function with no saved regs and no frame → no prologue.
-    // First word should be instruction 0.
-    return readWord(text.bytes(), idx * 4);
+    // First word is BTI C (always emitted); instructions start at offset 4.
+    constexpr size_t kBtiPrefixWords = 1;
+    return readWord(text.bytes(), (idx + kBtiPrefixWords) * 4);
 }
 
-// Encode a single-block leaf function and return all bytes (no prologue for leaf).
+// Encode a single-block leaf function and return all bytes.
+// Includes BTI prefix (always emitted).
 static std::vector<uint8_t> encodeInstrBytes(const std::vector<MInstr> &instrs)
 {
     MFunction fn;
@@ -127,11 +129,12 @@ static std::vector<uint8_t> encodeInstrBytes(const std::vector<MInstr> &instrs)
 }
 
 // Count how many 4-byte words are emitted for a set of instructions
-// (excluding the trailing Ret).
+// (excluding the trailing Ret and the BTI prefix).
 static size_t countWords(const std::vector<MInstr> &instrs)
 {
     auto bytes = encodeInstrBytes(instrs);
-    return (bytes.size() / 4) - 1; // Subtract 1 for the Ret.
+    constexpr size_t kOverhead = 2; // BTI prefix + Ret
+    return (bytes.size() / 4) - kOverhead;
 }
 
 // =============================================================================
@@ -361,8 +364,10 @@ static void testRet()
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
-    CHECK(text.bytes().size() == 4);
-    CHECK(readWord(text.bytes(), 0) == 0xD65F03C0);
+    // BTI C (4 bytes) + Ret (4 bytes) = 8 bytes total
+    CHECK(text.bytes().size() == 8);
+    CHECK(readWord(text.bytes(), 0) == 0xD503245F); // BTI C
+    CHECK(readWord(text.bytes(), 4) == 0xD65F03C0); // Ret
 }
 
 static void testBranchForwardBackward()
@@ -390,15 +395,15 @@ static void testBranchForwardBackward()
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
-    // entry is at offset 0: b target → forward by 4 bytes → imm26 = 1
-    // target is at offset 4: b entry → backward by 4 bytes → imm26 = -1
-    CHECK(text.bytes().size() == 8);
-    uint32_t fwd = readWord(text.bytes(), 0);
-    uint32_t bwd = readWord(text.bytes(), 4);
+    // BTI C (4 bytes) + entry branch (4 bytes) + target branch (4 bytes) = 12 bytes
+    CHECK(text.bytes().size() == 12);
+    // Skip BTI at offset 0; entry at offset 4, target at offset 8
+    uint32_t fwd = readWord(text.bytes(), 4);
+    uint32_t bwd = readWord(text.bytes(), 8);
 
-    // Forward: kBr | (1 & 0x3FFFFFF) = 0x14000001
+    // Forward: b target → +4 bytes → imm26 = 1
     CHECK(fwd == 0x14000001);
-    // Backward: kBr | (-1 & 0x3FFFFFF) = 0x14000000 | 0x03FFFFFF = 0x17FFFFFF
+    // Backward: b entry → -4 bytes → imm26 = -1
     CHECK(bwd == (0x14000000u | (0x3FFFFFFu)));
 }
 
@@ -425,11 +430,9 @@ static void testBCondForward()
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
-    // entry: offset 0 = b.eq (forward 8 bytes = 2 instrs, imm19=2)
-    //        offset 4 = mov x0, x0
-    // target: offset 8 = ret
-    uint32_t bcond = readWord(text.bytes(), 0);
-    // kBCond | (imm19=2 << 5) | cc=0 → 0x54000000 | (2 << 5) | 0 = 0x54000040
+    // BTI at offset 0; entry at offset 4 = b.eq; offset 8 = mov; target at offset 12 = ret
+    // b.eq forward 8 bytes (2 instrs) → imm19=2
+    uint32_t bcond = readWord(text.bytes(), 4);
     CHECK(bcond == 0x54000040);
 }
 
@@ -454,8 +457,8 @@ static void testCbzForward()
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
-    uint32_t cbz = readWord(text.bytes(), 0);
-    // kCbz | (imm19=2 << 5) | Rt=0 → 0xB4000000 | (2 << 5) | 0 = 0xB4000040
+    // BTI at offset 0; cbz at offset 4
+    uint32_t cbz = readWord(text.bytes(), 4);
     CHECK(cbz == 0xB4000040);
 }
 
@@ -475,14 +478,14 @@ static void testExternalCall()
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
-    // BL with relocation: instruction word = kBl with imm26=0 → 0x94000000
-    uint32_t bl = readWord(text.bytes(), 0);
+    // BTI at offset 0; BL at offset 4
+    uint32_t bl = readWord(text.bytes(), 4);
     CHECK(bl == 0x94000000);
 
-    // Should have an A64Call26 relocation at offset 0.
+    // Should have an A64Call26 relocation at offset 4 (after BTI).
     CHECK(text.relocations().size() >= 1);
     CHECK(text.relocations()[0].kind == RelocKind::A64Call26);
-    CHECK(text.relocations()[0].offset == 0);
+    CHECK(text.relocations()[0].offset == 4);
 }
 
 static void testPrologueEpilogue()
@@ -501,31 +504,36 @@ static void testPrologueEpilogue()
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
-    // Prologue: stp x29, x30, [sp, #-16]! then mov x29, sp
-    // Epilogue: ldp x29, x30, [sp], #16 then ret
-    CHECK(text.bytes().size() == 16); // 4 instructions
+    // BTI C + PACIASP + stp x29,x30 + mov x29,sp + ldp x29,x30 + AUTIASP + ret = 7 instrs
+    CHECK(text.bytes().size() == 28); // 7 * 4
 
-    // stp x29, x30, [sp, #-16]! (pre-indexed GPR pair)
-    // imm7 = -16/8 = -2 → signed 7-bit → 0x7E
-    uint32_t stp = readWord(text.bytes(), 0);
+    // Offset 0: BTI C
+    CHECK(readWord(text.bytes(), 0) == 0xD503245F);
+    // Offset 4: PACIASP
+    CHECK(readWord(text.bytes(), 4) == 0xD503233F);
+
+    // Offset 8: stp x29, x30, [sp, #-16]! (pre-indexed GPR pair)
+    uint32_t stp = readWord(text.bytes(), 8);
     uint32_t expected_stp = 0xA9800000u | ((static_cast<uint32_t>(-2) & 0x7F) << 15) |
                             (hwGPR(PhysReg::X30) << 10) | (hwGPR(PhysReg::SP) << 5) |
                             hwGPR(PhysReg::X29);
     CHECK(stp == expected_stp);
 
-    // mov x29, sp → add x29, sp, #0
-    uint32_t mov = readWord(text.bytes(), 4);
+    // Offset 12: mov x29, sp → add x29, sp, #0
+    uint32_t mov = readWord(text.bytes(), 12);
     CHECK(mov == (0x91000000u | (0u << 10) | (hwGPR(PhysReg::SP) << 5) | hwGPR(PhysReg::X29)));
 
-    // ldp x29, x30, [sp], #16 (post-indexed)
-    uint32_t ldp = readWord(text.bytes(), 8);
+    // Offset 16: ldp x29, x30, [sp], #16 (post-indexed)
+    uint32_t ldp = readWord(text.bytes(), 16);
     uint32_t expected_ldp = 0xA8C00000u | ((static_cast<uint32_t>(2) & 0x7F) << 15) |
                             (hwGPR(PhysReg::X30) << 10) | (hwGPR(PhysReg::SP) << 5) |
                             hwGPR(PhysReg::X29);
     CHECK(ldp == expected_ldp);
 
-    // ret
-    CHECK(readWord(text.bytes(), 12) == 0xD65F03C0);
+    // Offset 20: AUTIASP
+    CHECK(readWord(text.bytes(), 20) == 0xD50323BF);
+    // Offset 24: ret
+    CHECK(readWord(text.bytes(), 24) == 0xD65F03C0);
 }
 
 static void testMainInit()
@@ -543,13 +551,12 @@ static void testMainInit()
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
-    // Prologue (2 instr) + 2 bl runtime init + epilogue (2 instr) + ret (included in epilogue) = 6
-    // Wait — epilogue includes ldp + ret = 2 instrs, so total = 2 + 2 + 2 = 6
-    CHECK(text.bytes().size() == 24); // 6 * 4 = 24
+    // BTI + PACIASP + stp + mov + 2*bl init + ldp + AUTIASP + ret = 9 instrs = 36 bytes
+    CHECK(text.bytes().size() == 36);
 
-    // Instructions at offset 8 and 12 should be BL (0x94000000)
-    CHECK(readWord(text.bytes(), 8) == 0x94000000);
-    CHECK(readWord(text.bytes(), 12) == 0x94000000);
+    // BL runtime init calls at offset 16 and 20 (after BTI+PACIASP+stp+mov)
+    CHECK(readWord(text.bytes(), 16) == 0x94000000);
+    CHECK(readWord(text.bytes(), 20) == 0x94000000);
 
     // Should have at least 2 A64Call26 relocations for the runtime init calls.
     size_t callRelocs = 0;
@@ -576,13 +583,13 @@ static void testSubSpChunking()
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
-    // Prologue: stp x29,x30,[sp,#-16]! | mov x29,sp | sub sp,sp,#1,lsl#12 | sub sp,sp,#904
-    // offset 8: sub sp, sp, #1, lsl #12  (= 4096)
-    uint32_t sub1 = readWord(text.bytes(), 8);
+    // BTI + PACIASP + stp + mov + sub + sub + ...
+    // offset 16: sub sp, sp, #1, lsl #12  (= 4096) — after BTI(0)+PACIASP(4)+stp(8)+mov(12)
+    uint32_t sub1 = readWord(text.bytes(), 16);
     CHECK(sub1 == (0xD1400000u | (1u << 10) | (hwGPR(PhysReg::SP) << 5) | hwGPR(PhysReg::SP)));
 
-    // offset 12: sub sp, sp, #904
-    uint32_t sub2 = readWord(text.bytes(), 12);
+    // offset 20: sub sp, sp, #904
+    uint32_t sub2 = readWord(text.bytes(), 20);
     CHECK(sub2 == (0xD1000000u | (904u << 10) | (hwGPR(PhysReg::SP) << 5) | hwGPR(PhysReg::SP)));
 }
 
@@ -602,13 +609,12 @@ static void testCalleeSavedPair()
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
-    // Prologue: stp x29,x30,[sp,#-16]!  mov x29,sp  stp x19,x20,[sp,#-16]!
-    // Epilogue: ldp x19,x20,[sp],#16  ldp x29,x30,[sp],#16  ret
-    // Total: 6 instructions = 24 bytes
-    CHECK(text.bytes().size() == 24);
+    // BTI + PACIASP + stp x29,x30 + mov x29,sp + stp x19,x20 +
+    // ldp x19,x20 + ldp x29,x30 + AUTIASP + ret = 9 instrs = 36 bytes
+    CHECK(text.bytes().size() == 36);
 
-    // Third instruction (offset 8) = stp x19, x20, [sp, #-16]! (pre-indexed)
-    uint32_t stp = readWord(text.bytes(), 8);
+    // Fifth instruction (offset 16) = stp x19, x20, [sp, #-16]! (after BTI+PACIASP+stp+mov)
+    uint32_t stp = readWord(text.bytes(), 16);
     uint32_t expected = 0xA9800000u | ((static_cast<uint32_t>(-2) & 0x7F) << 15) |
                         (hwGPR(PhysReg::X20) << 10) | (hwGPR(PhysReg::SP) << 5) |
                         hwGPR(PhysReg::X19);
@@ -731,10 +737,9 @@ static void testAdrpAddPageOff()
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
-    // adrp x0, ... → kAdrp | Rd=0 = 0x90000000
-    CHECK(readWord(text.bytes(), 0) == 0x90000000);
-    // add x0, x0, ... → kAddRI with imm12=0 = 0x91000000 | (0 << 5) | 0
-    CHECK(readWord(text.bytes(), 4) == (0x91000000u | (0u << 10) | (0u << 5) | 0u));
+    // BTI at offset 0; adrp at offset 4; add at offset 8
+    CHECK(readWord(text.bytes(), 4) == 0x90000000);
+    CHECK(readWord(text.bytes(), 8) == (0x91000000u | (0u << 10) | (0u << 5) | 0u));
 
     // Should have A64AdrpPage21 and A64AddPageOff12 relocations.
     bool hasAdrp = false, hasAdd = false;

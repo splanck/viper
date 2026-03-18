@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>6 Native Targets — Viper</title>
+  <meta name="description" content="Viper generates native executables for 6 platform targets: ELF, Mach-O, and PE on both ARM64 and x86-64, with hand-written assemblers, linkers, and security hardening.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="../showcase/">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <a href="../">Features</a> / <span>6 Native Targets</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#targets">The 6 Targets</a></li>
+        <li><a href="#pipeline">Compilation Pipeline</a></li>
+        <li><a href="#encoders">Binary Encoders</a></li>
+        <li><a href="#linker">Native Linker</a></li>
+        <li><a href="#regalloc">Register Allocation</a></li>
+        <li><a href="#peephole">Peephole Optimization</a></li>
+        <li><a href="#security">Security Hardening</a></li>
+      </ul>
+    </nav>
+  </aside>
+
+  <main class="page-main prose">
+    <h1 id="overview">6 Native Targets</h1>
+
+    <p>Viper compiles directly to native executables without calling any external assembler or linker. The entire pipeline &mdash; from IL to relocatable object files to linked executables &mdash; is built from scratch.</p>
+
+    <h2 id="targets">The Target Matrix</h2>
+
+    <table>
+      <thead><tr><th>Architecture</th><th>Format</th><th>Platform</th><th>Page Size</th></tr></thead>
+      <tbody>
+        <tr><td>x86-64</td><td>ELF</td><td>Linux</td><td>4 KB</td></tr>
+        <tr><td>x86-64</td><td>Mach-O</td><td>macOS</td><td>4 KB</td></tr>
+        <tr><td>x86-64</td><td>PE</td><td>Windows</td><td>4 KB</td></tr>
+        <tr><td>AArch64</td><td>ELF</td><td>Linux</td><td>4 KB</td></tr>
+        <tr><td>AArch64</td><td>Mach-O</td><td>macOS</td><td><strong>16 KB</strong></td></tr>
+        <tr><td>AArch64</td><td>PE</td><td>Windows</td><td>4 KB</td></tr>
+      </tbody>
+    </table>
+
+    <p>macOS on ARM64 requires 16 KB page alignment &mdash; Apple's dynamic linker (dyld) rejects executables with incorrect alignment. Viper handles this correctly.</p>
+
+    <h2 id="pipeline">Compilation Pipeline</h2>
+
+    <p>The native compilation pipeline has 6 stages:</p>
+
+    <ol>
+      <li><strong>IL &rarr; Machine IR</strong> &mdash; Lower typed IL instructions to target-specific machine IR opcodes</li>
+      <li><strong>Legalization</strong> &mdash; Normalize instructions to legal forms for the target architecture</li>
+      <li><strong>Register Allocation</strong> &mdash; Linear-scan allocation with coalescing and spilling</li>
+      <li><strong>Peephole Optimization</strong> &mdash; 5-7 backend passes (strength reduction, copy propagation, DCE, branch optimization)</li>
+      <li><strong>Binary Encoding</strong> &mdash; MIR &rarr; machine code bytes + relocations</li>
+      <li><strong>Linking</strong> &mdash; Object files + runtime archives &rarr; native executable</li>
+    </ol>
+
+    <h2 id="encoders">Custom Binary Encoders</h2>
+
+    <h3>x86-64 Encoder (1,451 LOC)</h3>
+    <p>Variable-length instruction encoding (1-15 bytes) handling:</p>
+    <ul>
+      <li>REX prefix generation (W/R/X/B bits for 64-bit mode and extended registers)</li>
+      <li>ModR/M and SIB byte construction for all addressing modes</li>
+      <li>Displacement and immediate field packing</li>
+      <li>RIP-relative addressing with -4 addend correction</li>
+      <li>SSE2 scalar double operations (FADD, FSUB, FMUL, FDIV)</li>
+    </ul>
+
+    <h3>AArch64 Encoder (1,883 LOC)</h3>
+    <p>Fixed-width 32-bit instructions via pure bit-field construction:</p>
+    <ul>
+      <li>3-register arithmetic with optional shifts</li>
+      <li>Load/store pairs (LDP/STP) for efficient prologue/epilogue</li>
+      <li>ADRP + ADD page-relative addressing for cross-section references</li>
+      <li>Branch26 relocations for function calls</li>
+      <li>Conditional branch encoding (B.cond, CBZ, CBNZ)</li>
+    </ul>
+
+    <h2 id="linker">Custom Native Linker (8,162 LOC)</h2>
+
+    <p>The linker pipeline handles the full journey from .o files to executables:</p>
+
+    <ul>
+      <li><strong>Object file reader</strong> &mdash; Auto-detects ELF, Mach-O, or COFF by magic bytes</li>
+      <li><strong>Archive reader</strong> &mdash; Parses GNU, BSD, and COFF archive variants (.a / .lib)</li>
+      <li><strong>Symbol resolver</strong> &mdash; Iterative fixed-point demand-pull with Global &gt; Weak precedence</li>
+      <li><strong>Section merger</strong> &mdash; Classifies and concatenates .text, .rodata, .data, .bss with alignment</li>
+      <li><strong>Relocation applier</strong> &mdash; Format-dispatched patching (PCRel32, Abs64, Branch26, Page21/PageOff12)</li>
+      <li><strong>Dead code stripping</strong> &mdash; Eliminates unreferenced sections</li>
+      <li><strong>ICF</strong> &mdash; Identical Code Folding to reduce binary size</li>
+      <li><strong>Code signing</strong> &mdash; Required for macOS Mach-O executables</li>
+    </ul>
+
+    <h3>Executable Writers</h3>
+    <table>
+      <thead><tr><th>Format</th><th>Key Details</th></tr></thead>
+      <tbody>
+        <tr><td>ELF</td><td>Static ET_EXEC, PT_GNU_STACK for non-executable stack</td></tr>
+        <tr><td>Mach-O</td><td>MH_EXECUTE | MH_PIE, __PAGEZERO (4 GB guard), LC_BUILD_VERSION, ad-hoc code signing</td></tr>
+        <tr><td>PE</td><td>PE32+, NX_COMPAT, HIGH_ENTROPY_VA, DLL characteristics, 1 MB stack reserve</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="regalloc">Register Allocation</h2>
+
+    <p>Both architectures use <strong>linear-scan register allocation</strong> with additional optimization passes:</p>
+
+    <h3>AArch64</h3>
+    <ul>
+      <li>Block-order traversal with cross-block persistence via exit-state caching</li>
+      <li>Copy coalescer integrated before linear scan (~270 LOC)</li>
+      <li>Next-use distance heuristics for spill victim selection</li>
+      <li>Callee-saved register tracking for automatic prologue/epilogue generation</li>
+    </ul>
+
+    <h3>x86-64</h3>
+    <ul>
+      <li>Pre-computed live intervals for priority-ordered assignment</li>
+      <li>Aggressive copy coalescing as post-allocation pass</li>
+      <li>Dedicated spiller with reload/store pair insertion</li>
+      <li>16 GPR + 16 XMM register tracking</li>
+    </ul>
+
+    <h2 id="peephole">Backend Peephole Optimization</h2>
+
+    <p>After register allocation, both backends apply target-specific peephole passes:</p>
+
+    <h3>AArch64 (7 passes)</h3>
+    <ul>
+      <li><strong>BranchOpt</strong> &mdash; Jump-to-jump elimination, unreachable block removal</li>
+      <li><strong>CopyPropDCE</strong> &mdash; Forward copy propagation + dead code elimination</li>
+      <li><strong>IdentityElim</strong> &mdash; Self-move removal (MOV Xn, Xn)</li>
+      <li><strong>LoopOpt</strong> &mdash; Loop-invariant constant hoisting to callee-saved registers (~720 LOC)</li>
+      <li><strong>MemoryOpt</strong> &mdash; Redundant load/store elimination</li>
+      <li><strong>StrengthReduce</strong> &mdash; Multiply/divide by power-of-2 &rarr; shift/AND</li>
+    </ul>
+
+    <h3>x86-64 (5 passes)</h3>
+    <ul>
+      <li><strong>ArithSimplify</strong> &mdash; Zero-extension elimination, commutative reordering</li>
+      <li><strong>BranchOpt</strong> &mdash; Jump optimization and unreachable detection</li>
+      <li><strong>DCE</strong> &mdash; Dead instruction removal with fixed-point iteration</li>
+      <li><strong>MovFolding</strong> &mdash; MOV constant propagation, multiply-by-power-of-2 &rarr; shift</li>
+    </ul>
+
+    <p>Both backends share template-based peephole infrastructure for DCE and copy propagation, reducing code duplication.</p>
+
+    <h2 id="security">Security Hardening</h2>
+
+    <h3>PAC/BTI on AArch64</h3>
+    <p>Viper emits ARM Pointer Authentication and Branch Target Identification instructions:</p>
+
+    <ul>
+      <li><strong>PACIASP</strong> (HINT #25) &mdash; Signs the link register with the stack pointer at function entry, preventing ROP attacks</li>
+      <li><strong>AUTIASP</strong> (HINT #29) &mdash; Verifies the link register before return</li>
+      <li><strong>BTI C</strong> (HINT #34) &mdash; Marks valid indirect call targets, preventing jump-oriented attacks</li>
+    </ul>
+
+    <p>These are encoded as HINT instructions that execute as NOPs on pre-ARMv8.3 hardware, so security is <strong>on by default</strong> with zero performance cost on older chips.</p>
+
+    <h3>Stack Protection</h3>
+    <ul>
+      <li>ELF: PT_GNU_STACK with non-executable flag</li>
+      <li>PE: NX_COMPAT and HIGH_ENTROPY_VA DLL characteristics</li>
+      <li>Mach-O: PIE (Position-Independent Executable) by default</li>
+    </ul>
+
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="zero-deps.html">Zero Dependencies</a>
+      <a href="native-targets.html">Native Targets</a>
+      <a href="two-languages.html">Languages</a>
+      <a href="runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

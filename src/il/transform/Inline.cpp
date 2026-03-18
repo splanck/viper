@@ -399,6 +399,36 @@ bool inlineCallSite(Function &caller,
     if (callInstr.operands.size() != callee.params.size())
         return false;
 
+    // Skip inlining callees that were already modified by a prior inline.
+    for (const auto &B : callee.blocks)
+    {
+        if (B.label.find(".inline.") != std::string::npos)
+            return false;
+    }
+
+    // Skip inlining when the callee's entry block has params that can't ALL
+    // be mapped to function params. After mem2reg + SimplifyCFG, the entry
+    // block may have loop-carried params or rewritten param IDs that don't
+    // correspond to any function param. The inline pass can only provide call
+    // operands (matching function params), not loop-internal values.
+    if (!callee.blocks.empty())
+    {
+        for (const auto &ep : callee.blocks.front().params)
+        {
+            bool mapped = false;
+            for (const auto &fp : callee.params)
+            {
+                if (fp.id == ep.id)
+                {
+                    mapped = true;
+                    break;
+                }
+            }
+            if (!mapped)
+                return false;
+        }
+    }
+
     // The parser leaves call instruction type as Void for non-f64 returns
     // (only f64 is recorded for register-class selection).  Use the callee's
     // declared retType instead of the call instruction's type for the match.
@@ -430,6 +460,10 @@ bool inlineCallSite(Function &caller,
         labelMap.emplace(B.label, makeUniqueLabel(caller, base));
     }
 
+    // =========================================================================
+    // PHASE 1: Read-only analysis — can safely bail at any point
+    // =========================================================================
+
     // Build continuation block from instructions after the call.
     BasicBlock continuation;
     continuation.label = makeUniqueLabel(caller, callBlock.label + ".inline.cont");
@@ -438,36 +472,28 @@ bool inlineCallSite(Function &caller,
                                      callBlock.instructions.end());
     continuation.terminated = callBlock.terminated;
 
-    // Remove the call and trailing instructions from the original block.
-    callBlock.instructions.resize(callIndex);
-    callBlock.terminated = false;
-
-    // Replace the call result with a continuation parameter when needed.
-    if (returnsValue && callInstr.result)
+    // Compute return param info (but don't add to continuation yet).
+    Param retParam;
+    bool hasRetParam = returnsValue && callInstr.result;
+    if (hasRetParam)
     {
-        Param retParam;
-        retParam.name = lookupValueName(caller, *callInstr.result, "ret");
+        retParam.name = lookupValueName(caller, *callInstr.result,
+                                        "ret" + std::to_string(*callInstr.result));
         retParam.id = nextId++;
         retParam.type = callee.retType;
-        continuation.params.push_back(retParam);
-        ensureValueName(caller, retParam.id, retParam.name);
-
-        Value repl = Value::temp(retParam.id);
-        viper::il::UseDefInfo useInfo(caller);
-        useInfo.replaceAllUses(*callInstr.result, repl);
-        // Safety net: ensure continuation block uses are replaced even if
-        // UseDefInfo was built before the block was fully wired into the CFG.
-        replaceUsesInBlock(continuation, *callInstr.result, repl);
     }
 
-    // Thread external caller values through the continuation as extra params.
-    // The continuation's instructions may reference temps defined in the caller's
-    // call block (or earlier blocks).  After SimplifyCFG merges/removes blocks
-    // those cross-block references would dangle.  Instead we add explicit params
-    // for each external value and pass them through the bridge instructions.
+    // Compute escaped IDs: temps used in continuation but not defined there.
+    // Include both the return param AND the original call result ID in contDefined.
+    // The call result will be replaced by retParam in Phase 2 (UseDefInfo::replaceAllUses),
+    // but since escape analysis runs in Phase 1 (before replacement), we must exclude
+    // the original call result from escapedIds to avoid creating a spurious escaped param.
     std::unordered_set<unsigned> contDefined;
-    for (const auto &p : continuation.params)
-        contDefined.insert(p.id);
+    if (hasRetParam)
+    {
+        contDefined.insert(retParam.id);
+        contDefined.insert(*callInstr.result); // exclude original result from escape detection
+    }
     for (const auto &instr : continuation.instructions)
     {
         if (instr.result)
@@ -492,48 +518,120 @@ bool inlineCallSite(Function &caller,
         }
     }
 
-    // escapedIds: temps used in continuation but not defined there.
     std::vector<unsigned> escapedIds;
     for (unsigned id : contUsed)
     {
         if (contDefined.find(id) == contDefined.end())
             escapedIds.push_back(id);
     }
-
-    // Sort for determinism.
     std::sort(escapedIds.begin(), escapedIds.end());
 
-    // Map from original caller temp → new continuation param.
-    std::unordered_map<unsigned, unsigned> escapedMap;
+    // Type inference for escaped values — runs on FULL (pre-truncated) caller.
+    // This is the key advantage of Phase 1: we see ALL instructions including
+    // those in the call block that will be truncated in Phase 2.
+    struct EscapedParamInfo
+    {
+        Param param;
+        bool typeFound{false};
+    };
+    std::vector<EscapedParamInfo> escapedParamInfos;
+    escapedParamInfos.reserve(escapedIds.size());
+
+    std::unordered_set<std::string> usedParamNames;
+    if (hasRetParam)
+        usedParamNames.insert(retParam.name);
+
     for (unsigned origId : escapedIds)
     {
-        Param p;
-        p.name = lookupValueName(caller, origId, "ext");
+        EscapedParamInfo info;
+        Param &p = info.param;
+        std::string name = lookupValueName(caller, origId, "ext" + std::to_string(origId));
+        if (usedParamNames.count(name))
+            name += "_" + std::to_string(origId);
+        while (usedParamNames.count(name))
+            name += "_";
+        usedParamNames.insert(name);
+        p.name = name;
         p.id = nextId++;
-        // Look up the type from the caller's definitions.
-        p.type = Type(Type::Kind::I64); // safe default
+        p.type = Type(Type::Kind::I64); // fallback default
+
+        // Search ALL caller blocks (including the FULL call block, not yet truncated).
         for (const auto &bb : caller.blocks)
         {
             for (const auto &bp : bb.params)
             {
                 if (bp.id == origId)
+                {
                     p.type = bp.type;
+                    info.typeFound = true;
+                }
             }
             for (const auto &ins : bb.instructions)
             {
                 if (ins.result && *ins.result == origId)
+                {
                     p.type = ins.type;
+                    info.typeFound = true;
+                }
             }
         }
         // Also check function params.
         for (const auto &fp : caller.params)
         {
             if (fp.id == origId)
+            {
                 p.type = fp.type;
+                info.typeFound = true;
+            }
         }
-        continuation.params.push_back(p);
-        ensureValueName(caller, p.id, p.name);
-        escapedMap[origId] = p.id;
+        // Also check continuation instructions.
+        if (!info.typeFound)
+        {
+            for (const auto &ins : continuation.instructions)
+            {
+                if (ins.result && *ins.result == origId)
+                {
+                    p.type = ins.type;
+                    info.typeFound = true;
+                }
+            }
+        }
+
+        escapedParamInfos.push_back(std::move(info));
+    }
+
+    // Note: escaped values without found types use the I64 fallback.
+    // This is imprecise but safe — the verifier will catch actual type
+    // mismatches, and the inline pass can be retried with better type info
+    // after other optimization passes clean up the IL.
+
+    // =========================================================================
+    // PHASE 2: Commit — all validation passed, now mutate the caller
+    // =========================================================================
+
+    // Truncate call block (POINT OF NO RETURN).
+    callBlock.instructions.resize(callIndex);
+    callBlock.terminated = false;
+
+    // Add return param to continuation.
+    if (hasRetParam)
+    {
+        continuation.params.push_back(retParam);
+        ensureValueName(caller, retParam.id, retParam.name);
+
+        Value repl = Value::temp(retParam.id);
+        viper::il::UseDefInfo useInfo(caller);
+        useInfo.replaceAllUses(*callInstr.result, repl);
+        replaceUsesInBlock(continuation, *callInstr.result, repl);
+    }
+
+    // Add escaped params to continuation and build the remap.
+    std::unordered_map<unsigned, unsigned> escapedMap;
+    for (size_t i = 0; i < escapedIds.size(); ++i)
+    {
+        continuation.params.push_back(escapedParamInfos[i].param);
+        ensureValueName(caller, escapedParamInfos[i].param.id, escapedParamInfos[i].param.name);
+        escapedMap[escapedIds[i]] = escapedParamInfos[i].param.id;
     }
 
     // Remap continuation instructions to use the new params.
@@ -599,12 +697,21 @@ bool inlineCallSite(Function &caller,
                 if (!continuation.params.empty())
                 {
                     bridge.brArgs.emplace_back();
+                    auto &bridgeArgs = bridge.brArgs.back();
                     // Pass the return value as the continuation block's first parameter.
-                    if (!CI.operands.empty())
-                        bridge.brArgs.back().push_back(remapValue(CI.operands.front(), valueMap));
+                    // Always emit a return value arg when the callee is non-void,
+                    // even if this particular Ret has no operands (e.g., unreachable
+                    // void-ret in a non-void function after optimization).
+                    if (returnsValue)
+                    {
+                        if (!CI.operands.empty())
+                            bridgeArgs.push_back(remapValue(CI.operands.front(), valueMap));
+                        else
+                            bridgeArgs.push_back(Value::constInt(0));
+                    }
                     // Pass escaped caller values as extra parameters.
                     for (unsigned origId : escapedIds)
-                        bridge.brArgs.back().push_back(Value::temp(origId));
+                        bridgeArgs.push_back(Value::temp(origId));
                 }
 
                 clone.instructions.push_back(std::move(bridge));
@@ -661,12 +768,24 @@ bool inlineCallSite(Function &caller,
     jump.labels.push_back(labelMap.at(callee.blocks.front().label));
 
     // Pass call arguments as branch args when the entry block has params.
-    if (!callee.blocks.front().params.empty())
+    // The pre-mutation validation guarantees all entry block params can be
+    // mapped to function params by ID. Map each to its call operand.
+    const auto &origEntryParams = callee.blocks.front().params;
+    if (!origEntryParams.empty())
     {
         std::vector<Value> args;
-        args.reserve(callInstr.operands.size());
-        for (const auto &op : callInstr.operands)
-            args.push_back(op);
+        args.reserve(origEntryParams.size());
+        for (const auto &ep : origEntryParams)
+        {
+            for (size_t k = 0; k < callee.params.size(); ++k)
+            {
+                if (callee.params[k].id == ep.id && k < callInstr.operands.size())
+                {
+                    args.push_back(callInstr.operands[k]);
+                    break;
+                }
+            }
+        }
         jump.brArgs.push_back(std::move(args));
     }
 
@@ -721,7 +840,12 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
     for (size_t fnIdx = 0; fnIdx < module.functions.size(); ++fnIdx)
     {
         Function &caller = module.functions[fnIdx];
-        for (size_t blockIdx = 0; blockIdx < caller.blocks.size(); ++blockIdx)
+        // Snapshot block count: only iterate ORIGINAL blocks, not ones added
+        // by inlining. Newly inlined blocks will be handled on the next pass
+        // invocation. This prevents unbounded growth when inlined code contains
+        // more calls.
+        const size_t originalBlockCount = caller.blocks.size();
+        for (size_t blockIdx = 0; blockIdx < originalBlockCount; ++blockIdx)
         {
             BasicBlock &block = caller.blocks[blockIdx];
             size_t instIdx = 0;

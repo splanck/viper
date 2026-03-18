@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Feature Parity Matrix — Viper</title>
+  <meta name="description" content="Viper documentation: Feature Parity Matrix">
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="icon" href="../../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../../docs/" class="active">Docs</a>
+    <a href="../../learn/">Learn</a>
+    <a href="../../showcase/">Showcase</a>
+    <a href="../../performance/">Performance</a>
+    <a href="../../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../../">Home</a> / <a href="../../docs">Docs</a> / <span>Feature Parity Matrix</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#context">Context</a></li>
+        <li><a href="#1-feature-parity-matrix">1. Feature Parity Matrix</a></li>
+        <li><a href="#2-dangerous-cross-language-confusions">2. Dangerous Cross-Language Confusions</a></li>
+        <li><a href="#3-il-capabilities-not-wired-up">3. IL Capabilities Not Wired Up</a></li>
+        <li><a href="#4-priority-gaps-basic-to-zia-migration-pain-points">4. Priority Gaps (BASIC to Zia Migration Pain Points)</a></li>
+        <li><a href="#5-source-references">5. Source References</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>Feature Parity Matrix</h1>
+<h1 id="zia-vs-viper-basic-feature-parity-matrix">Zia vs Viper BASIC: Feature Parity Matrix</h1>
+<h2 id="context">Context</h2>
+<p>This document is a comprehensive feature parity audit between the two Viper frontends: <strong>Zia</strong> (modern, Swift/Kotlin-influenced) and <strong>Viper BASIC</strong> (classic BASIC with OOP extensions). The goal is to identify gaps, surprising behavioral differences, and IL capabilities that one frontend hasn&#x27;t wired up — prioritizing issues that would frustrate someone moving from BASIC to Zia.</p>
+<p>---</p>
+<h2 id="1-feature-parity-matrix">1. Feature Parity Matrix</h2>
+<h3 id="legend">Legend</h3>
+<ul>
+<li><strong>Full</strong> = fully implemented (parsed, analyzed, lowered to IL, tested)</li>
+<li><strong>Partial</strong> = parsed and partially lowered, or missing edge cases</li>
+<li><strong>Parsed</strong> = AST exists but no IL lowering</li>
+<li><strong>None</strong> = not implemented at all</li>
+</ul>
+<p>---</p>
+<h3 id="1-1-variable-types-declarations">1.1 Variable Types &amp; Declarations</h3>
+<table><thead><tr>
+<th>Feature</th>
+<th>Zia</th>
+<th>BASIC</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>64-bit integer</td>
+<td>**Full** (`Integer`)</td>
+<td>**Full** (`I64`, `%`, `&amp;`)</td>
+<td>Same IL type</td>
+</tr>
+<tr>
+<td>64-bit float</td>
+<td>**Full** (`Number`)</td>
+<td>**Full** (`F64`, `#`, `!`)</td>
+<td>Same IL type</td>
+</tr>
+<tr>
+<td>Boolean</td>
+<td>**Full** (`Boolean`)</td>
+<td>**Full** (`Bool`)</td>
+<td>**Zia=1/0, BASIC=-1/0** (see dangerous diffs)</td>
+</tr>
+<tr>
+<td>String</td>
+<td>**Full** (`String`)</td>
+<td>**Full** (`Str`, `$`)</td>
+<td>Same runtime ref-counted strings</td>
+</tr>
+<tr>
+<td>Byte</td>
+<td>**Full** (`Byte`)</td>
+<td>None</td>
+<td>Zia only — lowered as i32</td>
+</tr>
+<tr>
+<td>Unit type</td>
+<td>**Full** (`Unit`)</td>
+<td>None</td>
+<td>Zia only — for `Result[Unit]`</td>
+</tr>
+<tr>
+<td>Ptr (opaque)</td>
+<td>**Full**</td>
+<td>**Full** (`Object`)</td>
+<td>Both use IL `ptr`</td>
+</tr>
+<tr>
+<td>Any (top type)</td>
+<td>**Full**</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Never (bottom type)</td>
+<td>**Full**</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Type suffixes (`$`, `%`, `#`)</td>
+<td>None</td>
+<td>**Full**</td>
+<td>BASIC only</td>
+</tr>
+<tr>
+<td>Type inference</td>
+<td>**Full**</td>
+<td>**Partial** (from context)</td>
+<td>Zia infers from initializer; BASIC from suffix or AS</td>
+</tr>
+<tr>
+<td>Mutable variable</td>
+<td>**Full** (`var`)</td>
+<td>**Full** (`DIM`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Immutable binding</td>
+<td>**Full** (`final`)</td>
+<td>**Full** (`CONST`)</td>
+<td>BASIC CONST is compile-time only</td>
+</tr>
+<tr>
+<td>Static local</td>
+<td>None</td>
+<td>**Full** (`STATIC`)</td>
+<td>BASIC only — persistent across calls</td>
+</tr>
+<tr>
+<td>Shared module variable</td>
+<td>None</td>
+<td>**Full** (`SHARED`)</td>
+<td>BASIC only</td>
+</tr>
+<tr>
+<td>Array resize</td>
+<td>None</td>
+<td>**Full** (`REDIM PRESERVE`)</td>
+<td>BASIC only — Zia uses dynamic List</td>
+</tr>
+<tr>
+<td>Multi-dim arrays</td>
+<td>None</td>
+<td>**Full** (`DIM a(m,n)`)</td>
+<td>BASIC only — row-major flattened</td>
+</tr>
+<tr>
+<td>Implicit declaration</td>
+<td>None</td>
+<td>**Full** (via suffix)</td>
+<td>BASIC allows `x% = 5` without DIM</td>
+</tr>
+</tbody></table>
+<h3 id="1-2-control-flow">1.2 Control Flow</h3>
+<table><thead><tr>
+<th>Feature</th>
+<th>Zia</th>
+<th>BASIC</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>if/else</td>
+<td>**Full** (`if/else`)</td>
+<td>**Full** (`IF/THEN/ELSE/END IF`)</td>
+<td></td>
+</tr>
+<tr>
+<td>if expression (ternary)</td>
+<td>**Full** (`if (c) a else b`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Ternary operator</td>
+<td>**Full** (`a ? b : c`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>while loop</td>
+<td>**Full** (`while`)</td>
+<td>**Full** (`WHILE/WEND`)</td>
+<td></td>
+</tr>
+<tr>
+<td>do-while / do-until</td>
+<td>None</td>
+<td>**Full** (`DO/LOOP WHILE/UNTIL`)</td>
+<td>BASIC only — pre-test and post-test</td>
+</tr>
+<tr>
+<td>C-style for</td>
+<td>**Full** (`for (;;)`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Counted for</td>
+<td>None</td>
+<td>**Full** (`FOR i = a TO b STEP s`)</td>
+<td>BASIC only</td>
+</tr>
+<tr>
+<td>for-in (range)</td>
+<td>**Full** (`for (i in 0..10)`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>for-in (collection)</td>
+<td>**Full**</td>
+<td>**Full** (`FOR EACH`)</td>
+<td>Both iterate collections</td>
+</tr>
+<tr>
+<td>for-in (tuple destructure)</td>
+<td>**Full** (`for (k,v in map)`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>match/select</td>
+<td>**Full** (`match`)</td>
+<td>**Full** (`SELECT CASE`)</td>
+<td>Both fully featured</td>
+</tr>
+<tr>
+<td>match expression</td>
+<td>**Full**</td>
+<td>None</td>
+<td>Zia only — returns a value</td>
+</tr>
+<tr>
+<td>Pattern matching (destructure)</td>
+<td>**Full** (Wildcard, Binding, Constructor, Tuple)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Guard statement</td>
+<td>**Full** (`guard ... else`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>GoTo</td>
+<td>None</td>
+<td>**Full** (`GOTO`)</td>
+<td>BASIC only</td>
+</tr>
+<tr>
+<td>GoSub/Return</td>
+<td>None</td>
+<td>**Full** (`GOSUB/RETURN`)</td>
+<td>BASIC only — stack-based</td>
+</tr>
+<tr>
+<td>break/continue</td>
+<td>**Full**</td>
+<td>**Full** (`EXIT FOR/WHILE/DO`)</td>
+<td>BASIC has no `continue` equivalent</td>
+</tr>
+<tr>
+<td>Labeled break</td>
+<td>None</td>
+<td>None</td>
+<td>Neither</td>
+</tr>
+</tbody></table>
+<h3 id="1-3-functions-procedures">1.3 Functions &amp; Procedures</h3>
+<table><thead><tr>
+<th>Feature</th>
+<th>Zia</th>
+<th>BASIC</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>Function declaration</td>
+<td>**Full** (`func`)</td>
+<td>**Full** (`FUNCTION/END FUNCTION`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Void procedure</td>
+<td>**Full** (returns `Void`)</td>
+<td>**Full** (`SUB/END SUB`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Return type annotation</td>
+<td>**Full** (`-&gt; Type` or `: Type`)</td>
+<td>**Full** (`AS Type`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Named arguments</td>
+<td>**Parsed**</td>
+<td>None</td>
+<td>Zia parses but unclear if fully used</td>
+</tr>
+<tr>
+<td>Default parameters</td>
+<td>**Full**</td>
+<td>None</td>
+<td>Zia pads missing args with lowered default expressions</td>
+</tr>
+<tr>
+<td>ByRef parameters</td>
+<td>None</td>
+<td>**Full** (`BYREF`)</td>
+<td>BASIC only</td>
+</tr>
+<tr>
+<td>ByVal parameters</td>
+<td>Implicit (all by-value)</td>
+<td>**Full** (`BYVAL`, default)</td>
+<td></td>
+</tr>
+<tr>
+<td>Array parameters</td>
+<td>None</td>
+<td>**Full** (`arr()` syntax)</td>
+<td>BASIC only</td>
+</tr>
+<tr>
+<td>Variadic parameters</td>
+<td>None</td>
+<td>None</td>
+<td>Neither</td>
+</tr>
+<tr>
+<td>Function overloading</td>
+<td>None</td>
+<td>None</td>
+<td>Neither</td>
+</tr>
+<tr>
+<td>Generic functions</td>
+<td>**Full** (`func f[T](x: T)`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Constrained generics</td>
+<td>**Full** (`[T: Interface]`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Function references</td>
+<td>**Full** (`&amp;funcName`)</td>
+<td>**Full** (`ADDRESSOF`)</td>
+<td>Both produce function pointers</td>
+</tr>
+<tr>
+<td>Lambda / closure</td>
+<td>**Full** (`(x) =&gt; x + 1`)</td>
+<td>None</td>
+<td>**Major gap** — Zia only</td>
+</tr>
+</tbody></table>
+<h3 id="1-4-classes-entities-oop">1.4 Classes, Entities &amp; OOP</h3>
+<table><thead><tr>
+<th>Feature</th>
+<th>Zia</th>
+<th>BASIC</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>Reference type (heap)</td>
+<td>**Full** (`entity`)</td>
+<td>**Full** (`CLASS`)</td>
+<td>Both use rt_alloc</td>
+</tr>
+<tr>
+<td>Value type (copy)</td>
+<td>**Full** (`value`)</td>
+<td>**Full** (`TYPE`)</td>
+<td>BASIC TYPE is fields-only (no methods)</td>
+</tr>
+<tr>
+<td>Constructor</td>
+<td>**Full** (`func init()`)</td>
+<td>**Full** (`SUB New()`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Destructor</td>
+<td>**Full** (`deinit`)</td>
+<td>**Full** (`DESTRUCTOR`)</td>
+<td>Both emit `__dtor_TypeName` function</td>
+</tr>
+<tr>
+<td>DELETE statement</td>
+<td>None</td>
+<td>**Full** (`DELETE obj`)</td>
+<td>**Gap** — BASIC only</td>
+</tr>
+<tr>
+<td>Single inheritance</td>
+<td>**Full** (`extends`)</td>
+<td>**Full** (`:` syntax)</td>
+<td></td>
+</tr>
+<tr>
+<td>Interface declaration</td>
+<td>**Full** (`interface`)</td>
+<td>**Full** (`INTERFACE`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Interface implementation</td>
+<td>**Full** (itable dispatch)</td>
+<td>**Full** (itable dispatch)</td>
+<td>Both use runtime itable binding</td>
+</tr>
+<tr>
+<td>Virtual methods</td>
+<td>Implicit (all virtual)</td>
+<td>**Full** (`VIRTUAL` modifier)</td>
+<td>BASIC has explicit vtable dispatch</td>
+</tr>
+<tr>
+<td>Override methods</td>
+<td>**Full** (`override`)</td>
+<td>**Full** (`OVERRIDE`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Abstract methods</td>
+<td>None</td>
+<td>**Full** (`ABSTRACT`)</td>
+<td>BASIC only</td>
+</tr>
+<tr>
+<td>Final methods</td>
+<td>None</td>
+<td>**Full** (`FINAL`)</td>
+<td>BASIC only</td>
+</tr>
+<tr>
+<td>Abstract classes</td>
+<td>None</td>
+<td>**Full**</td>
+<td>BASIC only</td>
+</tr>
+<tr>
+<td>Properties (get/set)</td>
+<td>**Full** (`property`)</td>
+<td>**Full** (`PROPERTY/GET/SET`)</td>
+<td>Both synthesize `get_X`/`set_X` methods</td>
+</tr>
+<tr>
+<td>Static fields</td>
+<td>**Full** (`static`)</td>
+<td>**Full** (`STATIC DIM`)</td>
+<td>Zia emits IL globals</td>
+</tr>
+<tr>
+<td>Static methods</td>
+<td>**Full** (`static func`)</td>
+<td>**Full** (`STATIC SUB/FUNCTION`)</td>
+<td>Both omit self parameter</td>
+</tr>
+<tr>
+<td>Static constructors</td>
+<td>None</td>
+<td>**Full**</td>
+<td>BASIC only — `$static` thunks</td>
+</tr>
+<tr>
+<td>Access control</td>
+<td>**Full** (`expose`/`hide`)</td>
+<td>**Full** (`PUBLIC`/`PRIVATE`)</td>
+<td></td>
+</tr>
+<tr>
+<td>self/this reference</td>
+<td>**Full** (`self`)</td>
+<td>**Full** (`ME`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Base class call</td>
+<td>**Full** (`super.method()`)</td>
+<td>**Full** (`BASE.Method()`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Null reference</td>
+<td>**Full** (`null`)</td>
+<td>**Full** (`NOTHING`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Struct literal init</td>
+<td>**Full** (`Point { x=1, y=2 }`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Weak references</td>
+<td>**Parsed**</td>
+<td>None</td>
+<td>Zia parses `weak` but doesn&#x27;t lower</td>
+</tr>
+</tbody></table>
+<h3 id="1-5-collections">1.5 Collections</h3>
+<table><thead><tr>
+<th>Feature</th>
+<th>Zia</th>
+<th>BASIC</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>Dynamic list</td>
+<td>**Full** (List literal `[1,2,3]`)</td>
+<td>Via runtime (`Viper.Collections.List`)</td>
+<td>Zia has literal syntax + sugar</td>
+</tr>
+<tr>
+<td>Map / Dictionary</td>
+<td>**Full** (Map literal `{&quot;a&quot;:1}`)</td>
+<td>Via runtime (`Viper.Collections.Map`)</td>
+<td>Zia has literal syntax + sugar</td>
+</tr>
+<tr>
+<td>Set</td>
+<td>**Full** (Set literal `{1,2,3}`)</td>
+<td>Via runtime</td>
+<td>Zia lowers set literals via `rt_set_new` + `rt_set_add`</td>
+</tr>
+<tr>
+<td>Seq (lazy sequence)</td>
+<td>**Full**</td>
+<td>Via runtime</td>
+<td>Zia has specific for-in integration</td>
+</tr>
+<tr>
+<td>Native arrays</td>
+<td>**Full** (FixedArray `T[N]`)</td>
+<td>**Full** (`DIM arr(size)`)</td>
+<td>Different models: Zia=fixed-size inline, BASIC=dynamic</td>
+</tr>
+<tr>
+<td>Multi-dim arrays</td>
+<td>None</td>
+<td>**Full**</td>
+<td>BASIC only</td>
+</tr>
+<tr>
+<td>Array bounds query</td>
+<td>None</td>
+<td>**Full** (`LBOUND`/`UBOUND`)</td>
+<td>BASIC only</td>
+</tr>
+<tr>
+<td>Index syntax sugar</td>
+<td>**Full** (`list[i]`, `map[k]`)</td>
+<td>**Full** (`arr(i)`)</td>
+<td>Zia uses brackets, BASIC uses parens</td>
+</tr>
+<tr>
+<td>Collection generics</td>
+<td>**Full** (`List[Integer]`)</td>
+<td>None</td>
+<td>Zia only — BASIC uses untyped `Object`</td>
+</tr>
+<tr>
+<td>Tuple type</td>
+<td>**Full** (`(Integer, String)`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Tuple destructure</td>
+<td>**Full** (`var (a, b) = tuple`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+</tbody></table>
+<h3 id="1-6-string-operations">1.6 String Operations</h3>
+<table><thead><tr>
+<th>Feature</th>
+<th>Zia</th>
+<th>BASIC</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>String concatenation</td>
+<td>**Full** (`+`)</td>
+<td>**Full** (`&amp;` and `+`)</td>
+<td>**`&amp;` means bitwise AND in Zia**</td>
+</tr>
+<tr>
+<td>String interpolation</td>
+<td>**Full** (`&quot;Hello ${name}&quot;`)</td>
+<td>None</td>
+<td>**Gap** — Zia only</td>
+</tr>
+<tr>
+<td>Auto-coerce to string</td>
+<td>**Full** (left must be String)</td>
+<td>**Full** (either side)</td>
+<td>BASIC is more permissive</td>
+</tr>
+<tr>
+<td>Comparison operators</td>
+<td>**Full** (case-sensitive)</td>
+<td>**Full** (case-sensitive)</td>
+<td>Same runtime functions</td>
+</tr>
+<tr>
+<td>LEN / length</td>
+<td>Via `Str.Length(s)`</td>
+<td>**Full** (`LEN(s)`)</td>
+<td>Different syntax</td>
+</tr>
+<tr>
+<td>Substring</td>
+<td>Via `Str.Mid(s,pos,len)`</td>
+<td>**Full** (`MID$(s,pos,len)`)</td>
+<td>Both use 1-based positions</td>
+</tr>
+<tr>
+<td>Left/Right</td>
+<td>Via runtime</td>
+<td>**Full** (`LEFT$`/`RIGHT$`)</td>
+<td>BASIC has direct builtins</td>
+</tr>
+<tr>
+<td>Trim</td>
+<td>Via runtime</td>
+<td>**Full** (`LTRIM$`/`RTRIM$`/`TRIM$`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Case conversion</td>
+<td>Via runtime</td>
+<td>**Full** (`UCASE$`/`LCASE$`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Search</td>
+<td>Via runtime</td>
+<td>**Full** (`INSTR()`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Char code</td>
+<td>Via runtime</td>
+<td>**Full** (`ASC()`/`CHR$()`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Number to string</td>
+<td>Via `+` auto-coerce</td>
+<td>**Full** (`STR$()`)</td>
+<td></td>
+</tr>
+<tr>
+<td>String to number</td>
+<td>Via runtime</td>
+<td>**Full** (`VAL()`)</td>
+<td></td>
+</tr>
+</tbody></table>
+<h3 id="1-7-error-handling">1.7 Error Handling</h3>
+<table><thead><tr>
+<th>Feature</th>
+<th>Zia</th>
+<th>BASIC</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>try/catch/finally</td>
+<td>**Full** (`try/catch/finally`)</td>
+<td>**Full** (`TRY/CATCH/FINALLY/END TRY`)</td>
+<td>Both use IL EhPush/EhPop/EhEntry/ResumeLabel</td>
+</tr>
+<tr>
+<td>On Error GoTo</td>
+<td>None</td>
+<td>**Full** (`ON ERROR GOTO`)</td>
+<td>BASIC only — classic unstructured EH</td>
+</tr>
+<tr>
+<td>Resume</td>
+<td>None</td>
+<td>**Full** (`RESUME/RESUME NEXT/RESUME label`)</td>
+<td>BASIC only</td>
+</tr>
+<tr>
+<td>USING (auto-dispose)</td>
+<td>None</td>
+<td>**Full** (`USING/END USING`)</td>
+<td>BASIC only — desugars to TRY/FINALLY</td>
+</tr>
+<tr>
+<td>Optional type (T?)</td>
+<td>**Full**</td>
+<td>None</td>
+<td>Zia only — null-safe type system</td>
+</tr>
+<tr>
+<td>Null coalescing (??)</td>
+<td>**Full**</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Optional chaining (?.)</td>
+<td>**Full**</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Try propagation (?)</td>
+<td>**Full**</td>
+<td>None</td>
+<td>Zia only — early return on null</td>
+</tr>
+<tr>
+<td>Force unwrap (!)</td>
+<td>**Full**</td>
+<td>None</td>
+<td>Zia only — trap on null</td>
+</tr>
+<tr>
+<td>Result type</td>
+<td>**Typed** (exists in type system)</td>
+<td>None</td>
+<td>Zia has the type but no construction/destructure</td>
+</tr>
+</tbody></table>
+<p><strong>Analysis</strong>: Both frontends now have structured exception handling. Zia additionally uses null-safe optional types for expected failures. BASIC also has unstructured EH (ON ERROR GOTO) which Zia does not support.</p>
+<h3 id="1-8-closures-lambdas">1.8 Closures &amp; Lambdas</h3>
+<table><thead><tr>
+<th>Feature</th>
+<th>Zia</th>
+<th>BASIC</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>Lambda expressions</td>
+<td>**Full** (`(x) =&gt; x + 1`)</td>
+<td>None</td>
+<td></td>
+</tr>
+<tr>
+<td>Closures (captures)</td>
+<td>**Full** (value + reference capture)</td>
+<td>None</td>
+<td></td>
+</tr>
+<tr>
+<td>Higher-order functions</td>
+<td>**Full**</td>
+<td>None</td>
+<td>BASIC has ADDRESSOF but no closures</td>
+</tr>
+</tbody></table>
+<h3 id="1-9-modules-imports">1.9 Modules &amp; Imports</h3>
+<table><thead><tr>
+<th>Feature</th>
+<th>Zia</th>
+<th>BASIC</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>Module declaration</td>
+<td>**Full** (`module M;`)</td>
+<td>**Full** (implicit per-file)</td>
+<td></td>
+</tr>
+<tr>
+<td>Namespace blocks</td>
+<td>**Full** (`namespace N { }`)</td>
+<td>**Full** (`NAMESPACE N/END NAMESPACE`)</td>
+<td></td>
+</tr>
+<tr>
+<td>File imports</td>
+<td>**Full** (`bind &quot;./file&quot;`)</td>
+<td>**Full** (`ADDFILE &quot;file.bas&quot;`)</td>
+<td>BASIC is textual inclusion</td>
+</tr>
+<tr>
+<td>Namespace imports</td>
+<td>**Full** (`bind Viper.Terminal`)</td>
+<td>**Full** (`USING Viper.Terminal`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Selective imports</td>
+<td>**Full** (`bind Viper.X { A, B }`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Alias imports</td>
+<td>**Full** (`bind X = Viper.Y`)</td>
+<td>**Full** (`USING Viper.Y AS X`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Import depth limits</td>
+<td>**Full** (50 depth, 100 files)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+</tbody></table>
+<h3 id="1-10-operators">1.10 Operators</h3>
+<table><thead><tr>
+<th>Feature</th>
+<th>Zia</th>
+<th>BASIC</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>Arithmetic (`+`,`-`,`*`,`/`)</td>
+<td>**Full**</td>
+<td>**Full**</td>
+<td>**Both do integer `/` on int operands**</td>
+</tr>
+<tr>
+<td>Integer division</td>
+<td>Via `/` (same as regular div)</td>
+<td>**Full** (`\`)</td>
+<td>BASIC has explicit integer div</td>
+</tr>
+<tr>
+<td>Modulo</td>
+<td>**Full** (`%`)</td>
+<td>**Full** (`MOD`)</td>
+<td>Both use signed remainder (SRemChk0)</td>
+</tr>
+<tr>
+<td>Exponentiation</td>
+<td>None (use `Math.Pow()`)</td>
+<td>**Full** (`^`)</td>
+<td>**`^` = bitwise XOR in Zia**</td>
+</tr>
+<tr>
+<td>Comparison (`==`,`!=`,`&lt;`,etc.)</td>
+<td>**Full**</td>
+<td>**Full** (`=`,`&lt;&gt;`,`&lt;`,etc.)</td>
+<td>**`=` means different things**</td>
+</tr>
+<tr>
+<td>Logical AND (short-circuit)</td>
+<td>**Full** (`&amp;&amp;` or `and`)</td>
+<td>**Full** (`ANDALSO`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Logical OR (short-circuit)</td>
+<td>**Full** (`\</td>
+<td>\</td>
+<td>` or `or`)</td>
+<td>**Full** (`ORELSE`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Logical NOT</td>
+<td>**Full** (`!` or `not`)</td>
+<td>**Full** (`NOT`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Eager logical AND/OR</td>
+<td>None</td>
+<td>**Full** (`AND`/`OR`)</td>
+<td>BASIC only — no short-circuit</td>
+</tr>
+<tr>
+<td>Bitwise AND</td>
+<td>**Full** (`&amp;`)</td>
+<td>None</td>
+<td>**`&amp;` = string concat in BASIC**</td>
+</tr>
+<tr>
+<td>Bitwise OR</td>
+<td>**Full** (`\</td>
+<td>`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Bitwise XOR</td>
+<td>**Full** (`^`)</td>
+<td>None</td>
+<td>**`^` = exponentiation in BASIC**</td>
+</tr>
+<tr>
+<td>Bitwise NOT</td>
+<td>**Full** (`~`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Compound assignment (`+=`)</td>
+<td>**Full** (`+=`, `-=`, `*=`, `/=`, `%=`)</td>
+<td>None</td>
+<td>Zia desugars `a += b` to `a = a + b`</td>
+</tr>
+<tr>
+<td>Null coalescing (`??`)</td>
+<td>**Full**</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Optional chaining (`?.`)</td>
+<td>**Full**</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Range (`..`, `..=`)</td>
+<td>**Full**</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Type check (`is`)</td>
+<td>**Full** (`is`)</td>
+<td>**Full** (`IS`)</td>
+<td>Both use `rt_obj_class_id` + comparison</td>
+</tr>
+<tr>
+<td>Type cast (`as`)</td>
+<td>**Full**</td>
+<td>**Full** (`AS`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Operator overloading</td>
+<td>None</td>
+<td>None</td>
+<td>Neither</td>
+</tr>
+</tbody></table>
+<h3 id="1-11-generics">1.11 Generics</h3>
+<table><thead><tr>
+<th>Feature</th>
+<th>Zia</th>
+<th>BASIC</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>Generic types</td>
+<td>**Full** (`entity Stack[T]`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Generic functions</td>
+<td>**Full** (`func f[T](x: T)`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Type constraints</td>
+<td>**Full** (`[T: Comparable]`)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+<tr>
+<td>Generic instantiation</td>
+<td>**Full** (name-mangling + cache)</td>
+<td>None</td>
+<td>Zia only</td>
+</tr>
+</tbody></table>
+<h3 id="1-12-i-o-domain-specific">1.12 I/O &amp; Domain-Specific</h3>
+<table><thead><tr>
+<th>Feature</th>
+<th>Zia</th>
+<th>BASIC</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>Console print</td>
+<td>Via `bind Viper.Terminal`</td>
+<td>**Full** (`PRINT`)</td>
+<td>BASIC has built-in syntax</td>
+</tr>
+<tr>
+<td>Console input</td>
+<td>Via runtime</td>
+<td>**Full** (`INPUT`)</td>
+<td>BASIC has built-in syntax</td>
+</tr>
+<tr>
+<td>File I/O statements</td>
+<td>Via runtime</td>
+<td>**Full** (`OPEN/CLOSE/PRINT#/INPUT#`)</td>
+<td>BASIC has built-in file channel syntax</td>
+</tr>
+<tr>
+<td>File seek/position</td>
+<td>Via runtime</td>
+<td>**Full** (`SEEK`, `LOC`, `LOF`, `EOF`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Screen control</td>
+<td>Via runtime</td>
+<td>**Full** (`CLS`, `COLOR`, `LOCATE`, `CURSOR`)</td>
+<td>BASIC has built-in syntax</td>
+</tr>
+<tr>
+<td>Swap</td>
+<td>None</td>
+<td>**Full** (`SWAP a, b`)</td>
+<td>BASIC only</td>
+</tr>
+<tr>
+<td>Sleep</td>
+<td>Via runtime</td>
+<td>**Full** (`SLEEP ms`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Random seed</td>
+<td>Via runtime</td>
+<td>**Full** (`RANDOMIZE seed`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Sound/beep</td>
+<td>Via runtime</td>
+<td>**Full** (`BEEP`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Command-line args</td>
+<td>Via runtime</td>
+<td>**Full** (`ARGC()`, `ARG$()`, `COMMAND$()`)</td>
+<td></td>
+</tr>
+<tr>
+<td>Math builtins</td>
+<td>Via `bind Viper.Math`</td>
+<td>**Full** (SQR, SIN, COS, etc.)</td>
+<td>BASIC has 16+ built-in math functions</td>
+</tr>
+<tr>
+<td>Constant folding</td>
+<td>None (runtime eval)</td>
+<td>**Full**</td>
+<td>BASIC folds arithmetic, casts, and logical ops at compile time</td>
+</tr>
+</tbody></table>
+<p>---</p>
+<h2 id="2-dangerous-cross-language-confusions">2. Dangerous Cross-Language Confusions</h2>
+<p>Ranked by potential for <strong>silent incorrect behavior</strong> (no compile error, just wrong results):</p>
+<h3 id="high-operator-means-different-things">HIGH: `^` operator means different things</h3>
+<ul>
+<li><strong>BASIC</strong>: <code>2 ^ 3</code> = <code>8.0</code> (exponentiation)</li>
+<li><strong>Zia</strong>: <code>2 ^ 3</code> = <code>1</code> (bitwise XOR: <code>0b10 XOR 0b11 = 0b01</code>)</li>
+<li><strong>Impact</strong>: A BASIC user porting <code>x ^ 2</code> to Zia gets different results.</li>
+<li><strong>Mitigation</strong>: Warning W017 (default-enabled) alerts: &quot;&#x27;^&#x27; is bitwise XOR in Zia; use Math.Pow() for exponentiation&quot;.</li>
+</ul>
+<h3 id="high-operator-means-different-things">HIGH: `&amp;` operator means different things</h3>
+<ul>
+<li><strong>BASIC</strong>: <code>&quot;hello&quot; &amp; &quot; world&quot;</code> = <code>&quot;hello world&quot;</code> (string concatenation)</li>
+<li><strong>Zia</strong>: <code>&amp;</code> is bitwise AND (binary) or address-of (unary)</li>
+<li><strong>Impact</strong>: <code>intA &amp; intB</code> computes different operations. String cases produce type errors (caught).</li>
+<li><strong>Mitigation</strong>: Warning W018 (default-enabled) alerts: &quot;&#x27;&amp;&#x27; is bitwise AND in Zia; use &#x27;+&#x27; for string concatenation&quot;.</li>
+</ul>
+<h3 id="high-boolean-true-value-differs">HIGH: Boolean TRUE value differs</h3>
+<ul>
+<li><strong>BASIC</strong>: <code>TRUE = -1</code> (all bits set, <code>0xFFFFFFFFFFFFFFFF</code>)</li>
+<li><strong>Zia</strong>: <code>TRUE = 1</code> (only bit 0 set)</li>
+<li><strong>Impact</strong>: <code>TRUE + TRUE</code> = <code>-2</code> in BASIC, <code>2</code> in Zia. Bitwise ops wildly different: <code>TRUE AND mask</code> operates on -1 vs 1. Arithmetic with booleans gives different results.</li>
+<li><strong>Impact on interop</strong>: If a BASIC runtime function returns -1 and Zia interprets it as a boolean, it works (non-zero = true). But if Zia code does arithmetic on it, results differ.</li>
+</ul>
+<h3 id="high-in-conditions">HIGH: `=` in conditions</h3>
+<ul>
+<li><strong>BASIC</strong>: <code>IF x = 5 THEN</code> — compares (equality)</li>
+<li><strong>Zia</strong>: <code>if (x = 5)</code> — assigns 5 to x, then type-errors (condition must be Boolean)</li>
+<li><strong>Impact</strong>: Zia catches this with warning W007 + type error, so not silent. But confusing.</li>
+</ul>
+<h3 id="medium-integer-division-with">MEDIUM: Integer division with `/`</h3>
+<ul>
+<li><strong>BASIC</strong>: Has separate operators: <code>/</code> (float) and <code>\</code> (integer). But the lowerer actually emits integer division for integer <code>/</code> too (semantic type says Float but IL is SDiv).</li>
+<li><strong>Zia</strong>: <code>/</code> on two integers = integer result (SDiv). No float promotion.</li>
+<li><strong>Impact</strong>: Both silently truncate <code>7 / 2</code> to <code>3</code>. BASIC users expecting <code>3.5</code> won&#x27;t get it from either language.</li>
+</ul>
+<h3 id="low-scope-rules">LOW: Scope rules</h3>
+<ul>
+<li><strong>BASIC</strong>: Flat procedure scope — all variables visible throughout the procedure.</li>
+<li><strong>Zia</strong>: Block-scoped — variables in <code>{...}</code> blocks are not visible outside.</li>
+<li><strong>Impact</strong>: A variable declared inside an <code>if</code> body disappears at <code>}</code> in Zia. BASIC users won&#x27;t expect this. Zia catches it as a compile error (undeclared variable), so not silent.</li>
+</ul>
+<p>---</p>
+<h2 id="3-il-capabilities-not-wired-up">3. IL Capabilities Not Wired Up</h2>
+<p>Features where the IL and/or runtime supports something but a frontend hasn&#x27;t connected:</p>
+<h3 id="zia-hasn-t-wired-up">Zia hasn&#x27;t wired up:</h3>
+<table><thead><tr>
+<th>IL/Runtime Capability</th>
+<th>IL Opcodes</th>
+<th>Status in Zia</th>
+</tr></thead><tbody>
+<tr>
+<td>Result type</td>
+<td>Type exists in type system</td>
+<td>**No construction or destructuring**</td>
+</tr>
+<tr>
+<td>Weak references</td>
+<td>`weak` keyword parsed</td>
+<td>**No lowering or runtime support**</td>
+</tr>
+<tr>
+<td>Abstract/Final modifiers</td>
+<td>Could validate in sema</td>
+<td>**No syntax**</td>
+</tr>
+<tr>
+<td>ByRef parameters</td>
+<td>IL supports pointer-based pass-by-ref</td>
+<td>**No syntax**</td>
+</tr>
+<tr>
+<td>DELETE statement</td>
+<td>`rt_heap_release` exists</td>
+<td>**No explicit delete** — relies on deinit + GC</td>
+</tr>
+</tbody></table>
+<h3 id="recently-closed-zia-gaps-implemented">Recently closed Zia gaps (implemented):</h3>
+<table><thead><tr>
+<th>Feature</th>
+<th>Status</th>
+<th>Implementation</th>
+</tr></thead><tbody>
+<tr>
+<td>Exception handling</td>
+<td>**Full**</td>
+<td>`try/catch/finally/throw` → EhPush/EhPop/EhEntry/ResumeLabel</td>
+</tr>
+<tr>
+<td>`is` type check</td>
+<td>**Full**</td>
+<td>`rt_obj_class_id` + ICmpEq</td>
+</tr>
+<tr>
+<td>Set literals</td>
+<td>**Full**</td>
+<td>`{1,2,3}` → `rt_set_new` + `rt_set_add` loop</td>
+</tr>
+<tr>
+<td>Default parameters</td>
+<td>**Full**</td>
+<td>Missing args padded with lowered default expressions</td>
+</tr>
+<tr>
+<td>Interface dynamic dispatch</td>
+<td>**Full**</td>
+<td>`rt_get_interface_impl` + `call.indirect` via itables</td>
+</tr>
+<tr>
+<td>Static members</td>
+<td>**Full**</td>
+<td>`static` modifier on fields (globals) and methods</td>
+</tr>
+<tr>
+<td>Properties (get/set)</td>
+<td>**Full**</td>
+<td>`property` syntax, synthesized `get_X`/`set_X` methods</td>
+</tr>
+<tr>
+<td>Destructors</td>
+<td>**Full**</td>
+<td>`deinit` block → `__dtor_TypeName` with field release</td>
+</tr>
+<tr>
+<td>Compound assignment</td>
+<td>**Full**</td>
+<td>`+=`, `-=`, `*=`, `/=`, `%=` desugared in parser</td>
+</tr>
+<tr>
+<td>Operator confusion warnings</td>
+<td>**Full**</td>
+<td>W017 (`^` XOR) and W018 (`&amp;` AND) default-enabled</td>
+</tr>
+</tbody></table>
+<h3 id="basic-hasn-t-wired-up">BASIC hasn&#x27;t wired up:</h3>
+<table><thead><tr>
+<th>IL/Runtime Capability</th>
+<th>Status in BASIC</th>
+</tr></thead><tbody>
+<tr>
+<td>Lambdas/closures</td>
+<td>**Not wired** — IL supports indirect calls with env, but BASIC has no syntax</td>
+</tr>
+<tr>
+<td>Optional types</td>
+<td>**Not wired** — uses NOTHING for null, no type-level null safety</td>
+</tr>
+<tr>
+<td>Generics</td>
+<td>**Not wired** — uses untyped Object for polymorphism</td>
+</tr>
+<tr>
+<td>String interpolation</td>
+<td>**Not wired** — could desugar to concatenation like Zia</td>
+</tr>
+<tr>
+<td>Boxing/Unboxing</td>
+<td>**No explicit aliases** — limits polymorphic collection usage</td>
+</tr>
+<tr>
+<td>Pattern matching</td>
+<td>**Not wired** — SELECT CASE covers literals only, no destructuring</td>
+</tr>
+<tr>
+<td>Range types</td>
+<td>**Not wired** — FOR uses explicit TO/STEP</td>
+</tr>
+<tr>
+<td>Bitwise operators</td>
+<td>**Not wired** — no syntax for AND/OR/XOR/NOT at bit level (AND/OR are logical)</td>
+</tr>
+</tbody></table>
+<p>---</p>
+<h2 id="4-priority-gaps-basic-to-zia-migration-pain-points">4. Priority Gaps (BASIC to Zia Migration Pain Points)</h2>
+<p>For someone who starts in BASIC and moves to Zia, ranked by frustration:</p>
+<h3 id="p0-blocking-features-basic-has-that-zia-lacks-no-workaround">P0 — Blocking (features BASIC has that Zia lacks, no workaround)</h3>
+<p>All former P0 gaps have been resolved:</p>
+<ul>
+<li>~~No try/catch/finally~~ → <strong>Implemented</strong> (<code>try/catch/finally/throw</code>)</li>
+<li>~~No properties (get/set)~~ → <strong>Implemented</strong> (<code>property</code> syntax)</li>
+<li>~~No static members~~ → <strong>Implemented</strong> (<code>static</code> modifier)</li>
+<li>~~No destructors~~ → <strong>Implemented</strong> (<code>deinit</code> block)</li>
+</ul>
+<h3 id="p1-high-friction-significant-missing-features-with-partial-workarounds">P1 — High friction (significant missing features with partial workarounds)</h3>
+<p>All former P1 gaps have been resolved:</p>
+<ul>
+<li>~~No <code>is</code> type check~~ → <strong>Implemented</strong> (runtime <code>rt_obj_class_id</code> + comparison)</li>
+<li>~~No interface dynamic dispatch~~ → <strong>Implemented</strong> (full itable dispatch via <code>rt_get_interface_impl</code>)</li>
+<li>~~<code>^</code> operator confusion~~ → <strong>Mitigated</strong> (W017 warning, default-enabled)</li>
+<li>~~<code>&amp;</code> operator confusion~~ → <strong>Mitigated</strong> (W018 warning, default-enabled)</li>
+<li>~~No default parameter values~~ → <strong>Implemented</strong> (missing args padded from AST defaults)</li>
+<li>~~Set literals not lowered~~ → <strong>Implemented</strong> (<code>{1,2,3}</code> → <code>rt_set_new</code> + <code>rt_set_add</code>)</li>
+</ul>
+<h3 id="p2-moderate-friction-missing-convenience-features">P2 — Moderate friction (missing convenience features)</h3>
+<ol>
+<li>**No <code>continue</code> equivalent in BASIC** — <code>EXIT</code> only exits loops, can&#x27;t skip to next iteration.</li>
+<li>**No BASIC-style <code>DO/LOOP UNTIL</code>** in Zia — must use <code>while (!cond)</code>.</li>
+<li>**No string interpolation in BASIC** — must use <code>&amp;</code> concatenation.</li>
+<li>**Boolean -1 vs 1** — arithmetic on booleans gives different results.</li>
+<li>**No ByRef parameters in Zia** — BASIC can pass by reference; Zia always copies.</li>
+<li>**No DELETE statement in Zia** — BASIC has <code>DELETE obj</code>; Zia relies on GC/<code>deinit</code>.</li>
+<li>**No abstract/final method modifiers in Zia** — BASIC has <code>ABSTRACT</code>/<code>FINAL</code>.</li>
+</ul>
+<h3 id="p3-low-friction-different-syntax-same-capability">P3 — Low friction (different syntax, same capability)</h3>
+<ol>
+<li>**Different loop syntax** — <code>FOR i = 1 TO 10</code> vs <code>for (var i = 1; i &lt;= 10; i = i + 1)</code></li>
+<li>**Different class syntax** — <code>CLASS/END CLASS</code> vs <code>entity { }</code></li>
+<li>**Different import syntax** — <code>USING</code> vs <code>bind</code></li>
+<li>**Different null literal** — <code>NOTHING</code> vs <code>null</code></li>
+</ul>
+<p>---</p>
+<h2 id="5-source-references">5. Source References</h2>
+<p>To spot-check specific claims, inspect:</p>
+<h3 id="operator-differences">Operator differences</h3>
+<ul>
+<li>Zia <code>^</code> as XOR: <code>src/frontends/zia/Parser_Expr.cpp</code> (<code>parseBitwiseXor</code>)</li>
+<li>BASIC <code>^</code> as power: <code>src/frontends/basic/Parser_Expr.cpp</code> (precedence 7, right-assoc)</li>
+<li>BASIC TRUE=-1: <code>src/frontends/basic/TypeCoercionEngine.cpp</code> line 12</li>
+<li>Zia W017/W018 warnings: <code>src/frontends/zia/Sema_Expr_Ops.cpp</code> (BitXor/BitAnd cases)</li>
+</ul>
+<h3 id="zia-feature-implementations">Zia feature implementations</h3>
+<ul>
+<li><code>is</code> type check: <code>src/frontends/zia/Lowerer_Expr_Complex.cpp</code> (<code>lowerIsExpr</code>)</li>
+<li>Set literals: <code>src/frontends/zia/Lowerer_Expr_Collections.cpp</code> (<code>lowerSetLiteral</code>)</li>
+<li>Compound assignment: <code>src/frontends/zia/Parser_Expr.cpp</code> (desugared in <code>parseAssignment</code>)</li>
+<li>Default parameters: <code>src/frontends/zia/Lowerer_Expr_Call.cpp</code> (arg padding)</li>
+<li>Properties: <code>src/frontends/zia/Lowerer_Decl.cpp</code> (synthesized <code>get_X</code>/<code>set_X</code>)</li>
+<li>Static members: <code>src/frontends/zia/Lowerer_Decl.cpp</code> (globals + non-self methods)</li>
+<li>Destructors: <code>src/frontends/zia/Lowerer_Decl.cpp</code> (<code>__dtor_TypeName</code> emission)</li>
+<li>try/catch/finally: <code>src/frontends/zia/Lowerer_Stmt_EH.cpp</code> (<code>lowerTryStmt</code>/<code>lowerThrowStmt</code>)</li>
+<li>Interface itable dispatch: <code>src/frontends/zia/Lowerer_Dispatch.cpp</code> (<code>lowerInterfaceMethodCall</code>)</li>
+<li>Itable registration: <code>src/frontends/zia/Lowerer_Decl.cpp</code> (<code>emitItableInit</code>)</li>
+</ul>
+<h3 id="basic-reference-implementations">BASIC reference implementations</h3>
+<ul>
+<li>BASIC TRY/CATCH lowering: <code>src/frontends/basic/lower/Lower_TryCatch.cpp</code></li>
+<li>BASIC vtable dispatch: <code>src/frontends/basic/lower/oop/Lower_OOP_MethodCall.cpp</code></li>
+<li>BASIC itable dispatch: <code>src/frontends/basic/lower/oop/Lower_OOP_Emit.cpp</code> lines 900-954</li>
+</ul>
+<h3 id="il-and-runtime">IL and runtime</h3>
+<ul>
+<li>IL EH opcodes: <code>src/il/core/Opcode.def</code> (EhPush, EhPop, EhEntry, Resume*)</li>
+<li>Runtime class registry: <code>src/il/runtime/classes/RuntimeClasses.hpp</code> (RuntimeTypeId enum)</li>
+<li>Runtime definitions: <code>src/il/runtime/runtime.def</code> (225 RT_CLASS_BEGIN blocks, 3129 RT_FUNC entries)</li>
+</ul>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../../features/native-targets.html">Native Targets</a>
+      <a href="../../features/two-languages.html">Languages</a>
+      <a href="../../features/runtime.html">Runtime Library</a>
+      <a href="../../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../../docs/getting-started.html">Getting Started</a>
+      <a href="../../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../../docs/runtime/">Runtime API</a>
+      <a href="../../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../../contributing/">Contributing</a>
+      <a href="../../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../../main.js"></script>
+</body>
+</html>

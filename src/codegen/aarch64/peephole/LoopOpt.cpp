@@ -217,6 +217,8 @@ std::size_t hoistLoopConstants(MFunction &fn)
 
             if (lastTarget.empty() && lastInstr.opc != MOpcode::Ret)
             {
+                // Block falls through to the next block (the loop header).
+                // Ret does NOT fall through — it exits the function.
                 reachesHeader = true;
             }
             else

@@ -55,6 +55,14 @@ bool ObjectFileWriter::write(const std::string &path,
             uint32_t mergedSymIdx = merged.findOrDeclareSymbol(sym.name);
             merged.addRelocationAt(baseOffset + rel.offset, rel.kind, mergedSymIdx, rel.addend);
         }
+
+        // Copy compact unwind entries, remapping symbol indices.
+        for (const auto &ue : ts.unwindEntries())
+        {
+            const auto &sym = ts.symbols().at(ue.symbolIndex);
+            uint32_t mergedSymIdx = merged.findOrDeclareSymbol(sym.name);
+            merged.addUnwindEntry({mergedSymIdx, ue.functionLength, ue.encoding});
+        }
     }
     return write(path, merged, rodata, err);
 }

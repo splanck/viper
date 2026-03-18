@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Battle-Tested — Viper</title>
+  <meta name="description" content="Viper has 1,984 tests across unit, golden, E2E, and fuzz suites, plus sanitizer CI with ASan, UBSan, and TSan. 509K lines of production code, 4,197 commits.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="../showcase/">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <a href="../">Features</a> / <span>Battle-Tested</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#categories">Test Categories</a></li>
+        <li><a href="#fuzz">Fuzz Testing</a></li>
+        <li><a href="#golden">Golden Tests</a></li>
+        <li><a href="#e2e">E2E Tests</a></li>
+        <li><a href="#sanitizers">Sanitizers</a></li>
+        <li><a href="#scale">Scale</a></li>
+      </ul>
+    </nav>
+  </aside>
+
+  <main class="page-main prose">
+    <h1 id="overview">Battle-Tested</h1>
+
+    <p>Viper's test suite has <strong>1,984 tests</strong> across 876 test files, covering every layer of the platform. All 1,279 CTest targets pass on every commit. The project runs sanitizer CI (ASan, UBSan, TSan) and includes 5 fuzz harnesses for input surface robustness.</p>
+
+    <h2 id="categories">Test Categories</h2>
+
+    <table>
+      <thead><tr><th>Category</th><th>Tests</th><th>What It Covers</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Runtime</strong></td><td>~318</td><td>C runtime library: strings, collections, I/O, math, network</td></tr>
+        <tr><td><strong>Golden</strong></td><td>~203</td><td>Textual stability: IL output, diagnostics, optimizer transformations</td></tr>
+        <tr><td><strong>IL</strong></td><td>~186</td><td>IL parsing, serialization, verification, analysis, transforms</td></tr>
+        <tr><td><strong>VM</strong></td><td>~111</td><td>Opcode semantics, traps, debugging, concurrency</td></tr>
+        <tr><td><strong>Codegen</strong></td><td>~95</td><td>x86-64 and AArch64 code generation, linker, binary encoding</td></tr>
+        <tr><td><strong>BASIC</strong></td><td>~94</td><td>BASIC frontend: lexer, parser, sema, lowerer</td></tr>
+        <tr><td><strong>Zia</strong></td><td>~88</td><td>Zia frontend: parser, sema, lowerer, enums, pattern matching</td></tr>
+        <tr><td><strong>OOP</strong></td><td>~31</td><td>Object-oriented: classes, inheritance, interfaces</td></tr>
+        <tr><td><strong>Tools</strong></td><td>~29</td><td>CLI tools, language server</td></tr>
+        <tr><td><strong>TUI</strong></td><td>~28</td><td>Terminal UI, REPL</td></tr>
+        <tr><td><strong>E2E</strong></td><td>~19</td><td>Full pipeline: source &rarr; IL &rarr; VM/native &rarr; output</td></tr>
+        <tr><td><strong>Namespace</strong></td><td>~13</td><td>Module system, cross-module references</td></tr>
+        <tr><td><strong>Conformance</strong></td><td>~10</td><td>Arithmetic semantics cross-layer equivalence</td></tr>
+        <tr><td><strong>Smoke</strong></td><td>~5</td><td>Quick sanity checks</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="fuzz">Fuzz Testing</h2>
+
+    <p>Five libfuzzer-based harnesses test input surface robustness:</p>
+
+    <ul>
+      <li><strong>fuzz_zia_lexer</strong> &mdash; Feeds random bytes to the Zia lexer</li>
+      <li><strong>fuzz_zia_parser</strong> &mdash; Feeds random token streams to the Zia parser</li>
+      <li><strong>fuzz_basic_lexer</strong> &mdash; Feeds random bytes to the BASIC lexer</li>
+      <li><strong>fuzz_basic_parser</strong> &mdash; Feeds random token streams to the BASIC parser</li>
+      <li><strong>fuzz_il_parser</strong> &mdash; Feeds random bytes to the IL parser</li>
+    </ul>
+
+    <p>Enabled via <code>VIPER_ENABLE_FUZZ=ON</code>. These harnesses have found and helped fix edge cases in comment handling, string literal parsing, and error recovery.</p>
+
+    <h2 id="golden">Golden Tests (~203 tests)</h2>
+
+    <p>Golden tests capture textual stability &mdash; they compare actual output against checked-in expected output:</p>
+
+    <ul>
+      <li><strong>IL serialization</strong> &mdash; Ensures IL text format doesn't silently change</li>
+      <li><strong>Diagnostic messages</strong> &mdash; Both compilers' error/warning messages are regression-tested</li>
+      <li><strong>Optimizer output</strong> &mdash; Verifies that optimization passes produce expected IL</li>
+      <li><strong>Exception handling</strong> &mdash; Try/catch lowering correctness</li>
+    </ul>
+
+    <p>Golden files are updated via <code>./scripts/update_goldens.sh</code> when intentional changes are made.</p>
+
+    <h2 id="e2e">End-to-End Tests</h2>
+
+    <p>E2E tests verify the complete compilation pipeline from source code through execution:</p>
+
+    <ul>
+      <li><strong>Frontend &rarr; IL</strong> &mdash; Both compilers produce correct IL from source</li>
+      <li><strong>IL &rarr; VM</strong> &mdash; VM produces expected output for test programs</li>
+      <li><strong>IL &rarr; Native</strong> &mdash; Native binaries produce expected output</li>
+      <li><strong>VM vs Native</strong> &mdash; Differential testing ensures identical output (see <a href="determinism.html">Determinism</a>)</li>
+      <li><strong>Demo execution</strong> &mdash; Real demo programs compile and run without crashing</li>
+    </ul>
+
+    <h2 id="sanitizers">Sanitizer CI</h2>
+
+    <p>Three LLVM sanitizers run on every CI build:</p>
+
+    <ul>
+      <li><strong>AddressSanitizer (ASan)</strong> &mdash; Detects buffer overflows, use-after-free, double-free</li>
+      <li><strong>UndefinedBehaviorSanitizer (UBSan)</strong> &mdash; Detects signed overflow, null dereference, alignment violations</li>
+      <li><strong>ThreadSanitizer (TSan)</strong> &mdash; Detects data races in concurrent code</li>
+    </ul>
+
+    <p>Enabled via <code>IL_SANITIZE_ADDRESS=ON</code>, <code>IL_SANITIZE_UNDEFINED=ON</code>, <code>IL_SANITIZE_THREAD=ON</code>.</p>
+
+    <h2 id="scale">By the Numbers</h2>
+
+    <table>
+      <thead><tr><th>Metric</th><th>Count</th></tr></thead>
+      <tbody>
+        <tr><td>Total test cases</td><td>1,984</td></tr>
+        <tr><td>Test source files</td><td>876</td></tr>
+        <tr><td>CTest targets (all passing)</td><td>1,279</td></tr>
+        <tr><td>Fuzz harnesses</td><td>5</td></tr>
+        <tr><td>Golden test files</td><td>~203</td></tr>
+        <tr><td>E2E test scripts</td><td>19+</td></tr>
+        <tr><td>Production LOC</td><td>510,024</td></tr>
+        <tr><td>Test LOC</td><td>186,863</td></tr>
+        <tr><td>Test/production ratio</td><td>37%</td></tr>
+        <tr><td>Commits</td><td>4,197</td></tr>
+      </tbody>
+    </table>
+
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="zero-deps.html">Zero Dependencies</a>
+      <a href="native-targets.html">Native Targets</a>
+      <a href="two-languages.html">Languages</a>
+      <a href="runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

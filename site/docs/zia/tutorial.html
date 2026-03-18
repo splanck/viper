@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zia Tutorial — Viper</title>
+  <meta name="description" content="Viper documentation: Zia Tutorial">
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="icon" href="../../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../../docs/" class="active">Docs</a>
+    <a href="../../learn/">Learn</a>
+    <a href="../../showcase/">Showcase</a>
+    <a href="../../performance/">Performance</a>
+    <a href="../../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../../">Home</a> / <a href="../../docs">Docs</a> / <span>Zia Tutorial</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#table-of-contents">Table of Contents</a></li>
+        <li><a href="#1-your-first-program">1. Your First Program</a></li>
+        <li><a href="#try-zia-interactively">Try Zia Interactively</a></li>
+        <li><a href="#2-variables-and-types">2. Variables and Types</a></li>
+        <li><a href="#3-control-flow">3. Control Flow</a></li>
+        <li><a href="#4-functions">4. Functions</a></li>
+        <li><a href="#5-entity-types-classes">5. Entity Types (Classes)</a></li>
+        <li><a href="#6-value-types-structs">6. Value Types (Structs)</a></li>
+        <li><a href="#7-generic-collections">7. Generic Collections</a></li>
+        <li><a href="#8-modules-and-bindings">8. Modules and Bindings</a></li>
+        <li><a href="#9-working-with-the-runtime">9. Working with the Runtime</a></li>
+        <li><a href="#10-example-project">10. Example Project</a></li>
+        <li><a href="#11-where-to-go-next">11. Where to Go Next</a></li>
+        <li><a href="#quick-reference">Quick Reference</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>Zia Tutorial</h1>
+<h1 id="zia-getting-started">Zia — Getting Started</h1>
+<p>Learn Zia by example. For a complete reference, see <strong>[Zia Reference](zia-reference.md)</strong>.</p>
+<blockquote><p>**What is Zia?**</p></blockquote>
+<blockquote><p>A modern, statically-typed language with C-like syntax, first-class entities (reference types), value types,</p></blockquote>
+<blockquote><p>generics, and module bindings. It runs on Viper&#x27;s VM and can be compiled to native code.</p></blockquote>
+<p>---</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ol>
+<li>[Your First Program](#1-your-first-program)</li>
+<li>[Variables and Types](#2-variables-and-types)</li>
+<li>[Control Flow](#3-control-flow)</li>
+<li>[Functions](#4-functions)</li>
+<li>[Entity Types (Classes)](#5-entity-types-classes)</li>
+<li>[Value Types (Structs)](#6-value-types-structs)</li>
+<li>[Generic Collections](#7-generic-collections)</li>
+<li>[Modules and Bindings](#8-modules-and-bindings)</li>
+<li>[Working with the Runtime](#9-working-with-the-runtime)</li>
+<li>[Example Project](#10-example-project)</li>
+<li>[Where to Go Next](#11-where-to-go-next)</li>
+</ul>
+<p>---</p>
+<h2 id="1-your-first-program">1. Your First Program</h2>
+<p>Create a file named <code>hello.zia</code>:</p>
+<pre><code data-lang="viper">
+module Hello;
+
+bind Viper.Terminal;
+
+func start() {
+    Say(&quot;Hello, World!&quot;);
+}
+</code></pre>
+<p>Run it:</p>
+<pre><code data-lang="bash">
+./build/src/tools/zia/zia hello.zia
+</code></pre>
+<p><strong>Key points:</strong></p>
+<ul>
+<li>Every file starts with a <code>module</code> declaration</li>
+<li><code>start()</code> is the entry point (like <code>main()</code> in C)</li>
+<li>Use <code>bind Viper.Terminal;</code> to import terminal functions, then <code>Say()</code> for console output with newline</li>
+<li>Statements end with semicolons; blocks use <code>{ }</code></li>
+<li>Comments use <code>//</code> for single-line and <code>/* */</code> for multi-line</li>
+</ul>
+<p>---</p>
+<h2 id="try-zia-interactively">Try Zia Interactively</h2>
+<p>Before writing files, you can experiment with Zia in the interactive REPL:</p>
+<pre><code data-lang="bash">
+viper repl
+</code></pre>
+<p>The REPL lets you type Zia code and see results immediately:</p>
+<pre><code data-lang="text">
+zia&gt; &quot;Hello, world&quot;
+Hello, world
+zia&gt; 2 + 3 * 4
+14
+zia&gt; var x = 42
+zia&gt; x
+42
+zia&gt; func square(n: Integer) -&gt; Integer { return n * n; }
+zia&gt; square(7)
+49
+</code></pre>
+<p>Expressions are automatically evaluated and printed. Variables persist across inputs. You can define functions, import modules with <code>bind</code>, and redefine functions. Errors are reported without losing your session state.</p>
+<p>Type <code>.help</code> for available commands and <code>.quit</code> to exit. See the <strong>[REPL Guide](repl.md)</strong> for full documentation.</p>
+<p>---</p>
+<h2 id="2-variables-and-types">2. Variables and Types</h2>
+<h3 id="variable-declaration">Variable Declaration</h3>
+<p>Use <code>var</code> for mutable variables and <code>final</code> for constants:</p>
+<pre><code data-lang="viper">
+var x = 42;              // Type inferred as Integer
+var name: String = &quot;Alice&quot;;  // Explicit type
+final PI = 3.14159;      // Immutable constant
+</code></pre>
+<h3 id="built-in-types">Built-in Types</h3>
+<table><thead><tr>
+<th>Type</th>
+<th>Description</th>
+<th>Example</th>
+</tr></thead><tbody>
+<tr>
+<td>`Boolean`</td>
+<td>True or false</td>
+<td>`true`, `false`</td>
+</tr>
+<tr>
+<td>`Integer`</td>
+<td>64-bit signed integer</td>
+<td>`42`, `-17`, `0xFF`</td>
+</tr>
+<tr>
+<td>`Number`</td>
+<td>64-bit floating-point</td>
+<td>`3.14`, `1e-5`</td>
+</tr>
+<tr>
+<td>`Ptr`</td>
+<td>Raw pointer / opaque handle (for interop)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>`String`</td>
+<td>UTF-8 string</td>
+<td>`&quot;hello&quot;`, `&quot;line\n&quot;`</td>
+</tr>
+</tbody></table>
+<h3 id="string-interpolation">String Interpolation</h3>
+<p>Embed expressions in strings with <code>${...}</code>:</p>
+<pre><code data-lang="viper">
+bind Viper.Terminal;
+
+var name = &quot;Alice&quot;;
+var age = 30;
+Say(&quot;${name} is ${age} years old&quot;);
+</code></pre>
+<p>---</p>
+<h2 id="3-control-flow">3. Control Flow</h2>
+<h3 id="if-statements">If Statements</h3>
+<pre><code data-lang="viper">
+bind Viper.Terminal;
+
+if score &gt; 100 {
+    Say(&quot;High score!&quot;);
+} else if score &gt; 50 {
+    Say(&quot;Good score&quot;);
+} else {
+    Say(&quot;Try again&quot;);
+}
+</code></pre>
+<p>Note: Parentheses around conditions are optional.</p>
+<h3 id="while-loops">While Loops</h3>
+<pre><code data-lang="viper">
+bind Viper.Terminal;
+
+var i = 0;
+while i &lt; 10 {
+    PrintInt(i);
+    i = i + 1;
+}
+</code></pre>
+<h3 id="for-loops">For Loops</h3>
+<p>C-style for loops:</p>
+<pre><code data-lang="viper">
+bind Viper.Terminal;
+
+for (var i = 0; i &lt; 10; i = i + 1) {
+    PrintInt(i);
+}
+</code></pre>
+<h3 id="for-in-loops-ranges">For-In Loops (Ranges)</h3>
+<pre><code data-lang="viper">
+bind Viper.Terminal;
+
+// Exclusive range: 0 to 9
+for i in 0..10 {
+    PrintInt(i);
+}
+
+// Inclusive range: 0 to 10
+for i in 0..=10 {
+    PrintInt(i);
+}
+</code></pre>
+<p>---</p>
+<h2 id="4-functions">4. Functions</h2>
+<h3 id="basic-functions">Basic Functions</h3>
+<pre><code data-lang="viper">
+bind Viper.Terminal;
+
+func greet(name: String) {
+    Say(&quot;Hello, ${name}!&quot;);
+}
+
+func add(a: Integer, b: Integer) -&gt; Integer {
+    return a + b;
+}
+
+func start() {
+    greet(&quot;World&quot;);
+    var sum = add(3, 4);
+    SayInt(sum);  // 7
+}
+</code></pre>
+<h3 id="function-features">Function Features</h3>
+<ul>
+<li>Parameters require type annotations</li>
+<li>Return type follows <code>-&gt;</code> (omit for void functions)</li>
+<li>Functions can call other functions defined in the same module</li>
+</ul>
+<h3 id="exporting-functions">Exporting Functions</h3>
+<p>Use <code>expose</code> before <code>func</code> to make a function visible to other modules in a</p>
+<p>mixed-language project:</p>
+<pre><code data-lang="viper">
+expose func calculateScore(x: Integer, y: Integer) -&gt; Integer {
+    return x * y + 10
+}
+</code></pre>
+<h3 id="importing-foreign-functions">Importing Foreign Functions</h3>
+<p>Use <code>foreign func</code> to declare a function defined in another module (e.g., a</p>
+<p>BASIC library). Foreign declarations have no body:</p>
+<pre><code data-lang="viper">
+foreign func Factorial(n: Integer) -&gt; Integer
+
+func start() {
+    var result = Factorial(10)
+    Say(ToString(result))
+}
+</code></pre>
+<p>For full details on mixed-language projects, see the</p>
+<p>[Cross-Language Interop Guide](interop.md).</p>
+<p>---</p>
+<h2 id="5-entity-types-classes">5. Entity Types (Classes)</h2>
+<p>Entities are reference types with identity, inheritance, and methods.</p>
+<h3 id="defining-an-entity">Defining an Entity</h3>
+<pre><code data-lang="viper">
+entity Player {
+    String name;
+    Integer health;
+    Integer score;
+
+    func init(playerName: String) {
+        name = playerName;
+        health = 100;
+        score = 0;
+    }
+
+    func takeDamage(amount: Integer) {
+        health = health - amount;
+        if health &lt; 0 {
+            health = 0;
+        }
+    }
+
+    func addScore(points: Integer) {
+        score = score + points;
+    }
+
+    func isAlive() -&gt; Integer {
+        if health &gt; 0 {
+            return 1;
+        }
+        return 0;
+    }
+
+    func getHealth() -&gt; Integer {
+        return health;
+    }
+}
+</code></pre>
+<h3 id="using-entities">Using Entities</h3>
+<pre><code data-lang="viper">
+bind Viper.Terminal;
+
+func start() {
+    // Create a new entity instance
+    var player = new Player();
+    player.init(&quot;Alice&quot;);
+
+    // Call methods
+    player.addScore(100);
+    player.takeDamage(25);
+
+    Print(&quot;Health: &quot;);
+    SayInt(player.getHealth());  // 75
+}
+</code></pre>
+<p><strong>Key points:</strong></p>
+<ul>
+<li>Use <code>new EntityName()</code> to create instances</li>
+<li>Fields are accessed with dot notation</li>
+<li><code>init()</code> is the conventional initializer method</li>
+<li>Methods can access fields directly (implicit <code>self</code>)</li>
+</ul>
+<p>---</p>
+<h2 id="6-value-types-structs">6. Value Types (Structs)</h2>
+<p>Value types have copy semantics — assignments create copies.</p>
+<pre><code data-lang="viper">
+bind Viper.Math;
+
+value Point {
+    Integer x;
+    Integer y;
+
+    func init(px: Integer, py: Integer) {
+        x = px;
+        y = py;
+    }
+
+    func distanceFromOrigin() -&gt; Number {
+        return Sqrt(x * x + y * y);
+    }
+}
+</code></pre>
+<p>---</p>
+<h2 id="7-generic-collections">7. Generic Collections</h2>
+<p>Zia supports generic collections from the runtime library.</p>
+<h3 id="lists">Lists</h3>
+<pre><code data-lang="viper">
+bind Viper.Terminal;
+
+// Create a list of integers
+var numbers: List[Integer] = new List[Integer]();
+numbers.add(10);
+numbers.add(20);
+numbers.add(30);
+
+// Access elements
+var first = numbers.get(0);  // 10
+
+// Iterate
+var i = 0;
+while i &lt; numbers.size() {
+    SayInt(numbers.get(i));
+    i = i + 1;
+}
+</code></pre>
+<h3 id="entity-lists">Entity Lists</h3>
+<pre><code data-lang="viper">
+// List of entity instances
+var players: List[Player] = new List[Player]();
+
+var p1 = new Player();
+p1.init(&quot;Alice&quot;);
+players.add(p1);
+
+var p2 = new Player();
+p2.init(&quot;Bob&quot;);
+players.add(p2);
+</code></pre>
+<p>---</p>
+<h2 id="8-modules-and-bindings">8. Modules and Bindings</h2>
+<h3 id="module-declaration">Module Declaration</h3>
+<p>Every file starts with a module declaration:</p>
+<pre><code data-lang="viper">
+module MyGame;
+</code></pre>
+<h3 id="binding-other-modules">Binding Other Modules</h3>
+<p>Bind other <code>.zia</code> files to use their types and functions:</p>
+<pre><code data-lang="viper">
+module Game;
+
+bind &quot;./entities&quot;;    // binds entities.zia from same directory
+bind &quot;./utils&quot;;       // binds utils.zia
+bind &quot;./config&quot; as C; // bind with alias
+
+func start() {
+    var player = new Player();  // Player defined in entities.zia
+    player.init(&quot;Hero&quot;);
+}
+</code></pre>
+<p><strong>Bind path rules:</strong></p>
+<ul>
+<li><code>&quot;./foo&quot;</code> — Relative path, adds <code>.zia</code> extension</li>
+<li><code>&quot;../bar&quot;</code> — Parent directory relative path</li>
+<li><code>&quot;foo&quot;</code> — Same directory, adds <code>.zia</code> extension</li>
+</ul>
+<h3 id="binding-runtime-namespaces">Binding Runtime Namespaces</h3>
+<p>Bind Viper runtime namespaces to use their functions without qualification:</p>
+<pre><code data-lang="viper">
+module Game;
+
+bind Viper.Terminal;     // Import terminal functions
+bind Viper.Graphics;     // Import graphics classes
+
+func start() {
+    Say(&quot;Hello from Zia!&quot;);           // No need for Viper.Terminal.Say()
+    var canvas = new Canvas(&quot;Game&quot;, 800, 600);
+    Viper.Time.SleepMs(16);           // SleepMs is under Viper.Time
+}
+</code></pre>
+<p><strong>Namespace bind options:</strong></p>
+<ul>
+<li><code>bind Viper.Terminal;</code> — Import all symbols</li>
+<li><code>bind Viper.Terminal as T;</code> — Import with alias (use <code>T.Say()</code>)</li>
+<li><code>bind Viper.Terminal { Say };</code> — Import specific symbols only</li>
+</ul>
+<p>---</p>
+<h2 id="9-working-with-the-runtime">9. Working with the Runtime</h2>
+<p>Zia programs have access to the full Viper Runtime Library. Import namespaces</p>
+<p>with <code>bind</code> or use fully qualified names.</p>
+<h3 id="terminal-i-o">Terminal I/O</h3>
+<pre><code data-lang="viper">
+bind Viper.Terminal;
+
+// Output
+Say(&quot;Hello&quot;);           // Print with newline
+Print(&quot;No newline&quot;);    // Print without newline
+SayInt(42);             // Print integer with newline
+PrintInt(42);           // Print integer without newline
+
+// Input
+var line = ReadLine();          // Read a line (returns String?, null on EOF)
+var key = GetKey();             // Wait for key press (blocking)
+var keyTimeout = GetKeyTimeout(100);  // With timeout (ms), &quot;&quot; on timeout
+var peek = InKey();             // Non-blocking key check, &quot;&quot; if no key
+
+// Terminal control
+Clear();                // Clear screen
+SetPosition(row, col);  // Move cursor
+SetColor(fg, bg);       // Set foreground/background (0-15)
+SetCursorVisible(0);    // Hide cursor
+</code></pre>
+<blockquote><p>**Note:** You can also use fully qualified names like <code>Viper.Terminal.Say()</code> without binding.</p></blockquote>
+<h3 id="color-codes">Color Codes</h3>
+<table><thead><tr>
+<th>Code</th>
+<th>Color</th>
+</tr></thead><tbody>
+<tr>
+<td>0</td>
+<td>Black</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Red</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Green</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Yellow</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Blue</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Magenta</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Cyan</td>
+</tr>
+<tr>
+<td>7</td>
+<td>White</td>
+</tr>
+<tr>
+<td>8-15</td>
+<td>Bright variants</td>
+</tr>
+</tbody></table>
+<h3 id="time-functions">Time Functions</h3>
+<pre><code data-lang="viper">
+// SleepMs is available as Viper.Time.SleepMs (use fully qualified name or bind)
+Viper.Time.SleepMs(500);        // Sleep for 500 milliseconds
+</code></pre>
+<h3 id="math-functions">Math Functions</h3>
+<pre><code data-lang="viper">
+bind Viper.Math;
+
+var abs = AbsInt(-42);                       // 42
+var sqrt = Sqrt(16.0);                       // 4.0
+var rand = Viper.Math.Random.NextInt(100);   // Random 0-99
+</code></pre>
+<p>---</p>
+<h2 id="10-example-project">10. Example Project</h2>
+<p>Here&#x27;s a complete mini-game demonstrating Zia features:</p>
+<pre><code data-lang="viper">
+module GuessGame;
+
+bind Viper.Terminal;
+
+var secretNumber = 0;
+var guessCount = 0;
+var gameOver = 0;
+
+func start() {
+    Say(&quot;=== Number Guessing Game ===&quot;);
+    Say(&quot;I&#x27;m thinking of a number between 1 and 100.&quot;);
+
+    // Generate random number 1-100
+    secretNumber = Viper.Math.Random.NextInt(100) + 1;
+    guessCount = 0;
+    gameOver = 0;
+
+    while gameOver == 0 {
+        Print(&quot;Your guess: &quot;);
+
+        // For simplicity, we&#x27;ll use a fixed sequence
+        // In a real game, you&#x27;d read user input
+        var guess = getNextGuess();
+
+        guessCount = guessCount + 1;
+
+        if guess == secretNumber {
+            Say(&quot;Correct! You got it in ${guessCount} guesses!&quot;);
+            gameOver = 1;
+        } else if guess &lt; secretNumber {
+            Say(&quot;Too low!&quot;);
+        } else {
+            Say(&quot;Too high!&quot;);
+        }
+    }
+}
+
+func getNextGuess() -&gt; Integer {
+    // Placeholder - would normally read from input
+    return 50;
+}
+</code></pre>
+<p>For more complete examples, see the <code>demos/zia/</code> directory:</p>
+<ul>
+<li><code>frogger/main.zia</code> — Full Frogger game with entities and collision detection</li>
+<li><code>centipede/</code> — Centipede arcade game with entities and game loop</li>
+<li><code>pacman/</code> — Pac-Man game demonstrating movement and collision</li>
+</ul>
+<p>---</p>
+<h2 id="11-where-to-go-next">11. Where to Go Next</h2>
+<p><strong>Language Documentation:</strong></p>
+<ul>
+<li>[Zia Reference](zia-reference.md) — Complete language specification</li>
+<li>[Runtime Library](viperlib/README.md) — All available classes and methods</li>
+</ul>
+<p><strong>Examples:</strong></p>
+<ul>
+<li><code>demos/zia/frogger/</code> — Complete Frogger game example</li>
+<li><code>demos/zia/centipede/</code> — Centipede arcade game</li>
+<li><code>demos/zia/pacman/</code> — Pac-Man game</li>
+</ul>
+<p><strong>Interactive:</strong></p>
+<ul>
+<li>[REPL Guide](repl.md) — Interactive Zia experimentation</li>
+</ul>
+<p><strong>Related Guides:</strong></p>
+<ul>
+<li>[IL Guide](il-guide.md) — Understand the compiled output</li>
+<li>[Cross-Language Interop](interop.md) — Mixed Zia + BASIC projects</li>
+<li>[Frontend How-To](frontend-howto.md) — How frontends work</li>
+</ul>
+<p>---</p>
+<h2 id="quick-reference">Quick Reference</h2>
+<h3 id="program-structure">Program Structure</h3>
+<pre><code data-lang="viper">
+module ModuleName;
+
+bind &quot;./other&quot;;
+
+// Global variables
+var globalVar = 0;
+
+// Entity types
+entity MyEntity {
+    Integer field;
+    func method() { }
+}
+
+// Value types
+value MyValue {
+    Integer field;
+}
+
+// Functions
+func myFunction(param: Type) -&gt; ReturnType {
+    return value;
+}
+
+// Entry point
+func start() {
+    // Program starts here
+}
+</code></pre>
+<h3 id="operators">Operators</h3>
+<table><thead><tr>
+<th>Category</th>
+<th>Operators</th>
+</tr></thead><tbody>
+<tr>
+<td>Arithmetic</td>
+<td>`+`, `-`, `*`, `/`, `%`</td>
+</tr>
+<tr>
+<td>Comparison</td>
+<td>`==`, `!=`, `&lt;`, `&lt;=`, `&gt;`, `&gt;=`</td>
+</tr>
+<tr>
+<td>Logical</td>
+<td>`&amp;&amp;`, `</td>
+<td></td>
+<td>`, `!`</td>
+</tr>
+<tr>
+<td>Bitwise</td>
+<td>`&amp;`, `</td>
+<td>`, `^`, `~`</td>
+</tr>
+<tr>
+<td>Assignment</td>
+<td>`=`</td>
+</tr>
+</tbody></table>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../../features/native-targets.html">Native Targets</a>
+      <a href="../../features/two-languages.html">Languages</a>
+      <a href="../../features/runtime.html">Runtime Library</a>
+      <a href="../../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../../docs/getting-started.html">Getting Started</a>
+      <a href="../../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../../docs/runtime/">Runtime API</a>
+      <a href="../../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../../contributing/">Contributing</a>
+      <a href="../../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../../main.js"></script>
+</body>
+</html>

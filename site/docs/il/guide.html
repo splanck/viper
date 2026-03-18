@@ -1,0 +1,2215 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IL Specification — Viper</title>
+  <meta name="description" content="Viper documentation: IL Specification">
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="icon" href="../../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../../docs/" class="active">Docs</a>
+    <a href="../../learn/">Learn</a>
+    <a href="../../showcase/">Showcase</a>
+    <a href="../../performance/">Performance</a>
+    <a href="../../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../../">Home</a> / <a href="../../docs">Docs</a> / <span>IL Specification</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#table-of-contents">Table of Contents</a></li>
+        <li><a href="#quickstart">Quickstart</a></li>
+        <li><a href="#reference">Reference</a></li>
+        <li><a href="#lowering">Lowering</a></li>
+        <li><a href="#passes">Passes</a></li>
+        <li><a href="#examples">Examples</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>IL Specification</h1>
+<h1 id="viper-il-complete-guide">Viper IL — Complete Guide</h1>
+<p>Comprehensive guide to Viper&#x27;s Intermediate Language (IL), covering everything from quickstart to advanced topics. This</p>
+<p>document consolidates the quickstart, normative reference, BASIC lowering rules, optimization passes, and worked</p>
+<p>examples for IL v0.2.</p>
+<blockquote><p>**Note:** This guide documents IL v0.2.0. See the version header in your IL files for compatibility.</p></blockquote>
+<p>---</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ol>
+<li>[Quickstart](#quickstart)</li>
+<li>[Program Structure](#program-structure)</li>
+<li>[Values and Types](#values-and-types)</li>
+<li>[Control Flow](#control-flow)</li>
+<li>[Functions and Calls](#functions-and-calls)</li>
+<li>[Memory Operations](#memory-operations)</li>
+<li>[Exception Handling](#exception-handling)</li>
+<li>[BASIC Lowering Rules](#basic-lowering-rules)</li>
+<li>[Optimization Passes](#optimization-passes)</li>
+<li>[Advanced Topics](#advanced-topics)</li>
+</ul>
+<p>---</p>
+<p>&lt;a id=&quot;quickstart&quot;&gt;&lt;/a&gt;</p>
+<h2 id="quickstart">Quickstart</h2>
+<p>Welcome! This guide is for developers from languages like C#, Java, TypeScript, or Python who want a hands-on tour of</p>
+<p>Viper&#x27;s intermediate language. <strong>No prior compiler experience is required.</strong></p>
+<h3 id="what-is-viper-il">What is Viper IL?</h3>
+<p>Viper IL is the <strong>&quot;thin waist&quot;</strong> of the Viper toolchain — a versioned, textual intermediate representation that</p>
+<p>decouples frontends from backends:</p>
+<ul>
+<li><strong>Frontends</strong> (Zia, BASIC, etc.) compile to IL</li>
+<li><strong>VM</strong> executes IL deterministically</li>
+<li><strong>Verifier</strong> ensures type safety and correctness</li>
+<li><strong>Transforms</strong> optimize IL (SimplifyCFG, LICM, SCCP)</li>
+<li><strong>Backends</strong> compile IL to native code</li>
+</ul>
+<p><strong>Why a separate IL?</strong></p>
+<ul>
+<li><strong>Decoupling</strong>: Frontends evolve independently from the VM</li>
+<li><strong>Stability</strong>: IL version headers (<code>il 0.2.0</code>) ensure compatibility</li>
+<li><strong>Inspectability</strong>: Textual format is easy to read and debug</li>
+<li><strong>Optimization</strong>: Centralized place for analysis and transforms</li>
+<li><strong>Multi-language</strong>: Multiple frontends share one runtime</li>
+</ul>
+<h3 id="program-structure">Program structure</h3>
+<p>An IL module is plain text. Its top‑level layout is:</p>
+<ol>
+<li>**Version line** – <code>il 0.2.0</code> pins the expected IL grammar version.</li>
+<li>**Extern declarations** – <code>extern @name(signature) -&gt; ret</code> describes functions provided by the runtime or other</li>
+</ul>
+<p>modules.</p>
+<ol>
+<li>**Global constants** – <code>global const str @.msg = &quot;hi&quot;</code> defines immutable data.</li>
+<li>**Functions** – <code>func @main() -&gt; i64 { ... }</code> contains basic blocks and instructions.</li>
+</ul>
+<p>Inside a function:</p>
+<ul>
+<li>Each basic block starts with a label like <code>entry:</code>. There is no fall‑through; control transfers with a terminator such</li>
+</ul>
+<p>as <code>ret</code>, <code>br</code>, or <code>cbr</code>.</p>
+<ul>
+<li>Instructions assign results to SSA registers (<code>%v0</code>, <code>%tmp1</code>). A register is defined once and used many times.</li>
+<li>Comments begin with <code>#</code> and run to the end of the line.</li>
+</ul>
+<p>These pieces mirror what a compiler would normally keep in its internal IR and make it explicit for learning and</p>
+<p>debugging.</p>
+<h3 id="your-first-il-program">Your first IL program</h3>
+<p>Create a file <code>first.il</code> with the contents:</p>
+<pre><code data-lang="llvm">
+# Print the number 4 and exit.
+il 0.2.0
+extern @Viper.Terminal.PrintI64(i64) -&gt; void
+func @main() -&gt; i64 {
+entry:
+  call @Viper.Terminal.PrintI64(4)    # runtime prints `4\n`
+  ret 0                    # zero exit code
+}
+</code></pre>
+<p>Run it with <code>viper</code>:</p>
+<pre><code data-lang="bash">
+viper -run first.il
+</code></pre>
+<p>Expected output:</p>
+<pre><code data-lang="text">
+4
+</code></pre>
+<p><strong>Line by line</strong></p>
+<ul>
+<li><code># Print the number 4 and exit.</code> – comments start with <code>#</code> and are ignored by the VM.</li>
+<li><code>il 0.2.0</code> – required version header that pins the expected IL grammar version.</li>
+<li><code>extern @Viper.Terminal.PrintI64(i64) -&gt; void</code> – declare a runtime function taking an <code>i64</code> and returning <code>void</code>.</li>
+<li><code>func @main() -&gt; i64 {</code> – define the <code>@main</code> function that returns an <code>i64</code> exit code.</li>
+<li><code>entry:</code> – the initial basic block label.</li>
+<li><code>call @Viper.Terminal.PrintI64(4)</code> – invoke the extern with the literal <code>4</code>.</li>
+<li><code>ret 0</code> – terminate the function and supply the process exit status.</li>
+<li><code>}</code> – close the function body.</li>
+</ul>
+<p>Compatibility:</p>
+<ul>
+<li>When built with <code>-DVIPER_RUNTIME_NS_DUAL=ON</code>, legacy <code>@rt_*</code> externs are accepted as aliases of <code>@Viper.*</code>.</li>
+<li>New code should emit <code>@Viper.*</code>.</li>
+<li>Planned: Starting in v0.3.0, legacy <code>@rt_*</code> aliases will be OFF by default. Enable with <code>-DVIPER_RUNTIME_NS_DUAL=ON</code></li>
+</ul>
+<p>if you need to load legacy IL.</p>
+<p><strong>What just happened?</strong> <code>Viper.Terminal.PrintI64</code> is supplied by the runtime and prints its argument. Every function ends</p>
+<p>with a terminator such as <code>ret</code> giving the program&#x27;s exit code.</p>
+<p><strong>Gotcha:</strong> Every module must start with a version line (e.g., <code>il 0.2.0</code>).</p>
+<h3 id="values-and-types">Values and types</h3>
+<p>IL is statically typed and uses SSA-style virtual registers (<code>%v0</code>, <code>%t1</code>, ...). Primitive types include <code>i1</code> (bool),</p>
+<p><code>i16</code>, <code>i32</code>, <code>i64</code>, <code>f64</code>, <code>ptr</code>, and <code>str</code>, plus specialized types <code>error</code> and <code>resumetok</code> for exception handling.</p>
+<pre><code data-lang="llvm">
+il 0.2.0
+extern @Viper.Terminal.PrintI64(i64) -&gt; void
+func @main() -&gt; i64 {
+entry:
+  %p = alloca 8            # reserve 8 bytes on the stack
+  store i64, %p, 10        # write constant 10 to memory
+  %v0 = load i64, %p       # read it back
+  call @Viper.Terminal.PrintI64(%v0)  # prints 10
+  ret 0
+}
+</code></pre>
+<p><strong>Line by line</strong></p>
+<ul>
+<li><code>%p = alloca 8</code> – allocate eight bytes of stack memory and bind its address to <code>%p</code> (type <code>ptr</code>).</li>
+<li><code>store i64, %p, 10</code> – store the 64‑bit constant <code>10</code> into the memory pointed to by <code>%p</code>.</li>
+<li><code>%v0 = load i64, %p</code> – load an <code>i64</code> from <code>%p</code> into <code>%v0</code>.</li>
+<li><code>call @Viper.Terminal.PrintI64(%v0)</code> – pass the loaded value to the runtime print routine.</li>
+<li><code>ret 0</code> – return from <code>main</code> with exit code 0.</li>
+</ul>
+<p><strong>What just happened?</strong> <code>alloca</code> creates a stack slot, <code>store</code> writes to it, and <code>load</code> reads from it.</p>
+<p><strong>Gotcha:</strong> All integers are 64-bit; mixing <code>i64</code> and <code>f64</code> requires explicit casts.</p>
+<h3 id="locals-params-and-calls">Locals, params, and calls</h3>
+<p>Functions declare typed parameters. Values are passed and returned explicitly.</p>
+<pre><code data-lang="llvm">
+il 0.2.0
+extern @Viper.Terminal.PrintI64(i64) -&gt; void
+func @add(i64 %a, i64 %b) -&gt; i64 {
+entry:
+  %sum = add %a, %b        # compute a + b
+  ret %sum
+}
+func @main() -&gt; i64 {
+entry:
+  %v0 = call @add(2, 3)    # call with constants
+  call @Viper.Terminal.PrintI64(%v0)  # prints 5
+  ret 0
+}
+</code></pre>
+<p><strong>Line by line</strong></p>
+<ul>
+<li><code>func @add(i64 %a, i64 %b) -&gt; i64</code> – declare a function with two <code>i64</code> parameters and an <code>i64</code> return type.</li>
+<li><code>%sum = add %a, %b</code> – add the two parameters and bind the sum.</li>
+<li><code>ret %sum</code> – return the computed sum.</li>
+<li><code>func @main() -&gt; i64 { ... }</code> – define the entry point.</li>
+<li><code>%v0 = call @add(2, 3)</code> – call <code>@add</code> with literal arguments; result stored in <code>%v0</code>.</li>
+<li><code>call @Viper.Terminal.PrintI64(%v0)</code> – print the returned value.</li>
+<li><code>ret 0</code> – exit with status 0.</li>
+</ul>
+<p><strong>What just happened?</strong> <code>call</code> pushes arguments and receives a result. Each function has one entry block.</p>
+<p><strong>Gotcha:</strong> Arguments are immutable; use <code>alloca</code> + <code>store</code> if you need a mutable local.</p>
+<h3 id="arithmetic-and-comparisons">Arithmetic and comparisons</h3>
+<pre><code data-lang="llvm">
+il 0.2.0
+extern @Viper.Terminal.PrintI64(i64) -&gt; void
+func @main() -&gt; i64 {
+entry:
+  %v0 = add 2, 2           # 4
+  %v1 = scmp_gt %v0, 3     # 1 (true)
+  call @Viper.Terminal.PrintI64(%v1)  # prints 1
+  ret 0
+}
+</code></pre>
+<p><strong>Line by line</strong></p>
+<ul>
+<li><code>%v0 = add 2, 2</code> – compute the constant expression <code>2 + 2</code>.</li>
+<li><code>%v1 = scmp_gt %v0, 3</code> – signed compare‑greater; result is <code>1</code> because 4 &gt; 3.</li>
+<li><code>call @Viper.Terminal.PrintI64(%v1)</code> – zero‑extend the <code>i1</code> result and print it.</li>
+<li><code>ret 0</code> – terminate <code>main</code> with success.</li>
+</ul>
+<p><strong>What just happened?</strong> <code>scmp_gt</code> compares signed integers and yields an <code>i1</code> (0 or 1).</p>
+<p><strong>Gotcha:</strong> Comparison results are <code>i1</code>; printing them with <code>Viper.Terminal.PrintI64</code> zero-extends to <code>i64</code>.</p>
+<h3 id="control-flow">Control flow</h3>
+<p>Blocks end with a terminator. <code>cbr</code> chooses a target based on an <code>i1</code> value.</p>
+<pre><code data-lang="llvm">
+il 0.2.0
+extern @Viper.Terminal.PrintI64(i64) -&gt; void
+func @main() -&gt; i64 {
+entry:
+  %flag = scmp_gt 5, 3     # 1 means take then
+  cbr %flag, then, else    # conditional branch
+then:
+  call @Viper.Terminal.PrintI64(1)    # prints 1 if flag != 0
+  br done                  # jump to exit
+else:
+  call @Viper.Terminal.PrintI64(0)    # prints 0 otherwise
+  br done
+done:
+  ret 0
+}
+</code></pre>
+<pre><code data-lang="text">
+ entry ──cbr──▶ then ──▶ done
+   │             │
+   └──────▶ else ┘
+</code></pre>
+<p><strong>Line by line</strong></p>
+<ul>
+<li><code>%flag = scmp_gt 5, 3</code> – compare constants; <code>%flag</code> holds <code>1</code>.</li>
+<li><code>cbr %flag, then, else</code> – branch to <code>then</code> when <code>%flag</code> is non‑zero, otherwise <code>else</code>.</li>
+<li><code>then:</code> / <code>else:</code> – block labels.</li>
+<li><code>br done</code> – unconditionally jump to the block <code>done</code>.</li>
+<li><code>ret 0</code> – final terminator of the <code>done</code> block.</li>
+</ul>
+<p><strong>What just happened?</strong> Labels (<code>then</code>, <code>else</code>, <code>done</code>) mark basic blocks. <code>br</code> is an unconditional jump.</p>
+<p><strong>Gotcha:</strong> There is no fall-through; every block must end with a terminator.</p>
+<h3 id="strings-and-text">Strings and text</h3>
+<p>Strings live in globals and use <code>Viper.Terminal.PrintStr</code> for output.</p>
+<pre><code data-lang="llvm">
+il 0.2.0
+extern @Viper.Terminal.PrintStr(str) -&gt; void
+global const str @.msg = &quot;hello&quot;  # immutable global
+func @main() -&gt; i64 {
+entry:
+  %s = const_str @.msg     # load pointer to string
+  call @Viper.Terminal.PrintStr(%s)   # prints hello
+  ret 0
+}
+</code></pre>
+<p><strong>Line by line</strong></p>
+<ul>
+<li><code>extern @Viper.Terminal.PrintStr(str) -&gt; void</code> – declare the runtime string printer.</li>
+<li><code>global const str @.msg = &quot;hello&quot;</code> – create an immutable global string named <code>@.msg</code>.</li>
+<li><code>%s = const_str @.msg</code> – get a pointer to the string constant.</li>
+<li><code>call @Viper.Terminal.PrintStr(%s)</code> – pass that pointer to the runtime for printing.</li>
+<li><code>ret 0</code> – exit normally.</li>
+</ul>
+<p><strong>What just happened?</strong> <code>const_str</code> loads the address of a global string constant.</p>
+<p><strong>Gotcha:</strong> Strings are reference-counted; do not <code>alloca</code> them manually.</p>
+<h3 id="errors-and-exit-codes">Errors and exit codes</h3>
+<p>Returning a non-zero <code>i64</code> sets the process exit code. <code>trap</code> reports an error and aborts.</p>
+<pre><code data-lang="llvm">
+il 0.2.0
+func @main() -&gt; i64 {
+entry:
+  trap                    # aborts execution
+}
+</code></pre>
+<p>Running the above produces a non-zero exit.</p>
+<p><strong>Line by line</strong></p>
+<ul>
+<li><code>trap</code> – raise a runtime trap, aborting execution immediately.</li>
+</ul>
+<p><code>trap</code> aborts execution immediately with a non‑zero status; no <code>ret</code> is needed.</p>
+<p>To trap with a specific error code and message, use <code>trap.err</code> to create an error value</p>
+<p>and <code>trap.from_err</code> to terminate with it.</p>
+<p><strong>Gotcha:</strong> After a <code>trap</code> the VM stops; no <code>ret</code> is required.</p>
+<h3 id="from-high-level-code-to-il">From high-level code to IL</h3>
+<p>A tiny BASIC program:</p>
+<pre><code data-lang="basic">
+10 PRINT 2 + 2
+20 END
+</code></pre>
+<p>Lowered IL:</p>
+<pre><code data-lang="llvm">
+il 0.2.0
+extern @Viper.Terminal.PrintI64(i64) -&gt; void
+func @main() -&gt; i64 {
+entry:
+  %t0 = add 2, 2
+  call @Viper.Terminal.PrintI64(%t0)
+  ret 0
+}
+</code></pre>
+<p><strong>Line by line</strong></p>
+<ul>
+<li><code>%t0 = add 2, 2</code> – compute the arithmetic expression from the BASIC code.</li>
+<li><code>call @Viper.Terminal.PrintI64(%t0)</code> – print the result.</li>
+<li><code>ret 0</code> – exit with success.</li>
+</ul>
+<p><strong>What just happened?</strong> The front end evaluated the expression, emitted an <code>add</code>, and called the print routine.</p>
+<h3 id="debugging-il">Debugging IL</h3>
+<ul>
+<li><code>viper -run --trace foo.il</code> prints each instruction as it executes.</li>
+<li><code>il-verify foo.il</code> checks structural rules without running.</li>
+<li>Common errors like &quot;type mismatch&quot; or &quot;undefined block&quot; point to the offending line.</li>
+</ul>
+<h3 id="tips-best-practices">Tips &amp; best practices</h3>
+<ul>
+<li>Keep functions small and testable.</li>
+<li>Use meaningful block labels and value names with <code>@name</code> and <code>%v0</code> hints.</li>
+<li>Prefer deterministic behaviour; avoid relying on undefined order.</li>
+</ul>
+<h3 id="next-steps">Next steps</h3>
+<ul>
+<li>Read the full [IL reference](#reference) for all instructions.</li>
+<li>Explore the <code>examples/</code> and <code>tests/golden/</code> directories for more programs.</li>
+<li>Try adding your own IL file and running it with <code>viper</code>.</li>
+</ul>
+<h3 id="common-mistakes">Common mistakes</h3>
+<ul>
+<li>Forgetting the version line (<code>il 0.2.0</code>).</li>
+<li>Missing terminators at the end of blocks.</li>
+<li>Mismatched types in instructions or extern calls.</li>
+</ul>
+<p>Happy hacking!</p>
+<p>&lt;a id=&quot;reference&quot;&gt;&lt;/a&gt;</p>
+<h2 id="reference">Reference</h2>
+<h3 id="normative-scope">Normative scope</h3>
+<p>The current IL v0.2.0 specification builds on the design principles established in earlier versions: IL acts as the &quot;thin waist&quot;</p>
+<p>between front ends and execution engines, enforces explicit control flow with one terminator per block, and keeps the</p>
+<p>type system intentionally small (<code>i1</code>, <code>i64</code>, <code>f64</code>, <code>ptr</code>, <code>str</code>, <code>void</code>). The material below supersedes earlier</p>
+<p>drafts (including v0.1.x) while remaining source-compatible with modules written for those versions. Numeric promotion</p>
+<p>semantics are specified in [specs/numerics.md](specs/numerics.md) and the unified trap/handler model is</p>
+<p>defined in [specs/errors.md](specs/errors.md); both documents are normative for all front ends and the</p>
+<p>VM.</p>
+<h3 id="il-reference-v0-2-0">IL Reference (v0.2.0)</h3>
+<blockquote><p>Start here: [IL Quickstart](#quickstart) for a hands-on introduction.</p></blockquote>
+<h4 id="overview">Overview</h4>
+<p>Viper IL is the project’s &quot;thin waist&quot; intermediate language designed to sit between diverse front ends and back ends.</p>
+<p>Its goals are:</p>
+<ul>
+<li><strong>Determinism</strong> – VM and native back ends must produce identical observable behaviour.</li>
+<li><strong>Explicit control flow</strong> – each basic block ends with exactly one terminator; no fallthrough.</li>
+<li><strong>Static types</strong> – a minimal set of primitive types (<code>i1</code>, <code>i64</code>, <code>f64</code>, <code>ptr</code>, <code>str</code>, <code>void</code>).</li>
+</ul>
+<p>Execution is organized as functions consisting of labelled basic blocks. Modules may execute either under the IL virtual</p>
+<p>machine interpreter or after lowering to native code through a C runtime. Front ends such as BASIC first lower into IL</p>
+<p>patterns described in [BASIC lowering](#lowering).</p>
+<h4 id="module-function-syntax">Module &amp; Function Syntax</h4>
+<p>An IL module is a set of declarations and function definitions. It starts with a version line:</p>
+<pre><code data-lang="text">
+il 0.2.0
+</code></pre>
+<p>An optional <code>target &quot;...&quot;</code> metadata line may follow. The VM ignores it, but native back ends can use it as advisory</p>
+<p>information.</p>
+<pre><code data-lang="text">
+il 0.2.0
+target &quot;x86_64-sysv&quot;
+</code></pre>
+<p>See [examples/il](../examples/il/) for complete programs.</p>
+<p>Each function has the form:</p>
+<pre><code data-lang="il">
+func @name(param_list?) -&gt; ret_type {
+entry:
+  ...
+}
+</code></pre>
+<p>##### Minimal Function</p>
+<pre><code data-lang="text">
+il 0.2.0
+func @main() -&gt; i64 {
+entry:
+  ret 0
+}
+</code></pre>
+<p>##### Function Linkage</p>
+<p>Functions may have a linkage keyword between <code>func</code> and the name:</p>
+<ul>
+<li><strong><code>Internal</code></strong> (default, no keyword) — visible only within the defining module.</li>
+<li><strong><code>export</code></strong> — defined here, callable from other modules.</li>
+<li><strong><code>import</code></strong> — declared here, defined in another module (no body required).</li>
+</ul>
+<pre><code data-lang="text">
+func export @calculateScore(i64 %x, i64 %y) -&gt; i64 {
+entry:
+  %r = mul %x, %y
+  ret %r
+}
+
+func import @BasicHelper(i64 %n) -&gt; i64
+</code></pre>
+<p>Import functions have no body (no <code>{...}</code> block). The IL linker resolves them</p>
+<p>against matching export functions when linking multiple modules. Omitting the</p>
+<p>linkage keyword defaults to <code>Internal</code>, so all existing <code>.il</code> files are</p>
+<p>backwards compatible.</p>
+<p>See [Cross-Language Interop Guide](interop.md) for full details on linking</p>
+<p>multiple modules.</p>
+<p>##### Extern Declarations</p>
+<p>External functions are declared with <code>extern</code> and may be called like normal functions.</p>
+<p>Externs reference runtime-provided functions (C ABI), while <code>import</code> references</p>
+<p>functions defined in other IL modules.</p>
+<pre><code data-lang="text">
+il 0.2.0
+extern @Viper.Terminal.PrintI64(i64) -&gt; void
+func @main() -&gt; i64 {
+entry:
+  call @Viper.Terminal.PrintI64(42)
+  ret 0
+}
+</code></pre>
+<p>##### Global Constants</p>
+<p>Module-level constants bind a symbol to immutable data such as strings.</p>
+<pre><code data-lang="text">
+il 0.2.0
+global const str @.msg = &quot;hi&quot;
+func @main() -&gt; i64 {
+entry:
+  %s = const_str @.msg
+  ret 0
+}
+</code></pre>
+<h4 id="types">Types</h4>
+<table><thead><tr>
+<th>Type</th>
+<th>Meaning</th>
+<th>Alignment</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>`void`</td>
+<td>no value</td>
+<td>—</td>
+<td>function return only</td>
+</tr>
+<tr>
+<td>`i1`</td>
+<td>boolean</td>
+<td>1</td>
+<td>produced by comparisons and `trunc1`</td>
+</tr>
+<tr>
+<td>`i16`</td>
+<td>16-bit signed int</td>
+<td>2</td>
+<td>wrap on overflow</td>
+</tr>
+<tr>
+<td>`i32`</td>
+<td>32-bit signed int</td>
+<td>4</td>
+<td>wrap on overflow</td>
+</tr>
+<tr>
+<td>`i64`</td>
+<td>64-bit signed int</td>
+<td>8</td>
+<td>wrap on overflow</td>
+</tr>
+<tr>
+<td>`f64`</td>
+<td>64-bit IEEE float</td>
+<td>8</td>
+<td>NaN/Inf propagate</td>
+</tr>
+<tr>
+<td>`ptr`</td>
+<td>untyped pointer</td>
+<td>8</td>
+<td>byte-addressed</td>
+</tr>
+<tr>
+<td>`str`</td>
+<td>opaque string handle</td>
+<td>8</td>
+<td>managed by runtime</td>
+</tr>
+<tr>
+<td>`error`</td>
+<td>error value</td>
+<td>8</td>
+<td>exception handling only</td>
+</tr>
+<tr>
+<td>`resumetok`</td>
+<td>resume token</td>
+<td>8</td>
+<td>exception handling only</td>
+</tr>
+</tbody></table>
+<h4 id="constants-literals">Constants &amp; Literals</h4>
+<p>Integers use decimal notation (<code>-?[0-9]+</code>). Floats use decimal with optional fraction (<code>-?[0-9]+(\.[0-9]+)?</code>) and permit</p>
+<p><code>NaN</code>, <code>Inf</code>, and <code>-Inf</code>. Booleans <code>true</code>/<code>false</code> sugar to <code>i1</code> values <code>1</code>/<code>0</code>. Strings appear in quotes with escapes</p>
+<p><code>\&quot;</code>, <code>\\</code>, <code>\n</code>, <code>\t</code>, <code>\xNN</code>.  <code>const_null</code> yields a <code>ptr</code> null.</p>
+<h4 id="basic-blocks">Basic Blocks</h4>
+<p>Functions contain one or more labelled blocks. Labels end in <code>:</code> and the first block is <code>entry</code>. A block may declare</p>
+<p>parameters; each predecessor must supply matching arguments. Omitting the argument list is shorthand for passing no</p>
+<p>values (for example, <code>br next</code> is the same as <code>br next()</code>).</p>
+<pre><code data-lang="text">
+il 0.2.0
+func @loop(i64 %n) -&gt; i64 {
+entry:
+  br body(%n, 0)
+body(%i:i64, %acc:i64):
+  %cmp = scmp_ge %i, %n
+  cbr %cmp, done(%acc), body(%i, %acc)
+done(%r:i64):
+  ret %r
+}
+</code></pre>
+<h4 id="control-flow">Control Flow</h4>
+<p>##### <code>br</code></p>
+<p>Unconditional branch to a block with optional arguments.</p>
+<pre><code data-lang="text">
+br next(%v)
+</code></pre>
+<p>##### <code>cbr</code></p>
+<p>Conditional branch on an <code>i1</code> value.</p>
+<pre><code data-lang="text">
+cbr %cond, then, else
+</code></pre>
+<p>##### <code>switch.i32</code></p>
+<p>Multi-way branch on an <code>i32</code> scrutinee with an explicit default.</p>
+<pre><code data-lang="text">
+switch.i32 %scrutinee, ^default, 1 -&gt; ^case_one, 2 -&gt; ^case_two
+</code></pre>
+<p>The first operand is the <code>i32</code> value to test. The first label after the operand</p>
+<p>is the mandatory default target (e.g. <code>^default(args?)</code>; the <code>^</code> caret prefix is</p>
+<p>optional). Subsequent entries pair a distinct 32-bit integer constant with a</p>
+<p>branch target using <code>value -&gt; label(args?)</code>. When no case matches, the default</p>
+<p>label is taken. Each target may optionally supply block arguments.</p>
+<p>##### <code>ret</code></p>
+<p>Return from the current function.</p>
+<p>##### <code>trap</code></p>
+<p>Abort execution with an unconditional runtime trap.</p>
+<pre><code data-lang="text">
+func @oops() -&gt; void {
+entry:
+  trap
+}
+</code></pre>
+<h4 id="instructions">Instructions</h4>
+<p>Each non-terminator instruction optionally assigns to a <code>%temp</code> and produces a result. Below, <code>x</code> and <code>y</code> denote</p>
+<p>operands.</p>
+<blockquote><p>_Opcode table note:_ An <code>InstrType</code> sentinel means the result or operand type</p></blockquote>
+<blockquote><p>is taken from the instruction&#x27;s declared type.</p></blockquote>
+<p>##### Integer Arithmetic</p>
+<table><thead><tr>
+<th>Instr</th>
+<th>Form</th>
+<th>Result</th>
+</tr></thead><tbody>
+<tr>
+<td>`add`</td>
+<td>`add x, y`</td>
+<td>`i64`</td>
+</tr>
+<tr>
+<td>`mul`</td>
+<td>`mul x, y`</td>
+<td>`i64`</td>
+</tr>
+<tr>
+<td>`sdiv`</td>
+<td>`sdiv x, y`</td>
+<td>`i64` (no divide-by-zero check)</td>
+</tr>
+<tr>
+<td>`srem`</td>
+<td>`srem x, y`</td>
+<td>`i64` (no divide-by-zero check)</td>
+</tr>
+<tr>
+<td>`sub`</td>
+<td>`sub x, y`</td>
+<td>`i64`</td>
+</tr>
+<tr>
+<td>`udiv`</td>
+<td>`udiv x, y`</td>
+<td>`i64` (no divide-by-zero check)</td>
+</tr>
+<tr>
+<td>`urem`</td>
+<td>`urem x, y`</td>
+<td>`i64` (no divide-by-zero check)</td>
+</tr>
+</tbody></table>
+<p><code>sdiv</code> and <code>srem</code> follow C semantics: the quotient is truncated toward zero and the remainder keeps the dividend&#x27;s sign.</p>
+<p>Neither checks for division by zero; use <code>sdiv.chk0</code> or <code>srem.chk0</code> for checked variants that trap on zero divisors.</p>
+<p>Front ends such as BASIC map <code>\</code> to <code>sdiv.chk0</code> and <code>MOD</code> to <code>srem.chk0</code>.</p>
+<pre><code data-lang="text">
+il 0.2.0
+func @main() -&gt; i64 {
+entry:
+  %t0 = add 2, 3
+  ret %t0
+}
+</code></pre>
+<p>##### Checked Integer Arithmetic</p>
+<table><thead><tr>
+<th>Instr</th>
+<th>Form</th>
+<th>Result</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>`iadd.ovf`</td>
+<td>`iadd.ovf x, y`</td>
+<td>`i64`</td>
+<td>trap on signed overflow</td>
+</tr>
+<tr>
+<td>`imul.ovf`</td>
+<td>`imul.ovf x, y`</td>
+<td>`i64`</td>
+<td>trap on signed overflow</td>
+</tr>
+<tr>
+<td>`isub.ovf`</td>
+<td>`isub.ovf x, y`</td>
+<td>`i64`</td>
+<td>trap on signed overflow</td>
+</tr>
+<tr>
+<td>`sdiv.chk0`</td>
+<td>`sdiv.chk0 x, y`</td>
+<td>`i64`</td>
+<td>trap on divide-by-zero or overflow</td>
+</tr>
+<tr>
+<td>`srem.chk0`</td>
+<td>`srem.chk0 x, y`</td>
+<td>`i64`</td>
+<td>trap on divide-by-zero</td>
+</tr>
+<tr>
+<td>`udiv.chk0`</td>
+<td>`udiv.chk0 x, y`</td>
+<td>`i64`</td>
+<td>trap on divide-by-zero</td>
+</tr>
+<tr>
+<td>`urem.chk0`</td>
+<td>`urem.chk0 x, y`</td>
+<td>`i64`</td>
+<td>trap on divide-by-zero</td>
+</tr>
+</tbody></table>
+<p>The <code>.ovf</code> variants detect signed overflow and trap before producing a wrapped result. The <code>.chk0</code> variants explicitly</p>
+<p>check for zero divisors.</p>
+<p>##### Bitwise and Shifts</p>
+<table><thead><tr>
+<th>Instr</th>
+<th>Form</th>
+<th>Result</th>
+</tr></thead><tbody>
+<tr>
+<td>`and`</td>
+<td>`and x, y`</td>
+<td>`i64`</td>
+</tr>
+<tr>
+<td>`ashr`</td>
+<td>`ashr x, y`</td>
+<td>`i64`</td>
+</tr>
+<tr>
+<td>`lshr`</td>
+<td>`lshr x, y`</td>
+<td>`i64`</td>
+</tr>
+<tr>
+<td>`or`</td>
+<td>`or x, y`</td>
+<td>`i64`</td>
+</tr>
+<tr>
+<td>`shl`</td>
+<td>`shl x, y`</td>
+<td>`i64`</td>
+</tr>
+<tr>
+<td>`xor`</td>
+<td>`xor x, y`</td>
+<td>`i64`</td>
+</tr>
+</tbody></table>
+<p>Shift counts are masked modulo 64, matching the behaviour of x86-64 shifts.</p>
+<pre><code data-lang="text">
+%r = xor 0b1010, 0b1100
+</code></pre>
+<p>##### Floating-Point Arithmetic</p>
+<table><thead><tr>
+<th>Instr</th>
+<th>Form</th>
+<th>Result</th>
+</tr></thead><tbody>
+<tr>
+<td>`fadd`</td>
+<td>`fadd x, y`</td>
+<td>`f64`</td>
+</tr>
+<tr>
+<td>`fdiv`</td>
+<td>`fdiv x, y`</td>
+<td>`f64`</td>
+</tr>
+<tr>
+<td>`fmul`</td>
+<td>`fmul x, y`</td>
+<td>`f64`</td>
+</tr>
+<tr>
+<td>`fsub`</td>
+<td>`fsub x, y`</td>
+<td>`f64`</td>
+</tr>
+</tbody></table>
+<pre><code data-lang="text">
+%f = fmul 2.0, 4.0
+</code></pre>
+<p>##### Comparisons</p>
+<table><thead><tr>
+<th>Instrs</th>
+<th>Form</th>
+<th>Result</th>
+</tr></thead><tbody>
+<tr>
+<td>`icmp_eq`, `icmp_ne`</td>
+<td>`icmp_eq x, y`</td>
+<td>`i1`</td>
+</tr>
+<tr>
+<td>`scmp_lt`, `scmp_le`, `scmp_gt`, `scmp_ge`</td>
+<td>`scmp_lt x, y`</td>
+<td>`i1` signed compare</td>
+</tr>
+<tr>
+<td>`ucmp_lt`, `ucmp_le`, `ucmp_gt`, `ucmp_ge`</td>
+<td>`ucmp_lt x, y`</td>
+<td>`i1` unsigned compare</td>
+</tr>
+<tr>
+<td>`fcmp_lt`, `fcmp_le`, `fcmp_gt`, `fcmp_ge`, `fcmp_eq`, `fcmp_ne`</td>
+<td>`fcmp_eq x, y`</td>
+<td>`i1` (`NaN` makes `fcmp_eq` false and `fcmp_ne` true)</td>
+</tr>
+<tr>
+<td>`fcmp_ord`, `fcmp_uno`</td>
+<td>`fcmp_ord x, y`</td>
+<td>`i1` (ordered: both non-NaN; unordered: either is NaN)</td>
+</tr>
+</tbody></table>
+<pre><code data-lang="text">
+%cond = scmp_lt %a, %b
+</code></pre>
+<p>##### Conversions</p>
+<table><thead><tr>
+<th>Instr</th>
+<th>Form</th>
+<th>Result</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>`cast.fp_to_si.rte.chk`</td>
+<td>`cast.fp_to_si.rte.chk x`</td>
+<td>`i64`</td>
+<td>float to signed int (round-to-even, trap on overflow)</td>
+</tr>
+<tr>
+<td>`cast.fp_to_ui.rte.chk`</td>
+<td>`cast.fp_to_ui.rte.chk x`</td>
+<td>`i64`</td>
+<td>float to unsigned int (round-to-even, trap on overflow)</td>
+</tr>
+<tr>
+<td>`cast.si_narrow.chk`</td>
+<td>`cast.si_narrow.chk x`</td>
+<td>`i32` or `i16`</td>
+<td>narrow signed int (i64→i32 or i64→i16); result type declared on register; trap on overflow</td>
+</tr>
+<tr>
+<td>`cast.si_to_fp`</td>
+<td>`cast.si_to_fp x`</td>
+<td>`f64`</td>
+<td>signed int to float</td>
+</tr>
+<tr>
+<td>`cast.ui_narrow.chk`</td>
+<td>`cast.ui_narrow.chk x`</td>
+<td>`i32` or `i16`</td>
+<td>narrow unsigned int (i64→i32 or i64→i16); result type declared on register; trap on overflow</td>
+</tr>
+<tr>
+<td>`cast.ui_to_fp`</td>
+<td>`cast.ui_to_fp x`</td>
+<td>`f64`</td>
+<td>unsigned int to float</td>
+</tr>
+<tr>
+<td>`fptosi`</td>
+<td>`fptosi x`</td>
+<td>`i64`</td>
+<td>float to signed int (no check; undefined on NaN or overflow)</td>
+</tr>
+<tr>
+<td>`sitofp`</td>
+<td>`sitofp x`</td>
+<td>`f64`</td>
+<td>signed int to float</td>
+</tr>
+<tr>
+<td>`trunc1`</td>
+<td>`trunc1 x`</td>
+<td>`i1`</td>
+<td>truncate i64 to i1</td>
+</tr>
+<tr>
+<td>`zext1`</td>
+<td>`zext1 x`</td>
+<td>`i64`</td>
+<td>zero-extend i1 to i64</td>
+</tr>
+</tbody></table>
+<p>The <code>cast.*</code> family provides type-aware conversions with explicit overflow and rounding behavior. The <code>.rte</code> suffix</p>
+<p>denotes round-to-even (IEEE 754 default). The <code>.chk</code> suffix indicates trap-on-overflow.</p>
+<pre><code data-lang="text">
+%f = sitofp 42
+%i = cast.fp_to_si.rte.chk 3.7
+</code></pre>
+<p>##### Memory Operations</p>
+<table><thead><tr>
+<th>Instr</th>
+<th>Form</th>
+<th>Result</th>
+</tr></thead><tbody>
+<tr>
+<td>`addr_of`</td>
+<td>`addr_of @global`</td>
+<td>`ptr`</td>
+</tr>
+<tr>
+<td>`alloca`</td>
+<td>`alloca size`</td>
+<td>`ptr` (size &lt; 0 traps; memory zero-initialized)</td>
+</tr>
+<tr>
+<td>`const.f64`</td>
+<td>`const.f64 3.14`</td>
+<td>`f64` (load floating-point constant)</td>
+</tr>
+<tr>
+<td>`const_null`</td>
+<td>`const_null`</td>
+<td>`ptr`</td>
+</tr>
+<tr>
+<td>`const_str`</td>
+<td>`const_str @label`</td>
+<td>`str`</td>
+</tr>
+<tr>
+<td>`gaddr`</td>
+<td>`gaddr @global`</td>
+<td>`ptr` (address of mutable module-level global)</td>
+</tr>
+<tr>
+<td>`gep`</td>
+<td>`gep ptr, offs`</td>
+<td>`ptr` (no bounds checks)</td>
+</tr>
+<tr>
+<td>`idx.chk`</td>
+<td>`idx.chk idx, lo, hi`</td>
+<td>`i64` (trap if idx &lt; lo or idx &gt;= hi)</td>
+</tr>
+<tr>
+<td>`load`</td>
+<td>`load type, ptr`</td>
+<td>`type` (null or misaligned trap)</td>
+</tr>
+<tr>
+<td>`store`</td>
+<td>`store type, ptr, value`</td>
+<td>— (null or misaligned trap)</td>
+</tr>
+</tbody></table>
+<p><code>idx.chk</code> performs bounds checking for array accesses, trapping if the index is outside <code>[lo, hi)</code>. It returns the checked index value.</p>
+<p><code>i64</code>, <code>f64</code>, <code>ptr</code>, and <code>str</code> loads and stores require 8-byte alignment; misaligned or null accesses trap. Stack</p>
+<p>allocations created by <code>alloca</code> are zero-initialized and live until the function returns.</p>
+<pre><code data-lang="text">
+func @main() -&gt; i64 {
+entry:
+  %p = alloca 8
+  store i64, %p, 7
+  %v = load i64, %p
+  ret %v
+}
+</code></pre>
+<p>##### Calls</p>
+<table><thead><tr>
+<th>Instr</th>
+<th>Form</th>
+<th>Result</th>
+</tr></thead><tbody>
+<tr>
+<td>`call`</td>
+<td>`call @f(%x, %y)`</td>
+<td>return type of `@f`</td>
+</tr>
+<tr>
+<td>`call.indirect`</td>
+<td>`call.indirect %fn_ptr(%x, %y)`</td>
+<td>return type from pointer</td>
+</tr>
+</tbody></table>
+<p>Direct calls use <code>@symbol</code> references. Indirect calls use a function pointer as the first operand, followed by</p>
+<p>arguments. The verifier checks arity and types for both forms.</p>
+<pre><code data-lang="text">
+call @f(%x, %y)
+%result = call.indirect %fn_ptr(%arg)
+</code></pre>
+<p>##### Error Handling</p>
+<p>IL provides a structured error handling system with error values, handler stacks, and resumption points.</p>
+<p><strong>Error Types:</strong></p>
+<ul>
+<li><code>error</code> — Opaque error value containing kind, code, IP, and line number</li>
+<li><code>resumetok</code> — Token identifying a resumption point in the error handler stack</li>
+</ul>
+<p><strong>Handler Stack Operations:</strong></p>
+<table><thead><tr>
+<th>Instr</th>
+<th>Form</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>`eh.entry`</td>
+<td>`eh.entry`</td>
+<td>Mark entry to error handler block</td>
+</tr>
+<tr>
+<td>`eh.pop`</td>
+<td>`eh.pop`</td>
+<td>Pop error handler from stack</td>
+</tr>
+<tr>
+<td>`eh.push`</td>
+<td>`eh.push ^handler`</td>
+<td>Push error handler block onto stack</td>
+</tr>
+</tbody></table>
+<p><strong>Trap Operations:</strong></p>
+<table><thead><tr>
+<th>Instr</th>
+<th>Form</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>`trap`</td>
+<td>`trap`</td>
+<td>Unconditional trap (abort)</td>
+</tr>
+<tr>
+<td>`trap.err`</td>
+<td>`trap.err code, msg`</td>
+<td>Create an error value (i32 code, str message); returns `error`</td>
+</tr>
+<tr>
+<td>`trap.from_err`</td>
+<td>`trap.from_err i32 code`</td>
+<td>Terminate with error kind and code</td>
+</tr>
+<tr>
+<td>`trap.kind`</td>
+<td>`trap.kind`</td>
+<td>Read current trap kind from most recent error; returns `i64`</td>
+</tr>
+</tbody></table>
+<p><strong>Resume Operations:</strong></p>
+<table><thead><tr>
+<th>Instr</th>
+<th>Form</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>`resume.label`</td>
+<td>`resume.label %tok, ^label`</td>
+<td>Resume at specific label</td>
+</tr>
+<tr>
+<td>`resume.next`</td>
+<td>`resume.next %tok`</td>
+<td>Resume at next instruction</td>
+</tr>
+<tr>
+<td>`resume.same`</td>
+<td>`resume.same %tok`</td>
+<td>Resume at same instruction</td>
+</tr>
+</tbody></table>
+<p><strong>Error Value Accessors:</strong></p>
+<table><thead><tr>
+<th>Instr</th>
+<th>Form</th>
+<th>Result</th>
+</tr></thead><tbody>
+<tr>
+<td>`err.get_code`</td>
+<td>`err.get_code %err`</td>
+<td>`i32`</td>
+</tr>
+<tr>
+<td>`err.get_ip`</td>
+<td>`err.get_ip %err`</td>
+<td>`i64`</td>
+</tr>
+<tr>
+<td>`err.get_kind`</td>
+<td>`err.get_kind %err`</td>
+<td>`i32`</td>
+</tr>
+<tr>
+<td>`err.get_line`</td>
+<td>`err.get_line %err`</td>
+<td>`i32`</td>
+</tr>
+</tbody></table>
+<p><strong>Example:</strong></p>
+<pre><code data-lang="llvm">
+func @divide(i64 %a, i64 %b) -&gt; i64 {
+entry:
+  eh.push ^handler
+  %result = sdiv.chk0 %a, %b
+  eh.pop
+  ret %result
+handler:
+  eh.entry
+  trap
+}
+</code></pre>
+<h4 id="runtime-abi">Runtime ABI</h4>
+<p>The IL runtime provides helper functions used by front ends and tests. All functions use canonical <code>Viper.*</code> namespace</p>
+<p>names. Legacy <code>@rt_*</code> aliases are maintained for compatibility when built with <code>-DVIPER_RUNTIME_NS_DUAL=ON</code>.</p>
+<p>##### Console I/O</p>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>`@Viper.Terminal.PrintF64`</td>
+<td>`f64 -&gt; void`</td>
+<td>write float to stdout</td>
+</tr>
+<tr>
+<td>`@Viper.Terminal.PrintI64`</td>
+<td>`i64 -&gt; void`</td>
+<td>write integer to stdout</td>
+</tr>
+<tr>
+<td>`@Viper.Terminal.PrintStr`</td>
+<td>`str -&gt; void`</td>
+<td>write string to stdout</td>
+</tr>
+<tr>
+<td>`@Viper.Terminal.ReadLine`</td>
+<td>`-&gt; str`</td>
+<td>read line from stdin, newline stripped</td>
+</tr>
+</tbody></table>
+<p>##### String Operations</p>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>`@Viper.Core.Convert.ToString_Double`</td>
+<td>`f64 -&gt; str`</td>
+<td>convert double to string</td>
+</tr>
+<tr>
+<td>`@Viper.Core.Convert.ToString_Int`</td>
+<td>`i64 -&gt; str`</td>
+<td>convert integer to string</td>
+</tr>
+<tr>
+<td>`@Viper.String.Concat`</td>
+<td>`str × str -&gt; str`</td>
+<td>concatenate strings</td>
+</tr>
+<tr>
+<td>`@Viper.String.get_Length`</td>
+<td>`str -&gt; i64`</td>
+<td>length in bytes</td>
+</tr>
+<tr>
+<td>`@Viper.String.Mid`</td>
+<td>`str × i64 -&gt; str`</td>
+<td>substring from start index to end</td>
+</tr>
+<tr>
+<td>`@Viper.String.MidLen`</td>
+<td>`str × i64 × i64 -&gt; str`</td>
+<td>substring; indices clamp; negative bounds trap</td>
+</tr>
+</tbody></table>
+<p>##### Type Conversion</p>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>`@Viper.Core.Convert.ToDouble`</td>
+<td>`str -&gt; f64`</td>
+<td>convert string to double; traps on invalid numeric</td>
+</tr>
+<tr>
+<td>`@Viper.Core.Convert.ToInt`</td>
+<td>`str -&gt; i64`</td>
+<td>convert string to integer; traps on invalid numeric</td>
+</tr>
+</tbody></table>
+<p>##### Memory Management</p>
+<table><thead><tr>
+<th>Function</th>
+<th>Signature</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>`@rt_alloc`</td>
+<td>`i64 -&gt; ptr`</td>
+<td>allocate bytes; negative size traps</td>
+</tr>
+</tbody></table>
+<h4 id="terminal-keyboard-features">Terminal &amp; Keyboard Features</h4>
+<p>RuntimeFeature → Canonical Viper name → C runtime symbol</p>
+<ul>
+<li><code>TermCls</code>    → <code>Viper.Terminal.Clear</code>       → <code>rt_term_cls</code></li>
+<li><code>TermColor</code>  → <code>Viper.Terminal.SetColor</code>    → <code>rt_term_color_i32</code></li>
+<li><code>TermLocate</code> → <code>Viper.Terminal.SetPosition</code> → <code>rt_term_locate_i32</code></li>
+<li><code>GetKey</code>     → <code>Viper.Terminal.GetKey</code>      → <code>rt_getkey_str</code></li>
+<li><code>InKey</code>      → <code>Viper.Terminal.InKey</code>       → <code>rt_inkey_str</code></li>
+</ul>
+<p>These helpers are gated by feature requests during lowering rather than being emitted unconditionally.</p>
+<p>Strings are reference-counted by the runtime implementation. See [src/runtime/](../src/runtime/) for additional details.</p>
+<h4 id="memory-model">Memory Model</h4>
+<p>IL is single-threaded by default. Pointers are plain addresses with no aliasing rules beyond the type requirements of <code>load</code></p>
+<p>and <code>store</code>. Memory obtained through <code>alloca</code> or the runtime follows the alignment rules above, and invalid accesses (</p>
+<p>null or misaligned) trap deterministically.</p>
+<h4 id="source-locations">Source Locations</h4>
+<p><code>.loc file line col</code> annotates instructions with source information. It has no semantic effect.</p>
+<pre><code data-lang="text">
+.loc 1 3 4
+%v = add 1, 2
+</code></pre>
+<h4 id="verifier-rules">Verifier Rules</h4>
+<p>Operand and result type checks are now table-driven from <code>OpcodeInfo</code>. The</p>
+<p>verifier still has bespoke handlers for <code>idx.chk</code>, calls, and the handful of ops</p>
+<p>wired directly to runtime contracts. Passes can also observe the</p>
+<p><code>hasSideEffects</code> flag directly via the shared verifier table.</p>
+<ul>
+<li>First block is <code>entry</code> and every block ends with exactly one terminator.</li>
+<li>All referenced labels exist in the same function.</li>
+<li>Operand and result types match instruction signatures.</li>
+<li>Calls match callee arity and types.</li>
+<li><code>load</code>/<code>store</code> use <code>ptr</code> operands and non-void element types.</li>
+<li><code>alloca</code> sizes are <code>i64</code>; constant operands must be non-negative.</li>
+<li>Temporaries are defined before use within a block (cross-block dominance checks may be deferred).</li>
+<li>Block parameters have unique names, non-void types, and each predecessor passes matching arguments.</li>
+<li><code>cbr</code> takes an <code>i1</code> condition.</li>
+</ul>
+<p>Example diagnostics:</p>
+<pre><code data-lang="text">
+L(%x: i64, %x: i64):
+              ^ duplicate param %x
+
+br L(1.0)
+       ^ arg type mismatch: expected i64, got f64
+</code></pre>
+<h4 id="unknown-opcodes">Unknown opcodes</h4>
+<p>Modules may only contain opcodes listed in this reference. When the VM decoder</p>
+<p>encounters an unknown opcode tag it raises an <code>InvalidOperation</code> trap, marking</p>
+<p>the failing instruction with its source location. Diagnostics include the raw</p>
+<p>mnemonic rendered as <code>opcode#&lt;value&gt;</code> to make mismatches obvious even when the</p>
+<p>module was hand-written or generated by an outdated toolchain. The behaviour is</p>
+<p>validated by [<code>src/tests/vm/UnknownOpcodeTests.cpp</code>](../src/tests/vm/UnknownOpcodeTests.cpp).</p>
+<h4 id="text-grammar-ebnf">Text Grammar (EBNF)</h4>
+<pre><code data-lang="ebnf">
+module      ::= &quot;il&quot; VERSION (target_decl)? decl*
+VERSION     ::= NUMBER &quot;.&quot; NUMBER (&quot;.&quot; NUMBER)?
+target_decl ::= &quot;target&quot; STRING
+decl        ::= extern | global | func
+extern      ::= &quot;extern&quot; SYMBOL &quot;(&quot; type_list? &quot;)&quot; &quot;-&gt;&quot; type
+global      ::= &quot;global&quot; (&quot;const&quot;)? type SYMBOL &quot;=&quot; ginit
+ginit       ::= STRING | INT | FLOAT | &quot;null&quot; | SYMBOL
+linkage     ::= &quot;export&quot; | &quot;import&quot;
+func        ::= &quot;func&quot; linkage? SYMBOL &quot;(&quot; func_params? &quot;)&quot; &quot;-&gt;&quot; type ( &quot;{&quot; block+ &quot;}&quot; )?
+func_params ::= func_param (&quot;,&quot; func_param)*
+func_param  ::= type TEMP | TEMP &quot;:&quot; type   (* canonical: &quot;type %name&quot;; legacy &quot;%name: type&quot; also accepted *)
+type_list   ::= type (&quot;,&quot; type)*
+block       ::= LABEL (&quot;(&quot; blk_params? &quot;)&quot;)? &quot;:&quot; instr* term
+blk_params  ::= blk_param (&quot;,&quot; blk_param)*
+blk_param   ::= TEMP &quot;:&quot; type               (* block params always use &quot;%name: type&quot; form *)
+instr       ::= (TEMP (&quot;:&quot; type)? &quot;=&quot;)? op   (* type annotation on result: %name:i32 = op *)
+term        ::= &quot;ret&quot; value? | &quot;br&quot; label_ref | &quot;cbr&quot; value &quot;,&quot; label_ref &quot;,&quot; label_ref | &quot;trap&quot; | &quot;trap.from_err&quot; type value | &quot;switch.i32&quot; value &quot;,&quot; label_ref (&quot;,&quot; INT &quot;-&gt;&quot; label_ref)* | &quot;resume.same&quot; value | &quot;resume.next&quot; value | &quot;resume.label&quot; value &quot;,&quot; label_ref
+label_ref   ::= (&quot;^&quot;)? LABEL (&quot;(&quot; value_list? &quot;)&quot;)?   (* &quot;^&quot; caret is optional; args passed to block params *)
+op          ::= &quot;add&quot; value &quot;,&quot; value | &quot;and&quot; value &quot;,&quot; value | &quot;ashr&quot; value &quot;,&quot; value |
+                &quot;alloca&quot; value | &quot;addr_of&quot; SYMBOL |
+                &quot;call&quot; SYMBOL &quot;(&quot; args? &quot;)&quot; | &quot;call.indirect&quot; value &quot;(&quot; args? &quot;)&quot; |
+                &quot;cast.fp_to_si.rte.chk&quot; value | &quot;cast.fp_to_ui.rte.chk&quot; value |
+                &quot;cast.si_narrow.chk&quot; value | &quot;cast.si_to_fp&quot; value |
+                &quot;cast.ui_narrow.chk&quot; value | &quot;cast.ui_to_fp&quot; value |
+                &quot;const.f64&quot; FLOAT | &quot;const_null&quot; | &quot;const_str&quot; SYMBOL |
+                &quot;eh.entry&quot; | &quot;eh.pop&quot; | &quot;eh.push&quot; label_ref |
+                &quot;err.get_code&quot; value | &quot;err.get_ip&quot; value |
+                &quot;err.get_kind&quot; value | &quot;err.get_line&quot; value |
+                &quot;fadd&quot; value &quot;,&quot; value | &quot;fdiv&quot; value &quot;,&quot; value |
+                &quot;fcmp_eq&quot; value &quot;,&quot; value | &quot;fcmp_ge&quot; value &quot;,&quot; value |
+                &quot;fcmp_gt&quot; value &quot;,&quot; value | &quot;fcmp_le&quot; value &quot;,&quot; value |
+                &quot;fcmp_lt&quot; value &quot;,&quot; value | &quot;fcmp_ne&quot; value &quot;,&quot; value |
+                &quot;fcmp_ord&quot; value &quot;,&quot; value | &quot;fcmp_uno&quot; value &quot;,&quot; value |
+                &quot;fmul&quot; value &quot;,&quot; value | &quot;fptosi&quot; value | &quot;fsub&quot; value &quot;,&quot; value |
+                &quot;gaddr&quot; SYMBOL | &quot;gep&quot; value &quot;,&quot; value |
+                &quot;iadd.ovf&quot; value &quot;,&quot; value | &quot;icmp_eq&quot; value &quot;,&quot; value |
+                &quot;icmp_ne&quot; value &quot;,&quot; value | &quot;idx.chk&quot; value &quot;,&quot; value &quot;,&quot; value |
+                &quot;imul.ovf&quot; value &quot;,&quot; value | &quot;isub.ovf&quot; value &quot;,&quot; value |
+                &quot;load&quot; type &quot;,&quot; value | &quot;lshr&quot; value &quot;,&quot; value | &quot;mul&quot; value &quot;,&quot; value |
+                &quot;or&quot; value &quot;,&quot; value |
+                &quot;scmp_ge&quot; value &quot;,&quot; value | &quot;scmp_gt&quot; value &quot;,&quot; value |
+                &quot;scmp_le&quot; value &quot;,&quot; value | &quot;scmp_lt&quot; value &quot;,&quot; value |
+                &quot;sdiv&quot; value &quot;,&quot; value | &quot;sdiv.chk0&quot; value &quot;,&quot; value |
+                &quot;shl&quot; value &quot;,&quot; value | &quot;sitofp&quot; value |
+                &quot;srem&quot; value &quot;,&quot; value | &quot;srem.chk0&quot; value &quot;,&quot; value |
+                &quot;store&quot; type &quot;,&quot; value &quot;,&quot; value | &quot;sub&quot; value &quot;,&quot; value |
+                &quot;trap.err&quot; value &quot;,&quot; value | &quot;trap.kind&quot; |
+                &quot;trunc1&quot; value |
+                &quot;ucmp_ge&quot; value &quot;,&quot; value | &quot;ucmp_gt&quot; value &quot;,&quot; value |
+                &quot;ucmp_le&quot; value &quot;,&quot; value | &quot;ucmp_lt&quot; value &quot;,&quot; value |
+                &quot;udiv&quot; value &quot;,&quot; value | &quot;udiv.chk0&quot; value &quot;,&quot; value |
+                &quot;urem&quot; value &quot;,&quot; value | &quot;urem.chk0&quot; value &quot;,&quot; value |
+                &quot;xor&quot; value &quot;,&quot; value | &quot;zext1&quot; value
+args        ::= value (&quot;,&quot; value)*
+value_list  ::= value (&quot;,&quot; value)*
+value       ::= TEMP | SYMBOL | literal
+literal     ::= INT | FLOAT | STRING | &quot;true&quot; | &quot;false&quot; | &quot;null&quot;
+type        ::= &quot;void&quot; | &quot;i1&quot; | &quot;i16&quot; | &quot;i32&quot; | &quot;i64&quot; | &quot;f64&quot; | &quot;ptr&quot; | &quot;str&quot; | &quot;error&quot; | &quot;resumetok&quot;
+</code></pre>
+<h4 id="calling-convention-sysv-x64">Calling Convention (SysV x64)</h4>
+<p>Native back ends target the System V x86-64 ABI:</p>
+<ul>
+<li>Integer and pointer arguments: <code>rdi</code>, <code>rsi</code>, <code>rdx</code>, <code>rcx</code>, <code>r8</code>, <code>r9</code>.</li>
+<li>Floating-point arguments: <code>xmm0</code>–<code>xmm7</code>.</li>
+<li>Return values: integers/pointers in <code>rax</code>, floats in <code>xmm0</code>.</li>
+<li>Call sites maintain 16-byte stack alignment; <code>i1</code> arguments are zero-extended to 32 bits.</li>
+</ul>
+<h4 id="versioning-conformance">Versioning &amp; Conformance</h4>
+<p>Modules must begin with a version header (e.g., <code>il 0.2</code>). A conforming implementation accepts this grammar, obeys the semantics above, and</p>
+<p>traps on the conditions listed for each instruction. Implementations are validated against the sample suite</p>
+<p>under [examples/il](../examples/il/).</p>
+<p>&lt;a id=&quot;lowering&quot;&gt;&lt;/a&gt;</p>
+<h2 id="lowering">Lowering</h2>
+<h3 id="basic-to-il-lowering-reference">BASIC to IL Lowering Reference</h3>
+<p><strong>Note:</strong> Built-in math functions use <code>@rt_*</code> helpers in lowered IL. These are registered</p>
+<p>runtime functions that remain under the <code>rt_*</code> naming scheme; the constfold pass recognizes</p>
+<p>these names and folds literal calls at compile time.</p>
+<table><thead><tr>
+<th>BASIC</th>
+<th>IL runtime call</th>
+</tr></thead><tbody>
+<tr>
+<td>`ABS(i)`</td>
+<td>`%r = call @rt_abs_i64(%i)`</td>
+</tr>
+<tr>
+<td>`ABS(x#)`</td>
+<td>`%r = call @rt_abs_f64(%x)`</td>
+</tr>
+<tr>
+<td>`CEIL(x)`</td>
+<td>`%r = call @rt_ceil(%x)`</td>
+</tr>
+<tr>
+<td>`F(x)`</td>
+<td>`%r = call @F(%x)`</td>
+</tr>
+<tr>
+<td>`FLOOR(x)`</td>
+<td>`%r = call @rt_floor(%x)`</td>
+</tr>
+<tr>
+<td>`S(x$, a())`</td>
+<td>`call @S(%x, %a)`</td>
+</tr>
+<tr>
+<td>`SQR(x)`</td>
+<td>`%r = call @rt_sqrt(%x)`</td>
+</tr>
+</tbody></table>
+<p>Integer arguments to <code>SQR</code>, <code>FLOOR</code>, and <code>CEIL</code> are first widened to <code>f64</code>.</p>
+<blockquote><p>**Arrays today.** BASIC array declarations and accesses lower to runtime</p></blockquote>
+<blockquote><p>helpers such as <code>@rt_arr_i64_new</code>, <code>@rt_arr_i64_len</code>, <code>@rt_arr_i64_get</code>, and</p></blockquote>
+<blockquote><p><code>@rt_arr_i64_set</code> (or the corresponding <code>_str</code> and <code>_f64</code> variants). The</p></blockquote>
+<blockquote><p>front end emits bounds checks in IL via <code>idx.chk</code> before accessing array storage.</p></blockquote>
+<h3 id="procedure-calls">Procedure calls</h3>
+<p>User-defined <code>FUNCTION</code> and <code>SUB</code> calls lower to direct <code>call</code> instructions.</p>
+<p>Arguments are evaluated left-to-right and converted to the callee&#x27;s expected</p>
+<p>types:</p>
+<table><thead><tr>
+<th>BASIC form</th>
+<th>Lowered IL</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>`F(1)` (callee expects `f64`)</td>
+<td>`%t0 = sitofp 1`&lt;br&gt;`%r = call @F(%t0)`</td>
+<td>Widen integer arguments with `sitofp` before the call.</td>
+</tr>
+<tr>
+<td>`CALL P(T$)`</td>
+<td>`call @P(%T)`</td>
+<td>String parameters pass runtime-managed handles directly.</td>
+</tr>
+<tr>
+<td>`CALL P(A())`</td>
+<td>`call @P(%A)`</td>
+<td>Arrays pass by reference without copying.</td>
+</tr>
+<tr>
+<td>`CALL S()`</td>
+<td>`call @S()`</td>
+<td>`SUB` invocation used as a statement.</td>
+</tr>
+<tr>
+<td>`X = F()`</td>
+<td>`%x = call @F()`</td>
+<td>`FUNCTION` invocation used as an expression.</td>
+</tr>
+</tbody></table>
+<p>Recursive calls lower the same way; see [factorial.bas](#example-4-read-input-and-compute-factorial)</p>
+<p>for a recursion sanity check.</p>
+<h3 id="compilation-unit-lowering">Compilation unit lowering</h3>
+<p>BASIC programs lower procedures first, then wrap remaining top-level statements</p>
+<p>into a synthetic <code>@main</code> function:</p>
+<pre><code data-lang="text">
+Program
+├─ procs[] → @&lt;name&gt;
+└─ main[]  → @main
+</code></pre>
+<p>This ordering guarantees functions are listed before <code>@main</code>.</p>
+<h3 id="procedure-definitions">Procedure Definitions</h3>
+<table><thead><tr>
+<th>BASIC</th>
+<th>IL</th>
+</tr></thead><tbody>
+<tr>
+<td>`FUNCTION f(...) ... END FUNCTION`</td>
+<td>`func @f(&lt;params&gt;) -&gt; &lt;retTy&gt;`&lt;br&gt;`entry_f`/`ret_f` blocks</td>
+</tr>
+<tr>
+<td>`SUB s(...) ... END SUB`</td>
+<td>`func @s(&lt;params&gt;) -&gt; void`&lt;br&gt;`entry_s`/`ret_s` blocks</td>
+</tr>
+</tbody></table>
+<p>Return type is derived from the name suffix (<code>$</code> → <code>str</code>, <code>#</code> → <code>f64</code>, none →</p>
+<p><code>i64</code>). Parameters lower by scalar type or as array handles.</p>
+<p>Each BASIC <code>FUNCTION</code> or <code>SUB</code> becomes an IL function named <code>@&lt;name&gt;</code>. The</p>
+<p>entry block label is deterministically <code>entry_&lt;name&gt;</code> and a closing block</p>
+<p><code>ret_&lt;name&gt;</code> carries the fallthrough <code>ret</code>. Scalar parameters are materialized</p>
+<p>by allocating stack slots and storing the incoming values. Array parameters</p>
+<p>(<code>i64[]</code> or <code>str[]</code>) are passed as pointers/handles and stored directly without</p>
+<p>copying.</p>
+<pre><code data-lang="llvm">
+func @F(i64 %X) -&gt; i64 {
+  entry_F:
+    br ret_F
+  ret_F:
+    ret %X
+}
+</code></pre>
+<pre><code data-lang="llvm">
+func @S(i64 %X) -&gt; void {
+  entry_S:
+    br ret_S
+  ret_S:
+    ret
+}
+</code></pre>
+<h4 id="deterministic-label-naming-procedures">Deterministic label naming (procedures)</h4>
+<p>Blocks created while lowering a procedure use predictable labels so goldens</p>
+<p>remain consistent. Within a procedure <code>proc</code>, block names follow these patterns:</p>
+<ul>
+<li><code>entry_proc</code> and <code>ret_proc</code> for the entry and synthetic return blocks.</li>
+<li><code>if_then_k_proc</code>, <code>if_else_k_proc</code>, <code>if_end_k_proc</code> for <code>IF</code> constructs.</li>
+<li><code>while_head_k_proc</code>, <code>while_body_k_proc</code>, <code>while_end_k_proc</code> for <code>WHILE</code>.</li>
+<li><code>do_head_k_proc</code>, <code>do_body_k_proc</code>, <code>do_end_k_proc</code> for <code>DO</code> / <code>LOOP</code>.</li>
+<li><code>for_head_k_proc</code>, <code>for_body_k_proc</code>, <code>for_inc_k_proc</code>, <code>for_end_k_proc</code> for <code>FOR</code>.</li>
+<li><code>exit_end_k_proc</code> is not used; <code>EXIT</code> statements branch directly to the</li>
+</ul>
+<p>surrounding loop&#x27;s <code>*_end_k_proc</code> block.</p>
+<ul>
+<li><code>call_cont_k_proc</code> for call continuations.</li>
+</ul>
+<p>The counter <code>k</code> is monotonic <strong>per procedure</strong>; labels never depend on container</p>
+<p>iteration order. Rebuilding the same source therefore yields identical label</p>
+<p>names across runs.</p>
+<p>Example BASIC and corresponding IL excerpt:</p>
+<pre><code data-lang="basic">
+10 FUNCTION F(X)
+20 FOR I = 0 TO 1
+30   WHILE X &lt; 10
+40     IF X THEN CALL P
+50     X = X + 1
+60   WEND
+70 NEXT I
+80 F = X
+90 RETURN
+100 END FUNCTION
+</code></pre>
+<pre><code data-lang="il">
+func @F(i64 %X) -&gt; i64 {
+  entry_F:
+    br for_head_0_F
+  for_head_0_F:
+    ...
+    cbr %t0 for_body_0_F for_end_0_F
+  for_body_0_F:
+    br while_head_0_F
+  while_head_0_F:
+    ...
+    cbr %t1 while_body_0_F while_end_0_F
+  while_body_0_F:
+    cbr %t2 if_then_0_F if_end_0_F
+  if_then_0_F:
+    call @P()
+    br call_cont_0_F
+  call_cont_0_F:
+    ...
+    br while_head_0_F
+  if_end_0_F:
+    ...
+    br while_head_0_F
+  while_end_0_F:
+    br for_inc_0_F
+  for_inc_0_F:
+    ...
+    br for_head_0_F
+  for_end_0_F:
+    br ret_F
+  ret_F:
+    ret %X
+}
+</code></pre>
+<h3 id="return-statements">Return statements</h3>
+<p><code>RETURN</code> lowers directly to an IL <code>ret</code> terminator (bare <code>ret</code> with no operand for <code>SUB</code>, since void functions use <code>ret</code> without a value).</p>
+<p>Once emitted, the current block is considered closed and no further statements</p>
+<p>from the same BASIC block are lowered. This prevents generating dead</p>
+<p>instructions after a <code>RETURN</code> and ensures each block has exactly one</p>
+<p>terminator.</p>
+<h3 id="boolean-expressions">Boolean expressions</h3>
+<p>Relational operators (<code>=</code>, <code>&lt;&gt;</code>, <code>&lt;</code>, <code>&gt;</code>, and friends) emit <code>i1</code> values that</p>
+<p>can feed <code>cbr</code> directly. When a boolean expression produces a value that must be</p>
+<p>reused, the front end materializes it in a temporary stack slot sized for an</p>
+<p><code>i1</code> and fills that slot by branching.</p>
+<h4 id="not">`NOT`</h4>
+<p><code>NOT expr</code> flips the operand and stores the inverted constant into the <code>i1</code></p>
+<p>slot:</p>
+<pre><code data-lang="llvm">
+  %cond = ...            ; operand lowered earlier, yields i1
+  %not_slot = alloca 1   ; temporary for the result (i1)
+  cbr %cond, label not_true_0, label not_false_0
+not_true_0:
+  store i1, %not_slot, 0
+  br label not_join_0
+not_false_0:
+  store i1, %not_slot, 1
+  br label not_join_0
+not_join_0:
+  %result = load i1, %not_slot
+</code></pre>
+<h4 id="andalso">`ANDALSO`</h4>
+<p><code>A ANDALSO B</code> only evaluates <code>B</code> when <code>A</code> is true. The slot defaults to <code>FALSE</code></p>
+<p>and updates with <code>B</code>&#x27;s value when the right-hand side is visited:</p>
+<pre><code data-lang="llvm">
+  %lhs = ...               ; first operand (i1)
+  %and_slot = alloca 1
+  store i1, %and_slot, 0
+  cbr %lhs, label and_rhs_0, label and_join_0
+and_rhs_0:
+  %rhs = ...               ; second operand lowered here
+  store i1, %and_slot, %rhs
+  br label and_join_0
+and_join_0:
+  %result = load i1, %and_slot
+</code></pre>
+<h4 id="orelse">`ORELSE`</h4>
+<p><code>A ORELSE B</code> skips <code>B</code> when <code>A</code> is true. The <code>TRUE</code> branch writes <code>1</code> and the</p>
+<p><code>FALSE</code> branch lowers <code>B</code> and stores that value:</p>
+<pre><code data-lang="llvm">
+  %lhs = ...               ; first operand (i1)
+  %or_slot = alloca 1
+  cbr %lhs, label or_true_0, label or_rhs_0
+or_true_0:
+  store i1, %or_slot, 1
+  br label or_join_0
+or_rhs_0:
+  %rhs = ...               ; second operand lowered here
+  store i1, %or_slot, %rhs
+  br label or_join_0
+or_join_0:
+  %result = load i1, %or_slot
+</code></pre>
+<p>&lt;a id=&quot;passes&quot;&gt;&lt;/a&gt;</p>
+<h2 id="passes">Passes</h2>
+<h3 id="passes-overview">Passes overview</h3>
+<p>The optimisation passes below operate on IL after front-end lowering.</p>
+<p>&lt;a id=&quot;constfold&quot;&gt;&lt;/a&gt;</p>
+<h3 id="constfold-v1">constfold (v1)</h3>
+<p>Folds literal computations at the IL level.</p>
+<h4 id="supported-folds">Supported folds</h4>
+<p><strong>Runtime call folds</strong> (all operands must be compile-time literals):</p>
+<table><thead><tr>
+<th>BASIC / runtime call</th>
+<th>Result</th>
+</tr></thead><tbody>
+<tr>
+<td>`ABS(i64 lit)` (`rt_abs_i64`)</td>
+<td>absolute value as `i64`</td>
+</tr>
+<tr>
+<td>`ABS(f64 lit)` (`rt_abs_f64`)</td>
+<td>absolute value as `f64`</td>
+</tr>
+<tr>
+<td>`ACOS(1.0)` (`rt_acos`)</td>
+<td>`0.0`</td>
+</tr>
+<tr>
+<td>`ASIN(0.0)` (`rt_asin`)</td>
+<td>`0.0`</td>
+</tr>
+<tr>
+<td>`ATAN(0.0)` (`rt_atan`)</td>
+<td>`0.0`</td>
+</tr>
+<tr>
+<td>`CEIL(f64 lit)` (`rt_ceil`)</td>
+<td>`ceil` result as `f64`</td>
+</tr>
+<tr>
+<td>`CLAMP(f64, f64, f64)` (`rt_clamp_f64`)</td>
+<td>clamped `f64`</td>
+</tr>
+<tr>
+<td>`CLAMP(i64, i64, i64)` (`rt_clamp_i64`)</td>
+<td>clamped `i64`</td>
+</tr>
+<tr>
+<td>`COS(0.0)` (`rt_cos`)</td>
+<td>`1.0`</td>
+</tr>
+<tr>
+<td>`EXP(0.0)` (`rt_exp`)</td>
+<td>`1.0`</td>
+</tr>
+<tr>
+<td>`FIX(f64 lit)` (`rt_fix_trunc`)</td>
+<td>truncated `f64`</td>
+</tr>
+<tr>
+<td>`FLOOR(f64 lit)` (`rt_floor`, `rt_int_floor`)</td>
+<td>`floor` result as `f64`</td>
+</tr>
+<tr>
+<td>`LOG(1.0)` (`rt_log`)</td>
+<td>`0.0`</td>
+</tr>
+<tr>
+<td>`MAX(f64, f64)` (`rt_max_f64`)</td>
+<td>larger `f64`</td>
+</tr>
+<tr>
+<td>`MAX(i64, i64)` (`rt_max_i64`)</td>
+<td>larger `i64`</td>
+</tr>
+<tr>
+<td>`MIN(f64, f64)` (`rt_min_f64`)</td>
+<td>smaller `f64`</td>
+</tr>
+<tr>
+<td>`MIN(i64, i64)` (`rt_min_i64`)</td>
+<td>smaller `i64`</td>
+</tr>
+<tr>
+<td>`POW(f64, i64)` *(\</td>
+<td>exp\</td>
+<td>≤ 16)*</td>
+<td>`pow` result as `f64`</td>
+</tr>
+<tr>
+<td>`ROUND(f64, i64)` (`rt_round_even`)</td>
+<td>banker&#x27;s-rounded `f64`</td>
+</tr>
+<tr>
+<td>`SGN(f64 lit)` (`rt_sgn_f64`)</td>
+<td>`-1.0`, `0.0`, or `1.0`</td>
+</tr>
+<tr>
+<td>`SGN(i64 lit)` (`rt_sgn_i64`)</td>
+<td>`-1`, `0`, or `1`</td>
+</tr>
+<tr>
+<td>`SIN(0.0)` (`rt_sin`)</td>
+<td>`0.0`</td>
+</tr>
+<tr>
+<td>`SQR(f64 lit ≥ 0)` (`rt_sqrt`)</td>
+<td>`sqrt` result as `f64`</td>
+</tr>
+<tr>
+<td>`TAN(0.0)` (`rt_tan`)</td>
+<td>`0.0`</td>
+</tr>
+</tbody></table>
+<p><strong>IL opcode folds</strong> (constant operands only):</p>
+<table><thead><tr>
+<th>Opcode</th>
+<th>Condition</th>
+<th>Result</th>
+</tr></thead><tbody>
+<tr>
+<td>`cast.fp_to_si.rte.chk`</td>
+<td>finite `f64` literal, in range</td>
+<td>`i64` literal</td>
+</tr>
+<tr>
+<td>`iadd.ovf`</td>
+<td>both `i64` literals, no overflow</td>
+<td>`i64` sum</td>
+</tr>
+<tr>
+<td>`imul.ovf`</td>
+<td>both `i64` literals, no overflow</td>
+<td>`i64` product</td>
+</tr>
+<tr>
+<td>`isub.ovf`</td>
+<td>both `i64` literals, no overflow</td>
+<td>`i64` difference</td>
+</tr>
+<tr>
+<td>`sdiv.chk0`</td>
+<td>both `i64`, divisor ≠ 0</td>
+<td>`i64` quotient</td>
+</tr>
+<tr>
+<td>`srem.chk0`</td>
+<td>both `i64`, divisor ≠ 0</td>
+<td>`i64` remainder</td>
+</tr>
+</tbody></table>
+<p>All floating-point folds use C math semantics (<code>std::floor</code>, <code>std::sqrt</code>, etc.) and emit</p>
+<p>exact <code>f64</code> literals in the optimized IL.</p>
+<h4 id="caveats">Caveats</h4>
+<ul>
+<li>Trig functions fold only at the identity points listed above, not for general inputs.</li>
+<li><code>POW</code> folds only when the exponent is an integer literal with <code>|exp| ≤ 16</code> and the result is finite.</li>
+<li><code>SQR</code> requires a non-negative input; negative inputs are not folded (would trap at runtime).</li>
+</ul>
+<p>&lt;a id=&quot;mem2reg&quot;&gt;&lt;/a&gt;</p>
+<h3 id="mem2reg-v3">mem2reg (v3)</h3>
+<p>Promotes stack slots to SSA registers across branches and loops by introducing</p>
+<p>block parameters and passing values along edges.</p>
+<h4 id="scope">Scope</h4>
+<ul>
+<li>Handles integer (<code>i64</code>), float (<code>f64</code>), and boolean (<code>i1</code>) slots.</li>
+<li>The address of the alloca must not escape (only used by <code>load</code>/<code>store</code>).</li>
+</ul>
+<h4 id="algorithm-seal-rename">Algorithm (seal &amp; rename)</h4>
+<ol>
+<li>Collect promotable allocas.</li>
+<li>Walk blocks in depth-first order, maintaining the current SSA value for each</li>
+</ul>
+<p>variable per block.</p>
+<ol>
+<li>Loads are replaced with the current value; stores update it.</li>
+<li>If a block reads a variable before all predecessors are seen, create a</li>
+</ul>
+<p>placeholder block parameter. When the block becomes <em>sealed</em> (all preds</p>
+<p>known), resolve placeholders to real parameters with the correct incoming</p>
+<p>arguments.</p>
+<ol>
+<li>Values are propagated along edges by updating predecessor terminators with</li>
+</ul>
+<p>branch arguments.</p>
+<ol>
+<li>After processing, remove the original allocas and stores.</li>
+</ul>
+<h4 id="example-diamond">Example (diamond)</h4>
+<p>Input IL:</p>
+<pre><code data-lang="llvm">
+il 0.2.0
+func @main() -&gt; i64 {
+entry:
+  %t0 = alloca 8
+  %t1 = icmp_eq 0, 0
+  cbr %t1, T, F
+T:
+  store i64, %t0, 2
+  br Join
+F:
+  store i64, %t0, 3
+  br Join
+Join:
+  %t2 = load i64, %t0
+  ret %t2
+}
+</code></pre>
+<p>After <code>mem2reg</code>:</p>
+<pre><code data-lang="llvm">
+il 0.2.0
+func @main() -&gt; i64 {
+entry:
+  %t1 = icmp_eq 0, 0
+  cbr %t1, T, F
+T:
+  br Join(2)
+F:
+  br Join(3)
+Join(%a0:i64):
+  ret %a0
+}
+</code></pre>
+<p>The alloca, loads, and stores are removed. A block parameter on <code>Join</code> receives</p>
+<p>the value from each predecessor via branch arguments.</p>
+<h4 id="example-loop">Example (loop)</h4>
+<p>Input IL:</p>
+<pre><code data-lang="llvm">
+il 0.2.0
+func @main() -&gt; i64 {
+entry:
+  %t0 = alloca 8
+  store i64, %t0, 0
+  br L1
+L1:
+  %t1 = load i64, %t0
+  %t2 = add %t1, 1
+  store i64, %t0, %t2
+  %t3 = scmp_lt %t2, 10
+  cbr %t3, L1, Exit
+Exit:
+  %t4 = load i64, %t0
+  ret %t4
+}
+</code></pre>
+<p>After <code>mem2reg</code>:</p>
+<pre><code data-lang="llvm">
+il 0.2.0
+func @main() -&gt; i64 {
+entry:
+  br L1(0)
+L1(%a0:i64):
+  %t2 = add %a0, 1
+  %t3 = scmp_lt %t2, 10
+  cbr %t3, L1(%t2), Exit(%t2)
+Exit(%a1:i64):
+  ret %a1
+}
+</code></pre>
+<p>The loop header <code>L1</code> has a block parameter <code>%a0</code> representing the running value,</p>
+<p>fed by both the entry edge and the back-edge. The exit block receives the final</p>
+<p>value via parameter <code>%a1</code>.</p>
+<h4 id="stats">Stats</h4>
+<p><code>viper il-opt --mem2reg-stats</code> prints the number of promoted variables and the</p>
+<p>removed loads/stores when the pass runs.</p>
+<h2 id="examples">Examples</h2>
+<h3 id="basic-to-il-examples">BASIC to IL Examples</h3>
+<p>The archived BASIC to IL gallery collected six small BASIC programs (≈10–20 lines each) with their fully lowered IL</p>
+<p>modules. The examples below update that material to IL v0.2.0 while preserving the original teaching intent.</p>
+<p><strong>Legacy Notation:</strong> The examples in this section use legacy <code>@rt_*</code> function names for compatibility. These work when</p>
+<p>the runtime is built with <code>-DVIPER_RUNTIME_NS_DUAL=ON</code> (the current default). New code should use the canonical</p>
+<p><code>@Viper.*</code> names documented in the Runtime ABI section above. For example:</p>
+<ul>
+<li><code>@rt_print_str</code> → <code>@Viper.Terminal.PrintStr</code></li>
+<li><code>@rt_print_i64</code> → <code>@Viper.Terminal.PrintI64</code></li>
+<li><code>@rt_str_len</code> → <code>@Viper.String.get_Length</code></li>
+</ul>
+<h4 id="example-1-hello-arithmetic-and-a-conditional-branch">Example 1 — Hello, arithmetic, and a conditional branch</h4>
+<p><strong>BASIC</strong></p>
+<pre><code data-lang="basic">
+10 PRINT &quot;HELLO&quot;
+20 LET X = 2 + 3
+30 LET Y = X * 2
+35 PRINT &quot;READY&quot;
+40 PRINT Y
+50 IF Y &gt; 8 THEN GOTO 80
+60 PRINT 4
+70 GOTO 90
+80 PRINT Y
+90 END
+</code></pre>
+<p><strong>IL</strong></p>
+<pre><code data-lang="llvm">
+il 0.2.0
+extern @rt_print_str(str) -&gt; void
+extern @rt_print_i64(i64) -&gt; void
+global const str @.L0 = &quot;HELLO&quot;
+global const str @.L1 = &quot;READY&quot;
+func @main() -&gt; i64 {
+entry:
+  %x_slot = alloca 8
+  %y_slot = alloca 8
+  %t0 = add 2, 3
+  store i64, %x_slot, %t0
+  %xv = load i64, %x_slot
+  %t1 = mul %xv, 2
+  store i64, %y_slot, %t1
+  %s0 = const_str @.L0
+  call @rt_print_str(%s0)
+  %s1 = const_str @.L1
+  call @rt_print_str(%s1)
+  %yv0 = load i64, %y_slot
+  call @rt_print_i64(%yv0)
+  %cond = scmp_gt %yv0, 8
+  cbr %cond, then80, else60
+then80:
+  %yv1 = load i64, %y_slot
+  call @rt_print_i64(%yv1)
+  br done
+else60:
+  call @rt_print_i64(4)
+  br done
+done:
+  ret 0
+}
+</code></pre>
+<p><em>Notes:</em> locals lower to stack slots, branches are explicit, and runtime calls handle I/O.</p>
+<h4 id="example-2-sum-1-10-with-a-while-loop">Example 2 — Sum 1..10 with a WHILE loop</h4>
+<p><strong>BASIC</strong></p>
+<pre><code data-lang="basic">
+10 PRINT &quot;SUM 1..10&quot;
+20 LET I = 1
+30 LET S = 0
+40 WHILE I &lt;= 10
+50 LET S = S + I
+60 LET I = I + 1
+70 WEND
+80 PRINT S
+90 PRINT &quot;DONE&quot;
+100 END
+</code></pre>
+<p><strong>IL</strong></p>
+<pre><code data-lang="llvm">
+il 0.2.0
+extern @rt_print_str(str) -&gt; void
+extern @rt_print_i64(i64) -&gt; void
+global const str @.L0 = &quot;SUM 1..10&quot;
+global const str @.L1 = &quot;DONE&quot;
+func @main() -&gt; i64 {
+entry:
+  %i_slot = alloca 8
+  %s_slot = alloca 8
+  %h = const_str @.L0
+  call @rt_print_str(%h)
+  store i64, %i_slot, 1
+  store i64, %s_slot, 0
+  br loop_head
+loop_head:
+  %i0 = load i64, %i_slot
+  %cond = scmp_le %i0, 10
+  cbr %cond, loop_body, done
+loop_body:
+  %s0 = load i64, %s_slot
+  %s1 = add %s0, %i0
+  store i64, %s_slot, %s1
+  %i1 = add %i0, 1
+  store i64, %i_slot, %i1
+  br loop_head
+done:
+  %s2 = load i64, %s_slot
+  call @rt_print_i64(%s2)
+  %d = const_str @.L1
+  call @rt_print_str(%d)
+  ret 0
+}
+</code></pre>
+<p><em>Notes:</em> the canonical while-loop lowering uses explicit head/body/done blocks.</p>
+<h4 id="example-3-nested-loops-printing-a-multiplication-table">Example 3 — Nested loops printing a multiplication table</h4>
+<p><strong>BASIC</strong></p>
+<pre><code data-lang="basic">
+10 PRINT &quot;TABLE 5x5&quot;
+20 LET N = 5
+30 LET I = 1
+40 WHILE I &lt;= N
+50 LET J = 1
+60 WHILE J &lt;= N
+70 PRINT I * J
+80 LET J = J + 1
+90 WEND
+100 LET I = I + 1
+110 WEND
+120 END
+</code></pre>
+<p><strong>IL</strong></p>
+<pre><code data-lang="llvm">
+il 0.2.0
+extern @rt_print_str(str) -&gt; void
+extern @rt_print_i64(i64) -&gt; void
+global const str @.L0 = &quot;TABLE 5x5&quot;
+func @main() -&gt; i64 {
+entry:
+  %n_slot = alloca 8
+  %i_slot = alloca 8
+  %j_slot = alloca 8
+  %h = const_str @.L0
+  call @rt_print_str(%h)
+  store i64, %n_slot, 5
+  store i64, %i_slot, 1
+  br outer_head
+outer_head:
+  %i0 = load i64, %i_slot
+  %n0 = load i64, %n_slot
+  %oc = scmp_le %i0, %n0
+  cbr %oc, outer_body, outer_done
+outer_body:
+  store i64, %j_slot, 1
+  br inner_head
+inner_head:
+  %j0 = load i64, %j_slot
+  %n1 = load i64, %n_slot
+  %ic = scmp_le %j0, %n1
+  cbr %ic, inner_body, inner_done
+inner_body:
+  %i1 = load i64, %i_slot
+  %prod = mul %i1, %j0
+  call @rt_print_i64(%prod)
+  %j1 = add %j0, 1
+  store i64, %j_slot, %j1
+  br inner_head
+inner_done:
+  %i2 = add %i0, 1
+  store i64, %i_slot, %i2
+  br outer_head
+outer_done:
+  ret 0
+}
+</code></pre>
+<p><em>Notes:</em> nested control flow forms two explicit loop nests.</p>
+<h4 id="example-4-read-input-and-compute-factorial">Example 4 — Read input and compute factorial</h4>
+<p><strong>BASIC</strong></p>
+<pre><code data-lang="basic">
+10 PRINT &quot;FACTORIAL&quot;
+20 PRINT &quot;ENTER N:&quot;
+30 LET S$ = INPUT$
+40 LET N = VAL(S$)
+50 LET R = 1
+60 WHILE N &gt; 1
+70 LET R = R * N
+80 LET N = N - 1
+90 WEND
+100 PRINT R
+110 END
+</code></pre>
+<p><strong>IL</strong></p>
+<pre><code data-lang="llvm">
+il 0.2.0
+extern @rt_print_str(str) -&gt; void
+extern @rt_print_i64(i64) -&gt; void
+extern @rt_input_line() -&gt; str
+extern @rt_to_int(str) -&gt; i64
+global const str @.L0 = &quot;FACTORIAL&quot;
+global const str @.L1 = &quot;ENTER N:&quot;
+func @main() -&gt; i64 {
+entry:
+  %s_slot = alloca 8
+  %n_slot = alloca 8
+  %r_slot = alloca 8
+  %h0 = const_str @.L0
+  call @rt_print_str(%h0)
+  %h1 = const_str @.L1
+  call @rt_print_str(%h1)
+  %line = call @rt_input_line()
+  store str, %s_slot, %line
+  %sval = load str, %s_slot
+  %n0 = call @rt_to_int(%sval)
+  store i64, %n_slot, %n0
+  store i64, %r_slot, 1
+  br loop_head
+loop_head:
+  %n1 = load i64, %n_slot
+  %cond = scmp_gt %n1, 1
+  cbr %cond, loop_body, done
+loop_body:
+  %r0 = load i64, %r_slot
+  %r1 = mul %r0, %n1
+  store i64, %r_slot, %r1
+  %n2 = sub %n1, 1
+  store i64, %n_slot, %n2
+  br loop_head
+done:
+  %r2 = load i64, %r_slot
+  call @rt_print_i64(%r2)
+  ret 0
+}
+</code></pre>
+<p><em>Notes:</em> the runtime provides string input and numeric conversion helpers; errors surface as traps.</p>
+<h4 id="example-5-string-concat-length-substring-equality">Example 5 — String concat, length, substring, equality</h4>
+<p><strong>BASIC</strong></p>
+<pre><code data-lang="basic">
+10 LET A$ = &quot;JOHN&quot;
+20 LET B$ = &quot;DOE&quot;
+30 LET C$ = A$ + &quot; &quot;
+40 LET C$ = C$ + B$
+50 PRINT C$
+60 LET L = LEN(C$)
+70 PRINT L
+80 PRINT MID$(C$, 1, 1)
+90 IF C$ = &quot;JOHN DOE&quot; THEN PRINT 1 ELSE PRINT 0
+100 END
+</code></pre>
+<p><strong>IL</strong></p>
+<pre><code data-lang="llvm">
+il 0.2.0
+extern @rt_print_str(str) -&gt; void
+extern @rt_print_i64(i64) -&gt; void
+extern @rt_str_len(str) -&gt; i64
+extern @rt_str_concat(str, str) -&gt; str
+extern @rt_str_substr(str, i64, i64) -&gt; str
+extern @rt_str_eq(str, str) -&gt; i1
+global const str @.L0 = &quot;JOHN&quot;
+global const str @.L1 = &quot;DOE&quot;
+global const str @.L2 = &quot; &quot;
+global const str @.L3 = &quot;JOHN DOE&quot;
+func @main() -&gt; i64 {
+entry:
+  %a_slot = alloca 8
+  %b_slot = alloca 8
+  %c_slot = alloca 8
+  %l_slot = alloca 8
+  %sA = const_str @.L0
+  store str, %a_slot, %sA
+  %sB = const_str @.L1
+  store str, %b_slot, %sB
+  %sSpace = const_str @.L2
+  %a0 = load str, %a_slot
+  %c0 = call @rt_str_concat(%a0, %sSpace)
+  store str, %c_slot, %c0
+  %b0 = load str, %b_slot
+  %c1 = call @rt_str_concat(%c0, %b0)
+  store str, %c_slot, %c1
+  call @rt_print_str(%c1)
+  %len = call @rt_str_len(%c1)
+  store i64, %l_slot, %len
+  call @rt_print_i64(%len)
+  %first = call @rt_str_substr(%c1, 0, 1)
+  call @rt_print_str(%first)
+  %target = const_str @.L3
+  %eq = call @rt_str_eq(%c1, %target)
+  cbr %eq, then1, else0
+then1:
+  call @rt_print_i64(1)
+  br exit
+else0:
+  call @rt_print_i64(0)
+  br exit
+exit:
+  ret 0
+}
+</code></pre>
+<p><em>Notes:</em> all string work is delegated to runtime helpers and equality returns an <code>i1</code> flag.</p>
+<h4 id="example-6-heap-array-via-rt-alloc-squares-and-floating-average">Example 6 — Heap array via `rt_alloc`, squares, and floating average</h4>
+<p><strong>BASIC</strong></p>
+<pre><code data-lang="basic">
+10 LET N = 5
+20 DIM A(N)
+30 LET I = 0
+40 LET SUM = 0
+50 WHILE I &lt; N
+60 LET A(I) = I * I
+70 LET SUM = SUM + A(I)
+80 LET I = I + 1
+90 WEND
+100 LET AVG = SUM / N
+110 PRINT AVG
+120 PRINT &quot;DONE&quot;
+130 END
+</code></pre>
+<p><strong>IL</strong></p>
+<pre><code data-lang="llvm">
+il 0.2.0
+extern @rt_alloc(i64) -&gt; ptr
+extern @rt_print_f64(f64) -&gt; void
+extern @rt_print_str(str) -&gt; void
+global const str @.L0 = &quot;DONE&quot;
+func @main() -&gt; i64 {
+entry:
+  %n_slot = alloca 8
+  %i_slot = alloca 8
+  %sum_slot = alloca 8
+  %a_slot = alloca 8
+  store i64, %n_slot, 5
+  store i64, %i_slot, 0
+  store i64, %sum_slot, 0
+  %n0 = load i64, %n_slot
+  %bytes = mul %n0, 8
+  %base = call @rt_alloc(%bytes)
+  store ptr, %a_slot, %base
+  br loop_head
+loop_head:
+  %i0 = load i64, %i_slot
+  %n1 = load i64, %n_slot
+  %cond = scmp_lt %i0, %n1
+  cbr %cond, loop_body, done
+loop_body:
+  %a0 = load ptr, %a_slot
+  %offset = shl %i0, 3
+  %elem_ptr = gep %a0, %offset
+  %sq = mul %i0, %i0
+  store i64, %elem_ptr, %sq
+  %sum0 = load i64, %sum_slot
+  %sum1 = add %sum0, %sq
+  store i64, %sum_slot, %sum1
+  %i1 = add %i0, 1
+  store i64, %i_slot, %i1
+  br loop_head
+done:
+  %sum2 = load i64, %sum_slot
+  %n2 = load i64, %n_slot
+  %fsum = sitofp %sum2
+  %fn = sitofp %n2
+  %avg = fdiv %fsum, %fn
+  call @rt_print_f64(%avg)
+  %msg = const_str @.L0
+  call @rt_print_str(%msg)
+  ret 0
+}
+</code></pre>
+<p><em>Notes:</em> heap allocation models BASIC arrays and floating arithmetic uses <code>sitofp</code>/<code>fdiv</code>.</p>
+<h4 id="how-to-use-these-examples">How to use these examples</h4>
+<ul>
+<li>Golden tests: keep each BASIC + IL pair in sync when validating lowering.</li>
+<li>VM vs native: run the IL through both execution modes and compare output.</li>
+<li>Coverage: together they exercise arithmetic, branching, loops, input, strings, heap, and floating-point operations.</li>
+</ul>
+<p>Sources:</p>
+<ul>
+<li>docs/il-guide.md#quickstart</li>
+<li>docs/il-guide.md#reference</li>
+<li>docs/il-guide.md#reference</li>
+<li>docs/il-guide.md#lowering</li>
+<li>docs/il-guide.md#constfold</li>
+<li>docs/il-guide.md#mem2reg</li>
+<li>(archived: basic-to-il-examples.md — no longer available)</li>
+</ul>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../../features/native-targets.html">Native Targets</a>
+      <a href="../../features/two-languages.html">Languages</a>
+      <a href="../../features/runtime.html">Runtime Library</a>
+      <a href="../../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../../docs/getting-started.html">Getting Started</a>
+      <a href="../../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../../docs/runtime/">Runtime API</a>
+      <a href="../../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../../contributing/">Contributing</a>
+      <a href="../../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../../main.js"></script>
+</body>
+</html>

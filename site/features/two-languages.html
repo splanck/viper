@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Two Languages, One IL — Viper</title>
+  <meta name="description" content="Viper supports two programming languages — Zia (modern, statically typed) and BASIC (classic with OOP) — both compiling through the same typed SSA intermediate language.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="../showcase/">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <a href="../">Features</a> / <span>Two Languages, One IL</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#zia">Zia Language</a></li>
+        <li><a href="#basic">BASIC Language</a></li>
+        <li><a href="#comparison">Side-by-Side</a></li>
+        <li><a href="#parity">Feature Parity</a></li>
+        <li><a href="#il">Shared IL</a></li>
+        <li><a href="#own">Build Your Own</a></li>
+      </ul>
+    </nav>
+  </aside>
+
+  <main class="page-main prose">
+    <h1 id="overview">Two Languages, One IL</h1>
+
+    <p>Viper ships two complete programming languages that compile through the same typed, SSA-based intermediate language. This proves the IL architecture works as a genuine abstraction layer &mdash; not just an implementation detail.</p>
+
+    <h2 id="zia">Zia &mdash; The Modern Language</h2>
+
+    <p>Zia is a statically-typed, modern language designed for building real applications:</p>
+
+    <ul>
+      <li><strong>Entities</strong> (reference-type classes) with inheritance, interfaces, and destructors</li>
+      <li><strong>Values</strong> (stack-allocated structs) with copy semantics</li>
+      <li><strong>Generics</strong> with type constraints</li>
+      <li><strong>Pattern matching</strong> with exhaustiveness checking</li>
+      <li><strong>Enums</strong> with discriminant values</li>
+      <li><strong>Optional types</strong> with safe navigation (<code>?.)</code></li>
+      <li><strong>Lambdas</strong> and first-class functions</li>
+      <li><strong>Module system</strong> with <code>bind</code> imports</li>
+      <li><strong>Try/catch</strong> exception handling</li>
+    </ul>
+
+    <pre><code data-lang="zia">module GameDemo;
+
+bind Viper.Terminal;
+bind Canvas = Viper.Canvas;
+
+entity Player {
+    hide Integer x;
+    hide Integer y;
+    hide Integer health;
+
+    expose func init(startX: Integer, startY: Integer) {
+        x = startX;
+        y = startY;
+        health = 100;
+    }
+
+    expose func update(dx: Integer, dy: Integer) {
+        x = x + dx;
+        y = y + dy;
+    }
+
+    expose func draw(c: Canvas) {
+        c.Box(x, y, 16, 16, 0x00FF00);
+    }
+
+    expose func isAlive() -> Boolean {
+        return health > 0;
+    }
+}</code></pre>
+
+    <h2 id="basic">BASIC &mdash; The Classic Language</h2>
+
+    <p>Viper BASIC modernizes the classic language with OOP features while keeping its familiar syntax:</p>
+
+    <ul>
+      <li><strong>Classes</strong> with inheritance, interfaces, and constructors</li>
+      <li><strong>Namespaces</strong> with <code>USING</code> imports</li>
+      <li><strong>Enums</strong> (<code>ENUM...END ENUM</code>)</li>
+      <li><strong>SELECT CASE</strong> for multi-way branching</li>
+      <li><strong>Dynamic arrays</strong> with runtime resizing</li>
+      <li><strong>String operations</strong> (LEN, LEFT$, MID$, RIGHT$, UPPER$, LOWER$)</li>
+      <li><strong>Subroutines and functions</strong> with local scope</li>
+    </ul>
+
+    <pre><code data-lang="basic">CLASS Player
+    DIM x AS INTEGER
+    DIM y AS INTEGER
+    DIM health AS INTEGER
+
+    SUB Init(startX AS INTEGER, startY AS INTEGER)
+        x = startX
+        y = startY
+        health = 100
+    END SUB
+
+    SUB Update(dx AS INTEGER, dy AS INTEGER)
+        x = x + dx
+        y = y + dy
+    END SUB
+
+    FUNCTION IsAlive() AS BOOLEAN
+        IsAlive = (health > 0)
+    END FUNCTION
+
+    SUB Draw()
+        Viper.Terminal.SetPosition(y, x)
+        IF health > 0 THEN
+            PRINT "@";
+        END IF
+    END SUB
+END CLASS</code></pre>
+
+    <h2 id="comparison">Side-by-Side Comparison</h2>
+
+    <table>
+      <thead><tr><th>Concept</th><th>Zia</th><th>BASIC</th></tr></thead>
+      <tbody>
+        <tr><td>Variables</td><td><code>var x: Integer = 5</code></td><td><code>DIM x AS INTEGER = 5</code></td></tr>
+        <tr><td>Functions</td><td><code>func add(a: Integer, b: Integer) -> Integer</code></td><td><code>FUNCTION Add(a AS INTEGER, b AS INTEGER) AS INTEGER</code></td></tr>
+        <tr><td>Classes</td><td><code>entity Player { }</code></td><td><code>CLASS Player ... END CLASS</code></td></tr>
+        <tr><td>Constructors</td><td><code>expose func init(...)</code></td><td><code>SUB New(...)</code></td></tr>
+        <tr><td>For loops</td><td><code>for i in 0..10 { }</code></td><td><code>FOR i = 0 TO 9 ... NEXT</code></td></tr>
+        <tr><td>Conditionals</td><td><code>if x > 0 { } else { }</code></td><td><code>IF x > 0 THEN ... ELSE ... END IF</code></td></tr>
+        <tr><td>String concat</td><td><code>"Hello " + name</code></td><td><code>"Hello " + name$</code></td></tr>
+        <tr><td>Return values</td><td><code>return result</code></td><td><code>FuncName = result</code></td></tr>
+        <tr><td>Visibility</td><td><code>expose</code> / <code>hide</code></td><td>PUBLIC / PRIVATE</td></tr>
+        <tr><td>Imports</td><td><code>bind Viper.Terminal</code></td><td><code>USING Viper.Terminal</code></td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="parity">Feature Parity</h2>
+
+    <table>
+      <thead><tr><th>Feature</th><th>Zia</th><th>BASIC</th></tr></thead>
+      <tbody>
+        <tr><td>Type inference</td><td>Full</td><td>Partial (suffixes)</td></tr>
+        <tr><td>Generics</td><td>Yes</td><td>No</td></tr>
+        <tr><td>Lambdas</td><td>Yes</td><td>No</td></tr>
+        <tr><td>Pattern matching</td><td>Full with guards</td><td>SELECT CASE only</td></tr>
+        <tr><td>Enums</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>Optional types</td><td>Yes (T?)</td><td>No</td></tr>
+        <tr><td>Inheritance</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>Interfaces</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>Exception handling</td><td>Try/catch</td><td>No</td></tr>
+        <tr><td>Canvas graphics</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>Native compilation</td><td>Yes</td><td>Yes</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="il">The Shared IL</h2>
+
+    <p>Both languages compile to the same <strong>Viper IL</strong> &mdash; a typed, SSA-inspired intermediate language. This means:</p>
+
+    <ul>
+      <li>Both languages produce identical runtime behavior for equivalent programs</li>
+      <li>The same optimizer passes apply to both</li>
+      <li>Both can compile to the same 6 native targets</li>
+      <li>Zia and BASIC modules can be linked together via IL linking</li>
+    </ul>
+
+    <pre><code data-lang="il">il 0.2.0
+func @Player.isAlive(ptr %self) -> i1 {
+entry(%self:ptr):
+  %hp_ptr = gep %self, 16
+  %hp = load i64, %hp_ptr
+  %alive = scmp_gt %hp, 0
+  ret %alive
+}</code></pre>
+
+    <p>The IL above is what both the Zia and BASIC versions of <code>isAlive()</code> compile to &mdash; identical output from different source syntaxes.</p>
+
+    <h2 id="own">Build Your Own Frontend</h2>
+
+    <p>The IL is a stable, documented interface. You can write your own language frontend that targets Viper IL and immediately get access to the optimizer, VM, native codegen, and entire 229-class runtime. The <a href="../docs/architecture.html">architecture documentation</a> and the existing frontends serve as reference implementations.</p>
+
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="zero-deps.html">Zero Dependencies</a>
+      <a href="native-targets.html">Native Targets</a>
+      <a href="two-languages.html">Languages</a>
+      <a href="runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

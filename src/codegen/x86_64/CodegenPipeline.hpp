@@ -40,8 +40,8 @@ class CodegenPipeline
     /// \brief Assembler mode selection.
     enum class AssemblerMode
     {
-        System, ///< Use system assembler (cc -c) — default.
-        Native  ///< Use native binary encoder + ObjectFileWriter.
+        System, ///< Use system assembler (cc -c) — fallback via --system-asm.
+        Native  ///< Use native binary encoder + ObjectFileWriter (default).
     };
 
     /// \brief User-configurable options controlling pipeline behaviour.
@@ -52,11 +52,11 @@ class CodegenPipeline
                                      ///< without @ref run_native the pipeline emits an object file.
         std::string output_asm_path; ///< Optional assembly output path when emit_asm is true.
         bool emit_asm = false;       ///< Emit assembly text to disk for inspection.
-        int optimize = 1; ///< Optimization level: 0 = none, 1 = standard (peephole), 2+ reserved.
+        int optimize = 1; ///< Optimization level: 0 = none, 1 = O1 (default), 2 = O2.
         bool run_native = false;    ///< Execute the produced binary after linking when true.
         std::size_t stack_size = 0; ///< Stack size in bytes; 0 means use system default (8MB).
         AssemblerMode assembler_mode =
-            AssemblerMode::System; ///< Binary encoder vs system assembler.
+            AssemblerMode::Native; ///< Native binary encoder by default; --system-asm to override.
     };
 
     /// \brief Construct a pipeline configured with @p opts.

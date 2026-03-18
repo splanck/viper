@@ -330,8 +330,8 @@ Both x86_64 and AArch64 have their own `BinaryEmitPass` implementations that:
 
 | Flag | Effect |
 |------|--------|
-| `--native-asm` | Force native binary encoder (default on supported platforms) |
-| `--system-asm` | Force system assembler (`cc -c`) as fallback |
+| `--native-asm` | Use native binary encoder (this is the default) |
+| `--system-asm` | Override: use system assembler (`cc -c`) instead |
 | `-S <path>` | Emit text assembly (always uses text emitter, no assembling) |
 
 ---

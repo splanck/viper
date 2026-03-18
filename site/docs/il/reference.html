@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IL Opcode Reference — Viper</title>
+  <meta name="description" content="Viper documentation: IL Opcode Reference">
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="icon" href="../../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../../docs/" class="active">Docs</a>
+    <a href="../../learn/">Learn</a>
+    <a href="../../showcase/">Showcase</a>
+    <a href="../../performance/">Performance</a>
+    <a href="../../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../../">Home</a> / <a href="../../docs">Docs</a> / <span>IL Opcode Reference</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#table-of-contents">Table of Contents</a></li>
+        <li><a href="#types">Types</a></li>
+        <li><a href="#functions-blocks">Functions &amp; Blocks</a></li>
+        <li><a href="#instruction-catalog-by-category">Instruction Catalog (by Category)</a></li>
+        <li><a href="#verification-rules-selected-highlights">Verification rules (selected highlights)</a></li>
+        <li><a href="#tools">Tools</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>IL Opcode Reference</h1>
+<h1 id="viper-il-reference">Viper IL — Reference</h1>
+<p>Complete reference for Viper IL syntax, types, instructions, and verification rules. Each instruction includes minimal</p>
+<p>examples from real IL code.</p>
+<p>For introductory material, see <strong>[IL Quickstart](il-quickstart.md)</strong> or <strong>[IL Guide](il-guide.md)</strong>.</p>
+<p>---</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li>[Types](#types)</li>
+<li>[Functions &amp; Blocks](#functions--blocks)</li>
+<li>[Instruction Catalog](#instruction-catalog-by-category)</li>
+<li>[Arithmetic](#arithmetic)</li>
+<li>[Comparison](#comparison)</li>
+<li>[Memory](#memory)</li>
+<li>[Control](#control)</li>
+<li>[Exceptions](#exceptions)</li>
+<li>[Misc](#misc)</li>
+<li>[Verification Rules](#verification-rules-selected-highlights)</li>
+<li>[Tools](#tools)</li>
+</ul>
+<p>---</p>
+<h2 id="types">Types</h2>
+<p>Viper IL supports the following primitive types:</p>
+<table><thead><tr>
+<th>Type</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>**Integers**</td>
+<td>`i1`, `i16`, `i32`, `i64` — Frontends typically use `i64`</td>
+</tr>
+<tr>
+<td>**Floats**</td>
+<td>`f64` — Double-precision floating-point</td>
+</tr>
+<tr>
+<td>**Pointers**</td>
+<td>`ptr` — Opaque pointers (no element type)</td>
+</tr>
+<tr>
+<td>**Strings**</td>
+<td>`str` — Runtime handle for managed strings</td>
+</tr>
+<tr>
+<td>**Void**</td>
+<td>`void` — No return value (procedures)</td>
+</tr>
+<tr>
+<td>**Special**</td>
+<td>`error`, `resumetok` — Exception handling types</td>
+</tr>
+</tbody></table>
+<blockquote><p>**Note:** The verifier validates type correctness. Use <code>il-verify</code> to check your IL code.</p></blockquote>
+<p>---</p>
+<h2 id="functions-blocks">Functions &amp; Blocks</h2>
+<p>Functions are the primary unit of IL code:</p>
+<pre><code data-lang="llvm">
+func @name(&lt;typed args&gt;) -&gt; &lt;type&gt; {
+entry:
+  ; instructions
+}
+</code></pre>
+<p><strong>Structure:</strong></p>
+<ul>
+<li><strong>Symbol names</strong>: <code>@name</code> for functions and globals</li>
+<li><strong>Basic blocks</strong>: Labeled with <code>label:</code> (no caret prefix)</li>
+<li><strong>Terminators</strong>: Every block must end with <code>ret</code>, <code>br</code>, <code>cbr</code>, <code>switch.i32</code>, <code>trap</code>, <code>trap.from_err</code>, or <code>resume.*</code></li>
+<li><strong>SSA form</strong>: Values (<code>%vX</code>) are defined once and used multiple times</li>
+</ul>
+<p>---</p>
+<h2 id="instruction-catalog-by-category">Instruction Catalog (by Category)</h2>
+<h3 id="arithmetic">Arithmetic</h3>
+<p><strong><code>add</code></strong> — Integer addition (no overflow check).</p>
+<pre><code data-lang="llvm">
+%sum = add %a, %b
+%t0 = add 10, 20
+</code></pre>
+<p><strong><code>fadd</code></strong> — Floating-point addition.</p>
+<pre><code data-lang="llvm">
+%t1 = fadd 1.2345678901234567, 2.5
+%t13 = fadd 1.0, 2.5
+</code></pre>
+<p><strong><code>fdiv</code></strong> — Floating-point division.</p>
+<pre><code data-lang="llvm">
+%avg = fdiv %fsum, %fn
+%t16 = fdiv %t15, 2.0
+</code></pre>
+<p><strong><code>fmul</code></strong> — Floating-point multiplication.</p>
+<pre><code data-lang="llvm">
+%t15 = fmul %t14, 4.0
+</code></pre>
+<p><strong><code>fsub</code></strong> — Floating-point subtraction.</p>
+<pre><code data-lang="llvm">
+%t14 = fsub %t13, 1.25
+%t10 = fsub %t8, %t9
+</code></pre>
+<p><strong><code>iadd.ovf</code></strong> — Integer addition with overflow check (traps on overflow).</p>
+<pre><code data-lang="llvm">
+%t0 = iadd.ovf 1, 2
+%sum = iadd.ovf %a, %b
+</code></pre>
+<p><strong><code>imul.ovf</code></strong> — Integer multiplication with overflow check (traps on overflow).</p>
+<pre><code data-lang="llvm">
+%t1 = imul.ovf %t0, 3
+%prod = imul.ovf %a, %b
+</code></pre>
+<p><strong><code>isub.ovf</code></strong> — Integer subtraction with overflow check (traps on overflow).</p>
+<pre><code data-lang="llvm">
+%n2 = isub.ovf %n1, 1
+%diff = isub.ovf %lhs, %rhs
+</code></pre>
+<p><strong><code>mul</code></strong> — Integer multiplication (no overflow check).</p>
+<pre><code data-lang="llvm">
+%prod = mul %a, %b
+%t0 = mul 3, 7
+</code></pre>
+<p><strong><code>sdiv</code></strong> — Signed integer division (no divide-by-zero check; undefined behavior on zero).</p>
+<pre><code data-lang="llvm">
+%quot = sdiv %a, %b
+%t0 = sdiv 20, 4
+</code></pre>
+<p><strong><code>sdiv.chk0</code></strong> — Signed integer division with divide-by-zero check (traps if divisor is zero).</p>
+<pre><code data-lang="llvm">
+%t0 = sdiv.chk0 %a, %b
+%t3 = sdiv.chk0 %t2, 5
+</code></pre>
+<p><strong><code>srem</code></strong> — Signed integer remainder (no divide-by-zero check; undefined behavior on zero).</p>
+<pre><code data-lang="llvm">
+%rem = srem %a, %b
+%t0 = srem 17, 5
+</code></pre>
+<p><strong><code>srem.chk0</code></strong> — Signed integer remainder with divide-by-zero check (traps if divisor is zero).</p>
+<pre><code data-lang="llvm">
+%rem = srem.chk0 %a, %b
+%t0 = srem.chk0 17, 5
+</code></pre>
+<p><strong><code>sub</code></strong> — Integer subtraction (no overflow check).</p>
+<pre><code data-lang="llvm">
+%diff = sub %a, %b
+%t0 = sub 10, 5
+</code></pre>
+<p><strong><code>udiv</code></strong> — Unsigned integer division (no divide-by-zero check; undefined behavior on zero).</p>
+<pre><code data-lang="llvm">
+%quot = udiv %a, %b
+%t0 = udiv 20, 4
+</code></pre>
+<p><strong><code>udiv.chk0</code></strong> — Unsigned integer division with divide-by-zero check (traps if divisor is zero).</p>
+<pre><code data-lang="llvm">
+%t2 = udiv.chk0 %a, %b
+%t4 = udiv.chk0 10, 2
+</code></pre>
+<p><strong><code>urem</code></strong> — Unsigned integer remainder (no divide-by-zero check; undefined behavior on zero).</p>
+<pre><code data-lang="llvm">
+%rem = urem %a, %b
+%t0 = urem 17, 5
+</code></pre>
+<p><strong><code>urem.chk0</code></strong> — Unsigned integer remainder with divide-by-zero check (traps if divisor is zero).</p>
+<pre><code data-lang="llvm">
+%rem = urem.chk0 %a, %b
+%t0 = urem.chk0 17, 5
+</code></pre>
+<h3 id="comparison">Comparison</h3>
+<p><strong><code>fcmp_eq</code></strong> — Floating-point comparison.</p>
+<pre><code data-lang="llvm">
+%t27 = fcmp_eq 1, 1
+</code></pre>
+<p><strong><code>fcmp_ge</code></strong> — Floating-point comparison.</p>
+<pre><code data-lang="llvm">
+%t32 = fcmp_ge 3, 3
+</code></pre>
+<p><strong><code>fcmp_gt</code></strong> — Floating-point comparison.</p>
+<pre><code data-lang="llvm">
+%t31 = fcmp_gt 3, 2
+</code></pre>
+<p><strong><code>fcmp_le</code></strong> — Floating-point comparison.</p>
+<pre><code data-lang="llvm">
+%t30 = fcmp_le 2, 2
+%t4 = fcmp_le %t2, %t3
+</code></pre>
+<p><strong><code>fcmp_lt</code></strong> — Floating-point comparison.</p>
+<pre><code data-lang="llvm">
+%t29 = fcmp_lt 1, 2
+</code></pre>
+<p><strong><code>fcmp_ne</code></strong> — Floating-point comparison.</p>
+<pre><code data-lang="llvm">
+%t28 = fcmp_ne 1, 2
+%t20 = fcmp_ne %t18, %t18
+</code></pre>
+<p><strong><code>fcmp_ord</code></strong> — Floating-point ordered comparison; returns 1 (true) if both operands are non-NaN.</p>
+<pre><code data-lang="llvm">
+%t0 = fcmp_ord %a, %b
+</code></pre>
+<p><strong><code>fcmp_uno</code></strong> — Floating-point unordered comparison; returns 1 (true) if either operand is NaN.</p>
+<pre><code data-lang="llvm">
+%t0 = fcmp_uno %a, %b
+</code></pre>
+<p><strong><code>icmp_eq</code></strong> — Integer comparison; suffix indicates predicate.</p>
+<pre><code data-lang="llvm">
+%t17 = icmp_eq 1, 1
+%c1 = icmp_eq 0, 0
+</code></pre>
+<p><strong><code>icmp_ne</code></strong> — Integer comparison; suffix indicates predicate.</p>
+<pre><code data-lang="llvm">
+%t18 = icmp_ne 1, 0
+%t6 = icmp_ne %t5, 0
+</code></pre>
+<p><strong><code>scmp_ge</code></strong> — Signed integer greater-than-or-equal comparison; returns i1 (0 or 1).</p>
+<pre><code data-lang="llvm">
+%cond = scmp_ge %i, 3
+%cond = scmp_ge %i, 10
+</code></pre>
+<p><strong><code>scmp_gt</code></strong> — Signed integer greater-than comparison; returns i1 (0 or 1).</p>
+<pre><code data-lang="llvm">
+%c = scmp_gt %n1, 1
+%cond = scmp_gt %yv1, 8
+</code></pre>
+<p><strong><code>scmp_le</code></strong> — Signed integer less-than-or-equal comparison; returns i1 (0 or 1).</p>
+<pre><code data-lang="llvm">
+%c = scmp_le %i0, 10
+%oc = scmp_le %i0, %n0
+</code></pre>
+<p><strong><code>scmp_lt</code></strong> — Signed integer less-than comparison; returns i1 (0 or 1).</p>
+<pre><code data-lang="llvm">
+%c = scmp_lt %i0, %n1
+%c = scmp_lt %i, 10
+</code></pre>
+<p><strong><code>ucmp_ge</code></strong> — Unsigned integer greater-than-or-equal comparison; returns i1 (0 or 1).</p>
+<pre><code data-lang="llvm">
+%t26 = ucmp_ge 3, 3
+</code></pre>
+<p><strong><code>ucmp_gt</code></strong> — Unsigned integer greater-than comparison; returns i1 (0 or 1).</p>
+<pre><code data-lang="llvm">
+%t25 = ucmp_gt 3, 2
+</code></pre>
+<p><strong><code>ucmp_le</code></strong> — Unsigned integer less-than-or-equal comparison; returns i1 (0 or 1).</p>
+<pre><code data-lang="llvm">
+%t24 = ucmp_le 2, 2
+</code></pre>
+<p><strong><code>ucmp_lt</code></strong> — Unsigned integer less-than comparison; returns i1 (0 or 1).</p>
+<pre><code data-lang="llvm">
+%t23 = ucmp_lt 1, 2
+</code></pre>
+<h3 id="memory">Memory</h3>
+<p><strong><code>addr_of</code></strong> — Take address of global variable or constant.</p>
+<pre><code data-lang="llvm">
+%t41 = addr_of @.Lstr
+</code></pre>
+<p><strong><code>alloca</code></strong> — Allocate stack memory; operand is size in bytes; returns pointer.</p>
+<pre><code data-lang="llvm">
+%a_slot = alloca 8
+%b_slot = alloca 8
+</code></pre>
+<p><strong><code>gaddr</code></strong> — Address of a mutable module-level global (modvar).</p>
+<pre><code data-lang="llvm">
+%p = gaddr @.Counter        # pointer to module variable storage
+store i64, %p, 1            # write 1 into the counter
+</code></pre>
+<p><strong><code>gep</code></strong> — Get element pointer; compute address offset from base pointer (base + offset).</p>
+<pre><code data-lang="llvm">
+%elem_ptr = gep %a0, %off
+%t39 = gep %t38, 1
+</code></pre>
+<p><strong><code>load</code></strong> — Load from memory.</p>
+<pre><code data-lang="llvm">
+%a0 = load str, %a_slot
+%c1 = load str, %c_slot
+</code></pre>
+<p><strong><code>store</code></strong> — Store to memory.</p>
+<pre><code data-lang="llvm">
+store str, %a_slot, %sA
+store str, %b_slot, %sB
+</code></pre>
+<h3 id="control">Control</h3>
+<p><strong><code>br</code></strong> — Unconditional branch to a target label.</p>
+<pre><code data-lang="llvm">
+br exit
+br loop_header(%i)
+</code></pre>
+<p><strong><code>call</code></strong> — Call a function; arguments must match parameter types.</p>
+<pre><code data-lang="llvm">
+%c0 = call @Viper.String.Concat(%a0, %sSp)
+%c2 = call @Viper.String.Concat(%c1, %b0)
+</code></pre>
+<p><strong><code>call.indirect</code></strong> — Call through a function pointer; first operand is the function pointer, followed by arguments.</p>
+<pre><code data-lang="llvm">
+%result = call.indirect %fn_ptr(%arg1, %arg2)
+%val = call.indirect %callback(%data)
+</code></pre>
+<p><strong><code>cbr</code></strong> — Conditional branch; takes a boolean condition and two target labels.</p>
+<pre><code data-lang="llvm">
+cbr %eq, then1, else0
+cbr %c, loop_body, done
+</code></pre>
+<p><strong><code>ret</code></strong> — Return from function.</p>
+<pre><code data-lang="llvm">
+ret 0
+ret 0
+</code></pre>
+<p><strong><code>switch.i32</code></strong> — Multi-way branch.</p>
+<pre><code data-lang="llvm">
+switch.i32 %sel, ^default(%sel), 0 -&gt; ^case0(%sel)
+switch.i32 %arg, ^default(%arg), 0 -&gt; ^case0(%arg), 1 -&gt; ^case1(%arg)
+</code></pre>
+<h3 id="exceptions">Exceptions</h3>
+<p><strong><code>eh.entry</code></strong> — Mark entry point of an error handler block.</p>
+<pre><code data-lang="llvm">
+eh.entry
+eh.entry
+</code></pre>
+<p><strong><code>eh.pop</code></strong> — Pop error handler from stack; restores previous error handler.</p>
+<pre><code data-lang="llvm">
+eh.pop
+eh.pop
+</code></pre>
+<p><strong><code>eh.push</code></strong> — Push error handler onto stack; specifies label to branch to on error.</p>
+<pre><code data-lang="llvm">
+eh.push ^bad
+eh.push ^handler
+</code></pre>
+<p><strong><code>trap</code></strong> — Unconditional trap; immediately terminates execution with error.</p>
+<pre><code data-lang="llvm">
+trap
+trap
+</code></pre>
+<p><strong><code>trap.err</code></strong> — Create an error value from error code (i32) and message string.</p>
+<pre><code data-lang="llvm">
+%err0 = trap.err 7, %msg0
+%err1 = trap.err 9, %msg1
+</code></pre>
+<p><strong><code>trap.from_err</code></strong> — Trap from error code; terminates with specified error type and code.</p>
+<pre><code data-lang="llvm">
+trap.from_err i32 7
+trap.from_err i32 6
+</code></pre>
+<p><strong><code>trap.kind</code></strong> — Read current trap kind from most recent error.</p>
+<pre><code data-lang="llvm">
+%kind = trap.kind
+%k0 = trap.kind
+</code></pre>
+<h3 id="misc">Misc</h3>
+<p><strong><code>and</code></strong> — Bitwise AND operation on integer values.</p>
+<pre><code data-lang="llvm">
+%t7 = and 240, 15
+%t24 = and %t21, %t23
+</code></pre>
+<p><strong><code>ashr</code></strong> — Arithmetic shift right; preserves sign bit for signed integers.</p>
+<pre><code data-lang="llvm">
+%t12 = ashr -8, 1
+</code></pre>
+<p><strong><code>cast.fp_to_si.rte.chk</code></strong> — Cast float to signed integer with round-to-even and overflow check (traps on overflow).</p>
+<pre><code data-lang="llvm">
+%t0 = cast.fp_to_si.rte.chk %fp
+%t35 = cast.fp_to_si.rte.chk 5.5
+</code></pre>
+<p><strong><code>cast.fp_to_ui.rte.chk</code></strong> — Cast float to unsigned integer with round-to-even and overflow check (traps on overflow).</p>
+<pre><code data-lang="llvm">
+%t1 = cast.fp_to_ui.rte.chk %fp
+</code></pre>
+<p><strong><code>cast.si_narrow.chk</code></strong> — Narrow signed integer with overflow check (i64 to i32 or i16; traps on overflow). The result type must be declared on the register: <code>%name:i32 = cast.si_narrow.chk %val</code>.</p>
+<pre><code data-lang="llvm">
+%t2:i32 = cast.si_narrow.chk %si
+</code></pre>
+<p><strong><code>cast.si_to_fp</code></strong> — Cast signed integer to floating-point.</p>
+<pre><code data-lang="llvm">
+%t4 = cast.si_to_fp %si
+</code></pre>
+<p><strong><code>cast.ui_narrow.chk</code></strong> — Narrow unsigned integer with overflow check (i64 to i32 or i16; traps on overflow). The result type must be declared on the register: <code>%name:i32 = cast.ui_narrow.chk %val</code>.</p>
+<pre><code data-lang="llvm">
+%t3:i32 = cast.ui_narrow.chk %ui
+</code></pre>
+<p><strong><code>cast.ui_to_fp</code></strong> — Cast unsigned integer to floating-point.</p>
+<pre><code data-lang="llvm">
+%t5 = cast.ui_to_fp %ui
+</code></pre>
+<p><strong><code>const.f64</code></strong> — Load a 64-bit floating-point constant.</p>
+<pre><code data-lang="llvm">
+%pi = const.f64 3.141592653589793
+%t0 = const.f64 0.0
+</code></pre>
+<p><strong><code>const_null</code></strong> — Create null pointer constant.</p>
+<pre><code data-lang="llvm">
+%t43 = const_null
+%p = const_null
+</code></pre>
+<p><strong><code>const_str</code></strong> — Load string constant from global string literal.</p>
+<pre><code data-lang="llvm">
+%sA = const_str @.L0
+%sB = const_str @.L1
+</code></pre>
+<p><strong><code>err.get_code</code></strong> — Extract error code from error value; returns <code>i32</code>.</p>
+<pre><code data-lang="llvm">
+%code = err.get_code %err
+%c = err.get_code %e
+</code></pre>
+<p><strong><code>err.get_ip</code></strong> — Extract instruction pointer from error value; returns <code>i64</code>.</p>
+<pre><code data-lang="llvm">
+%ip = err.get_ip %err
+%ptr = err.get_ip %e
+</code></pre>
+<p><strong><code>err.get_kind</code></strong> — Extract error kind from error value; returns <code>i32</code>.</p>
+<pre><code data-lang="llvm">
+%k = err.get_kind %e
+%k = err.get_kind %err
+</code></pre>
+<p><strong><code>err.get_line</code></strong> — Extract line number from error value; returns <code>i32</code>.</p>
+<pre><code data-lang="llvm">
+%ln = err.get_line %e
+%line = err.get_line %err
+</code></pre>
+<p><strong><code>extern</code></strong> — Declare external function signature (from runtime or other modules).</p>
+<pre><code data-lang="llvm">
+extern @Viper.Terminal.PrintStr(str) -&gt; void
+extern @Viper.Terminal.PrintI64(i64) -&gt; void
+</code></pre>
+<p>Compatibility:</p>
+<ul>
+<li>When built with <code>-DVIPER_RUNTIME_NS_DUAL=ON</code>, legacy <code>@rt_*</code> externs are accepted as aliases of <code>@Viper.*</code>.</li>
+<li>New code should emit <code>@Viper.*</code>.</li>
+</ul>
+<p><strong><code>fptosi</code></strong> — Convert floating-point to signed integer (no check; undefined on NaN or overflow; use <code>cast.fp_to_si.rte.chk</code> for checked conversion).</p>
+<pre><code data-lang="llvm">
+%i = fptosi %f
+%t0 = fptosi 3.7
+</code></pre>
+<p><strong><code>func</code></strong> — Begin function definition with signature.</p>
+<pre><code data-lang="llvm">
+func @main() -&gt; i64 {
+func @add(i64 %a, i64 %b) -&gt; i64 {
+</code></pre>
+<p><strong><code>global</code></strong> — Define global constant or variable.</p>
+<pre><code data-lang="llvm">
+global const str @.L0 = &quot;JOHN&quot;
+global const str @.L1 = &quot;DOE&quot;
+</code></pre>
+<p><strong><code>idx.chk</code></strong> — Check array index bounds; traps if index is out of range [lo, hi).</p>
+<pre><code data-lang="llvm">
+%t0 = idx.chk %idx16, %lo16, %hi16
+%t1 = idx.chk %idx32, %lo32, %hi32
+</code></pre>
+<p><strong><code>il</code></strong> — Specify IL version (header directive at top of file).</p>
+<pre><code data-lang="llvm">
+il 0.1
+il 0.1.2
+</code></pre>
+<p><strong><code>lshr</code></strong> — Logical shift right; fills with zeros (unsigned shift).</p>
+<pre><code data-lang="llvm">
+%t11 = lshr %t10, 2
+</code></pre>
+<p><strong><code>or</code></strong> — Bitwise OR operation on integer values.</p>
+<pre><code data-lang="llvm">
+%t8 = or %t7, 1
+%t16 = or %t13, %t15
+</code></pre>
+<p><strong><code>resume.label</code></strong> — Resume execution at specified label after error; used with ON ERROR GOTO/RESUME.</p>
+<pre><code data-lang="llvm">
+resume.label %tok, ^after(%err)
+resume.label %tok, ^target(%err)
+</code></pre>
+<p><strong><code>resume.next</code></strong> — Resume execution at next statement after error; used with RESUME NEXT.</p>
+<pre><code data-lang="llvm">
+resume.next %tok
+resume.next %token
+</code></pre>
+<p><strong><code>resume.same</code></strong> — Resume execution at same statement that caused error; used with RESUME 0.</p>
+<pre><code data-lang="llvm">
+resume.same %tok
+resume.same %tok
+</code></pre>
+<p><strong><code>shl</code></strong> — Shift left; fills with zeros.</p>
+<pre><code data-lang="llvm">
+%off = shl %i0, 3
+%t10 = shl %t9, 1
+</code></pre>
+<p><strong><code>sitofp</code></strong> — Convert signed integer to floating-point.</p>
+<pre><code data-lang="llvm">
+%fsum = sitofp %sum2
+%fn = sitofp %n2
+</code></pre>
+<p><strong><code>target</code></strong> — Specify target architecture or platform.</p>
+<pre><code data-lang="llvm">
+target wasm32-unknown-unknown
+target &quot;wasm32-unknown-unknown&quot;
+</code></pre>
+<p><strong><code>trunc1</code></strong> — Truncate integer to i1 (single bit boolean).</p>
+<pre><code data-lang="llvm">
+%t37 = trunc1 255
+%t1 = trunc1 0
+</code></pre>
+<p><strong><code>xor</code></strong> — Bitwise exclusive-OR.</p>
+<pre><code data-lang="llvm">
+%t9 = xor %t8, 3
+%t6 = xor %t5, 0
+</code></pre>
+<p><strong><code>zext1</code></strong> — Zero-extend i1 (single bit) to i64 (0 becomes 0, 1 becomes 1).</p>
+<pre><code data-lang="llvm">
+%t36 = zext1 %t18
+%t7 = zext1 %t6
+</code></pre>
+<h2 id="verification-rules-selected-highlights">Verification rules (selected highlights)</h2>
+<p>The verifier enforces structural and type rules. Typical checks include:</p>
+<ul>
+<li>Block must end with a terminator (<code>ret</code>, <code>br</code>, <code>cbr</code>, <code>switch.i32</code>, <code>trap</code>, <code>trap.from_err</code>, or <code>resume.*</code>).</li>
+<li>Operand types must match instruction requirements (e.g., <code>add</code> takes two <code>i64</code> operands).</li>
+<li>Block parameters must be passed correctly by all predecessor branches.</li>
+<li>Branch targets must be valid labels in the same function.</li>
+<li>Calls must match callee signature exactly.</li>
+</ul>
+<h2 id="tools">Tools</h2>
+<ul>
+<li><code>il-verify &lt;file.il&gt;</code> — static checks with precise diagnostics.</li>
+<li><code>il-dis &lt;file.il&gt;</code> — pretty-printer / disassembler.</li>
+<li><code>viper -run &lt;file.il&gt;</code> — run on the VM (uses runtime bridges).</li>
+<li><code>viper il-opt &lt;file.il&gt; --passes &quot;simplify-cfg&quot;</code> — run transforms (e.g., SimplifyCFG).</li>
+</ul>
+<blockquote><p>Use <code>--help</code> on each tool for full options.</p></blockquote>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../../features/native-targets.html">Native Targets</a>
+      <a href="../../features/two-languages.html">Languages</a>
+      <a href="../../features/runtime.html">Runtime Library</a>
+      <a href="../../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../../docs/getting-started.html">Getting Started</a>
+      <a href="../../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../../docs/runtime/">Runtime API</a>
+      <a href="../../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../../contributing/">Contributing</a>
+      <a href="../../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../../main.js"></script>
+</body>
+</html>

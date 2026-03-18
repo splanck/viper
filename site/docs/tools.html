@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CLI Tools Reference — Viper</title>
+  <meta name="description" content="Viper documentation: CLI Tools Reference">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/" class="active">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="../showcase/">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <span>CLI Tools Reference</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#quick-reference">Quick Reference</a></li>
+        <li><a href="#1-tracing">1. Tracing</a></li>
+        <li><a href="#2-breakpoints">2. Breakpoints</a></li>
+        <li><a href="#3-variable-watches">3. Variable Watches</a></li>
+        <li><a href="#4-memory-watches">4. Memory Watches</a></li>
+        <li><a href="#5-stepping">5. Stepping</a></li>
+        <li><a href="#6-error-reporting">6. Error Reporting</a></li>
+        <li><a href="#7-runtime-logging">7. Runtime Logging</a></li>
+        <li><a href="#8-pipeline-dump-flags">8. Pipeline Dump Flags</a></li>
+        <li><a href="#9-il-inspection">9. IL Inspection</a></li>
+        <li><a href="#10-vm-debug-hooks">10. VM Debug Hooks</a></li>
+        <li><a href="#11-exception-handling">11. Exception Handling</a></li>
+        <li><a href="#12-benchmarking">12. Benchmarking</a></li>
+        <li><a href="#13-execution-statistics">13. Execution Statistics</a></li>
+        <li><a href="#14-programmatic-debugging-api">14. Programmatic Debugging API</a></li>
+        <li><a href="#15-known-limitations">15. Known Limitations</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>CLI Tools Reference</h1>
+<h1 id="viper-debugging-guide">Viper Debugging Guide</h1>
+<p>This guide covers all debugging features available in the Viper platform, including both the VM interpreter and the Zia/BASIC frontends.</p>
+<p>---</p>
+<h2 id="quick-reference">Quick Reference</h2>
+<table><thead><tr>
+<th>Goal</th>
+<th>Command / Flag</th>
+</tr></thead><tbody>
+<tr>
+<td>Trace every IL instruction</td>
+<td>`--trace=il`</td>
+</tr>
+<tr>
+<td>Trace source locations</td>
+<td>`--trace=src`</td>
+</tr>
+<tr>
+<td>Break at source line</td>
+<td>`--break-src main.zia:42`</td>
+</tr>
+<tr>
+<td>Break at block label</td>
+<td>`--break entry`</td>
+</tr>
+<tr>
+<td>Watch a variable</td>
+<td>`--watch x`</td>
+</tr>
+<tr>
+<td>Limit execution steps</td>
+<td>`--max-steps 10000`</td>
+</tr>
+<tr>
+<td>Single-step on entry</td>
+<td>`--step`</td>
+</tr>
+<tr>
+<td>Dump IL on trap</td>
+<td>`--dump-trap`</td>
+</tr>
+<tr>
+<td>Run debug script</td>
+<td>`--debug-cmds script.dbg`</td>
+</tr>
+<tr>
+<td>Dump token stream</td>
+<td>`--dump-tokens`</td>
+</tr>
+<tr>
+<td>Dump AST after parsing</td>
+<td>`--dump-ast`</td>
+</tr>
+<tr>
+<td>Dump AST after sema</td>
+<td>`--dump-sema-ast`</td>
+</tr>
+<tr>
+<td>Dump IL after lowering</td>
+<td>`--dump-il`</td>
+</tr>
+<tr>
+<td>Dump IL after optimization</td>
+<td>`--dump-il-opt`</td>
+</tr>
+<tr>
+<td>Dump IL per-pass</td>
+<td>`--dump-il-passes`</td>
+</tr>
+</tbody></table>
+<p>---</p>
+<h2 id="1-tracing">1. Tracing</h2>
+<p>Tracing prints detailed execution information to stderr as the VM runs each instruction.</p>
+<h3 id="il-trace-mode">IL Trace Mode</h3>
+<pre><code data-lang="sh">
+viper -run program.il --trace=il
+</code></pre>
+<p>Output format:</p>
+<pre><code data-lang="text">
+[IL] fn=@main blk=L3 ip=#5 op=add 10, 20 -&gt; %t5
+</code></pre>
+<p>Each line shows: function name, block label, instruction index, opcode, operands, and result register.</p>
+<h3 id="source-trace-mode">Source Trace Mode</h3>
+<pre><code data-lang="sh">
+viper -run program.il --trace=src
+</code></pre>
+<p>Output format:</p>
+<pre><code data-lang="text">
+[SRC] main.zia:42:10 (fn=@main blk=L3 ip=#5)
+</code></pre>
+<p>Shows the original source file, line, and column for each executed instruction. Requires that the IL was compiled with source location information (Zia and BASIC both propagate source locations to IL).</p>
+<h3 id="notes">Notes</h3>
+<ul>
+<li>Both trace modes write to stderr, so program output on stdout remains clean.</li>
+<li>Tracing is <strong>all-or-nothing</strong> per mode; there is no per-function or per-file filter.</li>
+<li>In <code>viper front basic</code> and <code>viper front zia</code>, trace and debug modes disable IL optimization to preserve the instruction-to-source mapping.</li>
+</ul>
+<p>---</p>
+<h2 id="2-breakpoints">2. Breakpoints</h2>
+<p>Breakpoints pause execution at a specific point and return control to the debug controller.</p>
+<h3 id="source-line-breakpoints">Source-Line Breakpoints</h3>
+<pre><code data-lang="sh">
+viper -run program.il --break-src main.zia:42
+</code></pre>
+<p>Pauses before executing any instruction originating from line 42 of <code>main.zia</code>. File paths are normalized automatically (forward slashes, case-insensitive on Windows).</p>
+<h3 id="block-label-breakpoints">Block-Label Breakpoints</h3>
+<pre><code data-lang="sh">
+viper -run program.il --break entry
+</code></pre>
+<p>Pauses when the VM enters a block with the given label. Also supports <code>file:line</code> format as a shorthand for <code>--break-src</code>:</p>
+<pre><code data-lang="sh">
+viper -run program.il --break main.zia:42
+</code></pre>
+<h3 id="multiple-breakpoints">Multiple Breakpoints</h3>
+<p>Specify multiple <code>--break</code> or <code>--break-src</code> flags:</p>
+<pre><code data-lang="sh">
+viper -run program.il --break-src main.zia:10 --break-src util.zia:25
+</code></pre>
+<h3 id="breakpoint-coalescing">Breakpoint Coalescing</h3>
+<p>Repeated hits on the same source line are coalesced — the debugger does not spam notifications for every IL instruction that maps to the same line.</p>
+<p>---</p>
+<h2 id="3-variable-watches">3. Variable Watches</h2>
+<p>Watches report every time a named variable is stored to during execution.</p>
+<pre><code data-lang="sh">
+viper -run program.il --watch x --watch total
+</code></pre>
+<p>Output format:</p>
+<pre><code data-lang="text">
+[WATCH] x=I64:42 (fn=@main blk=L3 ip=#5)
+</code></pre>
+<h3 id="how-it-works">How It Works</h3>
+<ul>
+<li>Watches use an O(1) fast-path via a symbol-to-watch-ID map.</li>
+<li>Only reports when the value <strong>changes</strong> from the previous watched value (deduplication).</li>
+<li>Multiple watches can be active simultaneously.</li>
+</ul>
+<h3 id="limitations">Limitations</h3>
+<ul>
+<li>Watch names must match the IL register/variable names used by the lowerer (e.g., <code>x</code> for a local named <code>x</code>).</li>
+<li>There is currently no source-name-to-IL-register mapping, so you may need to inspect the IL output (<code>--dump-il</code> or <code>-emit-il</code>) to find the correct name.</li>
+</ul>
+<p>---</p>
+<h2 id="4-memory-watches">4. Memory Watches</h2>
+<p>Memory watches monitor reads/writes to specific memory address ranges. This is primarily useful for debugging the runtime or tracking heap corruption.</p>
+<h3 id="programmatic-api">Programmatic API</h3>
+<pre><code data-lang="cpp">
+Runner runner(module);
+runner.addMemWatch(addr, size, &quot;my-tag&quot;);
+// ... run ...
+auto hits = runner.drainMemWatchHits();
+for (auto &amp;hit : hits) {
+    // hit.tag, hit.addr, hit.size
+}
+runner.removeMemWatch(addr, size, &quot;my-tag&quot;);
+</code></pre>
+<p>Memory watches use binary search for efficient lookup when 8+ watches are active.</p>
+<p>---</p>
+<h2 id="5-stepping">5. Stepping</h2>
+<h3 id="single-step-on-entry">Single-Step on Entry</h3>
+<pre><code data-lang="sh">
+viper -run program.il --step
+</code></pre>
+<p>Executes one instruction at the entry point, then continues to completion. Useful for verifying the program starts correctly.</p>
+<h3 id="step-budget">Step Budget</h3>
+<pre><code data-lang="sh">
+viper -run program.il --max-steps 10000
+</code></pre>
+<p>Limits the total number of IL instructions executed. When exceeded, execution stops with <code>RunStatus::StepBudgetExceeded</code>. Set to 0 (default) for unlimited.</p>
+<h3 id="debug-script-automation">Debug Script Automation</h3>
+<pre><code data-lang="sh">
+viper -run program.il --debug-cmds script.dbg
+</code></pre>
+<p>The debug script file contains one command per line:</p>
+<table><thead><tr>
+<th>Command</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`continue`</td>
+<td>Resume execution until next breakpoint or halt</td>
+</tr>
+<tr>
+<td>`step`</td>
+<td>Execute exactly 1 instruction</td>
+</tr>
+<tr>
+<td>`step N`</td>
+<td>Execute exactly N instructions</td>
+</tr>
+</tbody></table>
+<p>Example <code>script.dbg</code>:</p>
+<pre><code data-lang="text">
+step 5
+continue
+step 10
+continue
+</code></pre>
+<p>Empty lines and unrecognized commands are ignored with a <code>[DEBUG]</code> message to stderr.</p>
+<h3 id="programmatic-stepping-c-api">Programmatic Stepping (C++ API)</h3>
+<pre><code data-lang="cpp">
+Runner runner(module);
+// Execute one instruction
+auto result = runner.step();
+// result.status: Advanced, Halted, BreakpointHit, Trapped, Paused
+
+// Continue until terminal state
+auto status = runner.continueRun();
+// status: Halted, BreakpointHit, Trapped, Paused, StepBudgetExceeded
+</code></pre>
+<h3 id="current-limitations">Current Limitations</h3>
+<ul>
+<li><strong>Step = 1 IL instruction</strong>, not 1 source line. A single source line may compile to many IL instructions.</li>
+<li><strong>No step-over</strong>: stepping into function calls cannot be skipped.</li>
+<li><strong>No step-out</strong>: there is no mechanism to run until the current function returns.</li>
+</ul>
+<p>---</p>
+<h2 id="6-error-reporting">6. Error Reporting</h2>
+<h3 id="diagnostic-format">Diagnostic Format</h3>
+<p>All compiler diagnostics follow this format:</p>
+<pre><code data-lang="text">
+&lt;path&gt;:&lt;line&gt;:&lt;column&gt;: &lt;severity&gt;[&lt;code&gt;]: &lt;message&gt;
+</code></pre>
+<p>For example:</p>
+<pre><code data-lang="text">
+main.zia:42:15: error[V3000]: Type mismatch: expected Integer, got String
+ 42 | var x: Integer = &quot;hello&quot;;
+    |                  ^
+</code></pre>
+<p>Severity levels: <code>note</code>, <code>warning</code>, <code>error</code>.</p>
+<p>Diagnostic codes are prefixed by subsystem:</p>
+<ul>
+<li><code>V3xxx</code> — Zia frontend (semantic analysis)</li>
+<li><code>B1xxx</code> — BASIC frontend</li>
+<li><code>IL0xx</code> — IL verification</li>
+</ul>
+<h3 id="source-snippets">Source Snippets</h3>
+<p>When a source manager is available and the source file can be loaded, diagnostics include the offending source line with a caret (<code>^</code>) pointing to the error column. Tab characters in the source are preserved for correct alignment.</p>
+<h3 id="trap-format">Trap Format</h3>
+<p>Runtime traps (VM errors) use this format:</p>
+<pre><code data-lang="text">
+Trap @function:block#ip line N: Kind (code=C)
+</code></pre>
+<p>For example:</p>
+<pre><code data-lang="text">
+Trap @processRow:L3#2 line 145: Bounds (code=0)
+</code></pre>
+<h3 id="trap-kinds">Trap Kinds</h3>
+<table><thead><tr>
+<th>Kind</th>
+<th>Code</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>DivideByZero</td>
+<td>0</td>
+<td>Integer division or remainder by zero</td>
+</tr>
+<tr>
+<td>Overflow</td>
+<td>1</td>
+<td>Arithmetic or conversion overflow</td>
+</tr>
+<tr>
+<td>InvalidCast</td>
+<td>2</td>
+<td>Invalid cast or type conversion</td>
+</tr>
+<tr>
+<td>DomainError</td>
+<td>3</td>
+<td>Semantic domain violation</td>
+</tr>
+<tr>
+<td>Bounds</td>
+<td>4</td>
+<td>Array index out of bounds</td>
+</tr>
+<tr>
+<td>FileNotFound</td>
+<td>5</td>
+<td>File not found</td>
+</tr>
+<tr>
+<td>EOF</td>
+<td>6</td>
+<td>Unexpected end of file</td>
+</tr>
+<tr>
+<td>IOError</td>
+<td>7</td>
+<td>I/O failure</td>
+</tr>
+<tr>
+<td>InvalidOperation</td>
+<td>8</td>
+<td>Invalid operation for current state</td>
+</tr>
+<tr>
+<td>RuntimeError</td>
+<td>9</td>
+<td>General runtime error</td>
+</tr>
+<tr>
+<td>Interrupt</td>
+<td>10</td>
+<td>External interrupt</td>
+</tr>
+</tbody></table>
+<p>Use <code>--dump-trap</code> to ensure trap messages are printed to stderr even when the program handles them internally.</p>
+<p>---</p>
+<h2 id="7-runtime-logging">7. Runtime Logging</h2>
+<h3 id="viper-log-api-zia-basic">Viper.Log API (Zia / BASIC)</h3>
+<p>The runtime provides a leveled logging system accessible from both Zia and BASIC:</p>
+<pre><code data-lang="rust">
+Viper.Log.Debug(&quot;detailed info&quot;)
+Viper.Log.Info(&quot;normal info&quot;)
+Viper.Log.Warn(&quot;potential issue&quot;)
+Viper.Log.Error(&quot;something failed&quot;)
+</code></pre>
+<p>Output format:</p>
+<pre><code data-lang="text">
+[INFO] 14:30:05 normal info
+</code></pre>
+<p>Log levels (lowest to highest): DEBUG (0), INFO (1), WARN (2), ERROR (3), OFF (4).</p>
+<p>Default level: INFO. Messages below the current level are suppressed.</p>
+<h3 id="viper-core-diagnostics-api">Viper.Core.Diagnostics API</h3>
+<p>The runtime assertion library provides 12 assertion variants for test and debug use:</p>
+<table><thead><tr>
+<th>Function</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Assert(condition)`</td>
+<td>Assert condition is true</td>
+</tr>
+<tr>
+<td>`AssertEq(a, b)`</td>
+<td>Assert values are equal</td>
+</tr>
+<tr>
+<td>`AssertNeq(a, b)`</td>
+<td>Assert values are not equal</td>
+</tr>
+<tr>
+<td>`AssertEqNum(a, b)`</td>
+<td>Assert numeric equality</td>
+</tr>
+<tr>
+<td>`AssertEqStr(a, b)`</td>
+<td>Assert string equality</td>
+</tr>
+<tr>
+<td>`AssertNull(val)`</td>
+<td>Assert value is null</td>
+</tr>
+<tr>
+<td>`AssertNotNull(val)`</td>
+<td>Assert value is non-null</td>
+</tr>
+<tr>
+<td>`AssertFail(msg)`</td>
+<td>Unconditionally fail with message</td>
+</tr>
+<tr>
+<td>`AssertGt(a, b)`</td>
+<td>Assert a &gt; b</td>
+</tr>
+<tr>
+<td>`AssertLt(a, b)`</td>
+<td>Assert a &lt; b</td>
+</tr>
+<tr>
+<td>`AssertGte(a, b)`</td>
+<td>Assert a &gt;= b</td>
+</tr>
+<tr>
+<td>`AssertLte(a, b)`</td>
+<td>Assert a &lt;= b</td>
+</tr>
+<tr>
+<td>`Trap(msg)`</td>
+<td>Raise a runtime trap with message</td>
+</tr>
+</tbody></table>
+<h3 id="debug-print">Debug Print</h3>
+<p>For quick debugging, use:</p>
+<pre><code data-lang="rust">
+Viper.Debug.PrintI32(value)    // Print integer to stderr
+Viper.Debug.PrintStr(text)     // Print string to stderr
+</code></pre>
+<p>These flush immediately for crash safety.</p>
+<p>---</p>
+<h2 id="8-pipeline-dump-flags">8. Pipeline Dump Flags</h2>
+<p>The compiler supports dump flags for inspecting intermediate results at every stage of the pipeline. All dumps go to <strong>stderr</strong> so they don&#x27;t interfere with program output or <code>-emit-il</code>. These work with <code>viper run</code>, <code>viper front zia</code>, and <code>viper front basic</code>.</p>
+<h3 id="token-stream">Token Stream</h3>
+<pre><code data-lang="sh">
+viper run --dump-tokens program.zia
+viper front basic -run program.bas --dump-tokens
+</code></pre>
+<p>Prints every token produced by the lexer with location, kind, text, and literal values:</p>
+<pre><code data-lang="text">
+=== Zia Token Stream ===
+1:1     module  &quot;module&quot;
+1:8     identifier      &quot;Test&quot;
+2:1     func    &quot;func&quot;
+2:6     identifier      &quot;start&quot;
+3:27    integer &quot;42&quot;    value=42
+5:1     eof
+=== End Token Stream ===
+</code></pre>
+<h3 id="ast-dump">AST Dump</h3>
+<pre><code data-lang="sh">
+viper run --dump-ast program.zia
+</code></pre>
+<p>Prints the parsed AST (abstract syntax tree) as an indented tree. For Zia, this includes source locations, node kinds, operators, and literal values:</p>
+<pre><code data-lang="text">
+=== AST after parsing ===
+ModuleDecl &quot;Test&quot; (1:1)
+  FunctionDecl &quot;start&quot; (2:1)
+    Body:
+      BlockStmt (2:14)
+        ExprStmt (3:5)
+          CallExpr (3:26)
+            Callee:
+              FieldExpr &quot;SayInt&quot; (3:19)
+            Args:
+              Arg:
+                IntLiteral 42 (3:27)
+=== End AST ===
+</code></pre>
+<p>For BASIC, the AST uses the existing <code>AstPrinter</code> format.</p>
+<h3 id="ast-dump-after-semantic-analysis-zia-only">AST Dump After Semantic Analysis (Zia Only)</h3>
+<pre><code data-lang="sh">
+viper run --dump-sema-ast program.zia
+</code></pre>
+<p>Prints the AST after semantic analysis has run. This is useful for seeing what sema has annotated or transformed — comparing <code>--dump-ast</code> with <code>--dump-sema-ast</code> shows what the semantic pass changed.</p>
+<h3 id="il-after-lowering">IL After Lowering</h3>
+<pre><code data-lang="sh">
+viper run --dump-il program.zia
+</code></pre>
+<p>Prints the IL module immediately after lowering from the AST, before any optimization:</p>
+<pre><code data-lang="il">
+=== IL after lowering ===
+il 0.2.0
+extern @Viper.Terminal.SayInt(i64) -&gt; void
+func @main() -&gt; void {
+entry_0:
+  .loc 1 3 26
+  call @Viper.Terminal.SayInt(42)
+  .loc 1 2 1
+  ret
+}
+=== End IL ===
+</code></pre>
+<h3 id="il-per-pass-dump">IL Per-Pass Dump</h3>
+<pre><code data-lang="sh">
+viper run -O1 --dump-il-passes program.zia
+</code></pre>
+<p>Prints the full IL module before and after each optimization pass. Requires <code>-O1</code> or <code>-O2</code> (at <code>-O0</code>, the only passes are SimplifyCFG and DCE). Uses the PassManager&#x27;s built-in instrumentation hooks:</p>
+<pre><code data-lang="text">
+*** IR before pass &#x27;simplify-cfg&#x27; ***
+...
+*** IR after pass &#x27;simplify-cfg&#x27; ***
+...
+*** IR before pass &#x27;mem2reg&#x27; ***
+...
+</code></pre>
+<h3 id="il-after-optimization">IL After Optimization</h3>
+<pre><code data-lang="sh">
+viper run -O1 --dump-il-opt program.zia
+</code></pre>
+<p>Prints the IL module after the entire optimization pipeline has completed:</p>
+<pre><code data-lang="text">
+=== IL after optimization (O1) ===
+...
+=== End IL ===
+</code></pre>
+<h3 id="combining-flags">Combining Flags</h3>
+<p>All dump flags can be combined freely. They print in pipeline order:</p>
+<pre><code data-lang="sh">
+viper run --dump-tokens --dump-ast --dump-il --dump-il-opt program.zia
+</code></pre>
+<p>This prints the token stream, then the AST, then the pre-optimization IL, then the post-optimization IL.</p>
+<h3 id="programmatic-api">Programmatic API</h3>
+<p>The same flags are available in <code>CompilerOptions</code> (Zia) and <code>BasicCompilerOptions</code> (BASIC):</p>
+<table><thead><tr>
+<th>Option</th>
+<th>CLI Flag</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`dumpTokens`</td>
+<td>`--dump-tokens`</td>
+<td>Dump lexer token stream</td>
+</tr>
+<tr>
+<td>`dumpAst`</td>
+<td>`--dump-ast`</td>
+<td>Dump AST after parsing</td>
+</tr>
+<tr>
+<td>`dumpSemaAst`</td>
+<td>`--dump-sema-ast`</td>
+<td>Dump AST after sema (Zia only)</td>
+</tr>
+<tr>
+<td>`dumpIL`</td>
+<td>`--dump-il`</td>
+<td>Dump IL after lowering</td>
+</tr>
+<tr>
+<td>`dumpILOpt`</td>
+<td>`--dump-il-opt`</td>
+<td>Dump IL after optimization</td>
+</tr>
+<tr>
+<td>`dumpILPasses`</td>
+<td>`--dump-il-passes`</td>
+<td>Dump IL before/after each pass</td>
+</tr>
+</tbody></table>
+<h3 id="safety-checks">Safety Checks</h3>
+<p>All enabled by default. Can be toggled via <code>CompilerOptions</code>:</p>
+<table><thead><tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`boundsChecks`</td>
+<td>true</td>
+<td>Emit array bounds checking code</td>
+</tr>
+<tr>
+<td>`overflowChecks`</td>
+<td>true</td>
+<td>Emit arithmetic overflow checks</td>
+</tr>
+<tr>
+<td>`nullChecks`</td>
+<td>true</td>
+<td>Emit null pointer checks</td>
+</tr>
+</tbody></table>
+<p>When enabled, these generate IL instructions (<code>IdxChk</code>, <code>SDivChk0</code>, etc.) that trap on violations rather than producing undefined behavior.</p>
+<h3 id="optimization-levels">Optimization Levels</h3>
+<table><thead><tr>
+<th>Level</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>O0</td>
+<td>Minimal optimization (SimplifyCFG + DCE only)</td>
+</tr>
+<tr>
+<td>O1</td>
+<td>Standard optimizations</td>
+</tr>
+<tr>
+<td>O2</td>
+<td>Aggressive optimizations</td>
+</tr>
+</tbody></table>
+<p>Debug and trace modes automatically disable optimization to preserve the instruction-to-source mapping.</p>
+<h3 id="compiler-phase-timing">Compiler Phase Timing</h3>
+<p>The <code>debugTime()</code> helper in the Zia compiler prints elapsed time for each compilation phase:</p>
+<ul>
+<li>Lexing</li>
+<li>Parsing</li>
+<li>Import resolution</li>
+<li>Semantic analysis</li>
+<li>IL lowering</li>
+</ul>
+<p>---</p>
+<h2 id="9-il-inspection">9. IL Inspection</h2>
+<h3 id="serialization">Serialization</h3>
+<p>IL modules can be serialized in two modes:</p>
+<ul>
+<li><strong>Pretty mode</strong> — Human-readable with indentation and comments</li>
+<li><strong>Canonical mode</strong> — Deterministic output suitable for golden tests</li>
+</ul>
+<p>Use <code>-emit-il</code> to output the final IL module to stdout, or <code>--dump-il</code> / <code>--dump-il-opt</code> to print to stderr at specific pipeline stages:</p>
+<pre><code data-lang="sh">
+viper front zia -emit-il program.zia          # Final IL to stdout
+viper front zia -run program.zia --dump-il    # IL after lowering to stderr
+</code></pre>
+<h3 id="verification">Verification</h3>
+<p>The IL verifier (<code>Verifier::verify()</code>) checks:</p>
+<ul>
+<li>Type consistency across instructions</li>
+<li>Control flow graph validity (block connectivity, terminator presence)</li>
+<li>Exception handling structure (EhEntry/EhExit pairing)</li>
+<li>External function declaration correctness</li>
+<li>Global variable definitions</li>
+</ul>
+<p>Verification runs automatically during compilation. Invalid IL is reported as diagnostics.</p>
+<p>---</p>
+<h2 id="10-vm-debug-hooks">10. VM Debug Hooks</h2>
+<h3 id="debugctrl">DebugCtrl</h3>
+<p>Every VM instance has a <code>DebugCtrl</code> member that provides:</p>
+<ul>
+<li>Breakpoint management (block-label and source-line)</li>
+<li>Variable watch tracking</li>
+<li>Memory watch monitoring</li>
+</ul>
+<p>Fast-path flags (<code>fastDebugBreak_</code>, <code>fastDebugMemWatch_</code>) ensure <strong>zero overhead</strong> when no debug features are active.</p>
+<h3 id="tracesink-callbacks">TraceSink Callbacks</h3>
+<p>The trace system fires callbacks during execution:</p>
+<ul>
+<li><code>onFramePrepared()</code> — New function frame created</li>
+<li><code>onStep()</code> — Instruction about to execute</li>
+<li><code>onTailCall()</code> — Tail call optimization activated</li>
+</ul>
+<h3 id="host-polling">Host Polling</h3>
+<p>For interactive applications, configure periodic callbacks:</p>
+<pre><code data-lang="cpp">
+RunConfig config;
+config.interruptEveryN = 1000;  // Check every 1000 instructions
+config.pollCallback = [&amp;]() -&gt; bool {
+    return shouldContinue;  // Return false to pause
+};
+</code></pre>
+<p>---</p>
+<h2 id="11-exception-handling">11. Exception Handling</h2>
+<h3 id="il-exception-model">IL Exception Model</h3>
+<p>Viper IL uses structured exception handling with <code>EhEntry</code>/<code>EhExit</code> opcodes:</p>
+<pre><code data-lang="il">
+EhEntry handler_block
+  ; protected code
+EhExit
+</code></pre>
+<p>Handler blocks receive <code>(%err: Error, %tok: ResumeTok)</code> parameters.</p>
+<h3 id="resume-variants">Resume Variants</h3>
+<ul>
+<li><code>ResumeSame</code> — Re-raise the same exception</li>
+<li><code>ResumeNext</code> — Continue after the protected region</li>
+<li><code>ResumeLabel</code> — Jump to a specific block</li>
+</ul>
+<h3 id="vm-exception-handling">VM Exception Handling</h3>
+<p>When a trap occurs:</p>
+<ol>
+<li>The VM searches the current frame&#x27;s exception handler stack</li>
+<li>If a handler is found, control transfers to it</li>
+<li>If no handler exists, the trap propagates up the call stack</li>
+<li>Unhandled traps call <code>rt_abort()</code> with diagnostic output</li>
+</ul>
+<p>---</p>
+<h2 id="12-benchmarking">12. Benchmarking</h2>
+<h3 id="viper-bench-command">`viper bench` Command</h3>
+<pre><code data-lang="sh">
+viper bench program.il -n 5 --all
+</code></pre>
+<p>Runs the program multiple times across different VM dispatch strategies and reports timing:</p>
+<pre><code data-lang="text">
+BENCH program.il table instr=50000 time_ms=12 insns_per_sec=4166666
+</code></pre>
+<h3 id="dispatch-strategies">Dispatch Strategies</h3>
+<table><thead><tr>
+<th>Flag</th>
+<th>Strategy</th>
+</tr></thead><tbody>
+<tr>
+<td>`--table`</td>
+<td>Function table dispatch (standard VM)</td>
+</tr>
+<tr>
+<td>`--switch`</td>
+<td>Switch dispatch (standard VM)</td>
+</tr>
+<tr>
+<td>`--threaded`</td>
+<td>Threaded dispatch (standard VM)</td>
+</tr>
+<tr>
+<td>`--bc-switch`</td>
+<td>Bytecode VM, switch dispatch</td>
+</tr>
+<tr>
+<td>`--bc-threaded`</td>
+<td>Bytecode VM, threaded dispatch</td>
+</tr>
+<tr>
+<td>`--all`</td>
+<td>All strategies (default)</td>
+</tr>
+</tbody></table>
+<h3 id="json-output">JSON Output</h3>
+<pre><code data-lang="sh">
+viper bench program.il --json
+</code></pre>
+<h3 id="opcode-counting">Opcode Counting</h3>
+<p>When compiled with <code>VIPER_VM_OPCOUNTS=1</code> (default in Debug builds):</p>
+<pre><code data-lang="cpp">
+Runner runner(module);
+runner.run();
+auto counts = runner.opcodeCounts();      // Per-opcode array
+auto top = runner.topOpcodes(10);         // Top 10 by frequency
+runner.resetOpcodeCounts();               // Reset counters
+</code></pre>
+<p>---</p>
+<h2 id="13-execution-statistics">13. Execution Statistics</h2>
+<h3 id="instruction-count">Instruction Count</h3>
+<pre><code data-lang="sh">
+viper -run program.il --count
+</code></pre>
+<p>Output:</p>
+<pre><code data-lang="text">
+[SUMMARY] instr=142857
+</code></pre>
+<h3 id="execution-time">Execution Time</h3>
+<pre><code data-lang="sh">
+viper -run program.il --time
+</code></pre>
+<p>Output:</p>
+<pre><code data-lang="text">
+[SUMMARY] time_ms=42
+</code></pre>
+<p>Both flags can be combined:</p>
+<pre><code data-lang="sh">
+viper -run program.il --count --time
+</code></pre>
+<p>---</p>
+<h2 id="14-programmatic-debugging-api">14. Programmatic Debugging API</h2>
+<h3 id="complete-example">Complete Example</h3>
+<pre><code data-lang="cpp">
+#include &quot;viper/vm/VM.hpp&quot;
+
+// Load module
+auto module = loadModule(&quot;program.il&quot;);
+
+// Configure runner
+Runner runner(module);
+
+// Set breakpoint
+runner.setBreakpoint({file_id, 42, 0});
+
+// Run to breakpoint
+auto status = runner.continueRun();
+if (status == RunStatus::BreakpointHit) {
+    // Inspect state
+    auto trap = runner.lastTrap();
+
+    // Single-step
+    auto step = runner.step();
+
+    // Continue
+    status = runner.continueRun();
+}
+
+// Check for errors
+if (auto msg = runner.lastTrapMessage()) {
+    std::cerr &lt;&lt; *msg &lt;&lt; &quot;\n&quot;;
+}
+
+// Statistics
+std::cout &lt;&lt; &quot;Instructions: &quot; &lt;&lt; runner.instructionCount() &lt;&lt; &quot;\n&quot;;
+</code></pre>
+<h3 id="key-types">Key Types</h3>
+<table><thead><tr>
+<th>Type</th>
+<th>Description</th>
+</tr></thead><tbody>
+<tr>
+<td>`Runner`</td>
+<td>Main VM execution controller</td>
+</tr>
+<tr>
+<td>`Runner::StepResult`</td>
+<td>Result of `step()` — status enum</td>
+</tr>
+<tr>
+<td>`Runner::RunStatus`</td>
+<td>Result of `continueRun()` — terminal state</td>
+</tr>
+<tr>
+<td>`Runner::TrapInfo`</td>
+<td>Trap details: kind, code, ip, line, function, block, message</td>
+</tr>
+<tr>
+<td>`DebugCtrl`</td>
+<td>Low-level breakpoint/watch controller</td>
+</tr>
+<tr>
+<td>`TraceSink`</td>
+<td>Trace output handler with file caching</td>
+</tr>
+<tr>
+<td>`TraceConfig`</td>
+<td>Trace mode and source manager configuration</td>
+</tr>
+<tr>
+<td>`DebugScript`</td>
+<td>File-based debug automation</td>
+</tr>
+</tbody></table>
+<p>---</p>
+<h2 id="15-known-limitations">15. Known Limitations</h2>
+<table><thead><tr>
+<th>Area</th>
+<th>Status</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>Source-line stepping</td>
+<td>Not implemented</td>
+<td>`step()` advances 1 IL instruction, not 1 source line</td>
+</tr>
+<tr>
+<td>Step-over / step-out</td>
+<td>Not implemented</td>
+<td>No frame-depth-aware stepping</td>
+</tr>
+<tr>
+<td>Full backtrace API</td>
+<td>Not implemented</td>
+<td>`execStack` is private; only single-frame `TrapInfo` exposed</td>
+</tr>
+<tr>
+<td>Conditional breakpoints</td>
+<td>Not implemented</td>
+<td>No expression evaluation on break condition</td>
+</tr>
+<tr>
+<td>Source-to-IL name mapping</td>
+<td>Not implemented</td>
+<td>Watches require IL register names</td>
+</tr>
+<tr>
+<td>DWARF debug info</td>
+<td>Not implemented</td>
+<td>Native codegen has no debug info for GDB/LLDB</td>
+</tr>
+<tr>
+<td>Debug Adapter Protocol</td>
+<td>Not implemented</td>
+<td>No IDE integration (VS Code, etc.)</td>
+</tr>
+<tr>
+<td>Signal/crash handler</td>
+<td>Not implemented</td>
+<td>Native crashes produce no diagnostic output</td>
+</tr>
+<tr>
+<td>In-VM profiling</td>
+<td>Not implemented</td>
+<td>No function-level timing or allocation tracking</td>
+</tr>
+<tr>
+<td>Subsystem log filtering</td>
+<td>Not implemented</td>
+<td>VM trace and Viper.Log are all-or-nothing</td>
+</tr>
+</tbody></table>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../features/native-targets.html">Native Targets</a>
+      <a href="../features/two-languages.html">Languages</a>
+      <a href="../features/runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

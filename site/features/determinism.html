@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VM/Native Determinism — Viper</title>
+  <meta name="description" content="Every Viper program produces identical output whether run on the VM or compiled to native code. Enforced by differential testing and deterministic IL semantics.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="../showcase/">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <a href="../">Features</a> / <span>VM/Native Determinism</span>
+</div>
+
+<div class="section">
+  <div class="prose" style="max-width: 800px; margin: 0 auto;">
+    <h1>VM/Native Determinism</h1>
+
+    <p>Every Viper program produces <strong>identical output</strong> whether run on the IL interpreter or compiled to a native ARM64/x86-64 binary. This is a core design invariant, not an aspiration.</p>
+
+    <h2>Why It Matters</h2>
+
+    <ul>
+      <li><strong>Fast iteration</strong> &mdash; Develop and test on the VM (instant startup, no compilation wait), then compile to native for production</li>
+      <li><strong>Confidence</strong> &mdash; If it works on the VM, it works as a native binary. No "it only breaks when compiled" surprises</li>
+      <li><strong>Debugging</strong> &mdash; Reproduce any native bug on the VM with full tracing (<code>--trace</code>, <code>--trace-calls</code>)</li>
+    </ul>
+
+    <h2>How It's Enforced</h2>
+
+    <h3>Deterministic IL Semantics</h3>
+    <p>The Viper IL specification (v0.2.0) defines precise semantics for every opcode. Both the VM and native backends implement the same specification:</p>
+    <ul>
+      <li>Signed/unsigned integer operations with defined overflow behavior</li>
+      <li>IEEE 754 double-precision floating-point</li>
+      <li>Deterministic symbol interning and label assignment</li>
+      <li>Identical runtime function ABI for both execution modes</li>
+    </ul>
+
+    <h3>Differential Testing</h3>
+    <p>The test suite includes <strong>property-based differential tests</strong> that generate random-but-valid IL programs and verify that the VM and native backend produce identical output:</p>
+    <ul>
+      <li>Random IL program generation with configurable parameters</li>
+      <li>Seeded RNG for reproducibility (configurable via <code>VIPER_DIFF_ITERATIONS</code>)</li>
+      <li>Checked arithmetic operations (<code>iadd.ovf</code>, <code>isub.ovf</code>, <code>imul.ovf</code>, <code>sdiv.chk0</code>)</li>
+      <li>Automatic comparison of VM output vs. native output</li>
+    </ul>
+
+    <h3>Dispatch Strategy Equivalence</h3>
+    <p>The VM itself supports three dispatch strategies, and all three are verified to produce identical results:</p>
+    <ul>
+      <li><strong>Function table dispatch</strong> &mdash; Portable, default on all compilers</li>
+      <li><strong>Switch dispatch</strong> &mdash; Inline switch statement</li>
+      <li><strong>Threaded dispatch</strong> &mdash; Computed goto (GCC/Clang, fastest)</li>
+    </ul>
+
+    <h3>E2E Pipeline Tests</h3>
+    <p>End-to-end tests verify the complete pipeline from source through IL through execution:</p>
+    <ul>
+      <li>Frontend compilation equivalence (same source &rarr; same IL)</li>
+      <li>Optimizer transformation stability (optimized IL &rarr; same output)</li>
+      <li>Code generation correctness (native binary &rarr; same output as VM)</li>
+      <li>Demo execution verification (real programs produce expected output)</li>
+    </ul>
+
+    <h2>VM Architecture</h2>
+
+    <p>The VM is a register-file interpreter with SSA value tracking:</p>
+
+    <ul>
+      <li><strong>86 IL opcodes</strong> covering arithmetic, memory, control flow, type conversion, and traps</li>
+      <li><strong>Frame management</strong> with locals, evaluation stack, and block state</li>
+      <li><strong>Value representation</strong> via tagged <code>Slot</code> (int64, f64, ptr, str)</li>
+      <li><strong>Call stack</strong> with frame buffer pooling (8 register files, 16 stack buffers)</li>
+      <li><strong>Structured exception handling</strong> with error types and recovery points</li>
+      <li><strong>Tail-call optimization</strong> (gated by <code>VIPER_VM_TAILCALL</code>)</li>
+      <li><strong>Execution tracing</strong> for debugging (<code>--trace</code>, <code>--trace-calls</code>)</li>
+    </ul>
+
+    <h2>The Workflow</h2>
+
+    <ol>
+      <li><strong>Develop</strong> &mdash; Write code in Zia or BASIC, run instantly on the VM</li>
+      <li><strong>Test</strong> &mdash; Full debugging with tracing, breakpoints, and immediate feedback</li>
+      <li><strong>Ship</strong> &mdash; Compile to native for production deployment, same behavior guaranteed</li>
+    </ol>
+
+  </div>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="zero-deps.html">Zero Dependencies</a>
+      <a href="native-targets.html">Native Targets</a>
+      <a href="two-languages.html">Languages</a>
+      <a href="runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

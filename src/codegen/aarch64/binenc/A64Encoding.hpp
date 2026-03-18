@@ -248,6 +248,12 @@ inline constexpr uint32_t kCbnz = 0xB5000000;  // cbnz Xt, label
 inline constexpr uint32_t kBlr = 0xD63F0000;   // blr Xn
 inline constexpr uint32_t kRet = 0xD65F03C0;   // ret x30
 
+// --- Pointer Authentication & Branch Target Identification ---
+// These are HINT instructions that execute as NOPs on hardware without PAC/BTI.
+inline constexpr uint32_t kPaciasp = 0xD503233F; // HINT #25 — sign LR with SP
+inline constexpr uint32_t kAutiasp = 0xD50323BF; // HINT #29 — verify LR with SP
+inline constexpr uint32_t kBtiC = 0xD503245F;    // HINT #34 — valid indirect call target
+
 // =============================================================================
 // Instruction Templates — Address Materialization
 // =============================================================================

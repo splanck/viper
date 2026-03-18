@@ -34,6 +34,17 @@
 namespace viper::codegen::objfile
 {
 
+/// Per-function compact unwind entry for Mach-O __compact_unwind section.
+///
+/// Collected during binary encoding and serialized into the object file by
+/// the Mach-O writer. Each entry is 32 bytes in the output file.
+struct CompactUnwindEntry
+{
+    uint32_t symbolIndex{0};     ///< Symbol index of the function start.
+    uint32_t functionLength{0};  ///< Length of the function in bytes.
+    uint32_t encoding{0};        ///< ARM64/x86_64 compact unwind encoding.
+};
+
 /// A growable byte buffer with relocation and symbol tracking.
 ///
 /// Used by binary encoders to accumulate machine code (.text) or read-only
@@ -197,10 +208,25 @@ class CodeSection
         return bytes_.empty();
     }
 
+    // === Compact unwind tracking ===
+
+    /// Record a compact unwind entry for a function.
+    void addUnwindEntry(const CompactUnwindEntry &entry)
+    {
+        unwindEntries_.push_back(entry);
+    }
+
+    /// All recorded compact unwind entries.
+    const std::vector<CompactUnwindEntry> &unwindEntries() const
+    {
+        return unwindEntries_;
+    }
+
   private:
     std::vector<uint8_t> bytes_;
     std::vector<Relocation> relocations_;
     SymbolTable symbols_;
+    std::vector<CompactUnwindEntry> unwindEntries_;
 };
 
 } // namespace viper::codegen::objfile

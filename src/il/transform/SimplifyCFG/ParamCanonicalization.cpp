@@ -29,6 +29,7 @@
 #include <cassert>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace il::transform::simplify_cfg
@@ -262,50 +263,16 @@ bool shrinkParamsEqualAcrossPreds(SimplifyCFG::SimplifyCFGPassContext &ctx,
 /// @param ctx   SimplifyCFG context with access to the function being mutated.
 /// @param block Block whose parameters are assessed.
 /// @returns True if any parameters were eliminated.
-bool dropUnusedParams(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBlock &block)
+bool dropUnusedParams(SimplifyCFG::SimplifyCFGPassContext &ctx,
+                      il::core::BasicBlock &block,
+                      const std::unordered_set<unsigned> &allUsedIds)
 {
     bool removedAny = false;
 
     for (size_t paramIdx = 0; paramIdx < block.params.size();)
     {
         const unsigned paramId = block.params[paramIdx].id;
-        bool used = false;
-
-        for (const auto &instr : block.instructions)
-        {
-            auto checkValue = [&](const il::core::Value &value)
-            { return value.kind == il::core::Value::Kind::Temp && value.id == paramId; };
-
-            for (const auto &operand : instr.operands)
-            {
-                if (checkValue(operand))
-                {
-                    used = true;
-                    break;
-                }
-            }
-
-            if (used)
-                break;
-
-            for (const auto &argList : instr.brArgs)
-            {
-                for (const auto &value : argList)
-                {
-                    if (checkValue(value))
-                    {
-                        used = true;
-                        break;
-                    }
-                }
-
-                if (used)
-                    break;
-            }
-
-            if (used)
-                break;
-        }
+        bool used = allUsedIds.count(paramId) > 0;
 
         if (used)
         {
@@ -363,6 +330,31 @@ bool canonicalizeParamsAndArgs(SimplifyCFG::SimplifyCFGPassContext &ctx)
 
     bool changed = false;
 
+    // Pre-compute the set of all temp IDs used across the entire function ONCE.
+    // dropUnusedParams checks this set to determine if a block param is referenced
+    // anywhere (not just in the defining block — cross-block domination uses exist
+    // after mem2reg). Building the set here avoids O(blocks²) per-block scanning.
+    std::unordered_set<unsigned> allUsedIds;
+    for (const auto &scanBlock : F.blocks)
+    {
+        for (const auto &instr : scanBlock.instructions)
+        {
+            for (const auto &operand : instr.operands)
+            {
+                if (operand.kind == il::core::Value::Kind::Temp)
+                    allUsedIds.insert(operand.id);
+            }
+            for (const auto &argList : instr.brArgs)
+            {
+                for (const auto &value : argList)
+                {
+                    if (value.kind == il::core::Value::Kind::Temp)
+                        allUsedIds.insert(value.id);
+                }
+            }
+        }
+    }
+
     for (auto &block : F.blocks)
     {
         if (ctx.isEHSensitive(block))
@@ -392,7 +384,7 @@ bool canonicalizeParamsAndArgs(SimplifyCFG::SimplifyCFGPassContext &ctx)
             continue;
 
         const size_t beforeDrop = block.params.size();
-        if (dropUnusedParams(ctx, block))
+        if (dropUnusedParams(ctx, block, allUsedIds))
         {
             const size_t removed = beforeDrop - block.params.size();
             if (removed > 0)

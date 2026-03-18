@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Optimizer Passes — Viper</title>
+  <meta name="description" content="Viper documentation: Optimizer Passes">
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="icon" href="../../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../../docs/" class="active">Docs</a>
+    <a href="../../learn/">Learn</a>
+    <a href="../../showcase/">Showcase</a>
+    <a href="../../performance/">Performance</a>
+    <a href="../../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../../">Home</a> / <a href="../../docs">Docs</a> / <span>Optimizer Passes</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#analysis-caching-instrumentation">Analysis Caching &amp; Instrumentation</a></li>
+        <li><a href="#post-dominator-tree-analysis-post-dominators">Post-Dominator Tree Analysis (`&quot;post-dominators&quot;`)</a></li>
+        <li><a href="#basicaa-alias-modref">BasicAA (Alias/ModRef)</a></li>
+        <li><a href="#simplifycfg">SimplifyCFG</a></li>
+        <li><a href="#mem2reg">Mem2Reg</a></li>
+        <li><a href="#inline">Inline</a></li>
+        <li><a href="#latecleanup">LateCleanup</a></li>
+        <li><a href="#parallel-function-passes-experimental">Parallel Function Passes (Experimental)</a></li>
+        <li><a href="#differential-testing">Differential Testing</a></li>
+        <li><a href="#peephole">Peephole</a></li>
+        <li><a href="#constfold">ConstFold</a></li>
+        <li><a href="#sccp-sparse-conditional-constant-propagation">SCCP (Sparse Conditional Constant Propagation)</a></li>
+        <li><a href="#dse-dead-store-elimination">DSE (Dead Store Elimination)</a></li>
+        <li><a href="#loopunroll">LoopUnroll</a></li>
+        <li><a href="#jumpthreading-in-simplifycfg">JumpThreading (in SimplifyCFG)</a></li>
+        <li><a href="#checkopt">CheckOpt</a></li>
+        <li><a href="#earlycse">EarlyCSE</a></li>
+        <li><a href="#valuekey-cse-gvn-support">ValueKey (CSE/GVN Support)</a></li>
+        <li><a href="#calleffects">CallEffects</a></li>
+        <li><a href="#indvarsimplify">IndVarSimplify</a></li>
+        <li><a href="#loopinfo">LoopInfo</a></li>
+        <li><a href="#callgraph-scc">CallGraph / SCC</a></li>
+        <li><a href="#canonical-optimization-pipelines-zia-and-basic-frontends">Canonical Optimization Pipelines (Zia and BASIC frontends)</a></li>
+        <li><a href="#optimization-review-test-coverage">Optimization Review Test Coverage</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>Optimizer Passes</h1>
+<h1 id="il-optimization-passes">IL Optimization Passes</h1>
+<h2 id="analysis-caching-instrumentation">Analysis Caching &amp; Instrumentation</h2>
+<ul>
+<li><code>AnalysisManager</code> caches module/function analyses and drops entries after each pass based on <code>PreservedAnalyses</code>.</li>
+</ul>
+<p>Module passes must mark any preserved function analyses; otherwise function caches are cleared alongside module</p>
+<p>caches.</p>
+<ul>
+<li>Convenience helpers exist for common function analyses: <code>preserveBasicAA()</code>, <code>preserveCFG()</code>, <code>preserveDominators()</code>,</li>
+</ul>
+<p><code>preserveLiveness()</code>, and <code>preserveLoopInfo()</code>.</p>
+<ul>
+<li>Enable per-pass statistics with <code>PassManager::setReportPassStatistics(true)</code> plus <code>setInstrumentationStream(...)</code> to</li>
+</ul>
+<p>receive lines like <code>[pass licm] bb 6 -&gt; 6, inst 42 -&gt; 40, analyses M:0 F:2, time 1500us</code>.</p>
+<ul>
+<li>Statistics track IR size (basic blocks and instructions), analysis recomputations, and wall-clock duration per pass to</li>
+</ul>
+<p>highlight redundant work.</p>
+<h2 id="post-dominator-tree-analysis-post-dominators">Post-Dominator Tree Analysis (`&quot;post-dominators&quot;`)</h2>
+<ul>
+<li>Computes the <strong>post-dominator tree</strong> for each function: block X post-dominates block Y iff every path from Y to</li>
+</ul>
+<p>any function exit passes through X.</p>
+<ul>
+<li><strong>Algorithm</strong>: Cooper–Harvey–Kennedy iterative dataflow on the reversed CFG. Exit blocks (those with no CFG</li>
+</ul>
+<p>successors) are the roots; a virtual exit node represented by <code>nullptr</code> connects them all.</p>
+<ul>
+<li><strong>Registration</strong>: Available as analysis <code>&quot;post-dominators&quot;</code> in <code>PassManager</code> — query via</li>
+</ul>
+<p><code>analysis.getFunctionResult&lt;PostDomTree&gt;(&quot;post-dominators&quot;, fn)</code>.</p>
+<ul>
+<li><strong>API</strong>: <code>postDominates(A, B)</code> — true iff A is an ancestor of B in the post-dominator tree; <code>immediatePostDominator(B)</code> —</li>
+</ul>
+<p>immediate parent in the tree (<code>nullptr</code> for exit blocks, indicating the virtual exit).</p>
+<ul>
+<li><strong>Multiple exits</strong>: When a function has two paths to separate exit blocks with no common block, the entry&#x27;s</li>
+</ul>
+<p>immediate post-dominator is <code>nullptr</code> (virtual exit) — no concrete block post-dominates the entry.</p>
+<ul>
+<li><strong>Implementation</strong>: <code>src/il/analysis/Dominators.hpp/.cpp</code></li>
+<li><strong>Tests</strong>: <code>src/tests/analysis/PostDominatorsTests.cpp</code> — linear chain, diamond (if/else join), and</li>
+</ul>
+<p>multiple-exit cases.</p>
+<h2 id="basicaa-alias-modref">BasicAA (Alias/ModRef)</h2>
+<ul>
+<li>Classifies pointers by base object: allocas vs parameters (including <code>noalias</code>), globals (via <code>AddrOf</code>/<code>GAddr</code></li>
+</ul>
+<p>opcodes), const strings, and null.</p>
+<ul>
+<li>Follows constant-offset <code>gep</code> chains to build base+offset summaries; compares offsets with access sizes to prove</li>
+</ul>
+<p>disjoint struct/array fields when both sides have known widths.</p>
+<ul>
+<li>Distinguishes address spaces: stack vs global vs noalias param are <code>NoAlias</code>; different globals are <code>NoAlias</code>; null</li>
+</ul>
+<p>aliases only null.</p>
+<ul>
+<li><code>typeSizeBytes</code> exposes conservative byte widths (i1/i16/i32/i64/f64/ptr/str) for passes to thread sizes into</li>
+</ul>
+<p><code>alias(...)</code>.</p>
+<ul>
+<li>ModRef uses a priority cascade for call effect classification:</li>
+<li>Instruction-level <code>CallAttr</code> flags (pure, readonly) are checked first</li>
+<li>Module-level function attributes are authoritative when the callee is defined locally</li>
+<li>Runtime signature table is consulted only for external (non-module) functions</li>
+</ul>
+<p><code>pure</code> -&gt; <code>NoModRef</code>, <code>readonly</code> -&gt; <code>Ref</code>, everything else -&gt; <code>ModRef</code>.</p>
+<ul>
+<li>Runtime signature lookup uses a cached hash map for O(1) amortized lookups, rebuilt automatically when new signatures</li>
+</ul>
+<p>are registered.</p>
+<h2 id="simplifycfg">SimplifyCFG</h2>
+<p>The <strong>SimplifyCFG</strong> pass tidies the control-flow graph before and after SSA promotion:</p>
+<ul>
+<li>Canonicalizes block parameters and the arguments supplied by branches.</li>
+<li>Eliminates empty forwarding blocks that merely branch to their successor.</li>
+<li>Folds trivial <code>cbr</code> instructions when their condition is constant or both edges converge.</li>
+<li>Merges blocks that have a single predecessor with their unique successor when it preserves semantics.</li>
+<li>Prunes blocks that have become unreachable.</li>
+</ul>
+<h3 id="safety-notes">Safety Notes</h3>
+<p>SimplifyCFG deliberately skips exception-handling sensitive blocks so that landing pads and dispatch regions keep their</p>
+<p>required structure.</p>
+<h3 id="execution-order">Execution Order</h3>
+<p>This pass runs once during the early pipeline, just before <strong>Mem2Reg</strong>, and again immediately after <strong>Mem2Reg</strong> to clean</p>
+<p>up any new opportunities introduced by SSA promotion.</p>
+<h2 id="mem2reg">Mem2Reg</h2>
+<p>Promotes alloca/store/load patterns to pure SSA values:</p>
+<ul>
+<li><strong>Non-entry alloca promotion</strong> (since 2026-02-17): No longer restricted to entry-block allocas. Any alloca whose</li>
+</ul>
+<p>defining block dominates all of its load/store uses is eligible for promotion. This eliminates the common pattern</p>
+<p>of loop variables allocated in non-entry blocks staying as load/store overhead.</p>
+<ul>
+<li><strong>SROA (Scalar Replacement of Aggregates)</strong>: Splits struct/record allocas into per-field allocas before promotion,</li>
+</ul>
+<p>allowing fields accessed independently to be promoted individually.</p>
+<ul>
+<li><strong>Sealed SSA construction</strong>: Builds complete SSA form in a single pass via iterated dominance frontier computation.</li>
+<li><strong>Lazy dominator tree</strong>: The dominator tree is computed only when non-entry allocas with cross-block uses are</li>
+</ul>
+<p>encountered, keeping the common (entry-block-only) case fast.</p>
+<ul>
+<li><strong>Tests</strong>: <code>test_il_mem2reg_nonentry</code> — single-block alloca in non-entry block, dominating non-entry alloca with</li>
+</ul>
+<p>conditional CFG.</p>
+<h2 id="inline">Inline</h2>
+<ul>
+<li>Enhanced cost model considers multiple factors beyond raw instruction count:</li>
+<li>Base instruction/block budgets (configurable thresholds, default ≤80 instructions, ≤8 blocks)</li>
+<li>Constant argument bonus: each constant arg reduces effective cost, enabling more inlining when optimization</li>
+</ul>
+<p>opportunities exist</p>
+<ul>
+<li>Nested call penalty: functions with many internal calls incur code growth penalty</li>
+<li>Single-use function bonus: functions called only once get priority (can be DCE&#x27;d after)</li>
+<li>Tiny function bonus: very small functions (≤8 instructions) inline more aggressively</li>
+<li>Total code growth tracking: limits module-wide instruction expansion</li>
+<li>Inline depth capped at 3 to allow multi-level utility-function chains to collapse; skips EH-sensitive opcodes and</li>
+</ul>
+<p>recursive calls.</p>
+<ul>
+<li>Rewrites calls by cloning the callee CFG, threading branch arguments for block parameters, and branching returns to a</li>
+</ul>
+<p>continuation block at the call site.</p>
+<h3 id="threshold-changes-2026-02-17">Threshold Changes (2026-02-17)</h3>
+<table><thead><tr>
+<th>Parameter</th>
+<th>Old Value</th>
+<th>New Value</th>
+<th>Rationale</th>
+</tr></thead><tbody>
+<tr>
+<td>`instrThreshold`</td>
+<td>32</td>
+<td>80</td>
+<td>Captures medium-sized helpers that previously stayed as call overhead</td>
+</tr>
+<tr>
+<td>`blockBudget`</td>
+<td>4</td>
+<td>8</td>
+<td>Allows inlining functions with conditional branches</td>
+</tr>
+<tr>
+<td>`maxInlineDepth`</td>
+<td>2</td>
+<td>3</td>
+<td>Enables deeper utility-function chains to collapse</td>
+</tr>
+</tbody></table>
+<h2 id="latecleanup">LateCleanup</h2>
+<ul>
+<li>End-of-pipeline polish pass: runs up to 4 iterations of <code>SimplifyCFG</code> (aggressive) followed by DCE, stopping early</li>
+</ul>
+<p>once no CFG or size changes are observed.</p>
+<ul>
+<li>Tracks IL size (blocks/instructions) before/after each iteration via an optional <code>LateCleanupStats</code> sink so pipelines</li>
+</ul>
+<p>can see how much cleanup occurred.</p>
+<ul>
+<li>Keeps work bounded; if nothing changes on an iteration, the pass exits without further scans.</li>
+</ul>
+<h2 id="parallel-function-passes-experimental">Parallel Function Passes (Experimental)</h2>
+<ul>
+<li><code>PassManager::enableParallelFunctionPasses(true)</code> allows function-local passes to run across multiple functions</li>
+</ul>
+<p>concurrently; module passes remain sequential.</p>
+<ul>
+<li>Analysis caching uses coarse locking inside <code>AnalysisManager</code> to keep computations and invalidations thread-safe;</li>
+</ul>
+<p>default remains single-threaded for determinism.</p>
+<ul>
+<li>Expect identical IR with the flag on; instrumentation order may differ slightly in parallel mode.</li>
+</ul>
+<h2 id="differential-testing">Differential Testing</h2>
+<ul>
+<li><code>src/tests/unit/test_il_opt_equivalence.cpp</code> randomly builds small IL modules (ints/floats with <code>br</code>, <code>cbr</code>, <code>switch.i32</code>)</li>
+</ul>
+<p>using <code>IRBuilder</code>. The generator constrains constants to avoid UB (no unchecked divides; <code>idx.chk</code> uses in-range</p>
+<p>operands).</p>
+<ul>
+<li>Each generated module is verified, cloned, and executed on the VM before and after <code>O0</code>, <code>O1</code>, and <code>O2</code> pipelines via</li>
+</ul>
+<p><code>il::transform::PassManager</code>. Return values and trap outcomes must match.</p>
+<ul>
+<li>Execution runs in a forked child so unexpected traps or aborts do not bring down the test harness; discrepancies print</li>
+</ul>
+<p>the seed plus the IL text for repro.</p>
+<ul>
+<li>Seeds default to a fixed constant for stability; override with <code>VIPER_OPT_EQ_SEED=&lt;u64&gt;</code> to fuzz locally.</li>
+</ul>
+<h2 id="peephole">Peephole</h2>
+<p>The peephole pass applies 57 pattern-based algebraic simplifications:</p>
+<ul>
+<li><strong>Bitwise identities</strong>: <code>x &amp; -1 = x</code>, <code>x | 0 = x</code>, <code>x ^ 0 = x</code>, <code>x &amp; 0 = 0</code>, <code>x ^ x = 0</code>, <code>x | x = x</code></li>
+<li><strong>Division identities</strong> (on div-by-zero–checked variants <code>SDivChk0</code>, <code>UDivChk0</code>, <code>SRemChk0</code>, <code>URemChk0</code>):</li>
+</ul>
+<p><code>x / 1 = x</code>, <code>x % 1 = 0</code>, <code>0 / x = 0</code>, <code>0 % x = 0</code></p>
+<ul>
+<li><strong>Float arithmetic identities</strong>: <code>x * 1.0 = x</code>, <code>x / 1.0 = x</code>, <code>x + 0.0 = x</code>, <code>x - 0.0 = x</code></li>
+<li><strong>Integer arithmetic identities</strong> (on overflow-checked variants <code>IAddOvf</code>, <code>ISubOvf</code>, <code>IMulOvf</code>): <code>x + 0 = x</code>,</li>
+</ul>
+<p><code>x <em> 1 = x</code>, <code>x - 0 = x</code>, <code>x </em> 0 = 0</code>, <code>x - x = 0</code></p>
+<ul>
+<li><strong>Reflexive comparisons</strong>: <code>x == x = true</code>, <code>x &lt; x = false</code>, etc. for signed, unsigned, and float comparisons</li>
+</ul>
+<p>(ICmpEq/Ne, SCmpLT/LE/GT/GE, UCmpLT/LE/GT/GE, FCmpEQ/NE/LT/LE/GT/GE)</p>
+<ul>
+<li><strong>Shift identities</strong>: <code>x &lt;&lt; 0 = x</code>, <code>x &gt;&gt; 0 = x</code>, <code>0 &lt;&lt; y = 0</code>, <code>0 &gt;&gt; y = 0</code></li>
+</ul>
+<p>The pass also simplifies CBr terminators when the branch condition is a comparison of two constants:</p>
+<ul>
+<li>Float constant comparisons fold the branch to an unconditional jump</li>
+<li>Integer constant comparisons (signed and unsigned) fold the branch to an unconditional jump</li>
+</ul>
+<p>The pass is table-driven, making it easy to add new rules without modifying core logic.</p>
+<h2 id="constfold">ConstFold</h2>
+<p>Constant folding evaluates pure operations at compile time:</p>
+<ul>
+<li><strong>Arithmetic</strong>: add, div, mul, rem, sub (signed and unsigned)</li>
+<li><strong>Bitwise</strong>: and, or, shifts, xor</li>
+<li><strong>Comparisons</strong>: all signed, unsigned, and float comparison opcodes</li>
+<li><strong>Intrinsics</strong>: <code>abs</code>, <code>ceil</code>, <code>clamp</code>, <code>cos</code>, <code>exp</code>, <code>floor</code>, <code>log</code>, <code>max</code>, <code>min</code>, <code>pow</code>, <code>sgn</code>, <code>sin</code>, <code>sqrt</code>, <code>tan</code></li>
+<li><strong>Type conversions</strong>: int/float casts with constant operands</li>
+</ul>
+<h2 id="sccp-sparse-conditional-constant-propagation">SCCP (Sparse Conditional Constant Propagation)</h2>
+<p>Propagates constants through the IL using sparse conditional evaluation:</p>
+<ul>
+<li>Identifies executable regions of the CFG and evaluates instructions whose operands become constant</li>
+<li>Folds conditional branches with known conditions; rewrites block parameters (SSA phi nodes)</li>
+<li>Float division by zero is folded to IEEE 754 infinity/NaN rather than left as overdefined, enabling</li>
+</ul>
+<p>further optimization of code paths that depend on the result</p>
+<ul>
+<li>Trapping operations (SDivChk0, UDivChk0) are never folded when the divisor is zero to preserve trap semantics</li>
+</ul>
+<h2 id="dse-dead-store-elimination">DSE (Dead Store Elimination)</h2>
+<p>Three-level dead store elimination:</p>
+<ol>
+<li>**Intra-block DSE** (<code>runDSE</code>): Backward scan within each basic block finds stores that are overwritten before being</li>
+</ul>
+<p>read. Uses BasicAA for alias disambiguation and is conservative about calls that may modify or reference memory.</p>
+<p>Uses <code>size_t</code> loop counters for safe unsigned backward iteration.</p>
+<ol>
+<li>**Cross-block DSE** (<code>runCrossBlockDSE</code>): Forward BFS analysis identifies stores to non-escaping allocas that are</li>
+</ul>
+<p>provably dead because they are overwritten on all paths before being read. Uses escape analysis for safety.</p>
+<p><strong>Limitation</strong>: Conservatively treats any <code>ModRef</code> call as a read barrier, even for non-escaping allocas.</p>
+<ol>
+<li>**MemorySSA-based DSE** (<code>runMemorySSADSE</code>): Uses the <code>MemorySSA</code> analysis (see below) to find additional dead</li>
+</ul>
+<p>stores that the BFS misses. Key precision improvement: calls are <strong>not</strong> treated as read barriers for non-escaping</p>
+<p>allocas because non-escaping stack memory is inaccessible to external calls. This eliminates stores in functions</p>
+<p>that call runtime helpers between writes — the dominant pattern in Zia-lowered loops.</p>
+<ul>
+<li>Registered as <code>&quot;memory-ssa&quot;</code> function analysis in <code>PassManager</code></li>
+<li>Runs after <code>runDSE</code> within the <code>&quot;dse&quot;</code> pipeline pass</li>
+<li>Tests: <code>src/tests/analysis/MemorySSATests.cpp</code> — call-barrier precision, live-store preservation,</li>
+</ul>
+<p>simple cross-block elimination, escaping alloca correctness, def/use node assignment</p>
+<h2 id="loopunroll">LoopUnroll</h2>
+<p>Fully unrolls small constant-bound loops to reduce iteration overhead:</p>
+<ul>
+<li>Identifies counted loops with known trip counts from comparison patterns</li>
+<li>Configurable thresholds: max trip count (default 8), max loop size (50 instructions)</li>
+<li>Handles single-latch, single-exit loops with proper SSA value threading</li>
+<li>Clones loop body with value renaming through unrolled iterations</li>
+<li>Removes original loop blocks after unrolling</li>
+</ul>
+<h2 id="jumpthreading-in-simplifycfg">JumpThreading (in SimplifyCFG)</h2>
+<p>Threads jumps through blocks with predictable branch conditions:</p>
+<ul>
+<li>When a predecessor passes a constant value that determines a conditional branch outcome, redirects the predecessor</li>
+</ul>
+<p>to bypass the intermediate block and jump directly to the known successor</p>
+<ul>
+<li>Eliminates unnecessary control flow and can enable further simplifications</li>
+<li>Runs in aggressive mode alongside other SimplifyCFG transformations</li>
+<li>Null-safe: target block lookups guard against missing labels to avoid crashes on malformed CFG</li>
+</ul>
+<h2 id="checkopt">CheckOpt</h2>
+<ul>
+<li>Removes redundant safety checks (bounds, div/rem-by-zero, narrowing casts) when a dominating equivalent check already</li>
+</ul>
+<p>executed on all incoming paths. Dominance is tracked with a scoped map so sibling blocks never incorrectly share</p>
+<p>availability.</p>
+<ul>
+<li><strong>Constant-operand elimination (SCCP integration)</strong>: When SCCP&#x27;s <code>rewriteConstants()</code> has inlined operands as literal</li>
+</ul>
+<p><code>ConstInt</code> values before CheckOpt runs, the pass evaluates check conditions statically at compile time:</p>
+<ul>
+<li><code>IdxChk(index, lo, hi)</code> — eliminated when all three are ConstInt and <code>lo &lt;= index &lt; hi</code></li>
+<li><code>SDivChk0/UDivChk0/SRemChk0/URemChk0(lhs, divisor)</code> — eliminated when divisor is a non-zero ConstInt</li>
+<li><strong>Type safety</strong>: ConstInt values type as I64 in the verifier. When the check result type is narrower (e.g. I32 for</li>
+</ul>
+<p>IdxChk) and the result has live uses, constant elimination is skipped and the dominance-based check still applies.</p>
+<p>This prevents type-mismatch verifier errors when the check result is used as a narrower-typed discriminant.</p>
+<ul>
+<li>Hoists loop-invariant checks from loop headers to preheaders when the loop is EH-insensitive and operands are</li>
+</ul>
+<p>invariant, preserving trap behaviour.</p>
+<ul>
+<li>Safety rules: a check is eliminated only if the dominating check block dominates the use-site block; hoisting is</li>
+</ul>
+<p>restricted to loop headers with canonical preheaders. EH-sensitive opcodes (resume/eh push/pop) keep loops ineligible.</p>
+<ul>
+<li>Tests: <code>src/tests/unit/il/transform/checkopt_redundancy.cpp</code> covers nested-loop redundancies, non-dominating siblings (no</li>
+</ul>
+<p>elimination), constant in-bounds elimination, constant non-zero divisor elimination, and trap-preservation cases.</p>
+<h2 id="earlycse">EarlyCSE</h2>
+<p>Dominator-tree-scoped common subexpression elimination:</p>
+<ul>
+<li><strong>Scope model</strong>: Maintains a stack of expression hash tables (one per domtree level) during a pre-order DFS</li>
+</ul>
+<p>over the dominator tree. An expression computed in block A is visible in every block A dominates because A&#x27;s</p>
+<p>table remains on the stack while its dominated subtree is processed.</p>
+<ul>
+<li><strong>Cross-block CSE</strong>: Redundant pure expressions in dominated successors are eliminated — not just within the same</li>
+</ul>
+<p>block. For example, <code>add a, b</code> in an entry block eliminates a commuted <code>add b, a</code> in its only successor.</p>
+<ul>
+<li><strong>Sibling isolation</strong>: When the DFS leaves a block, its table is popped, so expressions in one branch of a</li>
+</ul>
+<p>conditional cannot eliminate the same expression in a sibling branch (which would be incorrect).</p>
+<ul>
+<li><strong>Commutative normalization</strong>: Uses the same <code>ValueKey</code> canonical form as GVN so <code>add a,b</code> and <code>add b,a</code></li>
+</ul>
+<p>share a single table entry.</p>
+<ul>
+<li><strong>Pure ops only</strong>: Only instructions passing <code>makeValueKey</code> are eligible (no memory ops, calls, or terminators).</li>
+<li><strong>Signature</strong>: <code>bool runEarlyCSE(Module &amp;M, Function &amp;F)</code> — module reference needed for CFGContext construction.</li>
+<li><strong>Tests</strong>: <code>test_il_earlycse_domtree</code> — cross-block elimination, sibling-branch non-elimination.</li>
+</ul>
+<h2 id="valuekey-cse-gvn-support">ValueKey (CSE/GVN Support)</h2>
+<p>Expression identity keys used by EarlyCSE and GVN:</p>
+<ul>
+<li>Commutative operations (Add, Mul, And, Or, Xor, ICmpEq/Ne, FAdd, FMul, FCmpEQ/NE) have operands</li>
+</ul>
+<p>normalized by a deterministic ranking function so <code>add a,b</code> and <code>add b,a</code> produce the same key</p>
+<ul>
+<li>Ranking caches computed values to avoid redundant tuple construction</li>
+<li><code>isSafeCSEOpcode</code> whitelist restricts CSE to pure, non-trapping operations with no memory effects</li>
+<li><code>makeValueKey</code> rejects terminators, side-effecting, and memory operations</li>
+</ul>
+<h2 id="calleffects">CallEffects</h2>
+<p>Unified API for querying call instruction side effects:</p>
+<ul>
+<li>Combines instruction-level <code>CallAttr</code> flags, <code>HelperEffects</code> constexpr table, and runtime signature registry</li>
+<li>Short-circuits: when all flags (pure, readonly, nothrow) are already classified, skips the O(n) registry scan</li>
+<li><code>canEliminateIfUnused()</code> gates DCE; <code>canReorderWithMemory()</code> gates LICM and code motion</li>
+</ul>
+<h2 id="indvarsimplify">IndVarSimplify</h2>
+<p>Induction variable optimization and strength reduction:</p>
+<ul>
+<li>Null-safe: guards against deleted instructions when looking up address expressions</li>
+</ul>
+<h2 id="loopinfo">LoopInfo</h2>
+<p>Loop detection and nesting analysis:</p>
+<ul>
+<li>blockLabels vector contains no duplicates (important for self-loops where latch == header)</li>
+<li>Members hash set provides O(1) <code>contains()</code> queries</li>
+<li>Latch labels tracked separately from body membership</li>
+</ul>
+<h2 id="callgraph-scc">CallGraph / SCC</h2>
+<p>Direct-call graph with strongly connected component analysis:</p>
+<ul>
+<li><strong>Edge building</strong>: Scans all functions for <code>Call</code> instructions with non-empty <code>callee</code> field; records</li>
+</ul>
+<p>caller→callee edges and per-callee call counts. Indirect calls and unresolved targets are ignored.</p>
+<ul>
+<li><strong>SCC computation</strong> (since 2026-02-17): Tarjan&#x27;s iterative SCC algorithm runs after edge collection to</li>
+</ul>
+<p>identify mutually recursive function groups. SCCs are stored in reverse topological order (callees before</p>
+<p>callers) in <code>CallGraph::sccs</code>. Each function name maps to its SCC index via <code>CallGraph::sccIndex</code>.</p>
+<ul>
+<li><strong><code>isRecursive(fn)</code></strong>: Returns true when <code>fn</code> is in a multi-member SCC or has a self-edge.</li>
+<li><strong>Use cases</strong>: Bottom-up interprocedural analysis (process leaf SCCs first); inliner can skip recursive</li>
+</ul>
+<p>SCCs more accurately than the previous per-edge self-loop check.</p>
+<ul>
+<li><strong>Tests</strong>: <code>test_il_callgraph_scc</code> — linear chain ordering, mutual recursion, self-recursion, <code>isRecursive</code>.</li>
+</ul>
+<h2 id="canonical-optimization-pipelines-zia-and-basic-frontends">Canonical Optimization Pipelines (Zia and BASIC frontends)</h2>
+<p>Before 2026-02-17, the Zia compiler (<code>src/frontends/zia/Compiler.cpp</code>) applied its own reduced pipeline</p>
+<p>instead of the registered canonical O1/O2 pipelines:</p>
+<table><thead><tr>
+<th>Level</th>
+<th>Old (custom)</th>
+<th>New (canonical)</th>
+</tr></thead><tbody>
+<tr>
+<td>O1</td>
+<td>4 passes (simplify-cfg, mem2reg, peephole, dce)</td>
+<td>10 passes including SCCP, LICM</td>
+</tr>
+<tr>
+<td>O2</td>
+<td>9 passes (missing SCCP, loop passes, inline, check-opt)</td>
+<td>20+ passes — full registered pipeline</td>
+</tr>
+</tbody></table>
+<p>The BASIC frontend (<code>src/tools/viper/cmd_run.cpp</code>) only ran <code>SimplifyCFG</code> on verification failure; it now</p>
+<p>applies the canonical O0/O1/O2 pipeline unconditionally.</p>
+<p><strong>Fix</strong>: Both frontends now call <code>pm.runPipeline(module, &quot;O1&quot;)</code> / <code>pm.runPipeline(module, &quot;O2&quot;)</code> to use</p>
+<p>the canonically registered pipelines, ensuring VM-interpreted programs receive the same optimization as</p>
+<p>natively compiled ones.</p>
+<p><strong>Test</strong>: <code>test_il_canonical_pipeline</code> — verifies O1/O2 contain expected passes and that SCCP runs.</p>
+<h2 id="optimization-review-test-coverage">Optimization Review Test Coverage</h2>
+<p>Regression tests covering fixes from the comprehensive IL optimization review</p>
+<p>(<code>src/tests/unit/il/transform/test_opt_review_*.cpp</code>):</p>
+<table><thead><tr>
+<th>Test File</th>
+<th>Tests</th>
+<th>Coverage</th>
+</tr></thead><tbody>
+<tr>
+<td>`test_opt_review_basicaa.cpp`</td>
+<td>7</td>
+<td>Priority cascade, ModRef classification, alias queries</td>
+</tr>
+<tr>
+<td>`test_opt_review_calleffects.cpp`</td>
+<td>5</td>
+<td>Pure/readonly/conservative classification, by-name lookup</td>
+</tr>
+<tr>
+<td>`test_opt_review_dse.cpp`</td>
+<td>4</td>
+<td>Dead store elimination, load-intervened stores, different allocas</td>
+</tr>
+<tr>
+<td>`test_opt_review_loopinfo.cpp`</td>
+<td>4</td>
+<td>Self-loop dedup, normal loop membership, block counts</td>
+</tr>
+<tr>
+<td>`test_opt_review_peephole.cpp`</td>
+<td>20</td>
+<td>UCmp/FCmp constant folding in CBr, reflexive comparisons</td>
+</tr>
+<tr>
+<td>`test_opt_review_sccp.cpp`</td>
+<td>4</td>
+<td>FDiv by zero → infinity/NaN, normal FDiv folding</td>
+</tr>
+<tr>
+<td>`test_opt_review_valuekey.cpp`</td>
+<td>8</td>
+<td>Commutative normalization, safe opcode classification</td>
+</tr>
+</tbody></table>
+<h3 id="optimizer-improvement-tests-2026-02-17">Optimizer Improvement Tests (2026-02-17)</h3>
+<table><thead><tr>
+<th>Test File</th>
+<th>Tests</th>
+<th>Coverage</th>
+</tr></thead><tbody>
+<tr>
+<td>`test_il_canonical_pipeline.cpp`</td>
+<td>4</td>
+<td>O1/O2 pass registration, SCCP execution via canonical pipeline</td>
+</tr>
+<tr>
+<td>`test_il_mem2reg_nonentry.cpp`</td>
+<td>2</td>
+<td>Non-entry-block alloca promotion, domination-filtered promotion</td>
+</tr>
+<tr>
+<td>`test_il_inline_threshold.cpp`</td>
+<td>3</td>
+<td>New default thresholds (80/8/3), 50-instr inline, oversized rejection</td>
+</tr>
+<tr>
+<td>`test_il_earlycse_domtree.cpp`</td>
+<td>2</td>
+<td>Cross-block CSE via domtree, sibling-branch non-elimination</td>
+</tr>
+<tr>
+<td>`test_il_callgraph_scc.cpp`</td>
+<td>4</td>
+<td>Linear chain SCC ordering, mutual recursion, self-recursion, isRecursive</td>
+</tr>
+</tbody></table>
+<h3 id="sccp-checkopt-integration-2026-02-17">SCCP ↔ CheckOpt Integration (2026-02-17)</h3>
+<p>Added constant-operand check elimination in CheckOpt so that checks whose operands are already inlined as</p>
+<p><code>ConstInt</code> literals (by SCCP&#x27;s <code>rewriteConstants()</code>) are statically evaluated:</p>
+<ul>
+<li><code>IdxChk(5, 0, 10)</code> with I64 result → eliminated (index 5 is trivially in [0, 10))</li>
+<li><code>SDivChk0(12, 3)</code> with I64 result → eliminated (divisor 3 ≠ 0)</li>
+<li>Narrower-typed checks (I32 IdxChk result) with live uses are preserved to avoid IL verifier type mismatches</li>
+</ul>
+<p>(ConstInt is always typed I64; substituting into an I32 scrutinee position would fail verification)</p>
+<table><thead><tr>
+<th>Test File</th>
+<th>Tests</th>
+<th>Coverage</th>
+</tr></thead><tbody>
+<tr>
+<td>`checkopt_redundancy.cpp`</td>
+<td>3 new</td>
+<td>Const in-bounds IdxChk elimination, non-zero SDivChk0, OOB preservation</td>
+</tr>
+</tbody></table>
+<h3 id="post-dominator-tree-2026-02-17">Post-Dominator Tree (2026-02-17)</h3>
+<p><code>computePostDominatorTree()</code> added to <code>src/il/analysis/Dominators.hpp/.cpp</code>, registered as <code>&quot;post-dominators&quot;</code></p>
+<p>analysis in <code>PassManager</code>. Enables future aggressive DCE (control-dependent elimination) and precise</p>
+<p>speculative hoisting.</p>
+<table><thead><tr>
+<th>Test File</th>
+<th>Tests</th>
+<th>Coverage</th>
+</tr></thead><tbody>
+<tr>
+<td>`PostDominatorsTests.cpp`</td>
+<td>3</td>
+<td>Linear chain, diamond join (merge pdoms entry), multiple exits</td>
+</tr>
+</tbody></table>
+<h3 id="simplifycfg-self-loop-fix-2026-02-17">SimplifyCFG Self-Loop Fix (2026-02-17)</h3>
+<p><strong>Bug</strong>: <code>mergeSinglePred</code> in <code>BlockMerging.cpp</code> excluded self-loop edges from predecessor counting</p>
+<p>(<code>if (&amp;candidate == &amp;block) continue</code>). A loop body with a self-loop appeared to have only 1 external</p>
+<p>predecessor, causing it to be incorrectly merged into the entry block. The label rewrite then turned the</p>
+<p>self-loop into a back-edge to entry, creating an infinite alloca-stack loop.</p>
+<p><strong>Fix</strong>: Count self-loop edges in the predecessor total but only record non-self blocks as the merge candidate.</p>
+<p>The guard <code>predecessorEdges == 1</code> now correctly rejects merge when the block has both an external predecessor</p>
+<p>and a self-loop.</p>
+<p><strong>Affected tests</strong>: <code>test_basic_do_exit</code> (DO WHILE loop back-edge corruption), <code>test_il_opt_equivalence</code></p>
+<p>(random differential test for optimizer pipelines).</p>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../../features/native-targets.html">Native Targets</a>
+      <a href="../../features/two-languages.html">Languages</a>
+      <a href="../../features/runtime.html">Runtime Library</a>
+      <a href="../../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../../docs/getting-started.html">Getting Started</a>
+      <a href="../../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../../docs/runtime/">Runtime API</a>
+      <a href="../../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../../contributing/">Contributing</a>
+      <a href="../../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../../main.js"></script>
+</body>
+</html>

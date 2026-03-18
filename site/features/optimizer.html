@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>13+ Optimizer Passes — Viper</title>
+  <meta name="description" content="Viper's IL optimizer includes 28 custom-built optimization passes: SCCP, GVN, LICM, inlining, loop unrolling, dead store elimination, and more.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="../showcase/">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <a href="../">Features</a> / <span>Optimizer Passes</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#pipelines">Optimization Levels</a></li>
+        <li><a href="#passes">Pass Reference</a></li>
+        <li><a href="#analysis">Analysis Framework</a></li>
+        <li><a href="#backend">Backend Peephole</a></li>
+      </ul>
+    </nav>
+  </aside>
+
+  <main class="page-main prose">
+    <h1 id="overview">Optimizer Passes</h1>
+
+    <p>Viper's IL optimizer is a full optimization pipeline with <strong>28 transformation passes</strong> and <strong>7+ analysis passes</strong>, all built from scratch. The pass list reads like an LLVM textbook &mdash; SCCP, GVN, LICM, Mem2Reg, loop unrolling, dead store elimination &mdash; but every line is Viper's own implementation.</p>
+
+    <h2 id="pipelines">Optimization Levels</h2>
+
+    <h3>O0 &mdash; Minimal (2 passes)</h3>
+    <p>Basic cleanup only. Used for fastest compilation during development.</p>
+    <pre><code>simplify-cfg &rarr; dce</code></pre>
+
+    <h3>O1 &mdash; Moderate (15 passes)</h3>
+    <p>Default for VM-interpreted and debug builds. Runs key optimizations without aggressive transformations.</p>
+    <pre><code>simplify-cfg &rarr; mem2reg &rarr; simplify-cfg &rarr; sccp &rarr; constfold &rarr; dce
+&rarr; simplify-cfg &rarr; inline &rarr; simplify-cfg &rarr; sccp &rarr; dce &rarr; licm
+&rarr; simplify-cfg &rarr; peephole &rarr; dce</code></pre>
+
+    <h3>O2 &mdash; Aggressive (29 passes)</h3>
+    <p>Full optimization for production native code. Includes loop optimizations, GVN, and dead store elimination.</p>
+    <pre><code>loop-simplify &rarr; loop-rotate &rarr; indvars &rarr; loop-unroll &rarr; simplify-cfg
+&rarr; mem2reg &rarr; simplify-cfg &rarr; sccp &rarr; check-opt &rarr; eh-opt &rarr; dce
+&rarr; simplify-cfg &rarr; sibling-recursion &rarr; inline &rarr; simplify-cfg &rarr; sccp
+&rarr; constfold &rarr; dce &rarr; simplify-cfg &rarr; licm &rarr; simplify-cfg &rarr; gvn
+&rarr; reassociate &rarr; earlycse &rarr; dse &rarr; peephole &rarr; dce &rarr; late-cleanup</code></pre>
+
+    <h2 id="passes">Pass Reference</h2>
+
+    <h3>Core Simplification</h3>
+    <table>
+      <thead><tr><th>Pass</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><strong>SimplifyCFG</strong></td><td>Eliminates empty blocks, folds trivial branches, merges blocks, prunes unreachable code</td></tr>
+        <tr><td><strong>Mem2Reg</strong></td><td>Promotes alloca/store/load patterns to SSA registers; includes SROA support</td></tr>
+        <tr><td><strong>DCE</strong></td><td>Dead code elimination via reverse-use traversal</td></tr>
+        <tr><td><strong>ConstFold</strong></td><td>Evaluates pure operations at compile time (arithmetic, bitwise, conversions)</td></tr>
+        <tr><td><strong>Peephole</strong></td><td>57 algebraic simplification patterns (bitwise identities, arithmetic rules)</td></tr>
+        <tr><td><strong>LateCleanup</strong></td><td>End-of-pipeline polish: up to 4 iterations of SimplifyCFG + DCE</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Advanced Analysis-Driven</h3>
+    <table>
+      <thead><tr><th>Pass</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><strong>SCCP</strong></td><td>Sparse Conditional Constant Propagation &mdash; propagates constants through the CFG, folds branches</td></tr>
+        <tr><td><strong>GVN</strong></td><td>Global Value Numbering &mdash; cross-block redundant computation elimination</td></tr>
+        <tr><td><strong>EarlyCSE</strong></td><td>Common Subexpression Elimination scoped by dominator tree</td></tr>
+        <tr><td><strong>DSE</strong></td><td>Dead Store Elimination with MemorySSA for precise def-use chains</td></tr>
+        <tr><td><strong>CheckOpt</strong></td><td>Removes redundant safety checks (bounds, div-by-zero) using dominance analysis</td></tr>
+        <tr><td><strong>Inline</strong></td><td>Cost-model inlining considering instruction count, call site constants, and code growth</td></tr>
+        <tr><td><strong>Reassociate</strong></td><td>Expression reassociation to enable further CSE and strength reduction</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Loop Optimization</h3>
+    <table>
+      <thead><tr><th>Pass</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><strong>LoopSimplify</strong></td><td>Canonicalizes loop structure (preheaders, dedicated exits)</td></tr>
+        <tr><td><strong>LoopRotate</strong></td><td>Rotates loops to improve code layout and enable further optimization</td></tr>
+        <tr><td><strong>LoopUnroll</strong></td><td>Fully unrolls small constant-bound loops (default: max 8 iterations, 50 instructions)</td></tr>
+        <tr><td><strong>LICM</strong></td><td>Loop-Invariant Code Motion &mdash; hoists invariant operations out of loop bodies</td></tr>
+        <tr><td><strong>IndVarSimplify</strong></td><td>Induction variable optimization and strength reduction</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Specialized</h3>
+    <table>
+      <thead><tr><th>Pass</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><strong>SiblingRecursion</strong></td><td>Optimizes sibling recursive calls</td></tr>
+        <tr><td><strong>EHOpt</strong></td><td>Exception handling optimization (dead handler removal)</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="analysis">Analysis Framework</h2>
+
+    <p>The optimizer is backed by a reusable analysis framework with caching and invalidation:</p>
+
+    <table>
+      <thead><tr><th>Analysis</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><strong>CFG</strong></td><td>Control flow graph construction</td></tr>
+        <tr><td><strong>Dominators</strong></td><td>Dominator tree computation</td></tr>
+        <tr><td><strong>Post-Dominators</strong></td><td>Iterative post-dominator tree on reversed CFG</td></tr>
+        <tr><td><strong>LoopInfo</strong></td><td>Loop detection and nesting analysis</td></tr>
+        <tr><td><strong>Liveness</strong></td><td>Variable liveness analysis</td></tr>
+        <tr><td><strong>BasicAA</strong></td><td>Alias analysis with pointer classification</td></tr>
+        <tr><td><strong>MemorySSA</strong></td><td>Memory SSA for precise store-to-load def-use chains</td></tr>
+        <tr><td><strong>CallGraph</strong></td><td>Call graph and SCC analysis for inlining decisions</td></tr>
+      </tbody>
+    </table>
+
+    <p>The <strong>AnalysisManager</strong> caches computed analyses and invalidates them based on <code>PreservedAnalyses</code> metadata returned by each transformation pass. Debug builds verify IL correctness between passes.</p>
+
+    <h2 id="backend">Backend Peephole Optimization</h2>
+
+    <p>After IL optimization, both native backends apply additional target-specific peephole passes on the Machine IR:</p>
+
+    <ul>
+      <li><strong>AArch64</strong>: 7 passes including loop-invariant constant hoisting, strength reduction (div &rarr; shift), and copy propagation</li>
+      <li><strong>x86-64</strong>: 5 passes including arithmetic simplification, MOV folding, and fixed-point DCE</li>
+    </ul>
+
+    <p>See <a href="native-targets.html#peephole">Native Targets</a> for backend peephole details.</p>
+
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="zero-deps.html">Zero Dependencies</a>
+      <a href="native-targets.html">Native Targets</a>
+      <a href="two-languages.html">Languages</a>
+      <a href="runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Graphics Library — Viper</title>
+  <meta name="description" content="Viper documentation: Graphics Library">
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="icon" href="../../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../../docs/" class="active">Docs</a>
+    <a href="../../learn/">Learn</a>
+    <a href="../../showcase/">Showcase</a>
+    <a href="../../performance/">Performance</a>
+    <a href="../../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../../">Home</a> / <a href="../../docs">Docs</a> / <span>Graphics Library</span>
+</div>
+
+<div class="page-with-sidebar">
+  <aside class="page-sidebar">
+    <nav>
+      <h4>On This Page</h4>
+      <ul>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#platform-support">Platform Support</a></li>
+        <li><a href="#quick-start">Quick Start</a></li>
+        <li><a href="#api-quick-reference">API Quick Reference</a></li>
+        <li><a href="#testing">Testing</a></li>
+        <li><a href="#examples">Examples</a></li>
+        <li><a href="#integration-with-viper">Integration with Viper</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#documentation">Documentation</a></li>
+        <li><a href="#build-configuration">Build Configuration</a></li>
+        <li><a href="#future-enhancements">Future Enhancements</a></li>
+        <li><a href="#performance-notes">Performance Notes</a></li>
+        <li><a href="#license">License</a></li>
+        <li><a href="#summary">Summary</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main class="page-main prose">
+    <h1>Graphics Library</h1>
+<h1 id="vipergfx-graphics-library">ViperGFX Graphics Library</h1>
+<p><strong>Version:</strong> 1.0.0</p>
+<p><strong>Location:</strong> <code>/src/lib/graphics</code></p>
+<p><strong>Status:</strong> ✅ Integrated into Viper build system</p>
+<p>---</p>
+<h2 id="overview">Overview</h2>
+<p>ViperGFX is a cross-platform software 2D graphics library integrated into the Viper project. It provides window</p>
+<p>management, pixel operations, drawing primitives, and input handling through a simple C API.</p>
+<h3 id="key-features">Key Features</h3>
+<ul>
+<li><strong>Pure software rendering</strong> — No GPU dependencies</li>
+<li><strong>Cross-platform</strong> — macOS (Cocoa), Linux (X11), Windows (Win32)</li>
+<li><strong>Simple API</strong> — Immediate-mode drawing with direct framebuffer access</li>
+<li><strong>Event handling</strong> — Keyboard, mouse, and window events</li>
+<li><strong>FPS limiting</strong> — Built-in frame rate control</li>
+<li><strong>Test infrastructure</strong> — Mock backend for deterministic unit testing</li>
+</ul>
+<h3 id="design-principles">Design Principles</h3>
+<ul>
+<li><strong>Zero external dependencies</strong> — No SDL, GLFW, or other libraries</li>
+<li><strong>Native platform APIs</strong> — Direct Cocoa/X11/Win32 integration</li>
+<li><strong>Pure C implementation</strong> — C99 standard with C++ compatibility</li>
+<li><strong>Deterministic rendering</strong> — Integer-only math for predictable results</li>
+</ul>
+<p>---</p>
+<h2 id="platform-support">Platform Support</h2>
+<table><thead><tr>
+<th>Platform</th>
+<th>Backend</th>
+<th>Status</th>
+</tr></thead><tbody>
+<tr>
+<td>**macOS**</td>
+<td>Cocoa/AppKit</td>
+<td>✅ **Fully Implemented**</td>
+</tr>
+<tr>
+<td>**Linux**</td>
+<td>X11</td>
+<td>⚠️ Stub (not yet fully implemented)</td>
+</tr>
+<tr>
+<td>**Windows**</td>
+<td>Win32 GDI</td>
+<td>⚠️ Stub (not yet fully implemented)</td>
+</tr>
+<tr>
+<td>**Testing**</td>
+<td>Mock backend</td>
+<td>✅ Fully Implemented</td>
+</tr>
+</tbody></table>
+<p>---</p>
+<h2 id="quick-start">Quick Start</h2>
+<h3 id="building">Building</h3>
+<p>ViperGFX builds as part of the main Viper build:</p>
+<pre><code data-lang="bash">
+./scripts/build_viper.sh
+</code></pre>
+<p>Or build the graphics library standalone:</p>
+<pre><code data-lang="bash">
+cd src/lib/graphics
+cmake -S . -B build
+cmake --build build
+</code></pre>
+<h3 id="basic-example">Basic Example</h3>
+<pre><code data-lang="c">
+#include &quot;vgfx.h&quot;
+
+int main(void) {
+    // Create window
+    vgfx_window_params_t params = vgfx_window_params_default();
+    params.width = 800;
+    params.height = 600;
+    params.title = &quot;My Window&quot;;
+    params.fps = 60;
+
+    vgfx_window_t win = vgfx_create_window(&amp;params);
+    if (!win) {
+        return 1;
+    }
+
+    // Main loop
+    while (!vgfx_close_requested(win)) {
+        // Clear screen
+        vgfx_cls(win, VGFX_BLACK);
+
+        // Draw primitives
+        vgfx_pset(win, 100, 100, VGFX_WHITE);
+        vgfx_line(win, 50, 50, 200, 150, VGFX_RED);
+        // vgfx_rect uses top-left x,y and width,height (not two corners)
+        vgfx_rect(win, 300, 300, 100, 100, VGFX_GREEN);
+        vgfx_circle(win, 500, 300, 50, VGFX_BLUE);
+
+        // Handle events
+        vgfx_event_t event;
+        while (vgfx_poll_event(win, &amp;event)) {
+            if (event.type == VGFX_EVENT_KEY_DOWN) {
+                if (event.data.key.key == VGFX_KEY_ESCAPE) {
+                    break;
+                }
+            }
+        }
+
+        // Update display and limit FPS
+        vgfx_update(win);
+    }
+
+    vgfx_destroy_window(win);
+    return 0;
+}
+</code></pre>
+<p>---</p>
+<h2 id="api-quick-reference">API Quick Reference</h2>
+<h3 id="window-management">Window Management</h3>
+<pre><code data-lang="c">
+// Create and destroy
+vgfx_window_t vgfx_create_window(const vgfx_window_params_t* params);
+void vgfx_destroy_window(vgfx_window_t window);
+
+// Window state
+int32_t vgfx_close_requested(vgfx_window_t window);  // Non-zero if close was requested
+int vgfx_update(vgfx_window_t window);  // Present + process events + FPS limit
+
+// Query window properties
+int vgfx_get_size(vgfx_window_t window, int32_t* out_width, int32_t* out_height);
+int vgfx_get_framebuffer(vgfx_window_t window, vgfx_framebuffer_t* out_fb);
+
+// Additional window control
+void vgfx_set_fps(vgfx_window_t window, int32_t fps);
+void vgfx_set_title(vgfx_window_t window, const char* title);
+void vgfx_set_fullscreen(vgfx_window_t window, int fullscreen);
+int vgfx_is_fullscreen(vgfx_window_t window);
+</code></pre>
+<h3 id="drawing-primitives">Drawing Primitives</h3>
+<pre><code data-lang="c">
+// Pixel operations
+void vgfx_pset(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color);
+int vgfx_point(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t *out_color);
+void vgfx_cls(vgfx_window_t window, vgfx_color_t color);
+
+// Lines and shapes
+// Note: line uses start/end points; rect/fill_rect use top-left + width/height
+void vgfx_line(vgfx_window_t window, int32_t x1, int32_t y1,
+               int32_t x2, int32_t y2, vgfx_color_t color);
+void vgfx_rect(vgfx_window_t window, int32_t x, int32_t y,
+               int32_t w, int32_t h, vgfx_color_t color);
+void vgfx_fill_rect(vgfx_window_t window, int32_t x, int32_t y,
+                    int32_t w, int32_t h, vgfx_color_t color);
+void vgfx_circle(vgfx_window_t window, int32_t cx, int32_t cy,
+                 int32_t radius, vgfx_color_t color);
+void vgfx_fill_circle(vgfx_window_t window, int32_t cx, int32_t cy,
+                      int32_t radius, vgfx_color_t color);
+
+// Clipping
+void vgfx_set_clip(vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_t h);
+void vgfx_clear_clip(vgfx_window_t window);
+</code></pre>
+<h3 id="input-handling">Input Handling</h3>
+<pre><code data-lang="c">
+// Event polling
+int vgfx_poll_event(vgfx_window_t window, vgfx_event_t* out_event);
+int vgfx_peek_event(vgfx_window_t window, vgfx_event_t* out_event);
+void vgfx_clear_events(vgfx_window_t window);
+int32_t vgfx_event_overflow_count(vgfx_window_t window);
+
+// State queries
+int vgfx_key_down(vgfx_window_t window, vgfx_key_t key);
+int vgfx_mouse_pos(vgfx_window_t window, int32_t* out_x, int32_t* out_y);
+int vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button);
+</code></pre>
+<h3 id="colors">Colors</h3>
+<pre><code data-lang="c">
+// Predefined colors
+#define VGFX_BLACK       0x000000
+#define VGFX_WHITE       0xFFFFFF
+#define VGFX_RED         0xFF0000
+#define VGFX_GREEN       0x00FF00
+#define VGFX_BLUE        0x0000FF
+#define VGFX_YELLOW      0xFFFF00
+#define VGFX_CYAN        0x00FFFF
+#define VGFX_MAGENTA     0xFF00FF
+#define VGFX_GRAY        0x808080
+
+// Color construction
+vgfx_color_t vgfx_rgb(uint8_t r, uint8_t g, uint8_t b);
+void vgfx_color_to_rgb(vgfx_color_t color, uint8_t* r, uint8_t* g, uint8_t* b);
+</code></pre>
+<h3 id="events">Events</h3>
+<pre><code data-lang="c">
+typedef enum {
+    VGFX_EVENT_NONE,
+    VGFX_EVENT_KEY_DOWN,
+    VGFX_EVENT_KEY_UP,
+    VGFX_EVENT_MOUSE_MOVE,
+    VGFX_EVENT_MOUSE_DOWN,
+    VGFX_EVENT_MOUSE_UP,
+    VGFX_EVENT_RESIZE,
+    VGFX_EVENT_CLOSE,
+    VGFX_EVENT_FOCUS_GAINED,
+    VGFX_EVENT_FOCUS_LOST
+} vgfx_event_type_t;
+</code></pre>
+<p>---</p>
+<h2 id="testing">Testing</h2>
+<h3 id="unit-tests">Unit Tests</h3>
+<p>ViperGFX includes comprehensive unit tests using the mock backend:</p>
+<pre><code data-lang="bash">
+# Build tests
+cmake --build build --target test_window test_pixels test_drawing test_input
+
+# Run all graphics tests
+ctest --test-dir build -R &quot;test_window|test_pixels|test_drawing|test_input&quot;
+</code></pre>
+<h3 id="test-coverage">Test Coverage</h3>
+<ul>
+<li><strong>test_window</strong> — Window lifecycle (T1-T3)</li>
+<li><strong>test_pixels</strong> — Pixel operations and framebuffer (T4-T6, T14)</li>
+<li><strong>test_drawing</strong> — Drawing primitives (T7-T13)</li>
+<li><strong>test_input</strong> — Input and event queue (T16-T21)</li>
+</ul>
+<p>All 20 tests pass (100% success rate).</p>
+<p>---</p>
+<h2 id="examples">Examples</h2>
+<h3 id="example-programs">Example Programs</h3>
+<p>Located in <code>/src/lib/graphics/examples/</code>:</p>
+<ul>
+<li><strong>basic_draw.c</strong> — Simple drawing demo</li>
+<li><strong>quick_test.c</strong> — Minimal functionality test</li>
+</ul>
+<h3 id="build-examples">Build Examples</h3>
+<pre><code data-lang="bash">
+cmake --build build --target basic_draw quick_test
+./build/examples/basic_draw
+</code></pre>
+<p>---</p>
+<h2 id="integration-with-viper">Integration with Viper</h2>
+<h3 id="using-from-cmake">Using from CMake</h3>
+<pre><code data-lang="cmake">
+# Link against ViperGFX
+target_link_libraries(your_target PRIVATE vipergfx)
+
+# Include headers
+target_include_directories(your_target PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/lib/graphics/include
+)
+</code></pre>
+<h3 id="future-basic-integration">Future: BASIC Integration</h3>
+<p>Graphics support will be added to Viper BASIC with statements like:</p>
+<pre><code data-lang="basic">
+&#x27; Planned BASIC graphics support (not yet implemented)
+SCREEN 13                      &#x27; Initialize graphics mode
+PSET (100, 100), 15            &#x27; Set pixel at (100, 100) to color 15
+LINE (0, 0)-(319, 199), 12     &#x27; Draw line from (0,0) to (319,199)
+CIRCLE (160, 100), 50, 14      &#x27; Draw circle at center with radius 50
+</code></pre>
+<p>This will lower to calls to the ViperGFX runtime functions.</p>
+<p>---</p>
+<h2 id="architecture">Architecture</h2>
+<h3 id="component-structure">Component Structure</h3>
+<pre><code data-lang="text">
+src/lib/graphics/
+├── include/
+│   ├── vgfx.h           # Public API (window, drawing, input, color, clipboard)
+│   └── vgfx_config.h    # Configuration macros
+├── src/
+│   ├── vgfx.c           # Core implementation
+│   ├── vgfx_draw.c      # Drawing algorithms
+│   ├── vgfx_internal.h  # Internal structures
+│   ├── vgfx_platform_macos.m    # macOS Cocoa/AppKit backend (fully implemented)
+│   ├── vgfx_platform_linux.c    # Linux X11 backend (stub)
+│   ├── vgfx_platform_win32.c    # Windows Win32 backend (stub)
+│   └── vgfx_platform_mock.c     # Mock backend for tests
+├── tests/               # Unit tests
+└── examples/            # Example programs
+</code></pre>
+<h3 id="platform-abstraction">Platform Abstraction</h3>
+<p>The library uses a platform abstraction layer with function pointers:</p>
+<pre><code data-lang="c">
+// Platform backend functions
+int vgfx_platform_init_window(struct vgfx_window* win, const vgfx_window_params_t* params);
+void vgfx_platform_destroy_window(struct vgfx_window* win);
+int vgfx_platform_process_events(struct vgfx_window* win);
+int vgfx_platform_present(struct vgfx_window* win);
+void vgfx_platform_sleep_ms(int32_t ms);
+int64_t vgfx_platform_now_ms(void);
+</code></pre>
+<p>Each platform implements these functions in its backend file.</p>
+<h3 id="mock-backend">Mock Backend</h3>
+<p>The mock backend (<code>vgfx_platform_mock.c</code>) provides:</p>
+<ul>
+<li><strong>Deterministic time control</strong> — <code>vgfx_mock_set_time_ms()</code></li>
+<li><strong>Event injection</strong> — <code>vgfx_mock_inject_key_event()</code>, etc.</li>
+<li><strong>No OS dependencies</strong> — Pure in-memory simulation</li>
+<li><strong>Test automation</strong> — Reproducible test scenarios</li>
+</ul>
+<p>---</p>
+<h2 id="documentation">Documentation</h2>
+<h3 id="detailed-specification">Detailed Specification</h3>
+<p>For complete implementation details, see:</p>
+<ul>
+<li><strong>[gfxlib.md](../src/lib/graphics/gfxlib.md)</strong> — Full specification</li>
+<li><strong>[INTEGRATION.md](../src/lib/graphics/INTEGRATION.md)</strong> — Build integration details</li>
+<li><strong>[STATUS.md](../src/lib/graphics/STATUS.md)</strong> — Implementation status</li>
+<li><strong>[MACOS_BACKEND.md](../src/lib/graphics/MACOS_BACKEND.md)</strong> — macOS backend notes</li>
+<li><strong>[DRAWING_PRIMITIVES.md](../src/lib/graphics/DRAWING_PRIMITIVES.md)</strong> — Algorithm details</li>
+<li><strong>[TEST_INFRASTRUCTURE.md](../src/lib/graphics/TEST_INFRASTRUCTURE.md)</strong> — Testing approach</li>
+</ul>
+<h3 id="api-reference">API Reference</h3>
+<p>Full API documentation is available in the header comments:</p>
+<ul>
+<li><strong>[vgfx.h](../src/lib/graphics/include/vgfx.h)</strong> — Public API with Doxygen comments</li>
+</ul>
+<p>---</p>
+<h2 id="build-configuration">Build Configuration</h2>
+<h3 id="cmake-options">CMake Options</h3>
+<pre><code data-lang="cmake">
+# Standalone build options
+option(VGFX_BUILD_TESTS &quot;Build ViperGFX tests&quot; ON)
+option(VGFX_BUILD_EXAMPLES &quot;Build ViperGFX examples&quot; ON)
+</code></pre>
+<p>When building as part of Viper:</p>
+<ul>
+<li>Tests are controlled by <code>VIPER_BUILD_TESTING</code></li>
+<li>Examples are controlled by <code>BUILD_EXAMPLES</code></li>
+</ul>
+<h3 id="platform-detection">Platform Detection</h3>
+<p>The build system automatically selects the correct backend:</p>
+<ul>
+<li><strong>macOS</strong>: Cocoa backend (<code>vgfx_platform_macos.m</code>)</li>
+<li><strong>Linux</strong>: X11 backend (<code>vgfx_platform_linux.c</code>)</li>
+<li><strong>Windows</strong>: Win32 backend (<code>vgfx_platform_win32.c</code>)</li>
+</ul>
+<p>---</p>
+<h2 id="future-enhancements">Future Enhancements</h2>
+<h3 id="implemented-in-runtime-layer">Implemented in Runtime Layer</h3>
+<p>The following features have been implemented in the Viper runtime layer (<code>Viper.Graphics.*</code>):</p>
+<ul>
+<li>✅ <strong>Sprites</strong> — <code>Viper.Graphics.Sprite</code> class with animation and collision detection</li>
+<li>✅ <strong>Tilemaps</strong> — <code>Viper.Graphics.Tilemap</code> class for tile-based game rendering</li>
+<li>✅ <strong>Camera</strong> — <code>Viper.Graphics.Camera</code> class for 2D viewport management</li>
+<li>✅ <strong>Image processing</strong> — Invert, grayscale, tint, blur, bilinear resize</li>
+<li>✅ <strong>Color utilities</strong> — HSL conversion, lerp, brighten/darken</li>
+<li>✅ <strong>Gradients</strong> — Horizontal and vertical gradient drawing</li>
+</ul>
+<h3 id="planned-features-future">Planned Features (Future)</h3>
+<ul>
+<li><strong>Text rendering</strong> — Bitmap fonts at the C API level</li>
+<li><strong>Image loading</strong> — PNG support (BMP already implemented)</li>
+<li><strong>Palette modes</strong> — 8-bit indexed color</li>
+<li><strong>Multiple windows</strong> — Multi-window support</li>
+</ul>
+<p>---</p>
+<h2 id="performance-notes">Performance Notes</h2>
+<h3 id="rendering-performance">Rendering Performance</h3>
+<p>ViperGFX uses pure software rendering with the following characteristics:</p>
+<ul>
+<li><strong>Framebuffer format</strong>: 32-bit RGBA (4 bytes per pixel)</li>
+<li><strong>Drawing algorithms</strong>: Integer-only Bresenham (lines) and midpoint (circles)</li>
+<li><strong>Memory access</strong>: Direct memory writes (no GPU overhead)</li>
+<li><strong>FPS limiting</strong>: Voluntary frame rate control via sleep</li>
+</ul>
+<h3 id="typical-performance">Typical Performance</h3>
+<p>On modern hardware (2020+ Mac):</p>
+<ul>
+<li><strong>800×600 window</strong>: 60 FPS sustained</li>
+<li><strong>Full-screen drawing</strong>: ~1000 primitives per frame at 60 FPS</li>
+<li><strong>Event latency</strong>: &lt;1ms for keyboard/mouse</li>
+</ul>
+<p>---</p>
+<h2 id="license">License</h2>
+<p>ViperGFX is part of the Viper project and distributed under the GNU GPL v3.</p>
+<p>See [LICENSE](../LICENSE) for details.</p>
+<p>---</p>
+<h2 id="summary">Summary</h2>
+<p>ViperGFX provides a simple, deterministic, cross-platform 2D graphics solution for the Viper project:</p>
+<p>✅ <strong>Integrated</strong> — Builds as part of Viper</p>
+<p>✅ <strong>Tested</strong> — 20/20 tests passing (100%)</p>
+<p>✅ <strong>Documented</strong> — Complete API reference and examples</p>
+<p>✅ <strong>Cross-Platform</strong> — Fully implemented macOS (Cocoa) backend; Linux (X11) and Windows (Win32) backends are stubs</p>
+<p>For questions or contributions, see the [main Viper documentation](README.md).</p>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../../features/native-targets.html">Native Targets</a>
+      <a href="../../features/two-languages.html">Languages</a>
+      <a href="../../features/runtime.html">Runtime Library</a>
+      <a href="../../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../../docs/getting-started.html">Getting Started</a>
+      <a href="../../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../../docs/runtime/">Runtime API</a>
+      <a href="../../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../../contributing/">Contributing</a>
+      <a href="../../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../../main.js"></script>
+</body>
+</html>
