@@ -116,6 +116,7 @@ set(RT_COLLECTIONS_SOURCES
         collections/rt_debugoverlay.c
         collections/rt_gameui.c
         collections/rt_pathfinder.c
+        collections/rt_dialogue.c
 )
 
 set(RT_TEXT_SOURCES
@@ -201,15 +202,23 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_quat.c
         graphics/rt_spline.c
         graphics/rt_physics2d.c
+        graphics/rt_physics2d_joint.c
         graphics/rt_pixels.c
         graphics/rt_sprite.c
         graphics/rt_spritesheet.c
         graphics/rt_camera.c
         graphics/rt_tilemap.c
+        graphics/rt_tilemap_io.c
         graphics/rt_scene.c
         graphics/rt_spritebatch.c
         graphics/rt_bitmapfont.c
         graphics/fonts/embedded_font.c  # JetBrains Mono Regular (MIT) — embedded for portable font rendering
+        graphics/rt_canvas3d.c
+        graphics/vgfx3d_backend_sw.c
+        graphics/rt_mesh3d.c
+        graphics/rt_camera3d.c
+        graphics/rt_material3d.c
+        graphics/rt_light3d.c
 )
 
 set(RT_AUDIO_SOURCES
@@ -217,6 +226,7 @@ set(RT_AUDIO_SOURCES
         audio/rt_playlist.c
         audio/rt_soundbank.c
         audio/rt_synth.c
+        audio/rt_audio_codec.c
 )
 
 set(RT_THREADS_SOURCES

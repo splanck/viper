@@ -547,6 +547,10 @@ set(ZIA_RUNTIME_TESTS
         test_png_io
         test_collision_layers
         test_tilemap_collision
+        test_tilemap_layers
+        test_physics_joints
+        test_dialogue
+        test_tilemap_io
         test_iterator
         test_audio_api
         test_network_api

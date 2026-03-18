@@ -37,13 +37,17 @@ Canvas3D.Flip()  → vgfx_present() (existing path)
 // Context holds framebuffer pointer, Z-buffer, viewport, current camera
 typedef struct vgfx3d_context vgfx3d_context_t;
 
-// Vertex: position + normal + UV + color (all float for rasterizer efficiency)
+// Vertex: full layout defined upfront to avoid format changes in Phases 9 and 14.
+// Unused fields (tangent, bone data) are zero-initialized until their phase populates them.
 typedef struct {
-    float pos[3];    // object-space position
-    float normal[3]; // vertex normal
-    float uv[2];     // texture coordinates
-    float color[4];  // RGBA vertex color
-} vgfx3d_vertex_t;
+    float pos[3];              // object-space position
+    float normal[3];           // vertex normal
+    float uv[2];               // texture coordinates
+    float color[4];            // RGBA vertex color
+    float tangent[3];          // tangent vector (Phase 9 normal mapping, zero until then)
+    uint8_t bone_indices[4];   // bone palette indices (Phase 14 skinning, zero until then)
+    float bone_weights[4];     // blend weights (Phase 14 skinning, zero until then)
+} vgfx3d_vertex_t;             // 80 bytes
 
 // Triangle indices (uint32_t for mesh indexing)
 typedef struct {
@@ -129,7 +133,7 @@ void vgfx3d_set_backface_cull(vgfx3d_context_t *ctx, int enabled);
   - Bottom: `y ≥ -w`, Top: `y ≤ w`
   - Near: `z ≥ -w`, Far: `z ≤ w`
 - Input: 3 vertices in clip space (4D homogeneous)
-- Output: 0-7 vertices (triangle may be clipped into up to 5 triangles)
+- Output: 0-9 vertices (each clip plane can add 1 vertex; max 3+6=9). Fan triangulation produces up to 7 triangles (9-2=7)
 - Lerp attributes (normal, UV, color) at clip intersection points
 
 **`vgfx3d_vertex.c`** — Vertex transform (~200 LOC)
@@ -276,6 +280,7 @@ RT_FUNC(Canvas3DSetAmbient,      rt_canvas3d_set_ambient,     "Viper.Graphics3D.
 RT_FUNC(Canvas3DDrawLine3D,      rt_canvas3d_draw_line3d,     "Viper.Graphics3D.Canvas3D.DrawLine3D",      "void(obj,obj,obj,i64)")
 RT_FUNC(Canvas3DDrawPoint3D,     rt_canvas3d_draw_point3d,    "Viper.Graphics3D.Canvas3D.DrawPoint3D",     "void(obj,obj,i64,i64)")
 RT_FUNC(Canvas3DGetBackend,      rt_canvas3d_get_backend,     "Viper.Graphics3D.Canvas3D.get_Backend",     "str(obj)")
+RT_FUNC(Canvas3DScreenshot,     rt_canvas3d_screenshot,      "Viper.Graphics3D.Canvas3D.Screenshot",      "obj(obj)")
 
 RT_CLASS_BEGIN("Viper.Graphics3D.Canvas3D", Canvas3D, "obj", Canvas3DNew)
     RT_PROP("ShouldClose", "i1", Canvas3DShouldClose, none)
@@ -296,6 +301,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Canvas3D", Canvas3D, "obj", Canvas3DNew)
     RT_METHOD("SetAmbient", "void(f64,f64,f64)", Canvas3DSetAmbient)
     RT_METHOD("DrawLine3D", "void(obj,obj,i64)", Canvas3DDrawLine3D)
     RT_METHOD("DrawPoint3D", "void(obj,i64,i64)", Canvas3DDrawPoint3D)
+    RT_METHOD("Screenshot", "obj()", Canvas3DScreenshot)
 RT_CLASS_END()
 
 //=============================================================================
@@ -496,6 +502,14 @@ vgfx_framebuffer_t fb;
 if (!vgfx_get_framebuffer(canvas->gfx_win, &fb)) return;
 // fb.pixels, fb.stride, fb.width, fb.height now available
 ```
+
+## Winding Order Convention
+
+Counter-clockwise (CCW) vertex ordering is front-facing. This follows the OpenGL convention.
+
+- **Edge functions:** for CCW winding, all three half-space edge function values are ≥ 0 for interior points
+- **Backface culling:** when enabled, discard triangles where the signed area (cross product of two edges) is negative (CW winding = back face)
+- **Consistency:** all mesh generators (`NewBox`, `NewSphere`, `NewPlane`, `NewCylinder`) and the OBJ loader must emit CCW winding. GPU backends use the same convention (OpenGL default; Metal/D3D11 configured to match)
 
 ## Usage Example (Zia)
 

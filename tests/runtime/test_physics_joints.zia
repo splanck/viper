@@ -1,0 +1,95 @@
+// Test: Physics joints and circle bodies
+module TestPhysicsJoints;
+
+bind Viper.Terminal;
+
+func start() {
+    // Test 1: Distance joint creation
+    var a = Viper.Game.Physics2D.Body.New(0.0, 0.0, 10.0, 10.0, 1.0);
+    var b = Viper.Game.Physics2D.Body.New(200.0, 0.0, 10.0, 10.0, 1.0);
+    var dj = Viper.Game.Physics2D.DistanceJoint.New(a, b, 50.0);
+    if (dj.Length != 50.0) {
+        Say("FAIL: distance joint length should be 50");
+        return;
+    }
+
+    // Test 2: Distance joint in world converges
+    var world = Viper.Game.Physics2D.World.New(0.0, 0.0);
+    Viper.Game.Physics2D.World.Add(world, a);
+    Viper.Game.Physics2D.World.Add(world, b);
+    Viper.Game.Physics2D.World.AddJoint(world, dj);
+    if (world.JointCount != 1) {
+        Say("FAIL: joint count should be 1");
+        return;
+    }
+
+    var i = 0;
+    while (i < 100) {
+        Viper.Game.Physics2D.World.Step(world, 0.016);
+        i = i + 1;
+    }
+
+    // Test 3: Spring joint creation
+    var c = Viper.Game.Physics2D.Body.New(0.0, 0.0, 10.0, 10.0, 1.0);
+    var d = Viper.Game.Physics2D.Body.New(100.0, 0.0, 10.0, 10.0, 1.0);
+    var sj = Viper.Game.Physics2D.SpringJoint.New(c, d, 50.0, 100.0, 5.0);
+    if (sj.Stiffness != 100.0) {
+        Say("FAIL: spring stiffness should be 100");
+        return;
+    }
+    if (sj.Damping != 5.0) {
+        Say("FAIL: spring damping should be 5");
+        return;
+    }
+
+    // Test 4: Rope joint creation
+    var rj = Viper.Game.Physics2D.RopeJoint.New(c, d, 75.0);
+    if (rj.MaxLength != 75.0) {
+        Say("FAIL: rope max length should be 75");
+        return;
+    }
+
+    // Test 5: Hinge joint creation
+    var hj = Viper.Game.Physics2D.HingeJoint.New(c, d, 50.0, 0.0);
+    var hj_active = Viper.Game.Physics2D.Joint.get_IsActive(hj);
+    if (hj_active != true) {
+        Say("FAIL: hinge joint should be active");
+        return;
+    }
+
+    // Test 6: Joint count management
+    var w2 = Viper.Game.Physics2D.World.New(0.0, 0.0);
+    Viper.Game.Physics2D.World.AddJoint(w2, sj);
+    Viper.Game.Physics2D.World.AddJoint(w2, rj);
+    if (w2.JointCount != 2) {
+        Say("FAIL: joint count should be 2");
+        return;
+    }
+    Viper.Game.Physics2D.World.RemoveJoint(w2, sj);
+    if (w2.JointCount != 1) {
+        Say("FAIL: joint count should be 1 after remove");
+        return;
+    }
+
+    // Test 7: Circle body via static function
+    var circ = Viper.Game.Physics2D.CircleBody.New(50.0, 50.0, 25.0, 1.0);
+    var is_circ = Viper.Game.Physics2D.Body.get_IsCircle(circ);
+    if (is_circ != true) {
+        Say("FAIL: circle body should report IsCircle");
+        return;
+    }
+    var rad = Viper.Game.Physics2D.Body.get_Radius(circ);
+    if (rad != 25.0) {
+        Say("FAIL: circle radius should be 25");
+        return;
+    }
+
+    // Test 8: AABB body not circle
+    var is_aabb_circ = Viper.Game.Physics2D.Body.get_IsCircle(a);
+    if (is_aabb_circ != false) {
+        Say("FAIL: AABB body should not be circle");
+        return;
+    }
+
+    Say("RESULT: ok");
+}

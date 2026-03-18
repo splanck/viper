@@ -1,8 +1,14 @@
-# Phase 4: OpenGL 3.3 Core GPU Backend (Linux)
+# Phase 5: OpenGL 3.3 Core GPU Backend (Linux)
 
 ## Goal
 
 GPU-accelerated 3D rendering on Linux using OpenGL 3.3 Core Profile via Mesa.
+
+## Prerequisites
+
+- Phase 2 complete (backend abstraction provides `vgfx3d_backend_t` vtable)
+
+Implements `vgfx3d_opengl_backend` as a `vgfx3d_backend_t`, filling in all vtable function pointers.
 
 ## Custom GL Loader
 

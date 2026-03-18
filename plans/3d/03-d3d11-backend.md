@@ -1,8 +1,14 @@
-# Phase 3: Direct3D 11 GPU Backend (Windows)
+# Phase 4: Direct3D 11 GPU Backend (Windows)
 
 ## Goal
 
 GPU-accelerated 3D rendering on Windows using Direct3D 11 (Windows SDK, ships with Windows 7+).
+
+## Prerequisites
+
+- Phase 2 complete (backend abstraction provides `vgfx3d_backend_t` vtable)
+
+Implements `vgfx3d_d3d11_backend` as a `vgfx3d_backend_t`, filling in all vtable function pointers.
 
 ## Critical: NDC Depth Range Mismatch
 
@@ -45,10 +51,13 @@ Canvas3D.End()
 
 **`src/lib/graphics/src/vgfx3d_d3d11_shaders.hlsl`** (~200 LOC)
 ```hlsl
+// Viper's Mat4 is row-major. HLSL float4x4 defaults to column-major storage.
+// The row_major qualifier ensures matrix data uploaded from C matches the HLSL
+// layout without transposition. Without this, all matrix operations produce wrong results.
 cbuffer PerObject : register(b0) {
-    float4x4 modelMatrix;
-    float4x4 viewProjection;
-    float4x4 normalMatrix;
+    row_major float4x4 modelMatrix;
+    row_major float4x4 viewProjection;
+    row_major float4x4 normalMatrix;
 };
 
 cbuffer PerScene : register(b1) {

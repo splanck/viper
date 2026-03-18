@@ -244,6 +244,11 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_SpriteSheet,
     RTCLS_Physics2DWorld,
     RTCLS_Physics2DBody,
+    RTCLS_DistanceJoint,
+    RTCLS_SpringJoint,
+    RTCLS_HingeJoint,
+    RTCLS_RopeJoint,
+    RTCLS_Dialogue,
     RTCLS_ObjectPool,
     RTCLS_ScreenFX,
     RTCLS_PathFollower,
@@ -357,6 +362,13 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_UIPanel,
     RTCLS_UINineSlice,
     RTCLS_UIMenuList,
+
+    // Graphics 3D (Phase 1)
+    RTCLS_Canvas3D,
+    RTCLS_Mesh3D,
+    RTCLS_Camera3D,
+    RTCLS_Material3D,
+    RTCLS_Light3D,
 };
 
 /// @brief Describes a property on a runtime class.

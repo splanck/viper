@@ -26,6 +26,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_graphics.h"
+#include "rt_canvas3d.h"
 #include "rt_string.h"
 
 #include <stdint.h>
@@ -864,3 +865,68 @@ void rt_canvas_get_monitor_size(void *canvas, int64_t *w, int64_t *h)
     if (h)
         *h = 0;
 }
+
+//=============================================================================
+// Graphics 3D stubs — Canvas3D, Mesh3D, Camera3D, Material3D, Light3D
+//=============================================================================
+
+void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) { (void)title; (void)w; (void)h; rt_trap("Canvas3D.New: graphics support not compiled in"); return NULL; }
+void  rt_canvas3d_clear(void *o, double r, double g, double b) { (void)o; (void)r; (void)g; (void)b; }
+void  rt_canvas3d_begin(void *o, void *c) { (void)o; (void)c; }
+void  rt_canvas3d_draw_mesh(void *o, void *m, void *t, void *mt) { (void)o; (void)m; (void)t; (void)mt; }
+void  rt_canvas3d_end(void *o) { (void)o; }
+void  rt_canvas3d_flip(void *o) { (void)o; }
+int64_t rt_canvas3d_poll(void *o) { (void)o; return 0; }
+int8_t  rt_canvas3d_should_close(void *o) { (void)o; return 0; }
+void  rt_canvas3d_set_wireframe(void *o, int8_t e) { (void)o; (void)e; }
+void  rt_canvas3d_set_backface_cull(void *o, int8_t e) { (void)o; (void)e; }
+int64_t rt_canvas3d_get_width(void *o) { (void)o; return 0; }
+int64_t rt_canvas3d_get_height(void *o) { (void)o; return 0; }
+int64_t rt_canvas3d_get_fps(void *o) { (void)o; return 0; }
+int64_t rt_canvas3d_get_delta_time(void *o) { (void)o; return 0; }
+void  rt_canvas3d_set_dt_max(void *o, int64_t m) { (void)o; (void)m; }
+void  rt_canvas3d_set_light(void *o, int64_t i, void *l) { (void)o; (void)i; (void)l; }
+void  rt_canvas3d_set_ambient(void *o, double r, double g, double b) { (void)o; (void)r; (void)g; (void)b; }
+void  rt_canvas3d_draw_line3d(void *o, void *f, void *t, int64_t c) { (void)o; (void)f; (void)t; (void)c; }
+void  rt_canvas3d_draw_point3d(void *o, void *p, int64_t c, int64_t s) { (void)o; (void)p; (void)c; (void)s; }
+rt_string rt_canvas3d_get_backend(void *o) { (void)o; return NULL; }
+void *rt_canvas3d_screenshot(void *o) { (void)o; return NULL; }
+
+void *rt_mesh3d_new(void) { rt_trap("Mesh3D.New: graphics support not compiled in"); return NULL; }
+void *rt_mesh3d_new_box(double sx, double sy, double sz) { (void)sx; (void)sy; (void)sz; rt_trap("Mesh3D.NewBox: graphics support not compiled in"); return NULL; }
+void *rt_mesh3d_new_sphere(double r, int64_t s) { (void)r; (void)s; rt_trap("Mesh3D.NewSphere: graphics support not compiled in"); return NULL; }
+void *rt_mesh3d_new_plane(double sx, double sz) { (void)sx; (void)sz; rt_trap("Mesh3D.NewPlane: graphics support not compiled in"); return NULL; }
+void *rt_mesh3d_new_cylinder(double r, double h, int64_t s) { (void)r; (void)h; (void)s; rt_trap("Mesh3D.NewCylinder: graphics support not compiled in"); return NULL; }
+void *rt_mesh3d_from_obj(rt_string p) { (void)p; rt_trap("Mesh3D.FromOBJ: graphics support not compiled in"); return NULL; }
+int64_t rt_mesh3d_get_vertex_count(void *o) { (void)o; return 0; }
+int64_t rt_mesh3d_get_triangle_count(void *o) { (void)o; return 0; }
+void  rt_mesh3d_add_vertex(void *o, double x, double y, double z, double nx, double ny, double nz, double u, double v) { (void)o; (void)x; (void)y; (void)z; (void)nx; (void)ny; (void)nz; (void)u; (void)v; }
+void  rt_mesh3d_add_triangle(void *o, int64_t v0, int64_t v1, int64_t v2) { (void)o; (void)v0; (void)v1; (void)v2; }
+void  rt_mesh3d_recalc_normals(void *o) { (void)o; }
+void *rt_mesh3d_clone(void *o) { (void)o; return NULL; }
+void  rt_mesh3d_transform(void *o, void *m) { (void)o; (void)m; }
+
+void *rt_camera3d_new(double f, double a, double n, double fa) { (void)f; (void)a; (void)n; (void)fa; rt_trap("Camera3D.New: graphics support not compiled in"); return NULL; }
+void  rt_camera3d_look_at(void *o, void *e, void *t, void *u) { (void)o; (void)e; (void)t; (void)u; }
+void  rt_camera3d_orbit(void *o, void *t, double d, double y, double p) { (void)o; (void)t; (void)d; (void)y; (void)p; }
+double rt_camera3d_get_fov(void *o) { (void)o; return 0.0; }
+void  rt_camera3d_set_fov(void *o, double f) { (void)o; (void)f; }
+void *rt_camera3d_get_position(void *o) { (void)o; return NULL; }
+void  rt_camera3d_set_position(void *o, void *p) { (void)o; (void)p; }
+void *rt_camera3d_get_forward(void *o) { (void)o; return NULL; }
+void *rt_camera3d_get_right(void *o) { (void)o; return NULL; }
+void *rt_camera3d_screen_to_ray(void *o, int64_t sx, int64_t sy, int64_t sw, int64_t sh) { (void)o; (void)sx; (void)sy; (void)sw; (void)sh; return NULL; }
+
+void *rt_material3d_new(void) { rt_trap("Material3D.New: graphics support not compiled in"); return NULL; }
+void *rt_material3d_new_color(double r, double g, double b) { (void)r; (void)g; (void)b; rt_trap("Material3D.NewColor: graphics support not compiled in"); return NULL; }
+void *rt_material3d_new_textured(void *p) { (void)p; rt_trap("Material3D.NewTextured: graphics support not compiled in"); return NULL; }
+void  rt_material3d_set_color(void *o, double r, double g, double b) { (void)o; (void)r; (void)g; (void)b; }
+void  rt_material3d_set_texture(void *o, void *p) { (void)o; (void)p; }
+void  rt_material3d_set_shininess(void *o, double s) { (void)o; (void)s; }
+void  rt_material3d_set_unlit(void *o, int8_t u) { (void)o; (void)u; }
+
+void *rt_light3d_new_directional(void *d, double r, double g, double b) { (void)d; (void)r; (void)g; (void)b; rt_trap("Light3D.NewDirectional: graphics support not compiled in"); return NULL; }
+void *rt_light3d_new_point(void *p, double r, double g, double b, double a) { (void)p; (void)r; (void)g; (void)b; (void)a; rt_trap("Light3D.NewPoint: graphics support not compiled in"); return NULL; }
+void *rt_light3d_new_ambient(double r, double g, double b) { (void)r; (void)g; (void)b; rt_trap("Light3D.NewAmbient: graphics support not compiled in"); return NULL; }
+void  rt_light3d_set_intensity(void *o, double i) { (void)o; (void)i; }
+void  rt_light3d_set_color(void *o, double r, double g, double b) { (void)o; (void)r; (void)g; (void)b; }

@@ -512,6 +512,31 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_audio_mixing PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_audio_mixing test_rt_audio_mixing)
 
+    viper_add_test(test_rt_tilemap_layers ${VIPER_TESTS_DIR}/unit/test_rt_tilemap_layers.cpp)
+    target_link_libraries(test_rt_tilemap_layers PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_tilemap_layers test_rt_tilemap_layers)
+
+    viper_add_test(test_rt_physics_joints ${VIPER_TESTS_DIR}/unit/test_rt_physics_joints.cpp)
+    target_link_libraries(test_rt_physics_joints PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_physics_joints test_rt_physics_joints)
+
+    viper_add_test(test_rt_dialogue ${VIPER_TESTS_DIR}/unit/test_rt_dialogue.cpp)
+    target_link_libraries(test_rt_dialogue PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_dialogue test_rt_dialogue)
+
+    viper_add_test(test_rt_audio_codec ${VIPER_TESTS_DIR}/unit/test_rt_audio_codec.cpp)
+    target_link_libraries(test_rt_audio_codec PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_audio_codec test_rt_audio_codec)
+
+    viper_add_test(test_rt_tilemap_io ${VIPER_TESTS_DIR}/unit/test_rt_tilemap_io.cpp)
+    target_link_libraries(test_rt_tilemap_io PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_tilemap_io test_rt_tilemap_io)
+
+    viper_add_test(test_rt_canvas3d ${VIPER_TESTS_DIR}/unit/test_rt_canvas3d.cpp)
+    target_link_libraries(test_rt_canvas3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_canvas3d test_rt_canvas3d)
+    set_tests_properties(test_rt_canvas3d PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
     viper_add_test(test_rt_math_core ${VIPER_TESTS_DIR}/runtime/RTMathCoreTests.cpp)
     target_link_libraries(test_rt_math_core PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_math_core test_rt_math_core)

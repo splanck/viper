@@ -21,6 +21,8 @@
 
 #include <stdint.h>
 
+#include "rt_string.h"
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -195,6 +197,126 @@ extern "C"
     /// @param body Physics2D.Body object.
     /// @return 1 if any collision occurred, 0 otherwise.
     int8_t rt_tilemap_collide_body(void *tilemap, void *body);
+
+    //=========================================================================
+    // Layer Management
+    //=========================================================================
+
+    /// @brief Add a named layer to the tilemap.
+    /// @param tilemap Tilemap object.
+    /// @param name Layer name (up to 31 characters; truncated if longer).
+    /// @return Layer ID (1–15) on success, -1 if at maximum (16 layers).
+    int64_t rt_tilemap_add_layer(void *tilemap, rt_string name);
+
+    /// @brief Get the number of layers.
+    int64_t rt_tilemap_get_layer_count(void *tilemap);
+
+    /// @brief Find a layer by name.
+    /// @return Layer ID, or -1 if not found.
+    int64_t rt_tilemap_get_layer_by_name(void *tilemap, rt_string name);
+
+    /// @brief Remove a layer. Layer 0 (base) cannot be removed.
+    void rt_tilemap_remove_layer(void *tilemap, int64_t layer);
+
+    /// @brief Set layer visibility.
+    void rt_tilemap_set_layer_visible(void *tilemap, int64_t layer, int8_t visible);
+
+    /// @brief Get layer visibility.
+    int8_t rt_tilemap_get_layer_visible(void *tilemap, int64_t layer);
+
+    //=========================================================================
+    // Per-Layer Tile Access
+    //=========================================================================
+
+    /// @brief Set a tile on a specific layer.
+    void rt_tilemap_set_tile_layer(void *tilemap, int64_t layer, int64_t x, int64_t y,
+                                   int64_t tile);
+
+    /// @brief Get a tile from a specific layer.
+    int64_t rt_tilemap_get_tile_layer(void *tilemap, int64_t layer, int64_t x, int64_t y);
+
+    /// @brief Fill an entire layer with a single tile.
+    void rt_tilemap_fill_layer(void *tilemap, int64_t layer, int64_t tile);
+
+    /// @brief Clear a layer (set all tiles to 0).
+    void rt_tilemap_clear_layer(void *tilemap, int64_t layer);
+
+    //=========================================================================
+    // Per-Layer Tileset
+    //=========================================================================
+
+    /// @brief Set a per-layer tileset. NULL = use base layer tileset.
+    void rt_tilemap_set_layer_tileset(void *tilemap, int64_t layer, void *pixels);
+
+    //=========================================================================
+    // Per-Layer Rendering
+    //=========================================================================
+
+    /// @brief Draw a single layer to a canvas.
+    void rt_tilemap_draw_layer(void *tilemap, void *canvas, int64_t layer, int64_t cam_x,
+                               int64_t cam_y);
+
+    //=========================================================================
+    // Collision Layer
+    //=========================================================================
+
+    /// @brief Set which layer is used for collision queries.
+    void rt_tilemap_set_collision_layer(void *tilemap, int64_t layer);
+
+    /// @brief Get the current collision layer index.
+    int64_t rt_tilemap_get_collision_layer(void *tilemap);
+
+    //=========================================================================
+    // File I/O
+    //=========================================================================
+
+    /// @brief Save tilemap to JSON file.
+    int8_t rt_tilemap_save_to_file(void *tm, rt_string path);
+
+    /// @brief Load tilemap from JSON file.
+    void *rt_tilemap_load_from_file(rt_string path);
+
+    /// @brief Load tilemap from CSV file (Tiled export format).
+    void *rt_tilemap_load_csv(rt_string path, int64_t tile_w, int64_t tile_h);
+
+    //=========================================================================
+    // Auto-Tiling
+    //=========================================================================
+
+    /// @brief Set auto-tile rule variants 0-7 (lower half of 4-bit bitmask).
+    void rt_tilemap_set_autotile_lo(void *tm, int64_t base_tile,
+                                    int64_t v0, int64_t v1, int64_t v2, int64_t v3,
+                                    int64_t v4, int64_t v5, int64_t v6, int64_t v7);
+
+    /// @brief Set auto-tile rule variants 8-15 (upper half of 4-bit bitmask).
+    void rt_tilemap_set_autotile_hi(void *tm, int64_t base_tile,
+                                    int64_t v8, int64_t v9, int64_t v10, int64_t v11,
+                                    int64_t v12, int64_t v13, int64_t v14, int64_t v15);
+
+    /// @brief Clear auto-tile rule for a base tile.
+    void rt_tilemap_clear_autotile(void *tm, int64_t base_tile);
+
+    /// @brief Apply auto-tiling to entire tilemap.
+    void rt_tilemap_apply_autotile(void *tm);
+
+    /// @brief Apply auto-tiling to a region.
+    void rt_tilemap_apply_autotile_region(void *tm, int64_t x, int64_t y,
+                                          int64_t w, int64_t h);
+
+    //=========================================================================
+    // Tile Properties
+    //=========================================================================
+
+    /// @brief Set a property on a tile ID.
+    void rt_tilemap_set_tile_property(void *tm, int64_t tile_index,
+                                      rt_string key, int64_t value);
+
+    /// @brief Get a property from a tile ID (returns default_val if not found).
+    int64_t rt_tilemap_get_tile_property(void *tm, int64_t tile_index,
+                                         rt_string key, int64_t default_val);
+
+    /// @brief Check if a tile ID has a property.
+    int8_t rt_tilemap_has_tile_property(void *tm, int64_t tile_index, rt_string key);
 
 #ifdef __cplusplus
 }

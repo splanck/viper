@@ -69,6 +69,11 @@
 //   GRAPHICS - SPRITE BATCH
 //   GRAPHICS - SPRITESHEET
 //   GRAPHICS - TILEMAP
+//   GRAPHICS 3D - CANVAS3D
+//   GRAPHICS 3D - MESH3D
+//   GRAPHICS 3D - CAMERA3D
+//   GRAPHICS 3D - MATERIAL3D
+//   GRAPHICS 3D - LIGHT3D
 //   GUI - APPLICATION (+ FONT, WIDGET BASE, LABEL, BUTTON, ...)
 //   GAME ENGINE (Grid2D, Timer, StateMachine, Tween, ...)
 //   INPUT (Action, Manager, KeyChord)
@@ -1423,6 +1428,39 @@ RT_FUNC(TilemapGetCollision, rt_tilemap_get_collision,  "Viper.Graphics.Tilemap.
 RT_FUNC(TilemapIsSolidAt,   rt_tilemap_is_solid_at,    "Viper.Graphics.Tilemap.IsSolidAt",    "i1(obj,i64,i64)")
 RT_FUNC(TilemapCollideBody,  rt_tilemap_collide_body,   "Viper.Graphics.Tilemap.CollideBody",  "i1(obj,obj)")
 
+// Tilemap Layer Management
+RT_FUNC(TilemapAddLayer,          rt_tilemap_add_layer,           "Viper.Graphics.Tilemap.AddLayer",           "i64(obj,str)")
+RT_FUNC(TilemapGetLayerCount,     rt_tilemap_get_layer_count,     "Viper.Graphics.Tilemap.get_LayerCount",     "i64(obj)")
+RT_FUNC(TilemapGetLayerByName,    rt_tilemap_get_layer_by_name,   "Viper.Graphics.Tilemap.GetLayerByName",     "i64(obj,str)")
+RT_FUNC(TilemapRemoveLayer,       rt_tilemap_remove_layer,        "Viper.Graphics.Tilemap.RemoveLayer",        "void(obj,i64)")
+RT_FUNC(TilemapSetLayerVisible,   rt_tilemap_set_layer_visible,   "Viper.Graphics.Tilemap.SetLayerVisible",    "void(obj,i64,i1)")
+RT_FUNC(TilemapGetLayerVisible,   rt_tilemap_get_layer_visible,   "Viper.Graphics.Tilemap.GetLayerVisible",    "i1(obj,i64)")
+RT_FUNC(TilemapSetTileLayer,      rt_tilemap_set_tile_layer,      "Viper.Graphics.Tilemap.SetTileLayer",       "void(obj,i64,i64,i64,i64)")
+RT_FUNC(TilemapGetTileLayer,      rt_tilemap_get_tile_layer,      "Viper.Graphics.Tilemap.GetTileLayer",       "i64(obj,i64,i64,i64)")
+RT_FUNC(TilemapFillLayer,         rt_tilemap_fill_layer,          "Viper.Graphics.Tilemap.FillLayer",          "void(obj,i64,i64)")
+RT_FUNC(TilemapClearLayer,        rt_tilemap_clear_layer,         "Viper.Graphics.Tilemap.ClearLayer",         "void(obj,i64)")
+RT_FUNC(TilemapSetLayerTileset,   rt_tilemap_set_layer_tileset,   "Viper.Graphics.Tilemap.SetLayerTileset",    "void(obj,i64,obj)")
+RT_FUNC(TilemapDrawLayer,         rt_tilemap_draw_layer,          "Viper.Graphics.Tilemap.DrawLayer",          "void(obj,obj,i64,i64,i64)")
+RT_FUNC(TilemapSetCollisionLayer, rt_tilemap_set_collision_layer, "Viper.Graphics.Tilemap.set_CollisionLayer", "void(obj,i64)")
+RT_FUNC(TilemapGetCollisionLayer, rt_tilemap_get_collision_layer, "Viper.Graphics.Tilemap.get_CollisionLayer", "i64(obj)")
+
+// Tilemap File I/O
+RT_FUNC(TilemapSaveToFile,   rt_tilemap_save_to_file,   "Viper.Graphics.Tilemap.SaveToFile",   "i1(obj,str)")
+RT_FUNC(TilemapLoadFromFile, rt_tilemap_load_from_file,  "Viper.Graphics.Tilemap.LoadFromFile", "obj(str)")
+RT_FUNC(TilemapLoadCSV,      rt_tilemap_load_csv,        "Viper.Graphics.Tilemap.LoadCSV",      "obj(str,i64,i64)")
+
+// Tilemap Auto-Tiling
+RT_FUNC(TilemapSetAutoTileLo,    rt_tilemap_set_autotile_lo,       "Viper.Graphics.Tilemap.SetAutoTileLo",    "void(obj,i64,i64,i64,i64,i64,i64,i64,i64,i64)")
+RT_FUNC(TilemapSetAutoTileHi,    rt_tilemap_set_autotile_hi,       "Viper.Graphics.Tilemap.SetAutoTileHi",    "void(obj,i64,i64,i64,i64,i64,i64,i64,i64,i64)")
+RT_FUNC(TilemapClearAutoTile,    rt_tilemap_clear_autotile,        "Viper.Graphics.Tilemap.ClearAutoTile",    "void(obj,i64)")
+RT_FUNC(TilemapApplyAutoTile,    rt_tilemap_apply_autotile,        "Viper.Graphics.Tilemap.ApplyAutoTile",    "void(obj)")
+RT_FUNC(TilemapApplyAutoTileRgn, rt_tilemap_apply_autotile_region, "Viper.Graphics.Tilemap.ApplyAutoTileRegion","void(obj,i64,i64,i64,i64)")
+
+// Tilemap Tile Properties
+RT_FUNC(TilemapSetTileProp,  rt_tilemap_set_tile_property,"Viper.Graphics.Tilemap.SetTileProperty","void(obj,i64,str,i64)")
+RT_FUNC(TilemapGetTileProp,  rt_tilemap_get_tile_property,"Viper.Graphics.Tilemap.GetTileProperty","i64(obj,i64,str,i64)")
+RT_FUNC(TilemapHasTileProp,  rt_tilemap_has_tile_property,"Viper.Graphics.Tilemap.HasTileProperty","i1(obj,i64,str)")
+
 //=============================================================================
 // GRAPHICS - CAMERA
 //=============================================================================
@@ -2329,6 +2367,9 @@ RT_FUNC(SoundPlayLoopGroup,   rt_sound_play_loop_in_group, "Viper.Sound.Sound.Pl
 //=============================================================================
 // SOUND - SOUND EFFECTS
 //=============================================================================
+
+// Audio encoding (WAV → VAF)
+RT_FUNC(AudioEncode, rt_audio_encode, "Viper.Sound.Encode", "i1(str,str)")
 
 RT_FUNC(SoundLoad,     rt_sound_load,      "Viper.Sound.Sound.Load",     "obj(str)")
 RT_FUNC(SoundDestroy,  rt_sound_destroy,   "Viper.Sound.Sound.Destroy",  "void(obj)")
@@ -4333,6 +4374,43 @@ RT_FUNC(Physics2DBodySetCollisionLayer,rt_physics2d_body_set_collision_layer,"Vi
 RT_FUNC(Physics2DBodyCollisionMask,  rt_physics2d_body_collision_mask, "Viper.Game.Physics2D.Body.get_CollisionMask","i64(obj)")
 RT_FUNC(Physics2DBodySetCollisionMask,rt_physics2d_body_set_collision_mask,"Viper.Game.Physics2D.Body.set_CollisionMask","void(obj,i64)")
 
+// Circle body
+RT_FUNC(Physics2DCircleBodyNew,  rt_physics2d_circle_body_new, "Viper.Game.Physics2D.CircleBody.New", "obj(f64,f64,f64,f64)")
+RT_FUNC(Physics2DBodyRadius,     rt_physics2d_body_radius,     "Viper.Game.Physics2D.Body.get_Radius","f64(obj)")
+RT_FUNC(Physics2DBodyIsCircle,   rt_physics2d_body_is_circle,  "Viper.Game.Physics2D.Body.get_IsCircle","i1(obj)")
+
+// Distance Joint
+RT_FUNC(DistanceJointNew,      rt_physics2d_distance_joint_new,       "Viper.Game.Physics2D.DistanceJoint.New",       "obj(obj,obj,f64)")
+RT_FUNC(DistanceJointGetLen,   rt_physics2d_distance_joint_get_length,"Viper.Game.Physics2D.DistanceJoint.get_Length", "f64(obj)")
+RT_FUNC(DistanceJointSetLen,   rt_physics2d_distance_joint_set_length,"Viper.Game.Physics2D.DistanceJoint.set_Length", "void(obj,f64)")
+
+// Spring Joint
+RT_FUNC(SpringJointNew,       rt_physics2d_spring_joint_new,        "Viper.Game.Physics2D.SpringJoint.New",       "obj(obj,obj,f64,f64,f64)")
+RT_FUNC(SpringJointGetStiff,  rt_physics2d_spring_joint_get_stiffness,"Viper.Game.Physics2D.SpringJoint.get_Stiffness","f64(obj)")
+RT_FUNC(SpringJointSetStiff,  rt_physics2d_spring_joint_set_stiffness,"Viper.Game.Physics2D.SpringJoint.set_Stiffness","void(obj,f64)")
+RT_FUNC(SpringJointGetDamp,   rt_physics2d_spring_joint_get_damping, "Viper.Game.Physics2D.SpringJoint.get_Damping","f64(obj)")
+RT_FUNC(SpringJointSetDamp,   rt_physics2d_spring_joint_set_damping, "Viper.Game.Physics2D.SpringJoint.set_Damping","void(obj,f64)")
+
+// Hinge Joint
+RT_FUNC(HingeJointNew,        rt_physics2d_hinge_joint_new,         "Viper.Game.Physics2D.HingeJoint.New",       "obj(obj,obj,f64,f64)")
+RT_FUNC(HingeJointGetAngle,   rt_physics2d_hinge_joint_get_angle,   "Viper.Game.Physics2D.HingeJoint.get_Angle", "f64(obj)")
+
+// Rope Joint
+RT_FUNC(RopeJointNew,         rt_physics2d_rope_joint_new,          "Viper.Game.Physics2D.RopeJoint.New",        "obj(obj,obj,f64)")
+RT_FUNC(RopeJointGetMaxLen,   rt_physics2d_rope_joint_get_max_length,"Viper.Game.Physics2D.RopeJoint.get_MaxLength","f64(obj)")
+RT_FUNC(RopeJointSetMaxLen,   rt_physics2d_rope_joint_set_max_length,"Viper.Game.Physics2D.RopeJoint.set_MaxLength","void(obj,f64)")
+
+// Joint common
+RT_FUNC(JointGetBodyA,   rt_physics2d_joint_get_body_a,  "Viper.Game.Physics2D.Joint.get_BodyA",  "obj(obj)")
+RT_FUNC(JointGetBodyB,   rt_physics2d_joint_get_body_b,  "Viper.Game.Physics2D.Joint.get_BodyB",  "obj(obj)")
+RT_FUNC(JointGetType,    rt_physics2d_joint_get_type,    "Viper.Game.Physics2D.Joint.get_Type",   "i64(obj)")
+RT_FUNC(JointIsActive,   rt_physics2d_joint_is_active,   "Viper.Game.Physics2D.Joint.get_IsActive","i1(obj)")
+
+// World joint management
+RT_FUNC(WorldAddJoint,    rt_physics2d_world_add_joint,    "Viper.Game.Physics2D.World.AddJoint",    "void(obj,obj)")
+RT_FUNC(WorldRemoveJoint, rt_physics2d_world_remove_joint, "Viper.Game.Physics2D.World.RemoveJoint", "void(obj,obj)")
+RT_FUNC(WorldJointCount,  rt_physics2d_world_joint_count,  "Viper.Game.Physics2D.World.get_JointCount","i64(obj)")
+
 //=============================================================================
 // Phase 4: Game Development Abstractions - Object Management & Spatial
 //=============================================================================
@@ -4426,6 +4504,33 @@ RT_FUNC(UIMenuListSetFont,    rt_uimenulist_set_font,    "Viper.Game.UI.MenuList
 RT_FUNC(UIMenuListSetVisible, rt_uimenulist_set_visible, "Viper.Game.UI.MenuList.set_Visible","void(obj,i1)")
 RT_FUNC(UIMenuListGetCount,   rt_uimenulist_get_count,   "Viper.Game.UI.MenuList.get_Count",  "i64(obj)")
 RT_FUNC(UIMenuListDraw,       rt_uimenulist_draw,        "Viper.Game.UI.MenuList.Draw",       "void(obj,obj)")
+
+// Viper.Game.Dialogue — typewriter text reveal system
+RT_FUNC(DialogueNew,            rt_dialogue_new,             "Viper.Game.Dialogue.New",            "obj(i64,i64,i64,i64)")
+RT_FUNC(DialogueSetSpeed,       rt_dialogue_set_speed,       "Viper.Game.Dialogue.set_Speed",      "void(obj,i64)")
+RT_FUNC(DialogueSetFont,        rt_dialogue_set_font,        "Viper.Game.Dialogue.set_Font",       "void(obj,obj)")
+RT_FUNC(DialogueSetTextColor,   rt_dialogue_set_text_color,  "Viper.Game.Dialogue.set_TextColor",  "void(obj,i64)")
+RT_FUNC(DialogueSetSpeakerColor,rt_dialogue_set_speaker_color,"Viper.Game.Dialogue.set_SpeakerColor","void(obj,i64)")
+RT_FUNC(DialogueSetBgColor,     rt_dialogue_set_bg_color,    "Viper.Game.Dialogue.SetBgColor",     "void(obj,i64,i64)")
+RT_FUNC(DialogueSetBorderColor, rt_dialogue_set_border_color,"Viper.Game.Dialogue.set_BorderColor","void(obj,i64)")
+RT_FUNC(DialogueSetPadding,     rt_dialogue_set_padding,     "Viper.Game.Dialogue.set_Padding",    "void(obj,i64)")
+RT_FUNC(DialogueSetTextScale,   rt_dialogue_set_text_scale,  "Viper.Game.Dialogue.set_TextScale",  "void(obj,i64)")
+RT_FUNC(DialogueSetPos,         rt_dialogue_set_pos,         "Viper.Game.Dialogue.SetPos",         "void(obj,i64,i64)")
+RT_FUNC(DialogueSetSize,        rt_dialogue_set_size,        "Viper.Game.Dialogue.SetSize",        "void(obj,i64,i64)")
+RT_FUNC(DialogueSay,            rt_dialogue_say,             "Viper.Game.Dialogue.Say",            "void(obj,str,str)")
+RT_FUNC(DialogueSayText,        rt_dialogue_say_text,        "Viper.Game.Dialogue.SayText",        "void(obj,str)")
+RT_FUNC(DialogueClear,          rt_dialogue_clear,           "Viper.Game.Dialogue.Clear",          "void(obj)")
+RT_FUNC(DialogueUpdate,         rt_dialogue_update,          "Viper.Game.Dialogue.Update",         "void(obj,i64)")
+RT_FUNC(DialogueAdvance,        rt_dialogue_advance,         "Viper.Game.Dialogue.Advance",        "void(obj)")
+RT_FUNC(DialogueSkip,           rt_dialogue_skip,            "Viper.Game.Dialogue.Skip",           "void(obj)")
+RT_FUNC(DialogueIsActive,       rt_dialogue_is_active,       "Viper.Game.Dialogue.get_IsActive",   "i1(obj)")
+RT_FUNC(DialogueIsLineComplete, rt_dialogue_is_line_complete,"Viper.Game.Dialogue.get_IsLineComplete","i1(obj)")
+RT_FUNC(DialogueIsFinished,     rt_dialogue_is_finished,     "Viper.Game.Dialogue.get_IsFinished", "i1(obj)")
+RT_FUNC(DialogueIsWaiting,      rt_dialogue_is_waiting,      "Viper.Game.Dialogue.get_IsWaiting",  "i1(obj)")
+RT_FUNC(DialogueGetLineCount,   rt_dialogue_get_line_count,  "Viper.Game.Dialogue.get_LineCount",  "i64(obj)")
+RT_FUNC(DialogueGetCurrentLine, rt_dialogue_get_current_line,"Viper.Game.Dialogue.get_CurrentLine","i64(obj)")
+RT_FUNC(DialogueGetSpeaker,     rt_dialogue_get_speaker,     "Viper.Game.Dialogue.get_Speaker",    "str(obj)")
+RT_FUNC(DialogueDraw,           rt_dialogue_draw,            "Viper.Game.Dialogue.Draw",           "void(obj,obj)")
 
 // Viper.Game.Pathfinder — A* grid pathfinding
 RT_FUNC(PathfinderNew,          rt_pathfinder_new,            "Viper.Game.Pathfinder.New",            "obj(i64,i64)")
@@ -5738,6 +5843,30 @@ RT_CLASS_BEGIN("Viper.Graphics.Tilemap", Tilemap, "obj", TilemapNew)
     RT_METHOD("GetCollision", "i64(i64)", TilemapGetCollision)
     RT_METHOD("IsSolidAt", "i1(i64,i64)", TilemapIsSolidAt)
     RT_METHOD("CollideBody", "i1(obj)", TilemapCollideBody)
+    // Layer management
+    RT_PROP("LayerCount", "i64", TilemapGetLayerCount, none)
+    RT_PROP("CollisionLayer", "i64", TilemapGetCollisionLayer, TilemapSetCollisionLayer)
+    RT_METHOD("AddLayer", "i64(str)", TilemapAddLayer)
+    RT_METHOD("GetLayerByName", "i64(str)", TilemapGetLayerByName)
+    RT_METHOD("RemoveLayer", "void(i64)", TilemapRemoveLayer)
+    RT_METHOD("SetLayerVisible", "void(i64,i1)", TilemapSetLayerVisible)
+    RT_METHOD("GetLayerVisible", "i1(i64)", TilemapGetLayerVisible)
+    RT_METHOD("SetTileLayer", "void(i64,i64,i64,i64)", TilemapSetTileLayer)
+    RT_METHOD("GetTileLayer", "i64(i64,i64,i64)", TilemapGetTileLayer)
+    RT_METHOD("FillLayer", "void(i64,i64)", TilemapFillLayer)
+    RT_METHOD("ClearLayer", "void(i64)", TilemapClearLayer)
+    RT_METHOD("SetLayerTileset", "void(i64,obj)", TilemapSetLayerTileset)
+    RT_METHOD("DrawLayer", "void(obj,i64,i64,i64)", TilemapDrawLayer)
+    // File I/O & auto-tiling
+    RT_METHOD("SaveToFile", "i1(str)", TilemapSaveToFile)
+    RT_METHOD("ApplyAutoTile", "void()", TilemapApplyAutoTile)
+    RT_METHOD("ApplyAutoTileRegion", "void(i64,i64,i64,i64)", TilemapApplyAutoTileRgn)
+    RT_METHOD("SetAutoTileLo", "void(i64,i64,i64,i64,i64,i64,i64,i64,i64)", TilemapSetAutoTileLo)
+    RT_METHOD("SetAutoTileHi", "void(i64,i64,i64,i64,i64,i64,i64,i64,i64)", TilemapSetAutoTileHi)
+    RT_METHOD("ClearAutoTile", "void(i64)", TilemapClearAutoTile)
+    RT_METHOD("SetTileProperty", "void(i64,str,i64)", TilemapSetTileProp)
+    RT_METHOD("GetTileProperty", "i64(i64,str,i64)", TilemapGetTileProp)
+    RT_METHOD("HasTileProperty", "i1(i64,str)", TilemapHasTileProp)
 RT_CLASS_END()
 
 // Viper.Graphics.Camera - 2D camera view
@@ -7006,6 +7135,9 @@ RT_CLASS_BEGIN("Viper.Game.Physics2D.World", Physics2DWorld, "obj", Physics2DWor
     RT_METHOD("Add", "void(obj)", Physics2DWorldAdd)
     RT_METHOD("Remove", "void(obj)", Physics2DWorldRemove)
     RT_METHOD("SetGravity", "void(f64,f64)", Physics2DWorldSetGravity)
+    RT_PROP("JointCount", "i64", WorldJointCount, none)
+    RT_METHOD("AddJoint", "void(obj)", WorldAddJoint)
+    RT_METHOD("RemoveJoint", "void(obj)", WorldRemoveJoint)
 RT_CLASS_END()
 
 // Viper.Game.Physics2D.Body - 2D rigid body
@@ -7026,6 +7158,41 @@ RT_CLASS_BEGIN("Viper.Game.Physics2D.Body", Physics2DBody, "obj", Physics2DBodyN
     RT_METHOD("SetVel", "void(f64,f64)", Physics2DBodySetVel)
     RT_METHOD("ApplyForce", "void(f64,f64)", Physics2DBodyApplyForce)
     RT_METHOD("ApplyImpulse", "void(f64,f64)", Physics2DBodyApplyImpulse)
+    RT_PROP("Radius", "f64", Physics2DBodyRadius, none)
+    RT_PROP("IsCircle", "i1", Physics2DBodyIsCircle, none)
+RT_CLASS_END()
+
+// Viper.Game.Physics2D.DistanceJoint
+RT_CLASS_BEGIN("Viper.Game.Physics2D.DistanceJoint", DistanceJoint, "obj", DistanceJointNew)
+    RT_PROP("Length", "f64", DistanceJointGetLen, DistanceJointSetLen)
+    RT_PROP("BodyA", "obj", JointGetBodyA, none)
+    RT_PROP("BodyB", "obj", JointGetBodyB, none)
+    RT_PROP("IsActive", "i1", JointIsActive, none)
+RT_CLASS_END()
+
+// Viper.Game.Physics2D.SpringJoint
+RT_CLASS_BEGIN("Viper.Game.Physics2D.SpringJoint", SpringJoint, "obj", SpringJointNew)
+    RT_PROP("Stiffness", "f64", SpringJointGetStiff, SpringJointSetStiff)
+    RT_PROP("Damping", "f64", SpringJointGetDamp, SpringJointSetDamp)
+    RT_PROP("BodyA", "obj", JointGetBodyA, none)
+    RT_PROP("BodyB", "obj", JointGetBodyB, none)
+    RT_PROP("IsActive", "i1", JointIsActive, none)
+RT_CLASS_END()
+
+// Viper.Game.Physics2D.HingeJoint
+RT_CLASS_BEGIN("Viper.Game.Physics2D.HingeJoint", HingeJoint, "obj", HingeJointNew)
+    RT_PROP("Angle", "f64", HingeJointGetAngle, none)
+    RT_PROP("BodyA", "obj", JointGetBodyA, none)
+    RT_PROP("BodyB", "obj", JointGetBodyB, none)
+    RT_PROP("IsActive", "i1", JointIsActive, none)
+RT_CLASS_END()
+
+// Viper.Game.Physics2D.RopeJoint
+RT_CLASS_BEGIN("Viper.Game.Physics2D.RopeJoint", RopeJoint, "obj", RopeJointNew)
+    RT_PROP("MaxLength", "f64", RopeJointGetMaxLen, RopeJointSetMaxLen)
+    RT_PROP("BodyA", "obj", JointGetBodyA, none)
+    RT_PROP("BodyB", "obj", JointGetBodyB, none)
+    RT_PROP("IsActive", "i1", JointIsActive, none)
 RT_CLASS_END()
 
 // Viper.Input.Manager - high-level input manager
@@ -8302,6 +8469,34 @@ RT_CLASS_BEGIN("Viper.Game.ScreenFX", ScreenFX, "obj", ScreenFXNew)
     RT_METHOD("Draw", "void(obj,i64,i64)", ScreenFXDraw)
 RT_CLASS_END()
 
+// Viper.Game.Dialogue - typewriter text system
+RT_CLASS_BEGIN("Viper.Game.Dialogue", Dialogue, "obj", DialogueNew)
+    RT_PROP("Speed", "i64", none, DialogueSetSpeed)
+    RT_PROP("Font", "obj", none, DialogueSetFont)
+    RT_PROP("TextColor", "i64", none, DialogueSetTextColor)
+    RT_PROP("SpeakerColor", "i64", none, DialogueSetSpeakerColor)
+    RT_PROP("BorderColor", "i64", none, DialogueSetBorderColor)
+    RT_PROP("Padding", "i64", none, DialogueSetPadding)
+    RT_PROP("TextScale", "i64", none, DialogueSetTextScale)
+    RT_PROP("IsActive", "i1", DialogueIsActive, none)
+    RT_PROP("IsLineComplete", "i1", DialogueIsLineComplete, none)
+    RT_PROP("IsFinished", "i1", DialogueIsFinished, none)
+    RT_PROP("IsWaiting", "i1", DialogueIsWaiting, none)
+    RT_PROP("LineCount", "i64", DialogueGetLineCount, none)
+    RT_PROP("CurrentLine", "i64", DialogueGetCurrentLine, none)
+    RT_PROP("Speaker", "str", DialogueGetSpeaker, none)
+    RT_METHOD("Say", "void(str,str)", DialogueSay)
+    RT_METHOD("SayText", "void(str)", DialogueSayText)
+    RT_METHOD("Clear", "void()", DialogueClear)
+    RT_METHOD("Update", "void(i64)", DialogueUpdate)
+    RT_METHOD("Advance", "void()", DialogueAdvance)
+    RT_METHOD("Skip", "void()", DialogueSkip)
+    RT_METHOD("SetBgColor", "void(i64,i64)", DialogueSetBgColor)
+    RT_METHOD("SetPos", "void(i64,i64)", DialogueSetPos)
+    RT_METHOD("SetSize", "void(i64,i64)", DialogueSetSize)
+    RT_METHOD("Draw", "void(obj)", DialogueDraw)
+RT_CLASS_END()
+
 // Viper.Game.UI.Label - Positioned text widget
 RT_CLASS_BEGIN("Viper.Game.UI.Label", UILabel, "obj", UILabelNew)
     RT_PROP("X", "i64", UILabelGetX, none)
@@ -8770,4 +8965,139 @@ RT_CLASS_BEGIN("Viper.GUI.FloatingPanel", GuiFloatingPanel, "obj", GuiFloatingPa
     RT_METHOD("SetSize",     "void(f64,f64)", GuiFloatingPanelSetSize)
     RT_METHOD("SetVisible",  "void(i64)",     GuiFloatingPanelSetVisible)
     RT_METHOD("AddChild",    "void(obj)",     GuiFloatingPanelAddChild)
+RT_CLASS_END()
+
+//=============================================================================
+// GRAPHICS 3D - CANVAS3D
+//=============================================================================
+
+RT_FUNC(Canvas3DNew,             rt_canvas3d_new,             "Viper.Graphics3D.Canvas3D.New",             "obj(str,i64,i64)")
+RT_FUNC(Canvas3DClear,           rt_canvas3d_clear,           "Viper.Graphics3D.Canvas3D.Clear",           "void(obj,f64,f64,f64)")
+RT_FUNC(Canvas3DBegin,           rt_canvas3d_begin,           "Viper.Graphics3D.Canvas3D.Begin",           "void(obj,obj)")
+RT_FUNC(Canvas3DDrawMesh,        rt_canvas3d_draw_mesh,       "Viper.Graphics3D.Canvas3D.DrawMesh",        "void(obj,obj,obj,obj)")
+RT_FUNC(Canvas3DEnd,             rt_canvas3d_end,             "Viper.Graphics3D.Canvas3D.End",             "void(obj)")
+RT_FUNC(Canvas3DFlip,            rt_canvas3d_flip,            "Viper.Graphics3D.Canvas3D.Flip",            "void(obj)")
+RT_FUNC(Canvas3DPoll,            rt_canvas3d_poll,            "Viper.Graphics3D.Canvas3D.Poll",            "i64(obj)")
+RT_FUNC(Canvas3DShouldClose,     rt_canvas3d_should_close,    "Viper.Graphics3D.Canvas3D.get_ShouldClose", "i1(obj)")
+RT_FUNC(Canvas3DSetWireframe,    rt_canvas3d_set_wireframe,   "Viper.Graphics3D.Canvas3D.set_Wireframe",   "void(obj,i1)")
+RT_FUNC(Canvas3DSetBackfaceCull, rt_canvas3d_set_backface_cull,"Viper.Graphics3D.Canvas3D.SetBackfaceCull","void(obj,i1)")
+RT_FUNC(Canvas3DGetWidth,        rt_canvas3d_get_width,       "Viper.Graphics3D.Canvas3D.get_Width",       "i64(obj)")
+RT_FUNC(Canvas3DGetHeight,       rt_canvas3d_get_height,      "Viper.Graphics3D.Canvas3D.get_Height",      "i64(obj)")
+RT_FUNC(Canvas3DGetFps,          rt_canvas3d_get_fps,         "Viper.Graphics3D.Canvas3D.get_Fps",         "i64(obj)")
+RT_FUNC(Canvas3DGetDeltaTime,    rt_canvas3d_get_delta_time,  "Viper.Graphics3D.Canvas3D.get_DeltaTime",   "i64(obj)")
+RT_FUNC(Canvas3DSetDTMax,        rt_canvas3d_set_dt_max,      "Viper.Graphics3D.Canvas3D.SetDTMax",        "void(obj,i64)")
+RT_FUNC(Canvas3DSetLight,        rt_canvas3d_set_light,       "Viper.Graphics3D.Canvas3D.SetLight",        "void(obj,i64,obj)")
+RT_FUNC(Canvas3DSetAmbient,      rt_canvas3d_set_ambient,     "Viper.Graphics3D.Canvas3D.SetAmbient",      "void(obj,f64,f64,f64)")
+RT_FUNC(Canvas3DDrawLine3D,      rt_canvas3d_draw_line3d,     "Viper.Graphics3D.Canvas3D.DrawLine3D",      "void(obj,obj,obj,i64)")
+RT_FUNC(Canvas3DDrawPoint3D,     rt_canvas3d_draw_point3d,    "Viper.Graphics3D.Canvas3D.DrawPoint3D",     "void(obj,obj,i64,i64)")
+RT_FUNC(Canvas3DGetBackend,      rt_canvas3d_get_backend,     "Viper.Graphics3D.Canvas3D.get_Backend",     "str(obj)")
+RT_FUNC(Canvas3DScreenshot,      rt_canvas3d_screenshot,      "Viper.Graphics3D.Canvas3D.Screenshot",      "obj(obj)")
+
+RT_CLASS_BEGIN("Viper.Graphics3D.Canvas3D", Canvas3D, "obj", Canvas3DNew)
+    RT_PROP("ShouldClose", "i1", Canvas3DShouldClose, none)
+    RT_PROP("Width", "i64", Canvas3DGetWidth, none)
+    RT_PROP("Height", "i64", Canvas3DGetHeight, none)
+    RT_PROP("Fps", "i64", Canvas3DGetFps, none)
+    RT_PROP("DeltaTime", "i64", Canvas3DGetDeltaTime, none)
+    RT_PROP("Backend", "str", Canvas3DGetBackend, none)
+    RT_METHOD("Clear", "void(f64,f64,f64)", Canvas3DClear)
+    RT_METHOD("Begin", "void(obj)", Canvas3DBegin)
+    RT_METHOD("DrawMesh", "void(obj,obj,obj)", Canvas3DDrawMesh)
+    RT_METHOD("End", "void()", Canvas3DEnd)
+    RT_METHOD("Flip", "void()", Canvas3DFlip)
+    RT_METHOD("Poll", "i64()", Canvas3DPoll)
+    RT_METHOD("SetBackfaceCull", "void(i1)", Canvas3DSetBackfaceCull)
+    RT_METHOD("SetDTMax", "void(i64)", Canvas3DSetDTMax)
+    RT_METHOD("SetLight", "void(i64,obj)", Canvas3DSetLight)
+    RT_METHOD("SetAmbient", "void(f64,f64,f64)", Canvas3DSetAmbient)
+    RT_METHOD("DrawLine3D", "void(obj,obj,i64)", Canvas3DDrawLine3D)
+    RT_METHOD("DrawPoint3D", "void(obj,i64,i64)", Canvas3DDrawPoint3D)
+    RT_METHOD("Screenshot", "obj()", Canvas3DScreenshot)
+RT_CLASS_END()
+
+//=============================================================================
+// GRAPHICS 3D - MESH3D
+//=============================================================================
+
+RT_FUNC(Mesh3DNew,              rt_mesh3d_new,              "Viper.Graphics3D.Mesh3D.New",              "obj()")
+RT_FUNC(Mesh3DNewBox,           rt_mesh3d_new_box,          "Viper.Graphics3D.Mesh3D.NewBox",           "obj(f64,f64,f64)")
+RT_FUNC(Mesh3DNewSphere,        rt_mesh3d_new_sphere,       "Viper.Graphics3D.Mesh3D.NewSphere",        "obj(f64,i64)")
+RT_FUNC(Mesh3DNewPlane,         rt_mesh3d_new_plane,        "Viper.Graphics3D.Mesh3D.NewPlane",         "obj(f64,f64)")
+RT_FUNC(Mesh3DNewCylinder,      rt_mesh3d_new_cylinder,     "Viper.Graphics3D.Mesh3D.NewCylinder",      "obj(f64,f64,i64)")
+RT_FUNC(Mesh3DFromOBJ,          rt_mesh3d_from_obj,         "Viper.Graphics3D.Mesh3D.FromOBJ",          "obj(str)")
+RT_FUNC(Mesh3DGetVertexCount,   rt_mesh3d_get_vertex_count, "Viper.Graphics3D.Mesh3D.get_VertexCount",  "i64(obj)")
+RT_FUNC(Mesh3DGetTriangleCount, rt_mesh3d_get_triangle_count,"Viper.Graphics3D.Mesh3D.get_TriangleCount","i64(obj)")
+RT_FUNC(Mesh3DAddVertex,        rt_mesh3d_add_vertex,       "Viper.Graphics3D.Mesh3D.AddVertex",        "void(obj,f64,f64,f64,f64,f64,f64,f64,f64)")
+RT_FUNC(Mesh3DAddTriangle,      rt_mesh3d_add_triangle,     "Viper.Graphics3D.Mesh3D.AddTriangle",      "void(obj,i64,i64,i64)")
+RT_FUNC(Mesh3DRecalcNormals,    rt_mesh3d_recalc_normals,   "Viper.Graphics3D.Mesh3D.RecalcNormals",    "void(obj)")
+RT_FUNC(Mesh3DClone,            rt_mesh3d_clone,            "Viper.Graphics3D.Mesh3D.Clone",            "obj(obj)")
+RT_FUNC(Mesh3DTransform,        rt_mesh3d_transform,        "Viper.Graphics3D.Mesh3D.Transform",        "void(obj,obj)")
+
+RT_CLASS_BEGIN("Viper.Graphics3D.Mesh3D", Mesh3D, "obj", Mesh3DNew)
+    RT_PROP("VertexCount", "i64", Mesh3DGetVertexCount, none)
+    RT_PROP("TriangleCount", "i64", Mesh3DGetTriangleCount, none)
+    RT_METHOD("AddVertex", "void(f64,f64,f64,f64,f64,f64,f64,f64)", Mesh3DAddVertex)
+    RT_METHOD("AddTriangle", "void(i64,i64,i64)", Mesh3DAddTriangle)
+    RT_METHOD("RecalcNormals", "void()", Mesh3DRecalcNormals)
+    RT_METHOD("Clone", "obj()", Mesh3DClone)
+    RT_METHOD("Transform", "void(obj)", Mesh3DTransform)
+RT_CLASS_END()
+
+//=============================================================================
+// GRAPHICS 3D - CAMERA3D
+//=============================================================================
+
+RT_FUNC(Camera3DNew,            rt_camera3d_new,            "Viper.Graphics3D.Camera3D.New",            "obj(f64,f64,f64,f64)")
+RT_FUNC(Camera3DLookAt,         rt_camera3d_look_at,        "Viper.Graphics3D.Camera3D.LookAt",         "void(obj,obj,obj,obj)")
+RT_FUNC(Camera3DOrbit,          rt_camera3d_orbit,          "Viper.Graphics3D.Camera3D.Orbit",          "void(obj,obj,f64,f64,f64)")
+RT_FUNC(Camera3DGetFov,         rt_camera3d_get_fov,        "Viper.Graphics3D.Camera3D.get_Fov",        "f64(obj)")
+RT_FUNC(Camera3DSetFov,         rt_camera3d_set_fov,        "Viper.Graphics3D.Camera3D.set_Fov",        "void(obj,f64)")
+RT_FUNC(Camera3DGetPosition,    rt_camera3d_get_position,   "Viper.Graphics3D.Camera3D.get_Position",   "obj(obj)")
+RT_FUNC(Camera3DSetPosition,    rt_camera3d_set_position,   "Viper.Graphics3D.Camera3D.set_Position",   "void(obj,obj)")
+RT_FUNC(Camera3DGetForward,     rt_camera3d_get_forward,    "Viper.Graphics3D.Camera3D.get_Forward",    "obj(obj)")
+RT_FUNC(Camera3DGetRight,       rt_camera3d_get_right,      "Viper.Graphics3D.Camera3D.get_Right",      "obj(obj)")
+RT_FUNC(Camera3DScreenToRay,    rt_camera3d_screen_to_ray,  "Viper.Graphics3D.Camera3D.ScreenToRay",    "obj(obj,i64,i64,i64,i64)")
+
+RT_CLASS_BEGIN("Viper.Graphics3D.Camera3D", Camera3D, "obj", Camera3DNew)
+    RT_PROP("Fov", "f64", Camera3DGetFov, Camera3DSetFov)
+    RT_PROP("Position", "obj", Camera3DGetPosition, Camera3DSetPosition)
+    RT_PROP("Forward", "obj", Camera3DGetForward, none)
+    RT_PROP("Right", "obj", Camera3DGetRight, none)
+    RT_METHOD("LookAt", "void(obj,obj,obj)", Camera3DLookAt)
+    RT_METHOD("Orbit", "void(obj,f64,f64,f64)", Camera3DOrbit)
+    RT_METHOD("ScreenToRay", "obj(i64,i64,i64,i64)", Camera3DScreenToRay)
+RT_CLASS_END()
+
+//=============================================================================
+// GRAPHICS 3D - MATERIAL3D
+//=============================================================================
+
+RT_FUNC(Material3DNew,          rt_material3d_new,          "Viper.Graphics3D.Material3D.New",          "obj()")
+RT_FUNC(Material3DNewColor,     rt_material3d_new_color,    "Viper.Graphics3D.Material3D.NewColor",     "obj(f64,f64,f64)")
+RT_FUNC(Material3DNewTextured,  rt_material3d_new_textured, "Viper.Graphics3D.Material3D.NewTextured",  "obj(obj)")
+RT_FUNC(Material3DSetColor,     rt_material3d_set_color,    "Viper.Graphics3D.Material3D.SetColor",     "void(obj,f64,f64,f64)")
+RT_FUNC(Material3DSetTexture,   rt_material3d_set_texture,  "Viper.Graphics3D.Material3D.SetTexture",   "void(obj,obj)")
+RT_FUNC(Material3DSetShininess, rt_material3d_set_shininess,"Viper.Graphics3D.Material3D.SetShininess", "void(obj,f64)")
+RT_FUNC(Material3DSetUnlit,     rt_material3d_set_unlit,    "Viper.Graphics3D.Material3D.SetUnlit",     "void(obj,i1)")
+
+RT_CLASS_BEGIN("Viper.Graphics3D.Material3D", Material3D, "obj", Material3DNew)
+    RT_METHOD("SetColor", "void(f64,f64,f64)", Material3DSetColor)
+    RT_METHOD("SetTexture", "void(obj)", Material3DSetTexture)
+    RT_METHOD("SetShininess", "void(f64)", Material3DSetShininess)
+    RT_METHOD("SetUnlit", "void(i1)", Material3DSetUnlit)
+RT_CLASS_END()
+
+//=============================================================================
+// GRAPHICS 3D - LIGHT3D
+//=============================================================================
+
+RT_FUNC(Light3DNewDirectional,  rt_light3d_new_directional, "Viper.Graphics3D.Light3D.NewDirectional",  "obj(obj,f64,f64,f64)")
+RT_FUNC(Light3DNewPoint,        rt_light3d_new_point,       "Viper.Graphics3D.Light3D.NewPoint",        "obj(obj,f64,f64,f64,f64)")
+RT_FUNC(Light3DNewAmbient,      rt_light3d_new_ambient,     "Viper.Graphics3D.Light3D.NewAmbient",      "obj(f64,f64,f64)")
+RT_FUNC(Light3DSetIntensity,    rt_light3d_set_intensity,   "Viper.Graphics3D.Light3D.SetIntensity",    "void(obj,f64)")
+RT_FUNC(Light3DSetColor,        rt_light3d_set_color,       "Viper.Graphics3D.Light3D.SetColor",        "void(obj,f64,f64,f64)")
+
+RT_CLASS_BEGIN("Viper.Graphics3D.Light3D", Light3D, "obj", Light3DNewDirectional)
+    RT_METHOD("SetIntensity", "void(f64)", Light3DSetIntensity)
+    RT_METHOD("SetColor", "void(f64,f64,f64)", Light3DSetColor)
 RT_CLASS_END()

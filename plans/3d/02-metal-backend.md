@@ -1,4 +1,4 @@
-# Phase 2: Metal GPU Backend (macOS)
+# Phase 3: Metal GPU Backend (macOS)
 
 ## Goal
 
@@ -6,8 +6,10 @@ GPU-accelerated 3D rendering on macOS using Metal (system framework, 10.11+).
 
 ## Prerequisites
 
-- Phase 1 complete (software renderer provides reference output)
+- Phase 2 complete (backend abstraction provides `vgfx3d_backend_t` vtable)
 - macOS 10.11+ (El Capitan) with Metal-capable GPU
+
+Implements `vgfx3d_metal_backend` as a `vgfx3d_backend_t`, filling in all vtable function pointers.
 
 ## Architecture
 

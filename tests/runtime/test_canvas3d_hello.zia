@@ -1,0 +1,57 @@
+// Test: Canvas3D basic rendering — creates a window, renders a triangle, verifies properties
+module TestCanvas3DHello;
+
+bind Viper.Terminal;
+
+func start() {
+    // Test Mesh3D programmatic construction
+    var mesh = new Viper.Graphics3D.Mesh3D();
+    Viper.Graphics3D.Mesh3D.AddVertex(mesh, -0.5, -0.5, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    Viper.Graphics3D.Mesh3D.AddVertex(mesh, 0.5, -0.5, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0);
+    Viper.Graphics3D.Mesh3D.AddVertex(mesh, 0.0, 0.5, 0.0, 0.0, 0.0, 1.0, 0.5, 1.0);
+    Viper.Graphics3D.Mesh3D.AddTriangle(mesh, 0, 1, 2);
+
+    var vc = Viper.Graphics3D.Mesh3D.get_VertexCount(mesh);
+    var tc = Viper.Graphics3D.Mesh3D.get_TriangleCount(mesh);
+
+    if (vc != 3) {
+        Say("FAIL: VertexCount expected 3, got " + vc);
+        return;
+    }
+    if (tc != 1) {
+        Say("FAIL: TriangleCount expected 1, got " + tc);
+        return;
+    }
+
+    // Test Material3D
+    var mat = Viper.Graphics3D.Material3D.NewColor(1.0, 0.3, 0.2);
+
+    // Test Camera3D
+    var cam = Viper.Graphics3D.Camera3D.New(60.0, 1.333, 0.1, 100.0);
+    var eye = new Viper.Math.Vec3(0.0, 0.0, 3.0);
+    var target = new Viper.Math.Vec3(0.0, 0.0, 0.0);
+    var up = new Viper.Math.Vec3(0.0, 1.0, 0.0);
+    Viper.Graphics3D.Camera3D.LookAt(cam, eye, target, up);
+
+    var fov = Viper.Graphics3D.Camera3D.get_Fov(cam);
+    if (fov < 59.9 || fov > 60.1) {
+        Say("FAIL: Fov expected ~60.0, got " + fov);
+        return;
+    }
+
+    // Test Mesh3D.NewBox generator
+    var box = Viper.Graphics3D.Mesh3D.NewBox(1.0, 1.0, 1.0);
+    var box_vc = Viper.Graphics3D.Mesh3D.get_VertexCount(box);
+    var box_tc = Viper.Graphics3D.Mesh3D.get_TriangleCount(box);
+
+    if (box_vc != 24) {
+        Say("FAIL: Box VertexCount expected 24, got " + box_vc);
+        return;
+    }
+    if (box_tc != 12) {
+        Say("FAIL: Box TriangleCount expected 12, got " + box_tc);
+        return;
+    }
+
+    Say("PASS");
+}

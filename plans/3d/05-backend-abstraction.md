@@ -1,8 +1,12 @@
-# Phase 5: Backend Abstraction + Advanced Features
+# Phase 2: Backend Abstraction
 
 ## Goal
 
-Unify the four backends (software, Metal, D3D11, OpenGL) behind a common dispatch interface, then add advanced rendering features.
+Extract the software renderer's internals behind a `vgfx3d_backend_t` vtable dispatch interface. The software renderer becomes the first backend implementation. GPU backends (Phases 3-5) implement the same vtable.
+
+## Prerequisites
+
+- Phase 1 complete (software renderer provides the reference implementation to extract)
 
 ## Backend Interface
 
@@ -59,15 +63,9 @@ const vgfx3d_backend_t *vgfx3d_select_backend(void) {
 }
 ```
 
-## Advanced Features (all backends)
+## Scope
 
-| Feature | Implementation |
-|---------|---------------|
-| Phong shading (per-pixel) | Software: per-fragment normal interpolation + lighting. GPU: fragment shader already does this. |
-| Skybox | 6-face cube map; render at infinity (depth=1.0, disable depth write) |
-| Normal mapping | Tangent-space normal map texture; TBN matrix in vertex data |
-| Shadow mapping | Depth-only pass from light's POV → shadow map texture → shadow test in main pass |
-| Instanced drawing | Software: loop. GPU: `drawInstanced` / `DrawIndexedInstanced` / `glDrawElementsInstanced` |
-| Fog | Linear depth fog: `fogFactor = (far - dist) / (far - near)`, mix with fog color |
-| Billboard sprites | Quad always facing camera (extract right/up from view matrix) |
+This phase is strictly the dispatch interface. It does NOT implement GPU backends or advanced rendering features.
+
+Advanced rendering features are covered in their dedicated phases: normal mapping (Phase 9), skybox/cube maps (Phase 11), skeletal animation (Phase 14), particles with billboards (Phase 17), post-processing (Phase 18), etc.
 

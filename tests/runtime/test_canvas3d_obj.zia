@@ -1,0 +1,40 @@
+// Test: OBJ loader + ScreenToRay
+module TestCanvas3DOBJ;
+
+bind Viper.Terminal;
+
+func start() {
+    // Test OBJ loading
+    var mesh = Viper.Graphics3D.Mesh3D.FromOBJ("tests/runtime/test_cube.obj");
+    var vc = Viper.Graphics3D.Mesh3D.get_VertexCount(mesh);
+    var tc = Viper.Graphics3D.Mesh3D.get_TriangleCount(mesh);
+
+    // 6 quad faces → 6*4=24 vertices (OBJ creates unique verts per face-vertex)
+    // 6 quads → 12 triangles (fan triangulation)
+    if (vc != 24) {
+        Say("FAIL: OBJ VertexCount expected 24, got " + vc);
+        return;
+    }
+    if (tc != 12) {
+        Say("FAIL: OBJ TriangleCount expected 12, got " + tc);
+        return;
+    }
+
+    // Test ScreenToRay — center of screen should point roughly along -Z
+    var cam = Viper.Graphics3D.Camera3D.New(60.0, 1.333, 0.1, 100.0);
+    var eye = new Viper.Math.Vec3(0.0, 0.0, 5.0);
+    var target = new Viper.Math.Vec3(0.0, 0.0, 0.0);
+    var up = new Viper.Math.Vec3(0.0, 1.0, 0.0);
+    Viper.Graphics3D.Camera3D.LookAt(cam, eye, target, up);
+
+    var ray = Viper.Graphics3D.Camera3D.ScreenToRay(cam, 320, 240, 640, 480);
+    var rz = Viper.Math.Vec3.get_Z(ray);
+
+    // Center ray should point roughly toward -Z (the direction camera is looking)
+    if (rz > -0.5) {
+        Say("FAIL: ScreenToRay center Z expected < -0.5, got " + rz);
+        return;
+    }
+
+    Say("PASS");
+}

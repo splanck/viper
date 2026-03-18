@@ -1,0 +1,127 @@
+// Test: Tilemap multi-layer support
+module TestTilemapLayers;
+
+bind Viper.Terminal;
+
+func start() {
+    // Create a 10x10 tilemap with 16x16 tiles
+    var tm = Viper.Graphics.Tilemap.New(10, 10, 16, 16);
+
+    // Test 1: Default layer count is 1
+    var count = Viper.Graphics.Tilemap.get_LayerCount(tm);
+    if (count != 1) {
+        Say("FAIL: default layer count should be 1");
+        return;
+    }
+
+    // Test 2: Add a layer
+    var fg = Viper.Graphics.Tilemap.AddLayer(tm, "foreground");
+    if (fg != 1) {
+        Say("FAIL: AddLayer should return 1");
+        return;
+    }
+    var count2 = Viper.Graphics.Tilemap.get_LayerCount(tm);
+    if (count2 != 2) {
+        Say("FAIL: layer count should be 2 after add");
+        return;
+    }
+
+    // Test 3: GetLayerByName
+    var idx = Viper.Graphics.Tilemap.GetLayerByName(tm, "foreground");
+    if (idx != 1) {
+        Say("FAIL: GetLayerByName foreground should return 1");
+        return;
+    }
+    var missing = Viper.Graphics.Tilemap.GetLayerByName(tm, "nope");
+    if (missing != -1) {
+        Say("FAIL: unknown name should return -1");
+        return;
+    }
+
+    // Test 4: Per-layer tile independence
+    Viper.Graphics.Tilemap.SetTileLayer(tm, 0, 5, 5, 1);
+    Viper.Graphics.Tilemap.SetTileLayer(tm, 1, 5, 5, 2);
+    var t0 = Viper.Graphics.Tilemap.GetTileLayer(tm, 0, 5, 5);
+    var t1 = Viper.Graphics.Tilemap.GetTileLayer(tm, 1, 5, 5);
+    if (t0 != 1) {
+        Say("FAIL: layer 0 tile should be 1");
+        return;
+    }
+    if (t1 != 2) {
+        Say("FAIL: layer 1 tile should be 2");
+        return;
+    }
+
+    // Test 5: Backwards compatibility — SetTile/GetTile operates on layer 0
+    Viper.Graphics.Tilemap.SetTile(tm, 3, 3, 42);
+    var old_get = Viper.Graphics.Tilemap.GetTile(tm, 3, 3);
+    if (old_get != 42) {
+        Say("FAIL: old GetTile should return 42");
+        return;
+    }
+    var layer0_get = Viper.Graphics.Tilemap.GetTileLayer(tm, 0, 3, 3);
+    if (layer0_get != 42) {
+        Say("FAIL: GetTileLayer(0) should match old API");
+        return;
+    }
+
+    // Test 6: Layer visibility
+    Viper.Graphics.Tilemap.SetLayerVisible(tm, 1, false);
+    var vis = Viper.Graphics.Tilemap.GetLayerVisible(tm, 1);
+    if (vis != false) {
+        Say("FAIL: layer 1 should be hidden");
+        return;
+    }
+    Viper.Graphics.Tilemap.SetLayerVisible(tm, 1, true);
+    var vis2 = Viper.Graphics.Tilemap.GetLayerVisible(tm, 1);
+    if (vis2 != true) {
+        Say("FAIL: layer 1 should be visible again");
+        return;
+    }
+
+    // Test 7: Collision layer property
+    var cl0 = Viper.Graphics.Tilemap.get_CollisionLayer(tm);
+    if (cl0 != 0) {
+        Say("FAIL: default collision layer should be 0");
+        return;
+    }
+    Viper.Graphics.Tilemap.set_CollisionLayer(tm, 1);
+    var cl1 = Viper.Graphics.Tilemap.get_CollisionLayer(tm);
+    if (cl1 != 1) {
+        Say("FAIL: collision layer should be 1 after set");
+        return;
+    }
+
+    // Test 8: FillLayer and ClearLayer
+    Viper.Graphics.Tilemap.FillLayer(tm, 1, 7);
+    var filled = Viper.Graphics.Tilemap.GetTileLayer(tm, 1, 0, 0);
+    if (filled != 7) {
+        Say("FAIL: FillLayer should set all tiles to 7");
+        return;
+    }
+    Viper.Graphics.Tilemap.ClearLayer(tm, 1);
+    var cleared = Viper.Graphics.Tilemap.GetTileLayer(tm, 1, 0, 0);
+    if (cleared != 0) {
+        Say("FAIL: ClearLayer should set all tiles to 0");
+        return;
+    }
+
+    // Test 9: RemoveLayer
+    var tm2 = Viper.Graphics.Tilemap.New(4, 4, 16, 16);
+    Viper.Graphics.Tilemap.AddLayer(tm2, "mid");
+    Viper.Graphics.Tilemap.AddLayer(tm2, "top");
+    Viper.Graphics.Tilemap.SetTileLayer(tm2, 2, 0, 0, 22);
+    Viper.Graphics.Tilemap.RemoveLayer(tm2, 1);
+    var after_remove = Viper.Graphics.Tilemap.get_LayerCount(tm2);
+    if (after_remove != 2) {
+        Say("FAIL: after remove count should be 2");
+        return;
+    }
+    var shifted = Viper.Graphics.Tilemap.GetTileLayer(tm2, 1, 0, 0);
+    if (shifted != 22) {
+        Say("FAIL: former layer 2 should now be layer 1 with tile 22");
+        return;
+    }
+
+    Say("RESULT: ok");
+}

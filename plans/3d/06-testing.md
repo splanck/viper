@@ -17,7 +17,7 @@
 | `RT3DIntegrationTests.cpp` | 15 | Full pipeline: single triangle flat, cube wireframe, textured quad, lit sphere, multiple meshes, depth sorting, transparent blend, fog, billboard, DeltaTime nonzero, Backend property returns "software", backface cull toggling, 2D+3D coexistence |
 | `RT3DObjLoaderTests.cpp` | 8 | OBJ parser: triangulated faces, quad auto-split, vertex/normal/UV all present, negative indices, comments, empty file, missing file, face formats (v, v/vt, v/vt/vn, v//vn) |
 
-#### GPU Backend Tests (Phases 2-4)
+#### GPU Backend Tests (Phases 3-5)
 
 | File | Platform | Tests | Description |
 |------|----------|-------|-------------|

@@ -43,6 +43,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_physics2d.h"
+#include "rt_physics2d_internal.h"
+#include "rt_physics2d_joint.h"
 
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -51,65 +53,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-/// Maximum number of rigid bodies a single world can contain.
-/// Exceeding this limit causes rt_trap() to fire with a descriptive message.
-/// To increase the limit, edit this constant and recompile.
-#define PH_MAX_BODIES 256
-
-/// Stringified version of PH_MAX_BODIES for use in rt_trap() messages without
-/// requiring runtime sprintf. Keep this in sync with PH_MAX_BODIES.
-#define RT_PH_MAX_BODIES_STR "256"
-
 //=============================================================================
 // Internal types
 //=============================================================================
 
-/// @brief Internal representation of a single rigid body.
-///
-/// Bodies are axis-aligned bounding boxes (AABBs). Position (x, y) is the
-/// top-left corner of the bounding box. Velocity (vx, vy) is in world-units
-/// per second. Force (fx, fy) is accumulated each frame via apply_force() and
-/// cleared after every integration step.
-///
-/// The inv_mass field stores the reciprocal of mass for efficiency: static
-/// bodies have mass == 0 and inv_mass == 0, so multiplication by inv_mass
-/// produces zero without any branching in the integrator or impulse solver.
-///
-/// The vptr field is reserved for Zia's virtual-dispatch table pointer
-/// (similar to a C++ vtable pointer). It must be the first member so the
-/// struct layout matches the Zia object model.
-typedef struct
-{
-    void *vptr;         ///< Zia virtual-dispatch pointer (must be first).
-    double x, y;        ///< Top-left position in world coordinates.
-    double w, h;        ///< Width and height of the AABB.
-    double vx, vy;      ///< Velocity in world-units per second.
-    double fx, fy;      ///< Accumulated force for the current frame (zeroed after integration).
-    double mass;        ///< Mass in arbitrary units. 0 = static (immovable).
-    double inv_mass;    ///< Reciprocal of mass (1/mass), or 0 for static bodies.
-    double restitution; ///< Bounciness coefficient in [0, 1]. 0 = inelastic, 1 = perfectly elastic.
-    double friction;    ///< Kinetic friction coefficient in [0, 1]. Applied along contact tangent.
-    int64_t collision_layer; ///< Bitmask: which physical layer(s) this body occupies (default: 1).
-    int64_t collision_mask;  ///< Bitmask: which layers this body can collide with (default:
-                             ///< 0xFFFFFFFF, all layers).
-} rt_body_impl;
-
-/// @brief Internal representation of a physics world.
-///
-/// The world owns a fixed-capacity array of body pointers. Each body is
-/// reference-counted; the world retains a reference when a body is added and
-/// releases it when the body is removed or the world is finalised.
-///
-/// Gravity is applied uniformly to all dynamic bodies every integration step.
-/// Gravity is specified in world-units per second squared.
-typedef struct
-{
-    void *vptr;       ///< Zia virtual-dispatch pointer (must be first).
-    double gravity_x; ///< Horizontal gravity (world-units/s²). Usually 0.
-    double gravity_y; ///< Vertical gravity (world-units/s²). Positive = downward in screen space.
-    rt_body_impl *bodies[PH_MAX_BODIES]; ///< Flat array of retained body pointers.
-    int64_t body_count;                  ///< Number of bodies currently in the world.
-} rt_world_impl;
+// Internal types are in rt_physics2d_internal.h
 
 //=============================================================================
 // Collision detection and resolution
@@ -305,7 +253,9 @@ void *rt_physics2d_world_new(double gravity_x, double gravity_y)
     w->gravity_x = gravity_x;
     w->gravity_y = gravity_y;
     w->body_count = 0;
+    w->joint_count = 0;
     memset(w->bodies, 0, sizeof(w->bodies));
+    memset(w->joints, 0, sizeof(w->joints));
     rt_obj_set_finalizer(w, world_finalizer);
     return w;
 }
@@ -344,6 +294,13 @@ void rt_physics2d_world_step(void *obj, double dt)
         b->x += b->vx * dt;
         b->y += b->vy * dt;
     }
+
+    /* Step 2.5: Solve joint constraints (iterative relaxation).
+     * Joints are solved after velocity integration but before collision
+     * detection so that constrained bodies are in valid positions before
+     * the broad/narrow phase runs. */
+    if (w->joint_count > 0)
+        rt_physics2d_solve_joints(obj, dt);
 
     /* Step 3: Broad-phase + narrow-phase collision detection and resolution.
      *
@@ -580,6 +537,8 @@ void *rt_physics2d_body_new(double x, double y, double w, double h, double mass)
     b->friction = 0.3;              /* Moderate friction by default */
     b->collision_layer = 1;         /* Default: layer 0, bit 0 set */
     b->collision_mask = 0xFFFFFFFF; /* Default: collide with all 32 layers */
+    b->radius = 0.0;
+    b->is_circle = 0;
     return b;
 }
 

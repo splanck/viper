@@ -8,6 +8,7 @@
 - Materials: colors, textures, shininess
 - Lighting: directional, point, ambient, multiple lights
 - Advanced: wireframe, fog, billboards, alpha blending
+- Winding order: CCW is front-facing; backface culling discards CW triangles; all mesh generators emit CCW
 - Performance tips: triangle budgets, texture sizes, Z-buffer precision
 - Full API reference table
 - BASIC + Zia code examples for every feature

@@ -1,0 +1,79 @@
+// Test: Tilemap I/O, auto-tiling, and tile properties
+module TestTilemapIO;
+
+bind Viper.Terminal;
+
+func start() {
+    // Test 1: Tile properties
+    var tm = Viper.Graphics.Tilemap.New(4, 4, 16, 16);
+    Viper.Graphics.Tilemap.SetTileProperty(tm, 5, "damage", 10);
+    var dmg = Viper.Graphics.Tilemap.GetTileProperty(tm, 5, "damage", 0);
+    if (dmg != 10) {
+        Say("FAIL: tile property damage should be 10");
+        return;
+    }
+    var has = Viper.Graphics.Tilemap.HasTileProperty(tm, 5, "damage");
+    if (has != true) {
+        Say("FAIL: should have damage property");
+        return;
+    }
+    var no_prop = Viper.Graphics.Tilemap.GetTileProperty(tm, 5, "speed", -1);
+    if (no_prop != -1) {
+        Say("FAIL: non-existent prop should return default");
+        return;
+    }
+
+    // Test 2: JSON save/load round-trip
+    var tm2 = Viper.Graphics.Tilemap.New(3, 3, 16, 16);
+    Viper.Graphics.Tilemap.SetTile(tm2, 0, 0, 5);
+    Viper.Graphics.Tilemap.SetTile(tm2, 1, 1, 10);
+    Viper.Graphics.Tilemap.SetTile(tm2, 2, 2, 15);
+    var saved = Viper.Graphics.Tilemap.SaveToFile(tm2, "/tmp/zia_test_tm.json");
+    if (saved != true) {
+        Say("FAIL: save should succeed");
+        return;
+    }
+    var loaded = Viper.Graphics.Tilemap.LoadFromFile("/tmp/zia_test_tm.json");
+    var lw = Viper.Graphics.Tilemap.get_Width(loaded);
+    if (lw != 3) {
+        Say("FAIL: loaded width should be 3");
+        return;
+    }
+    var lt = Viper.Graphics.Tilemap.GetTile(loaded, 1, 1);
+    if (lt != 10) {
+        Say("FAIL: loaded tile at (1,1) should be 10");
+        return;
+    }
+
+    // Test 3: Auto-tiling
+    var tm3 = Viper.Graphics.Tilemap.New(5, 1, 16, 16);
+    Viper.Graphics.Tilemap.SetTile(tm3, 1, 0, 1);
+    Viper.Graphics.Tilemap.SetTile(tm3, 2, 0, 1);
+    Viper.Graphics.Tilemap.SetTile(tm3, 3, 0, 1);
+
+    // Variants: 100 + mask
+    Viper.Graphics.Tilemap.SetAutoTileLo(tm3, 1, 100, 101, 102, 103, 104, 105, 106, 107);
+    Viper.Graphics.Tilemap.SetAutoTileHi(tm3, 1, 108, 109, 110, 111, 112, 113, 114, 115);
+    Viper.Graphics.Tilemap.ApplyAutoTile(tm3);
+
+    // x=1: right neighbor → mask 2
+    var at1 = Viper.Graphics.Tilemap.GetTile(tm3, 1, 0);
+    if (at1 != 102) {
+        Say("FAIL: autotile x=1 should be 102 (right only)");
+        return;
+    }
+    // x=2: left+right → mask 10
+    var at2 = Viper.Graphics.Tilemap.GetTile(tm3, 2, 0);
+    if (at2 != 110) {
+        Say("FAIL: autotile x=2 should be 110 (left+right)");
+        return;
+    }
+    // x=3: left → mask 8
+    var at3 = Viper.Graphics.Tilemap.GetTile(tm3, 3, 0);
+    if (at3 != 108) {
+        Say("FAIL: autotile x=3 should be 108 (left only)");
+        return;
+    }
+
+    Say("RESULT: ok");
+}
