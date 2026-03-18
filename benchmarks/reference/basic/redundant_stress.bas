@@ -21,7 +21,7 @@ FOR i = 0 TO 49999999
     d2 = d1 * 5
     d3 = d2 - 5
     live = a2 + b2 + k3 + c3 + d3
-    sum = sum + live
+    sum = (sum + live) AND 268435455
 NEXT i
 Viper.Environment.EndProgram(sum)
 END

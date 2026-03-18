@@ -1041,6 +1041,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
             os << "  madd " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", "
                << rn(getReg(mi.ops[2])) << ", " << rn(getReg(mi.ops[3])) << "\n";
             return;
+        case MOpcode::AndRI:
+            emitAndRI(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getImm(mi.ops[2]));
+            return;
         case MOpcode::Csel:
             os << "  csel " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", "
                << rn(getReg(mi.ops[2])) << ", " << mi.ops[3].cond << "\n";

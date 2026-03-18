@@ -57,6 +57,7 @@ Documentation for the Viper compiler toolchain: two language frontends (Zia and 
 - [Runtime Library Index](viperlib.md) — All `Viper.*` classes and methods
 - [Runtime API Reference](runtime-api-complete.md) — Complete runtime API
 - [Runtime Extension How-To](runtime_extend_howto.md) — Add new classes and functions
+- [Adding a Runtime Class](runtime_class_howto.md) — Deep dive: 8-step guide for new classes
 - [Graphics Library](graphics-library.md) — ViperGFX 2D graphics API
 - [Memory Management](memory-management.md) — GC, allocation, and object lifetime
 

@@ -28,7 +28,7 @@ sum = 0
 FOR i = 0 TO 49999999
     DIM r AS LONG
     r = Combine(i)
-    sum = sum + r
+    sum = (sum + r) AND 268435455
 NEXT i
 Viper.Environment.EndProgram(sum)
 END

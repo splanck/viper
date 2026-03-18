@@ -215,7 +215,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
             const auto &lastInstr = preBlock.instrs.back();
             std::string lastTarget = getBranchTarget(lastInstr);
 
-            if (lastTarget.empty())
+            if (lastTarget.empty() && lastInstr.opc != MOpcode::Ret)
             {
                 reachesHeader = true;
             }

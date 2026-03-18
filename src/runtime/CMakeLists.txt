@@ -114,6 +114,8 @@ set(RT_COLLECTIONS_SOURCES
         collections/rt_pathfollow.c
         collections/rt_quadtree.c
         collections/rt_debugoverlay.c
+        collections/rt_gameui.c
+        collections/rt_pathfinder.c
 )
 
 set(RT_TEXT_SOURCES
@@ -206,6 +208,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_tilemap.c
         graphics/rt_scene.c
         graphics/rt_spritebatch.c
+        graphics/rt_bitmapfont.c
         graphics/fonts/embedded_font.c  # JetBrains Mono Regular (MIT) — embedded for portable font rendering
 )
 

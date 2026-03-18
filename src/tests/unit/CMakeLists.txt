@@ -444,6 +444,18 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_val_str PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_val_str test_rt_val_str)
 
+    viper_add_test(test_rt_bitmapfont ${VIPER_TESTS_DIR}/unit/test_rt_bitmapfont.cpp)
+    target_link_libraries(test_rt_bitmapfont PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_bitmapfont test_rt_bitmapfont)
+
+    viper_add_test(test_rt_gameui ${VIPER_TESTS_DIR}/unit/test_rt_gameui.cpp)
+    target_link_libraries(test_rt_gameui PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_gameui test_rt_gameui)
+
+    viper_add_test(test_rt_pathfinder ${VIPER_TESTS_DIR}/unit/test_rt_pathfinder.cpp)
+    target_link_libraries(test_rt_pathfinder PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_pathfinder test_rt_pathfinder)
+
     viper_add_test(test_rt_math_core ${VIPER_TESTS_DIR}/runtime/RTMathCoreTests.cpp)
     target_link_libraries(test_rt_math_core PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_math_core test_rt_math_core)

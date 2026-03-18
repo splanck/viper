@@ -618,6 +618,39 @@ if [[ -z "$RESULT_JSON" ]]; then
 fi
 
 # ============================================================================
+# Return value validation (C -O2 is reference)
+# ============================================================================
+VALIDATION_OUTPUT=$(python3 -c "
+import json, sys
+data = json.loads('''$RESULT_JSON''')
+mismatches = []
+for b in data['benchmarks']:
+    ref = b['modes'].get('c-O2', {})
+    if not ref.get('success', False):
+        continue
+    expected = ref['return_value']
+    for mode, m in b['modes'].items():
+        if mode == 'c-O2':
+            continue
+        if not m.get('success', False):
+            continue
+        actual = m.get('return_value', -1)
+        if actual != expected:
+            mismatches.append(f\"  {b['program']:20s} {mode:16s} expected={expected} got={actual}\")
+if mismatches:
+    print('  RETURN VALUE MISMATCHES (vs c-O2 reference):')
+    for m in mismatches:
+        print(m)
+    print()
+else:
+    print('  All return values match c-O2 reference.')
+    print()
+" 2>/dev/null)
+
+log ""
+log "${YELLOW}${VALIDATION_OUTPUT}${NC}"
+
+# ============================================================================
 # Store results
 # ============================================================================
 RESULTS_FILE="$ROOT_DIR/benchmarks/results.jsonl"

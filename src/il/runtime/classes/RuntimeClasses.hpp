@@ -126,6 +126,7 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_Exec,
     RTCLS_Fmt,
     RTCLS_Canvas,
+    RTCLS_BitmapFont,
     RTCLS_Codec,
     RTCLS_Csv,
     RTCLS_Ini,
@@ -349,6 +350,13 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_ThreadsPool,
     RTCLS_ZiaCompletion,
     RTCLS_GuiFloatingPanel,
+    // Game UI widgets
+    RTCLS_Pathfinder,
+    RTCLS_UILabel,
+    RTCLS_UIBar,
+    RTCLS_UIPanel,
+    RTCLS_UINineSlice,
+    RTCLS_UIMenuList,
 };
 
 /// @brief Describes a property on a runtime class.

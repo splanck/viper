@@ -22,6 +22,8 @@ last-verified: 2026-03-09
 | [Visual Effects](effects.md) | ParticleEmitter, ScreenFX |
 | [Debug Overlay](debug.md) | DebugOverlay — FPS, dt, custom watch variables |
 | [Persistence](persistence.md) | SaveData — cross-platform key-value save/load |
+| [UI Widgets](ui.md) | Label, Bar, Panel, NineSlice, MenuList — in-game HUD/menu widgets |
+| [Pathfinding](pathfinding.md) | A* grid pathfinding for AI navigation |
 
 ## See Also
 

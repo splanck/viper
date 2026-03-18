@@ -31,6 +31,8 @@ last-verified: 2026-03-04
 - [Viper.Game.DebugOverlay](#vipergamedebugoverlay)
 - [Viper.Game.Collision](#vipergamecollision)
 - [Viper.Game.Grid2D](#vipergamegrid2d)
+- [Viper.Game.UI.*](game/ui.md) — Label, Bar, Panel, NineSlice, MenuList (in-game UI widgets)
+- [Viper.Game.Pathfinder](game/pathfinding.md) — A* grid pathfinding for AI navigation
 - [Current Limits](#current-limits)
 - [Coordinate Systems](#coordinate-systems)
 

@@ -15,7 +15,7 @@ DO WHILE i < 50000001
     d7 = i \ 128
     d8 = i \ 256
     s = d1 + d2 + d3 + d4 + d5 + d6 + d7 + d8
-    sum = sum + s
+    sum = (sum + s) AND 268435455
     i = i + 1
 LOOP
 Viper.Environment.EndProgram(sum)
