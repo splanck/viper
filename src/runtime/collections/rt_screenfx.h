@@ -39,7 +39,18 @@ extern "C"
         RT_SCREENFX_FLASH = 2,
         RT_SCREENFX_FADE_IN = 3,
         RT_SCREENFX_FADE_OUT = 4,
+        RT_SCREENFX_WIPE = 5,
+        RT_SCREENFX_CIRCLE_IN = 6,
+        RT_SCREENFX_CIRCLE_OUT = 7,
+        RT_SCREENFX_DISSOLVE = 8,
+        RT_SCREENFX_PIXELATE = 9,
     } rt_screenfx_type_t;
+
+    /// Direction constants for Wipe.
+    #define RT_DIR_LEFT  0
+    #define RT_DIR_RIGHT 1
+    #define RT_DIR_UP    2
+    #define RT_DIR_DOWN  3
 
     /// Opaque handle to a ScreenFX manager.
     typedef struct rt_screenfx_impl *rt_screenfx;
@@ -173,6 +184,43 @@ extern "C"
     /// @return Alpha value in [0, 255], where 0 is fully transparent and 255
     ///   is fully opaque. Returns 0 when no flash or fade effect is active.
     int64_t rt_screenfx_get_overlay_alpha(rt_screenfx fx);
+
+    //=========================================================================
+    // Transition Effects (Wipe, Circle, Dissolve, Pixelate)
+    //=========================================================================
+
+    /// @brief Start a directional wipe transition.
+    /// @param direction RT_DIR_LEFT/RIGHT/UP/DOWN.
+    /// @param color Overlay color (0xRRGGBB).
+    /// @param duration Duration in milliseconds.
+    void rt_screenfx_wipe(rt_screenfx fx, int64_t direction, int64_t color, int64_t duration);
+
+    /// @brief Start a circle-closing (iris-in) transition from center point.
+    void rt_screenfx_circle_in(rt_screenfx fx, int64_t cx, int64_t cy,
+                                int64_t color, int64_t duration);
+
+    /// @brief Start a circle-opening (iris-out) transition from center point.
+    void rt_screenfx_circle_out(rt_screenfx fx, int64_t cx, int64_t cy,
+                                 int64_t color, int64_t duration);
+
+    /// @brief Start a dissolve transition (random pixel coverage via Bayer dithering).
+    void rt_screenfx_dissolve(rt_screenfx fx, int64_t color, int64_t duration);
+
+    /// @brief Start a pixelation transition (increasing block size).
+    /// @param max_block_size Maximum block size in pixels at full effect.
+    void rt_screenfx_pixelate(rt_screenfx fx, int64_t max_block_size, int64_t duration);
+
+    /// @brief Check if all effects have finished (none active).
+    int8_t rt_screenfx_is_finished(rt_screenfx fx);
+
+    /// @brief Get the progress of the current transition (0-1000 fixed-point).
+    int64_t rt_screenfx_get_transition_progress(rt_screenfx fx);
+
+    /// @brief Render all active transition overlays to a Canvas.
+    /// @param canvas Canvas handle.
+    /// @param screen_w Screen width in pixels.
+    /// @param screen_h Screen height in pixels.
+    void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t screen_h);
 
 #ifdef __cplusplus
 }

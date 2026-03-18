@@ -488,6 +488,7 @@ bool lowerInstruction(const il::core::Instr &ins,
 
         // TrapKind and TrapErr lower to a plain trap call — the runtime's
         // rt_trap() performs longjmp-based recovery when a handler is active.
+        case Opcode::Trap:
         case Opcode::TrapKind:
         case Opcode::TrapErr:
             bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});

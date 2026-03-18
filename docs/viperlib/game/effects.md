@@ -124,7 +124,7 @@ explosion.DrawToPixels(pixelsBuffer, 0, 0)
 
 ## Viper.Game.ScreenFX
 
-Screen effects manager for camera shake, color flash, and fade effects.
+Screen effects manager for camera shake, color flash, fade effects, and scene transitions (wipe, circle, dissolve, pixelate).
 
 **Type:** Instance class (requires `New()`)
 
@@ -139,6 +139,8 @@ Screen effects manager for camera shake, color flash, and fade effects.
 | Property       | Type                  | Description                              |
 |----------------|-----------------------|------------------------------------------|
 | `IsActive`     | `Boolean` (read-only) | True if any effect is active             |
+| `IsFinished`   | `Boolean` (read-only) | True if no effects are active (opposite of IsActive) |
+| `TransitionProgress` | `Integer` (read-only) | Progress of active transition (0-1000 fixed-point) |
 | `ShakeX`       | `Integer` (read-only) | Current X shake offset (fixed-point)     |
 | `ShakeY`       | `Integer` (read-only) | Current Y shake offset (fixed-point)     |
 | `OverlayColor` | `Integer` (read-only) | Current overlay color (RGB)              |
@@ -156,6 +158,12 @@ Screen effects manager for camera shake, color flash, and fade effects.
 | `IsTypeActive(type)`           | `Boolean(Integer)`      | Check if effect type is active           |
 | `Shake(intensity, dur, decay)` | `Void(Int,Int,Int)`     | Start camera shake effect                |
 | `Update(dt)`                   | `Void(Integer)`         | Update effects (dt in milliseconds)      |
+| `Wipe(dir, color, duration)`   | `Void(Int,Int,Int)`     | Directional wipe transition              |
+| `CircleIn(cx, cy, color, dur)` | `Void(Int,Int,Int,Int)` | Iris-in: circle closes to center point   |
+| `CircleOut(cx, cy, color, dur)`| `Void(Int,Int,Int,Int)` | Iris-out: circle opens from center point |
+| `Dissolve(color, duration)`    | `Void(Integer,Integer)` | Bayer-dithered pixel dissolve            |
+| `Pixelate(maxBlock, duration)` | `Void(Integer,Integer)` | Increasing block size pixelation         |
+| `Draw(canvas, w, h)`           | `Void(Canvas,Int,Int)`  | Render transition overlays to canvas     |
 
 ### Effect Types
 
@@ -166,6 +174,20 @@ Screen effects manager for camera shake, color flash, and fade effects.
 | `SCREENFX_FLASH`    | 2     | Color flash              |
 | `SCREENFX_FADE_IN`  | 3     | Fade from color to clear |
 | `SCREENFX_FADE_OUT` | 4     | Fade from clear to color |
+| `SCREENFX_WIPE`     | 5     | Directional wipe         |
+| `SCREENFX_CIRCLE_IN`| 6     | Iris/circle closing      |
+| `SCREENFX_CIRCLE_OUT`| 7    | Iris/circle opening      |
+| `SCREENFX_DISSOLVE` | 8     | Bayer dither dissolve    |
+| `SCREENFX_PIXELATE` | 9     | Block pixelation         |
+
+### Direction Constants (for Wipe)
+
+| Constant     | Value | Description |
+|--------------|-------|-------------|
+| `DIR_LEFT`   | 0     | Wipe from left to right |
+| `DIR_RIGHT`  | 1     | Wipe from right to left |
+| `DIR_UP`     | 2     | Wipe from top to bottom |
+| `DIR_DOWN`   | 3     | Wipe from bottom to top |
 
 ### Zia Example
 
@@ -224,6 +246,41 @@ DIM camOffsetY AS INTEGER = fx.ShakeY / 1000
 IF fx.OverlayAlpha > 0 THEN
     canvas.BoxFilled(0, 0, 800, 600, fx.OverlayColor OR (fx.OverlayAlpha << 24))
 END IF
+```
+
+### Example: Scene Transitions
+
+```zia
+module TransitionDemo;
+
+bind Viper.Game.ScreenFX as FX;
+
+// In scene manager:
+var fx = FX.New();
+
+// RPG-style iris transition
+fx.CircleIn(playerX, playerY, 0x000000, 800);
+
+// Platformer wipe
+fx.Wipe(1, 0x000000, 500); // Right-to-left wipe
+
+// Horror dissolve
+fx.Dissolve(0x000000, 1200);
+
+// Retro pixelate
+fx.Pixelate(16, 600); // Block size up to 16px
+
+// In game loop:
+fx.Update(dt);
+fx.Draw(canvas, SCREEN_W, SCREEN_H);
+
+// Check completion for scene switch:
+if fx.IsFinished {
+    switchToNextScene();
+}
+
+// Use TransitionProgress for mid-transition logic:
+var progress = fx.TransitionProgress; // 0-1000
 ```
 
 ---

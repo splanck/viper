@@ -32,6 +32,7 @@
 #include "rt_playlist.h"
 #include "rt_audio.h"
 #include "rt_internal.h"
+#include "rt_mixgroup.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 
@@ -56,6 +57,7 @@ typedef struct
     int8_t playing;      // Currently playing
     int8_t paused;       // Paused state
     void *shuffle_order; // Shuffled index sequence
+    int64_t crossfade_ms; // Crossfade duration for track changes (0 = disabled)
 } playlist_impl;
 
 //=============================================================================
@@ -644,4 +646,23 @@ void rt_playlist_update(void *obj)
             rt_playlist_next(obj);
         }
     }
+}
+
+//=============================================================================
+// Playlist Crossfade Settings
+//=============================================================================
+
+void rt_playlist_set_crossfade(void *obj, int64_t duration_ms)
+{
+    if (!obj)
+        return;
+    playlist_impl *pl = (playlist_impl *)obj;
+    pl->crossfade_ms = duration_ms < 0 ? 0 : duration_ms;
+}
+
+int64_t rt_playlist_get_crossfade(void *obj)
+{
+    if (!obj)
+        return 0;
+    return ((playlist_impl *)obj)->crossfade_ms;
 }

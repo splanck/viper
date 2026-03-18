@@ -504,6 +504,14 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_pathfinder PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_pathfinder test_rt_pathfinder)
 
+    viper_add_test(test_rt_screenfx_transitions ${VIPER_TESTS_DIR}/unit/test_rt_screenfx_transitions.cpp)
+    target_link_libraries(test_rt_screenfx_transitions PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_screenfx_transitions test_rt_screenfx_transitions)
+
+    viper_add_test(test_rt_audio_mixing ${VIPER_TESTS_DIR}/unit/test_rt_audio_mixing.cpp)
+    target_link_libraries(test_rt_audio_mixing PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_audio_mixing test_rt_audio_mixing)
+
     viper_add_test(test_rt_math_core ${VIPER_TESTS_DIR}/runtime/RTMathCoreTests.cpp)
     target_link_libraries(test_rt_math_core PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_math_core test_rt_math_core)

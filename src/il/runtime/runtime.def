@@ -2315,6 +2315,17 @@ RT_FUNC(AudioPauseAll,         rt_audio_pause_all,        "Viper.Sound.Audio.Pau
 RT_FUNC(AudioResumeAll,        rt_audio_resume_all,       "Viper.Sound.Audio.ResumeAll",        "void()")
 RT_FUNC(AudioStopAllSounds,    rt_audio_stop_all_sounds,  "Viper.Sound.Audio.StopAllSounds",    "void()")
 
+// Mix Groups & Crossfade
+RT_FUNC(AudioSetGroupVolume,  rt_audio_set_group_volume,  "Viper.Sound.Audio.SetGroupVolume",  "void(i64,i64)")
+RT_FUNC(AudioGetGroupVolume,  rt_audio_get_group_volume,  "Viper.Sound.Audio.GetGroupVolume",  "i64(i64)")
+RT_FUNC(MusicCrossfadeTo,     rt_music_crossfade_to,      "Viper.Sound.Music.CrossfadeTo",     "void(obj,obj,i64)")
+RT_FUNC(MusicIsCrossfading,   rt_music_is_crossfading,    "Viper.Sound.Audio.get_IsCrossfading","i1()")
+RT_FUNC(PlaylistSetCrossfade, rt_playlist_set_crossfade,  "Viper.Sound.Playlist.set_Crossfade","void(obj,i64)")
+RT_FUNC(PlaylistGetCrossfade, rt_playlist_get_crossfade,  "Viper.Sound.Playlist.get_Crossfade","i64(obj)")
+RT_FUNC(SoundPlayGroup,       rt_sound_play_in_group,      "Viper.Sound.Sound.PlayGroup",       "i64(obj,i64)")
+RT_FUNC(SoundPlayExGroup,     rt_sound_play_ex_in_group,   "Viper.Sound.Sound.PlayExGroup",     "i64(obj,i64,i64,i64)")
+RT_FUNC(SoundPlayLoopGroup,   rt_sound_play_loop_in_group, "Viper.Sound.Sound.PlayLoopGroup",   "i64(obj,i64,i64,i64)")
+
 //=============================================================================
 // SOUND - SOUND EFFECTS
 //=============================================================================
@@ -4360,6 +4371,16 @@ RT_FUNC(ScreenFXGetShakeY, rt_screenfx_get_shake_y, "Viper.Game.ScreenFX.get_Sha
 RT_FUNC(ScreenFXGetOverlayColor, rt_screenfx_get_overlay_color, "Viper.Game.ScreenFX.get_OverlayColor", "i64(obj)")
 RT_FUNC(ScreenFXGetOverlayAlpha, rt_screenfx_get_overlay_alpha, "Viper.Game.ScreenFX.get_OverlayAlpha", "i64(obj)")
 
+// ScreenFX — Transition effects (Wipe, Circle, Dissolve, Pixelate)
+RT_FUNC(ScreenFXWipe,          rt_screenfx_wipe,                 "Viper.Game.ScreenFX.Wipe",                 "void(obj,i64,i64,i64)")
+RT_FUNC(ScreenFXCircleIn,     rt_screenfx_circle_in,            "Viper.Game.ScreenFX.CircleIn",             "void(obj,i64,i64,i64,i64)")
+RT_FUNC(ScreenFXCircleOut,    rt_screenfx_circle_out,           "Viper.Game.ScreenFX.CircleOut",            "void(obj,i64,i64,i64,i64)")
+RT_FUNC(ScreenFXDissolve,     rt_screenfx_dissolve,             "Viper.Game.ScreenFX.Dissolve",             "void(obj,i64,i64)")
+RT_FUNC(ScreenFXPixelate,     rt_screenfx_pixelate,             "Viper.Game.ScreenFX.Pixelate",             "void(obj,i64,i64)")
+RT_FUNC(ScreenFXIsFinished,   rt_screenfx_is_finished,          "Viper.Game.ScreenFX.get_IsFinished",       "i1(obj)")
+RT_FUNC(ScreenFXTransProgress,rt_screenfx_get_transition_progress,"Viper.Game.ScreenFX.get_TransitionProgress","i64(obj)")
+RT_FUNC(ScreenFXDraw,         rt_screenfx_draw,                 "Viper.Game.ScreenFX.Draw",                 "void(obj,obj,i64,i64)")
+
 // Viper.Game.UI — In-game UI widgets (Label, Bar, Panel, NineSlice, MenuList)
 RT_FUNC(UILabelNew,        rt_uilabel_new,        "Viper.Game.UI.Label.New",        "obj(i64,i64,str,i64)")
 RT_FUNC(UILabelSetText,    rt_uilabel_set_text,    "Viper.Game.UI.Label.SetText",    "void(obj,str)")
@@ -6349,6 +6370,9 @@ RT_CLASS_BEGIN("Viper.Sound.Audio", Audio, "obj", none)
     RT_METHOD("PauseAll", "void()", AudioPauseAll)
     RT_METHOD("ResumeAll", "void()", AudioResumeAll)
     RT_METHOD("StopAllSounds", "void()", AudioStopAllSounds)
+    // Mix groups
+    RT_METHOD("SetGroupVolume", "void(i64,i64)", AudioSetGroupVolume)
+    RT_METHOD("GetGroupVolume", "i64(i64)", AudioGetGroupVolume)
 RT_CLASS_END()
 
 // Viper.Sound.Sound - sound effect playback
@@ -6357,6 +6381,10 @@ RT_CLASS_BEGIN("Viper.Sound.Sound", Sound, "obj", SoundLoad)
     RT_METHOD("PlayEx", "i64(i64,i64)", SoundPlayEx)
     RT_METHOD("PlayLoop", "i64(i64,i64)", SoundPlayLoop)
     RT_METHOD("Free", "void()", SoundFree)
+    // Group-aware playback
+    RT_METHOD("PlayGroup", "i64(i64)", SoundPlayGroup)
+    RT_METHOD("PlayExGroup", "i64(i64,i64,i64)", SoundPlayExGroup)
+    RT_METHOD("PlayLoopGroup", "i64(i64,i64,i64)", SoundPlayLoopGroup)
 RT_CLASS_END()
 
 // Viper.Sound.Voice - voice control for playing sounds (static class)
@@ -6379,6 +6407,7 @@ RT_CLASS_BEGIN("Viper.Sound.Music", Music, "obj", MusicLoad)
     RT_METHOD("IsPlaying", "i64()", MusicIsPlaying)
     RT_METHOD("Seek", "void(i64)", MusicSeek)
     RT_METHOD("Free", "void()", MusicFree)
+    RT_METHOD("CrossfadeTo", "void(obj,i64)", MusicCrossfadeTo)
 RT_CLASS_END()
 
 // Viper.Sound.Playlist - music playlist with queue management
@@ -6429,6 +6458,7 @@ RT_CLASS_BEGIN("Viper.Sound.Playlist", Playlist, "obj", PlaylistNew)
     // Mode settings
     RT_PROP("Shuffle", "i1", PlaylistGetShuffle, PlaylistSetShuffle)
     RT_PROP("Repeat", "i64", PlaylistGetRepeat, PlaylistSetRepeat)
+    RT_PROP("Crossfade", "i64", PlaylistGetCrossfade, PlaylistSetCrossfade)
 RT_CLASS_END()
 
 // Viper.Sound.SoundBank - named sound registry
@@ -8261,6 +8291,15 @@ RT_CLASS_BEGIN("Viper.Game.ScreenFX", ScreenFX, "obj", ScreenFXNew)
     RT_METHOD("CancelAll", "void()", ScreenFXCancelAll)
     RT_METHOD("CancelType", "void(i64)", ScreenFXCancelType)
     RT_METHOD("IsTypeActive", "i1(i64)", ScreenFXIsTypeActive)
+    // Transition effects
+    RT_METHOD("Wipe", "void(i64,i64,i64)", ScreenFXWipe)
+    RT_METHOD("CircleIn", "void(i64,i64,i64,i64)", ScreenFXCircleIn)
+    RT_METHOD("CircleOut", "void(i64,i64,i64,i64)", ScreenFXCircleOut)
+    RT_METHOD("Dissolve", "void(i64,i64)", ScreenFXDissolve)
+    RT_METHOD("Pixelate", "void(i64,i64)", ScreenFXPixelate)
+    RT_PROP("IsFinished", "i1", ScreenFXIsFinished, none)
+    RT_PROP("TransitionProgress", "i64", ScreenFXTransProgress, none)
+    RT_METHOD("Draw", "void(obj,i64,i64)", ScreenFXDraw)
 RT_CLASS_END()
 
 // Viper.Game.UI.Label - Positioned text widget

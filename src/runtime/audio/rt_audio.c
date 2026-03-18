@@ -32,6 +32,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_audio.h"
+#include "rt_mixgroup.h"
 #include "rt_object.h"
 #include "rt_platform.h"
 #include "rt_string.h"
@@ -39,6 +40,24 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+
+//===----------------------------------------------------------------------===//
+// Mix Group State (shared between real and stub implementations)
+//===----------------------------------------------------------------------===//
+
+/// @brief Per-group volume (0-100). Defaults to 100.
+static int64_t g_group_volume[RT_MIXGROUP_COUNT] = {100, 100};
+
+/// @brief Crossfade state.
+static struct
+{
+    void *fade_out;    ///< Music being faded out (NULL when not crossfading).
+    void *fade_in;     ///< Music being faded in (NULL when not crossfading).
+    int64_t elapsed;   ///< Milliseconds elapsed in crossfade.
+    int64_t duration;  ///< Total crossfade duration in ms.
+    int64_t vol_out;   ///< Starting volume of fade-out track.
+    int8_t active;     ///< 1 if crossfade in progress.
+} g_crossfade = {NULL, NULL, 0, 0, 100, 0};
 
 #ifdef VIPER_ENABLE_AUDIO
 
@@ -602,6 +621,158 @@ int64_t rt_music_get_duration(void *music)
     return (int64_t)(seconds * 1000.0f + 0.5f);
 }
 
+//===----------------------------------------------------------------------===//
+// Mix Groups — real implementation
+//===----------------------------------------------------------------------===//
+
+void rt_audio_set_group_volume(int64_t group, int64_t volume)
+{
+    if (group < 0 || group >= RT_MIXGROUP_COUNT)
+        return;
+    if (volume < 0)
+        volume = 0;
+    if (volume > 100)
+        volume = 100;
+    g_group_volume[group] = volume;
+}
+
+int64_t rt_audio_get_group_volume(int64_t group)
+{
+    if (group < 0 || group >= RT_MIXGROUP_COUNT)
+        return 100;
+    return g_group_volume[group];
+}
+
+//===----------------------------------------------------------------------===//
+// Music Crossfade — real implementation
+//===----------------------------------------------------------------------===//
+
+void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duration_ms)
+{
+    // Cancel any existing crossfade
+    if (g_crossfade.active)
+    {
+        // Complete the previous crossfade immediately
+        if (g_crossfade.fade_out)
+            rt_music_stop(g_crossfade.fade_out);
+        g_crossfade.active = 0;
+    }
+
+    // Nothing to crossfade if both are NULL
+    if (!current_music && !new_music)
+        return;
+
+    if (duration_ms <= 0)
+    {
+        // Immediate switch: stop old, start new
+        if (current_music)
+            rt_music_stop(current_music);
+        if (new_music)
+            rt_music_play(new_music, 0);
+        return;
+    }
+
+    // Start crossfade
+    g_crossfade.fade_out = current_music;
+    g_crossfade.fade_in = new_music;
+    g_crossfade.duration = duration_ms;
+    g_crossfade.elapsed = 0;
+    g_crossfade.active = 1;
+
+    // Get current volume of fade-out track
+    if (current_music)
+        g_crossfade.vol_out = rt_music_get_volume(current_music);
+    else
+        g_crossfade.vol_out = 100;
+
+    // Start the new track at volume 0
+    if (new_music)
+    {
+        rt_music_set_volume(new_music, 0);
+        rt_music_play(new_music, 0);
+    }
+}
+
+int8_t rt_music_is_crossfading(void)
+{
+    return g_crossfade.active;
+}
+
+void rt_music_crossfade_update(int64_t dt_ms)
+{
+    if (!g_crossfade.active)
+        return;
+
+    g_crossfade.elapsed += dt_ms;
+
+    if (g_crossfade.elapsed >= g_crossfade.duration)
+    {
+        // Crossfade complete
+        if (g_crossfade.fade_out)
+        {
+            rt_music_stop(g_crossfade.fade_out);
+            rt_music_set_volume(g_crossfade.fade_out, (int64_t)g_crossfade.vol_out);
+        }
+        if (g_crossfade.fade_in)
+            rt_music_set_volume(g_crossfade.fade_in, (int64_t)g_crossfade.vol_out);
+
+        g_crossfade.active = 0;
+        g_crossfade.fade_out = NULL;
+        g_crossfade.fade_in = NULL;
+        return;
+    }
+
+    // Linear interpolation
+    int64_t progress = (g_crossfade.elapsed * 1000) / g_crossfade.duration; // 0-1000
+
+    if (g_crossfade.fade_out)
+    {
+        int64_t vol = g_crossfade.vol_out * (1000 - progress) / 1000;
+        rt_music_set_volume(g_crossfade.fade_out, vol);
+    }
+    if (g_crossfade.fade_in)
+    {
+        int64_t vol = g_crossfade.vol_out * progress / 1000;
+        rt_music_set_volume(g_crossfade.fade_in, vol);
+    }
+}
+
+//===----------------------------------------------------------------------===//
+// Group-Aware Sound Playback — real implementation
+//===----------------------------------------------------------------------===//
+
+/// @brief Apply group volume to a requested volume.
+static int64_t apply_group_volume(int64_t volume, int64_t group)
+{
+    if (group < 0 || group >= RT_MIXGROUP_COUNT)
+        group = RT_MIXGROUP_SFX;
+    return volume * g_group_volume[group] / 100;
+}
+
+int64_t rt_sound_play_in_group(void *sound, int64_t group)
+{
+    if (!sound)
+        return -1;
+    int64_t vol = apply_group_volume(100, group);
+    return rt_sound_play_ex(sound, vol, 0);
+}
+
+int64_t rt_sound_play_ex_in_group(void *sound, int64_t volume, int64_t pan, int64_t group)
+{
+    if (!sound)
+        return -1;
+    int64_t vol = apply_group_volume(volume, group);
+    return rt_sound_play_ex(sound, vol, pan);
+}
+
+int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, int64_t group)
+{
+    if (!sound)
+        return -1;
+    int64_t vol = apply_group_volume(volume, group);
+    return rt_sound_play_loop(sound, vol, pan);
+}
+
 #else /* !VIPER_ENABLE_AUDIO */
 
 //===----------------------------------------------------------------------===//
@@ -760,6 +931,67 @@ int64_t rt_music_get_duration(void *music)
 {
     (void)music;
     return 0;
+}
+
+// Mix group stubs — these work without audio (just store state)
+void rt_audio_set_group_volume(int64_t group, int64_t volume)
+{
+    if (group < 0 || group >= RT_MIXGROUP_COUNT)
+        return;
+    if (volume < 0)
+        volume = 0;
+    if (volume > 100)
+        volume = 100;
+    g_group_volume[group] = volume;
+}
+
+int64_t rt_audio_get_group_volume(int64_t group)
+{
+    if (group < 0 || group >= RT_MIXGROUP_COUNT)
+        return 100;
+    return g_group_volume[group];
+}
+
+void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duration_ms)
+{
+    (void)current_music;
+    (void)new_music;
+    (void)duration_ms;
+}
+
+int8_t rt_music_is_crossfading(void)
+{
+    return 0;
+}
+
+void rt_music_crossfade_update(int64_t dt_ms)
+{
+    (void)dt_ms;
+}
+
+int64_t rt_sound_play_in_group(void *sound, int64_t group)
+{
+    (void)sound;
+    (void)group;
+    return -1;
+}
+
+int64_t rt_sound_play_ex_in_group(void *sound, int64_t volume, int64_t pan, int64_t group)
+{
+    (void)sound;
+    (void)volume;
+    (void)pan;
+    (void)group;
+    return -1;
+}
+
+int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, int64_t group)
+{
+    (void)sound;
+    (void)volume;
+    (void)pan;
+    (void)group;
+    return -1;
 }
 
 #endif /* VIPER_ENABLE_AUDIO */

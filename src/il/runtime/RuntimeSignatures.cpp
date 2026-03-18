@@ -55,6 +55,7 @@
 #include "rt_array_str.h"
 #include "rt_async.h"
 #include "rt_audio.h"
+#include "rt_mixgroup.h"
 #include "rt_bag.h"
 #include "rt_bigint.h"
 #include "rt_bimap.h"

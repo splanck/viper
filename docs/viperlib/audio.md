@@ -18,6 +18,8 @@ last-verified: 2026-03-04
 - [Viper.Sound.Audio (Static)](#vipersoundaudio-static)
 - [Viper.Sound.SoundBank](#vipersoundsoundbank)
 - [Viper.Sound.Synth](#vipersoundsynth)
+- [Mix Groups](#mix-groups)
+- [Music Crossfading](#music-crossfading)
 - [Audio File Format](#audio-file-format)
 - [Limits and Behaviors](#limits-and-behaviors)
 
@@ -509,6 +511,79 @@ func start() {
 
     Audio.Shutdown();
 }
+```
+
+---
+
+## Mix Groups
+
+Independent volume control for music vs sound effects. Players expect to adjust these separately in game settings menus.
+
+### Group Constants
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `MUSIC` | 0 | Music tracks (Music, Playlist) |
+| `SFX` | 1 | Sound effects (Sound) |
+
+### Audio Methods (Mix Groups)
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Audio.SetGroupVolume(group, vol)` | `void(Integer, Integer)` | Set group volume (0-100, clamped) |
+| `Audio.GetGroupVolume(group)` | `Integer(Integer)` | Get group volume (100 if invalid group) |
+
+### Sound Methods (Group-Aware)
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Sound.PlayGroup(group)` | `Integer(Integer)` | Play in mix group (applies group volume) |
+| `Sound.PlayExGroup(vol, pan, group)` | `Integer(Int, Int, Int)` | Play with volume/pan in group |
+| `Sound.PlayLoopGroup(vol, pan, group)` | `Integer(Int, Int, Int)` | Loop with volume/pan in group |
+
+Effective volume = `voice_volume × group_volume / 100`. Master volume is applied on top by the audio system.
+
+---
+
+## Music Crossfading
+
+Smooth transitions between music tracks — the old track fades out while the new one fades in simultaneously.
+
+### Music Methods (Crossfade)
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Music.CrossfadeTo(newMusic, duration)` | `void(Music, Integer)` | Crossfade to new track over duration ms |
+
+### Audio Properties (Crossfade)
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Audio.IsCrossfading` | Boolean (read-only) | True during an active crossfade |
+
+### Playlist Properties (Crossfade)
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Playlist.Crossfade` | Integer (read/write) | Auto-crossfade duration for track changes (0 = disabled) |
+
+### Example
+
+```zia
+bind Viper.Sound;
+
+// Set up volume sliders
+Audio.SetGroupVolume(0, 80);  // Music at 80%
+Audio.SetGroupVolume(1, 100); // SFX at 100%
+
+// Play SFX in the SFX group
+explosionSound.PlayGroup(1);
+
+// Crossfade between music tracks
+Music.CrossfadeTo(currentTrack, newTrack, 2000); // 2-second crossfade
+
+// Enable auto-crossfade on playlist
+playlist.Crossfade = 1000; // 1-second crossfade between tracks
 ```
 
 ---

@@ -60,11 +60,12 @@ static int64_t screenfx_rand(int64_t *state)
 struct screenfx_effect
 {
     rt_screenfx_type_t type; ///< Effect type.
-    int64_t color;           ///< Color (RGBA).
-    int64_t intensity;       ///< Intensity (for shake).
+    int64_t color;           ///< Color (RGBA for old effects, RGB for transitions).
+    int64_t intensity;       ///< Intensity (shake) / direction (wipe) / max_block (pixelate).
     int64_t duration;        ///< Total duration (ms).
     int64_t elapsed;         ///< Elapsed time (ms).
-    int64_t decay;           ///< Decay rate (for shake).
+    int64_t decay;           ///< Decay rate (shake) / center_x (circle).
+    int64_t extra;           ///< center_y (circle) / unused for others.
 };
 
 /// Internal manager structure.
@@ -230,6 +231,14 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt)
                 break;
             }
 
+            case RT_SCREENFX_WIPE:
+            case RT_SCREENFX_CIRCLE_IN:
+            case RT_SCREENFX_CIRCLE_OUT:
+            case RT_SCREENFX_DISSOLVE:
+            case RT_SCREENFX_PIXELATE:
+                // Transitions are rendered via Draw(); update only advances time.
+                break;
+
             default:
                 break;
         }
@@ -389,4 +398,344 @@ int64_t rt_screenfx_get_overlay_color(rt_screenfx fx)
 int64_t rt_screenfx_get_overlay_alpha(rt_screenfx fx)
 {
     return fx ? fx->overlay_alpha : 0;
+}
+
+//=============================================================================
+// Transition Effects
+//=============================================================================
+
+void rt_screenfx_wipe(rt_screenfx fx, int64_t direction, int64_t color, int64_t duration)
+{
+    if (!fx || duration <= 0)
+        return;
+    if (direction < 0 || direction > 3)
+        direction = RT_DIR_LEFT;
+
+    int slot = find_free_slot(fx);
+    if (slot < 0)
+        return;
+
+    struct screenfx_effect *e = &fx->effects[slot];
+    e->type = RT_SCREENFX_WIPE;
+    e->color = color;
+    e->intensity = direction;
+    e->duration = duration;
+    e->elapsed = 0;
+    e->decay = 0;
+    e->extra = 0;
+}
+
+void rt_screenfx_circle_in(rt_screenfx fx, int64_t cx, int64_t cy,
+                            int64_t color, int64_t duration)
+{
+    if (!fx || duration <= 0)
+        return;
+
+    int slot = find_free_slot(fx);
+    if (slot < 0)
+        return;
+
+    struct screenfx_effect *e = &fx->effects[slot];
+    e->type = RT_SCREENFX_CIRCLE_IN;
+    e->color = color;
+    e->intensity = 0;
+    e->duration = duration;
+    e->elapsed = 0;
+    e->decay = cx;
+    e->extra = cy;
+}
+
+void rt_screenfx_circle_out(rt_screenfx fx, int64_t cx, int64_t cy,
+                             int64_t color, int64_t duration)
+{
+    if (!fx || duration <= 0)
+        return;
+
+    int slot = find_free_slot(fx);
+    if (slot < 0)
+        return;
+
+    struct screenfx_effect *e = &fx->effects[slot];
+    e->type = RT_SCREENFX_CIRCLE_OUT;
+    e->color = color;
+    e->intensity = 0;
+    e->duration = duration;
+    e->elapsed = 0;
+    e->decay = cx;
+    e->extra = cy;
+}
+
+void rt_screenfx_dissolve(rt_screenfx fx, int64_t color, int64_t duration)
+{
+    if (!fx || duration <= 0)
+        return;
+
+    int slot = find_free_slot(fx);
+    if (slot < 0)
+        return;
+
+    struct screenfx_effect *e = &fx->effects[slot];
+    e->type = RT_SCREENFX_DISSOLVE;
+    e->color = color;
+    e->duration = duration;
+    e->elapsed = 0;
+    e->intensity = 0;
+    e->decay = 0;
+    e->extra = 0;
+}
+
+void rt_screenfx_pixelate(rt_screenfx fx, int64_t max_block_size, int64_t duration)
+{
+    if (!fx || duration <= 0)
+        return;
+    if (max_block_size < 2)
+        max_block_size = 2;
+
+    int slot = find_free_slot(fx);
+    if (slot < 0)
+        return;
+
+    struct screenfx_effect *e = &fx->effects[slot];
+    e->type = RT_SCREENFX_PIXELATE;
+    e->color = 0;
+    e->intensity = max_block_size;
+    e->duration = duration;
+    e->elapsed = 0;
+    e->decay = 0;
+    e->extra = 0;
+}
+
+int8_t rt_screenfx_is_finished(rt_screenfx fx)
+{
+    if (!fx)
+        return 1;
+
+    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
+    {
+        if (fx->effects[i].type != RT_SCREENFX_NONE)
+            return 0;
+    }
+    return 1;
+}
+
+int64_t rt_screenfx_get_transition_progress(rt_screenfx fx)
+{
+    if (!fx)
+        return 0;
+
+    // Find the first active transition effect and return its progress
+    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
+    {
+        struct screenfx_effect *e = &fx->effects[i];
+        if (e->type >= RT_SCREENFX_WIPE && e->type <= RT_SCREENFX_PIXELATE)
+        {
+            if (e->duration <= 0)
+                return 1000;
+            int64_t p = (e->elapsed * 1000) / e->duration;
+            return p > 1000 ? 1000 : p;
+        }
+    }
+    return 0;
+}
+
+//=============================================================================
+// Draw — Render transitions to Canvas
+//=============================================================================
+
+// Forward declarations for Canvas drawing functions used here.
+// These are declared in rt_graphics.h which collections can include.
+#include "rt_graphics.h"
+
+/// @brief 4×4 Bayer dithering matrix (values 0-15, scaled to 0-255 range).
+static const uint8_t bayer4x4[4][4] = {
+    {0,   128, 32,  160},
+    {192, 64,  224, 96 },
+    {48,  176, 16,  144},
+    {240, 112, 208, 80 },
+};
+
+void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t screen_h)
+{
+    if (!fx || !canvas || screen_w <= 0 || screen_h <= 0)
+        return;
+
+    // Also draw overlay for existing fade/flash effects
+    if (fx->overlay_alpha > 0)
+    {
+        rt_canvas_box_alpha(canvas, 0, 0, screen_w, screen_h,
+                            fx->overlay_color >> 8, fx->overlay_alpha);
+    }
+
+    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
+    {
+        struct screenfx_effect *e = &fx->effects[i];
+        if (e->type == RT_SCREENFX_NONE)
+            continue;
+        if (e->duration <= 0)
+            continue;
+
+        int64_t progress = (e->elapsed * 1000) / e->duration;
+        if (progress > 1000)
+            progress = 1000;
+
+        switch (e->type)
+        {
+            case RT_SCREENFX_WIPE:
+            {
+                int64_t dir = e->intensity;
+                int64_t color = e->color;
+
+                switch (dir)
+                {
+                    case RT_DIR_RIGHT:
+                    {
+                        int64_t w = screen_w * progress / 1000;
+                        rt_canvas_box(canvas, screen_w - w, 0, w, screen_h, color);
+                        break;
+                    }
+                    case RT_DIR_UP:
+                    {
+                        int64_t h = screen_h * progress / 1000;
+                        rt_canvas_box(canvas, 0, 0, screen_w, h, color);
+                        break;
+                    }
+                    case RT_DIR_DOWN:
+                    {
+                        int64_t h = screen_h * progress / 1000;
+                        rt_canvas_box(canvas, 0, screen_h - h, screen_w, h, color);
+                        break;
+                    }
+                    default: // LEFT
+                    {
+                        int64_t w = screen_w * progress / 1000;
+                        rt_canvas_box(canvas, 0, 0, w, screen_h, color);
+                        break;
+                    }
+                }
+                break;
+            }
+
+            case RT_SCREENFX_CIRCLE_IN:
+            {
+                // Circle closes: starts at max radius, shrinks to 0.
+                // We draw the color everywhere EXCEPT inside the circle.
+                // Approximate with 4 rectangles forming a frame around the shrinking circle.
+                int64_t cx = e->decay;
+                int64_t cy = e->extra;
+                int64_t color = e->color;
+
+                // Max radius = distance from center to farthest corner
+                int64_t dx1 = cx > screen_w - cx ? cx : screen_w - cx;
+                int64_t dy1 = cy > screen_h - cy ? cy : screen_h - cy;
+                int64_t max_r = dx1 + dy1; // Manhattan approximation (good enough)
+
+                // Current radius shrinks from max_r to 0
+                int64_t radius = max_r * (1000 - progress) / 1000;
+
+                // Draw color boxes on all four sides of the circle region
+                // Top
+                if (cy - radius > 0)
+                    rt_canvas_box(canvas, 0, 0, screen_w, cy - radius, color);
+                // Bottom
+                if (cy + radius < screen_h)
+                    rt_canvas_box(canvas, 0, cy + radius, screen_w, screen_h - (cy + radius), color);
+                // Left
+                int64_t ytop = cy - radius > 0 ? cy - radius : 0;
+                int64_t ybot = cy + radius < screen_h ? cy + radius : screen_h;
+                if (cx - radius > 0)
+                    rt_canvas_box(canvas, 0, ytop, cx - radius, ybot - ytop, color);
+                // Right
+                if (cx + radius < screen_w)
+                    rt_canvas_box(canvas, cx + radius, ytop, screen_w - (cx + radius), ybot - ytop, color);
+                break;
+            }
+
+            case RT_SCREENFX_CIRCLE_OUT:
+            {
+                // Circle opens: starts at 0 radius, expands to reveal.
+                // We draw color everywhere EXCEPT inside the growing circle.
+                int64_t cx = e->decay;
+                int64_t cy = e->extra;
+                int64_t color = e->color;
+
+                int64_t dx1 = cx > screen_w - cx ? cx : screen_w - cx;
+                int64_t dy1 = cy > screen_h - cy ? cy : screen_h - cy;
+                int64_t max_r = dx1 + dy1;
+
+                int64_t radius = max_r * progress / 1000;
+
+                // Draw surrounding boxes (same as circle_in but with growing radius)
+                if (cy - radius > 0)
+                    rt_canvas_box(canvas, 0, 0, screen_w, cy - radius, color);
+                if (cy + radius < screen_h)
+                    rt_canvas_box(canvas, 0, cy + radius, screen_w, screen_h - (cy + radius), color);
+                int64_t ytop = cy - radius > 0 ? cy - radius : 0;
+                int64_t ybot = cy + radius < screen_h ? cy + radius : screen_h;
+                if (cx - radius > 0)
+                    rt_canvas_box(canvas, 0, ytop, cx - radius, ybot - ytop, color);
+                if (cx + radius < screen_w)
+                    rt_canvas_box(canvas, cx + radius, ytop, screen_w - (cx + radius), ybot - ytop, color);
+                break;
+            }
+
+            case RT_SCREENFX_DISSOLVE:
+            {
+                // Bayer dithering: threshold increases with progress.
+                // Pixels where bayer[x%4][y%4] < threshold get the overlay color.
+                int64_t threshold = progress * 256 / 1000; // 0-255
+                int64_t color = e->color;
+
+                // Draw in 4×4 tile blocks for efficiency
+                for (int64_t ty = 0; ty < screen_h; ty += 4)
+                {
+                    for (int64_t tx = 0; tx < screen_w; tx += 4)
+                    {
+                        for (int by = 0; by < 4 && ty + by < screen_h; by++)
+                        {
+                            for (int bx = 0; bx < 4 && tx + bx < screen_w; bx++)
+                            {
+                                if (bayer4x4[by][bx] < (uint8_t)threshold)
+                                {
+                                    rt_canvas_plot(canvas, tx + bx, ty + by, color);
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+
+            case RT_SCREENFX_PIXELATE:
+            {
+                // Block size grows from 1 to max_block_size over duration.
+                // We render colored blocks at increasing sizes.
+                // Note: true pixelation requires reading back pixels — we approximate
+                // by drawing a grid of solid blocks with the average color.
+                // Since we can't read pixels without a canvas read-back, we draw
+                // a semi-transparent overlay grid to simulate the effect.
+                int64_t max_block = e->intensity;
+                int64_t block = 1 + (max_block - 1) * progress / 1000;
+                if (block < 2)
+                    break; // No visible effect at block=1
+
+                // Draw grid lines to create pixelation appearance
+                int64_t alpha = progress * 128 / 1000; // Gradually increasing
+                if (alpha > 128)
+                    alpha = 128;
+
+                for (int64_t gy = 0; gy < screen_h; gy += block)
+                {
+                    rt_canvas_box_alpha(canvas, 0, gy, screen_w, 1, 0x000000, alpha);
+                }
+                for (int64_t gx = 0; gx < screen_w; gx += block)
+                {
+                    rt_canvas_box_alpha(canvas, gx, 0, 1, screen_h, 0x000000, alpha);
+                }
+                break;
+            }
+
+            default:
+                break;
+        }
+    }
 }
