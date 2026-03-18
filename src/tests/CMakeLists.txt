@@ -670,3 +670,24 @@ foreach (test_name IN LISTS ZIA_BIND_NAMESPACE_TESTS)
                 TIMEOUT 30)
     endif ()
 endforeach ()
+
+# =============================================================================
+# Graphics3D Zia Integration Tests (headless — no display required)
+# =============================================================================
+set(G3D_TESTS_DIR "${CMAKE_SOURCE_DIR}/tests/runtime")
+set(G3D_ZIA_TESTS
+        test_canvas3d_hello
+        test_canvas3d_obj
+)
+foreach (test_name IN LISTS G3D_ZIA_TESTS)
+    set(test_file "${G3D_TESTS_DIR}/${test_name}.zia")
+    if (EXISTS "${test_file}")
+        add_test(NAME g3d_${test_name}
+                COMMAND $<TARGET_FILE:viper> run "${test_file}"
+                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+        set_tests_properties(g3d_${test_name} PROPERTIES
+                PASS_REGULAR_EXPRESSION "PASS"
+                LABELS "runtime;graphics3d"
+                TIMEOUT 30)
+    endif ()
+endforeach ()

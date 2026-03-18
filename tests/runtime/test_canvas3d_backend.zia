@@ -1,0 +1,38 @@
+// Test: Verify GPU backend selection and rendering
+module TestCanvas3DBackend;
+
+bind Viper.Terminal;
+
+func start() {
+    var canvas = Viper.Graphics3D.Canvas3D.New("Backend Test", 320, 240);
+    var backend = Viper.Graphics3D.Canvas3D.get_Backend(canvas);
+    Say("Backend: " + backend);
+
+    var cam = Viper.Graphics3D.Camera3D.New(60.0, 320.0 / 240.0, 0.1, 100.0);
+    var eye = new Viper.Math.Vec3(0.0, 2.0, 5.0);
+    var target = new Viper.Math.Vec3(0.0, 0.0, 0.0);
+    var up = new Viper.Math.Vec3(0.0, 1.0, 0.0);
+    Viper.Graphics3D.Camera3D.LookAt(cam, eye, target, up);
+
+    var box = Viper.Graphics3D.Mesh3D.NewBox(1.0, 1.0, 1.0);
+    var mat = Viper.Graphics3D.Material3D.NewColor(0.8, 0.3, 0.2);
+
+    var light_dir = new Viper.Math.Vec3(-1.0, -1.0, -0.5);
+    var light = Viper.Graphics3D.Light3D.NewDirectional(light_dir, 1.0, 1.0, 1.0);
+    Viper.Graphics3D.Canvas3D.SetLight(canvas, 0, light);
+    Viper.Graphics3D.Canvas3D.SetAmbient(canvas, 0.15, 0.15, 0.15);
+
+    // Render 3 frames
+    var frame = 0;
+    while (frame < 3) {
+        Viper.Graphics3D.Canvas3D.Poll(canvas);
+        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.1, 0.1, 0.2);
+        Viper.Graphics3D.Canvas3D.Begin(canvas, cam);
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, box, Viper.Math.Mat4.Identity(), mat);
+        Viper.Graphics3D.Canvas3D.End(canvas);
+        Viper.Graphics3D.Canvas3D.Flip(canvas);
+        frame = frame + 1;
+    }
+
+    Say("PASS");
+}

@@ -208,6 +208,12 @@ void vgfx_mock_set_time_ms(int64_t ms)
     g_mock_time_ms = ms;
 }
 
+void *vgfx_get_native_view(vgfx_window_t window)
+{
+    (void)window;
+    return NULL; /* Mock backend has no native view */
+}
+
 /// @brief Get the current mock time.
 /// @details Returns the current value of g_mock_time_ms.  Equivalent to
 ///          vgfx_platform_now_ms() but more explicit for test code.

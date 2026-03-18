@@ -109,6 +109,27 @@ typedef struct
 /* Forward declaration — defined in vgfx3d_backend.h */
 typedef struct vgfx3d_backend vgfx3d_backend_t;
 
+//=============================================================================
+// RenderTarget3D — offscreen color + depth buffers
+//=============================================================================
+
+typedef struct
+{
+    uint8_t *color_buf; /* RGBA pixels (software path) */
+    float *depth_buf;   /* float depth buffer */
+    int32_t width;
+    int32_t height;
+    int32_t stride; /* width * 4 */
+} vgfx3d_rendertarget_t;
+
+typedef struct
+{
+    void *vptr;
+    vgfx3d_rendertarget_t *target;
+    int64_t width;
+    int64_t height;
+} rt_rendertarget3d;
+
 typedef struct
 {
     void *vptr;
@@ -122,6 +143,11 @@ typedef struct
 
     /* Frame state */
     int8_t in_frame; /* 1 = between Begin/End */
+
+    /* Render target (NULL = render to window) */
+    vgfx3d_rendertarget_t *render_target;
+    const vgfx3d_backend_t *render_target_saved_backend; /* saved GPU backend during RTT */
+    void *render_target_saved_ctx;                        /* saved GPU context during RTT */
 
     /* Lighting */
     rt_light3d *lights[VGFX3D_MAX_LIGHTS];

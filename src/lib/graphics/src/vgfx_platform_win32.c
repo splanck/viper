@@ -1222,4 +1222,14 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     SetWindowPos(data->hwnd, NULL, 0, 0, w, h, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
+void *vgfx_get_native_view(vgfx_window_t window)
+{
+    if (!window)
+        return NULL;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)window->platform_data;
+    if (!w32)
+        return NULL;
+    return (void *)w32->hwnd;
+}
+
 #endif /* _WIN32 */

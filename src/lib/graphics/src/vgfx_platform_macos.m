@@ -1315,6 +1315,16 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     }
 }
 
+void *vgfx_get_native_view(vgfx_window_t window)
+{
+    if (!window)
+        return NULL;
+    vgfx_macos_platform *platform = (vgfx_macos_platform *)window->platform_data;
+    if (!platform)
+        return NULL;
+    return (__bridge void *)platform->view;
+}
+
 #endif /* __APPLE__ */
 
 //===----------------------------------------------------------------------===//

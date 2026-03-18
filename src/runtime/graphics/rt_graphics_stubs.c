@@ -870,6 +870,13 @@ void rt_canvas_get_monitor_size(void *canvas, int64_t *w, int64_t *h)
 // Graphics 3D stubs — Canvas3D, Mesh3D, Camera3D, Material3D, Light3D
 //=============================================================================
 
+void *rt_rendertarget3d_new(int64_t w, int64_t h) { (void)w; (void)h; rt_trap("RenderTarget3D.New: graphics support not compiled in"); return NULL; }
+int64_t rt_rendertarget3d_get_width(void *o) { (void)o; return 0; }
+int64_t rt_rendertarget3d_get_height(void *o) { (void)o; return 0; }
+void *rt_rendertarget3d_as_pixels(void *o) { (void)o; return NULL; }
+void rt_canvas3d_set_render_target(void *c, void *t) { (void)c; (void)t; }
+void rt_canvas3d_reset_render_target(void *c) { (void)c; }
+
 void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) { (void)title; (void)w; (void)h; rt_trap("Canvas3D.New: graphics support not compiled in"); return NULL; }
 void  rt_canvas3d_clear(void *o, double r, double g, double b) { (void)o; (void)r; (void)g; (void)b; }
 void  rt_canvas3d_begin(void *o, void *c) { (void)o; (void)c; }

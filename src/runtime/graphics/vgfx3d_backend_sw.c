@@ -42,6 +42,8 @@ typedef struct
     int32_t width, height;
     float vp[16]; /* view * projection (float, row-major) */
     float cam_pos[3];
+    /* Render target override (NULL = render to window framebuffer) */
+    vgfx3d_rendertarget_t *render_target;
 } sw_context_t;
 
 /*==========================================================================
@@ -293,7 +295,10 @@ static void raster_triangle(uint8_t *pixels, float *zbuf,
     float area = (v1->sx - v0->sx) * (v2->sy - v0->sy) -
                  (v2->sx - v0->sx) * (v1->sy - v0->sy);
 
-    if (backface_cull && area <= 0.0f) return;
+    /* After viewport Y-flip, CCW world-space triangles have NEGATIVE screen-space
+     * area. So negative area = front face, positive area = back face.
+     * Cull back faces (positive area) when backface culling is enabled. */
+    if (backface_cull && area >= 0.0f) return;
     if (area < 0.0f)
     {
         const screen_vert_t *tmp = v1; v1 = v2; v2 = tmp;
@@ -410,23 +415,39 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     if (!ctx) return;
 
-    vgfx_framebuffer_t fb;
-    if (vgfx_get_framebuffer(win, &fb))
+    uint8_t cr = (uint8_t)(clamp01f(r) * 255.0f);
+    uint8_t cg = (uint8_t)(clamp01f(g) * 255.0f);
+    uint8_t cb = (uint8_t)(clamp01f(b) * 255.0f);
+
+    if (ctx->render_target)
     {
-        uint8_t cr = (uint8_t)(clamp01f(r) * 255.0f);
-        uint8_t cg = (uint8_t)(clamp01f(g) * 255.0f);
-        uint8_t cb = (uint8_t)(clamp01f(b) * 255.0f);
-        for (int32_t y = 0; y < fb.height; y++)
-            for (int32_t x = 0; x < fb.width; x++)
+        vgfx3d_rendertarget_t *rt = ctx->render_target;
+        for (int32_t y = 0; y < rt->height; y++)
+            for (int32_t x = 0; x < rt->width; x++)
             {
-                uint8_t *px = &fb.pixels[y * fb.stride + x * 4];
+                uint8_t *px = &rt->color_buf[y * rt->stride + x * 4];
                 px[0] = cr; px[1] = cg; px[2] = cb; px[3] = 0xFF;
             }
+        int32_t total = rt->width * rt->height;
+        for (int32_t i = 0; i < total; i++)
+            rt->depth_buf[i] = FLT_MAX;
     }
-
-    int32_t total = ctx->width * ctx->height;
-    for (int32_t i = 0; i < total; i++)
-        ctx->zbuf[i] = FLT_MAX;
+    else
+    {
+        vgfx_framebuffer_t fb;
+        if (vgfx_get_framebuffer(win, &fb))
+        {
+            for (int32_t y = 0; y < fb.height; y++)
+                for (int32_t x = 0; x < fb.width; x++)
+                {
+                    uint8_t *px = &fb.pixels[y * fb.stride + x * 4];
+                    px[0] = cr; px[1] = cg; px[2] = cb; px[3] = 0xFF;
+                }
+        }
+        int32_t total = ctx->width * ctx->height;
+        for (int32_t i = 0; i < total; i++)
+            ctx->zbuf[i] = FLT_MAX;
+    }
 }
 
 static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam)
@@ -448,8 +469,30 @@ static void sw_submit_draw(void *ctx_ptr, vgfx_window_t win,
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     if (!ctx || !cmd || cmd->vertex_count == 0 || cmd->index_count == 0) return;
 
-    vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(win, &fb)) return;
+    /* Determine output buffers: render target or window framebuffer */
+    uint8_t *out_pixels;
+    float *out_zbuf;
+    int32_t out_w, out_h, out_stride;
+
+    if (ctx->render_target)
+    {
+        vgfx3d_rendertarget_t *rt = ctx->render_target;
+        out_pixels = rt->color_buf;
+        out_zbuf = rt->depth_buf;
+        out_w = rt->width;
+        out_h = rt->height;
+        out_stride = rt->stride;
+    }
+    else
+    {
+        vgfx_framebuffer_t fb;
+        if (!vgfx_get_framebuffer(win, &fb)) return;
+        out_pixels = fb.pixels;
+        out_zbuf = ctx->zbuf;
+        out_w = fb.width;
+        out_h = fb.height;
+        out_stride = fb.stride;
+    }
 
     /* Build MVP = VP * model */
     float mvp[16];
@@ -466,8 +509,8 @@ static void sw_submit_draw(void *ctx_ptr, vgfx_window_t win,
             tex_ptr = &tex_view;
     }
 
-    float half_w = (float)fb.width * 0.5f;
-    float half_h = (float)fb.height * 0.5f;
+    float half_w = (float)out_w * 0.5f;
+    float half_h = (float)out_h * 0.5f;
 
     /* Transform mesh vertices */
     uint32_t vc = cmd->vertex_count;
@@ -540,16 +583,16 @@ static void sw_submit_draw(void *ctx_ptr, vgfx_window_t win,
                 uint8_t wr = (uint8_t)(clamp01f(sv[0].r) * 255.0f);
                 uint8_t wg = (uint8_t)(clamp01f(sv[0].g) * 255.0f);
                 uint8_t wb = (uint8_t)(clamp01f(sv[0].b) * 255.0f);
-                draw_line(fb.pixels, fb.width, fb.height, fb.stride,
+                draw_line(out_pixels, out_w, out_h, out_stride,
                           (int)sv[0].sx, (int)sv[0].sy, (int)sv[1].sx, (int)sv[1].sy, wr, wg, wb);
-                draw_line(fb.pixels, fb.width, fb.height, fb.stride,
+                draw_line(out_pixels, out_w, out_h, out_stride,
                           (int)sv[1].sx, (int)sv[1].sy, (int)sv[2].sx, (int)sv[2].sy, wr, wg, wb);
-                draw_line(fb.pixels, fb.width, fb.height, fb.stride,
+                draw_line(out_pixels, out_w, out_h, out_stride,
                           (int)sv[2].sx, (int)sv[2].sy, (int)sv[0].sx, (int)sv[0].sy, wr, wg, wb);
             }
             else
             {
-                raster_triangle(fb.pixels, ctx->zbuf, fb.width, fb.height, fb.stride,
+                raster_triangle(out_pixels, out_zbuf, out_w, out_h, out_stride,
                                 &sv[0], &sv[1], &sv[2], tex_ptr, backface_cull);
             }
         }
@@ -561,6 +604,13 @@ static void sw_submit_draw(void *ctx_ptr, vgfx_window_t win,
 static void sw_end_frame(void *ctx_ptr)
 {
     (void)ctx_ptr;
+}
+
+static void sw_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
+{
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    if (ctx)
+        ctx->render_target = rt;
 }
 
 /*==========================================================================
@@ -575,13 +625,30 @@ const vgfx3d_backend_t vgfx3d_software_backend = {
     .begin_frame = sw_begin_frame,
     .submit_draw = sw_submit_draw,
     .end_frame = sw_end_frame,
+    .set_render_target = sw_set_render_target,
 };
+
+/* Stub for platforms without a GPU layer to hide */
+#if !defined(__APPLE__)
+void vgfx3d_hide_gpu_layer(void *backend_ctx) { (void)backend_ctx; }
+void vgfx3d_show_gpu_layer(void *backend_ctx) { (void)backend_ctx; }
+#endif
 
 const vgfx3d_backend_t *vgfx3d_select_backend(void)
 {
-    /* Phase 2: only software backend available.
-     * Phases 3-5 add GPU backends with fallback. */
+    /* Try GPU backend first, fall back to software.
+     * GPU backend init is tested in create_ctx — if it returns NULL,
+     * Canvas3D.New will detect the failure and we don't get here.
+     * So selection just returns the preferred backend for the platform. */
+#if defined(__APPLE__)
+    return &vgfx3d_metal_backend;
+#elif defined(_WIN32)
+    return &vgfx3d_d3d11_backend;
+#elif defined(__linux__)
+    return &vgfx3d_opengl_backend;
+#else
     return &vgfx3d_software_backend;
+#endif
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

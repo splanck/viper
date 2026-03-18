@@ -62,6 +62,18 @@ extern "C"
     void *rt_canvas3d_screenshot(void *obj);
 
     //=========================================================================
+    // RenderTarget3D — offscreen rendering target
+    //=========================================================================
+
+    void *rt_rendertarget3d_new(int64_t width, int64_t height);
+    int64_t rt_rendertarget3d_get_width(void *obj);
+    int64_t rt_rendertarget3d_get_height(void *obj);
+    void *rt_rendertarget3d_as_pixels(void *obj);
+
+    void  rt_canvas3d_set_render_target(void *canvas, void *target);
+    void  rt_canvas3d_reset_render_target(void *canvas);
+
+    //=========================================================================
     // Mesh3D — 3D mesh with vertices and triangle indices
     //=========================================================================
 

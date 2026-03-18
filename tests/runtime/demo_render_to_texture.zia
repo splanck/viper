@@ -1,0 +1,92 @@
+// Demo: Render-to-texture — render a spinning cube to an offscreen target,
+// then display it as a texture on a quad in the main scene (TV screen effect).
+// Uses software backend to support Pixels-based texture mapping.
+module DemoRenderToTexture;
+
+bind Viper.Terminal;
+
+func start() {
+    var canvas = Viper.Graphics3D.Canvas3D.New("Render to Texture", 640, 480);
+
+    var cam = Viper.Graphics3D.Camera3D.New(60.0, 640.0 / 480.0, 0.1, 100.0);
+    var eye = new Viper.Math.Vec3(0.0, 1.0, 5.0);
+    var target = new Viper.Math.Vec3(0.0, 0.5, 0.0);
+    var up = new Viper.Math.Vec3(0.0, 1.0, 0.0);
+    Viper.Graphics3D.Camera3D.LookAt(cam, eye, target, up);
+
+    // Camera for the offscreen render
+    var rt_cam = Viper.Graphics3D.Camera3D.New(50.0, 1.0, 0.1, 50.0);
+    var rt_eye = new Viper.Math.Vec3(0.0, 1.0, 3.0);
+    var rt_target = new Viper.Math.Vec3(0.0, 0.0, 0.0);
+    Viper.Graphics3D.Camera3D.LookAt(rt_cam, rt_eye, rt_target, up);
+
+    // Render target (256x256 offscreen)
+    var rt = Viper.Graphics3D.RenderTarget3D.New(256, 256);
+
+    // Build a vertical screen quad manually (NewPlane is horizontal)
+    var screen = Viper.Graphics3D.Mesh3D.New();
+    // 4 vertices forming a vertical rectangle facing +Z
+    Viper.Graphics3D.Mesh3D.AddVertex(screen, -1.5, -1.0, 0.0, 0, 0, 1, 0, 1);
+    Viper.Graphics3D.Mesh3D.AddVertex(screen,  1.5, -1.0, 0.0, 0, 0, 1, 1, 1);
+    Viper.Graphics3D.Mesh3D.AddVertex(screen,  1.5,  1.0, 0.0, 0, 0, 1, 1, 0);
+    Viper.Graphics3D.Mesh3D.AddVertex(screen, -1.5,  1.0, 0.0, 0, 0, 1, 0, 0);
+    Viper.Graphics3D.Mesh3D.AddTriangle(screen, 0, 1, 2);
+    Viper.Graphics3D.Mesh3D.AddTriangle(screen, 0, 2, 3);
+
+    var cube = Viper.Graphics3D.Mesh3D.NewBox(1.0, 1.0, 1.0);
+    var sphere = Viper.Graphics3D.Mesh3D.NewSphere(0.4, 12);
+    var floor = Viper.Graphics3D.Mesh3D.NewPlane(8.0, 8.0);
+
+    // Materials
+    var cube_mat = Viper.Graphics3D.Material3D.NewColor(0.9, 0.3, 0.1);
+    Viper.Graphics3D.Material3D.SetShininess(cube_mat, 64.0);
+    var screen_mat = Viper.Graphics3D.Material3D.New();
+    Viper.Graphics3D.Material3D.SetUnlit(screen_mat, true); // unlit so texture shows at full brightness
+    var floor_mat = Viper.Graphics3D.Material3D.NewColor(0.3, 0.3, 0.35);
+    var sphere_mat = Viper.Graphics3D.Material3D.NewColor(0.2, 0.7, 0.3);
+
+    // Light
+    var sun_dir = new Viper.Math.Vec3(-0.5, -1.0, -0.3);
+    var sun = Viper.Graphics3D.Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
+    Viper.Graphics3D.Canvas3D.SetLight(canvas, 0, sun);
+    Viper.Graphics3D.Canvas3D.SetAmbient(canvas, 0.15, 0.15, 0.2);
+
+    var floor_xform = Viper.Math.Mat4.Translate(0.0, -1.0, 0.0);
+    var screen_xform = Viper.Math.Mat4.Translate(0.0, 0.5, -1.0);
+
+    var angle = 0.0;
+
+    while (Viper.Graphics3D.Canvas3D.get_ShouldClose(canvas) == 0) {
+        Viper.Graphics3D.Canvas3D.Poll(canvas);
+
+        // --- Pass 1: Render spinning cube + sphere to offscreen target ---
+        Viper.Graphics3D.Canvas3D.SetRenderTarget(canvas, rt);
+        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.05, 0.05, 0.2);
+
+        var cube_rot = Viper.Math.Mat4.RotateY(angle * 2.0);
+        var sphere_pos = Viper.Math.Mat4.Translate(
+            1.5 * Viper.Math.Cos(angle * 3.0),
+            0.0,
+            1.5 * Viper.Math.Sin(angle * 3.0));
+
+        Viper.Graphics3D.Canvas3D.Begin(canvas, rt_cam);
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, cube, cube_rot, cube_mat);
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, sphere, sphere_pos, sphere_mat);
+        Viper.Graphics3D.Canvas3D.End(canvas);
+
+        // Read back as texture for the screen
+        var tex = Viper.Graphics3D.RenderTarget3D.AsPixels(rt);
+        Viper.Graphics3D.Material3D.SetTexture(screen_mat, tex);
+
+        // --- Pass 2: Render main scene with TV screen ---
+        Viper.Graphics3D.Canvas3D.ResetRenderTarget(canvas);
+        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.05, 0.05, 0.1);
+        Viper.Graphics3D.Canvas3D.Begin(canvas, cam);
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, floor, floor_xform, floor_mat);
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, screen, screen_xform, screen_mat);
+        Viper.Graphics3D.Canvas3D.End(canvas);
+        Viper.Graphics3D.Canvas3D.Flip(canvas);
+
+        angle = angle + 0.016;
+    }
+}

@@ -534,6 +534,15 @@ extern "C"
     /// @return 1 on success, 0 if window or out_fb is NULL
     int vgfx_get_framebuffer(vgfx_window_t window, vgfx_framebuffer_t *out_fb);
 
+    /// @brief Get the platform-specific native view handle.
+    /// @details On macOS, returns the NSView* (as void*). On Linux, returns
+    ///          the X11 Window (as void*, cast from unsigned long). On Windows,
+    ///          returns the HWND (as void*). Used by GPU backends (Metal,
+    ///          D3D11, OpenGL) to attach rendering surfaces.
+    /// @param window Window handle
+    /// @return Native view handle, or NULL if unavailable
+    void *vgfx_get_native_view(vgfx_window_t window);
+
     //===----------------------------------------------------------------------===//
     // Clipping
     //===----------------------------------------------------------------------===//

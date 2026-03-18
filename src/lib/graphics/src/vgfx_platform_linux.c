@@ -1249,4 +1249,14 @@ void vgfx_clipboard_set_text(const char *text)
 
 void vgfx_clipboard_clear(void) {}
 
+void *vgfx_get_native_view(vgfx_window_t window)
+{
+    if (!window)
+        return NULL;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)window->platform_data;
+    if (!x11)
+        return NULL;
+    return (void *)(uintptr_t)x11->window; /* X11 Window is unsigned long */
+}
+
 #endif /* __linux__ || __unix__ */

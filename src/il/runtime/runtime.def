@@ -8968,6 +8968,23 @@ RT_CLASS_BEGIN("Viper.GUI.FloatingPanel", GuiFloatingPanel, "obj", GuiFloatingPa
 RT_CLASS_END()
 
 //=============================================================================
+// GRAPHICS 3D - RENDERTARGET3D
+//=============================================================================
+
+RT_FUNC(RenderTarget3DNew,            rt_rendertarget3d_new,            "Viper.Graphics3D.RenderTarget3D.New",            "obj(i64,i64)")
+RT_FUNC(RenderTarget3DGetWidth,       rt_rendertarget3d_get_width,      "Viper.Graphics3D.RenderTarget3D.get_Width",      "i64(obj)")
+RT_FUNC(RenderTarget3DGetHeight,      rt_rendertarget3d_get_height,     "Viper.Graphics3D.RenderTarget3D.get_Height",     "i64(obj)")
+RT_FUNC(RenderTarget3DAsPixels,       rt_rendertarget3d_as_pixels,      "Viper.Graphics3D.RenderTarget3D.AsPixels",       "obj(obj)")
+RT_FUNC(Canvas3DSetRenderTarget,      rt_canvas3d_set_render_target,    "Viper.Graphics3D.Canvas3D.SetRenderTarget",      "void(obj,obj)")
+RT_FUNC(Canvas3DResetRenderTarget,    rt_canvas3d_reset_render_target,  "Viper.Graphics3D.Canvas3D.ResetRenderTarget",    "void(obj)")
+
+RT_CLASS_BEGIN("Viper.Graphics3D.RenderTarget3D", RenderTarget3D, "obj", RenderTarget3DNew)
+    RT_PROP("Width", "i64", RenderTarget3DGetWidth, none)
+    RT_PROP("Height", "i64", RenderTarget3DGetHeight, none)
+    RT_METHOD("AsPixels", "obj()", RenderTarget3DAsPixels)
+RT_CLASS_END()
+
+//=============================================================================
 // GRAPHICS 3D - CANVAS3D
 //=============================================================================
 
@@ -9013,6 +9030,8 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Canvas3D", Canvas3D, "obj", Canvas3DNew)
     RT_METHOD("DrawLine3D", "void(obj,obj,i64)", Canvas3DDrawLine3D)
     RT_METHOD("DrawPoint3D", "void(obj,i64,i64)", Canvas3DDrawPoint3D)
     RT_METHOD("Screenshot", "obj()", Canvas3DScreenshot)
+    RT_METHOD("SetRenderTarget", "void(obj)", Canvas3DSetRenderTarget)
+    RT_METHOD("ResetRenderTarget", "void()", Canvas3DResetRenderTarget)
 RT_CLASS_END()
 
 //=============================================================================

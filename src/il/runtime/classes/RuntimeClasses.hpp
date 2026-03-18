@@ -363,7 +363,8 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_UINineSlice,
     RTCLS_UIMenuList,
 
-    // Graphics 3D (Phase 1)
+    // Graphics 3D
+    RTCLS_RenderTarget3D,
     RTCLS_Canvas3D,
     RTCLS_Mesh3D,
     RTCLS_Camera3D,

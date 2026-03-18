@@ -81,6 +81,10 @@ extern "C" double rt_vec3_y(void *v);
 extern "C" double rt_vec3_z(void *v);
 extern "C" void *rt_vec3_new(double x, double y, double z);
 extern "C" void *rt_pixels_new(int64_t width, int64_t height);
+extern "C" void *rt_mat4_identity(void);
+
+/* Backend selection test */
+extern "C" const void *vgfx3d_select_backend(void);
 
 //=============================================================================
 // Mesh3D tests
@@ -382,14 +386,235 @@ static void test_light_set_color()
 }
 
 //=============================================================================
+// Mesh3D — additional tests
+//=============================================================================
+
+static void test_mesh_many_vertices()
+{
+    TEST("Mesh3D — dynamic growth (1000 vertices)");
+    void *m = rt_mesh3d_new();
+    for (int i = 0; i < 1000; i++)
+        rt_mesh3d_add_vertex(m, (double)i, 0, 0, 0, 1, 0, 0, 0);
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 1000);
+    PASS();
+}
+
+static void test_mesh_many_triangles()
+{
+    TEST("Mesh3D — many triangles (500 tris)");
+    void *m = rt_mesh3d_new();
+    for (int i = 0; i < 1500; i++)
+        rt_mesh3d_add_vertex(m, (double)(i % 100), (double)(i / 100), 0, 0, 0, 1, 0, 0);
+    for (int i = 0; i < 500; i++)
+        rt_mesh3d_add_triangle(m, i * 3, i * 3 + 1, i * 3 + 2);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 500);
+    PASS();
+}
+
+static void test_mesh_null_safety()
+{
+    TEST("Mesh3D — null safety (no crash)");
+    rt_mesh3d_add_vertex(NULL, 0, 0, 0, 0, 0, 0, 0, 0);
+    rt_mesh3d_add_triangle(NULL, 0, 1, 2);
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(NULL), 0);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(NULL), 0);
+    rt_mesh3d_recalc_normals(NULL);
+    rt_mesh3d_transform(NULL, NULL);
+    PASS();
+}
+
+static void test_mesh_sphere_low_segments()
+{
+    TEST("Mesh3D.NewSphere — minimum segments (4)");
+    void *m = rt_mesh3d_new_sphere(1.0, 4);
+    assert(m);
+    assert(rt_mesh3d_get_vertex_count(m) > 0);
+    assert(rt_mesh3d_get_triangle_count(m) > 0);
+    PASS();
+}
+
+static void test_mesh_cylinder_low_segments()
+{
+    TEST("Mesh3D.NewCylinder — minimum segments (3)");
+    void *m = rt_mesh3d_new_cylinder(0.5, 1.0, 3);
+    assert(m);
+    assert(rt_mesh3d_get_vertex_count(m) > 0);
+    assert(rt_mesh3d_get_triangle_count(m) > 0);
+    PASS();
+}
+
+static void test_mesh_box_dimensions()
+{
+    TEST("Mesh3D.NewBox — different dimensions");
+    void *m = rt_mesh3d_new_box(2.0, 0.5, 3.0);
+    assert(m);
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 24);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 12);
+    PASS();
+}
+
+static void test_mesh_transform_identity()
+{
+    TEST("Mesh3D.Transform — identity preserves geometry");
+    void *m = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *c = rt_mesh3d_clone(m);
+    void *id = rt_mat4_identity();
+    rt_mesh3d_transform(c, id);
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(c), 24);
+    PASS();
+}
+
+//=============================================================================
+// Camera3D — additional tests
+//=============================================================================
+
+static void test_camera_null_safety()
+{
+    TEST("Camera3D — null safety (no crash)");
+    rt_camera3d_look_at(NULL, NULL, NULL, NULL);
+    rt_camera3d_orbit(NULL, NULL, 5.0, 0, 0);
+    EXPECT_NEAR(rt_camera3d_get_fov(NULL), 0.0, 0.001);
+    rt_camera3d_set_fov(NULL, 90.0);
+    assert(rt_camera3d_get_position(NULL) == NULL);
+    assert(rt_camera3d_get_forward(NULL) == NULL);
+    assert(rt_camera3d_get_right(NULL) == NULL);
+    PASS();
+}
+
+static void test_camera_right_vector()
+{
+    TEST("Camera3D.Right — perpendicular to forward");
+    void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
+    void *eye = rt_vec3_new(0, 0, 5);
+    void *target = rt_vec3_new(0, 0, 0);
+    void *up = rt_vec3_new(0, 1, 0);
+    rt_camera3d_look_at(cam, eye, target, up);
+
+    void *right = rt_camera3d_get_right(cam);
+    assert(right);
+    /* Right should be along +X when looking down -Z */
+    EXPECT_NEAR(rt_vec3_x(right), 1.0, 0.1);
+    EXPECT_NEAR(rt_vec3_y(right), 0.0, 0.1);
+    EXPECT_NEAR(rt_vec3_z(right), 0.0, 0.1);
+    PASS();
+}
+
+static void test_camera_orbit_yaw()
+{
+    TEST("Camera3D.Orbit — yaw 90° moves to +X");
+    void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
+    void *target = rt_vec3_new(0, 0, 0);
+    rt_camera3d_orbit(cam, target, 5.0, 90.0, 0.0);
+    void *pos = rt_camera3d_get_position(cam);
+    /* At yaw=90°, eye should be at roughly (5, 0, 0) */
+    EXPECT_NEAR(rt_vec3_x(pos), 5.0, 0.1);
+    EXPECT_NEAR(rt_vec3_y(pos), 0.0, 0.1);
+    EXPECT_NEAR(rt_vec3_z(pos), 0.0, 0.5);
+    PASS();
+}
+
+static void test_camera_orbit_pitch()
+{
+    TEST("Camera3D.Orbit — pitch 45° elevates camera");
+    void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
+    void *target = rt_vec3_new(0, 0, 0);
+    rt_camera3d_orbit(cam, target, 10.0, 0.0, 45.0);
+    void *pos = rt_camera3d_get_position(cam);
+    /* Y should be positive (elevated) */
+    assert(rt_vec3_y(pos) > 3.0);
+    PASS();
+}
+
+static void test_camera_screen_to_ray_corners()
+{
+    TEST("Camera3D.ScreenToRay — corner rays diverge from center");
+    void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
+    void *eye = rt_vec3_new(0, 0, 5);
+    void *target = rt_vec3_new(0, 0, 0);
+    void *up = rt_vec3_new(0, 1, 0);
+    rt_camera3d_look_at(cam, eye, target, up);
+
+    void *center = rt_camera3d_screen_to_ray(cam, 320, 240, 640, 480);
+    void *corner = rt_camera3d_screen_to_ray(cam, 0, 0, 640, 480);
+
+    /* Center ray Z should be more negative (more forward) than corner ray Z */
+    assert(rt_vec3_z(center) < rt_vec3_z(corner));
+    PASS();
+}
+
+//=============================================================================
+// Material3D — additional tests
+//=============================================================================
+
+static void test_material_set_color()
+{
+    TEST("Material3D.SetColor — changes material");
+    void *m = rt_material3d_new();
+    rt_material3d_set_color(m, 0.1, 0.2, 0.3);
+    PASS();
+}
+
+static void test_material_set_shininess()
+{
+    TEST("Material3D.SetShininess — accepts values");
+    void *m = rt_material3d_new();
+    rt_material3d_set_shininess(m, 128.0);
+    rt_material3d_set_shininess(m, 0.0);
+    PASS();
+}
+
+static void test_material_set_unlit()
+{
+    TEST("Material3D.SetUnlit — toggles lighting");
+    void *m = rt_material3d_new();
+    rt_material3d_set_unlit(m, 1);
+    rt_material3d_set_unlit(m, 0);
+    PASS();
+}
+
+static void test_material_null_safety()
+{
+    TEST("Material3D — null safety");
+    rt_material3d_set_color(NULL, 0, 0, 0);
+    rt_material3d_set_texture(NULL, NULL);
+    rt_material3d_set_shininess(NULL, 0);
+    rt_material3d_set_unlit(NULL, 0);
+    PASS();
+}
+
+//=============================================================================
+// Light3D — additional tests
+//=============================================================================
+
+static void test_light_null_safety()
+{
+    TEST("Light3D — null safety");
+    rt_light3d_set_intensity(NULL, 1.0);
+    rt_light3d_set_color(NULL, 0, 0, 0);
+    PASS();
+}
+
+//=============================================================================
+// Backend selection tests
+//=============================================================================
+
+static void test_backend_select()
+{
+    TEST("Backend selection — returns non-null");
+    const void *b = vgfx3d_select_backend();
+    assert(b != NULL);
+    PASS();
+}
+
+//=============================================================================
 // Main
 //=============================================================================
 
 int main()
 {
-    printf("=== Graphics3D Unit Tests ===\n");
+    printf("=== Graphics3D Unit Tests ===\n\n");
 
-    // Mesh3D
+    /* Mesh3D — basic */
     test_mesh_empty();
     test_mesh_add_vertex_triangle();
     test_mesh_box();
@@ -400,7 +625,16 @@ int main()
     test_mesh_recalc_normals();
     test_mesh_obj_loader();
 
-    // Camera3D
+    /* Mesh3D — extended */
+    test_mesh_many_vertices();
+    test_mesh_many_triangles();
+    test_mesh_null_safety();
+    test_mesh_sphere_low_segments();
+    test_mesh_cylinder_low_segments();
+    test_mesh_box_dimensions();
+    test_mesh_transform_identity();
+
+    /* Camera3D — basic */
     test_camera_new();
     test_camera_set_fov();
     test_camera_look_at();
@@ -408,17 +642,32 @@ int main()
     test_camera_orbit();
     test_camera_screen_to_ray();
 
-    // Material3D
+    /* Camera3D — extended */
+    test_camera_null_safety();
+    test_camera_right_vector();
+    test_camera_orbit_yaw();
+    test_camera_orbit_pitch();
+    test_camera_screen_to_ray_corners();
+
+    /* Material3D */
     test_material_new();
     test_material_new_color();
     test_material_new_textured();
+    test_material_set_color();
+    test_material_set_shininess();
+    test_material_set_unlit();
+    test_material_null_safety();
 
-    // Light3D
+    /* Light3D */
     test_light_directional();
     test_light_point();
     test_light_ambient();
     test_light_set_intensity();
     test_light_set_color();
+    test_light_null_safety();
+
+    /* Backend */
+    test_backend_select();
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_total);
     return tests_passed == tests_total ? 0 : 1;

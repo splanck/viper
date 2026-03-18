@@ -145,13 +145,19 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h)
     c->width = (int32_t)w;
     c->height = (int32_t)h;
 
-    /* Select and initialize backend */
+    /* Select and initialize backend (GPU first, software fallback) */
     c->backend = vgfx3d_select_backend();
     c->backend_ctx = c->backend->create_ctx(c->gfx_win, (int32_t)w, (int32_t)h);
     if (!c->backend_ctx)
     {
-        rt_trap("Canvas3D.New: backend initialization failed");
-        return NULL;
+        /* GPU backend failed — fall back to software */
+        c->backend = &vgfx3d_software_backend;
+        c->backend_ctx = c->backend->create_ctx(c->gfx_win, (int32_t)w, (int32_t)h);
+        if (!c->backend_ctx)
+        {
+            rt_trap("Canvas3D.New: backend initialization failed");
+            return NULL;
+        }
     }
 
     c->ambient[0] = 0.1f;
@@ -255,6 +261,9 @@ void rt_canvas3d_flip(void *obj)
     rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->gfx_win) return;
 
+    /* Always call vgfx_update to keep the window alive and process display
+     * refresh on macOS. For GPU backends, the CAMetalLayer renders on top
+     * of the software framebuffer. */
     vgfx_update(c->gfx_win);
 
     int64_t now_us = rt_clock_ticks_us();

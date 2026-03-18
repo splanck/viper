@@ -219,7 +219,20 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_camera3d.c
         graphics/rt_material3d.c
         graphics/rt_light3d.c
+        graphics/rt_rendertarget3d.c
 )
+
+# GPU backends (platform-conditional)
+if (APPLE)
+    list(APPEND RT_GRAPHICS_SOURCES graphics/vgfx3d_backend_metal.m)
+    set_source_files_properties(graphics/vgfx3d_backend_metal.m PROPERTIES COMPILE_FLAGS "-fobjc-arc -U_POSIX_C_SOURCE")
+endif ()
+if (WIN32)
+    list(APPEND RT_GRAPHICS_SOURCES graphics/vgfx3d_backend_d3d11.c)
+endif ()
+if (UNIX AND NOT APPLE)
+    list(APPEND RT_GRAPHICS_SOURCES graphics/vgfx3d_backend_opengl.c)
+endif ()
 
 set(RT_AUDIO_SOURCES
         audio/rt_audio.c
@@ -504,6 +517,9 @@ endif ()
 if (APPLE)
     target_link_libraries(viper_rt_graphics PUBLIC "-framework IOKit" "-framework CoreFoundation")
     target_link_libraries(viper_runtime PUBLIC "-framework IOKit" "-framework CoreFoundation")
+    # Metal frameworks for 3D GPU backend
+    target_link_libraries(viper_rt_graphics PUBLIC "-framework Metal" "-framework MetalKit" "-framework QuartzCore")
+    target_link_libraries(viper_runtime PUBLIC "-framework Metal" "-framework MetalKit" "-framework QuartzCore")
     # Security.framework required for TLS X.509 chain validation (CS-1/CS-2/CS-3)
     target_link_libraries(viper_rt_network PUBLIC "-framework Security" "-framework CoreFoundation")
     target_link_libraries(viper_runtime PUBLIC "-framework Security")

@@ -90,6 +90,9 @@ typedef struct vgfx3d_backend
                         const vgfx3d_light_params_t *lights, int32_t light_count,
                         const float *ambient, int8_t wireframe, int8_t backface_cull);
     void (*end_frame)(void *ctx);
+
+    /* Render target (NULL = render to window) */
+    void (*set_render_target)(void *ctx, vgfx3d_rendertarget_t *rt);
 } vgfx3d_backend_t;
 
 /*==========================================================================
@@ -97,6 +100,16 @@ typedef struct vgfx3d_backend
  *=========================================================================*/
 
 extern const vgfx3d_backend_t vgfx3d_software_backend;
+
+#if defined(__APPLE__)
+extern const vgfx3d_backend_t vgfx3d_metal_backend;
+#endif
+#if defined(_WIN32)
+extern const vgfx3d_backend_t vgfx3d_d3d11_backend;
+#endif
+#if defined(__linux__)
+extern const vgfx3d_backend_t vgfx3d_opengl_backend;
+#endif
 
 /* Select the best available backend. Tries GPU first, falls back to software. */
 const vgfx3d_backend_t *vgfx3d_select_backend(void);
