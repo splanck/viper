@@ -221,6 +221,11 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_light3d.c
         graphics/rt_cubemap3d.c
         graphics/rt_rendertarget3d.c
+        graphics/rt_scene3d.c
+        graphics/rt_skeleton3d.c
+        graphics/rt_fbx_loader.c
+        graphics/vgfx3d_frustum.c
+        graphics/vgfx3d_skinning.c
 )
 
 # GPU backends (platform-conditional)

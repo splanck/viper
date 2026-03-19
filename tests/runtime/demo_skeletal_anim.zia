@@ -1,0 +1,109 @@
+// Demo: Skeletal animation — a simple arm (2 bones) with a waving animation.
+// The upper arm rotates back and forth, the forearm follows as a child bone.
+module DemoSkeletalAnim;
+
+bind Viper.Terminal;
+
+func start() {
+    var canvas = Viper.Graphics3D.Canvas3D.New("Skeletal Animation", 800, 600);
+    var cam = Viper.Graphics3D.Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
+
+    // Meshes — simple boxes representing bone segments
+    var upper_mesh = Viper.Graphics3D.Mesh3D.NewBox(0.3, 2.0, 0.3);
+    var lower_mesh = Viper.Graphics3D.Mesh3D.NewBox(0.25, 1.8, 0.25);
+    var body_mesh = Viper.Graphics3D.Mesh3D.NewBox(1.5, 2.5, 0.8);
+    var head_mesh = Viper.Graphics3D.Mesh3D.NewSphere(0.5, 12);
+    var floor_mesh = Viper.Graphics3D.Mesh3D.NewPlane(12.0, 12.0);
+
+    // Set bone weights: each vertex of upper_mesh is fully weighted to bone 1 (upper arm)
+    var i = 0;
+    while (i < 24) {
+        Viper.Graphics3D.Mesh3D.SetBoneWeights(upper_mesh, i, 1, 1.0, 0, 0.0, 0, 0.0, 0, 0.0);
+        i = i + 1;
+    }
+    // Each vertex of lower_mesh is fully weighted to bone 2 (forearm)
+    i = 0;
+    while (i < 24) {
+        Viper.Graphics3D.Mesh3D.SetBoneWeights(lower_mesh, i, 2, 1.0, 0, 0.0, 0, 0.0, 0, 0.0);
+        i = i + 1;
+    }
+
+    // Build skeleton: root (body) → upper arm → forearm
+    var skel = Viper.Graphics3D.Skeleton3D.New();
+    Viper.Graphics3D.Skeleton3D.AddBone(skel, "body", -1, Viper.Math.Mat4.Identity());
+    Viper.Graphics3D.Skeleton3D.AddBone(skel, "upper_arm", 0, Viper.Math.Mat4.Translate(0.9, 1.0, 0.0));
+    Viper.Graphics3D.Skeleton3D.AddBone(skel, "forearm", 1, Viper.Math.Mat4.Translate(0.0, -2.0, 0.0));
+    Viper.Graphics3D.Skeleton3D.ComputeInverseBind(skel);
+
+    // Animation: wave the upper arm back and forth (rotate around Z)
+    var wave = Viper.Graphics3D.Animation3D.New("wave", 2.0);
+    Viper.Graphics3D.Animation3D.set_Looping(wave, true);
+
+    // Keyframes for upper arm (bone 1): rotate Z from 0 to -45° to 0
+    var pos_arm = new Viper.Math.Vec3(0.9, 1.0, 0.0);
+    var scl_one = new Viper.Math.Vec3(1.0, 1.0, 1.0);
+    var rot_0 = Viper.Math.Quat.FromEuler(0.0, 0.0, 0.0);
+    var rot_45 = Viper.Math.Quat.FromEuler(0.0, 0.0, -0.785);
+    Viper.Graphics3D.Animation3D.AddKeyframe(wave, 1, 0.0, pos_arm, rot_0, scl_one);
+    Viper.Graphics3D.Animation3D.AddKeyframe(wave, 1, 1.0, pos_arm, rot_45, scl_one);
+    Viper.Graphics3D.Animation3D.AddKeyframe(wave, 1, 2.0, pos_arm, rot_0, scl_one);
+
+    // Forearm follows (bone 2) — static local offset
+    var pos_fore = new Viper.Math.Vec3(0.0, -2.0, 0.0);
+    Viper.Graphics3D.Animation3D.AddKeyframe(wave, 2, 0.0, pos_fore, rot_0, scl_one);
+
+    // Create player
+    var player = Viper.Graphics3D.AnimPlayer3D.New(skel);
+    Viper.Graphics3D.AnimPlayer3D.Play(player, wave);
+
+    // Materials
+    var skin_mat = Viper.Graphics3D.Material3D.NewColor(0.9, 0.7, 0.5);
+    var body_mat = Viper.Graphics3D.Material3D.NewColor(0.2, 0.4, 0.8);
+    var head_mat = Viper.Graphics3D.Material3D.NewColor(0.9, 0.75, 0.55);
+    Viper.Graphics3D.Material3D.SetShininess(head_mat, 32.0);
+    var floor_mat = Viper.Graphics3D.Material3D.NewColor(0.25, 0.25, 0.3);
+
+    // Lighting
+    var sun_dir = new Viper.Math.Vec3(-0.5, -1.0, -0.3);
+    var sun = Viper.Graphics3D.Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
+    Viper.Graphics3D.Canvas3D.SetLight(canvas, 0, sun);
+    Viper.Graphics3D.Canvas3D.SetAmbient(canvas, 0.15, 0.15, 0.2);
+
+    var time = 0.0;
+
+    while (Viper.Graphics3D.Canvas3D.get_ShouldClose(canvas) == 0) {
+        Viper.Graphics3D.Canvas3D.Poll(canvas);
+        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.05, 0.05, 0.1);
+
+        // Camera
+        var target = new Viper.Math.Vec3(0.0, 0.5, 0.0);
+        Viper.Graphics3D.Camera3D.Orbit(cam, target, 6.0, 30.0, 15.0);
+
+        // Update animation
+        Viper.Graphics3D.AnimPlayer3D.Update(player, 0.016);
+
+        // Draw static objects
+        Viper.Graphics3D.Canvas3D.Begin(canvas, cam);
+
+        // Floor
+        var floor_xform = Viper.Math.Mat4.Translate(0.0, -1.5, 0.0);
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, floor_mesh, floor_xform, floor_mat);
+
+        // Body (static, not skinned)
+        var body_xform = Viper.Math.Mat4.Identity();
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, body_mesh, body_xform, body_mat);
+
+        // Head
+        var head_xform = Viper.Math.Mat4.Translate(0.0, 1.75, 0.0);
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, head_mesh, head_xform, head_mat);
+
+        // Skinned arm pieces
+        Viper.Graphics3D.Canvas3D.DrawMeshSkinned(canvas, upper_mesh, Viper.Math.Mat4.Identity(), skin_mat, player);
+        Viper.Graphics3D.Canvas3D.DrawMeshSkinned(canvas, lower_mesh, Viper.Math.Mat4.Identity(), skin_mat, player);
+
+        Viper.Graphics3D.Canvas3D.End(canvas);
+        Viper.Graphics3D.Canvas3D.Flip(canvas);
+
+        time = time + 0.016;
+    }
+}

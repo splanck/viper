@@ -537,6 +537,14 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_canvas3d test_rt_canvas3d)
     set_tests_properties(test_rt_canvas3d PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+    viper_add_test(test_rt_scene3d ${VIPER_TESTS_DIR}/unit/test_rt_scene3d.cpp)
+    target_link_libraries(test_rt_scene3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_scene3d test_rt_scene3d)
+
+    viper_add_test(test_rt_skeleton3d ${VIPER_TESTS_DIR}/unit/test_rt_skeleton3d.cpp)
+    target_link_libraries(test_rt_skeleton3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_skeleton3d test_rt_skeleton3d)
+
     viper_add_test(test_rt_math_core ${VIPER_TESTS_DIR}/runtime/RTMathCoreTests.cpp)
     target_link_libraries(test_rt_math_core PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_math_core test_rt_math_core)

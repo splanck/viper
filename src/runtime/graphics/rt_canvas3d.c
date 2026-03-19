@@ -351,6 +351,7 @@ void rt_canvas3d_end(void *obj)
 {
     if (!obj) return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
+    if (!c->in_frame) return; /* End() without Begin() — nothing to do */
     if (!c->backend)
     {
         c->in_frame = 0;

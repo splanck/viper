@@ -27,6 +27,9 @@
 
 #include "rt_graphics.h"
 #include "rt_canvas3d.h"
+#include "rt_scene3d.h"
+#include "rt_skeleton3d.h"
+#include "rt_fbx_loader.h"
 #include "rt_string.h"
 
 #include <stdint.h>
@@ -951,3 +954,76 @@ void *rt_light3d_new_point(void *p, double r, double g, double b, double a) { (v
 void *rt_light3d_new_ambient(double r, double g, double b) { (void)r; (void)g; (void)b; rt_trap("Light3D.NewAmbient: graphics support not compiled in"); return NULL; }
 void  rt_light3d_set_intensity(void *o, double i) { (void)o; (void)i; }
 void  rt_light3d_set_color(void *o, double r, double g, double b) { (void)o; (void)r; (void)g; (void)b; }
+
+/* Scene3D / SceneNode3D stubs */
+void *rt_scene3d_new(void) { rt_trap("Scene3D.New: graphics support not compiled in"); return NULL; }
+void *rt_scene3d_get_root(void *s) { (void)s; return NULL; }
+void  rt_scene3d_add(void *s, void *n) { (void)s; (void)n; }
+void  rt_scene3d_remove(void *s, void *n) { (void)s; (void)n; }
+void *rt_scene3d_find(void *s, rt_string n) { (void)s; (void)n; return NULL; }
+void  rt_scene3d_draw(void *s, void *c, void *cam) { (void)s; (void)c; (void)cam; }
+void  rt_scene3d_clear(void *s) { (void)s; }
+int64_t rt_scene3d_get_node_count(void *s) { (void)s; return 0; }
+void *rt_scene_node3d_new(void) { rt_trap("SceneNode3D.New: graphics support not compiled in"); return NULL; }
+void  rt_scene_node3d_set_position(void *n, double x, double y, double z) { (void)n; (void)x; (void)y; (void)z; }
+void *rt_scene_node3d_get_position(void *n) { (void)n; return NULL; }
+void  rt_scene_node3d_set_rotation(void *n, void *q) { (void)n; (void)q; }
+void *rt_scene_node3d_get_rotation(void *n) { (void)n; return NULL; }
+void  rt_scene_node3d_set_scale(void *n, double x, double y, double z) { (void)n; (void)x; (void)y; (void)z; }
+void *rt_scene_node3d_get_scale(void *n) { (void)n; return NULL; }
+void *rt_scene_node3d_get_world_matrix(void *n) { (void)n; return NULL; }
+void  rt_scene_node3d_add_child(void *n, void *c) { (void)n; (void)c; }
+void  rt_scene_node3d_remove_child(void *n, void *c) { (void)n; (void)c; }
+int64_t rt_scene_node3d_child_count(void *n) { (void)n; return 0; }
+void *rt_scene_node3d_get_child(void *n, int64_t i) { (void)n; (void)i; return NULL; }
+void *rt_scene_node3d_get_parent(void *n) { (void)n; return NULL; }
+void *rt_scene_node3d_find(void *n, rt_string name) { (void)n; (void)name; return NULL; }
+void  rt_scene_node3d_set_mesh(void *n, void *m) { (void)n; (void)m; }
+void  rt_scene_node3d_set_material(void *n, void *m) { (void)n; (void)m; }
+void  rt_scene_node3d_set_visible(void *n, int8_t v) { (void)n; (void)v; }
+int8_t rt_scene_node3d_get_visible(void *n) { (void)n; return 0; }
+void  rt_scene_node3d_set_name(void *n, rt_string s) { (void)n; (void)s; }
+rt_string rt_scene_node3d_get_name(void *n) { (void)n; return NULL; }
+void *rt_scene_node3d_get_aabb_min(void *n) { (void)n; return NULL; }
+void *rt_scene_node3d_get_aabb_max(void *n) { (void)n; return NULL; }
+int64_t rt_scene3d_get_culled_count(void *s) { (void)s; return 0; }
+
+/* Skeleton3D / Animation3D / AnimPlayer3D stubs */
+void *rt_skeleton3d_new(void) { rt_trap("Skeleton3D.New: graphics support not compiled in"); return NULL; }
+int64_t rt_skeleton3d_add_bone(void *s, rt_string n, int64_t p, void *m) { (void)s; (void)n; (void)p; (void)m; return -1; }
+void  rt_skeleton3d_compute_inverse_bind(void *s) { (void)s; }
+int64_t rt_skeleton3d_get_bone_count(void *s) { (void)s; return 0; }
+int64_t rt_skeleton3d_find_bone(void *s, rt_string n) { (void)s; (void)n; return -1; }
+rt_string rt_skeleton3d_get_bone_name(void *s, int64_t i) { (void)s; (void)i; return NULL; }
+void *rt_skeleton3d_get_bone_bind_pose(void *s, int64_t i) { (void)s; (void)i; return NULL; }
+void *rt_animation3d_new(rt_string n, double d) { (void)n; (void)d; rt_trap("Animation3D.New: graphics support not compiled in"); return NULL; }
+void  rt_animation3d_add_keyframe(void *a, int64_t b, double t, void *p, void *r, void *s) { (void)a; (void)b; (void)t; (void)p; (void)r; (void)s; }
+void  rt_animation3d_set_looping(void *a, int8_t l) { (void)a; (void)l; }
+int8_t rt_animation3d_get_looping(void *a) { (void)a; return 0; }
+double rt_animation3d_get_duration(void *a) { (void)a; return 0.0; }
+rt_string rt_animation3d_get_name(void *a) { (void)a; return NULL; }
+void *rt_anim_player3d_new(void *s) { (void)s; rt_trap("AnimPlayer3D.New: graphics support not compiled in"); return NULL; }
+void  rt_anim_player3d_play(void *p, void *a) { (void)p; (void)a; }
+void  rt_anim_player3d_crossfade(void *p, void *a, double d) { (void)p; (void)a; (void)d; }
+void  rt_anim_player3d_stop(void *p) { (void)p; }
+void  rt_anim_player3d_update(void *p, double d) { (void)p; (void)d; }
+void  rt_anim_player3d_set_speed(void *p, double s) { (void)p; (void)s; }
+double rt_anim_player3d_get_speed(void *p) { (void)p; return 1.0; }
+int8_t rt_anim_player3d_is_playing(void *p) { (void)p; return 0; }
+double rt_anim_player3d_get_time(void *p) { (void)p; return 0.0; }
+void  rt_anim_player3d_set_time(void *p, double t) { (void)p; (void)t; }
+void *rt_anim_player3d_get_bone_matrix(void *p, int64_t i) { (void)p; (void)i; return NULL; }
+void  rt_mesh3d_set_skeleton(void *m, void *s) { (void)m; (void)s; }
+void  rt_mesh3d_set_bone_weights(void *m, int64_t v, int64_t b0, double w0, int64_t b1, double w1, int64_t b2, double w2, int64_t b3, double w3) { (void)m; (void)v; (void)b0; (void)w0; (void)b1; (void)w1; (void)b2; (void)w2; (void)b3; (void)w3; }
+void  rt_canvas3d_draw_mesh_skinned(void *c, void *m, void *t, void *mat, void *p) { (void)c; (void)m; (void)t; (void)mat; (void)p; }
+
+/* FBX Loader stubs */
+void *rt_fbx_load(rt_string p) { (void)p; rt_trap("FBX.Load: graphics support not compiled in"); return NULL; }
+int64_t rt_fbx_mesh_count(void *f) { (void)f; return 0; }
+void *rt_fbx_get_mesh(void *f, int64_t i) { (void)f; (void)i; return NULL; }
+void *rt_fbx_get_skeleton(void *f) { (void)f; return NULL; }
+int64_t rt_fbx_animation_count(void *f) { (void)f; return 0; }
+void *rt_fbx_get_animation(void *f, int64_t i) { (void)f; (void)i; return NULL; }
+rt_string rt_fbx_get_animation_name(void *f, int64_t i) { (void)f; (void)i; return NULL; }
+int64_t rt_fbx_material_count(void *f) { (void)f; return 0; }
+void *rt_fbx_get_material(void *f, int64_t i) { (void)f; (void)i; return NULL; }
