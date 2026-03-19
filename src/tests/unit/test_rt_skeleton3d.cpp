@@ -14,45 +14,62 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
-#include "rt_internal.h"
-#include "rt_string.h"
 #include "rt_canvas3d.h"
+#include "rt_internal.h"
 #include "rt_skeleton3d.h"
+#include "rt_string.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 
-extern "C" {
-extern void *rt_vec3_new(double x, double y, double z);
-extern double rt_vec3_x(void *v);
-extern double rt_vec3_y(void *v);
-extern double rt_vec3_z(void *v);
-extern void *rt_quat_new(double x, double y, double z, double w);
-extern void *rt_quat_from_euler(double pitch, double yaw, double roll);
-extern double rt_quat_x(void *q);
-extern double rt_quat_y(void *q);
-extern double rt_quat_z(void *q);
-extern double rt_quat_w(void *q);
-extern void *rt_mat4_identity(void);
-extern void *rt_mat4_translate(double tx, double ty, double tz);
-extern rt_string rt_const_cstr(const char *s);
+extern "C"
+{
+    extern void *rt_vec3_new(double x, double y, double z);
+    extern double rt_vec3_x(void *v);
+    extern double rt_vec3_y(void *v);
+    extern double rt_vec3_z(void *v);
+    extern void *rt_quat_new(double x, double y, double z, double w);
+    extern void *rt_quat_from_euler(double pitch, double yaw, double roll);
+    extern double rt_quat_x(void *q);
+    extern double rt_quat_y(void *q);
+    extern double rt_quat_z(void *q);
+    extern double rt_quat_w(void *q);
+    extern void *rt_mat4_identity(void);
+    extern void *rt_mat4_translate(double tx, double ty, double tz);
+    extern rt_string rt_const_cstr(const char *s);
 }
 
 static int tests_passed = 0;
 static int tests_run = 0;
 
-#define EXPECT_TRUE(cond, msg) do { \
-    tests_run++; \
-    if (!(cond)) { fprintf(stderr, "FAIL: %s\n", msg); } \
-    else { tests_passed++; } \
-} while(0)
+#define EXPECT_TRUE(cond, msg)                                                                     \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL: %s\n", msg);                                                    \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
-#define EXPECT_NEAR(a, b, eps, msg) do { \
-    tests_run++; \
-    if (fabs((double)(a) - (double)(b)) > (eps)) { fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b)); } \
-    else { tests_passed++; } \
-} while(0)
+#define EXPECT_NEAR(a, b, eps, msg)                                                                \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (fabs((double)(a) - (double)(b)) > (eps))                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b));    \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
 static void test_skeleton_create()
 {
@@ -84,7 +101,8 @@ static void test_skeleton_find_bone()
 
     EXPECT_TRUE(rt_skeleton3d_find_bone(skel, rt_const_cstr("arm")) == 1, "FindBone('arm') = 1");
     EXPECT_TRUE(rt_skeleton3d_find_bone(skel, rt_const_cstr("hand")) == 2, "FindBone('hand') = 2");
-    EXPECT_TRUE(rt_skeleton3d_find_bone(skel, rt_const_cstr("missing")) == -1, "FindBone('missing') = -1");
+    EXPECT_TRUE(rt_skeleton3d_find_bone(skel, rt_const_cstr("missing")) == -1,
+                "FindBone('missing') = -1");
 }
 
 static void test_animation_create()
@@ -145,7 +163,11 @@ static void test_player_playback()
     /* At t=0.5, position should be (5, 0, 0). Bone palette = global * inverse_bind.
      * With identity bind pose, inverse_bind = identity, so palette = local transform.
      * The translation at t=0.5: lerp(0, 10, 0.5) = 5. */
-    typedef struct { double m[16]; } mat4_view;
+    typedef struct
+    {
+        double m[16];
+    } mat4_view;
+
     mat4_view *mv = (mat4_view *)mat;
     EXPECT_NEAR(mv->m[3], 5.0, 0.1, "At t=0.5: bone X translation ≈ 5");
 }
@@ -237,13 +259,17 @@ static void test_two_bone_chain()
 
     /* Root bone: global = translate(5,0,0). Palette = global * inv_bind.
      * inv_bind(root) = identity. So palette[0] = translate(5,0,0). */
-    typedef struct { double m[16]; } mat4_view;
+    typedef struct
+    {
+        double m[16];
+    } mat4_view;
+
     mat4_view *m0 = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
     EXPECT_NEAR(m0->m[3], 5.0, 0.1, "Root palette X = 5");
 
-    /* Child bone: global = parent_global * child_local = translate(5,0,0) * translate(2,0,0) = translate(7,0,0).
-     * inv_bind(child) = inverse(translate(2,0,0)) = translate(-2,0,0).
-     * Palette[1] = translate(7,0,0) * translate(-2,0,0) = translate(5,0,0). */
+    /* Child bone: global = parent_global * child_local = translate(5,0,0) * translate(2,0,0) =
+     * translate(7,0,0). inv_bind(child) = inverse(translate(2,0,0)) = translate(-2,0,0). Palette[1]
+     * = translate(7,0,0) * translate(-2,0,0) = translate(5,0,0). */
     mat4_view *m1 = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 1);
     EXPECT_NEAR(m1->m[3], 5.0, 0.1, "Child palette X = 5 (root moved +5, child stays relative)");
 }
@@ -275,13 +301,17 @@ static void test_non_identity_bind_pose()
 
     /* Root: global=(10,0,0), inverse_bind=inv(translate(3,0,0))=translate(-3,0,0)
      * palette[0] = translate(10,0,0) * translate(-3,0,0) = translate(7,0,0) */
-    typedef struct { double m[16]; } mat4_view;
+    typedef struct
+    {
+        double m[16];
+    } mat4_view;
+
     mat4_view *m0 = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
     EXPECT_NEAR(m0->m[3], 7.0, 0.1, "Root palette X = 10 - 3 = 7");
 
     /* Child: global = parent_global(10,0,0) * child_local(2,0,0) = translate(12,0,0)
-     * inverse_bind(child) = inv(root_bind(3,0,0) * child_bind(2,0,0)) = inv(translate(5,0,0)) = translate(-5,0,0)
-     * palette[1] = translate(12,0,0) * translate(-5,0,0) = translate(7,0,0) */
+     * inverse_bind(child) = inv(root_bind(3,0,0) * child_bind(2,0,0)) = inv(translate(5,0,0)) =
+     * translate(-5,0,0) palette[1] = translate(12,0,0) * translate(-5,0,0) = translate(7,0,0) */
     mat4_view *m1 = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 1);
     EXPECT_NEAR(m1->m[3], 7.0, 0.1, "Child palette X = 12 - 5 = 7 (non-identity bind pose)");
 }

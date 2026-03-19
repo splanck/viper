@@ -31,10 +31,10 @@ namespace viper::tests
 /// @brief Result of a differential comparison between VM and native execution.
 struct DiffResult
 {
-    bool matched = false;    ///< True if VM and native produced identical results.
-    int64_t vmExit = 0;      ///< VM exit code.
-    int64_t nativeExit = 0;  ///< Native exit code.
-    std::string vmStdout;    ///< VM stdout capture.
+    bool matched = false;     ///< True if VM and native produced identical results.
+    int64_t vmExit = 0;       ///< VM exit code.
+    int64_t nativeExit = 0;   ///< Native exit code.
+    std::string vmStdout;     ///< VM stdout capture.
     std::string nativeStdout; ///< Native stdout capture.
     std::string error;        ///< Error description if comparison failed.
 };

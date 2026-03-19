@@ -20,9 +20,11 @@
 #include <math.h>
 #include <string.h>
 
-void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src, vgfx3d_vertex_t *dst,
-                           uint32_t vertex_count,
-                           const float *palette, int32_t bone_count)
+void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
+                          vgfx3d_vertex_t *dst,
+                          uint32_t vertex_count,
+                          const float *palette,
+                          int32_t bone_count)
 {
     for (uint32_t v = 0; v < vertex_count; v++)
     {
@@ -43,12 +45,9 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src, vgfx3d_vertex_t *dst,
             /* pos += w * (M * src_pos) — row-major multiply */
             for (int i = 0; i < 3; i++)
             {
-                pos[i] += w * (m[i * 4 + 0] * src[v].pos[0] +
-                               m[i * 4 + 1] * src[v].pos[1] +
-                               m[i * 4 + 2] * src[v].pos[2] +
-                               m[i * 4 + 3]);
-                nrm[i] += w * (m[i * 4 + 0] * src[v].normal[0] +
-                               m[i * 4 + 1] * src[v].normal[1] +
+                pos[i] += w * (m[i * 4 + 0] * src[v].pos[0] + m[i * 4 + 1] * src[v].pos[1] +
+                               m[i * 4 + 2] * src[v].pos[2] + m[i * 4 + 3]);
+                nrm[i] += w * (m[i * 4 + 0] * src[v].normal[0] + m[i * 4 + 1] * src[v].normal[1] +
                                m[i * 4 + 2] * src[v].normal[2]);
             }
             total_w += w;

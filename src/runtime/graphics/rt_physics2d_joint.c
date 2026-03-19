@@ -118,9 +118,8 @@ void rt_physics2d_distance_joint_set_length(void *joint, double length)
 // Spring Joint
 //=============================================================================
 
-void *rt_physics2d_spring_joint_new(void *body_a, void *body_b,
-                                    double rest_length, double stiffness,
-                                    double damping)
+void *rt_physics2d_spring_joint_new(
+    void *body_a, void *body_b, double rest_length, double stiffness, double damping)
 {
     ph_joint *j = alloc_joint(RT_JOINT_SPRING, body_a, body_b);
     if (!j)
@@ -163,8 +162,7 @@ void rt_physics2d_spring_joint_set_damping(void *joint, double damping)
 // Hinge Joint
 //=============================================================================
 
-void *rt_physics2d_hinge_joint_new(void *body_a, void *body_b,
-                                   double anchor_x, double anchor_y)
+void *rt_physics2d_hinge_joint_new(void *body_a, void *body_b, double anchor_x, double anchor_y)
 {
     ph_joint *j = alloc_joint(RT_JOINT_HINGE, body_a, body_b);
     if (!j)
@@ -379,10 +377,10 @@ static void solve_hinge(ph_joint *j, double dt)
     double db_x = mid_x - bcx;
     double db_y = mid_y - bcy;
 
-    body_set_center(a, acx + da_x * (a->inv_mass / total_inv),
-                       acy + da_y * (a->inv_mass / total_inv));
-    body_set_center(b, bcx + db_x * (b->inv_mass / total_inv),
-                       bcy + db_y * (b->inv_mass / total_inv));
+    body_set_center(
+        a, acx + da_x * (a->inv_mass / total_inv), acy + da_y * (a->inv_mass / total_inv));
+    body_set_center(
+        b, bcx + db_x * (b->inv_mass / total_inv), bcy + db_y * (b->inv_mass / total_inv));
 }
 
 static void solve_rope(ph_joint *j, double dt)
@@ -431,18 +429,18 @@ void rt_physics2d_solve_joints(void *world, double dt)
 
             switch (j->type)
             {
-            case RT_JOINT_DISTANCE:
-                solve_distance(j, dt);
-                break;
-            case RT_JOINT_SPRING:
-                solve_spring(j, dt);
-                break;
-            case RT_JOINT_HINGE:
-                solve_hinge(j, dt);
-                break;
-            case RT_JOINT_ROPE:
-                solve_rope(j, dt);
-                break;
+                case RT_JOINT_DISTANCE:
+                    solve_distance(j, dt);
+                    break;
+                case RT_JOINT_SPRING:
+                    solve_spring(j, dt);
+                    break;
+                case RT_JOINT_HINGE:
+                    solve_hinge(j, dt);
+                    break;
+                case RT_JOINT_ROPE:
+                    solve_rope(j, dt);
+                    break;
             }
         }
     }
@@ -462,7 +460,7 @@ void *rt_physics2d_circle_body_new(double cx, double cy, double radius, double m
         return NULL;
 
     b->vptr = NULL;
-    b->x = cx;  // For circles, x/y is center
+    b->x = cx; // For circles, x/y is center
     b->y = cy;
     b->w = 0.0;
     b->h = 0.0;

@@ -42,18 +42,18 @@ extern "C" void vm_trap(const char *msg)
 static int tests_passed = 0;
 static int tests_total = 0;
 
-#define TEST(name)                                                                                   \
-    do                                                                                               \
-    {                                                                                                \
-        tests_total++;                                                                               \
-        printf("  [%d] %s... ", tests_total, name);                                                  \
+#define TEST(name)                                                                                 \
+    do                                                                                             \
+    {                                                                                              \
+        tests_total++;                                                                             \
+        printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
 
-#define PASS()                                                                                       \
-    do                                                                                               \
-    {                                                                                                \
-        tests_passed++;                                                                              \
-        printf("ok\n");                                                                              \
+#define PASS()                                                                                     \
+    do                                                                                             \
+    {                                                                                              \
+        tests_passed++;                                                                            \
+        printf("ok\n");                                                                            \
     } while (0)
 
 //=============================================================================
@@ -88,8 +88,8 @@ static void test_label_null_safety(void)
     assert(rt_uilabel_get_x(NULL) == 0);
     assert(rt_uilabel_get_y(NULL) == 0);
     rt_uilabel_set_pos(NULL, 1, 2);   // No crash
-    rt_uilabel_set_color(NULL, 0xFF);  // No crash
-    rt_uilabel_draw(NULL, NULL);       // No crash
+    rt_uilabel_set_color(NULL, 0xFF); // No crash
+    rt_uilabel_draw(NULL, NULL);      // No crash
     PASS();
 }
 
@@ -158,7 +158,7 @@ static void test_bar_null_safety(void)
     assert(rt_uibar_get_value(NULL) == 0);
     assert(rt_uibar_get_max(NULL) == 0);
     rt_uibar_set_value(NULL, 50, 100); // No crash
-    rt_uibar_draw(NULL, NULL);          // No crash
+    rt_uibar_draw(NULL, NULL);         // No crash
     PASS();
 }
 
@@ -166,8 +166,8 @@ static void test_bar_direction(void)
 {
     TEST("UIBar direction clamping");
     void *bar = rt_uibar_new(0, 0, 100, 16, 0xFF0000, 0x333333);
-    rt_uibar_set_direction(bar, 3); // Valid: top-to-bottom
-    rt_uibar_set_direction(bar, 5); // Invalid → defaults to 0
+    rt_uibar_set_direction(bar, 3);  // Valid: top-to-bottom
+    rt_uibar_set_direction(bar, 5);  // Invalid → defaults to 0
     rt_uibar_set_direction(bar, -1); // Invalid → defaults to 0
     // No crash = success
     PASS();
@@ -198,9 +198,9 @@ static void test_panel_alpha_clamping(void)
 static void test_panel_null_safety(void)
 {
     TEST("UIPanel NULL safety");
-    rt_uipanel_set_pos(NULL, 0, 0);     // No crash
+    rt_uipanel_set_pos(NULL, 0, 0);      // No crash
     rt_uipanel_set_size(NULL, 100, 100); // No crash
-    rt_uipanel_draw(NULL, NULL);          // No crash
+    rt_uipanel_draw(NULL, NULL);         // No crash
     PASS();
 }
 
@@ -342,9 +342,9 @@ static void test_menulist_null_safety(void)
     assert(rt_uimenulist_get_count(NULL) == 0);
     assert(rt_uimenulist_get_selected(NULL) == 0);
     rt_uimenulist_add_item(NULL, rt_const_cstr("X")); // No crash
-    rt_uimenulist_move_up(NULL);   // No crash
-    rt_uimenulist_move_down(NULL); // No crash
-    rt_uimenulist_draw(NULL, NULL); // No crash
+    rt_uimenulist_move_up(NULL);                      // No crash
+    rt_uimenulist_move_down(NULL);                    // No crash
+    rt_uimenulist_draw(NULL, NULL);                   // No crash
     PASS();
 }
 

@@ -78,8 +78,7 @@ void vgfx3d_frustum_extract(vgfx3d_frustum_t *f, const float vp[16])
     /* Normalize each plane so distance tests give metric results */
     for (int i = 0; i < 6; i++)
     {
-        float len = sqrtf(f->planes[i][0] * f->planes[i][0] +
-                          f->planes[i][1] * f->planes[i][1] +
+        float len = sqrtf(f->planes[i][0] * f->planes[i][0] + f->planes[i][1] * f->planes[i][1] +
                           f->planes[i][2] * f->planes[i][2]);
         if (len > 1e-8f)
         {
@@ -101,8 +100,7 @@ void vgfx3d_frustum_extract(vgfx3d_frustum_t *f, const float vp[16])
  * corner; if it's behind the plane, the box straddles (intersects).
  *=========================================================================*/
 
-int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f,
-                              const float min[3], const float max[3])
+int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], const float max[3])
 {
     int result = 2; /* assume fully inside */
     for (int i = 0; i < 6; i++)
@@ -111,8 +109,8 @@ int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f,
         float px = f->planes[i][0] >= 0 ? max[0] : min[0];
         float py = f->planes[i][1] >= 0 ? max[1] : min[1];
         float pz = f->planes[i][2] >= 0 ? max[2] : min[2];
-        float dist = f->planes[i][0] * px + f->planes[i][1] * py +
-                     f->planes[i][2] * pz + f->planes[i][3];
+        float dist =
+            f->planes[i][0] * px + f->planes[i][1] * py + f->planes[i][2] * pz + f->planes[i][3];
         if (dist < 0)
             return 0; /* p-vertex behind plane → entirely outside */
 
@@ -120,8 +118,8 @@ int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f,
         float nx = f->planes[i][0] >= 0 ? min[0] : max[0];
         float ny = f->planes[i][1] >= 0 ? min[1] : max[1];
         float nz = f->planes[i][2] >= 0 ? min[2] : max[2];
-        float ndist = f->planes[i][0] * nx + f->planes[i][1] * ny +
-                      f->planes[i][2] * nz + f->planes[i][3];
+        float ndist =
+            f->planes[i][0] * nx + f->planes[i][1] * ny + f->planes[i][2] * nz + f->planes[i][3];
         if (ndist < 0)
             result = 1; /* n-vertex behind → intersecting */
     }
@@ -132,16 +130,13 @@ int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f,
  * Bounding sphere frustum test
  *=========================================================================*/
 
-int vgfx3d_frustum_test_sphere(const vgfx3d_frustum_t *f,
-                                const float center[3], float radius)
+int vgfx3d_frustum_test_sphere(const vgfx3d_frustum_t *f, const float center[3], float radius)
 {
     int result = 2; /* assume fully inside */
     for (int i = 0; i < 6; i++)
     {
-        float dist = f->planes[i][0] * center[0] +
-                     f->planes[i][1] * center[1] +
-                     f->planes[i][2] * center[2] +
-                     f->planes[i][3];
+        float dist = f->planes[i][0] * center[0] + f->planes[i][1] * center[1] +
+                     f->planes[i][2] * center[2] + f->planes[i][3];
         if (dist < -radius)
             return 0; /* entirely outside */
         if (dist < radius)
@@ -157,9 +152,11 @@ int vgfx3d_frustum_test_sphere(const vgfx3d_frustum_t *f,
  * then computes the axis-aligned bounding box of the results.
  *=========================================================================*/
 
-void vgfx3d_transform_aabb(const float obj_min[3], const float obj_max[3],
-                            const double world_matrix[16],
-                            float out_min[3], float out_max[3])
+void vgfx3d_transform_aabb(const float obj_min[3],
+                           const float obj_max[3],
+                           const double world_matrix[16],
+                           float out_min[3],
+                           float out_max[3])
 {
     out_min[0] = out_min[1] = out_min[2] = FLT_MAX;
     out_max[0] = out_max[1] = out_max[2] = -FLT_MAX;
@@ -172,19 +169,25 @@ void vgfx3d_transform_aabb(const float obj_min[3], const float obj_max[3],
         float cz = (i & 4) ? obj_max[2] : obj_min[2];
 
         /* Transform by row-major 4x4 matrix (column-vector convention) */
-        float wx = (float)(world_matrix[0] * cx + world_matrix[1] * cy +
-                           world_matrix[2] * cz + world_matrix[3]);
-        float wy = (float)(world_matrix[4] * cx + world_matrix[5] * cy +
-                           world_matrix[6] * cz + world_matrix[7]);
-        float wz = (float)(world_matrix[8] * cx + world_matrix[9] * cy +
-                           world_matrix[10] * cz + world_matrix[11]);
+        float wx = (float)(world_matrix[0] * cx + world_matrix[1] * cy + world_matrix[2] * cz +
+                           world_matrix[3]);
+        float wy = (float)(world_matrix[4] * cx + world_matrix[5] * cy + world_matrix[6] * cz +
+                           world_matrix[7]);
+        float wz = (float)(world_matrix[8] * cx + world_matrix[9] * cy + world_matrix[10] * cz +
+                           world_matrix[11]);
 
-        if (wx < out_min[0]) out_min[0] = wx;
-        if (wy < out_min[1]) out_min[1] = wy;
-        if (wz < out_min[2]) out_min[2] = wz;
-        if (wx > out_max[0]) out_max[0] = wx;
-        if (wy > out_max[1]) out_max[1] = wy;
-        if (wz > out_max[2]) out_max[2] = wz;
+        if (wx < out_min[0])
+            out_min[0] = wx;
+        if (wy < out_min[1])
+            out_min[1] = wy;
+        if (wz < out_min[2])
+            out_min[2] = wz;
+        if (wx > out_max[0])
+            out_max[0] = wx;
+        if (wy > out_max[1])
+            out_max[1] = wy;
+        if (wz > out_max[2])
+            out_max[2] = wz;
     }
 }
 
@@ -192,9 +195,11 @@ void vgfx3d_transform_aabb(const float obj_min[3], const float obj_max[3],
  * Compute mesh AABB from vertex positions
  *=========================================================================*/
 
-void vgfx3d_compute_mesh_aabb(const void *vertices, uint32_t vertex_count,
-                               uint32_t vertex_stride,
-                               float out_min[3], float out_max[3])
+void vgfx3d_compute_mesh_aabb(const void *vertices,
+                              uint32_t vertex_count,
+                              uint32_t vertex_stride,
+                              float out_min[3],
+                              float out_max[3])
 {
     out_min[0] = out_min[1] = out_min[2] = FLT_MAX;
     out_max[0] = out_max[1] = out_max[2] = -FLT_MAX;
@@ -212,8 +217,10 @@ void vgfx3d_compute_mesh_aabb(const void *vertices, uint32_t vertex_count,
         const float *pos = (const float *)(base + i * vertex_stride);
         for (int j = 0; j < 3; j++)
         {
-            if (pos[j] < out_min[j]) out_min[j] = pos[j];
-            if (pos[j] > out_max[j]) out_max[j] = pos[j];
+            if (pos[j] < out_min[j])
+                out_min[j] = pos[j];
+            if (pos[j] > out_max[j])
+                out_max[j] = pos[j];
         }
     }
 }

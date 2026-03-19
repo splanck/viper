@@ -130,6 +130,15 @@ extern "C"
     /// @return A new Vec3 with all components negated (-x, -y, -z).
     void *rt_vec3_neg(void *v);
 
+    /* Game math helpers */
+    void *rt_vec3_reflect(void *v, void *normal);
+    void *rt_vec3_project(void *v, void *onto);
+    void *rt_vec3_clamp_len(void *v, double max_len);
+    void *rt_vec3_move_towards(void *current, void *target, double max_delta);
+    double rt_vec3_angle(void *a, void *b);
+    void *rt_vec3_min(void *a, void *b);
+    void *rt_vec3_max(void *a, void *b);
+
 #ifdef __cplusplus
 }
 #endif

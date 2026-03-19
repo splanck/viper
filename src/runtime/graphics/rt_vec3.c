@@ -853,3 +853,89 @@ void *rt_vec3_lerp(void *a, void *b, double t)
     double z = va->z + (vb->z - va->z) * t;
     return vec3_alloc(x, y, z);
 }
+
+void *rt_vec3_reflect(void *v, void *normal)
+{
+    if (!v || !normal)
+        return vec3_alloc(0, 0, 0);
+    ViperVec3 *vv = (ViperVec3 *)v;
+    ViperVec3 *n = (ViperVec3 *)normal;
+    double d = 2.0 * (vv->x * n->x + vv->y * n->y + vv->z * n->z);
+    return vec3_alloc(vv->x - d * n->x, vv->y - d * n->y, vv->z - d * n->z);
+}
+
+void *rt_vec3_project(void *v, void *onto)
+{
+    if (!v || !onto)
+        return vec3_alloc(0, 0, 0);
+    ViperVec3 *vv = (ViperVec3 *)v;
+    ViperVec3 *t = (ViperVec3 *)onto;
+    double dot_vt = vv->x * t->x + vv->y * t->y + vv->z * t->z;
+    double dot_tt = t->x * t->x + t->y * t->y + t->z * t->z;
+    if (dot_tt < 1e-12)
+        return vec3_alloc(0, 0, 0);
+    double s = dot_vt / dot_tt;
+    return vec3_alloc(s * t->x, s * t->y, s * t->z);
+}
+
+void *rt_vec3_clamp_len(void *v, double max_len)
+{
+    if (!v || max_len <= 0)
+        return vec3_alloc(0, 0, 0);
+    ViperVec3 *vv = (ViperVec3 *)v;
+    double len_sq = vv->x * vv->x + vv->y * vv->y + vv->z * vv->z;
+    if (len_sq <= max_len * max_len)
+        return vec3_alloc(vv->x, vv->y, vv->z);
+    double s = max_len / sqrt(len_sq);
+    return vec3_alloc(vv->x * s, vv->y * s, vv->z * s);
+}
+
+void *rt_vec3_move_towards(void *current, void *target, double max_delta)
+{
+    if (!current || !target)
+        return vec3_alloc(0, 0, 0);
+    ViperVec3 *c = (ViperVec3 *)current;
+    ViperVec3 *t = (ViperVec3 *)target;
+    double dx = t->x - c->x, dy = t->y - c->y, dz = t->z - c->z;
+    double dist = sqrt(dx * dx + dy * dy + dz * dz);
+    if (dist <= max_delta || dist < 1e-12)
+        return vec3_alloc(t->x, t->y, t->z);
+    double s = max_delta / dist;
+    return vec3_alloc(c->x + dx * s, c->y + dy * s, c->z + dz * s);
+}
+
+double rt_vec3_angle(void *a, void *b)
+{
+    if (!a || !b)
+        return 0.0;
+    ViperVec3 *va = (ViperVec3 *)a;
+    ViperVec3 *vb = (ViperVec3 *)b;
+    double la = sqrt(va->x * va->x + va->y * va->y + va->z * va->z);
+    double lb = sqrt(vb->x * vb->x + vb->y * vb->y + vb->z * vb->z);
+    if (la < 1e-12 || lb < 1e-12)
+        return 0.0;
+    double cos_a = (va->x * vb->x + va->y * vb->y + va->z * vb->z) / (la * lb);
+    if (cos_a > 1.0)
+        cos_a = 1.0;
+    if (cos_a < -1.0)
+        cos_a = -1.0;
+    return acos(cos_a);
+}
+
+void *rt_vec3_min(void *a, void *b)
+{
+    if (!a || !b)
+        return vec3_alloc(0, 0, 0);
+    ViperVec3 *va = (ViperVec3 *)a;
+    ViperVec3 *vb = (ViperVec3 *)b;
+    return vec3_alloc(fmin(va->x, vb->x), fmin(va->y, vb->y), fmin(va->z, vb->z));
+}
+
+void *rt_vec3_max(void *a, void *b)
+{
+    if (!a || !b)
+        return vec3_alloc(0, 0, 0);
+    ViperVec3 *va = (ViperVec3 *)a;
+    ViperVec3 *vb = (ViperVec3 *)b;
+    return vec3_alloc(fmax(va->x, vb->x), fmax(va->y, vb->y), fmax(va->z, vb->z));
+}

@@ -26,8 +26,8 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
-#include "vgfx3d_backend.h"
 #include "rt_string.h"
+#include "vgfx3d_backend.h"
 
 #include <float.h>
 #include <math.h>
@@ -49,6 +49,7 @@ extern void rt_pad_init(void);
 extern void rt_pad_begin_frame(void);
 extern void rt_pad_poll(void);
 extern rt_string rt_const_cstr(const char *s);
+extern void  *rt_vec3_new(double x, double y, double z);
 extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
@@ -92,14 +93,14 @@ static void mat4_d2f(const double *src, float *dst)
 }
 
 /* Build light params array from canvas light pointers */
-static int32_t build_light_params(const rt_canvas3d *c,
-                                   vgfx3d_light_params_t *out, int32_t max)
+static int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max)
 {
     int32_t count = 0;
     for (int i = 0; i < VGFX3D_MAX_LIGHTS && count < max; i++)
     {
         const rt_light3d *l = c->lights[i];
-        if (!l) continue;
+        if (!l)
+            continue;
         out[count].type = l->type;
         out[count].direction[0] = (float)l->direction[0];
         out[count].direction[1] = (float)l->direction[1];
@@ -208,6 +209,14 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h)
     c->postfx = NULL;
     c->temp_buffers = NULL;
     c->temp_buf_count = c->temp_buf_capacity = 0;
+    c->fog_enabled = 0;
+    c->fog_near = 10.0f;
+    c->fog_far = 50.0f;
+    c->fog_color[0] = c->fog_color[1] = c->fog_color[2] = 0.5f;
+    c->shadows_enabled = 0;
+    c->shadow_resolution = 1024;
+    c->shadow_bias = 0.005f;
+    c->shadow_rt = NULL;
 
     rt_keyboard_set_canvas(c->gfx_win);
     rt_mouse_set_canvas(c->gfx_win);
@@ -222,9 +231,11 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h)
 
 void rt_canvas3d_clear(void *obj, double r, double g, double b)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win || !c->backend) return;
+    if (!c->gfx_win || !c->backend)
+        return;
     c->backend->clear(c->backend_ctx, c->gfx_win, (float)r, (float)g, (float)b);
 
     /* Also clear the software framebuffer so skybox/vgfx_update has
@@ -241,7 +252,10 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b)
                 for (int32_t x = 0; x < fb.width; x++)
                 {
                     uint8_t *px = &fb.pixels[y * fb.stride + x * 4];
-                    px[0] = cr; px[1] = cg; px[2] = cb; px[3] = 0xFF;
+                    px[0] = cr;
+                    px[1] = cg;
+                    px[2] = cb;
+                    px[3] = 0xFF;
                 }
         }
     }
@@ -249,10 +263,12 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b)
 
 void rt_canvas3d_begin(void *obj, void *camera)
 {
-    if (!obj || !camera) return;
+    if (!obj || !camera)
+        return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
     rt_camera3d *cam = (rt_camera3d *)camera;
-    if (!c->backend) return;
+    if (!c->backend)
+        return;
 
     vgfx3d_camera_params_t params;
     mat4_d2f(cam->view, params.view);
@@ -260,6 +276,12 @@ void rt_canvas3d_begin(void *obj, void *camera)
     params.position[0] = (float)cam->eye[0];
     params.position[1] = (float)cam->eye[1];
     params.position[2] = (float)cam->eye[2];
+    params.fog_enabled = c->fog_enabled;
+    params.fog_near = c->fog_near;
+    params.fog_far = c->fog_far;
+    params.fog_color[0] = c->fog_color[0];
+    params.fog_color[1] = c->fog_color[1];
+    params.fog_color[2] = c->fog_color[2];
 
     /* Cache camera position for transparency sort key computation */
     c->cached_cam_pos[0] = params.position[0];
@@ -286,26 +308,29 @@ void rt_canvas3d_begin(void *obj, void *camera)
     c->in_frame = 1;
 }
 
-void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj,
-                           void *material_obj)
+void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void *material_obj)
 {
-    if (!obj || !mesh_obj || !transform_obj || !material_obj) return;
+    if (!obj || !mesh_obj || !transform_obj || !material_obj)
+        return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->in_frame || !c->gfx_win || !c->backend) return;
+    if (!c->in_frame || !c->gfx_win || !c->backend)
+        return;
 
     rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
     mat4_impl *model_d = (mat4_impl *)transform_obj;
     rt_material3d *mat = (rt_material3d *)material_obj;
 
-    if (mesh->vertex_count == 0 || mesh->index_count == 0) return;
+    if (mesh->vertex_count == 0 || mesh->index_count == 0)
+        return;
 
     /* Ensure draw command buffer has space */
     if (c->draw_count >= c->draw_capacity)
     {
         int32_t new_cap = c->draw_capacity == 0 ? 32 : c->draw_capacity * 2;
-        deferred_draw_t *new_buf = (deferred_draw_t *)realloc(
-            c->draw_cmds, (size_t)new_cap * sizeof(deferred_draw_t));
-        if (!new_buf) return;
+        deferred_draw_t *new_buf =
+            (deferred_draw_t *)realloc(c->draw_cmds, (size_t)new_cap * sizeof(deferred_draw_t));
+        if (!new_buf)
+            return;
         c->draw_cmds = new_buf;
         c->draw_capacity = new_cap;
     }
@@ -358,9 +383,11 @@ void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj,
 
 void rt_canvas3d_end(void *obj)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->in_frame) return; /* End() without Begin() — nothing to do */
+    if (!c->in_frame)
+        return; /* End() without Begin() — nothing to do */
     if (!c->backend)
     {
         c->in_frame = 0;
@@ -371,8 +398,13 @@ void rt_canvas3d_end(void *obj)
      * Renders regardless of draw_count (skybox-only scenes are valid). */
     if (c->skybox)
     {
-        extern void rt_cubemap_sample(const rt_cubemap3d *cm, float dx, float dy, float dz,
-                                       float *out_r, float *out_g, float *out_b);
+        extern void rt_cubemap_sample(const rt_cubemap3d *cm,
+                                      float dx,
+                                      float dy,
+                                      float dz,
+                                      float *out_r,
+                                      float *out_g,
+                                      float *out_b);
 
         /* Determine output buffer: render target or window framebuffer */
         uint8_t *out_pixels = NULL;
@@ -444,10 +476,14 @@ void rt_canvas3d_end(void *obj)
     {
         if (cmds[i].cmd.alpha >= 1.0f)
         {
-            c->backend->submit_draw(c->backend_ctx, c->gfx_win, &cmds[i].cmd,
-                                     cmds[i].lights, cmds[i].light_count,
-                                     cmds[i].ambient, cmds[i].wireframe,
-                                     cmds[i].backface_cull);
+            c->backend->submit_draw(c->backend_ctx,
+                                    c->gfx_win,
+                                    &cmds[i].cmd,
+                                    cmds[i].lights,
+                                    cmds[i].light_count,
+                                    cmds[i].ambient,
+                                    cmds[i].wireframe,
+                                    cmds[i].backface_cull);
         }
     }
 
@@ -461,8 +497,8 @@ void rt_canvas3d_end(void *obj)
         if (trans_count > 0)
         {
             /* Build index array of transparent draws */
-            deferred_draw_t *trans = (deferred_draw_t *)malloc(
-                (size_t)trans_count * sizeof(deferred_draw_t));
+            deferred_draw_t *trans =
+                (deferred_draw_t *)malloc((size_t)trans_count * sizeof(deferred_draw_t));
             if (trans)
             {
                 int32_t ti = 0;
@@ -471,16 +507,19 @@ void rt_canvas3d_end(void *obj)
                         trans[ti++] = cmds[i];
 
                 /* Sort back-to-front (farthest first) */
-                qsort(trans, (size_t)trans_count, sizeof(deferred_draw_t),
-                      cmp_back_to_front);
+                qsort(trans, (size_t)trans_count, sizeof(deferred_draw_t), cmp_back_to_front);
 
                 /* Submit sorted transparent draws */
                 for (int32_t i = 0; i < trans_count; i++)
                 {
-                    c->backend->submit_draw(c->backend_ctx, c->gfx_win,
-                                             &trans[i].cmd, trans[i].lights,
-                                             trans[i].light_count, trans[i].ambient,
-                                             trans[i].wireframe, trans[i].backface_cull);
+                    c->backend->submit_draw(c->backend_ctx,
+                                            c->gfx_win,
+                                            &trans[i].cmd,
+                                            trans[i].lights,
+                                            trans[i].light_count,
+                                            trans[i].ambient,
+                                            trans[i].wireframe,
+                                            trans[i].backface_cull);
                 }
 
                 free(trans);
@@ -504,9 +543,11 @@ void rt_canvas3d_end(void *obj)
 
 void rt_canvas3d_flip(void *obj)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win) return;
+    if (!c->gfx_win)
+        return;
 
     /* Apply post-processing effects to the software framebuffer */
     extern void rt_postfx3d_apply_to_canvas(void *canvas);
@@ -539,14 +580,15 @@ void rt_canvas3d_flip(void *obj)
         c->gfx_win = NULL;
         c->should_close = 1;
     }
-
 }
 
 int64_t rt_canvas3d_poll(void *obj)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win) return 0;
+    if (!c->gfx_win)
+        return 0;
     extern void rt_keyboard_on_key_down(int64_t key);
     extern void rt_keyboard_on_key_up(int64_t key);
     extern void rt_mouse_update_pos(int64_t x, int64_t y);
@@ -621,23 +663,30 @@ int8_t rt_canvas3d_should_close(void *obj)
 
 void rt_canvas3d_set_wireframe(void *obj, int8_t enabled)
 {
-    if (obj) ((rt_canvas3d *)obj)->wireframe = enabled;
+    if (obj)
+        ((rt_canvas3d *)obj)->wireframe = enabled;
 }
 
 void rt_canvas3d_set_backface_cull(void *obj, int8_t enabled)
 {
-    if (obj) ((rt_canvas3d *)obj)->backface_cull = enabled;
+    if (obj)
+        ((rt_canvas3d *)obj)->backface_cull = enabled;
 }
 
 void rt_canvas3d_add_temp_buffer(void *obj, void *buffer)
 {
-    if (!obj || !buffer) return;
+    if (!obj || !buffer)
+        return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
     if (c->temp_buf_count >= c->temp_buf_capacity)
     {
         int32_t new_cap = c->temp_buf_capacity == 0 ? 8 : c->temp_buf_capacity * 2;
         void **nb = (void **)realloc(c->temp_buffers, (size_t)new_cap * sizeof(void *));
-        if (!nb) { free(buffer); return; }
+        if (!nb)
+        {
+            free(buffer);
+            return;
+        }
         c->temp_buffers = nb;
         c->temp_buf_capacity = new_cap;
     }
@@ -656,40 +705,49 @@ int64_t rt_canvas3d_get_height(void *obj)
 
 int64_t rt_canvas3d_get_fps(void *obj)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     rt_canvas3d *c = (rt_canvas3d *)obj;
     return c->delta_time_ms > 0 ? 1000 / c->delta_time_ms : 0;
 }
 
 int64_t rt_canvas3d_get_delta_time(void *obj)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     rt_canvas3d *c = (rt_canvas3d *)obj;
     int64_t dt = c->delta_time_ms;
     if (c->dt_max_ms > 0)
     {
-        if (dt < 1) dt = 1;
-        if (dt > c->dt_max_ms) dt = c->dt_max_ms;
+        if (dt < 1)
+            dt = 1;
+        if (dt > c->dt_max_ms)
+            dt = c->dt_max_ms;
     }
     return dt;
 }
 
 void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms)
 {
-    if (obj) ((rt_canvas3d *)obj)->dt_max_ms = max_ms;
+    if (obj)
+        ((rt_canvas3d *)obj)->dt_max_ms = max_ms;
 }
 
 void rt_canvas3d_set_light(void *obj, int64_t index, void *light)
 {
-    if (!obj || index < 0 || index >= VGFX3D_MAX_LIGHTS) return;
+    if (!obj || index < 0 || index >= VGFX3D_MAX_LIGHTS)
+        return;
     ((rt_canvas3d *)obj)->lights[index] = (rt_light3d *)light;
 }
 
 void rt_canvas3d_set_ambient(void *obj, double r, double g, double b)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    c->ambient[0] = (float)r; c->ambient[1] = (float)g; c->ambient[2] = (float)b;
+    c->ambient[0] = (float)r;
+    c->ambient[1] = (float)g;
+    c->ambient[2] = (float)b;
 }
 
 /*==========================================================================
@@ -698,25 +756,35 @@ void rt_canvas3d_set_ambient(void *obj, double r, double g, double b)
 
 /* Helper: project 3D point to screen using the cached VP matrix.
  * Uses c->cached_vp set in begin_frame (backend-agnostic). */
-static int world_to_screen(const rt_canvas3d *c, const float *wp,
-                            float *sx, float *sy, int32_t fb_w, int32_t fb_h)
+static int world_to_screen(
+    const rt_canvas3d *c, const float *wp, float *sx, float *sy, int32_t fb_w, int32_t fb_h)
 {
     const float *vp = c->cached_vp;
     float pos4[4] = {wp[0], wp[1], wp[2], 1.0f};
     float clip[4];
-    clip[0] = vp[0]*pos4[0] + vp[1]*pos4[1] + vp[2]*pos4[2] + vp[3]*pos4[3];
-    clip[1] = vp[4]*pos4[0] + vp[5]*pos4[1] + vp[6]*pos4[2] + vp[7]*pos4[3];
-    clip[2] = vp[8]*pos4[0] + vp[9]*pos4[1] + vp[10]*pos4[2] + vp[11]*pos4[3];
-    clip[3] = vp[12]*pos4[0] + vp[13]*pos4[1] + vp[14]*pos4[2] + vp[15]*pos4[3];
-    if (clip[3] <= 0.0f) return 0;
+    clip[0] = vp[0] * pos4[0] + vp[1] * pos4[1] + vp[2] * pos4[2] + vp[3] * pos4[3];
+    clip[1] = vp[4] * pos4[0] + vp[5] * pos4[1] + vp[6] * pos4[2] + vp[7] * pos4[3];
+    clip[2] = vp[8] * pos4[0] + vp[9] * pos4[1] + vp[10] * pos4[2] + vp[11] * pos4[3];
+    clip[3] = vp[12] * pos4[0] + vp[13] * pos4[1] + vp[14] * pos4[2] + vp[15] * pos4[3];
+    if (clip[3] <= 0.0f)
+        return 0;
     float iw = 1.0f / clip[3];
     *sx = (clip[0] * iw + 1.0f) * 0.5f * (float)fb_w;
     *sy = (1.0f - clip[1] * iw) * 0.5f * (float)fb_h;
     return 1;
 }
 
-static void draw_line_px(uint8_t *pixels, int32_t fb_w, int32_t fb_h, int32_t stride,
-                          int x0, int y0, int x1, int y1, uint8_t r, uint8_t g, uint8_t b)
+static void draw_line_px(uint8_t *pixels,
+                         int32_t fb_w,
+                         int32_t fb_h,
+                         int32_t stride,
+                         int x0,
+                         int y0,
+                         int x1,
+                         int y1,
+                         uint8_t r,
+                         uint8_t g,
+                         uint8_t b)
 {
     int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
     int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
@@ -726,47 +794,74 @@ static void draw_line_px(uint8_t *pixels, int32_t fb_w, int32_t fb_h, int32_t st
         if (x0 >= 0 && x0 < fb_w && y0 >= 0 && y0 < fb_h)
         {
             uint8_t *dst = &pixels[y0 * stride + x0 * 4];
-            dst[0] = r; dst[1] = g; dst[2] = b; dst[3] = 0xFF;
+            dst[0] = r;
+            dst[1] = g;
+            dst[2] = b;
+            dst[3] = 0xFF;
         }
-        if (x0 == x1 && y0 == y1) break;
+        if (x0 == x1 && y0 == y1)
+            break;
         int e2 = 2 * err;
-        if (e2 >= dy) { err += dy; x0 += sx; }
-        if (e2 <= dx) { err += dx; y0 += sy; }
+        if (e2 >= dy)
+        {
+            err += dy;
+            x0 += sx;
+        }
+        if (e2 <= dx)
+        {
+            err += dx;
+            y0 += sy;
+        }
     }
 }
 
 void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color)
 {
-    if (!obj || !from || !to) return;
+    if (!obj || !from || !to)
+        return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win) return;
+    if (!c->gfx_win)
+        return;
     vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(c->gfx_win, &fb)) return;
+    if (!vgfx_get_framebuffer(c->gfx_win, &fb))
+        return;
 
     float p0[3] = {(float)rt_vec3_x(from), (float)rt_vec3_y(from), (float)rt_vec3_z(from)};
     float p1[3] = {(float)rt_vec3_x(to), (float)rt_vec3_y(to), (float)rt_vec3_z(to)};
     float sx0, sy0, sx1, sy1;
-    if (!world_to_screen(c, p0, &sx0, &sy0, fb.width, fb.height)) return;
-    if (!world_to_screen(c, p1, &sx1, &sy1, fb.width, fb.height)) return;
+    if (!world_to_screen(c, p0, &sx0, &sy0, fb.width, fb.height))
+        return;
+    if (!world_to_screen(c, p1, &sx1, &sy1, fb.width, fb.height))
+        return;
 
-    draw_line_px(fb.pixels, fb.width, fb.height, fb.stride,
-                  (int)sx0, (int)sy0, (int)sx1, (int)sy1,
-                  (uint8_t)((color >> 16) & 0xFF),
-                  (uint8_t)((color >> 8) & 0xFF),
-                  (uint8_t)(color & 0xFF));
+    draw_line_px(fb.pixels,
+                 fb.width,
+                 fb.height,
+                 fb.stride,
+                 (int)sx0,
+                 (int)sy0,
+                 (int)sx1,
+                 (int)sy1,
+                 (uint8_t)((color >> 16) & 0xFF),
+                 (uint8_t)((color >> 8) & 0xFF),
+                 (uint8_t)(color & 0xFF));
 }
 
 void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size)
 {
-    if (!obj || !pos) return;
+    if (!obj || !pos)
+        return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win) return;
+    if (!c->gfx_win)
+        return;
     vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(c->gfx_win, &fb)) return;
+    if (!vgfx_get_framebuffer(c->gfx_win, &fb))
+        return;
 
     float p[3] = {(float)rt_vec3_x(pos), (float)rt_vec3_y(pos), (float)rt_vec3_z(pos)};
     float sx, sy;
-    if (!world_to_screen(c, p, &sx, &sy, fb.width, fb.height)) return;
+    if (!world_to_screen(c, p, &sx, &sy, fb.width, fb.height))
+        return;
 
     uint8_t r = (uint8_t)((color >> 16) & 0xFF);
     uint8_t g = (uint8_t)((color >> 8) & 0xFF);
@@ -779,7 +874,10 @@ void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size)
             if (px >= 0 && px < fb.width && py >= 0 && py < fb.height)
             {
                 uint8_t *dst = &fb.pixels[py * fb.stride + px * 4];
-                dst[0] = r; dst[1] = g; dst[2] = b; dst[3] = 0xFF;
+                dst[0] = r;
+                dst[1] = g;
+                dst[2] = b;
+                dst[3] = 0xFF;
             }
         }
 }
@@ -788,14 +886,16 @@ void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size)
  * Screen-space HUD overlay (drawn directly to framebuffer, no 3D transform)
  *=========================================================================*/
 
-void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y,
-                               int64_t w, int64_t h, int64_t color)
+void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win) return;
+    if (!c->gfx_win)
+        return;
     vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(c->gfx_win, &fb)) return;
+    if (!vgfx_get_framebuffer(c->gfx_win, &fb))
+        return;
 
     uint8_t cr = (uint8_t)((color >> 16) & 0xFF);
     uint8_t cg = (uint8_t)((color >> 8) & 0xFF);
@@ -807,18 +907,24 @@ void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y,
             if (px >= 0 && px < fb.width && py >= 0 && py < fb.height)
             {
                 uint8_t *dst = &fb.pixels[py * fb.stride + px * 4];
-                dst[0] = cr; dst[1] = cg; dst[2] = cb; dst[3] = 0xFF;
+                dst[0] = cr;
+                dst[1] = cg;
+                dst[2] = cb;
+                dst[3] = 0xFF;
             }
         }
 }
 
 void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win) return;
+    if (!c->gfx_win)
+        return;
     vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(c->gfx_win, &fb)) return;
+    if (!vgfx_get_framebuffer(c->gfx_win, &fb))
+        return;
 
     int32_t cx = fb.width / 2, cy = fb.height / 2;
     int32_t half = (int32_t)(size / 2);
@@ -833,7 +939,10 @@ void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size)
         if (px >= 0 && px < fb.width && cy >= 0 && cy < fb.height)
         {
             uint8_t *dst = &fb.pixels[cy * fb.stride + px * 4];
-            dst[0] = cr; dst[1] = cg; dst[2] = cb; dst[3] = 0xFF;
+            dst[0] = cr;
+            dst[1] = cg;
+            dst[2] = cb;
+            dst[3] = 0xFF;
         }
     }
     /* Vertical line */
@@ -843,22 +952,28 @@ void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size)
         if (cx >= 0 && cx < fb.width && py >= 0 && py < fb.height)
         {
             uint8_t *dst = &fb.pixels[py * fb.stride + cx * 4];
-            dst[0] = cr; dst[1] = cg; dst[2] = cb; dst[3] = 0xFF;
+            dst[0] = cr;
+            dst[1] = cg;
+            dst[2] = cb;
+            dst[3] = 0xFF;
         }
     }
 }
 
-void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y,
-                               rt_string text, int64_t color)
+void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y, rt_string text, int64_t color)
 {
-    if (!obj || !text) return;
+    if (!obj || !text)
+        return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win) return;
+    if (!c->gfx_win)
+        return;
     vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(c->gfx_win, &fb)) return;
+    if (!vgfx_get_framebuffer(c->gfx_win, &fb))
+        return;
 
     const char *str = rt_string_cstr(text);
-    if (!str) return;
+    if (!str)
+        return;
 
     uint8_t cr = (uint8_t)((color >> 16) & 0xFF);
     uint8_t cg = (uint8_t)((color >> 8) & 0xFF);
@@ -866,108 +981,112 @@ void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y,
 
     /* Minimal 5x7 bitmap font for ASCII 32-126 */
     static const uint8_t font5x7[95][7] = {
-        {0x00,0x00,0x00,0x00,0x00,0x00,0x00}, /* space */
-        {0x04,0x04,0x04,0x04,0x00,0x04,0x00}, /* ! */
-        {0x0A,0x0A,0x00,0x00,0x00,0x00,0x00}, /* " */
-        {0x0A,0x1F,0x0A,0x1F,0x0A,0x00,0x00}, /* # */
-        {0x04,0x0F,0x14,0x0E,0x05,0x1E,0x04}, /* $ */
-        {0x19,0x1A,0x04,0x0B,0x13,0x00,0x00}, /* % */
-        {0x08,0x14,0x08,0x15,0x12,0x0D,0x00}, /* & */
-        {0x04,0x04,0x00,0x00,0x00,0x00,0x00}, /* ' */
-        {0x02,0x04,0x04,0x04,0x04,0x02,0x00}, /* ( */
-        {0x08,0x04,0x04,0x04,0x04,0x08,0x00}, /* ) */
-        {0x04,0x15,0x0E,0x15,0x04,0x00,0x00}, /* * */
-        {0x00,0x04,0x04,0x1F,0x04,0x04,0x00}, /* + */
-        {0x00,0x00,0x00,0x00,0x04,0x04,0x08}, /* , */
-        {0x00,0x00,0x00,0x1F,0x00,0x00,0x00}, /* - */
-        {0x00,0x00,0x00,0x00,0x00,0x04,0x00}, /* . */
-        {0x01,0x02,0x04,0x08,0x10,0x00,0x00}, /* / */
-        {0x0E,0x11,0x13,0x15,0x19,0x0E,0x00}, /* 0 */
-        {0x04,0x0C,0x04,0x04,0x04,0x0E,0x00}, /* 1 */
-        {0x0E,0x11,0x01,0x06,0x08,0x1F,0x00}, /* 2 */
-        {0x0E,0x11,0x02,0x01,0x11,0x0E,0x00}, /* 3 */
-        {0x02,0x06,0x0A,0x12,0x1F,0x02,0x00}, /* 4 */
-        {0x1F,0x10,0x1E,0x01,0x11,0x0E,0x00}, /* 5 */
-        {0x06,0x08,0x1E,0x11,0x11,0x0E,0x00}, /* 6 */
-        {0x1F,0x01,0x02,0x04,0x08,0x08,0x00}, /* 7 */
-        {0x0E,0x11,0x0E,0x11,0x11,0x0E,0x00}, /* 8 */
-        {0x0E,0x11,0x0F,0x01,0x02,0x0C,0x00}, /* 9 */
-        {0x00,0x04,0x00,0x00,0x04,0x00,0x00}, /* : */
-        {0x00,0x04,0x00,0x00,0x04,0x04,0x08}, /* ; */
-        {0x02,0x04,0x08,0x04,0x02,0x00,0x00}, /* < */
-        {0x00,0x00,0x1F,0x00,0x1F,0x00,0x00}, /* = */
-        {0x08,0x04,0x02,0x04,0x08,0x00,0x00}, /* > */
-        {0x0E,0x11,0x02,0x04,0x00,0x04,0x00}, /* ? */
-        {0x0E,0x11,0x17,0x15,0x17,0x10,0x0E}, /* @ */
-        {0x0E,0x11,0x11,0x1F,0x11,0x11,0x00}, /* A */
-        {0x1E,0x11,0x1E,0x11,0x11,0x1E,0x00}, /* B */
-        {0x0E,0x11,0x10,0x10,0x11,0x0E,0x00}, /* C */
-        {0x1E,0x11,0x11,0x11,0x11,0x1E,0x00}, /* D */
-        {0x1F,0x10,0x1E,0x10,0x10,0x1F,0x00}, /* E */
-        {0x1F,0x10,0x1E,0x10,0x10,0x10,0x00}, /* F */
-        {0x0E,0x11,0x10,0x17,0x11,0x0E,0x00}, /* G */
-        {0x11,0x11,0x1F,0x11,0x11,0x11,0x00}, /* H */
-        {0x0E,0x04,0x04,0x04,0x04,0x0E,0x00}, /* I */
-        {0x07,0x02,0x02,0x02,0x12,0x0C,0x00}, /* J */
-        {0x11,0x12,0x14,0x18,0x14,0x12,0x11}, /* K */
-        {0x10,0x10,0x10,0x10,0x10,0x1F,0x00}, /* L */
-        {0x11,0x1B,0x15,0x11,0x11,0x11,0x00}, /* M */
-        {0x11,0x19,0x15,0x13,0x11,0x11,0x00}, /* N */
-        {0x0E,0x11,0x11,0x11,0x11,0x0E,0x00}, /* O */
-        {0x1E,0x11,0x11,0x1E,0x10,0x10,0x00}, /* P */
-        {0x0E,0x11,0x11,0x15,0x12,0x0D,0x00}, /* Q */
-        {0x1E,0x11,0x11,0x1E,0x14,0x12,0x00}, /* R */
-        {0x0E,0x10,0x0E,0x01,0x11,0x0E,0x00}, /* S */
-        {0x1F,0x04,0x04,0x04,0x04,0x04,0x00}, /* T */
-        {0x11,0x11,0x11,0x11,0x11,0x0E,0x00}, /* U */
-        {0x11,0x11,0x11,0x0A,0x0A,0x04,0x00}, /* V */
-        {0x11,0x11,0x11,0x15,0x1B,0x11,0x00}, /* W */
-        {0x11,0x0A,0x04,0x04,0x0A,0x11,0x00}, /* X */
-        {0x11,0x0A,0x04,0x04,0x04,0x04,0x00}, /* Y */
-        {0x1F,0x02,0x04,0x08,0x10,0x1F,0x00}, /* Z */
-        {0x0E,0x08,0x08,0x08,0x08,0x0E,0x00}, /* [ */
-        {0x10,0x08,0x04,0x02,0x01,0x00,0x00}, /* \ */
-        {0x0E,0x02,0x02,0x02,0x02,0x0E,0x00}, /* ] */
-        {0x04,0x0A,0x11,0x00,0x00,0x00,0x00}, /* ^ */
-        {0x00,0x00,0x00,0x00,0x00,0x1F,0x00}, /* _ */
-        {0x08,0x04,0x00,0x00,0x00,0x00,0x00}, /* ` */
-        {0x00,0x0E,0x01,0x0F,0x11,0x0F,0x00}, /* a */
-        {0x10,0x10,0x1E,0x11,0x11,0x1E,0x00}, /* b */
-        {0x00,0x0E,0x10,0x10,0x10,0x0E,0x00}, /* c */
-        {0x01,0x01,0x0F,0x11,0x11,0x0F,0x00}, /* d */
-        {0x00,0x0E,0x11,0x1F,0x10,0x0E,0x00}, /* e */
-        {0x06,0x08,0x1C,0x08,0x08,0x08,0x00}, /* f */
-        {0x00,0x0F,0x11,0x0F,0x01,0x0E,0x00}, /* g */
-        {0x10,0x10,0x1E,0x11,0x11,0x11,0x00}, /* h */
-        {0x04,0x00,0x0C,0x04,0x04,0x0E,0x00}, /* i */
-        {0x02,0x00,0x06,0x02,0x02,0x12,0x0C}, /* j */
-        {0x10,0x10,0x12,0x14,0x18,0x14,0x12}, /* k */
-        {0x0C,0x04,0x04,0x04,0x04,0x0E,0x00}, /* l */
-        {0x00,0x1A,0x15,0x15,0x15,0x15,0x00}, /* m */
-        {0x00,0x1E,0x11,0x11,0x11,0x11,0x00}, /* n */
-        {0x00,0x0E,0x11,0x11,0x11,0x0E,0x00}, /* o */
-        {0x00,0x1E,0x11,0x1E,0x10,0x10,0x00}, /* p */
-        {0x00,0x0F,0x11,0x0F,0x01,0x01,0x00}, /* q */
-        {0x00,0x16,0x19,0x10,0x10,0x10,0x00}, /* r */
-        {0x00,0x0F,0x10,0x0E,0x01,0x1E,0x00}, /* s */
-        {0x08,0x1C,0x08,0x08,0x08,0x06,0x00}, /* t */
-        {0x00,0x11,0x11,0x11,0x11,0x0F,0x00}, /* u */
-        {0x00,0x11,0x11,0x0A,0x0A,0x04,0x00}, /* v */
-        {0x00,0x11,0x11,0x15,0x15,0x0A,0x00}, /* w */
-        {0x00,0x11,0x0A,0x04,0x0A,0x11,0x00}, /* x */
-        {0x00,0x11,0x11,0x0F,0x01,0x0E,0x00}, /* y */
-        {0x00,0x1F,0x02,0x04,0x08,0x1F,0x00}, /* z */
-        {0x02,0x04,0x08,0x04,0x02,0x00,0x00}, /* { */
-        {0x04,0x04,0x04,0x04,0x04,0x04,0x00}, /* | */
-        {0x08,0x04,0x02,0x04,0x08,0x00,0x00}, /* } */
-        {0x00,0x00,0x0A,0x15,0x00,0x00,0x00}, /* ~ */
+        {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, /* space */
+        {0x04, 0x04, 0x04, 0x04, 0x00, 0x04, 0x00}, /* ! */
+        {0x0A, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x00}, /* " */
+        {0x0A, 0x1F, 0x0A, 0x1F, 0x0A, 0x00, 0x00}, /* # */
+        {0x04, 0x0F, 0x14, 0x0E, 0x05, 0x1E, 0x04}, /* $ */
+        {0x19, 0x1A, 0x04, 0x0B, 0x13, 0x00, 0x00}, /* % */
+        {0x08, 0x14, 0x08, 0x15, 0x12, 0x0D, 0x00}, /* & */
+        {0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00}, /* ' */
+        {0x02, 0x04, 0x04, 0x04, 0x04, 0x02, 0x00}, /* ( */
+        {0x08, 0x04, 0x04, 0x04, 0x04, 0x08, 0x00}, /* ) */
+        {0x04, 0x15, 0x0E, 0x15, 0x04, 0x00, 0x00}, /* * */
+        {0x00, 0x04, 0x04, 0x1F, 0x04, 0x04, 0x00}, /* + */
+        {0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x08}, /* , */
+        {0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00}, /* - */
+        {0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00}, /* . */
+        {0x01, 0x02, 0x04, 0x08, 0x10, 0x00, 0x00}, /* / */
+        {0x0E, 0x11, 0x13, 0x15, 0x19, 0x0E, 0x00}, /* 0 */
+        {0x04, 0x0C, 0x04, 0x04, 0x04, 0x0E, 0x00}, /* 1 */
+        {0x0E, 0x11, 0x01, 0x06, 0x08, 0x1F, 0x00}, /* 2 */
+        {0x0E, 0x11, 0x02, 0x01, 0x11, 0x0E, 0x00}, /* 3 */
+        {0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x00}, /* 4 */
+        {0x1F, 0x10, 0x1E, 0x01, 0x11, 0x0E, 0x00}, /* 5 */
+        {0x06, 0x08, 0x1E, 0x11, 0x11, 0x0E, 0x00}, /* 6 */
+        {0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x00}, /* 7 */
+        {0x0E, 0x11, 0x0E, 0x11, 0x11, 0x0E, 0x00}, /* 8 */
+        {0x0E, 0x11, 0x0F, 0x01, 0x02, 0x0C, 0x00}, /* 9 */
+        {0x00, 0x04, 0x00, 0x00, 0x04, 0x00, 0x00}, /* : */
+        {0x00, 0x04, 0x00, 0x00, 0x04, 0x04, 0x08}, /* ; */
+        {0x02, 0x04, 0x08, 0x04, 0x02, 0x00, 0x00}, /* < */
+        {0x00, 0x00, 0x1F, 0x00, 0x1F, 0x00, 0x00}, /* = */
+        {0x08, 0x04, 0x02, 0x04, 0x08, 0x00, 0x00}, /* > */
+        {0x0E, 0x11, 0x02, 0x04, 0x00, 0x04, 0x00}, /* ? */
+        {0x0E, 0x11, 0x17, 0x15, 0x17, 0x10, 0x0E}, /* @ */
+        {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x00}, /* A */
+        {0x1E, 0x11, 0x1E, 0x11, 0x11, 0x1E, 0x00}, /* B */
+        {0x0E, 0x11, 0x10, 0x10, 0x11, 0x0E, 0x00}, /* C */
+        {0x1E, 0x11, 0x11, 0x11, 0x11, 0x1E, 0x00}, /* D */
+        {0x1F, 0x10, 0x1E, 0x10, 0x10, 0x1F, 0x00}, /* E */
+        {0x1F, 0x10, 0x1E, 0x10, 0x10, 0x10, 0x00}, /* F */
+        {0x0E, 0x11, 0x10, 0x17, 0x11, 0x0E, 0x00}, /* G */
+        {0x11, 0x11, 0x1F, 0x11, 0x11, 0x11, 0x00}, /* H */
+        {0x0E, 0x04, 0x04, 0x04, 0x04, 0x0E, 0x00}, /* I */
+        {0x07, 0x02, 0x02, 0x02, 0x12, 0x0C, 0x00}, /* J */
+        {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11}, /* K */
+        {0x10, 0x10, 0x10, 0x10, 0x10, 0x1F, 0x00}, /* L */
+        {0x11, 0x1B, 0x15, 0x11, 0x11, 0x11, 0x00}, /* M */
+        {0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x00}, /* N */
+        {0x0E, 0x11, 0x11, 0x11, 0x11, 0x0E, 0x00}, /* O */
+        {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x00}, /* P */
+        {0x0E, 0x11, 0x11, 0x15, 0x12, 0x0D, 0x00}, /* Q */
+        {0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x00}, /* R */
+        {0x0E, 0x10, 0x0E, 0x01, 0x11, 0x0E, 0x00}, /* S */
+        {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x00}, /* T */
+        {0x11, 0x11, 0x11, 0x11, 0x11, 0x0E, 0x00}, /* U */
+        {0x11, 0x11, 0x11, 0x0A, 0x0A, 0x04, 0x00}, /* V */
+        {0x11, 0x11, 0x11, 0x15, 0x1B, 0x11, 0x00}, /* W */
+        {0x11, 0x0A, 0x04, 0x04, 0x0A, 0x11, 0x00}, /* X */
+        {0x11, 0x0A, 0x04, 0x04, 0x04, 0x04, 0x00}, /* Y */
+        {0x1F, 0x02, 0x04, 0x08, 0x10, 0x1F, 0x00}, /* Z */
+        {0x0E, 0x08, 0x08, 0x08, 0x08, 0x0E, 0x00}, /* [ */
+        {0x10, 0x08, 0x04, 0x02, 0x01, 0x00, 0x00}, /* \ */
+        {0x0E, 0x02, 0x02, 0x02, 0x02, 0x0E, 0x00}, /* ] */
+        {0x04, 0x0A, 0x11, 0x00, 0x00, 0x00, 0x00}, /* ^ */
+        {0x00, 0x00, 0x00, 0x00, 0x00, 0x1F, 0x00}, /* _ */
+        {0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00}, /* ` */
+        {0x00, 0x0E, 0x01, 0x0F, 0x11, 0x0F, 0x00}, /* a */
+        {0x10, 0x10, 0x1E, 0x11, 0x11, 0x1E, 0x00}, /* b */
+        {0x00, 0x0E, 0x10, 0x10, 0x10, 0x0E, 0x00}, /* c */
+        {0x01, 0x01, 0x0F, 0x11, 0x11, 0x0F, 0x00}, /* d */
+        {0x00, 0x0E, 0x11, 0x1F, 0x10, 0x0E, 0x00}, /* e */
+        {0x06, 0x08, 0x1C, 0x08, 0x08, 0x08, 0x00}, /* f */
+        {0x00, 0x0F, 0x11, 0x0F, 0x01, 0x0E, 0x00}, /* g */
+        {0x10, 0x10, 0x1E, 0x11, 0x11, 0x11, 0x00}, /* h */
+        {0x04, 0x00, 0x0C, 0x04, 0x04, 0x0E, 0x00}, /* i */
+        {0x02, 0x00, 0x06, 0x02, 0x02, 0x12, 0x0C}, /* j */
+        {0x10, 0x10, 0x12, 0x14, 0x18, 0x14, 0x12}, /* k */
+        {0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E, 0x00}, /* l */
+        {0x00, 0x1A, 0x15, 0x15, 0x15, 0x15, 0x00}, /* m */
+        {0x00, 0x1E, 0x11, 0x11, 0x11, 0x11, 0x00}, /* n */
+        {0x00, 0x0E, 0x11, 0x11, 0x11, 0x0E, 0x00}, /* o */
+        {0x00, 0x1E, 0x11, 0x1E, 0x10, 0x10, 0x00}, /* p */
+        {0x00, 0x0F, 0x11, 0x0F, 0x01, 0x01, 0x00}, /* q */
+        {0x00, 0x16, 0x19, 0x10, 0x10, 0x10, 0x00}, /* r */
+        {0x00, 0x0F, 0x10, 0x0E, 0x01, 0x1E, 0x00}, /* s */
+        {0x08, 0x1C, 0x08, 0x08, 0x08, 0x06, 0x00}, /* t */
+        {0x00, 0x11, 0x11, 0x11, 0x11, 0x0F, 0x00}, /* u */
+        {0x00, 0x11, 0x11, 0x0A, 0x0A, 0x04, 0x00}, /* v */
+        {0x00, 0x11, 0x11, 0x15, 0x15, 0x0A, 0x00}, /* w */
+        {0x00, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x00}, /* x */
+        {0x00, 0x11, 0x11, 0x0F, 0x01, 0x0E, 0x00}, /* y */
+        {0x00, 0x1F, 0x02, 0x04, 0x08, 0x1F, 0x00}, /* z */
+        {0x02, 0x04, 0x08, 0x04, 0x02, 0x00, 0x00}, /* { */
+        {0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x00}, /* | */
+        {0x08, 0x04, 0x02, 0x04, 0x08, 0x00, 0x00}, /* } */
+        {0x00, 0x00, 0x0A, 0x15, 0x00, 0x00, 0x00}, /* ~ */
     };
 
     int64_t cx = x;
     for (const char *p = str; *p; p++)
     {
         int ch = (int)(unsigned char)*p;
-        if (ch < 32 || ch > 126) { cx += 6; continue; }
+        if (ch < 32 || ch > 126)
+        {
+            cx += 6;
+            continue;
+        }
         const uint8_t *glyph = font5x7[ch - 32];
 
         for (int row = 0; row < 7; row++)
@@ -980,7 +1099,10 @@ void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y,
                     if (px >= 0 && px < fb.width && py >= 0 && py < fb.height)
                     {
                         uint8_t *dst = &fb.pixels[py * fb.stride + px * 4];
-                        dst[0] = cr; dst[1] = cg; dst[2] = cb; dst[3] = 0xFF;
+                        dst[0] = cr;
+                        dst[1] = cg;
+                        dst[2] = cb;
+                        dst[3] = 0xFF;
                     }
                 }
             }
@@ -991,35 +1113,190 @@ void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y,
 
 rt_string rt_canvas3d_get_backend(void *obj)
 {
-    if (!obj) return rt_const_cstr("unknown");
+    if (!obj)
+        return rt_const_cstr("unknown");
     rt_canvas3d *c = (rt_canvas3d *)obj;
     return rt_const_cstr(c->backend ? c->backend->name : "unknown");
 }
 
 void *rt_canvas3d_screenshot(void *obj)
 {
-    if (!obj) return NULL;
+    if (!obj)
+        return NULL;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win) return NULL;
+    if (!c->gfx_win)
+        return NULL;
 
     vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(c->gfx_win, &fb)) return NULL;
+    if (!vgfx_get_framebuffer(c->gfx_win, &fb))
+        return NULL;
 
     void *pixels = rt_pixels_new((int64_t)fb.width, (int64_t)fb.height);
-    if (!pixels) return NULL;
+    if (!pixels)
+        return NULL;
 
-    typedef struct { int64_t w; int64_t h; uint32_t *data; } px_view;
+    typedef struct
+    {
+        int64_t w;
+        int64_t h;
+        uint32_t *data;
+    } px_view;
+
     px_view *pv = (px_view *)pixels;
     for (int32_t y = 0; y < fb.height; y++)
         for (int32_t x = 0; x < fb.width; x++)
         {
             const uint8_t *src = &fb.pixels[y * fb.stride + x * 4];
-            pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) |
-                                       ((uint32_t)src[1] << 16) |
-                                       ((uint32_t)src[2] << 8) |
-                                       (uint32_t)src[3];
+            pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
+                                      ((uint32_t)src[2] << 8) | (uint32_t)src[3];
         }
     return pixels;
+}
+
+/*==========================================================================
+ * Debug Gizmos — wireframe AABB, sphere, ray, axis
+ *=========================================================================*/
+
+void rt_canvas3d_draw_aabb_wire(void *obj, void *min_v, void *max_v, int64_t color)
+{
+    if (!obj || !min_v || !max_v) return;
+    double mn[3] = {rt_vec3_x(min_v), rt_vec3_y(min_v), rt_vec3_z(min_v)};
+    double mx[3] = {rt_vec3_x(max_v), rt_vec3_y(max_v), rt_vec3_z(max_v)};
+
+    /* 8 corners from min/max combinations */
+    void *c[8];
+    for (int i = 0; i < 8; i++)
+        c[i] = rt_vec3_new((i & 1) ? mx[0] : mn[0],
+                           (i & 2) ? mx[1] : mn[1],
+                           (i & 4) ? mx[2] : mn[2]);
+
+    /* 12 edges: bottom face (0-1,1-3,3-2,2-0), top face (4-5,5-7,7-6,6-4), verticals */
+    static const int edges[12][2] = {
+        {0,1},{1,3},{3,2},{2,0}, {4,5},{5,7},{7,6},{6,4}, {0,4},{1,5},{2,6},{3,7}
+    };
+    for (int e = 0; e < 12; e++)
+        rt_canvas3d_draw_line3d(obj, c[edges[e][0]], c[edges[e][1]], color);
+}
+
+void rt_canvas3d_draw_sphere_wire(void *obj, void *center, double radius, int64_t color)
+{
+    if (!obj || !center) return;
+    double cx = rt_vec3_x(center), cy = rt_vec3_y(center), cz = rt_vec3_z(center);
+    double r = radius;
+    int segs = 24;
+    double step = 2.0 * 3.14159265358979323846 / segs;
+
+    for (int i = 0; i < segs; i++)
+    {
+        double a0 = i * step, a1 = (i + 1) * step;
+        double c0 = cos(a0), s0 = sin(a0), c1 = cos(a1), s1 = sin(a1);
+
+        /* XY circle */
+        rt_canvas3d_draw_line3d(obj, rt_vec3_new(cx + c0*r, cy + s0*r, cz),
+                                     rt_vec3_new(cx + c1*r, cy + s1*r, cz), color);
+        /* XZ circle */
+        rt_canvas3d_draw_line3d(obj, rt_vec3_new(cx + c0*r, cy, cz + s0*r),
+                                     rt_vec3_new(cx + c1*r, cy, cz + s1*r), color);
+        /* YZ circle */
+        rt_canvas3d_draw_line3d(obj, rt_vec3_new(cx, cy + c0*r, cz + s0*r),
+                                     rt_vec3_new(cx, cy + c1*r, cz + s1*r), color);
+    }
+}
+
+void rt_canvas3d_draw_debug_ray(void *obj, void *origin, void *dir, double length, int64_t color)
+{
+    if (!obj || !origin || !dir) return;
+    double ex = rt_vec3_x(origin) + rt_vec3_x(dir) * length;
+    double ey = rt_vec3_y(origin) + rt_vec3_y(dir) * length;
+    double ez = rt_vec3_z(origin) + rt_vec3_z(dir) * length;
+    rt_canvas3d_draw_line3d(obj, origin, rt_vec3_new(ex, ey, ez), color);
+}
+
+void rt_canvas3d_draw_axis(void *obj, void *origin, double scale)
+{
+    if (!obj || !origin) return;
+    double ox = rt_vec3_x(origin), oy = rt_vec3_y(origin), oz = rt_vec3_z(origin);
+    rt_canvas3d_draw_line3d(obj, origin, rt_vec3_new(ox + scale, oy, oz), 0xFF0000);
+    rt_canvas3d_draw_line3d(obj, origin, rt_vec3_new(ox, oy + scale, oz), 0x00FF00);
+    rt_canvas3d_draw_line3d(obj, origin, rt_vec3_new(ox, oy, oz + scale), 0x0000FF);
+}
+
+/*==========================================================================
+ * Fog — linear distance fog
+ *=========================================================================*/
+
+void rt_canvas3d_set_fog(void *obj, double near_dist, double far_dist,
+                          double r, double g, double b)
+{
+    if (!obj) return;
+    rt_canvas3d *c = (rt_canvas3d *)obj;
+    c->fog_enabled = 1;
+    c->fog_near = (float)near_dist;
+    c->fog_far = (float)far_dist;
+    c->fog_color[0] = (float)r;
+    c->fog_color[1] = (float)g;
+    c->fog_color[2] = (float)b;
+}
+
+void rt_canvas3d_clear_fog(void *obj)
+{
+    if (!obj) return;
+    ((rt_canvas3d *)obj)->fog_enabled = 0;
+}
+
+/*==========================================================================
+ * Shadow Mapping
+ *=========================================================================*/
+
+void rt_canvas3d_enable_shadows(void *obj, int64_t resolution)
+{
+    if (!obj) return;
+    rt_canvas3d *c = (rt_canvas3d *)obj;
+    int32_t res = (int32_t)resolution;
+    if (res < 64) res = 64;
+    if (res > 4096) res = 4096;
+    c->shadows_enabled = 1;
+    c->shadow_resolution = res;
+
+    /* Allocate shadow render target if needed */
+    if (!c->shadow_rt || c->shadow_rt->width != res)
+    {
+        if (c->shadow_rt)
+        {
+            free(c->shadow_rt->color_buf);
+            free(c->shadow_rt->depth_buf);
+            free(c->shadow_rt);
+        }
+        c->shadow_rt = (vgfx3d_rendertarget_t *)calloc(1, sizeof(vgfx3d_rendertarget_t));
+        if (c->shadow_rt)
+        {
+            c->shadow_rt->width = res;
+            c->shadow_rt->height = res;
+            c->shadow_rt->stride = res * 4;
+            c->shadow_rt->color_buf = NULL; /* depth-only */
+            c->shadow_rt->depth_buf = (float *)malloc((size_t)res * (size_t)res * sizeof(float));
+        }
+    }
+}
+
+void rt_canvas3d_disable_shadows(void *obj)
+{
+    if (!obj) return;
+    rt_canvas3d *c = (rt_canvas3d *)obj;
+    c->shadows_enabled = 0;
+    if (c->shadow_rt)
+    {
+        free(c->shadow_rt->color_buf);
+        free(c->shadow_rt->depth_buf);
+        free(c->shadow_rt);
+        c->shadow_rt = NULL;
+    }
+}
+
+void rt_canvas3d_set_shadow_bias(void *obj, double bias)
+{
+    if (!obj) return;
+    ((rt_canvas3d *)obj)->shadow_bias = (float)bias;
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

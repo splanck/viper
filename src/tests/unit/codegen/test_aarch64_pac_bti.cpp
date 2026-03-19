@@ -40,8 +40,7 @@ namespace
 /// Read a little-endian 32-bit word from a byte buffer at the given offset.
 uint32_t readWord(const std::vector<uint8_t> &bytes, size_t offset)
 {
-    return static_cast<uint32_t>(bytes[offset]) |
-           (static_cast<uint32_t>(bytes[offset + 1]) << 8) |
+    return static_cast<uint32_t>(bytes[offset]) | (static_cast<uint32_t>(bytes[offset + 1]) << 8) |
            (static_cast<uint32_t>(bytes[offset + 2]) << 16) |
            (static_cast<uint32_t>(bytes[offset + 3]) << 24);
 }

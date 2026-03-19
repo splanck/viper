@@ -82,8 +82,8 @@ DataflowResult<VregId> solveBackwardDataflow(const std::vector<std::vector<std::
     {
         if (++iteration > maxIter)
         {
-            VIPER_ICE("liveness dataflow did not converge after " +
-                      std::to_string(maxIter) + " iterations");
+            VIPER_ICE("liveness dataflow did not converge after " + std::to_string(maxIter) +
+                      " iterations");
         }
         changed = false;
 

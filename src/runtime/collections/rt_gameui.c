@@ -51,15 +51,14 @@ typedef struct
     int64_t x, y;
     char text[LABEL_MAX_TEXT];
     int64_t color;
-    void *font;   ///< BitmapFont or NULL for default
+    void *font;    ///< BitmapFont or NULL for default
     int64_t scale; ///< Integer scale (1 = normal)
     int8_t visible;
 } rt_uilabel_impl;
 
 void *rt_uilabel_new(int64_t x, int64_t y, rt_string text, int64_t color)
 {
-    rt_uilabel_impl *label =
-        (rt_uilabel_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_uilabel_impl));
+    rt_uilabel_impl *label = (rt_uilabel_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_uilabel_impl));
     if (!label)
         return NULL;
 
@@ -172,8 +171,8 @@ void rt_uilabel_draw(void *ptr, void *canvas)
     if (label->font)
     {
         if (label->scale > 1)
-            rt_canvas_text_font_scaled(canvas, label->x, label->y, rtext, label->font,
-                                       label->scale, label->color);
+            rt_canvas_text_font_scaled(
+                canvas, label->x, label->y, rtext, label->font, label->scale, label->color);
         else
             rt_canvas_text_font(canvas, label->x, label->y, rtext, label->font, label->color);
     }
@@ -206,8 +205,7 @@ typedef struct
     int8_t visible;
 } rt_uibar_impl;
 
-void *rt_uibar_new(int64_t x, int64_t y, int64_t w, int64_t h,
-                    int64_t fg_color, int64_t bg_color)
+void *rt_uibar_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t fg_color, int64_t bg_color)
 {
     rt_uibar_impl *bar = (rt_uibar_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_uibar_impl));
     if (!bar)
@@ -324,22 +322,22 @@ void rt_uibar_draw(void *ptr, void *canvas)
         int64_t fill;
         switch (bar->direction)
         {
-        case BAR_DIR_RIGHT_TO_LEFT:
-            fill = bar->value * bar->w / bar->max_value;
-            rt_canvas_box(canvas, bar->x + bar->w - fill, bar->y, fill, bar->h, bar->fg_color);
-            break;
-        case BAR_DIR_TOP_TO_BOTTOM:
-            fill = bar->value * bar->h / bar->max_value;
-            rt_canvas_box(canvas, bar->x, bar->y, bar->w, fill, bar->fg_color);
-            break;
-        case BAR_DIR_BOTTOM_TO_TOP:
-            fill = bar->value * bar->h / bar->max_value;
-            rt_canvas_box(canvas, bar->x, bar->y + bar->h - fill, bar->w, fill, bar->fg_color);
-            break;
-        default: // LEFT_TO_RIGHT
-            fill = bar->value * bar->w / bar->max_value;
-            rt_canvas_box(canvas, bar->x, bar->y, fill, bar->h, bar->fg_color);
-            break;
+            case BAR_DIR_RIGHT_TO_LEFT:
+                fill = bar->value * bar->w / bar->max_value;
+                rt_canvas_box(canvas, bar->x + bar->w - fill, bar->y, fill, bar->h, bar->fg_color);
+                break;
+            case BAR_DIR_TOP_TO_BOTTOM:
+                fill = bar->value * bar->h / bar->max_value;
+                rt_canvas_box(canvas, bar->x, bar->y, bar->w, fill, bar->fg_color);
+                break;
+            case BAR_DIR_BOTTOM_TO_TOP:
+                fill = bar->value * bar->h / bar->max_value;
+                rt_canvas_box(canvas, bar->x, bar->y + bar->h - fill, bar->w, fill, bar->fg_color);
+                break;
+            default: // LEFT_TO_RIGHT
+                fill = bar->value * bar->w / bar->max_value;
+                rt_canvas_box(canvas, bar->x, bar->y, fill, bar->h, bar->fg_color);
+                break;
         }
     }
 
@@ -356,18 +354,16 @@ typedef struct
 {
     int64_t x, y, w, h;
     int64_t bg_color;
-    int64_t alpha;          ///< 0-255
-    int64_t border_color;   ///< 0 = no border
+    int64_t alpha;        ///< 0-255
+    int64_t border_color; ///< 0 = no border
     int64_t border_thickness;
-    int64_t corner_radius;  ///< 0 = sharp corners
+    int64_t corner_radius; ///< 0 = sharp corners
     int8_t visible;
 } rt_uipanel_impl;
 
-void *rt_uipanel_new(int64_t x, int64_t y, int64_t w, int64_t h,
-                      int64_t bg_color, int64_t alpha)
+void *rt_uipanel_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t bg_color, int64_t alpha)
 {
-    rt_uipanel_impl *panel =
-        (rt_uipanel_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_uipanel_impl));
+    rt_uipanel_impl *panel = (rt_uipanel_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_uipanel_impl));
     if (!panel)
         return NULL;
 
@@ -447,15 +443,20 @@ void rt_uipanel_draw(void *ptr, void *canvas)
     if (panel->alpha >= 255)
     {
         if (panel->corner_radius > 0)
-            rt_canvas_round_box(canvas, panel->x, panel->y, panel->w, panel->h,
-                                panel->corner_radius, panel->bg_color);
+            rt_canvas_round_box(canvas,
+                                panel->x,
+                                panel->y,
+                                panel->w,
+                                panel->h,
+                                panel->corner_radius,
+                                panel->bg_color);
         else
             rt_canvas_box(canvas, panel->x, panel->y, panel->w, panel->h, panel->bg_color);
     }
     else if (panel->alpha > 0)
     {
-        rt_canvas_box_alpha(canvas, panel->x, panel->y, panel->w, panel->h,
-                            panel->bg_color, panel->alpha);
+        rt_canvas_box_alpha(
+            canvas, panel->x, panel->y, panel->w, panel->h, panel->bg_color, panel->alpha);
     }
 
     // Border
@@ -464,12 +465,20 @@ void rt_uipanel_draw(void *ptr, void *canvas)
         for (int64_t t = 0; t < panel->border_thickness; t++)
         {
             if (panel->corner_radius > 0)
-                rt_canvas_round_frame(canvas, panel->x + t, panel->y + t,
-                                      panel->w - t * 2, panel->h - t * 2,
-                                      panel->corner_radius, panel->border_color);
+                rt_canvas_round_frame(canvas,
+                                      panel->x + t,
+                                      panel->y + t,
+                                      panel->w - t * 2,
+                                      panel->h - t * 2,
+                                      panel->corner_radius,
+                                      panel->border_color);
             else
-                rt_canvas_frame(canvas, panel->x + t, panel->y + t,
-                                panel->w - t * 2, panel->h - t * 2, panel->border_color);
+                rt_canvas_frame(canvas,
+                                panel->x + t,
+                                panel->y + t,
+                                panel->w - t * 2,
+                                panel->h - t * 2,
+                                panel->border_color);
         }
     }
 }
@@ -480,16 +489,15 @@ void rt_uipanel_draw(void *ptr, void *canvas)
 
 typedef struct
 {
-    void *pixels;     ///< Source Pixels handle (not owned — caller keeps alive)
-    int64_t left;     ///< Left margin (corner width)
-    int64_t top;      ///< Top margin (corner height)
-    int64_t right;    ///< Right margin
-    int64_t bottom;   ///< Bottom margin
-    int64_t tint;     ///< Tint color (0 = no tint)
+    void *pixels;   ///< Source Pixels handle (not owned — caller keeps alive)
+    int64_t left;   ///< Left margin (corner width)
+    int64_t top;    ///< Top margin (corner height)
+    int64_t right;  ///< Right margin
+    int64_t bottom; ///< Bottom margin
+    int64_t tint;   ///< Tint color (0 = no tint)
 } rt_uinineslice_impl;
 
-void *rt_uinineslice_new(void *pixels, int64_t left, int64_t top,
-                          int64_t right, int64_t bottom)
+void *rt_uinineslice_new(void *pixels, int64_t left, int64_t top, int64_t right, int64_t bottom)
 {
     if (!pixels)
         return NULL;
@@ -503,12 +511,24 @@ void *rt_uinineslice_new(void *pixels, int64_t left, int64_t top,
     int64_t ph = rt_pixels_height(pixels);
 
     // Clamp margins to source dimensions
-    if (left < 0) left = 0;
-    if (top < 0) top = 0;
-    if (right < 0) right = 0;
-    if (bottom < 0) bottom = 0;
-    if (left + right > pw) { left = pw / 2; right = pw - left; }
-    if (top + bottom > ph) { top = ph / 2; bottom = ph - top; }
+    if (left < 0)
+        left = 0;
+    if (top < 0)
+        top = 0;
+    if (right < 0)
+        right = 0;
+    if (bottom < 0)
+        bottom = 0;
+    if (left + right > pw)
+    {
+        left = pw / 2;
+        right = pw - left;
+    }
+    if (top + bottom > ph)
+    {
+        top = ph / 2;
+        bottom = ph - top;
+    }
 
     ns->pixels = pixels;
     ns->left = left;
@@ -527,8 +547,7 @@ void rt_uinineslice_set_tint(void *ptr, int64_t color)
     ((rt_uinineslice_impl *)ptr)->tint = color;
 }
 
-void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y,
-                          int64_t w, int64_t h)
+void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t w, int64_t h)
 {
     if (!ptr || !canvas)
         return;
@@ -549,8 +568,10 @@ void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y,
     // Destination center region
     int64_t dst_cw = w - L - R;
     int64_t dst_ch = h - T - B;
-    if (dst_cw < 0) dst_cw = 0;
-    if (dst_ch < 0) dst_ch = 0;
+    if (dst_cw < 0)
+        dst_cw = 0;
+    if (dst_ch < 0)
+        dst_ch = 0;
 
     // Draw 4 corners (unscaled — blit directly)
     if (T > 0 && L > 0) // top-left
@@ -621,8 +642,8 @@ void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y,
                 int64_t bw = src_cw;
                 if (dx + bw > dst_cw)
                     bw = dst_cw - dx;
-                rt_canvas_blit_region(canvas, x + L + dx, y + T + dy,
-                                      ns->pixels, src_cx, src_cy, bw, bh);
+                rt_canvas_blit_region(
+                    canvas, x + L + dx, y + T + dy, ns->pixels, src_cx, src_cy, bw, bh);
             }
         }
     }
@@ -748,8 +769,10 @@ void rt_uimenulist_move_down(void *ptr)
         menu->selected++;
 }
 
-void rt_uimenulist_set_colors(void *ptr, int64_t text_color,
-                               int64_t selected_color, int64_t highlight_bg)
+void rt_uimenulist_set_colors(void *ptr,
+                              int64_t text_color,
+                              int64_t selected_color,
+                              int64_t highlight_bg)
 {
     if (!ptr)
         return;

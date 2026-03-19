@@ -38,7 +38,7 @@ typedef struct
     float tangent[3];        /* tangent vector (Phase 9) */
     uint8_t bone_indices[4]; /* bone palette indices (Phase 14) */
     float bone_weights[4];   /* blend weights (Phase 14) */
-} vgfx3d_vertex_t; /* 80 bytes */
+} vgfx3d_vertex_t;           /* 80 bytes */
 
 //=============================================================================
 // Mesh3D
@@ -69,8 +69,8 @@ typedef struct
     double aspect;
     double near_plane;
     double far_plane;
-    double fps_yaw;    /* FPS mode: horizontal rotation (degrees) */
-    double fps_pitch;  /* FPS mode: vertical rotation (degrees, clamped ±89) */
+    double fps_yaw;   /* FPS mode: horizontal rotation (degrees) */
+    double fps_pitch; /* FPS mode: vertical rotation (degrees, clamped ±89) */
 } rt_camera3d;
 
 //=============================================================================
@@ -83,14 +83,14 @@ typedef struct
     double diffuse[4]; /* RGBA diffuse color */
     double specular[3];
     double shininess;
-    void *texture;      /* Pixels (diffuse, slot 0) or NULL */
-    void *normal_map;   /* Pixels (normal map, slot 1) or NULL */
-    void *specular_map; /* Pixels (specular map, slot 2) or NULL */
-    void *emissive_map; /* Pixels (emissive map, slot 3) or NULL */
-    double emissive[3]; /* emissive color multiplier */
-    double alpha;          /* opacity [0.0=invisible, 1.0=opaque], default 1.0 */
-    void *env_map;         /* CubeMap3D for environment reflections (or NULL) */
-    double reflectivity;   /* [0.0=no reflection, 1.0=mirror], default 0.0 */
+    void *texture;       /* Pixels (diffuse, slot 0) or NULL */
+    void *normal_map;    /* Pixels (normal map, slot 1) or NULL */
+    void *specular_map;  /* Pixels (specular map, slot 2) or NULL */
+    void *emissive_map;  /* Pixels (emissive map, slot 3) or NULL */
+    double emissive[3];  /* emissive color multiplier */
+    double alpha;        /* opacity [0.0=invisible, 1.0=opaque], default 1.0 */
+    void *env_map;       /* CubeMap3D for environment reflections (or NULL) */
+    double reflectivity; /* [0.0=no reflection, 1.0=mirror], default 0.0 */
     int8_t unlit;
 } rt_material3d;
 
@@ -125,7 +125,7 @@ typedef struct vgfx3d_backend vgfx3d_backend_t;
 typedef struct
 {
     void *vptr;
-    void *faces[6]; /* Pixels objects: +X, -X, +Y, -Y, +Z, -Z */
+    void *faces[6];    /* Pixels objects: +X, -X, +Y, -Y, +Z, -Z */
     int64_t face_size; /* width = height per face (must be square) */
 } rt_cubemap3d;
 
@@ -162,12 +162,12 @@ typedef struct
     void *backend_ctx;               /* opaque backend state */
 
     /* Frame state */
-    int8_t in_frame;    /* 1 = between Begin/End */
-    float cached_vp[16]; /* VP matrix cached in begin_frame for debug drawing */
+    int8_t in_frame;         /* 1 = between Begin/End */
+    float cached_vp[16];     /* VP matrix cached in begin_frame for debug drawing */
     float cached_cam_pos[3]; /* camera position cached for sort key computation */
 
     /* Deferred draw command queue (for transparency sorting) */
-    void *draw_cmds;      /* dynamic array of deferred_draw_t */
+    void *draw_cmds; /* dynamic array of deferred_draw_t */
     int32_t draw_count;
     int32_t draw_capacity;
 
@@ -188,6 +188,19 @@ typedef struct
     void **temp_buffers;
     int32_t temp_buf_count;
     int32_t temp_buf_capacity;
+
+    /* Distance fog */
+    int8_t fog_enabled;
+    float fog_near;
+    float fog_far;
+    float fog_color[3];
+
+    /* Shadow mapping */
+    int8_t shadows_enabled;
+    int32_t shadow_resolution;
+    float shadow_bias;
+    vgfx3d_rendertarget_t *shadow_rt;
+    float shadow_light_vp[16];
 
     /* Rendering options */
     int8_t wireframe;

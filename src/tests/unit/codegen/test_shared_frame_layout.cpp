@@ -135,7 +135,7 @@ TEST(SharedCallPlan, VarArgPlan)
     CallLoweringPlan plan{};
     plan.callee = "rt_snprintf";
     plan.isVarArg = true;
-    plan.numNamedArgs = 3; // buf, size, fmt
+    plan.numNamedArgs = 3;                                 // buf, size, fmt
     plan.args.push_back({CallArgClass::GPR, 1, false, 0}); // buf
     plan.args.push_back({CallArgClass::GPR, 2, false, 0}); // size
     plan.args.push_back({CallArgClass::GPR, 3, false, 0}); // fmt

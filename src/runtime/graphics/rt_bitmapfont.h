@@ -83,26 +83,34 @@ extern "C"
     //=========================================================================
 
     /// @brief Draw text at (x,y) using a custom BitmapFont.
-    void rt_canvas_text_font(void *canvas, int64_t x, int64_t y,
-                             rt_string text, void *font, int64_t color);
+    void rt_canvas_text_font(
+        void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t color);
 
     /// @brief Draw text with foreground and background colors.
-    void rt_canvas_text_font_bg(void *canvas, int64_t x, int64_t y,
-                                rt_string text, void *font,
-                                int64_t fg_color, int64_t bg_color);
+    void rt_canvas_text_font_bg(void *canvas,
+                                int64_t x,
+                                int64_t y,
+                                rt_string text,
+                                void *font,
+                                int64_t fg_color,
+                                int64_t bg_color);
 
     /// @brief Draw text with integer scaling (1=normal, 2=double, etc.).
-    void rt_canvas_text_font_scaled(void *canvas, int64_t x, int64_t y,
-                                    rt_string text, void *font,
-                                    int64_t scale, int64_t color);
+    void rt_canvas_text_font_scaled(void *canvas,
+                                    int64_t x,
+                                    int64_t y,
+                                    rt_string text,
+                                    void *font,
+                                    int64_t scale,
+                                    int64_t color);
 
     /// @brief Draw text horizontally centered on the canvas.
-    void rt_canvas_text_font_centered(void *canvas, int64_t y,
-                                      rt_string text, void *font, int64_t color);
+    void rt_canvas_text_font_centered(
+        void *canvas, int64_t y, rt_string text, void *font, int64_t color);
 
     /// @brief Draw text right-aligned with a margin from the right edge.
-    void rt_canvas_text_font_right(void *canvas, int64_t margin, int64_t y,
-                                   rt_string text, void *font, int64_t color);
+    void rt_canvas_text_font_right(
+        void *canvas, int64_t margin, int64_t y, rt_string text, void *font, int64_t color);
 
 #ifdef __cplusplus
 }

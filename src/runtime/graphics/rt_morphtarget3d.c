@@ -78,8 +78,7 @@ void *rt_morphtarget3d_new(int64_t vertex_count)
         rt_trap("MorphTarget3D.New: vertex_count must be > 0");
         return NULL;
     }
-    rt_morphtarget3d *mt = (rt_morphtarget3d *)rt_obj_new_i64(
-        0, (int64_t)sizeof(rt_morphtarget3d));
+    rt_morphtarget3d *mt = (rt_morphtarget3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_morphtarget3d));
     if (!mt)
     {
         rt_trap("MorphTarget3D.New: memory allocation failed");
@@ -100,7 +99,8 @@ void *rt_morphtarget3d_new(int64_t vertex_count)
 
 int64_t rt_morphtarget3d_add_shape(void *obj, rt_string name)
 {
-    if (!obj) return -1;
+    if (!obj)
+        return -1;
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
     if (mt->shape_count >= VGFX3D_MAX_MORPH_SHAPES)
     {
@@ -117,7 +117,8 @@ int64_t rt_morphtarget3d_add_shape(void *obj, rt_string name)
         if (cstr)
         {
             size_t len = strlen(cstr);
-            if (len > 63) len = 63;
+            if (len > 63)
+                len = 63;
             memcpy(shape->name, cstr, len);
             shape->name[len] = '\0';
         }
@@ -125,41 +126,50 @@ int64_t rt_morphtarget3d_add_shape(void *obj, rt_string name)
 
     size_t delta_size = (size_t)mt->vertex_count * 3 * sizeof(float);
     shape->pos_deltas = (float *)calloc(1, delta_size);
-    if (!shape->pos_deltas) return -1;
+    if (!shape->pos_deltas)
+        return -1;
     /* Normal deltas allocated on first use (SetNormalDelta) */
 
     return mt->shape_count++;
 }
 
-void rt_morphtarget3d_set_delta(void *obj, int64_t shape, int64_t vertex,
-                                  double dx, double dy, double dz)
+void rt_morphtarget3d_set_delta(
+    void *obj, int64_t shape, int64_t vertex, double dx, double dy, double dz)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
-    if (shape < 0 || shape >= mt->shape_count) return;
-    if (vertex < 0 || vertex >= mt->vertex_count) return;
+    if (shape < 0 || shape >= mt->shape_count)
+        return;
+    if (vertex < 0 || vertex >= mt->vertex_count)
+        return;
 
     float *pd = mt->shapes[shape].pos_deltas;
-    if (!pd) return;
+    if (!pd)
+        return;
     pd[vertex * 3 + 0] = (float)dx;
     pd[vertex * 3 + 1] = (float)dy;
     pd[vertex * 3 + 2] = (float)dz;
 }
 
-void rt_morphtarget3d_set_normal_delta(void *obj, int64_t shape, int64_t vertex,
-                                         double dx, double dy, double dz)
+void rt_morphtarget3d_set_normal_delta(
+    void *obj, int64_t shape, int64_t vertex, double dx, double dy, double dz)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
-    if (shape < 0 || shape >= mt->shape_count) return;
-    if (vertex < 0 || vertex >= mt->vertex_count) return;
+    if (shape < 0 || shape >= mt->shape_count)
+        return;
+    if (vertex < 0 || vertex >= mt->vertex_count)
+        return;
 
     /* Lazy-allocate normal deltas on first use */
     if (!mt->shapes[shape].nrm_deltas)
     {
         size_t sz = (size_t)mt->vertex_count * 3 * sizeof(float);
         mt->shapes[shape].nrm_deltas = (float *)calloc(1, sz);
-        if (!mt->shapes[shape].nrm_deltas) return;
+        if (!mt->shapes[shape].nrm_deltas)
+            return;
     }
 
     float *nd = mt->shapes[shape].nrm_deltas;
@@ -174,26 +184,32 @@ void rt_morphtarget3d_set_normal_delta(void *obj, int64_t shape, int64_t vertex,
 
 void rt_morphtarget3d_set_weight(void *obj, int64_t shape, double weight)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
-    if (shape < 0 || shape >= mt->shape_count) return;
+    if (shape < 0 || shape >= mt->shape_count)
+        return;
     mt->weights[shape] = (float)weight;
 }
 
 double rt_morphtarget3d_get_weight(void *obj, int64_t shape)
 {
-    if (!obj) return 0.0;
+    if (!obj)
+        return 0.0;
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
-    if (shape < 0 || shape >= mt->shape_count) return 0.0;
+    if (shape < 0 || shape >= mt->shape_count)
+        return 0.0;
     return mt->weights[shape];
 }
 
 void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weight)
 {
-    if (!obj || !name) return;
+    if (!obj || !name)
+        return;
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
     const char *target = rt_string_cstr(name);
-    if (!target) return;
+    if (!target)
+        return;
     for (int32_t i = 0; i < mt->shape_count; i++)
     {
         if (strcmp(mt->shapes[i].name, target) == 0)
@@ -225,21 +241,25 @@ void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets)
  * CPU morph application + drawing
  *=========================================================================*/
 
-void rt_canvas3d_draw_mesh_morphed(void *canvas, void *mesh, void *transform,
-                                     void *material, void *morph_targets)
+void rt_canvas3d_draw_mesh_morphed(
+    void *canvas, void *mesh, void *transform, void *material, void *morph_targets)
 {
-    if (!canvas || !mesh || !transform || !material || !morph_targets) return;
+    if (!canvas || !mesh || !transform || !material || !morph_targets)
+        return;
 
     rt_mesh3d *m = (rt_mesh3d *)mesh;
     rt_morphtarget3d *mt = (rt_morphtarget3d *)morph_targets;
 
-    if (m->vertex_count == 0) return;
-    if (m->vertex_count != (uint32_t)mt->vertex_count) return;
+    if (m->vertex_count == 0)
+        return;
+    if (m->vertex_count != (uint32_t)mt->vertex_count)
+        return;
 
     /* Allocate morphed vertex buffer */
-    vgfx3d_vertex_t *morphed = (vgfx3d_vertex_t *)malloc(
-        (size_t)m->vertex_count * sizeof(vgfx3d_vertex_t));
-    if (!morphed) return;
+    vgfx3d_vertex_t *morphed =
+        (vgfx3d_vertex_t *)malloc((size_t)m->vertex_count * sizeof(vgfx3d_vertex_t));
+    if (!morphed)
+        return;
 
     /* Start with base mesh */
     memcpy(morphed, m->vertices, (size_t)m->vertex_count * sizeof(vgfx3d_vertex_t));
@@ -249,11 +269,13 @@ void rt_canvas3d_draw_mesh_morphed(void *canvas, void *mesh, void *transform,
     for (int32_t s = 0; s < mt->shape_count; s++)
     {
         float w = mt->weights[s];
-        if (fabsf(w) < 1e-6f) continue;
+        if (fabsf(w) < 1e-6f)
+            continue;
 
         const float *pd = mt->shapes[s].pos_deltas;
         const float *nd = mt->shapes[s].nrm_deltas;
-        if (!pd) continue;
+        if (!pd)
+            continue;
 
         for (uint32_t v = 0; v < m->vertex_count; v++)
         {

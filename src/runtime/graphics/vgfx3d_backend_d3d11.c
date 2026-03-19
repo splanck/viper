@@ -23,17 +23,17 @@
 
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
+#include <windows.h>
 
-#include "vgfx3d_backend.h"
 #include "vgfx.h"
+#include "vgfx3d_backend.h"
 
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -69,7 +69,7 @@ static const char *hlsl_shader_source =
     "\n"
     "cbuffer PerMaterial : register(b2) {\n"
     "    float4 diffuseColor;\n"
-    "    float4 specularColor;\n"  /* .w = shininess */
+    "    float4 specularColor;\n" /* .w = shininess */
     "    float4 emissiveColor;\n"
     "    float alpha;\n"
     "    int hasTexture;\n"
@@ -130,11 +130,13 @@ static const char *hlsl_shader_source =
     "            continue;\n"
     "        }\n"
     "        float NdotL = max(dot(N, L), 0.0);\n"
-    "        result += lights[i].color.rgb * lights[i].intensity * NdotL * diffuseColor.rgb * atten;\n"
+    "        result += lights[i].color.rgb * lights[i].intensity * NdotL * diffuseColor.rgb * "
+    "atten;\n"
     "        if (NdotL > 0.0 && specularColor.w > 0.0) {\n"
     "            float3 H = normalize(L + V);\n"
     "            float spec = pow(max(dot(N, H), 0.0), specularColor.w);\n"
-    "            result += lights[i].color.rgb * lights[i].intensity * spec * specularColor.rgb * atten;\n"
+    "            result += lights[i].color.rgb * lights[i].intensity * spec * specularColor.rgb * "
+    "atten;\n"
     "        }\n"
     "    }\n"
     "    result += emissiveColor.rgb;\n"
@@ -145,7 +147,8 @@ static const char *hlsl_shader_source =
 // D3D11 context
 //=============================================================================
 
-typedef struct {
+typedef struct
+{
     ID3D11Device *device;
     ID3D11DeviceContext *ctx;
     IDXGISwapChain *swapChain;
@@ -172,37 +175,70 @@ typedef struct {
 // Uniform buffer structs (match HLSL cbuffers)
 //=============================================================================
 
-typedef struct { float m[16]; float vp[16]; float nm[16]; } d3d_per_object_t;
-typedef struct { float cp[4]; float ac[4]; int32_t lc; int32_t _p[3]; } d3d_per_scene_t;
-typedef struct {
-    int32_t type; float _p0, _p1, _p2;
-    float dir[4]; float pos[4]; float col[4];
-    float intensity, attenuation; float _p3[2];
+typedef struct
+{
+    float m[16];
+    float vp[16];
+    float nm[16];
+} d3d_per_object_t;
+
+typedef struct
+{
+    float cp[4];
+    float ac[4];
+    int32_t lc;
+    int32_t _p[3];
+} d3d_per_scene_t;
+
+typedef struct
+{
+    int32_t type;
+    float _p0, _p1, _p2;
+    float dir[4];
+    float pos[4];
+    float col[4];
+    float intensity, attenuation;
+    float _p3[2];
 } d3d_light_t;
-typedef struct { float dc[4]; float sc[4]; float ec[4]; float alpha; int32_t ht; int32_t unlit; int32_t _p; } d3d_per_material_t;
+
+typedef struct
+{
+    float dc[4];
+    float sc[4];
+    float ec[4];
+    float alpha;
+    int32_t ht;
+    int32_t unlit;
+    int32_t _p;
+} d3d_per_material_t;
 
 //=============================================================================
 // Matrix helper
 //=============================================================================
 
-static void mat4f_mul_d3d(const float *a, const float *b, float *out) {
+static void mat4f_mul_d3d(const float *a, const float *b, float *out)
+{
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
-            out[r * 4 + c] = a[r*4+0]*b[0*4+c] + a[r*4+1]*b[1*4+c] +
-                             a[r*4+2]*b[2*4+c] + a[r*4+3]*b[3*4+c];
+            out[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] + a[r * 4 + 1] * b[1 * 4 + c] +
+                             a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
 }
 
 //=============================================================================
 // Backend vtable implementation
 //=============================================================================
 
-static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
+static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
+{
     HWND hwnd = (HWND)vgfx_get_native_view(win);
-    if (!hwnd) return NULL;
+    if (!hwnd)
+        return NULL;
 
     d3d11_context_t *ctx = (d3d11_context_t *)calloc(1, sizeof(d3d11_context_t));
-    if (!ctx) return NULL;
-    ctx->width = w; ctx->height = h;
+    if (!ctx)
+        return NULL;
+    ctx->width = w;
+    ctx->height = h;
 
     DXGI_SWAP_CHAIN_DESC scd;
     memset(&scd, 0, sizeof(scd));
@@ -218,11 +254,23 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     scd.Windowed = TRUE;
 
     D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
-    HRESULT hr = D3D11CreateDeviceAndSwapChain(
-        NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0,
-        &featureLevel, 1, D3D11_SDK_VERSION,
-        &scd, &ctx->swapChain, &ctx->device, NULL, &ctx->ctx);
-    if (FAILED(hr)) { free(ctx); return NULL; }
+    HRESULT hr = D3D11CreateDeviceAndSwapChain(NULL,
+                                               D3D_DRIVER_TYPE_HARDWARE,
+                                               NULL,
+                                               0,
+                                               &featureLevel,
+                                               1,
+                                               D3D11_SDK_VERSION,
+                                               &scd,
+                                               &ctx->swapChain,
+                                               &ctx->device,
+                                               NULL,
+                                               &ctx->ctx);
+    if (FAILED(hr))
+    {
+        free(ctx);
+        return NULL;
+    }
 
     /* Back buffer RTV */
     ID3D11Texture2D *backBuf;
@@ -233,8 +281,10 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     /* Depth-stencil buffer */
     D3D11_TEXTURE2D_DESC depthDesc;
     memset(&depthDesc, 0, sizeof(depthDesc));
-    depthDesc.Width = (UINT)w; depthDesc.Height = (UINT)h;
-    depthDesc.MipLevels = 1; depthDesc.ArraySize = 1;
+    depthDesc.Width = (UINT)w;
+    depthDesc.Height = (UINT)h;
+    depthDesc.MipLevels = 1;
+    depthDesc.ArraySize = 1;
     depthDesc.Format = DXGI_FORMAT_D32_FLOAT;
     depthDesc.SampleDesc.Count = 1;
     depthDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -284,34 +334,72 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
 
     /* Compile shaders */
     ID3DBlob *vsBlob = NULL, *psBlob = NULL, *errBlob = NULL;
-    hr = D3DCompile(hlsl_shader_source, strlen(hlsl_shader_source), "shader",
-                    NULL, NULL, "VSMain", "vs_5_0", 0, 0, &vsBlob, &errBlob);
-    if (FAILED(hr)) { if (errBlob) ID3D10Blob_Release(errBlob); free(ctx); return NULL; }
+    hr = D3DCompile(hlsl_shader_source,
+                    strlen(hlsl_shader_source),
+                    "shader",
+                    NULL,
+                    NULL,
+                    "VSMain",
+                    "vs_5_0",
+                    0,
+                    0,
+                    &vsBlob,
+                    &errBlob);
+    if (FAILED(hr))
+    {
+        if (errBlob)
+            ID3D10Blob_Release(errBlob);
+        free(ctx);
+        return NULL;
+    }
 
-    hr = D3DCompile(hlsl_shader_source, strlen(hlsl_shader_source), "shader",
-                    NULL, NULL, "PSMain", "ps_5_0", 0, 0, &psBlob, &errBlob);
-    if (FAILED(hr)) { ID3D10Blob_Release(vsBlob); if (errBlob) ID3D10Blob_Release(errBlob); free(ctx); return NULL; }
+    hr = D3DCompile(hlsl_shader_source,
+                    strlen(hlsl_shader_source),
+                    "shader",
+                    NULL,
+                    NULL,
+                    "PSMain",
+                    "ps_5_0",
+                    0,
+                    0,
+                    &psBlob,
+                    &errBlob);
+    if (FAILED(hr))
+    {
+        ID3D10Blob_Release(vsBlob);
+        if (errBlob)
+            ID3D10Blob_Release(errBlob);
+        free(ctx);
+        return NULL;
+    }
 
     ID3D11Device_CreateVertexShader(ctx->device,
-        ID3D10Blob_GetBufferPointer(vsBlob), ID3D10Blob_GetBufferSize(vsBlob),
-        NULL, &ctx->vs);
+                                    ID3D10Blob_GetBufferPointer(vsBlob),
+                                    ID3D10Blob_GetBufferSize(vsBlob),
+                                    NULL,
+                                    &ctx->vs);
     ID3D11Device_CreatePixelShader(ctx->device,
-        ID3D10Blob_GetBufferPointer(psBlob), ID3D10Blob_GetBufferSize(psBlob),
-        NULL, &ctx->ps);
+                                   ID3D10Blob_GetBufferPointer(psBlob),
+                                   ID3D10Blob_GetBufferSize(psBlob),
+                                   NULL,
+                                   &ctx->ps);
 
     /* Input layout (matches 80-byte vgfx3d_vertex_t) */
     D3D11_INPUT_ELEMENT_DESC layout[] = {
-        {"POSITION",     0, DXGI_FORMAT_R32G32B32_FLOAT,    0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"NORMAL",       0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"TEXCOORD",     0, DXGI_FORMAT_R32G32_FLOAT,       0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"COLOR",        0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"TANGENT",      0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"BLENDINDICES", 0, DXGI_FORMAT_R8G8B8A8_UINT,      0, 60, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"BLENDINDICES", 0, DXGI_FORMAT_R8G8B8A8_UINT, 0, 60, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
-    ID3D11Device_CreateInputLayout(ctx->device, layout, 7,
-        ID3D10Blob_GetBufferPointer(vsBlob), ID3D10Blob_GetBufferSize(vsBlob),
-        &ctx->inputLayout);
+    ID3D11Device_CreateInputLayout(ctx->device,
+                                   layout,
+                                   7,
+                                   ID3D10Blob_GetBufferPointer(vsBlob),
+                                   ID3D10Blob_GetBufferSize(vsBlob),
+                                   &ctx->inputLayout);
 
     ID3D10Blob_Release(vsBlob);
     ID3D10Blob_Release(psBlob);
@@ -335,35 +423,57 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     return ctx;
 }
 
-static void d3d11_destroy_ctx(void *ctx_ptr) {
-    if (!ctx_ptr) return;
+static void d3d11_destroy_ctx(void *ctx_ptr)
+{
+    if (!ctx_ptr)
+        return;
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
-    if (ctx->cbPerLights) ID3D11Buffer_Release(ctx->cbPerLights);
-    if (ctx->cbPerMaterial) ID3D11Buffer_Release(ctx->cbPerMaterial);
-    if (ctx->cbPerScene) ID3D11Buffer_Release(ctx->cbPerScene);
-    if (ctx->cbPerObject) ID3D11Buffer_Release(ctx->cbPerObject);
-    if (ctx->inputLayout) ID3D11InputLayout_Release(ctx->inputLayout);
-    if (ctx->ps) ID3D11PixelShader_Release(ctx->ps);
-    if (ctx->vs) ID3D11VertexShader_Release(ctx->vs);
-    if (ctx->rsState) ID3D11RasterizerState_Release(ctx->rsState);
-    if (ctx->blendState) ID3D11BlendState_Release(ctx->blendState);
-    if (ctx->dssNoWrite) ID3D11DepthStencilState_Release(ctx->dssNoWrite);
-    if (ctx->dss) ID3D11DepthStencilState_Release(ctx->dss);
-    if (ctx->dsv) ID3D11DepthStencilView_Release(ctx->dsv);
-    if (ctx->rtv) ID3D11RenderTargetView_Release(ctx->rtv);
-    if (ctx->swapChain) IDXGISwapChain_Release(ctx->swapChain);
-    if (ctx->ctx) ID3D11DeviceContext_Release(ctx->ctx);
-    if (ctx->device) ID3D11Device_Release(ctx->device);
+    if (ctx->cbPerLights)
+        ID3D11Buffer_Release(ctx->cbPerLights);
+    if (ctx->cbPerMaterial)
+        ID3D11Buffer_Release(ctx->cbPerMaterial);
+    if (ctx->cbPerScene)
+        ID3D11Buffer_Release(ctx->cbPerScene);
+    if (ctx->cbPerObject)
+        ID3D11Buffer_Release(ctx->cbPerObject);
+    if (ctx->inputLayout)
+        ID3D11InputLayout_Release(ctx->inputLayout);
+    if (ctx->ps)
+        ID3D11PixelShader_Release(ctx->ps);
+    if (ctx->vs)
+        ID3D11VertexShader_Release(ctx->vs);
+    if (ctx->rsState)
+        ID3D11RasterizerState_Release(ctx->rsState);
+    if (ctx->blendState)
+        ID3D11BlendState_Release(ctx->blendState);
+    if (ctx->dssNoWrite)
+        ID3D11DepthStencilState_Release(ctx->dssNoWrite);
+    if (ctx->dss)
+        ID3D11DepthStencilState_Release(ctx->dss);
+    if (ctx->dsv)
+        ID3D11DepthStencilView_Release(ctx->dsv);
+    if (ctx->rtv)
+        ID3D11RenderTargetView_Release(ctx->rtv);
+    if (ctx->swapChain)
+        IDXGISwapChain_Release(ctx->swapChain);
+    if (ctx->ctx)
+        ID3D11DeviceContext_Release(ctx->ctx);
+    if (ctx->device)
+        ID3D11Device_Release(ctx->device);
     free(ctx);
 }
 
-static void d3d11_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b) {
+static void d3d11_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b)
+{
     (void)win;
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
-    ctx->clearR = r; ctx->clearG = g; ctx->clearB = b;
+    ctx->clearR = r;
+    ctx->clearG = g;
+    ctx->clearB = b;
 }
 
-static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
+static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam)
+{
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     mat4f_mul_d3d(cam->projection, cam->view, ctx->vp);
     memcpy(ctx->cam_pos, cam->position, sizeof(float) * 3);
@@ -388,11 +498,18 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     ID3D11DeviceContext_OMSetBlendState(ctx->ctx, ctx->blendState, blendFactor, 0xFFFFFFFF);
 }
 
-static void d3d11_submit_draw(void *ctx_ptr, vgfx_window_t win,
-                               const vgfx3d_draw_cmd_t *cmd,
-                               const vgfx3d_light_params_t *lights, int32_t light_count,
-                               const float *ambient, int8_t wireframe, int8_t backface_cull) {
-    (void)win; (void)wireframe; (void)backface_cull;
+static void d3d11_submit_draw(void *ctx_ptr,
+                              vgfx_window_t win,
+                              const vgfx3d_draw_cmd_t *cmd,
+                              const vgfx3d_light_params_t *lights,
+                              int32_t light_count,
+                              const float *ambient,
+                              int8_t wireframe,
+                              int8_t backface_cull)
+{
+    (void)win;
+    (void)wireframe;
+    (void)backface_cull;
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
 
     /* Toggle depth-stencil state for transparent draws */
@@ -404,7 +521,8 @@ static void d3d11_submit_draw(void *ctx_ptr, vgfx_window_t win,
     /* Create vertex + index buffers */
     D3D11_BUFFER_DESC bd;
     D3D11_SUBRESOURCE_DATA sd;
-    memset(&bd, 0, sizeof(bd)); memset(&sd, 0, sizeof(sd));
+    memset(&bd, 0, sizeof(bd));
+    memset(&sd, 0, sizeof(sd));
 
     bd.Usage = D3D11_USAGE_DEFAULT;
     bd.ByteWidth = cmd->vertex_count * sizeof(vgfx3d_vertex_t);
@@ -425,7 +543,8 @@ static void d3d11_submit_draw(void *ctx_ptr, vgfx_window_t win,
 
     /* Update per-object constant buffer */
     D3D11_MAPPED_SUBRESOURCE mapped;
-    ID3D11DeviceContext_Map(ctx->ctx, (ID3D11Resource *)ctx->cbPerObject, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    ID3D11DeviceContext_Map(
+        ctx->ctx, (ID3D11Resource *)ctx->cbPerObject, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     d3d_per_object_t *obj = (d3d_per_object_t *)mapped.pData;
     memcpy(obj->m, cmd->model_matrix, sizeof(float) * 16);
     memcpy(obj->vp, ctx->vp, sizeof(float) * 16);
@@ -434,23 +553,31 @@ static void d3d11_submit_draw(void *ctx_ptr, vgfx_window_t win,
     ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cbPerObject);
 
     /* Per-scene */
-    ID3D11DeviceContext_Map(ctx->ctx, (ID3D11Resource *)ctx->cbPerScene, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    ID3D11DeviceContext_Map(
+        ctx->ctx, (ID3D11Resource *)ctx->cbPerScene, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     d3d_per_scene_t *scene = (d3d_per_scene_t *)mapped.pData;
     memset(scene, 0, sizeof(*scene));
     memcpy(scene->cp, ctx->cam_pos, sizeof(float) * 3);
-    scene->ac[0] = ambient[0]; scene->ac[1] = ambient[1]; scene->ac[2] = ambient[2];
+    scene->ac[0] = ambient[0];
+    scene->ac[1] = ambient[1];
+    scene->ac[2] = ambient[2];
     scene->lc = light_count;
     ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->cbPerScene, 0);
     ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 1, 1, &ctx->cbPerScene);
 
     /* Per-material */
-    ID3D11DeviceContext_Map(ctx->ctx, (ID3D11Resource *)ctx->cbPerMaterial, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    ID3D11DeviceContext_Map(
+        ctx->ctx, (ID3D11Resource *)ctx->cbPerMaterial, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     d3d_per_material_t *mat = (d3d_per_material_t *)mapped.pData;
     memset(mat, 0, sizeof(*mat));
     memcpy(mat->dc, cmd->diffuse_color, sizeof(float) * 4);
-    mat->sc[0] = cmd->specular[0]; mat->sc[1] = cmd->specular[1]; mat->sc[2] = cmd->specular[2];
+    mat->sc[0] = cmd->specular[0];
+    mat->sc[1] = cmd->specular[1];
+    mat->sc[2] = cmd->specular[2];
     mat->sc[3] = cmd->shininess; /* specularColor.w = shininess in shader */
-    mat->ec[0] = cmd->emissive_color[0]; mat->ec[1] = cmd->emissive_color[1]; mat->ec[2] = cmd->emissive_color[2];
+    mat->ec[0] = cmd->emissive_color[0];
+    mat->ec[1] = cmd->emissive_color[1];
+    mat->ec[2] = cmd->emissive_color[2];
     mat->alpha = cmd->alpha;
     mat->ht = cmd->texture ? 1 : 0;
     mat->unlit = cmd->unlit;
@@ -458,14 +585,22 @@ static void d3d11_submit_draw(void *ctx_ptr, vgfx_window_t win,
     ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 2, 1, &ctx->cbPerMaterial);
 
     /* Per-lights (cbuffer PerLights : register(b3)) */
-    ID3D11DeviceContext_Map(ctx->ctx, (ID3D11Resource *)ctx->cbPerLights, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    ID3D11DeviceContext_Map(
+        ctx->ctx, (ID3D11Resource *)ctx->cbPerLights, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     d3d_light_t *dl = (d3d_light_t *)mapped.pData;
     memset(dl, 0, sizeof(d3d_light_t) * 8);
-    for (int32_t i = 0; i < light_count && i < 8; i++) {
+    for (int32_t i = 0; i < light_count && i < 8; i++)
+    {
         dl[i].type = lights[i].type;
-        dl[i].dir[0] = lights[i].direction[0]; dl[i].dir[1] = lights[i].direction[1]; dl[i].dir[2] = lights[i].direction[2];
-        dl[i].pos[0] = lights[i].position[0]; dl[i].pos[1] = lights[i].position[1]; dl[i].pos[2] = lights[i].position[2];
-        dl[i].col[0] = lights[i].color[0]; dl[i].col[1] = lights[i].color[1]; dl[i].col[2] = lights[i].color[2];
+        dl[i].dir[0] = lights[i].direction[0];
+        dl[i].dir[1] = lights[i].direction[1];
+        dl[i].dir[2] = lights[i].direction[2];
+        dl[i].pos[0] = lights[i].position[0];
+        dl[i].pos[1] = lights[i].position[1];
+        dl[i].pos[2] = lights[i].position[2];
+        dl[i].col[0] = lights[i].color[0];
+        dl[i].col[1] = lights[i].color[1];
+        dl[i].col[2] = lights[i].color[2];
         dl[i].intensity = lights[i].intensity;
         dl[i].attenuation = lights[i].attenuation;
     }
@@ -478,21 +613,24 @@ static void d3d11_submit_draw(void *ctx_ptr, vgfx_window_t win,
     ID3D11Buffer_Release(ib);
 }
 
-static void d3d11_end_frame(void *ctx_ptr) {
+static void d3d11_end_frame(void *ctx_ptr)
+{
     (void)ctx_ptr;
     /* GPU work is committed implicitly by D3D11 command list.
      * Presentation moved to d3d11_present() so only the LAST
      * Begin/End pair's content is shown per frame. */
 }
 
-static void d3d11_present(void *ctx_ptr) {
+static void d3d11_present(void *ctx_ptr)
+{
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     IDXGISwapChain_Present(ctx->swapChain, 1, 0); /* VSync on */
 }
 
 static void d3d11_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
 {
-    (void)ctx_ptr; (void)rt;
+    (void)ctx_ptr;
+    (void)rt;
 }
 
 const vgfx3d_backend_t vgfx3d_d3d11_backend = {

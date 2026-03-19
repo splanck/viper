@@ -77,9 +77,9 @@ struct Options
     bool run_native = false;             ///< True when -run-native requests execution.
     bool dump_mir_before_ra = false;     ///< Emit MIR before register allocation to stderr.
     bool dump_mir_after_ra = false;      ///< Emit MIR after register allocation to stderr.
-    bool use_native_asm = true;          ///< Use native binary encoder (default; --system-asm to override).
-    bool use_native_link = true;         ///< Use native linker (default; --system-link to override).
-    int optimize = 0;                    ///< IL optimization level: 0=none (default for low-level tool), 1=O1, 2=O2.
+    bool use_native_asm = true;  ///< Use native binary encoder (default; --system-asm to override).
+    bool use_native_link = true; ///< Use native linker (default; --system-link to override).
+    int optimize = 0; ///< IL optimization level: 0=none (default for low-level tool), 1=O1, 2=O2.
 };
 
 /// @brief Parse argv-style arguments into a structured @ref Options instance.
@@ -243,7 +243,8 @@ static int linkToExe(const std::string &asmPath,
     {
         std::vector<std::string> frameworks;
 #if defined(__APPLE__)
-        frameworks = {"Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers", "Metal", "QuartzCore"};
+        frameworks = {
+            "Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers", "Metal", "QuartzCore"};
 #endif
         appendGraphicsLibs(ctx, linkCmd, frameworks);
     }
@@ -301,7 +302,8 @@ static int linkObjToExe(const std::string &objPath,
     {
         std::vector<std::string> frameworks;
 #if defined(__APPLE__)
-        frameworks = {"Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers", "Metal", "QuartzCore"};
+        frameworks = {
+            "Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers", "Metal", "QuartzCore"};
 #endif
         appendGraphicsLibs(ctx, linkCmd, frameworks);
     }

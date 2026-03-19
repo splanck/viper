@@ -60,13 +60,13 @@ typedef struct
 /// @brief Internal pathfinder structure.
 typedef struct
 {
-    pf_cell *cells;       ///< width × height cell array.
-    int32_t width;        ///< Grid width.
-    int32_t height;       ///< Grid height.
+    pf_cell *cells;        ///< width × height cell array.
+    int32_t width;         ///< Grid width.
+    int32_t height;        ///< Grid height.
     int8_t allow_diagonal; ///< 0 = 4-way, 1 = 8-way.
-    int32_t max_steps;    ///< Max nodes to expand (0 = unlimited).
-    int32_t last_steps;   ///< Nodes expanded in last search.
-    int8_t last_found;    ///< 1 if last search found a path.
+    int32_t max_steps;     ///< Max nodes to expand (0 = unlimited).
+    int32_t last_steps;    ///< Nodes expanded in last search.
+    int8_t last_found;     ///< 1 if last search found a path.
 } rt_pathfinder_impl;
 
 /// @brief Flat index for (x, y) in the grid.
@@ -397,8 +397,7 @@ static const int32_t dir8_dx[8] = {0, 1, 0, -1, 1, 1, -1, -1};
 static const int32_t dir8_dy[8] = {-1, 0, 1, 0, -1, 1, 1, -1};
 
 /// @brief Build a List[Integer] of interleaved x,y pairs from the parent chain.
-static void *pf_build_path(pf_node *nodes, int32_t goal_idx,
-                            int32_t width)
+static void *pf_build_path(pf_node *nodes, int32_t goal_idx, int32_t width)
 {
     // Count path length
     int32_t len = 0;
@@ -438,8 +437,13 @@ static void *pf_build_path(pf_node *nodes, int32_t goal_idx,
 
 /// @brief Core A* implementation. Returns path as List or NULL.
 /// If cost_only is true, returns NULL but sets pf->last_found and returns cost via out_cost.
-static void *pf_astar(rt_pathfinder_impl *pf, int32_t sx, int32_t sy,
-                       int32_t gx, int32_t gy, int8_t cost_only, int32_t *out_cost)
+static void *pf_astar(rt_pathfinder_impl *pf,
+                      int32_t sx,
+                      int32_t sy,
+                      int32_t gx,
+                      int32_t gy,
+                      int8_t cost_only,
+                      int32_t *out_cost)
 {
     pf->last_found = 0;
     pf->last_steps = 0;
@@ -603,8 +607,7 @@ static void *pf_astar(rt_pathfinder_impl *pf, int32_t sx, int32_t sy,
 // Public Pathfinding API
 //=============================================================================
 
-void *rt_pathfinder_find_path(void *ptr, int64_t sx, int64_t sy,
-                               int64_t gx, int64_t gy)
+void *rt_pathfinder_find_path(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy)
 {
     if (!ptr)
         return rt_list_new();
@@ -612,8 +615,7 @@ void *rt_pathfinder_find_path(void *ptr, int64_t sx, int64_t sy,
     return pf_astar(pf, (int32_t)sx, (int32_t)sy, (int32_t)gx, (int32_t)gy, 0, NULL);
 }
 
-int64_t rt_pathfinder_find_path_length(void *ptr, int64_t sx, int64_t sy,
-                                        int64_t gx, int64_t gy)
+int64_t rt_pathfinder_find_path_length(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy)
 {
     if (!ptr)
         return -1;
@@ -623,8 +625,7 @@ int64_t rt_pathfinder_find_path_length(void *ptr, int64_t sx, int64_t sy,
     return cost;
 }
 
-void *rt_pathfinder_find_nearest(void *ptr, int64_t sx, int64_t sy,
-                                  int64_t target_value)
+void *rt_pathfinder_find_nearest(void *ptr, int64_t sx, int64_t sy, int64_t target_value)
 {
     // Simple BFS-based nearest search: expand from start, return first matching cell.
     // This reuses the A* infrastructure but with heuristic=0 (degrades to Dijkstra).

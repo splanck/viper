@@ -18,12 +18,12 @@
  * that are hidden by _POSIX_C_SOURCE but required by macOS system headers. */
 #include <sys/types.h>
 
+#import <Cocoa/Cocoa.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
-#import <Cocoa/Cocoa.h>
 
-#include "vgfx3d_backend.h"
 #include "vgfx.h"
+#include "vgfx3d_backend.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -34,35 +34,36 @@
 // Objective-C wrapper to hold Metal objects under ARC
 //=============================================================================
 
-@interface VGFXMetalContext : NSObject {
-    @public
+@interface VGFXMetalContext : NSObject
+{
+  @public
     float _vp[16];
     float _camPos[3];
 }
-@property (nonatomic, strong) id<MTLDevice> device;
-@property (nonatomic, strong) id<MTLCommandQueue> commandQueue;
-@property (nonatomic, strong) id<MTLRenderPipelineState> pipelineState;
-@property (nonatomic, strong) id<MTLDepthStencilState> depthState;
-@property (nonatomic, strong) id<MTLDepthStencilState> depthStateNoWrite;
-@property (nonatomic, strong) CAMetalLayer *metalLayer;
-@property (nonatomic, strong) id<MTLTexture> depthTexture;
-@property (nonatomic, strong) id<MTLLibrary> library;
-@property (nonatomic, strong) id<MTLCommandBuffer> cmdBuf;
-@property (nonatomic, strong) id<MTLRenderCommandEncoder> encoder;
-@property (nonatomic, strong) id<CAMetalDrawable> drawable;
-@property (nonatomic) int32_t width;
-@property (nonatomic) int32_t height;
-@property (nonatomic) float clearR, clearG, clearB;
-@property (nonatomic) BOOL inFrame;
+@property(nonatomic, strong) id<MTLDevice> device;
+@property(nonatomic, strong) id<MTLCommandQueue> commandQueue;
+@property(nonatomic, strong) id<MTLRenderPipelineState> pipelineState;
+@property(nonatomic, strong) id<MTLDepthStencilState> depthState;
+@property(nonatomic, strong) id<MTLDepthStencilState> depthStateNoWrite;
+@property(nonatomic, strong) CAMetalLayer *metalLayer;
+@property(nonatomic, strong) id<MTLTexture> depthTexture;
+@property(nonatomic, strong) id<MTLLibrary> library;
+@property(nonatomic, strong) id<MTLCommandBuffer> cmdBuf;
+@property(nonatomic, strong) id<MTLRenderCommandEncoder> encoder;
+@property(nonatomic, strong) id<CAMetalDrawable> drawable;
+@property(nonatomic) int32_t width;
+@property(nonatomic) int32_t height;
+@property(nonatomic) float clearR, clearG, clearB;
+@property(nonatomic) BOOL inFrame;
 /* Default 1x1 white texture (bound when no material texture is set) */
-@property (nonatomic, strong) id<MTLTexture> defaultTexture;
-@property (nonatomic, strong) id<MTLSamplerState> defaultSampler;
+@property(nonatomic, strong) id<MTLTexture> defaultTexture;
+@property(nonatomic, strong) id<MTLSamplerState> defaultSampler;
 /* Render-to-texture state */
-@property (nonatomic, strong) id<MTLTexture> rttColorTexture;
-@property (nonatomic, strong) id<MTLTexture> rttDepthTexture;
-@property (nonatomic) BOOL rttActive;
-@property (nonatomic) int32_t rttWidth, rttHeight;
-@property (nonatomic, assign) vgfx3d_rendertarget_t *rttTarget; /* CPU-side RT for readback */
+@property(nonatomic, strong) id<MTLTexture> rttColorTexture;
+@property(nonatomic, strong) id<MTLTexture> rttDepthTexture;
+@property(nonatomic) BOOL rttActive;
+@property(nonatomic) int32_t rttWidth, rttHeight;
+@property(nonatomic, assign) vgfx3d_rendertarget_t *rttTarget; /* CPU-side RT for readback */
 @end
 
 @implementation VGFXMetalContext
@@ -72,160 +73,210 @@
 // MSL Shader source
 //=============================================================================
 
-static NSString *metal_shader_source = @
+static NSString *metal_shader_source =
+    @
     "#include <metal_stdlib>\n"
-    "using namespace metal;\n"
-    "\n"
-    "struct VertexIn {\n"
-    "    float3 position [[attribute(0)]];\n"
-    "    float3 normal   [[attribute(1)]];\n"
-    "    float2 uv       [[attribute(2)]];\n"
-    "    float4 color    [[attribute(3)]];\n"
-    "    float3 tangent  [[attribute(4)]];\n"
-    "    uchar4 boneIdx  [[attribute(5)]];\n"
-    "    float4 boneWt   [[attribute(6)]];\n"
-    "};\n"
-    "\n"
-    "struct VertexOut {\n"
-    "    float4 position [[position]];\n"
-    "    float3 worldPos;\n"
-    "    float3 normal;\n"
-    "    float2 uv;\n"
-    "    float4 color;\n"
-    "};\n"
-    "\n"
-    "struct PerObject {\n"
-    "    float4x4 modelMatrix;\n"
-    "    float4x4 viewProjection;\n"
-    "    float4x4 normalMatrix;\n"
-    "};\n"
-    "\n"
-    "struct Light {\n"
-    "    int type; float _p0, _p1, _p2;\n"
-    "    float4 direction;\n"
-    "    float4 position;\n"
-    "    float4 color;\n"
-    "    float intensity;\n"
-    "    float attenuation;\n"
-    "    float _p3[2];\n"
-    "};\n"
-    "\n"
-    "struct PerScene {\n"
-    "    float4 cameraPosition;\n"
-    "    float4 ambientColor;\n"
-    "    int lightCount;\n"
-    "    int _pad[3];\n"
-    "};\n"
-    "\n"
-    "struct PerMaterial {\n"
-    "    float4 diffuseColor;\n"
-    "    float4 specularColor;\n"
-    "    float4 emissiveColor;\n"
-    "    float alpha;\n"
-    "    int hasTexture;\n"
-    "    int unlit;\n"
-    "    int _pad;\n"
-    "};\n"
-    "\n"
-    "vertex VertexOut vertex_main(\n"
-    "    VertexIn in [[stage_in]],\n"
-    "    constant PerObject &obj [[buffer(1)]]\n"
-    ") {\n"
-    "    VertexOut out;\n"
-    "    float4 wp = obj.modelMatrix * float4(in.position, 1.0);\n"
-    "    out.position = obj.viewProjection * wp;\n"
-    "    /* Remap Z from OpenGL NDC [-1,1] to Metal [0,1] */\n"
-    "    out.position.z = out.position.z * 0.5 + out.position.w * 0.5;\n"
-    "    out.worldPos = wp.xyz;\n"
-    "    out.normal = (obj.normalMatrix * float4(in.normal, 0.0)).xyz;\n"
-    "    out.uv = in.uv;\n"
-    "    out.color = in.color;\n"
-    "    return out;\n"
-    "}\n"
-    "\n"
-    "fragment float4 fragment_main(\n"
-    "    VertexOut in [[stage_in]],\n"
-    "    constant PerScene &scene [[buffer(0)]],\n"
-    "    constant PerMaterial &material [[buffer(1)]],\n"
-    "    constant Light *lights [[buffer(2)]],\n"
-    "    texture2d<float> diffuseTex [[texture(0)]],\n"
-    "    sampler texSampler [[sampler(0)]]\n"
-    ") {\n"
-    "    if (material.unlit) {\n"
-    "        float3 c = material.diffuseColor.rgb;\n"
-    "        if (material.hasTexture) c *= diffuseTex.sample(texSampler, in.uv).rgb;\n"
-    "        return float4(c, material.alpha);\n"
-    "    }\n"
-    "    float3 N = normalize(in.normal);\n"
-    "    float3 V = normalize(scene.cameraPosition.xyz - in.worldPos);\n"
-    "    float3 result = scene.ambientColor.rgb * material.diffuseColor.rgb;\n"
-    "    for (int i = 0; i < scene.lightCount; i++) {\n"
-    "        float3 L; float atten = 1.0;\n"
-    "        if (lights[i].type == 0) {\n"
-    "            L = normalize(-lights[i].direction.xyz);\n"
-    "        } else if (lights[i].type == 1) {\n"
-    "            float3 tl = lights[i].position.xyz - in.worldPos;\n"
-    "            float d = length(tl); L = tl / max(d, 0.0001);\n"
-    "            atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
-    "        } else {\n"
-    "            result += lights[i].color.rgb * lights[i].intensity * material.diffuseColor.rgb;\n"
-    "            continue;\n"
-    "        }\n"
-    "        float NdotL = max(dot(N, L), 0.0);\n"
-    "        result += lights[i].color.rgb * lights[i].intensity * NdotL * material.diffuseColor.rgb * atten;\n"
-    "        if (NdotL > 0.0 && material.specularColor.w > 0.0) {\n"
-    "            float3 H = normalize(L + V);\n"
-    "            float spec = pow(max(dot(N, H), 0.0), material.specularColor.w);\n"
-    "            result += lights[i].color.rgb * lights[i].intensity * spec * material.specularColor.rgb * atten;\n"
-    "        }\n"
-    "    }\n"
-    "    result += material.emissiveColor.rgb;\n"
-    "    return float4(result, material.alpha);\n"
-    "}\n";
+     "using namespace metal;\n"
+     "\n"
+     "struct VertexIn {\n"
+     "    float3 position [[attribute(0)]];\n"
+     "    float3 normal   [[attribute(1)]];\n"
+     "    float2 uv       [[attribute(2)]];\n"
+     "    float4 color    [[attribute(3)]];\n"
+     "    float3 tangent  [[attribute(4)]];\n"
+     "    uchar4 boneIdx  [[attribute(5)]];\n"
+     "    float4 boneWt   [[attribute(6)]];\n"
+     "};\n"
+     "\n"
+     "struct VertexOut {\n"
+     "    float4 position [[position]];\n"
+     "    float3 worldPos;\n"
+     "    float3 normal;\n"
+     "    float2 uv;\n"
+     "    float4 color;\n"
+     "};\n"
+     "\n"
+     "struct PerObject {\n"
+     "    float4x4 modelMatrix;\n"
+     "    float4x4 viewProjection;\n"
+     "    float4x4 normalMatrix;\n"
+     "};\n"
+     "\n"
+     "struct Light {\n"
+     "    int type; float _p0, _p1, _p2;\n"
+     "    float4 direction;\n"
+     "    float4 position;\n"
+     "    float4 color;\n"
+     "    float intensity;\n"
+     "    float attenuation;\n"
+     "    float _p3[2];\n"
+     "};\n"
+     "\n"
+     "struct PerScene {\n"
+     "    float4 cameraPosition;\n"
+     "    float4 ambientColor;\n"
+     "    int lightCount;\n"
+     "    int _pad[3];\n"
+     "};\n"
+     "\n"
+     "struct PerMaterial {\n"
+     "    float4 diffuseColor;\n"
+     "    float4 specularColor;\n"
+     "    float4 emissiveColor;\n"
+     "    float alpha;\n"
+     "    int hasTexture;\n"
+     "    int unlit;\n"
+     "    int _pad;\n"
+     "};\n"
+     "\n"
+     "vertex VertexOut vertex_main(\n"
+     "    VertexIn in [[stage_in]],\n"
+     "    constant PerObject &obj [[buffer(1)]]\n"
+     ") {\n"
+     "    VertexOut out;\n"
+     "    float4 wp = obj.modelMatrix * float4(in.position, 1.0);\n"
+     "    out.position = obj.viewProjection * wp;\n"
+     "    /* Remap Z from OpenGL NDC [-1,1] to Metal [0,1] */\n"
+     "    out.position.z = out.position.z * 0.5 + out.position.w * 0.5;\n"
+     "    out.worldPos = wp.xyz;\n"
+     "    out.normal = (obj.normalMatrix * float4(in.normal, 0.0)).xyz;\n"
+     "    out.uv = in.uv;\n"
+     "    out.color = in.color;\n"
+     "    return out;\n"
+     "}\n"
+     "\n"
+     "fragment float4 fragment_main(\n"
+     "    VertexOut in [[stage_in]],\n"
+     "    constant PerScene &scene [[buffer(0)]],\n"
+     "    constant PerMaterial &material [[buffer(1)]],\n"
+     "    constant Light *lights [[buffer(2)]],\n"
+     "    texture2d<float> diffuseTex [[texture(0)]],\n"
+     "    sampler texSampler [[sampler(0)]]\n"
+     ") {\n"
+     "    if (material.unlit) {\n"
+     "        float3 c = material.diffuseColor.rgb;\n"
+     "        if (material.hasTexture) c *= diffuseTex.sample(texSampler, in.uv).rgb;\n"
+     "        return float4(c, material.alpha);\n"
+     "    }\n"
+     "    float3 N = normalize(in.normal);\n"
+     "    float3 V = normalize(scene.cameraPosition.xyz - in.worldPos);\n"
+     "    float3 result = scene.ambientColor.rgb * material.diffuseColor.rgb;\n"
+     "    for (int i = 0; i < scene.lightCount; i++) {\n"
+     "        float3 L; float atten = 1.0;\n"
+     "        if (lights[i].type == 0) {\n"
+     "            L = normalize(-lights[i].direction.xyz);\n"
+     "        } else if (lights[i].type == 1) {\n"
+     "            float3 tl = lights[i].position.xyz - in.worldPos;\n"
+     "            float d = length(tl); L = tl / max(d, 0.0001);\n"
+     "            atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
+     "        } else {\n"
+     "            result += lights[i].color.rgb * lights[i].intensity * "
+     "material.diffuseColor.rgb;\n"
+     "            continue;\n"
+     "        }\n"
+     "        float NdotL = max(dot(N, L), 0.0);\n"
+     "        result += lights[i].color.rgb * lights[i].intensity * NdotL * "
+     "material.diffuseColor.rgb * atten;\n"
+     "        if (NdotL > 0.0 && material.specularColor.w > 0.0) {\n"
+     "            float3 H = normalize(L + V);\n"
+     "            float spec = pow(max(dot(N, H), 0.0), material.specularColor.w);\n"
+     "            result += lights[i].color.rgb * lights[i].intensity * spec * "
+     "material.specularColor.rgb * atten;\n"
+     "        }\n"
+     "    }\n"
+     "    result += material.emissiveColor.rgb;\n"
+     "    return float4(result, material.alpha);\n"
+     "}\n";
 
 //=============================================================================
 // Uniform buffer structs (must match shader)
 //=============================================================================
 
-typedef struct { float m[16]; float vp[16]; float nm[16]; } mtl_per_object_t;
-typedef struct { float cp[4]; float ac[4]; int32_t lc; int32_t _p[3]; } mtl_per_scene_t;
-typedef struct {
-    int32_t type; float _p0, _p1, _p2;
-    float dir[4]; float pos[4]; float col[4];
-    float intensity; float attenuation; float _p3[2];
+typedef struct
+{
+    float m[16];
+    float vp[16];
+    float nm[16];
+} mtl_per_object_t;
+
+typedef struct
+{
+    float cp[4];
+    float ac[4];
+    int32_t lc;
+    int32_t _p[3];
+} mtl_per_scene_t;
+
+typedef struct
+{
+    int32_t type;
+    float _p0, _p1, _p2;
+    float dir[4];
+    float pos[4];
+    float col[4];
+    float intensity;
+    float attenuation;
+    float _p3[2];
 } mtl_light_t;
-typedef struct { float dc[4]; float sc[4]; float ec[4]; float alpha; int32_t ht; int32_t unlit; int32_t _p; } mtl_per_material_t;
+
+typedef struct
+{
+    float dc[4];
+    float sc[4];
+    float ec[4];
+    float alpha;
+    int32_t ht;
+    int32_t unlit;
+    int32_t _p;
+} mtl_per_material_t;
 
 //=============================================================================
 // Helpers
 //=============================================================================
 
-static void transpose4x4(const float *src, float *dst) {
+static void transpose4x4(const float *src, float *dst)
+{
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
             dst[c * 4 + r] = src[r * 4 + c];
 }
 
-static void mat4f_mul(const float *a, const float *b, float *out) {
+static void mat4f_mul(const float *a, const float *b, float *out)
+{
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
-            out[r * 4 + c] = a[r*4+0]*b[0*4+c] + a[r*4+1]*b[1*4+c] +
-                             a[r*4+2]*b[2*4+c] + a[r*4+3]*b[3*4+c];
+            out[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] + a[r * 4 + 1] * b[1 * 4 + c] +
+                             a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
 }
 
 //=============================================================================
 // Vertex descriptor (80-byte vgfx3d_vertex_t)
 //=============================================================================
 
-static MTLVertexDescriptor *create_vertex_descriptor(void) {
+static MTLVertexDescriptor *create_vertex_descriptor(void)
+{
     MTLVertexDescriptor *d = [[MTLVertexDescriptor alloc] init];
-    d.attributes[0].format = MTLVertexFormatFloat3;  d.attributes[0].offset = 0;  d.attributes[0].bufferIndex = 0;
-    d.attributes[1].format = MTLVertexFormatFloat3;  d.attributes[1].offset = 12; d.attributes[1].bufferIndex = 0;
-    d.attributes[2].format = MTLVertexFormatFloat2;  d.attributes[2].offset = 24; d.attributes[2].bufferIndex = 0;
-    d.attributes[3].format = MTLVertexFormatFloat4;  d.attributes[3].offset = 32; d.attributes[3].bufferIndex = 0;
-    d.attributes[4].format = MTLVertexFormatFloat3;  d.attributes[4].offset = 48; d.attributes[4].bufferIndex = 0;
-    d.attributes[5].format = MTLVertexFormatUChar4;  d.attributes[5].offset = 60; d.attributes[5].bufferIndex = 0;
-    d.attributes[6].format = MTLVertexFormatFloat4;  d.attributes[6].offset = 64; d.attributes[6].bufferIndex = 0;
+    d.attributes[0].format = MTLVertexFormatFloat3;
+    d.attributes[0].offset = 0;
+    d.attributes[0].bufferIndex = 0;
+    d.attributes[1].format = MTLVertexFormatFloat3;
+    d.attributes[1].offset = 12;
+    d.attributes[1].bufferIndex = 0;
+    d.attributes[2].format = MTLVertexFormatFloat2;
+    d.attributes[2].offset = 24;
+    d.attributes[2].bufferIndex = 0;
+    d.attributes[3].format = MTLVertexFormatFloat4;
+    d.attributes[3].offset = 32;
+    d.attributes[3].bufferIndex = 0;
+    d.attributes[4].format = MTLVertexFormatFloat3;
+    d.attributes[4].offset = 48;
+    d.attributes[4].bufferIndex = 0;
+    d.attributes[5].format = MTLVertexFormatUChar4;
+    d.attributes[5].offset = 60;
+    d.attributes[5].bufferIndex = 0;
+    d.attributes[6].format = MTLVertexFormatFloat4;
+    d.attributes[6].offset = 64;
+    d.attributes[6].bufferIndex = 0;
     d.layouts[0].stride = 80;
     d.layouts[0].stepRate = 1;
     d.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
@@ -236,13 +287,17 @@ static MTLVertexDescriptor *create_vertex_descriptor(void) {
 // Backend vtable
 //=============================================================================
 
-static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
-    @autoreleasepool {
+static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
+{
+    @autoreleasepool
+    {
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-        if (!device) return NULL;
+        if (!device)
+            return NULL;
 
         NSView *view = (__bridge NSView *)vgfx_get_native_view(win);
-        if (!view) return NULL;
+        if (!view)
+            return NULL;
 
         VGFXMetalContext *ctx = [[VGFXMetalContext alloc] init];
         ctx.device = device;
@@ -262,19 +317,22 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         ctx.metalLayer = layer;
 
         ctx.commandQueue = [device newCommandQueue];
-        if (!ctx.commandQueue) return NULL;
+        if (!ctx.commandQueue)
+            return NULL;
 
         NSError *error = nil;
         ctx.library = [device newLibraryWithSource:metal_shader_source options:nil error:&error];
-        if (!ctx.library) {
-            NSLog(@"[Metal] Shader error: %@", error);
+        if (!ctx.library)
+        {
+            NSLog(@ "[Metal] Shader error: %@", error);
             return NULL;
         }
         /* Shaders compiled successfully */
 
-        id<MTLFunction> vf = [ctx.library newFunctionWithName:@"vertex_main"];
-        id<MTLFunction> ff = [ctx.library newFunctionWithName:@"fragment_main"];
-        if (!vf || !ff) return NULL;
+        id<MTLFunction> vf = [ctx.library newFunctionWithName:@ "vertex_main"];
+        id<MTLFunction> ff = [ctx.library newFunctionWithName:@ "fragment_main"];
+        if (!vf || !ff)
+            return NULL;
 
         MTLRenderPipelineDescriptor *pd = [[MTLRenderPipelineDescriptor alloc] init];
         pd.vertexFunction = vf;
@@ -290,8 +348,9 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         pd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
 
         ctx.pipelineState = [device newRenderPipelineStateWithDescriptor:pd error:&error];
-        if (!ctx.pipelineState) {
-            NSLog(@"Metal pipeline error: %@", error);
+        if (!ctx.pipelineState)
+        {
+            NSLog(@ "Metal pipeline error: %@", error);
             return NULL;
         }
 
@@ -304,9 +363,11 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         ctx.depthStateNoWrite = [device newDepthStencilStateWithDescriptor:dd];
 
         /* Depth texture */
-        MTLTextureDescriptor *td = [MTLTextureDescriptor
-            texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
-            width:(NSUInteger)w height:(NSUInteger)h mipmapped:NO];
+        MTLTextureDescriptor *td =
+            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
+                                                               width:(NSUInteger)w
+                                                              height:(NSUInteger)h
+                                                           mipmapped:NO];
         td.usage = MTLTextureUsageRenderTarget;
         td.storageMode = MTLStorageModePrivate;
         ctx.depthTexture = [device newTextureWithDescriptor:td];
@@ -314,9 +375,11 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         /* Default 1x1 white texture (bound when no material texture is set,
          * so the shader's texture2d parameter is always valid) */
         {
-            MTLTextureDescriptor *dtd = [MTLTextureDescriptor
-                texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                width:1 height:1 mipmapped:NO];
+            MTLTextureDescriptor *dtd =
+                [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                                   width:1
+                                                                  height:1
+                                                               mipmapped:NO];
             dtd.usage = MTLTextureUsageShaderRead;
             dtd.storageMode = MTLStorageModeShared;
             ctx.defaultTexture = [device newTextureWithDescriptor:dtd];
@@ -337,24 +400,33 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     }
 }
 
-static void metal_destroy_ctx(void *ctx_ptr) {
-    if (!ctx_ptr) return;
-    @autoreleasepool {
+static void metal_destroy_ctx(void *ctx_ptr)
+{
+    if (!ctx_ptr)
+        return;
+    @autoreleasepool
+    {
         VGFXMetalContext *ctx = (__bridge_transfer VGFXMetalContext *)ctx_ptr;
         (void)ctx; /* ARC releases all properties */
     }
 }
 
-static void metal_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b) {
+static void metal_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b)
+{
     (void)win;
     VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
-    ctx.clearR = r; ctx.clearG = g; ctx.clearB = b;
+    ctx.clearR = r;
+    ctx.clearG = g;
+    ctx.clearB = b;
 }
 
-static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
-    @autoreleasepool {
+static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam)
+{
+    @autoreleasepool
+    {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
-        if (!ctx) return;
+        if (!ctx)
+            return;
 
         float vp[16];
         mat4f_mul(cam->projection, cam->view, vp);
@@ -367,7 +439,8 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         if (!ctx.cmdBuf)
         {
             ctx.cmdBuf = [ctx.commandQueue commandBuffer];
-            if (!ctx.cmdBuf) return;
+            if (!ctx.cmdBuf)
+                return;
         }
 
         MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
@@ -378,7 +451,8 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
             rp.colorAttachments[0].texture = ctx.rttColorTexture;
             rp.colorAttachments[0].loadAction = MTLLoadActionClear;
             rp.colorAttachments[0].storeAction = MTLStoreActionStore;
-            rp.colorAttachments[0].clearColor = MTLClearColorMake(ctx.clearR, ctx.clearG, ctx.clearB, 1.0);
+            rp.colorAttachments[0].clearColor =
+                MTLClearColorMake(ctx.clearR, ctx.clearG, ctx.clearB, 1.0);
             rp.depthAttachment.texture = ctx.rttDepthTexture;
             rp.depthAttachment.loadAction = MTLLoadActionClear;
             rp.depthAttachment.storeAction = MTLStoreActionDontCare;
@@ -392,14 +466,16 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
             if (!ctx.drawable)
             {
                 ctx.drawable = [ctx.metalLayer nextDrawable];
-                if (!ctx.drawable) return;
+                if (!ctx.drawable)
+                    return;
             }
 
             rp.colorAttachments[0].texture = ctx.drawable.texture;
             rp.colorAttachments[0].loadAction = MTLLoadActionClear;
             rp.colorAttachments[0].storeAction = MTLStoreActionStore;
             /* Clear with alpha=0 so software framebuffer (skybox) shows through */
-            rp.colorAttachments[0].clearColor = MTLClearColorMake(ctx.clearR, ctx.clearG, ctx.clearB, 0.0);
+            rp.colorAttachments[0].clearColor =
+                MTLClearColorMake(ctx.clearR, ctx.clearG, ctx.clearB, 0.0);
             rp.depthAttachment.texture = ctx.depthTexture;
             rp.depthAttachment.loadAction = MTLLoadActionClear;
             rp.depthAttachment.storeAction = MTLStoreActionDontCare;
@@ -407,7 +483,8 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         }
 
         ctx.encoder = [ctx.cmdBuf renderCommandEncoderWithDescriptor:rp];
-        if (!ctx.encoder) return;
+        if (!ctx.encoder)
+            return;
         [ctx.encoder setRenderPipelineState:ctx.pipelineState];
         [ctx.encoder setDepthStencilState:ctx.depthState];
 
@@ -436,14 +513,22 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     }
 }
 
-static void metal_submit_draw(void *ctx_ptr, vgfx_window_t win,
-                               const vgfx3d_draw_cmd_t *cmd,
-                               const vgfx3d_light_params_t *lights, int32_t light_count,
-                               const float *ambient, int8_t wireframe, int8_t backface_cull) {
-    @autoreleasepool {
-        (void)win; (void)wireframe;
+static void metal_submit_draw(void *ctx_ptr,
+                              vgfx_window_t win,
+                              const vgfx3d_draw_cmd_t *cmd,
+                              const vgfx3d_light_params_t *lights,
+                              int32_t light_count,
+                              const float *ambient,
+                              int8_t wireframe,
+                              int8_t backface_cull)
+{
+    @autoreleasepool
+    {
+        (void)win;
+        (void)wireframe;
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
-        if (!ctx || !ctx.encoder || !ctx.inFrame) return;
+        if (!ctx || !ctx.encoder || !ctx.inFrame)
+            return;
 
         [ctx.encoder setCullMode:backface_cull ? MTLCullModeBack : MTLCullModeNone];
 
@@ -453,12 +538,13 @@ static void metal_submit_draw(void *ctx_ptr, vgfx_window_t win,
         else
             [ctx.encoder setDepthStencilState:ctx.depthState];
 
-        id<MTLBuffer> vb = [ctx.device newBufferWithBytes:cmd->vertices
-            length:cmd->vertex_count * sizeof(vgfx3d_vertex_t)
-            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> vb =
+            [ctx.device newBufferWithBytes:cmd->vertices
+                                    length:cmd->vertex_count * sizeof(vgfx3d_vertex_t)
+                                   options:MTLResourceStorageModeShared];
         id<MTLBuffer> ib = [ctx.device newBufferWithBytes:cmd->indices
-            length:cmd->index_count * sizeof(uint32_t)
-            options:MTLResourceStorageModeShared];
+                                                   length:cmd->index_count * sizeof(uint32_t)
+                                                  options:MTLResourceStorageModeShared];
         [ctx.encoder setVertexBuffer:vb offset:0 atIndex:0];
 
         /* Per-object uniforms */
@@ -474,7 +560,9 @@ static void metal_submit_draw(void *ctx_ptr, vgfx_window_t win,
         mtl_per_scene_t scene;
         memset(&scene, 0, sizeof(scene));
         memcpy(scene.cp, ctx->_camPos, sizeof(float) * 3);
-        scene.ac[0] = ambient[0]; scene.ac[1] = ambient[1]; scene.ac[2] = ambient[2];
+        scene.ac[0] = ambient[0];
+        scene.ac[1] = ambient[1];
+        scene.ac[2] = ambient[2];
         scene.lc = light_count;
         [ctx.encoder setFragmentBytes:&scene length:sizeof(scene) atIndex:0];
 
@@ -482,9 +570,14 @@ static void metal_submit_draw(void *ctx_ptr, vgfx_window_t win,
         mtl_per_material_t mat;
         memset(&mat, 0, sizeof(mat));
         memcpy(mat.dc, cmd->diffuse_color, sizeof(float) * 4);
-        mat.sc[0] = cmd->specular[0]; mat.sc[1] = cmd->specular[1]; mat.sc[2] = cmd->specular[2];
+        mat.sc[0] = cmd->specular[0];
+        mat.sc[1] = cmd->specular[1];
+        mat.sc[2] = cmd->specular[2];
         mat.sc[3] = cmd->shininess;
-        mat.ec[0] = cmd->emissive_color[0]; mat.ec[1] = cmd->emissive_color[1]; mat.ec[2] = cmd->emissive_color[2]; mat.ec[3] = 0;
+        mat.ec[0] = cmd->emissive_color[0];
+        mat.ec[1] = cmd->emissive_color[1];
+        mat.ec[2] = cmd->emissive_color[2];
+        mat.ec[3] = 0;
         mat.alpha = cmd->alpha;
         mat.ht = cmd->texture ? 1 : 0;
         mat.unlit = cmd->unlit;
@@ -497,7 +590,13 @@ static void metal_submit_draw(void *ctx_ptr, vgfx_window_t win,
         /* Override with actual diffuse texture if set on the material */
         if (cmd->texture)
         {
-            typedef struct { int64_t w; int64_t h; uint32_t *data; } px_view_t;
+            typedef struct
+            {
+                int64_t w;
+                int64_t h;
+                uint32_t *data;
+            } px_view_t;
+
             const px_view_t *pv = (const px_view_t *)cmd->texture;
             if (pv->data && pv->w > 0 && pv->h > 0)
             {
@@ -509,7 +608,7 @@ static void metal_submit_draw(void *ctx_ptr, vgfx_window_t win,
                 {
                     for (size_t i = 0; i < pixel_count; i++)
                     {
-                        uint32_t px = pv->data[i]; /* 0xRRGGBBAA */
+                        uint32_t px = pv->data[i];                      /* 0xRRGGBBAA */
                         bgra[i * 4 + 0] = (uint8_t)((px >> 8) & 0xFF);  /* B */
                         bgra[i * 4 + 1] = (uint8_t)((px >> 16) & 0xFF); /* G */
                         bgra[i * 4 + 2] = (uint8_t)((px >> 24) & 0xFF); /* R */
@@ -518,7 +617,9 @@ static void metal_submit_draw(void *ctx_ptr, vgfx_window_t win,
 
                     MTLTextureDescriptor *texDesc = [MTLTextureDescriptor
                         texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                        width:(NSUInteger)tw height:(NSUInteger)th mipmapped:NO];
+                                                     width:(NSUInteger)tw
+                                                    height:(NSUInteger)th
+                                                 mipmapped:NO];
                     texDesc.usage = MTLTextureUsageShaderRead;
                     texDesc.storageMode = MTLStorageModeShared;
                     id<MTLTexture> tex = [ctx.device newTextureWithDescriptor:texDesc];
@@ -535,7 +636,8 @@ static void metal_submit_draw(void *ctx_ptr, vgfx_window_t win,
                     sampDesc.magFilter = MTLSamplerMinMagFilterLinear;
                     sampDesc.sAddressMode = MTLSamplerAddressModeRepeat;
                     sampDesc.tAddressMode = MTLSamplerAddressModeRepeat;
-                    id<MTLSamplerState> sampler = [ctx.device newSamplerStateWithDescriptor:sampDesc];
+                    id<MTLSamplerState> sampler =
+                        [ctx.device newSamplerStateWithDescriptor:sampDesc];
                     [ctx.encoder setFragmentSamplerState:sampler atIndex:0];
 
                     free(bgra);
@@ -547,11 +649,18 @@ static void metal_submit_draw(void *ctx_ptr, vgfx_window_t win,
         {
             mtl_light_t ml[8];
             memset(ml, 0, sizeof(ml));
-            for (int32_t i = 0; i < light_count && i < 8; i++) {
+            for (int32_t i = 0; i < light_count && i < 8; i++)
+            {
                 ml[i].type = lights[i].type;
-                ml[i].dir[0] = lights[i].direction[0]; ml[i].dir[1] = lights[i].direction[1]; ml[i].dir[2] = lights[i].direction[2];
-                ml[i].pos[0] = lights[i].position[0]; ml[i].pos[1] = lights[i].position[1]; ml[i].pos[2] = lights[i].position[2];
-                ml[i].col[0] = lights[i].color[0]; ml[i].col[1] = lights[i].color[1]; ml[i].col[2] = lights[i].color[2];
+                ml[i].dir[0] = lights[i].direction[0];
+                ml[i].dir[1] = lights[i].direction[1];
+                ml[i].dir[2] = lights[i].direction[2];
+                ml[i].pos[0] = lights[i].position[0];
+                ml[i].pos[1] = lights[i].position[1];
+                ml[i].pos[2] = lights[i].position[2];
+                ml[i].col[0] = lights[i].color[0];
+                ml[i].col[1] = lights[i].color[1];
+                ml[i].col[2] = lights[i].color[2];
                 ml[i].intensity = lights[i].intensity;
                 ml[i].attenuation = lights[i].attenuation;
             }
@@ -560,15 +669,20 @@ static void metal_submit_draw(void *ctx_ptr, vgfx_window_t win,
         }
 
         [ctx.encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
-            indexCount:cmd->index_count indexType:MTLIndexTypeUInt32
-            indexBuffer:ib indexBufferOffset:0];
+                                indexCount:cmd->index_count
+                                 indexType:MTLIndexTypeUInt32
+                               indexBuffer:ib
+                         indexBufferOffset:0];
     }
 }
 
-static void metal_end_frame(void *ctx_ptr) {
-    @autoreleasepool {
+static void metal_end_frame(void *ctx_ptr)
+{
+    @autoreleasepool
+    {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
-        if (!ctx || !ctx.encoder || !ctx.inFrame) return;
+        if (!ctx || !ctx.encoder || !ctx.inFrame)
+            return;
 
         [ctx.encoder endEncoding];
 
@@ -585,9 +699,9 @@ static void metal_end_frame(void *ctx_ptr) {
             if (dst)
             {
                 [ctx.rttColorTexture getBytes:dst
-                                   bytesPerRow:(NSUInteger)(w * 4)
-                                    fromRegion:MTLRegionMake2D(0, 0, (NSUInteger)w, (NSUInteger)h)
-                                   mipmapLevel:0];
+                                  bytesPerRow:(NSUInteger)(w * 4)
+                                   fromRegion:MTLRegionMake2D(0, 0, (NSUInteger)w, (NSUInteger)h)
+                                  mipmapLevel:0];
                 /* BGRA → RGBA in-place */
                 for (int32_t i = 0; i < w * h; i++)
                 {
@@ -617,8 +731,10 @@ static void metal_end_frame(void *ctx_ptr) {
 /// and presents the drawable to the display in one atomic operation.
 static void metal_present(void *backend_ctx)
 {
-    if (!backend_ctx) return;
-    @autoreleasepool {
+    if (!backend_ctx)
+        return;
+    @autoreleasepool
+    {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
         if (ctx.cmdBuf && ctx.drawable)
         {
@@ -654,9 +770,11 @@ static void metal_present(void *backend_ctx)
 /// texture back to rt->color_buf for CPU readback (AsPixels).
 static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
 {
-    @autoreleasepool {
+    @autoreleasepool
+    {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
-        if (!ctx) return;
+        if (!ctx)
+            return;
 
         if (!rt)
         {
@@ -674,21 +792,21 @@ static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
         ctx.rttTarget = rt;
 
         /* Color texture: BGRA8Unorm, render target + shader read */
-        MTLTextureDescriptor *colorDesc = [MTLTextureDescriptor
-            texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-            width:(NSUInteger)rt->width
-            height:(NSUInteger)rt->height
-            mipmapped:NO];
+        MTLTextureDescriptor *colorDesc =
+            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                               width:(NSUInteger)rt->width
+                                                              height:(NSUInteger)rt->height
+                                                           mipmapped:NO];
         colorDesc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
         colorDesc.storageMode = MTLStorageModeShared; /* CPU-readable for readback */
         ctx.rttColorTexture = [ctx.device newTextureWithDescriptor:colorDesc];
 
         /* Depth texture: Depth32Float, render target only */
-        MTLTextureDescriptor *depthDesc = [MTLTextureDescriptor
-            texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
-            width:(NSUInteger)rt->width
-            height:(NSUInteger)rt->height
-            mipmapped:NO];
+        MTLTextureDescriptor *depthDesc =
+            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
+                                                               width:(NSUInteger)rt->width
+                                                              height:(NSUInteger)rt->height
+                                                           mipmapped:NO];
         depthDesc.usage = MTLTextureUsageRenderTarget;
         depthDesc.storageMode = MTLStorageModePrivate;
         ctx.rttDepthTexture = [ctx.device newTextureWithDescriptor:depthDesc];
@@ -700,8 +818,10 @@ static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
 /* Called from rt_rendertarget3d.c to hide the Metal layer during software RTT */
 void vgfx3d_hide_gpu_layer(void *backend_ctx)
 {
-    if (!backend_ctx) return;
-    @autoreleasepool {
+    if (!backend_ctx)
+        return;
+    @autoreleasepool
+    {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
         if (ctx.metalLayer)
             ctx.metalLayer.hidden = YES;
@@ -710,8 +830,10 @@ void vgfx3d_hide_gpu_layer(void *backend_ctx)
 
 void vgfx3d_show_gpu_layer(void *backend_ctx)
 {
-    if (!backend_ctx) return;
-    @autoreleasepool {
+    if (!backend_ctx)
+        return;
+    @autoreleasepool
+    {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
         if (ctx.metalLayer)
             ctx.metalLayer.hidden = NO;

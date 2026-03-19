@@ -51,12 +51,12 @@ static int64_t g_group_volume[RT_MIXGROUP_COUNT] = {100, 100};
 /// @brief Crossfade state.
 static struct
 {
-    void *fade_out;    ///< Music being faded out (NULL when not crossfading).
-    void *fade_in;     ///< Music being faded in (NULL when not crossfading).
-    int64_t elapsed;   ///< Milliseconds elapsed in crossfade.
-    int64_t duration;  ///< Total crossfade duration in ms.
-    int64_t vol_out;   ///< Starting volume of fade-out track.
-    int8_t active;     ///< 1 if crossfade in progress.
+    void *fade_out;   ///< Music being faded out (NULL when not crossfading).
+    void *fade_in;    ///< Music being faded in (NULL when not crossfading).
+    int64_t elapsed;  ///< Milliseconds elapsed in crossfade.
+    int64_t duration; ///< Total crossfade duration in ms.
+    int64_t vol_out;  ///< Starting volume of fade-out track.
+    int8_t active;    ///< 1 if crossfade in progress.
 } g_crossfade = {NULL, NULL, 0, 0, 100, 0};
 
 #ifdef VIPER_ENABLE_AUDIO

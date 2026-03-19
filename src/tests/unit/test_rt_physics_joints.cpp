@@ -39,18 +39,18 @@ extern "C" void vm_trap(const char *msg)
 static int tests_passed = 0;
 static int tests_total = 0;
 
-#define TEST(name)                                                                                   \
-    do                                                                                               \
-    {                                                                                                \
-        tests_total++;                                                                               \
-        printf("  [%d] %s... ", tests_total, name);                                                  \
+#define TEST(name)                                                                                 \
+    do                                                                                             \
+    {                                                                                              \
+        tests_total++;                                                                             \
+        printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
 
-#define PASS()                                                                                       \
-    do                                                                                               \
-    {                                                                                                \
-        tests_passed++;                                                                              \
-        printf("ok\n");                                                                              \
+#define PASS()                                                                                     \
+    do                                                                                             \
+    {                                                                                              \
+        tests_passed++;                                                                            \
+        printf("ok\n");                                                                            \
     } while (0)
 
 static double dist_between(void *a, void *b)
@@ -129,7 +129,7 @@ static void test_rope_joint_slack(void)
 {
     TEST("Rope joint allows slack");
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 0.0);  // static
-    void *b = rt_physics2d_body_new(20, 0, 10, 10, 1.0);  // dynamic
+    void *b = rt_physics2d_body_new(20, 0, 10, 10, 1.0); // dynamic
     void *j = rt_physics2d_rope_joint_new(a, b, 100.0);
     void *w = rt_physics2d_world_new(0.0, 0.0);
     rt_physics2d_world_add(w, a);
@@ -149,7 +149,7 @@ static void test_rope_joint_clamps(void)
 {
     TEST("Rope joint clamps distance");
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 0.0);   // static
-    void *b = rt_physics2d_body_new(200, 0, 10, 10, 1.0);  // dynamic, far away
+    void *b = rt_physics2d_body_new(200, 0, 10, 10, 1.0); // dynamic, far away
     void *j = rt_physics2d_rope_joint_new(a, b, 50.0);
     void *w = rt_physics2d_world_new(0.0, 0.0);
     rt_physics2d_world_add(w, a);

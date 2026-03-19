@@ -15,10 +15,10 @@
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/sem/NamespaceRegistry.hpp"
 #include "frontends/basic/sem/RegistryBuilder.hpp"
 #include "frontends/basic/sem/UsingContext.hpp"
-#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "il/io/Serializer.hpp"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
@@ -249,7 +249,6 @@ TEST(NsRegistry, TestMultipleTypesInSameNamespace)
     ASSERT_TRUE(info->interfaces.count("MyNS.Interface2") == 1);
 }
 
-
 // ── test_namespace_diagnostics.cpp ──
 std::string getFirstDiagnostic(const std::string &source)
 {
@@ -312,7 +311,8 @@ TEST(NsDiagnostics, TestNs002ExactMessage)
 )";
     std::string msg = getFirstDiagnostic(source);
     ASSERT_TRUE(msg.find("type 'MissingType' not found in namespace 'NS1'") != std::string::npos ||
-           msg.find("base class not found") != std::string::npos); // Old OOP system may emit first
+                msg.find("base class not found") !=
+                    std::string::npos); // Old OOP system may emit first
 }
 
 // Test E_NS_003: "ambiguous reference to '{type}' (found in: ...)"
@@ -394,7 +394,7 @@ TEST(NsDiagnostics, TestNs009ExactMessage)
 )";
     std::string msg = getFirstDiagnostic(source);
     ASSERT_TRUE(msg.find("reserved root namespace 'Viper' cannot be declared or imported") !=
-           std::string::npos);
+                std::string::npos);
 }
 
 // Test that contender list is comma-separated
@@ -432,7 +432,6 @@ TEST(NsDiagnostics, TestDiagnosticLocations)
     ASSERT_TRUE(output.find("test.bas:") != std::string::npos);
     ASSERT_TRUE(output.find("error") != std::string::npos);
 }
-
 
 // ── test_namespace_integration.cpp ──
 size_t runPipeline(const std::string &source, bool shouldLower = true)
@@ -617,7 +616,7 @@ TEST(NsIntegration, TestTypeNotFoundInNamespace)
 )";
 
     size_t errorCount = runPipeline(source, false); // Don't lower, expect errors
-    ASSERT_TRUE(errorCount > 0);                         // Should have at least one error
+    ASSERT_TRUE(errorCount > 0);                    // Should have at least one error
 }
 
 // Additional scenario: Reserved namespace Viper (E_NS_009)
@@ -717,7 +716,6 @@ TEST(NsIntegration, TestLoweringPreservesQualification)
     ASSERT_TRUE(il.find("@main") != std::string::npos);
 }
 
-
 // ── test_ns_registry_builder.cpp ──
 Program makeProgram(std::vector<StmtPtr> stmts)
 {
@@ -725,8 +723,6 @@ Program makeProgram(std::vector<StmtPtr> stmts)
     prog.main = std::move(stmts);
     return prog;
 }
-
-
 
 TEST(NsRegistryBuilder, TestEmptyProgram)
 {
@@ -1013,7 +1009,6 @@ TEST(NsRegistryBuilder, TestComplexNestedStructure)
     ASSERT_TRUE(uc.resolveAlias("AB") == "A.B");
 }
 
-
 // ── test_ns_resolve_pass.cpp ──
 size_t parseAndAnalyze(const std::string &source, DiagnosticEngine &de, bool verbose = false)
 {
@@ -1109,7 +1104,6 @@ TEST(NsResolvePass, TestNestedNamespace)
     // Should have no errors - valid nested namespace reference.
     ASSERT_TRUE(errorCount == 0);
 }
-
 
 // ── test_using_context.cpp ──
 
@@ -1324,7 +1318,6 @@ TEST(UsingContext, TestResolveAliasReturnsEmptyForNonExistent)
     ASSERT_TRUE(ctx.resolveAlias("").empty());
 }
 
-
 // ── test_using_semantics.cpp ──
 size_t parseAndAnalyzeSema(const std::string &source, DiagnosticEngine &de)
 {
@@ -1515,7 +1508,6 @@ END NAMESPACE
     ASSERT_TRUE(errorCount > 0);
 }
 
-
 // ── test_using_compiletime_only.cpp ──
 
 TEST(UsingCompiletimeOnly, TestUsingOnlyProducesNoArtifacts)
@@ -1610,7 +1602,7 @@ END
     bool hasBaselineClassDef = ilEmpty.find("type ") != std::string::npos;
 
     ASSERT_TRUE(hasClassDef == hasBaselineClassDef &&
-           "USING should not generate class/type definitions");
+                "USING should not generate class/type definitions");
 }
 
 /// @brief Test that USING with declarations produces correct artifacts.
@@ -1694,8 +1686,6 @@ TEST(UsingCompiletimeOnly, TestEmptyProgramBaseline)
     std::cout << "Empty program IL length: " << il.length() << " bytes\n";
     std::cout << "Empty program IL:\n" << il << "\n";
 }
-
-
 
 int main(int argc, char **argv)
 {

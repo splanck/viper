@@ -56,11 +56,11 @@ typedef struct
 typedef struct
 {
     rt_glyph glyphs[BF_MAX_GLYPHS]; ///< Glyph table indexed by codepoint.
-    int16_t line_height;             ///< Line height in pixels (ascent + descent).
-    int16_t max_width;               ///< Widest glyph advance.
-    int16_t ascent;                  ///< Distance from baseline to top.
-    int8_t monospace;                ///< 1 if all loaded glyphs have same advance.
-    int64_t glyph_count;             ///< Number of valid (non-NULL bitmap) glyphs.
+    int16_t line_height;            ///< Line height in pixels (ascent + descent).
+    int16_t max_width;              ///< Widest glyph advance.
+    int16_t ascent;                 ///< Distance from baseline to top.
+    int8_t monospace;               ///< 1 if all loaded glyphs have same advance.
+    int64_t glyph_count;            ///< Number of valid (non-NULL bitmap) glyphs.
 } rt_bitmapfont_impl;
 
 //=============================================================================
@@ -344,10 +344,10 @@ void *rt_bitmapfont_load_psf(rt_string path)
                               ((uint32_t)hdr[14] << 16) | ((uint32_t)hdr[15] << 24);
         uint32_t bytes_per_glyph = (uint32_t)hdr[16] | ((uint32_t)hdr[17] << 8) |
                                    ((uint32_t)hdr[18] << 16) | ((uint32_t)hdr[19] << 24);
-        uint32_t height = (uint32_t)hdr[20] | ((uint32_t)hdr[21] << 8) |
-                          ((uint32_t)hdr[22] << 16) | ((uint32_t)hdr[23] << 24);
-        uint32_t width = (uint32_t)hdr[24] | ((uint32_t)hdr[25] << 8) |
-                         ((uint32_t)hdr[26] << 16) | ((uint32_t)hdr[27] << 24);
+        uint32_t height = (uint32_t)hdr[20] | ((uint32_t)hdr[21] << 8) | ((uint32_t)hdr[22] << 16) |
+                          ((uint32_t)hdr[23] << 24);
+        uint32_t width = (uint32_t)hdr[24] | ((uint32_t)hdr[25] << 8) | ((uint32_t)hdr[26] << 16) |
+                         ((uint32_t)hdr[27] << 24);
 
         glyph_count = (int)num_glyphs;
         glyph_height = (int)height;
@@ -411,7 +411,7 @@ void *rt_bitmapfont_load_psf(rt_string path)
         for (int row = 0; row < glyph_height && row * psf_rb < glyph_byte_size; row++)
         {
             int copy = psf_rb < (glyph_byte_size - row * psf_rb) ? psf_rb
-                                                                  : (glyph_byte_size - row * psf_rb);
+                                                                 : (glyph_byte_size - row * psf_rb);
             if (copy > rb)
                 copy = rb;
             memcpy(bitmap + row * rb, raw + row * psf_rb, (size_t)copy);
@@ -534,8 +534,12 @@ int64_t rt_bitmapfont_text_height(void *font_ptr)
 #include "rt_graphics_internal.h"
 
 /// @brief Draw a single glyph at (px, py) using vgfx_pset.
-static void bf_draw_glyph(vgfx_window_t win, const rt_glyph *g,
-                           int64_t px, int64_t py, int16_t ascent, vgfx_color_t color)
+static void bf_draw_glyph(vgfx_window_t win,
+                          const rt_glyph *g,
+                          int64_t px,
+                          int64_t py,
+                          int16_t ascent,
+                          vgfx_color_t color)
 {
     if (!g || !g->bitmap)
         return;
@@ -560,9 +564,13 @@ static void bf_draw_glyph(vgfx_window_t win, const rt_glyph *g,
 }
 
 /// @brief Draw a single glyph with integer scaling.
-static void bf_draw_glyph_scaled(vgfx_window_t win, const rt_glyph *g,
-                                  int64_t px, int64_t py, int16_t ascent,
-                                  int64_t scale, vgfx_color_t color)
+static void bf_draw_glyph_scaled(vgfx_window_t win,
+                                 const rt_glyph *g,
+                                 int64_t px,
+                                 int64_t py,
+                                 int16_t ascent,
+                                 int64_t scale,
+                                 vgfx_color_t color)
 {
     if (!g || !g->bitmap || scale < 1)
         return;
@@ -582,23 +590,29 @@ static void bf_draw_glyph_scaled(vgfx_window_t win, const rt_glyph *g,
                 vgfx_fill_rect(win,
                                (int32_t)(draw_x + col * scale),
                                (int32_t)(draw_y + row * scale),
-                               (int32_t)scale, (int32_t)scale, color);
+                               (int32_t)scale,
+                               (int32_t)scale,
+                               color);
             }
         }
     }
 }
 
 /// @brief Draw a single glyph with foreground and background colors.
-static void bf_draw_glyph_bg(vgfx_window_t win, const rt_glyph *g,
-                              int64_t px, int64_t py, int16_t ascent, int16_t line_h,
-                              vgfx_color_t fg, vgfx_color_t bg)
+static void bf_draw_glyph_bg(vgfx_window_t win,
+                             const rt_glyph *g,
+                             int64_t px,
+                             int64_t py,
+                             int16_t ascent,
+                             int16_t line_h,
+                             vgfx_color_t fg,
+                             vgfx_color_t bg)
 {
     if (!g)
         return;
 
     // Fill background for the full advance × line_height
-    vgfx_fill_rect(win, (int32_t)px, (int32_t)py,
-                   (int32_t)g->advance, (int32_t)line_h, bg);
+    vgfx_fill_rect(win, (int32_t)px, (int32_t)py, (int32_t)g->advance, (int32_t)line_h, bg);
 
     if (g->bitmap)
     {
@@ -625,8 +639,8 @@ static void bf_draw_glyph_bg(vgfx_window_t win, const rt_glyph *g,
 // Canvas Drawing — Public API
 //=============================================================================
 
-void rt_canvas_text_font(void *canvas_ptr, int64_t x, int64_t y,
-                         rt_string text, void *font_ptr, int64_t color)
+void rt_canvas_text_font(
+    void *canvas_ptr, int64_t x, int64_t y, rt_string text, void *font_ptr, int64_t color)
 {
     if (!canvas_ptr || !font_ptr || !text)
         return;
@@ -659,9 +673,13 @@ void rt_canvas_text_font(void *canvas_ptr, int64_t x, int64_t y,
     }
 }
 
-void rt_canvas_text_font_bg(void *canvas_ptr, int64_t x, int64_t y,
-                            rt_string text, void *font_ptr,
-                            int64_t fg_color, int64_t bg_color)
+void rt_canvas_text_font_bg(void *canvas_ptr,
+                            int64_t x,
+                            int64_t y,
+                            rt_string text,
+                            void *font_ptr,
+                            int64_t fg_color,
+                            int64_t bg_color)
 {
     if (!canvas_ptr || !font_ptr || !text)
         return;
@@ -690,16 +708,24 @@ void rt_canvas_text_font_bg(void *canvas_ptr, int64_t x, int64_t y,
         }
         else
         {
-            vgfx_fill_rect(canvas->gfx_win, (int32_t)cx, (int32_t)y,
-                           (int32_t)font->max_width, (int32_t)font->line_height, bg);
+            vgfx_fill_rect(canvas->gfx_win,
+                           (int32_t)cx,
+                           (int32_t)y,
+                           (int32_t)font->max_width,
+                           (int32_t)font->line_height,
+                           bg);
             cx += font->max_width;
         }
     }
 }
 
-void rt_canvas_text_font_scaled(void *canvas_ptr, int64_t x, int64_t y,
-                                rt_string text, void *font_ptr,
-                                int64_t scale, int64_t color)
+void rt_canvas_text_font_scaled(void *canvas_ptr,
+                                int64_t x,
+                                int64_t y,
+                                rt_string text,
+                                void *font_ptr,
+                                int64_t scale,
+                                int64_t color)
 {
     if (!canvas_ptr || !font_ptr || !text || scale < 1)
         return;
@@ -732,8 +758,8 @@ void rt_canvas_text_font_scaled(void *canvas_ptr, int64_t x, int64_t y,
     }
 }
 
-void rt_canvas_text_font_centered(void *canvas_ptr, int64_t y,
-                                  rt_string text, void *font_ptr, int64_t color)
+void rt_canvas_text_font_centered(
+    void *canvas_ptr, int64_t y, rt_string text, void *font_ptr, int64_t color)
 {
     if (!canvas_ptr || !font_ptr || !text)
         return;
@@ -751,8 +777,8 @@ void rt_canvas_text_font_centered(void *canvas_ptr, int64_t y,
     rt_canvas_text_font(canvas_ptr, cx, y, text, font_ptr, color);
 }
 
-void rt_canvas_text_font_right(void *canvas_ptr, int64_t margin, int64_t y,
-                               rt_string text, void *font_ptr, int64_t color)
+void rt_canvas_text_font_right(
+    void *canvas_ptr, int64_t margin, int64_t y, rt_string text, void *font_ptr, int64_t color)
 {
     if (!canvas_ptr || !font_ptr || !text)
         return;
@@ -772,8 +798,8 @@ void rt_canvas_text_font_right(void *canvas_ptr, int64_t margin, int64_t y,
 
 #else // !VIPER_ENABLE_GRAPHICS — stubs
 
-void rt_canvas_text_font(void *canvas, int64_t x, int64_t y,
-                         rt_string text, void *font, int64_t color)
+void rt_canvas_text_font(
+    void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t color)
 {
     (void)canvas;
     (void)x;
@@ -783,8 +809,8 @@ void rt_canvas_text_font(void *canvas, int64_t x, int64_t y,
     (void)color;
 }
 
-void rt_canvas_text_font_bg(void *canvas, int64_t x, int64_t y,
-                            rt_string text, void *font, int64_t fg, int64_t bg)
+void rt_canvas_text_font_bg(
+    void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t fg, int64_t bg)
 {
     (void)canvas;
     (void)x;
@@ -795,8 +821,8 @@ void rt_canvas_text_font_bg(void *canvas, int64_t x, int64_t y,
     (void)bg;
 }
 
-void rt_canvas_text_font_scaled(void *canvas, int64_t x, int64_t y,
-                                rt_string text, void *font, int64_t scale, int64_t color)
+void rt_canvas_text_font_scaled(
+    void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t scale, int64_t color)
 {
     (void)canvas;
     (void)x;
@@ -807,8 +833,8 @@ void rt_canvas_text_font_scaled(void *canvas, int64_t x, int64_t y,
     (void)color;
 }
 
-void rt_canvas_text_font_centered(void *canvas, int64_t y,
-                                  rt_string text, void *font, int64_t color)
+void rt_canvas_text_font_centered(
+    void *canvas, int64_t y, rt_string text, void *font, int64_t color)
 {
     (void)canvas;
     (void)y;
@@ -817,8 +843,8 @@ void rt_canvas_text_font_centered(void *canvas, int64_t y,
     (void)color;
 }
 
-void rt_canvas_text_font_right(void *canvas, int64_t margin, int64_t y,
-                               rt_string text, void *font, int64_t color)
+void rt_canvas_text_font_right(
+    void *canvas, int64_t margin, int64_t y, rt_string text, void *font, int64_t color)
 {
     (void)canvas;
     (void)margin;

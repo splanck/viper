@@ -477,8 +477,8 @@ bool inlineCallSite(Function &caller,
     bool hasRetParam = returnsValue && callInstr.result;
     if (hasRetParam)
     {
-        retParam.name = lookupValueName(caller, *callInstr.result,
-                                        "ret" + std::to_string(*callInstr.result));
+        retParam.name =
+            lookupValueName(caller, *callInstr.result, "ret" + std::to_string(*callInstr.result));
         retParam.id = nextId++;
         retParam.type = callee.retType;
     }
@@ -534,6 +534,7 @@ bool inlineCallSite(Function &caller,
         Param param;
         bool typeFound{false};
     };
+
     std::vector<EscapedParamInfo> escapedParamInfos;
     escapedParamInfos.reserve(escapedIds.size());
 

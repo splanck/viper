@@ -47,9 +47,9 @@ enum class CallArgClass : uint8_t
 struct CallArg
 {
     CallArgClass cls{CallArgClass::GPR}; ///< Register class for this argument.
-    uint16_t vreg{0};     ///< Virtual register holding the value (when !isImm).
-    bool isImm{false};    ///< True when the argument is a compile-time constant.
-    int64_t imm{0};       ///< Immediate value (when isImm == true).
+    uint16_t vreg{0};                    ///< Virtual register holding the value (when !isImm).
+    bool isImm{false};                   ///< True when the argument is a compile-time constant.
+    int64_t imm{0};                      ///< Immediate value (when isImm == true).
 };
 
 /// @brief Target-independent description of a function call to be lowered.

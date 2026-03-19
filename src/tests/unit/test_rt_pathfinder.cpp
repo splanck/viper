@@ -53,18 +53,18 @@ static int64_t list_get_i64(void *list, int64_t index)
 static int tests_passed = 0;
 static int tests_total = 0;
 
-#define TEST(name)                                                                                   \
-    do                                                                                               \
-    {                                                                                                \
-        tests_total++;                                                                               \
-        printf("  [%d] %s... ", tests_total, name);                                                  \
+#define TEST(name)                                                                                 \
+    do                                                                                             \
+    {                                                                                              \
+        tests_total++;                                                                             \
+        printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
 
-#define PASS()                                                                                       \
-    do                                                                                               \
-    {                                                                                                \
-        tests_passed++;                                                                              \
-        printf("ok\n");                                                                              \
+#define PASS()                                                                                     \
+    do                                                                                             \
+    {                                                                                              \
+        tests_passed++;                                                                            \
+        printf("ok\n");                                                                            \
     } while (0)
 
 //=============================================================================
@@ -148,8 +148,10 @@ static void test_4way_manhattan(void)
         int64_t cy = list_get_i64(path, i + 1);
         int64_t dx = cx - px;
         int64_t dy = cy - py;
-        if (dx < 0) dx = -dx;
-        if (dy < 0) dy = -dy;
+        if (dx < 0)
+            dx = -dx;
+        if (dy < 0)
+            dy = -dy;
         assert(dx + dy == 1); // Only cardinal moves
     }
     PASS();
@@ -300,7 +302,7 @@ static void test_null_safety(void)
     assert(rt_pathfinder_is_walkable(NULL, 0, 0) == 0);
     assert(rt_pathfinder_get_last_found(NULL) == 0);
     rt_pathfinder_set_walkable(NULL, 0, 0, 1); // No crash
-    rt_pathfinder_set_diagonal(NULL, 1);         // No crash
+    rt_pathfinder_set_diagonal(NULL, 1);       // No crash
     PASS();
 }
 

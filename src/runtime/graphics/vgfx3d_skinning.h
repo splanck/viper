@@ -27,8 +27,10 @@
 
 /// @brief Apply skeletal skinning on the CPU.
 /// Transforms position and normal of each vertex by the weighted bone matrices.
-void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src, vgfx3d_vertex_t *dst,
-                           uint32_t vertex_count,
-                           const float *bone_palette, int32_t bone_count);
+void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
+                          vgfx3d_vertex_t *dst,
+                          uint32_t vertex_count,
+                          const float *bone_palette,
+                          int32_t bone_count);
 
 #endif /* VIPER_ENABLE_GRAPHICS */

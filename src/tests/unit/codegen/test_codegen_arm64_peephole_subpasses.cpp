@@ -61,9 +61,10 @@ TEST(AArch64PeepholeSubpasses, AddFpImmZeroIdentity)
     fn.blocks.push_back(MBasicBlock{"entry", {}});
     auto &bb = fn.blocks.back();
 
-    bb.instrs.push_back(
-        MInstr{MOpcode::FAddRRR,
-               {MOperand::regOp(PhysReg::V0), MOperand::regOp(PhysReg::V0), MOperand::regOp(PhysReg::V1)}});
+    bb.instrs.push_back(MInstr{MOpcode::FAddRRR,
+                               {MOperand::regOp(PhysReg::V0),
+                                MOperand::regOp(PhysReg::V0),
+                                MOperand::regOp(PhysReg::V1)}});
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
     size_t before = bb.instrs.size();

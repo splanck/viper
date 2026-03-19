@@ -36,23 +36,25 @@ void vgfx3d_frustum_extract(vgfx3d_frustum_t *f, const float vp[16]);
 
 /// @brief Test an axis-aligned bounding box against the frustum.
 /// @return 0 = fully outside, 1 = intersecting, 2 = fully inside.
-int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f,
-                              const float min[3], const float max[3]);
+int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], const float max[3]);
 
 /// @brief Test a bounding sphere against the frustum.
 /// @return 0 = fully outside, 1 = intersecting, 2 = fully inside.
-int vgfx3d_frustum_test_sphere(const vgfx3d_frustum_t *f,
-                                const float center[3], float radius);
+int vgfx3d_frustum_test_sphere(const vgfx3d_frustum_t *f, const float center[3], float radius);
 
 /// @brief Transform an object-space AABB by a 4x4 row-major matrix,
 ///        producing a new world-space AABB that encloses the transformed box.
-void vgfx3d_transform_aabb(const float obj_min[3], const float obj_max[3],
-                            const double world_matrix[16],
-                            float out_min[3], float out_max[3]);
+void vgfx3d_transform_aabb(const float obj_min[3],
+                           const float obj_max[3],
+                           const double world_matrix[16],
+                           float out_min[3],
+                           float out_max[3]);
 
 /// @brief Compute the AABB of a mesh's vertices.
-void vgfx3d_compute_mesh_aabb(const void *vertices, uint32_t vertex_count,
-                               uint32_t vertex_stride,
-                               float out_min[3], float out_max[3]);
+void vgfx3d_compute_mesh_aabb(const void *vertices,
+                              uint32_t vertex_count,
+                              uint32_t vertex_stride,
+                              float out_min[3],
+                              float out_max[3]);
 
 #endif /* VIPER_ENABLE_GRAPHICS */

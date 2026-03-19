@@ -104,7 +104,8 @@ void *rt_rendertarget3d_new(int64_t width, int64_t height)
         return NULL;
     }
 
-    rt_rendertarget3d *rtd = (rt_rendertarget3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_rendertarget3d));
+    rt_rendertarget3d *rtd =
+        (rt_rendertarget3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_rendertarget3d));
     if (!rtd)
     {
         rt_trap("RenderTarget3D.New: memory allocation failed");
@@ -155,6 +156,7 @@ void *rt_rendertarget3d_as_pixels(void *obj)
         int64_t h;
         uint32_t *data;
     } px_view;
+
     px_view *pv = (px_view *)pixels;
 
     int32_t w = rtd->target->width;
@@ -166,10 +168,8 @@ void *rt_rendertarget3d_as_pixels(void *obj)
         for (int32_t x = 0; x < w; x++)
         {
             const uint8_t *src = &rtd->target->color_buf[y * stride + x * 4];
-            pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) |
-                                       ((uint32_t)src[1] << 16) |
-                                       ((uint32_t)src[2] << 8) |
-                                       (uint32_t)src[3];
+            pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
+                                      ((uint32_t)src[2] << 8) | (uint32_t)src[3];
         }
     }
 

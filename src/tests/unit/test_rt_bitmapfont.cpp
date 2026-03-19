@@ -40,83 +40,82 @@ extern "C" void vm_trap(const char *msg)
 // Helper: create a minimal BDF font file on disk for testing
 //=============================================================================
 
-static const char *test_bdf_content =
-    "STARTFONT 2.1\n"
-    "FONT -Test-Medium-R-Normal--8-80-75-75-C-80-ISO10646-1\n"
-    "SIZE 8 75 75\n"
-    "FONTBOUNDINGBOX 8 8 0 0\n"
-    "FONT_ASCENT 7\n"
-    "FONT_DESCENT 1\n"
-    "STARTPROPERTIES 2\n"
-    "FONT_ASCENT 7\n"
-    "FONT_DESCENT 1\n"
-    "ENDPROPERTIES\n"
-    "CHARS 4\n"
-    // Space (encoding 32)
-    "STARTCHAR space\n"
-    "ENCODING 32\n"
-    "SWIDTH 500 0\n"
-    "DWIDTH 8 0\n"
-    "BBX 8 8 0 0\n"
-    "BITMAP\n"
-    "00\n"
-    "00\n"
-    "00\n"
-    "00\n"
-    "00\n"
-    "00\n"
-    "00\n"
-    "00\n"
-    "ENDCHAR\n"
-    // 'A' (encoding 65)
-    "STARTCHAR A\n"
-    "ENCODING 65\n"
-    "SWIDTH 500 0\n"
-    "DWIDTH 8 0\n"
-    "BBX 8 8 0 0\n"
-    "BITMAP\n"
-    "38\n"
-    "6C\n"
-    "C6\n"
-    "FE\n"
-    "C6\n"
-    "C6\n"
-    "C6\n"
-    "00\n"
-    "ENDCHAR\n"
-    // 'B' (encoding 66)
-    "STARTCHAR B\n"
-    "ENCODING 66\n"
-    "SWIDTH 500 0\n"
-    "DWIDTH 8 0\n"
-    "BBX 8 8 0 0\n"
-    "BITMAP\n"
-    "FC\n"
-    "66\n"
-    "66\n"
-    "7C\n"
-    "66\n"
-    "66\n"
-    "FC\n"
-    "00\n"
-    "ENDCHAR\n"
-    // '?' (encoding 63) — fallback glyph
-    "STARTCHAR question\n"
-    "ENCODING 63\n"
-    "SWIDTH 500 0\n"
-    "DWIDTH 8 0\n"
-    "BBX 8 8 0 0\n"
-    "BITMAP\n"
-    "7C\n"
-    "C6\n"
-    "0C\n"
-    "18\n"
-    "18\n"
-    "00\n"
-    "18\n"
-    "00\n"
-    "ENDCHAR\n"
-    "ENDFONT\n";
+static const char *test_bdf_content = "STARTFONT 2.1\n"
+                                      "FONT -Test-Medium-R-Normal--8-80-75-75-C-80-ISO10646-1\n"
+                                      "SIZE 8 75 75\n"
+                                      "FONTBOUNDINGBOX 8 8 0 0\n"
+                                      "FONT_ASCENT 7\n"
+                                      "FONT_DESCENT 1\n"
+                                      "STARTPROPERTIES 2\n"
+                                      "FONT_ASCENT 7\n"
+                                      "FONT_DESCENT 1\n"
+                                      "ENDPROPERTIES\n"
+                                      "CHARS 4\n"
+                                      // Space (encoding 32)
+                                      "STARTCHAR space\n"
+                                      "ENCODING 32\n"
+                                      "SWIDTH 500 0\n"
+                                      "DWIDTH 8 0\n"
+                                      "BBX 8 8 0 0\n"
+                                      "BITMAP\n"
+                                      "00\n"
+                                      "00\n"
+                                      "00\n"
+                                      "00\n"
+                                      "00\n"
+                                      "00\n"
+                                      "00\n"
+                                      "00\n"
+                                      "ENDCHAR\n"
+                                      // 'A' (encoding 65)
+                                      "STARTCHAR A\n"
+                                      "ENCODING 65\n"
+                                      "SWIDTH 500 0\n"
+                                      "DWIDTH 8 0\n"
+                                      "BBX 8 8 0 0\n"
+                                      "BITMAP\n"
+                                      "38\n"
+                                      "6C\n"
+                                      "C6\n"
+                                      "FE\n"
+                                      "C6\n"
+                                      "C6\n"
+                                      "C6\n"
+                                      "00\n"
+                                      "ENDCHAR\n"
+                                      // 'B' (encoding 66)
+                                      "STARTCHAR B\n"
+                                      "ENCODING 66\n"
+                                      "SWIDTH 500 0\n"
+                                      "DWIDTH 8 0\n"
+                                      "BBX 8 8 0 0\n"
+                                      "BITMAP\n"
+                                      "FC\n"
+                                      "66\n"
+                                      "66\n"
+                                      "7C\n"
+                                      "66\n"
+                                      "66\n"
+                                      "FC\n"
+                                      "00\n"
+                                      "ENDCHAR\n"
+                                      // '?' (encoding 63) — fallback glyph
+                                      "STARTCHAR question\n"
+                                      "ENCODING 63\n"
+                                      "SWIDTH 500 0\n"
+                                      "DWIDTH 8 0\n"
+                                      "BBX 8 8 0 0\n"
+                                      "BITMAP\n"
+                                      "7C\n"
+                                      "C6\n"
+                                      "0C\n"
+                                      "18\n"
+                                      "18\n"
+                                      "00\n"
+                                      "18\n"
+                                      "00\n"
+                                      "ENDCHAR\n"
+                                      "ENDFONT\n";
 
 /// @brief Write the test BDF content to a temporary file.
 static const char *create_test_bdf(void)
@@ -194,18 +193,18 @@ static const char *create_test_psf(void)
 static int tests_passed = 0;
 static int tests_total = 0;
 
-#define TEST(name)                                                                                   \
-    do                                                                                               \
-    {                                                                                                \
-        tests_total++;                                                                               \
-        printf("  [%d] %s... ", tests_total, name);                                                  \
+#define TEST(name)                                                                                 \
+    do                                                                                             \
+    {                                                                                              \
+        tests_total++;                                                                             \
+        printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
 
-#define PASS()                                                                                       \
-    do                                                                                               \
-    {                                                                                                \
-        tests_passed++;                                                                              \
-        printf("ok\n");                                                                              \
+#define PASS()                                                                                     \
+    do                                                                                             \
+    {                                                                                              \
+        tests_passed++;                                                                            \
+        printf("ok\n");                                                                            \
     } while (0)
 
 static void test_bdf_load_valid(void)

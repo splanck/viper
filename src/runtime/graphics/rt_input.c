@@ -1381,7 +1381,8 @@ int64_t rt_mouse_wheel_y(void)
 void rt_mouse_show(void)
 {
     RT_ASSERT_MAIN_THREAD();
-    if (!g_mouse_hidden) return;
+    if (!g_mouse_hidden)
+        return;
     g_mouse_hidden = false;
     extern void vgfx_show_cursor(void);
     vgfx_show_cursor();
@@ -1390,7 +1391,8 @@ void rt_mouse_show(void)
 void rt_mouse_hide(void)
 {
     RT_ASSERT_MAIN_THREAD();
-    if (g_mouse_hidden) return;
+    if (g_mouse_hidden)
+        return;
     g_mouse_hidden = true;
     extern void vgfx_hide_cursor(void);
     vgfx_hide_cursor();

@@ -562,7 +562,8 @@ bool MachOWriter::write(const std::string &path,
     size_t unwindFileOff = alignUp(constFileOff + rodataSize, 8);
     size_t unwindAddr = unwindFileOff - textFileOff;
 
-    size_t debugLineFileOff = hasUnwind ? (unwindFileOff + unwindSize) : (constFileOff + rodataSize);
+    size_t debugLineFileOff =
+        hasUnwind ? (unwindFileOff + unwindSize) : (constFileOff + rodataSize);
     size_t debugLineAddr = debugLineFileOff - textFileOff;
 
     size_t segFileOff = textFileOff;

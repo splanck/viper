@@ -38,10 +38,23 @@ extern "C" void vm_trap(const char *msg)
 static int tests_passed = 0;
 static int tests_total = 0;
 
-#define TEST(name) do { tests_total++; printf("  [%d] %s... ", tests_total, name); } while (0)
-#define PASS() do { tests_passed++; printf("ok\n"); } while (0)
+#define TEST(name)                                                                                 \
+    do                                                                                             \
+    {                                                                                              \
+        tests_total++;                                                                             \
+        printf("  [%d] %s... ", tests_total, name);                                                \
+    } while (0)
+#define PASS()                                                                                     \
+    do                                                                                             \
+    {                                                                                              \
+        tests_passed++;                                                                            \
+        printf("ok\n");                                                                            \
+    } while (0)
 
-static rt_string make_str(const char *s) { return rt_string_from_bytes(s, strlen(s)); }
+static rt_string make_str(const char *s)
+{
+    return rt_string_from_bytes(s, strlen(s));
+}
 
 static void test_tile_properties(void)
 {

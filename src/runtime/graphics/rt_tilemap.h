@@ -229,8 +229,8 @@ extern "C"
     //=========================================================================
 
     /// @brief Set a tile on a specific layer.
-    void rt_tilemap_set_tile_layer(void *tilemap, int64_t layer, int64_t x, int64_t y,
-                                   int64_t tile);
+    void rt_tilemap_set_tile_layer(
+        void *tilemap, int64_t layer, int64_t x, int64_t y, int64_t tile);
 
     /// @brief Get a tile from a specific layer.
     int64_t rt_tilemap_get_tile_layer(void *tilemap, int64_t layer, int64_t x, int64_t y);
@@ -253,8 +253,8 @@ extern "C"
     //=========================================================================
 
     /// @brief Draw a single layer to a canvas.
-    void rt_tilemap_draw_layer(void *tilemap, void *canvas, int64_t layer, int64_t cam_x,
-                               int64_t cam_y);
+    void rt_tilemap_draw_layer(
+        void *tilemap, void *canvas, int64_t layer, int64_t cam_x, int64_t cam_y);
 
     //=========================================================================
     // Collision Layer
@@ -284,14 +284,28 @@ extern "C"
     //=========================================================================
 
     /// @brief Set auto-tile rule variants 0-7 (lower half of 4-bit bitmask).
-    void rt_tilemap_set_autotile_lo(void *tm, int64_t base_tile,
-                                    int64_t v0, int64_t v1, int64_t v2, int64_t v3,
-                                    int64_t v4, int64_t v5, int64_t v6, int64_t v7);
+    void rt_tilemap_set_autotile_lo(void *tm,
+                                    int64_t base_tile,
+                                    int64_t v0,
+                                    int64_t v1,
+                                    int64_t v2,
+                                    int64_t v3,
+                                    int64_t v4,
+                                    int64_t v5,
+                                    int64_t v6,
+                                    int64_t v7);
 
     /// @brief Set auto-tile rule variants 8-15 (upper half of 4-bit bitmask).
-    void rt_tilemap_set_autotile_hi(void *tm, int64_t base_tile,
-                                    int64_t v8, int64_t v9, int64_t v10, int64_t v11,
-                                    int64_t v12, int64_t v13, int64_t v14, int64_t v15);
+    void rt_tilemap_set_autotile_hi(void *tm,
+                                    int64_t base_tile,
+                                    int64_t v8,
+                                    int64_t v9,
+                                    int64_t v10,
+                                    int64_t v11,
+                                    int64_t v12,
+                                    int64_t v13,
+                                    int64_t v14,
+                                    int64_t v15);
 
     /// @brief Clear auto-tile rule for a base tile.
     void rt_tilemap_clear_autotile(void *tm, int64_t base_tile);
@@ -300,20 +314,20 @@ extern "C"
     void rt_tilemap_apply_autotile(void *tm);
 
     /// @brief Apply auto-tiling to a region.
-    void rt_tilemap_apply_autotile_region(void *tm, int64_t x, int64_t y,
-                                          int64_t w, int64_t h);
+    void rt_tilemap_apply_autotile_region(void *tm, int64_t x, int64_t y, int64_t w, int64_t h);
 
     //=========================================================================
     // Tile Properties
     //=========================================================================
 
     /// @brief Set a property on a tile ID.
-    void rt_tilemap_set_tile_property(void *tm, int64_t tile_index,
-                                      rt_string key, int64_t value);
+    void rt_tilemap_set_tile_property(void *tm, int64_t tile_index, rt_string key, int64_t value);
 
     /// @brief Get a property from a tile ID (returns default_val if not found).
-    int64_t rt_tilemap_get_tile_property(void *tm, int64_t tile_index,
-                                         rt_string key, int64_t default_val);
+    int64_t rt_tilemap_get_tile_property(void *tm,
+                                         int64_t tile_index,
+                                         rt_string key,
+                                         int64_t default_val);
 
     /// @brief Check if a tile ID has a property.
     int8_t rt_tilemap_has_tile_property(void *tm, int64_t tile_index, rt_string key);

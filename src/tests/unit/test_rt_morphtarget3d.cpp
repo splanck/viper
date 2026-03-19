@@ -14,34 +14,51 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
-#include "rt_internal.h"
-#include "rt_string.h"
 #include "rt_canvas3d.h"
+#include "rt_internal.h"
 #include "rt_morphtarget3d.h"
+#include "rt_string.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 
-extern "C" {
-extern rt_string rt_const_cstr(const char *s);
-extern void *rt_mesh3d_new_box(double w, double h, double d);
+extern "C"
+{
+    extern rt_string rt_const_cstr(const char *s);
+    extern void *rt_mesh3d_new_box(double w, double h, double d);
 }
 
 static int tests_passed = 0;
 static int tests_run = 0;
 
-#define EXPECT_TRUE(cond, msg) do { \
-    tests_run++; \
-    if (!(cond)) { fprintf(stderr, "FAIL: %s\n", msg); } \
-    else { tests_passed++; } \
-} while(0)
+#define EXPECT_TRUE(cond, msg)                                                                     \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL: %s\n", msg);                                                    \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
-#define EXPECT_NEAR(a, b, eps, msg) do { \
-    tests_run++; \
-    if (fabs((double)(a) - (double)(b)) > (eps)) { fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b)); } \
-    else { tests_passed++; } \
-} while(0)
+#define EXPECT_NEAR(a, b, eps, msg)                                                                \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (fabs((double)(a) - (double)(b)) > (eps))                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b));    \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
 static void test_create()
 {

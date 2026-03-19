@@ -103,7 +103,9 @@ void rt_tilemap_set_tile_property(void *tm, int64_t tile_index, rt_string key, i
     p->count++;
 }
 
-int64_t rt_tilemap_get_tile_property(void *tm, int64_t tile_index, rt_string key,
+int64_t rt_tilemap_get_tile_property(void *tm,
+                                     int64_t tile_index,
+                                     rt_string key,
                                      int64_t default_val)
 {
     (void)tm;
@@ -175,9 +177,16 @@ static autotile_rule *find_or_create_rule(int64_t base_tile)
     return r;
 }
 
-void rt_tilemap_set_autotile_lo(void *tm, int64_t base_tile,
-                                int64_t v0, int64_t v1, int64_t v2, int64_t v3,
-                                int64_t v4, int64_t v5, int64_t v6, int64_t v7)
+void rt_tilemap_set_autotile_lo(void *tm,
+                                int64_t base_tile,
+                                int64_t v0,
+                                int64_t v1,
+                                int64_t v2,
+                                int64_t v3,
+                                int64_t v4,
+                                int64_t v5,
+                                int64_t v6,
+                                int64_t v7)
 {
     (void)tm;
     autotile_rule *r = find_or_create_rule(base_tile);
@@ -194,9 +203,16 @@ void rt_tilemap_set_autotile_lo(void *tm, int64_t base_tile,
     r->active = 1;
 }
 
-void rt_tilemap_set_autotile_hi(void *tm, int64_t base_tile,
-                                int64_t v8, int64_t v9, int64_t v10, int64_t v11,
-                                int64_t v12, int64_t v13, int64_t v14, int64_t v15)
+void rt_tilemap_set_autotile_hi(void *tm,
+                                int64_t base_tile,
+                                int64_t v8,
+                                int64_t v9,
+                                int64_t v10,
+                                int64_t v11,
+                                int64_t v12,
+                                int64_t v13,
+                                int64_t v14,
+                                int64_t v15)
 {
     (void)tm;
     autotile_rule *r = find_or_create_rule(base_tile);
@@ -252,8 +268,7 @@ static int8_t is_same_base(int64_t tile, int64_t base)
     return 0;
 }
 
-void rt_tilemap_apply_autotile_region(void *tm, int64_t rx, int64_t ry,
-                                      int64_t rw, int64_t rh)
+void rt_tilemap_apply_autotile_region(void *tm, int64_t rx, int64_t ry, int64_t rw, int64_t rh)
 {
     if (!tm || s_autotile_count == 0)
         return;
@@ -316,9 +331,7 @@ void rt_tilemap_apply_autotile(void *tm)
 {
     if (!tm)
         return;
-    rt_tilemap_apply_autotile_region(tm, 0, 0,
-                                     rt_tilemap_get_width(tm),
-                                     rt_tilemap_get_height(tm));
+    rt_tilemap_apply_autotile_region(tm, 0, 0, rt_tilemap_get_width(tm), rt_tilemap_get_height(tm));
 }
 
 //=============================================================================
@@ -363,8 +376,8 @@ int8_t rt_tilemap_save_to_file(void *tm, rt_string path)
             }
         }
         rt_map_set(layer_obj, rt_const_cstr("tiles"), tiles_arr);
-        rt_map_set(layer_obj, rt_const_cstr("visible"),
-                   rt_box_i64(rt_tilemap_get_layer_visible(tm, li)));
+        rt_map_set(
+            layer_obj, rt_const_cstr("visible"), rt_box_i64(rt_tilemap_get_layer_visible(tm, li)));
         rt_seq_push(layers_arr, layer_obj);
     }
     rt_map_set(root, rt_const_cstr("layers"), layers_arr);

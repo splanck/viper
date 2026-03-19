@@ -34,10 +34,10 @@ extern "C"
 {
 #endif
 
-    /// @brief Mix group constants.
-    #define RT_MIXGROUP_MUSIC 0
-    #define RT_MIXGROUP_SFX   1
-    #define RT_MIXGROUP_COUNT 2
+/// @brief Mix group constants.
+#define RT_MIXGROUP_MUSIC 0
+#define RT_MIXGROUP_SFX 1
+#define RT_MIXGROUP_COUNT 2
 
     //=========================================================================
     // Mix Group Volume

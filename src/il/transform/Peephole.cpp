@@ -402,7 +402,10 @@ void peephole(Module &m)
                             argsMatch = true;
                             for (size_t a = 0; a < in.brArgs[0].size(); ++a)
                                 if (!sameValue(in.brArgs[0][a], in.brArgs[1][a]))
-                                { argsMatch = false; break; }
+                                {
+                                    argsMatch = false;
+                                    break;
+                                }
                         }
                         if (argsMatch)
                         {

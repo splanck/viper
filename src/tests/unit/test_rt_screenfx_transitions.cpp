@@ -39,18 +39,18 @@ extern "C" void vm_trap(const char *msg)
 static int tests_passed = 0;
 static int tests_total = 0;
 
-#define TEST(name)                                                                                   \
-    do                                                                                               \
-    {                                                                                                \
-        tests_total++;                                                                               \
-        printf("  [%d] %s... ", tests_total, name);                                                  \
+#define TEST(name)                                                                                 \
+    do                                                                                             \
+    {                                                                                              \
+        tests_total++;                                                                             \
+        printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
 
-#define PASS()                                                                                       \
-    do                                                                                               \
-    {                                                                                                \
-        tests_passed++;                                                                              \
-        printf("ok\n");                                                                              \
+#define PASS()                                                                                     \
+    do                                                                                             \
+    {                                                                                              \
+        tests_passed++;                                                                            \
+        printf("ok\n");                                                                            \
     } while (0)
 
 //=============================================================================
@@ -108,7 +108,7 @@ static void test_wipe_invalid_direction(void)
     TEST("Wipe invalid direction defaults to LEFT");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_wipe(fx, 99, 0x000000, 100); // Invalid direction
-    assert(rt_screenfx_is_active(fx) == 1);   // Still works
+    assert(rt_screenfx_is_active(fx) == 1);  // Still works
     rt_screenfx_update(fx, 100);
     assert(rt_screenfx_is_finished(fx) == 1);
     PASS();

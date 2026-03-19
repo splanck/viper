@@ -138,25 +138,44 @@ static void random_cone_dir(const double *dir, double spread, float *out)
     /* Build a coordinate frame around dir */
     float d[3] = {(float)dir[0], (float)dir[1], (float)dir[2]};
     float dlen = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-    if (dlen > 1e-6f) { d[0] /= dlen; d[1] /= dlen; d[2] /= dlen; }
-    else { d[0] = 0; d[1] = 1; d[2] = 0; }
+    if (dlen > 1e-6f)
+    {
+        d[0] /= dlen;
+        d[1] /= dlen;
+        d[2] /= dlen;
+    }
+    else
+    {
+        d[0] = 0;
+        d[1] = 1;
+        d[2] = 0;
+    }
 
     /* Find a perpendicular vector */
     float perp[3];
     if (fabsf(d[1]) < 0.9f)
     {
-        perp[0] = 0; perp[1] = 1; perp[2] = 0;
+        perp[0] = 0;
+        perp[1] = 1;
+        perp[2] = 0;
     }
     else
     {
-        perp[0] = 1; perp[1] = 0; perp[2] = 0;
+        perp[0] = 1;
+        perp[1] = 0;
+        perp[2] = 0;
     }
     /* right = cross(d, perp), normalized */
     float rx = d[1] * perp[2] - d[2] * perp[1];
     float ry = d[2] * perp[0] - d[0] * perp[2];
     float rz = d[0] * perp[1] - d[1] * perp[0];
     float rlen = sqrtf(rx * rx + ry * ry + rz * rz);
-    if (rlen > 1e-6f) { rx /= rlen; ry /= rlen; rz /= rlen; }
+    if (rlen > 1e-6f)
+    {
+        rx /= rlen;
+        ry /= rlen;
+        rz /= rlen;
+    }
 
     /* up = cross(right, d) */
     float ux = ry * d[2] - rz * d[1];
@@ -172,7 +191,12 @@ static void random_cone_dir(const double *dir, double spread, float *out)
 
     /* Normalize */
     float olen = sqrtf(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
-    if (olen > 1e-6f) { out[0] /= olen; out[1] /= olen; out[2] /= olen; }
+    if (olen > 1e-6f)
+    {
+        out[0] /= olen;
+        out[1] /= olen;
+        out[2] /= olen;
+    }
 }
 
 /*==========================================================================
@@ -193,27 +217,45 @@ void *rt_particles3d_new(int64_t max_particles)
         rt_trap("Particles3D.New: max_particles must be 1-100000");
         return NULL;
     }
-    rt_particles3d *ps = (rt_particles3d *)rt_obj_new_i64(
-        0, (int64_t)sizeof(rt_particles3d));
-    if (!ps) { rt_trap("Particles3D.New: memory allocation failed"); return NULL; }
+    rt_particles3d *ps = (rt_particles3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_particles3d));
+    if (!ps)
+    {
+        rt_trap("Particles3D.New: memory allocation failed");
+        return NULL;
+    }
 
     ps->vptr = NULL;
-    ps->particles = (vgfx3d_particle_t *)calloc((size_t)max_particles,
-                                                  sizeof(vgfx3d_particle_t));
-    if (!ps->particles) { rt_trap("Particles3D.New: out of memory"); return NULL; }
+    ps->particles = (vgfx3d_particle_t *)calloc((size_t)max_particles, sizeof(vgfx3d_particle_t));
+    if (!ps->particles)
+    {
+        rt_trap("Particles3D.New: out of memory");
+        return NULL;
+    }
     ps->count = 0;
     ps->max_particles = (int32_t)max_particles;
 
     ps->position[0] = ps->position[1] = ps->position[2] = 0.0;
-    ps->emit_dir[0] = 0.0; ps->emit_dir[1] = 1.0; ps->emit_dir[2] = 0.0;
+    ps->emit_dir[0] = 0.0;
+    ps->emit_dir[1] = 1.0;
+    ps->emit_dir[2] = 0.0;
     ps->emit_spread = 0.3;
-    ps->speed_min = 1.0; ps->speed_max = 3.0;
-    ps->life_min = 0.5; ps->life_max = 1.5;
-    ps->size_start = 0.2; ps->size_end = 0.05;
-    ps->gravity[0] = 0; ps->gravity[1] = -9.8; ps->gravity[2] = 0;
-    ps->color_start[0] = 1; ps->color_start[1] = 1; ps->color_start[2] = 1;
-    ps->color_end[0] = 1; ps->color_end[1] = 1; ps->color_end[2] = 1;
-    ps->alpha_start = 1.0; ps->alpha_end = 0.0;
+    ps->speed_min = 1.0;
+    ps->speed_max = 3.0;
+    ps->life_min = 0.5;
+    ps->life_max = 1.5;
+    ps->size_start = 0.2;
+    ps->size_end = 0.05;
+    ps->gravity[0] = 0;
+    ps->gravity[1] = -9.8;
+    ps->gravity[2] = 0;
+    ps->color_start[0] = 1;
+    ps->color_start[1] = 1;
+    ps->color_start[2] = 1;
+    ps->color_end[0] = 1;
+    ps->color_end[1] = 1;
+    ps->color_end[2] = 1;
+    ps->alpha_start = 1.0;
+    ps->alpha_end = 0.0;
     ps->rate = 20.0;
     ps->accumulator = 0.0;
     ps->emitting = 0;
@@ -231,66 +273,156 @@ void *rt_particles3d_new(int64_t max_particles)
  *=========================================================================*/
 
 void rt_particles3d_set_position(void *o, double x, double y, double z)
-{ if (!o) return; rt_particles3d *p = (rt_particles3d *)o; p->position[0]=x; p->position[1]=y; p->position[2]=z; }
+{
+    if (!o)
+        return;
+    rt_particles3d *p = (rt_particles3d *)o;
+    p->position[0] = x;
+    p->position[1] = y;
+    p->position[2] = z;
+}
 
 void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, double spread)
 {
-    if (!o) return;
+    if (!o)
+        return;
     rt_particles3d *p = (rt_particles3d *)o;
-    double len = sqrt(dx*dx + dy*dy + dz*dz);
-    if (len > 1e-8) { p->emit_dir[0]=dx/len; p->emit_dir[1]=dy/len; p->emit_dir[2]=dz/len; }
+    double len = sqrt(dx * dx + dy * dy + dz * dz);
+    if (len > 1e-8)
+    {
+        p->emit_dir[0] = dx / len;
+        p->emit_dir[1] = dy / len;
+        p->emit_dir[2] = dz / len;
+    }
     p->emit_spread = spread;
 }
 
 void rt_particles3d_set_speed(void *o, double mn, double mx)
-{ if (!o) return; rt_particles3d *p=(rt_particles3d*)o; p->speed_min=mn; p->speed_max=mx; }
+{
+    if (!o)
+        return;
+    rt_particles3d *p = (rt_particles3d *)o;
+    p->speed_min = mn;
+    p->speed_max = mx;
+}
 
 void rt_particles3d_set_lifetime(void *o, double mn, double mx)
-{ if (!o) return; rt_particles3d *p=(rt_particles3d*)o; p->life_min=mn; p->life_max=mx; }
+{
+    if (!o)
+        return;
+    rt_particles3d *p = (rt_particles3d *)o;
+    p->life_min = mn;
+    p->life_max = mx;
+}
 
 void rt_particles3d_set_size(void *o, double s, double e)
-{ if (!o) return; rt_particles3d *p=(rt_particles3d*)o; p->size_start=s; p->size_end=e; }
+{
+    if (!o)
+        return;
+    rt_particles3d *p = (rt_particles3d *)o;
+    p->size_start = s;
+    p->size_end = e;
+}
 
 void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz)
-{ if (!o) return; rt_particles3d *p=(rt_particles3d*)o; p->gravity[0]=gx; p->gravity[1]=gy; p->gravity[2]=gz; }
+{
+    if (!o)
+        return;
+    rt_particles3d *p = (rt_particles3d *)o;
+    p->gravity[0] = gx;
+    p->gravity[1] = gy;
+    p->gravity[2] = gz;
+}
 
 void rt_particles3d_set_color(void *o, int64_t sc, int64_t ec)
-{ if (!o) return; rt_particles3d *p=(rt_particles3d*)o; unpack_color(sc, p->color_start); unpack_color(ec, p->color_end); }
+{
+    if (!o)
+        return;
+    rt_particles3d *p = (rt_particles3d *)o;
+    unpack_color(sc, p->color_start);
+    unpack_color(ec, p->color_end);
+}
 
 void rt_particles3d_set_alpha(void *o, double sa, double ea)
-{ if (!o) return; rt_particles3d *p=(rt_particles3d*)o; p->alpha_start=sa; p->alpha_end=ea; }
+{
+    if (!o)
+        return;
+    rt_particles3d *p = (rt_particles3d *)o;
+    p->alpha_start = sa;
+    p->alpha_end = ea;
+}
 
 void rt_particles3d_set_rate(void *o, double r)
-{ if (!o) return; ((rt_particles3d*)o)->rate = r; }
+{
+    if (!o)
+        return;
+    ((rt_particles3d *)o)->rate = r;
+}
 
 void rt_particles3d_set_additive(void *o, int8_t a)
-{ if (!o) return; ((rt_particles3d*)o)->additive_blend = a; }
+{
+    if (!o)
+        return;
+    ((rt_particles3d *)o)->additive_blend = a;
+}
 
 void rt_particles3d_set_texture(void *o, void *tex)
-{ if (!o) return; ((rt_particles3d*)o)->texture = tex; }
+{
+    if (!o)
+        return;
+    ((rt_particles3d *)o)->texture = tex;
+}
 
 void rt_particles3d_set_emitter_shape(void *o, int64_t s)
-{ if (!o) return; ((rt_particles3d*)o)->emitter_shape = (int32_t)s; }
+{
+    if (!o)
+        return;
+    ((rt_particles3d *)o)->emitter_shape = (int32_t)s;
+}
 
 void rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz)
-{ if (!o) return; rt_particles3d *p=(rt_particles3d*)o; p->emitter_size[0]=sx; p->emitter_size[1]=sy; p->emitter_size[2]=sz; }
+{
+    if (!o)
+        return;
+    rt_particles3d *p = (rt_particles3d *)o;
+    p->emitter_size[0] = sx;
+    p->emitter_size[1] = sy;
+    p->emitter_size[2] = sz;
+}
 
 /*==========================================================================
  * Playback
  *=========================================================================*/
 
-void rt_particles3d_start(void *o) { if (o) ((rt_particles3d*)o)->emitting = 1; }
-void rt_particles3d_stop(void *o) { if (o) ((rt_particles3d*)o)->emitting = 0; }
+void rt_particles3d_start(void *o)
+{
+    if (o)
+        ((rt_particles3d *)o)->emitting = 1;
+}
+
+void rt_particles3d_stop(void *o)
+{
+    if (o)
+        ((rt_particles3d *)o)->emitting = 0;
+}
 
 void rt_particles3d_clear(void *o)
 {
-    if (!o) return;
+    if (!o)
+        return;
     ((rt_particles3d *)o)->count = 0;
     ((rt_particles3d *)o)->accumulator = 0.0;
 }
 
-int64_t rt_particles3d_get_count(void *o) { return o ? ((rt_particles3d*)o)->count : 0; }
-int8_t  rt_particles3d_get_emitting(void *o) { return o ? ((rt_particles3d*)o)->emitting : 0; }
+int64_t rt_particles3d_get_count(void *o)
+{
+    return o ? ((rt_particles3d *)o)->count : 0;
+}
+
+int8_t rt_particles3d_get_emitting(void *o)
+{
+    return o ? ((rt_particles3d *)o)->emitting : 0;
+}
 
 /*==========================================================================
  * Spawning
@@ -298,7 +430,8 @@ int8_t  rt_particles3d_get_emitting(void *o) { return o ? ((rt_particles3d*)o)->
 
 static void spawn_particle(rt_particles3d *ps)
 {
-    if (ps->count >= ps->max_particles) return;
+    if (ps->count >= ps->max_particles)
+        return;
     vgfx3d_particle_t *p = &ps->particles[ps->count++];
 
     /* Position: emitter origin + shape offset */
@@ -332,7 +465,8 @@ static void spawn_particle(rt_particles3d *ps)
 
     /* Life */
     p->max_life = rand_range(ps->life_min, ps->life_max);
-    if (p->max_life < 0.01f) p->max_life = 0.01f;
+    if (p->max_life < 0.01f)
+        p->max_life = 0.01f;
     p->life = p->max_life;
 
     /* Initial visuals */
@@ -345,7 +479,8 @@ static void spawn_particle(rt_particles3d *ps)
 
 void rt_particles3d_burst(void *o, int64_t count)
 {
-    if (!o || count <= 0) return;
+    if (!o || count <= 0)
+        return;
     rt_particles3d *ps = (rt_particles3d *)o;
     for (int64_t i = 0; i < count; i++)
         spawn_particle(ps);
@@ -357,12 +492,13 @@ void rt_particles3d_burst(void *o, int64_t count)
 
 void rt_particles3d_update(void *o, double delta_time)
 {
-    if (!o || delta_time <= 0.0) return;
+    if (!o || delta_time <= 0.0)
+        return;
     rt_particles3d *ps = (rt_particles3d *)o;
     float dt = (float)delta_time;
 
     /* Update alive particles */
-    for (int32_t i = 0; i < ps->count; )
+    for (int32_t i = 0; i < ps->count;)
     {
         vgfx3d_particle_t *p = &ps->particles[i];
         p->life -= dt;
@@ -410,9 +546,11 @@ void rt_particles3d_update(void *o, double delta_time)
 
 void rt_particles3d_draw(void *o, void *canvas3d, void *camera)
 {
-    if (!o || !canvas3d || !camera) return;
+    if (!o || !canvas3d || !camera)
+        return;
     rt_particles3d *ps = (rt_particles3d *)o;
-    if (ps->count == 0) return;
+    if (ps->count == 0)
+        return;
 
     (void)canvas3d; /* used via extern draw calls below */
     rt_camera3d *cam = (rt_camera3d *)camera;
@@ -440,7 +578,8 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera)
                 float dj = (pj->pos[0] - cam_pos[0]) * (pj->pos[0] - cam_pos[0]) +
                            (pj->pos[1] - cam_pos[1]) * (pj->pos[1] - cam_pos[1]) +
                            (pj->pos[2] - cam_pos[2]) * (pj->pos[2] - cam_pos[2]);
-                if (dj >= ki_dist) break;
+                if (dj >= ki_dist)
+                    break;
                 ps->particles[j + 1] = ps->particles[j];
                 j--;
             }
@@ -453,7 +592,12 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera)
     uint32_t idx_count = (uint32_t)ps->count * 6;
     vgfx3d_vertex_t *verts = (vgfx3d_vertex_t *)calloc(vert_count, sizeof(vgfx3d_vertex_t));
     uint32_t *indices = (uint32_t *)malloc(idx_count * sizeof(uint32_t));
-    if (!verts || !indices) { free(verts); free(indices); return; }
+    if (!verts || !indices)
+    {
+        free(verts);
+        free(indices);
+        return;
+    }
 
     for (int32_t i = 0; i < ps->count; i++)
     {
@@ -483,10 +627,14 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera)
             v->color[3] = p->color[3];
         }
         /* UVs */
-        verts[base + 0].uv[0] = 0; verts[base + 0].uv[1] = 1;
-        verts[base + 1].uv[0] = 1; verts[base + 1].uv[1] = 1;
-        verts[base + 2].uv[0] = 1; verts[base + 2].uv[1] = 0;
-        verts[base + 3].uv[0] = 0; verts[base + 3].uv[1] = 0;
+        verts[base + 0].uv[0] = 0;
+        verts[base + 0].uv[1] = 1;
+        verts[base + 1].uv[0] = 1;
+        verts[base + 1].uv[1] = 1;
+        verts[base + 2].uv[0] = 1;
+        verts[base + 2].uv[1] = 0;
+        verts[base + 3].uv[0] = 0;
+        verts[base + 3].uv[1] = 0;
 
         /* 2 triangles per quad (CCW) */
         indices[i * 6 + 0] = base + 0;

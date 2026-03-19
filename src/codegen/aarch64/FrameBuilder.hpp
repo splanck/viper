@@ -91,7 +91,9 @@ class FrameBuilder : public common::FrameLayout
     /// @param sizeBytes Size of the spill slot (default: 8 bytes).
     /// @param alignBytes Alignment requirement (default: 8 bytes).
     /// @return FP-relative offset of the spill slot.
-    int ensureSpill(uint16_t vreg, int sizeBytes = kSlotSizeBytes, int alignBytes = kSlotSizeBytes) override;
+    int ensureSpill(uint16_t vreg,
+                    int sizeBytes = kSlotSizeBytes,
+                    int alignBytes = kSlotSizeBytes) override;
 
     /// @brief Ensure a spill slot for @p vreg, reusing a dead slot if available.
     ///
@@ -119,7 +121,10 @@ class FrameBuilder : public common::FrameLayout
     void setMaxOutgoingBytes(int bytes);
 
     /// @brief FrameLayout interface: reserve outgoing argument space.
-    void setMaxOutgoing(int bytes) override { setMaxOutgoingBytes(bytes); }
+    void setMaxOutgoing(int bytes) override
+    {
+        setMaxOutgoingBytes(bytes);
+    }
 
     /// @brief Finalize frame layout and compute total frame size.
     ///
@@ -128,7 +133,10 @@ class FrameBuilder : public common::FrameLayout
     void finalize() override;
 
     /// @brief FrameLayout interface: get the total frame size after finalize().
-    int totalBytes() const override { return fn_ ? fn_->localFrameSize : 0; }
+    int totalBytes() const override
+    {
+        return fn_ ? fn_->localFrameSize : 0;
+    }
 
     /// @brief Notify the frame builder that a new basic block is starting.
     ///

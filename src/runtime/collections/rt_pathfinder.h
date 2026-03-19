@@ -55,12 +55,12 @@ extern "C"
     // Configuration
     //=========================================================================
 
-    void    rt_pathfinder_set_walkable(void *pf, int64_t x, int64_t y, int8_t walkable);
-    int8_t  rt_pathfinder_is_walkable(void *pf, int64_t x, int64_t y);
-    void    rt_pathfinder_set_cost(void *pf, int64_t x, int64_t y, int64_t cost);
+    void rt_pathfinder_set_walkable(void *pf, int64_t x, int64_t y, int8_t walkable);
+    int8_t rt_pathfinder_is_walkable(void *pf, int64_t x, int64_t y);
+    void rt_pathfinder_set_cost(void *pf, int64_t x, int64_t y, int64_t cost);
     int64_t rt_pathfinder_get_cost(void *pf, int64_t x, int64_t y);
-    void    rt_pathfinder_set_diagonal(void *pf, int8_t allow);
-    void    rt_pathfinder_set_max_steps(void *pf, int64_t max);
+    void rt_pathfinder_set_diagonal(void *pf, int8_t allow);
+    void rt_pathfinder_set_max_steps(void *pf, int64_t max);
 
     //=========================================================================
     // Properties
@@ -69,7 +69,7 @@ extern "C"
     int64_t rt_pathfinder_get_width(void *pf);
     int64_t rt_pathfinder_get_height(void *pf);
     int64_t rt_pathfinder_get_last_steps(void *pf);
-    int8_t  rt_pathfinder_get_last_found(void *pf);
+    int8_t rt_pathfinder_get_last_found(void *pf);
 
     //=========================================================================
     // Pathfinding
@@ -77,18 +77,16 @@ extern "C"
 
     /// @brief Find a path from (sx,sy) to (gx,gy).
     /// @return List[Integer] of interleaved x,y pairs, or empty list if no path.
-    void *rt_pathfinder_find_path(void *pf, int64_t sx, int64_t sy,
-                                  int64_t gx, int64_t gy);
+    void *rt_pathfinder_find_path(void *pf, int64_t sx, int64_t sy, int64_t gx, int64_t gy);
 
     /// @brief Find path cost from (sx,sy) to (gx,gy) without returning the path.
     /// @return Total path cost, or -1 if no path.
-    int64_t rt_pathfinder_find_path_length(void *pf, int64_t sx, int64_t sy,
-                                           int64_t gx, int64_t gy);
+    int64_t rt_pathfinder_find_path_length(
+        void *pf, int64_t sx, int64_t sy, int64_t gx, int64_t gy);
 
     /// @brief Find nearest reachable cell with the given Grid2D value.
     /// @return List[Integer] with two elements [x, y], or empty list.
-    void *rt_pathfinder_find_nearest(void *pf, int64_t sx, int64_t sy,
-                                     int64_t target_value);
+    void *rt_pathfinder_find_nearest(void *pf, int64_t sx, int64_t sy, int64_t target_value);
 
 #ifdef __cplusplus
 }

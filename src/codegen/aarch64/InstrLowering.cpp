@@ -637,8 +637,8 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
     seq.call = MInstr{MOpcode::Bl, {MOperand::labelOp(mappedCallee)}};
 
     // Detect variadic callee — AAPCS64 requires anonymous (variadic) args on stack.
-    const bool isVarArg = il::runtime::isVarArgCallee(mappedCallee) ||
-                          il::runtime::isVarArgCallee(callee);
+    const bool isVarArg =
+        il::runtime::isVarArgCallee(mappedCallee) || il::runtime::isVarArgCallee(callee);
     std::size_t namedArgCount = SIZE_MAX; // default: all args are "named"
     if (isVarArg)
     {
@@ -719,12 +719,11 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
         // AAPCS64: variadic args must always go on the stack, never in registers
         if (a.isVariadic)
         {
-            MOpcode storeOpc = (a.cls == RegClass::FPR) ? MOpcode::StrFprSpImm
-                                                        : MOpcode::StrRegSpImm;
-            seq.prefix.push_back(
-                MInstr{storeOpc,
-                       {MOperand::vregOp(a.cls, a.vreg),
-                        MOperand::immOp(static_cast<long long>(stackOffset))}});
+            MOpcode storeOpc =
+                (a.cls == RegClass::FPR) ? MOpcode::StrFprSpImm : MOpcode::StrRegSpImm;
+            seq.prefix.push_back(MInstr{storeOpc,
+                                        {MOperand::vregOp(a.cls, a.vreg),
+                                         MOperand::immOp(static_cast<long long>(stackOffset))}});
             stackOffset += 8;
         }
         else if (a.cls == RegClass::FPR)

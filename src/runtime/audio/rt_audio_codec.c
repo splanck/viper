@@ -38,19 +38,15 @@
 //=============================================================================
 
 const int16_t rt_adpcm_step_table[89] = {
-    7,     8,     9,     10,    11,    12,    13,    14,    16,    17,    19,
-    21,    23,    25,    28,    31,    34,    37,    41,    45,    50,    55,
-    60,    66,    73,    80,    88,    97,    107,   118,   130,   143,   157,
-    173,   190,   209,   230,   253,   279,   307,   337,   371,   408,   449,
-    494,   544,   598,   658,   724,   796,   876,   963,   1060,  1166,  1282,
-    1411,  1552,  1707,  1878,  2066,  2272,  2499,  2749,  3024,  3327,  3660,
-    4026,  4428,  4871,  5358,  5894,  6484,  7132,  7845,  8630,  9493,  10442,
-    11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794,
-    32767};
+    7,     8,     9,     10,    11,    12,    13,    14,    16,    17,    19,   21,    23,
+    25,    28,    31,    34,    37,    41,    45,    50,    55,    60,    66,   73,    80,
+    88,    97,    107,   118,   130,   143,   157,   173,   190,   209,   230,  253,   279,
+    307,   337,   371,   408,   449,   494,   544,   598,   658,   724,   796,  876,   963,
+    1060,  1166,  1282,  1411,  1552,  1707,  1878,  2066,  2272,  2499,  2749, 3024,  3327,
+    3660,  4026,  4428,  4871,  5358,  5894,  6484,  7132,  7845,  8630,  9493, 10442, 11487,
+    12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767};
 
-const int8_t rt_adpcm_index_table[16] = {
-    -1, -1, -1, -1, 2, 4, 6, 8,
-    -1, -1, -1, -1, 2, 4, 6, 8};
+const int8_t rt_adpcm_index_table[16] = {-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8};
 
 //=============================================================================
 // ADPCM Encode/Decode
@@ -76,8 +72,10 @@ static int16_t clamp_sample(int32_t s)
     return (int16_t)s;
 }
 
-int64_t rt_adpcm_encode_block(const int16_t *pcm, int64_t sample_count,
-                              uint8_t *output, int64_t output_capacity)
+int64_t rt_adpcm_encode_block(const int16_t *pcm,
+                              int64_t sample_count,
+                              uint8_t *output,
+                              int64_t output_capacity)
 {
     if (!pcm || !output || sample_count <= 0)
         return 0;
@@ -163,8 +161,10 @@ int64_t rt_adpcm_encode_block(const int16_t *pcm, int64_t sample_count,
     return out_pos;
 }
 
-int64_t rt_adpcm_decode_block(const uint8_t *adpcm, int64_t block_bytes,
-                              int16_t *output, int64_t output_capacity)
+int64_t rt_adpcm_decode_block(const uint8_t *adpcm,
+                              int64_t block_bytes,
+                              int16_t *output,
+                              int64_t output_capacity)
 {
     if (!adpcm || !output || block_bytes < 4 || output_capacity <= 0)
         return 0;
@@ -250,8 +250,10 @@ int8_t rt_audio_is_vaf(const char *path)
     return (r == 4 && magic == VAF_MAGIC) ? 1 : 0;
 }
 
-int16_t *rt_audio_decode_vaf(const char *path, int32_t *out_channels,
-                             int32_t *out_sample_rate, int64_t *out_sample_count)
+int16_t *rt_audio_decode_vaf(const char *path,
+                             int32_t *out_channels,
+                             int32_t *out_sample_rate,
+                             int64_t *out_sample_count)
 {
     if (!path)
         return NULL;
@@ -308,8 +310,8 @@ int16_t *rt_audio_decode_vaf(const char *path, int32_t *out_channels,
             break;
 
         int64_t remaining = total - samples_decoded;
-        int64_t decoded = rt_adpcm_decode_block(
-            block_buf, (int64_t)read, pcm + samples_decoded, remaining);
+        int64_t decoded =
+            rt_adpcm_decode_block(block_buf, (int64_t)read, pcm + samples_decoded, remaining);
         samples_decoded += decoded;
         if (decoded == 0)
             break;
@@ -368,8 +370,8 @@ static wav_data parse_wav(const char *path)
     }
 
     result.channels = (int32_t)(header[22] | (header[23] << 8));
-    result.sample_rate = (int32_t)(header[24] | (header[25] << 8) |
-                                   (header[26] << 16) | (header[27] << 24));
+    result.sample_rate =
+        (int32_t)(header[24] | (header[25] << 8) | (header[26] << 16) | (header[27] << 24));
     uint16_t bits_per_sample = (uint16_t)(header[34] | (header[35] << 8));
     if (bits_per_sample != 16)
     {
@@ -378,8 +380,8 @@ static wav_data parse_wav(const char *path)
     }
 
     // Data chunk size at offset 40
-    uint32_t data_size = (uint32_t)(header[40] | (header[41] << 8) |
-                                    (header[42] << 16) | (header[43] << 24));
+    uint32_t data_size =
+        (uint32_t)(header[40] | (header[41] << 8) | (header[42] << 16) | (header[43] << 24));
     int64_t total_samples = (int64_t)data_size / 2; // 16-bit = 2 bytes per sample
     result.sample_count = total_samples / result.channels;
 
@@ -448,8 +450,8 @@ int8_t rt_audio_encode_vaf(rt_string input_wav_path, rt_string output_vaf_path)
         {
             int64_t remaining = total - pos;
             int64_t chunk = remaining < samples_per_block ? remaining : samples_per_block;
-            int64_t written = rt_adpcm_encode_block(
-                wav.samples + pos, chunk, block_buf, (int64_t)block_size);
+            int64_t written =
+                rt_adpcm_encode_block(wav.samples + pos, chunk, block_buf, (int64_t)block_size);
             if (written > 0)
                 fwrite(block_buf, 1, (size_t)written, f);
             pos += chunk;

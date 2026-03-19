@@ -48,15 +48,15 @@ extern void rt_trap(const char *msg);
 
 typedef struct
 {
-    void *tracks;        // Seq of path strings
-    int64_t current;     // Current track index (-1 if none)
-    void *music;         // Currently loaded Music object
-    int64_t volume;      // Playback volume (0-100)
-    int8_t shuffle;      // Shuffle mode
-    int64_t repeat;      // RT_REPEAT_NONE, RT_REPEAT_ALL, or RT_REPEAT_ONE
-    int8_t playing;      // Currently playing
-    int8_t paused;       // Paused state
-    void *shuffle_order; // Shuffled index sequence
+    void *tracks;         // Seq of path strings
+    int64_t current;      // Current track index (-1 if none)
+    void *music;          // Currently loaded Music object
+    int64_t volume;       // Playback volume (0-100)
+    int8_t shuffle;       // Shuffle mode
+    int64_t repeat;       // RT_REPEAT_NONE, RT_REPEAT_ALL, or RT_REPEAT_ONE
+    int8_t playing;       // Currently playing
+    int8_t paused;        // Paused state
+    void *shuffle_order;  // Shuffled index sequence
     int64_t crossfade_ms; // Crossfade duration for track changes (0 = disabled)
 } playlist_impl;
 

@@ -23,9 +23,9 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <math.h>
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_trap(const char *msg);
@@ -91,8 +91,8 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
 
 /* Sample a cube map given a 3D direction vector.
  * Returns color as floats [0.0, 1.0]. */
-void rt_cubemap_sample(const rt_cubemap3d *cm, float dx, float dy, float dz,
-                       float *out_r, float *out_g, float *out_b)
+void rt_cubemap_sample(
+    const rt_cubemap3d *cm, float dx, float dy, float dz, float *out_r, float *out_g, float *out_b)
 {
     if (!cm)
     {
@@ -176,10 +176,14 @@ void rt_cubemap_sample(const rt_cubemap3d *cm, float dx, float dy, float dz,
 
     int px = (int)(u * (float)pv->width);
     int py = (int)(v * (float)pv->height);
-    if (px < 0) px = 0;
-    if (px >= (int)pv->width) px = (int)pv->width - 1;
-    if (py < 0) py = 0;
-    if (py >= (int)pv->height) py = (int)pv->height - 1;
+    if (px < 0)
+        px = 0;
+    if (px >= (int)pv->width)
+        px = (int)pv->width - 1;
+    if (py < 0)
+        py = 0;
+    if (py >= (int)pv->height)
+        py = (int)pv->height - 1;
 
     uint32_t pixel = pv->data[py * pv->width + px];
     *out_r = (float)((pixel >> 24) & 0xFF) / 255.0f;

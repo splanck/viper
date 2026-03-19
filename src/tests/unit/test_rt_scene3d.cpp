@@ -15,41 +15,58 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
-#include "rt_internal.h"
-#include "rt_string.h"
 #include "rt_canvas3d.h"
+#include "rt_internal.h"
 #include "rt_scene3d.h"
+#include "rt_string.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 
-extern "C" {
-extern void *rt_vec3_new(double x, double y, double z);
-extern double rt_vec3_x(void *v);
-extern double rt_vec3_y(void *v);
-extern double rt_vec3_z(void *v);
-extern void *rt_quat_from_euler(double pitch, double yaw, double roll);
-extern double rt_quat_x(void *q);
-extern double rt_quat_y(void *q);
-extern double rt_quat_z(void *q);
-extern double rt_quat_w(void *q);
+extern "C"
+{
+    extern void *rt_vec3_new(double x, double y, double z);
+    extern double rt_vec3_x(void *v);
+    extern double rt_vec3_y(void *v);
+    extern double rt_vec3_z(void *v);
+    extern void *rt_quat_from_euler(double pitch, double yaw, double roll);
+    extern double rt_quat_x(void *q);
+    extern double rt_quat_y(void *q);
+    extern double rt_quat_z(void *q);
+    extern double rt_quat_w(void *q);
 }
 
 static int tests_passed = 0;
 static int tests_run = 0;
 
-#define EXPECT_TRUE(cond, msg) do { \
-    tests_run++; \
-    if (!(cond)) { fprintf(stderr, "FAIL: %s\n", msg); } \
-    else { tests_passed++; } \
-} while(0)
+#define EXPECT_TRUE(cond, msg)                                                                     \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL: %s\n", msg);                                                    \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
-#define EXPECT_NEAR(a, b, eps, msg) do { \
-    tests_run++; \
-    if (fabs((a) - (b)) > (eps)) { fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b)); } \
-    else { tests_passed++; } \
-} while(0)
+#define EXPECT_NEAR(a, b, eps, msg)                                                                \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (fabs((a) - (b)) > (eps))                                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b));    \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
 static void test_create_scene_and_node()
 {
@@ -95,7 +112,11 @@ static void test_translation_propagation()
     EXPECT_TRUE(wm != nullptr, "GetWorldMatrix returns non-null");
 
     /* Extract translation from row-major Mat4: m[3], m[7], m[11] */
-    typedef struct { double m[16]; } mat4_view;
+    typedef struct
+    {
+        double m[16];
+    } mat4_view;
+
     mat4_view *mv = (mat4_view *)wm;
     EXPECT_NEAR(mv->m[3], 6.0, 0.001, "Child world X = parent(5) + local(1) = 6");
     EXPECT_NEAR(mv->m[7], 0.0, 0.001, "Child world Y = 0");
@@ -117,7 +138,11 @@ static void test_rotation_propagation()
     rt_scene_node3d_set_position(child, 1.0, 0.0, 0.0);
     rt_scene_node3d_add_child(parent, child);
 
-    typedef struct { double m[16]; } mat4_view;
+    typedef struct
+    {
+        double m[16];
+    } mat4_view;
+
     mat4_view *mv = (mat4_view *)rt_scene_node3d_get_world_matrix(child);
 
     /* 90° Y rotation of (1,0,0) → (0,0,-1) */
@@ -134,7 +159,11 @@ static void test_scale_propagation()
     rt_scene_node3d_set_position(child, 1.0, 1.0, 1.0);
     rt_scene_node3d_add_child(parent, child);
 
-    typedef struct { double m[16]; } mat4_view;
+    typedef struct
+    {
+        double m[16];
+    } mat4_view;
+
     mat4_view *mv = (mat4_view *)rt_scene_node3d_get_world_matrix(child);
     /* Scale(2) * Translate(1,1,1) → world pos = (2,2,2) */
     EXPECT_NEAR(mv->m[3], 2.0, 0.001, "Scaled child world X = 2");
@@ -154,7 +183,11 @@ static void test_deep_hierarchy()
             rt_scene_node3d_add_child(nodes[i - 1], nodes[i]);
     }
 
-    typedef struct { double m[16]; } mat4_view;
+    typedef struct
+    {
+        double m[16];
+    } mat4_view;
+
     mat4_view *mv = (mat4_view *)rt_scene_node3d_get_world_matrix(nodes[4]);
     EXPECT_NEAR(mv->m[3], 5.0, 0.001, "5-level hierarchy: world X = 5");
 }
@@ -170,7 +203,12 @@ static void test_dirty_flag()
 
     /* Change parent → child should become dirty and recompute */
     rt_scene_node3d_set_position(parent, 10.0, 0.0, 0.0);
-    typedef struct { double m[16]; } mat4_view;
+
+    typedef struct
+    {
+        double m[16];
+    } mat4_view;
+
     mat4_view *mv = (mat4_view *)rt_scene_node3d_get_world_matrix(child);
     EXPECT_NEAR(mv->m[3], 10.0, 0.001, "After parent move: child world X updated to 10");
 }
@@ -238,7 +276,8 @@ static void test_clear()
 
     rt_scene3d_clear(scene);
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 1, "After clear: 1 node (root)");
-    EXPECT_TRUE(rt_scene_node3d_child_count(rt_scene3d_get_root(scene)) == 0, "Root has 0 children");
+    EXPECT_TRUE(rt_scene_node3d_child_count(rt_scene3d_get_root(scene)) == 0,
+                "Root has 0 children");
 }
 
 static void test_get_child()
@@ -251,7 +290,8 @@ static void test_get_child()
 
     EXPECT_TRUE(rt_scene_node3d_get_child(parent, 0) == c1, "GetChild(0) returns first child");
     EXPECT_TRUE(rt_scene_node3d_get_child(parent, 1) == c2, "GetChild(1) returns second child");
-    EXPECT_TRUE(rt_scene_node3d_get_child(parent, 2) == nullptr, "GetChild(2) out of bounds returns null");
+    EXPECT_TRUE(rt_scene_node3d_get_child(parent, 2) == nullptr,
+                "GetChild(2) out of bounds returns null");
 }
 
 static void test_default_transform()
@@ -275,12 +315,13 @@ static void test_default_transform()
  * Frustum culling tests
  *=========================================================================*/
 
-extern "C" {
-extern void *rt_mesh3d_new_box(double w, double h, double d);
-extern void *rt_material3d_new_color(double r, double g, double b);
-extern void *rt_camera3d_new(double fov, double aspect, double near, double far);
-extern void rt_camera3d_look_at(void *cam, void *eye, void *target, void *up);
-extern int64_t rt_scene3d_get_culled_count(void *scene);
+extern "C"
+{
+    extern void *rt_mesh3d_new_box(double w, double h, double d);
+    extern void *rt_material3d_new_color(double r, double g, double b);
+    extern void *rt_camera3d_new(double fov, double aspect, double near, double far);
+    extern void rt_camera3d_look_at(void *cam, void *eye, void *target, void *up);
+    extern int64_t rt_scene3d_get_culled_count(void *scene);
 }
 
 static void test_frustum_aabb_inside()

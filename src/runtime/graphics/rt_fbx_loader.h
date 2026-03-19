@@ -29,15 +29,15 @@ extern "C"
 {
 #endif
 
-    void   *rt_fbx_load(rt_string path);
+    void *rt_fbx_load(rt_string path);
     int64_t rt_fbx_mesh_count(void *fbx);
-    void   *rt_fbx_get_mesh(void *fbx, int64_t index);
-    void   *rt_fbx_get_skeleton(void *fbx);
+    void *rt_fbx_get_mesh(void *fbx, int64_t index);
+    void *rt_fbx_get_skeleton(void *fbx);
     int64_t rt_fbx_animation_count(void *fbx);
-    void   *rt_fbx_get_animation(void *fbx, int64_t index);
+    void *rt_fbx_get_animation(void *fbx, int64_t index);
     rt_string rt_fbx_get_animation_name(void *fbx, int64_t index);
     int64_t rt_fbx_material_count(void *fbx);
-    void   *rt_fbx_get_material(void *fbx, int64_t index);
+    void *rt_fbx_get_material(void *fbx, int64_t index);
 
 #ifdef __cplusplus
 }

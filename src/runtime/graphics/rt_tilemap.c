@@ -67,14 +67,14 @@
 /// Per-layer metadata and tile grid
 typedef struct
 {
-    int64_t *tiles;      ///< width * height tile indices (NULL if unused)
-    void *tileset;       ///< Per-layer tileset (NULL = use base)
+    int64_t *tiles; ///< width * height tile indices (NULL if unused)
+    void *tileset;  ///< Per-layer tileset (NULL = use base)
     int64_t tileset_cols;
     int64_t tileset_rows;
-    int64_t tile_count;  ///< Tiles in this layer's tileset
-    char name[32];       ///< Layer name
-    int8_t visible;      ///< 1 = visible, 0 = hidden
-    int8_t owns_tiles;   ///< 1 = tiles was malloc'd (layers 1+), 0 = inline (layer 0)
+    int64_t tile_count; ///< Tiles in this layer's tileset
+    char name[32];      ///< Layer name
+    int8_t visible;     ///< 1 = visible, 0 = hidden
+    int8_t owns_tiles;  ///< 1 = tiles was malloc'd (layers 1+), 0 = inline (layer 0)
 } tm_layer;
 
 /// @brief Tilemap implementation structure.
@@ -791,8 +791,7 @@ int8_t rt_tilemap_get_layer_visible(void *tilemap_ptr, int64_t layer)
 // Per-Layer Tile Access
 //=============================================================================
 
-void rt_tilemap_set_tile_layer(void *tilemap_ptr, int64_t layer, int64_t x, int64_t y,
-                               int64_t tile)
+void rt_tilemap_set_tile_layer(void *tilemap_ptr, int64_t layer, int64_t x, int64_t y, int64_t tile)
 {
     if (!tilemap_ptr)
         return;
@@ -895,8 +894,8 @@ void rt_tilemap_set_layer_tileset(void *tilemap_ptr, int64_t layer, void *pixels
 // Per-Layer Rendering
 //=============================================================================
 
-void rt_tilemap_draw_layer(void *tilemap_ptr, void *canvas_ptr, int64_t layer, int64_t cam_x,
-                           int64_t cam_y)
+void rt_tilemap_draw_layer(
+    void *tilemap_ptr, void *canvas_ptr, int64_t layer, int64_t cam_x, int64_t cam_y)
 {
     if (!tilemap_ptr || !canvas_ptr)
         return;

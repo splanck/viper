@@ -1474,7 +1474,8 @@ int32_t vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button)
 
 void vgfx_warp_cursor(vgfx_window_t window, int32_t x, int32_t y)
 {
-    if (!window) return;
+    if (!window)
+        return;
     float cs = window->coord_scale;
     window->mouse_x = (int32_t)(x * cs);
     window->mouse_y = (int32_t)(y * cs);

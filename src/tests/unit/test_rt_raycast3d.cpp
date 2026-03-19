@@ -14,37 +14,54 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
-#include "rt_internal.h"
-#include "rt_string.h"
 #include "rt_canvas3d.h"
+#include "rt_internal.h"
 #include "rt_raycast3d.h"
+#include "rt_string.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 
-extern "C" {
-extern void *rt_vec3_new(double x, double y, double z);
-extern double rt_vec3_x(void *v);
-extern double rt_vec3_y(void *v);
-extern double rt_vec3_z(void *v);
-extern void *rt_mesh3d_new_box(double w, double h, double d);
-extern void *rt_mat4_identity(void);
+extern "C"
+{
+    extern void *rt_vec3_new(double x, double y, double z);
+    extern double rt_vec3_x(void *v);
+    extern double rt_vec3_y(void *v);
+    extern double rt_vec3_z(void *v);
+    extern void *rt_mesh3d_new_box(double w, double h, double d);
+    extern void *rt_mat4_identity(void);
 }
 
 static int tests_passed = 0;
 static int tests_run = 0;
 
-#define EXPECT_TRUE(cond, msg) do { \
-    tests_run++; \
-    if (!(cond)) { fprintf(stderr, "FAIL: %s\n", msg); } \
-    else { tests_passed++; } \
-} while(0)
+#define EXPECT_TRUE(cond, msg)                                                                     \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL: %s\n", msg);                                                    \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
-#define EXPECT_NEAR(a, b, eps, msg) do { \
-    tests_run++; \
-    if (fabs((double)(a) - (double)(b)) > (eps)) { fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b)); } \
-    else { tests_passed++; } \
-} while(0)
+#define EXPECT_NEAR(a, b, eps, msg)                                                                \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (fabs((double)(a) - (double)(b)) > (eps))                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b));    \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
 static void test_ray_triangle_hit()
 {

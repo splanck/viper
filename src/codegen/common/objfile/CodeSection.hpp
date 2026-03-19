@@ -40,9 +40,9 @@ namespace viper::codegen::objfile
 /// the Mach-O writer. Each entry is 32 bytes in the output file.
 struct CompactUnwindEntry
 {
-    uint32_t symbolIndex{0};     ///< Symbol index of the function start.
-    uint32_t functionLength{0};  ///< Length of the function in bytes.
-    uint32_t encoding{0};        ///< ARM64/x86_64 compact unwind encoding.
+    uint32_t symbolIndex{0};    ///< Symbol index of the function start.
+    uint32_t functionLength{0}; ///< Length of the function in bytes.
+    uint32_t encoding{0};       ///< ARM64/x86_64 compact unwind encoding.
 };
 
 /// A growable byte buffer with relocation and symbol tracking.

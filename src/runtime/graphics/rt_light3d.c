@@ -60,8 +60,7 @@ void *rt_light3d_new_directional(void *direction, double r, double g, double b)
     return light;
 }
 
-void *rt_light3d_new_point(void *position, double r, double g, double b,
-                           double attenuation)
+void *rt_light3d_new_point(void *position, double r, double g, double b, double attenuation)
 {
     if (!position)
     {

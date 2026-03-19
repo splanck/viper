@@ -425,8 +425,7 @@ void rt_screenfx_wipe(rt_screenfx fx, int64_t direction, int64_t color, int64_t 
     e->extra = 0;
 }
 
-void rt_screenfx_circle_in(rt_screenfx fx, int64_t cx, int64_t cy,
-                            int64_t color, int64_t duration)
+void rt_screenfx_circle_in(rt_screenfx fx, int64_t cx, int64_t cy, int64_t color, int64_t duration)
 {
     if (!fx || duration <= 0)
         return;
@@ -445,8 +444,7 @@ void rt_screenfx_circle_in(rt_screenfx fx, int64_t cx, int64_t cy,
     e->extra = cy;
 }
 
-void rt_screenfx_circle_out(rt_screenfx fx, int64_t cx, int64_t cy,
-                             int64_t color, int64_t duration)
+void rt_screenfx_circle_out(rt_screenfx fx, int64_t cx, int64_t cy, int64_t color, int64_t duration)
 {
     if (!fx || duration <= 0)
         return;
@@ -548,10 +546,10 @@ int64_t rt_screenfx_get_transition_progress(rt_screenfx fx)
 
 /// @brief 4×4 Bayer dithering matrix (values 0-15, scaled to 0-255 range).
 static const uint8_t bayer4x4[4][4] = {
-    {0,   128, 32,  160},
-    {192, 64,  224, 96 },
-    {48,  176, 16,  144},
-    {240, 112, 208, 80 },
+    {0, 128, 32, 160},
+    {192, 64, 224, 96},
+    {48, 176, 16, 144},
+    {240, 112, 208, 80},
 };
 
 void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t screen_h)
@@ -562,8 +560,8 @@ void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t sc
     // Also draw overlay for existing fade/flash effects
     if (fx->overlay_alpha > 0)
     {
-        rt_canvas_box_alpha(canvas, 0, 0, screen_w, screen_h,
-                            fx->overlay_color >> 8, fx->overlay_alpha);
+        rt_canvas_box_alpha(
+            canvas, 0, 0, screen_w, screen_h, fx->overlay_color >> 8, fx->overlay_alpha);
     }
 
     for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
@@ -638,7 +636,8 @@ void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t sc
                     rt_canvas_box(canvas, 0, 0, screen_w, cy - radius, color);
                 // Bottom
                 if (cy + radius < screen_h)
-                    rt_canvas_box(canvas, 0, cy + radius, screen_w, screen_h - (cy + radius), color);
+                    rt_canvas_box(
+                        canvas, 0, cy + radius, screen_w, screen_h - (cy + radius), color);
                 // Left
                 int64_t ytop = cy - radius > 0 ? cy - radius : 0;
                 int64_t ybot = cy + radius < screen_h ? cy + radius : screen_h;
@@ -646,7 +645,8 @@ void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t sc
                     rt_canvas_box(canvas, 0, ytop, cx - radius, ybot - ytop, color);
                 // Right
                 if (cx + radius < screen_w)
-                    rt_canvas_box(canvas, cx + radius, ytop, screen_w - (cx + radius), ybot - ytop, color);
+                    rt_canvas_box(
+                        canvas, cx + radius, ytop, screen_w - (cx + radius), ybot - ytop, color);
                 break;
             }
 
@@ -668,13 +668,15 @@ void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t sc
                 if (cy - radius > 0)
                     rt_canvas_box(canvas, 0, 0, screen_w, cy - radius, color);
                 if (cy + radius < screen_h)
-                    rt_canvas_box(canvas, 0, cy + radius, screen_w, screen_h - (cy + radius), color);
+                    rt_canvas_box(
+                        canvas, 0, cy + radius, screen_w, screen_h - (cy + radius), color);
                 int64_t ytop = cy - radius > 0 ? cy - radius : 0;
                 int64_t ybot = cy + radius < screen_h ? cy + radius : screen_h;
                 if (cx - radius > 0)
                     rt_canvas_box(canvas, 0, ytop, cx - radius, ybot - ytop, color);
                 if (cx + radius < screen_w)
-                    rt_canvas_box(canvas, cx + radius, ytop, screen_w - (cx + radius), ybot - ytop, color);
+                    rt_canvas_box(
+                        canvas, cx + radius, ytop, screen_w - (cx + radius), ybot - ytop, color);
                 break;
             }
 

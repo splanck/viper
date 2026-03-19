@@ -26,8 +26,8 @@
 
 #include "codegen/aarch64/FrameCodegen.hpp"
 #include "codegen/aarch64/binenc/A64Encoding.hpp"
-#include "codegen/common/LabelUtil.hpp"
 #include "codegen/common/ICE.hpp"
+#include "codegen/common/LabelUtil.hpp"
 #include "codegen/common/objfile/DebugLineTable.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 
@@ -184,8 +184,7 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
             fprPairs = 4;
         encoding |= (fprPairs << 24);
 
-        const uint32_t funcLen =
-            static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
+        const uint32_t funcLen = static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
 
         objfile::CompactUnwindEntry entry{};
         entry.symbolIndex = funcSymIdx;
@@ -197,8 +196,7 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
     {
         // Frameless leaf function — UNWIND_ARM64_MODE_FRAMELESS with zero encoding.
         // Still record an entry so the unwinder knows this function exists.
-        const uint32_t funcLen =
-            static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
+        const uint32_t funcLen = static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
 
         objfile::CompactUnwindEntry entry{};
         entry.symbolIndex = funcSymIdx;

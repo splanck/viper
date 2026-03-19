@@ -21,9 +21,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
+#include "rt_canvas3d.h"
 #include "rt_internal.h"
 #include "rt_string.h"
-#include "rt_canvas3d.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -37,43 +37,42 @@ extern "C" void vm_trap(const char *msg)
 static int tests_passed = 0;
 static int tests_total = 0;
 
-#define TEST(name)                                                             \
-    do                                                                         \
-    {                                                                          \
-        tests_total++;                                                         \
-        printf("  [%d] %s... ", tests_total, name);                            \
+#define TEST(name)                                                                                 \
+    do                                                                                             \
+    {                                                                                              \
+        tests_total++;                                                                             \
+        printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
-#define PASS()                                                                 \
-    do                                                                         \
-    {                                                                          \
-        tests_passed++;                                                        \
-        printf("ok\n");                                                        \
+#define PASS()                                                                                     \
+    do                                                                                             \
+    {                                                                                              \
+        tests_passed++;                                                                            \
+        printf("ok\n");                                                                            \
     } while (0)
-#define FAIL(msg)                                                              \
-    do                                                                         \
-    {                                                                          \
-        printf("FAIL: %s\n", msg);                                             \
-    } while (0)
-
-#define EXPECT_EQ(a, b)                                                        \
-    do                                                                         \
-    {                                                                          \
-        if ((a) != (b))                                                        \
-        {                                                                      \
-            printf("FAIL: expected %lld, got %lld\n", (long long)(b),          \
-                   (long long)(a));                                            \
-            return;                                                            \
-        }                                                                      \
+#define FAIL(msg)                                                                                  \
+    do                                                                                             \
+    {                                                                                              \
+        printf("FAIL: %s\n", msg);                                                                 \
     } while (0)
 
-#define EXPECT_NEAR(a, b, eps)                                                 \
-    do                                                                         \
-    {                                                                          \
-        if (std::fabs((double)(a) - (double)(b)) > (eps))                      \
-        {                                                                      \
-            printf("FAIL: expected ~%f, got %f\n", (double)(b), (double)(a));   \
-            return;                                                            \
-        }                                                                      \
+#define EXPECT_EQ(a, b)                                                                            \
+    do                                                                                             \
+    {                                                                                              \
+        if ((a) != (b))                                                                            \
+        {                                                                                          \
+            printf("FAIL: expected %lld, got %lld\n", (long long)(b), (long long)(a));             \
+            return;                                                                                \
+        }                                                                                          \
+    } while (0)
+
+#define EXPECT_NEAR(a, b, eps)                                                                     \
+    do                                                                                             \
+    {                                                                                              \
+        if (std::fabs((double)(a) - (double)(b)) > (eps))                                          \
+        {                                                                                          \
+            printf("FAIL: expected ~%f, got %f\n", (double)(b), (double)(a));                      \
+            return;                                                                                \
+        }                                                                                          \
     } while (0)
 
 extern "C" double rt_vec3_x(void *v);
@@ -190,12 +189,10 @@ static void test_mesh_obj_loader()
      * We must check with fopen BEFORE calling FromOBJ because FromOBJ
      * traps (kills process) if the file doesn't exist. */
     const char *found = NULL;
-    const char *paths[] = {
-        "tests/runtime/test_cube.obj",
-        "../tests/runtime/test_cube.obj",
-        "src/tests/../../../tests/runtime/test_cube.obj",
-        NULL
-    };
+    const char *paths[] = {"tests/runtime/test_cube.obj",
+                           "../tests/runtime/test_cube.obj",
+                           "src/tests/../../../tests/runtime/test_cube.obj",
+                           NULL};
     for (int i = 0; paths[i]; i++)
     {
         FILE *f = fopen(paths[i], "r");
@@ -627,9 +624,9 @@ static void test_mesh_calc_tangents()
     void *m = rt_mesh3d_new();
     /* Flat quad in XZ plane with standard UVs */
     rt_mesh3d_add_vertex(m, -1, 0, -1, 0, 1, 0, 0, 0);
-    rt_mesh3d_add_vertex(m,  1, 0, -1, 0, 1, 0, 1, 0);
-    rt_mesh3d_add_vertex(m,  1, 0,  1, 0, 1, 0, 1, 1);
-    rt_mesh3d_add_vertex(m, -1, 0,  1, 0, 1, 0, 0, 1);
+    rt_mesh3d_add_vertex(m, 1, 0, -1, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 1, 0, 1, 0, 1, 1);
+    rt_mesh3d_add_vertex(m, -1, 0, 1, 0, 1, 0, 0, 1);
     rt_mesh3d_add_triangle(m, 0, 2, 1);
     rt_mesh3d_add_triangle(m, 0, 3, 2);
     rt_mesh3d_calc_tangents(m);

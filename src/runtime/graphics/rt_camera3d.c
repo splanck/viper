@@ -40,25 +40,23 @@ extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 
 /* Build perspective projection matrix (matches rt_mat4_perspective) */
-static void build_perspective(double *m, double fov_deg, double aspect,
-                              double near, double far)
+static void build_perspective(double *m, double fov_deg, double aspect, double near, double far)
 {
     memset(m, 0, 16 * sizeof(double));
     double fov_rad = fov_deg * (M_PI / 180.0);
     double f = 1.0 / tan(fov_rad * 0.5);
     double nf = 1.0 / (near - far);
 
-    m[0]  = f / aspect;
-    m[5]  = f;
-    m[10] = (far + near) * nf;      /* OpenGL NDC: Z in [-1,1] */
+    m[0] = f / aspect;
+    m[5] = f;
+    m[10] = (far + near) * nf; /* OpenGL NDC: Z in [-1,1] */
     m[11] = 2.0 * far * near * nf;
     m[14] = -1.0;
     /* m[15] = 0 */
 }
 
 /* Build view matrix (matches rt_mat4_look_at) */
-static void build_look_at(double *m, const double *eye,
-                           const double *target, const double *up)
+static void build_look_at(double *m, const double *eye, const double *target, const double *up)
 {
     /* Forward = normalize(eye - target) — right-handed.
      * If eye == target (flen ≈ 0), return identity matrix to avoid
@@ -98,9 +96,18 @@ static void build_look_at(double *m, const double *eye,
     double uz = fx * ry - fy * rx;
 
     memset(m, 0, 16 * sizeof(double));
-    m[0] = rx;  m[1] = ry;  m[2] = rz;   m[3]  = -(rx * eye[0] + ry * eye[1] + rz * eye[2]);
-    m[4] = ux;  m[5] = uy;  m[6] = uz;   m[7]  = -(ux * eye[0] + uy * eye[1] + uz * eye[2]);
-    m[8] = fx;  m[9] = fy;  m[10] = fz;  m[11] = -(fx * eye[0] + fy * eye[1] + fz * eye[2]);
+    m[0] = rx;
+    m[1] = ry;
+    m[2] = rz;
+    m[3] = -(rx * eye[0] + ry * eye[1] + rz * eye[2]);
+    m[4] = ux;
+    m[5] = uy;
+    m[6] = uz;
+    m[7] = -(ux * eye[0] + uy * eye[1] + uz * eye[2]);
+    m[8] = fx;
+    m[9] = fy;
+    m[10] = fz;
+    m[11] = -(fx * eye[0] + fy * eye[1] + fz * eye[2]);
     m[15] = 1.0;
 }
 
@@ -147,8 +154,7 @@ void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v)
     build_look_at(cam->view, eye, target, up);
 }
 
-void rt_camera3d_orbit(void *obj, void *target_v, double distance,
-                       double yaw, double pitch)
+void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, double pitch)
 {
     if (!obj || !target_v)
         return;
@@ -244,24 +250,40 @@ void *rt_camera3d_get_right(void *obj)
 static int mat4d_invert(const double *m, double *out)
 {
     double inv[16];
-    inv[0]  =  m[5]*m[10]*m[15] - m[5]*m[11]*m[14] - m[9]*m[6]*m[15] + m[9]*m[7]*m[14] + m[13]*m[6]*m[11] - m[13]*m[7]*m[10];
-    inv[4]  = -m[4]*m[10]*m[15] + m[4]*m[11]*m[14] + m[8]*m[6]*m[15] - m[8]*m[7]*m[14] - m[12]*m[6]*m[11] + m[12]*m[7]*m[10];
-    inv[8]  =  m[4]*m[9]*m[15]  - m[4]*m[11]*m[13] - m[8]*m[5]*m[15] + m[8]*m[7]*m[13] + m[12]*m[5]*m[11] - m[12]*m[7]*m[9];
-    inv[12] = -m[4]*m[9]*m[14]  + m[4]*m[10]*m[13] + m[8]*m[5]*m[14] - m[8]*m[6]*m[13] - m[12]*m[5]*m[10] + m[12]*m[6]*m[9];
-    inv[1]  = -m[1]*m[10]*m[15] + m[1]*m[11]*m[14] + m[9]*m[2]*m[15] - m[9]*m[3]*m[14] - m[13]*m[2]*m[11] + m[13]*m[3]*m[10];
-    inv[5]  =  m[0]*m[10]*m[15] - m[0]*m[11]*m[14] - m[8]*m[2]*m[15] + m[8]*m[3]*m[14] + m[12]*m[2]*m[11] - m[12]*m[3]*m[10];
-    inv[9]  = -m[0]*m[9]*m[15]  + m[0]*m[11]*m[13] + m[8]*m[1]*m[15] - m[8]*m[3]*m[13] - m[12]*m[1]*m[11] + m[12]*m[3]*m[9];
-    inv[13] =  m[0]*m[9]*m[14]  - m[0]*m[10]*m[13] - m[8]*m[1]*m[14] + m[8]*m[2]*m[13] + m[12]*m[1]*m[10] - m[12]*m[2]*m[9];
-    inv[2]  =  m[1]*m[6]*m[15]  - m[1]*m[7]*m[14]  - m[5]*m[2]*m[15] + m[5]*m[3]*m[14] + m[13]*m[2]*m[7]  - m[13]*m[3]*m[6];
-    inv[6]  = -m[0]*m[6]*m[15]  + m[0]*m[7]*m[14]  + m[4]*m[2]*m[15] - m[4]*m[3]*m[14] - m[12]*m[2]*m[7]  + m[12]*m[3]*m[6];
-    inv[10] =  m[0]*m[5]*m[15]  - m[0]*m[7]*m[13]  - m[4]*m[1]*m[15] + m[4]*m[3]*m[13] + m[12]*m[1]*m[7]  - m[12]*m[3]*m[5];
-    inv[14] = -m[0]*m[5]*m[14]  + m[0]*m[6]*m[13]  + m[4]*m[1]*m[14] - m[4]*m[2]*m[13] - m[12]*m[1]*m[6]  + m[12]*m[2]*m[5];
-    inv[3]  = -m[1]*m[6]*m[11]  + m[1]*m[7]*m[10]  + m[5]*m[2]*m[11] - m[5]*m[3]*m[10] - m[9]*m[2]*m[7]   + m[9]*m[3]*m[6];
-    inv[7]  =  m[0]*m[6]*m[11]  - m[0]*m[7]*m[10]  - m[4]*m[2]*m[11] + m[4]*m[3]*m[10] + m[8]*m[2]*m[7]   - m[8]*m[3]*m[6];
-    inv[11] = -m[0]*m[5]*m[11]  + m[0]*m[7]*m[9]   + m[4]*m[1]*m[11] - m[4]*m[3]*m[9]  - m[8]*m[1]*m[7]   + m[8]*m[3]*m[5];
-    inv[15] =  m[0]*m[5]*m[10]  - m[0]*m[6]*m[9]   - m[4]*m[1]*m[10] + m[4]*m[2]*m[9]  + m[8]*m[1]*m[6]   - m[8]*m[2]*m[5];
+    inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
+             m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+    inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] -
+             m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+    inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] +
+             m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+    inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] -
+              m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+    inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] -
+             m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+    inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] +
+             m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+    inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] -
+             m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+    inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
+              m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] +
+             m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
+             m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+    inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
+              m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+    inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] -
+              m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+    inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
+             m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] +
+             m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] -
+              m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] +
+              m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
 
-    double det = m[0]*inv[0] + m[1]*inv[4] + m[2]*inv[8] + m[3]*inv[12];
+    double det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
     if (fabs(det) < 1e-12)
         return -1;
 
@@ -271,8 +293,7 @@ static int mat4d_invert(const double *m, double *out)
     return 0;
 }
 
-void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy,
-                                int64_t sw, int64_t sh)
+void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, int64_t sh)
 {
     if (!obj || sw <= 0 || sh <= 0)
         return rt_vec3_new(0.0, 0.0, -1.0);
@@ -288,9 +309,9 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy,
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
             vp[r * 4 + c] = cam->projection[r * 4 + 0] * cam->view[0 * 4 + c] +
-                             cam->projection[r * 4 + 1] * cam->view[1 * 4 + c] +
-                             cam->projection[r * 4 + 2] * cam->view[2 * 4 + c] +
-                             cam->projection[r * 4 + 3] * cam->view[3 * 4 + c];
+                            cam->projection[r * 4 + 1] * cam->view[1 * 4 + c] +
+                            cam->projection[r * 4 + 2] * cam->view[2 * 4 + c] +
+                            cam->projection[r * 4 + 3] * cam->view[3 * 4 + c];
 
     double inv_vp[16];
     if (mat4d_invert(vp, inv_vp) != 0)
@@ -299,10 +320,10 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy,
     /* Unproject NDC point at near plane (z=-1) to world space */
     double p[4] = {ndc_x, ndc_y, -1.0, 1.0};
     double world[4];
-    world[0] = inv_vp[0]*p[0] + inv_vp[1]*p[1] + inv_vp[2]*p[2] + inv_vp[3]*p[3];
-    world[1] = inv_vp[4]*p[0] + inv_vp[5]*p[1] + inv_vp[6]*p[2] + inv_vp[7]*p[3];
-    world[2] = inv_vp[8]*p[0] + inv_vp[9]*p[1] + inv_vp[10]*p[2] + inv_vp[11]*p[3];
-    world[3] = inv_vp[12]*p[0] + inv_vp[13]*p[1] + inv_vp[14]*p[2] + inv_vp[15]*p[3];
+    world[0] = inv_vp[0] * p[0] + inv_vp[1] * p[1] + inv_vp[2] * p[2] + inv_vp[3] * p[3];
+    world[1] = inv_vp[4] * p[0] + inv_vp[5] * p[1] + inv_vp[6] * p[2] + inv_vp[7] * p[3];
+    world[2] = inv_vp[8] * p[0] + inv_vp[9] * p[1] + inv_vp[10] * p[2] + inv_vp[11] * p[3];
+    world[3] = inv_vp[12] * p[0] + inv_vp[13] * p[1] + inv_vp[14] * p[2] + inv_vp[15] * p[3];
 
     if (fabs(world[3]) > 1e-12)
     {
@@ -332,7 +353,8 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy,
 
 void rt_camera3d_fps_init(void *obj)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_camera3d *cam = (rt_camera3d *)obj;
     /* Extract yaw/pitch from current view matrix forward direction.
      * Forward = -row2 of view matrix (negated because view Z points away). */
@@ -341,22 +363,32 @@ void rt_camera3d_fps_init(void *obj)
     double fz = -cam->view[10];
     cam->fps_yaw = atan2(fx, -fz) * (180.0 / M_PI);
     cam->fps_pitch = asin(fy) * (180.0 / M_PI);
-    if (cam->fps_pitch > 89.0) cam->fps_pitch = 89.0;
-    if (cam->fps_pitch < -89.0) cam->fps_pitch = -89.0;
+    if (cam->fps_pitch > 89.0)
+        cam->fps_pitch = 89.0;
+    if (cam->fps_pitch < -89.0)
+        cam->fps_pitch = -89.0;
 }
 
-void rt_camera3d_fps_update(void *obj, double yaw_delta, double pitch_delta,
-                              double move_fwd, double move_right, double move_up,
-                              double speed, double dt)
+void rt_camera3d_fps_update(void *obj,
+                            double yaw_delta,
+                            double pitch_delta,
+                            double move_fwd,
+                            double move_right,
+                            double move_up,
+                            double speed,
+                            double dt)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_camera3d *cam = (rt_camera3d *)obj;
 
     /* Accumulate yaw/pitch from mouse deltas */
     cam->fps_yaw += yaw_delta;
     cam->fps_pitch += pitch_delta;
-    if (cam->fps_pitch > 89.0) cam->fps_pitch = 89.0;
-    if (cam->fps_pitch < -89.0) cam->fps_pitch = -89.0;
+    if (cam->fps_pitch > 89.0)
+        cam->fps_pitch = 89.0;
+    if (cam->fps_pitch < -89.0)
+        cam->fps_pitch = -89.0;
 
     /* Compute forward and right vectors from yaw/pitch */
     double yaw_rad = cam->fps_yaw * (M_PI / 180.0);
@@ -395,16 +427,20 @@ double rt_camera3d_get_pitch(void *obj)
 
 void rt_camera3d_set_yaw(void *obj, double yaw)
 {
-    if (obj) ((rt_camera3d *)obj)->fps_yaw = yaw;
+    if (obj)
+        ((rt_camera3d *)obj)->fps_yaw = yaw;
 }
 
 void rt_camera3d_set_pitch(void *obj, double pitch)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_camera3d *cam = (rt_camera3d *)obj;
     cam->fps_pitch = pitch;
-    if (cam->fps_pitch > 89.0) cam->fps_pitch = 89.0;
-    if (cam->fps_pitch < -89.0) cam->fps_pitch = -89.0;
+    if (cam->fps_pitch > 89.0)
+        cam->fps_pitch = 89.0;
+    if (cam->fps_pitch < -89.0)
+        cam->fps_pitch = -89.0;
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

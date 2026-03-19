@@ -43,7 +43,7 @@ extern void rt_trap(const char *msg);
 extern const char *rt_string_cstr(rt_string s);
 
 #define MESH_INIT_VERTS 64
-#define MESH_INIT_IDXS  128
+#define MESH_INIT_IDXS 128
 
 static void rt_mesh3d_finalize(void *obj)
 {
@@ -73,9 +73,8 @@ void *rt_mesh3d_new(void)
     return m;
 }
 
-void rt_mesh3d_add_vertex(void *obj, double x, double y, double z,
-                          double nx, double ny, double nz,
-                          double u, double v)
+void rt_mesh3d_add_vertex(
+    void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v)
 {
     if (!obj)
         return;
@@ -84,8 +83,8 @@ void rt_mesh3d_add_vertex(void *obj, double x, double y, double z,
     if (m->vertex_count >= m->vertex_capacity)
     {
         uint32_t new_cap = m->vertex_capacity * 2;
-        vgfx3d_vertex_t *nv = (vgfx3d_vertex_t *)realloc(m->vertices,
-                                                          new_cap * sizeof(vgfx3d_vertex_t));
+        vgfx3d_vertex_t *nv =
+            (vgfx3d_vertex_t *)realloc(m->vertices, new_cap * sizeof(vgfx3d_vertex_t));
         if (!nv)
             return;
         m->vertices = nv;
@@ -714,8 +713,8 @@ void *rt_mesh3d_from_obj(rt_string path)
                 if (!*p || *p == '\n' || *p == '\r')
                     break;
 
-                obj_parse_face_vert(&p, &face_vi[face_count], &face_ti[face_count],
-                                    &face_ni[face_count]);
+                obj_parse_face_vert(
+                    &p, &face_vi[face_count], &face_ti[face_count], &face_ni[face_count]);
                 face_count++;
             }
 
@@ -769,8 +768,8 @@ void *rt_mesh3d_from_obj(rt_string path)
             /* Fan triangulation: (0,1,2), (0,2,3), (0,3,4), ... */
             for (int fi = 1; fi < face_count - 1; fi++)
             {
-                rt_mesh3d_add_triangle(mesh, mesh_indices[0],
-                                       mesh_indices[fi], mesh_indices[fi + 1]);
+                rt_mesh3d_add_triangle(
+                    mesh, mesh_indices[0], mesh_indices[fi], mesh_indices[fi + 1]);
             }
         }
         /* Ignore: mtllib, usemtl, s, g, o, etc. */

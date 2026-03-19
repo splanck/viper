@@ -1,10 +1,5 @@
 // Consolidated Sprite runtime tests (2 files merged).
 
-#include <cmath>
-#include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_seq.h"
@@ -13,6 +8,11 @@
 #include "rt_string.h"
 #include "tests/TestHarness.hpp"
 #include "tests/common/PosixCompat.h"
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 // ── RTSpriteBatchTests.cpp ──
 extern "C" void rt_abort(const char *msg);
@@ -454,8 +454,6 @@ TEST(RTSprite, NullSafety)
     ASSERT(rt_spritesheet_get_region(NULL, name) == NULL, "null get = null");
     ASSERT(rt_spritesheet_remove_region(NULL, name) == 0, "null remove = 0");
 }
-
-
 
 int main(int argc, char **argv)
 {

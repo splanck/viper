@@ -23,8 +23,8 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
-#include "vgfx.h"
 #include "rt_canvas3d_internal.h"
+#include "vgfx.h"
 #include <stdint.h>
 
 /*==========================================================================
@@ -37,13 +37,13 @@ typedef struct
     uint32_t vertex_count;
     const uint32_t *indices;
     uint32_t index_count;
-    float model_matrix[16]; /* row-major float */
-    float diffuse_color[4]; /* RGBA material color */
-    float specular[3];      /* RGB specular color */
-    float shininess;        /* specular exponent */
-    float alpha;            /* opacity [0.0=invisible, 1.0=opaque] */
-    int8_t unlit;           /* skip lighting if true */
-    const void *texture;    /* Pixels object (diffuse, slot 0) or NULL */
+    float model_matrix[16];   /* row-major float */
+    float diffuse_color[4];   /* RGBA material color */
+    float specular[3];        /* RGB specular color */
+    float shininess;          /* specular exponent */
+    float alpha;              /* opacity [0.0=invisible, 1.0=opaque] */
+    int8_t unlit;             /* skip lighting if true */
+    const void *texture;      /* Pixels object (diffuse, slot 0) or NULL */
     const void *normal_map;   /* Pixels (normal map, slot 1) or NULL */
     const void *specular_map; /* Pixels (specular map, slot 2) or NULL */
     const void *emissive_map; /* Pixels (emissive map, slot 3) or NULL */
@@ -59,6 +59,10 @@ typedef struct
     float view[16];       /* view matrix, row-major float */
     float projection[16]; /* projection matrix, row-major float */
     float position[3];    /* eye position (for specular) */
+    /* Distance fog */
+    int8_t fog_enabled;
+    float fog_near, fog_far;
+    float fog_color[3];
 } vgfx3d_camera_params_t;
 
 /*==========================================================================
@@ -90,10 +94,14 @@ typedef struct vgfx3d_backend
     /* Frame */
     void (*clear)(void *ctx, vgfx_window_t win, float r, float g, float b);
     void (*begin_frame)(void *ctx, const vgfx3d_camera_params_t *cam);
-    void (*submit_draw)(void *ctx, vgfx_window_t win,
+    void (*submit_draw)(void *ctx,
+                        vgfx_window_t win,
                         const vgfx3d_draw_cmd_t *cmd,
-                        const vgfx3d_light_params_t *lights, int32_t light_count,
-                        const float *ambient, int8_t wireframe, int8_t backface_cull);
+                        const vgfx3d_light_params_t *lights,
+                        int32_t light_count,
+                        const float *ambient,
+                        int8_t wireframe,
+                        int8_t backface_cull);
     void (*end_frame)(void *ctx);
 
     /* Render target (NULL = render to window) */

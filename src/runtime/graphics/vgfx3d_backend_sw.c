@@ -23,8 +23,8 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
-#include "vgfx3d_backend.h"
 #include "rt_canvas3d_internal.h"
+#include "vgfx3d_backend.h"
 
 #include <float.h>
 #include <math.h>
@@ -44,6 +44,10 @@ typedef struct
     float cam_pos[3];
     /* Render target override (NULL = render to window framebuffer) */
     vgfx3d_rendertarget_t *render_target;
+    /* Fog parameters (copied from Canvas3D each begin_frame) */
+    int8_t fog_enabled;
+    float fog_near, fog_far;
+    float fog_color[3];
 } sw_context_t;
 
 /*==========================================================================
@@ -54,10 +58,8 @@ static void mat4f_mul(const float *a, const float *b, float *out)
 {
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
-            out[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] +
-                             a[r * 4 + 1] * b[1 * 4 + c] +
-                             a[r * 4 + 2] * b[2 * 4 + c] +
-                             a[r * 4 + 3] * b[3 * 4 + c];
+            out[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] + a[r * 4 + 1] * b[1 * 4 + c] +
+                             a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
 }
 
 static void mat4f_transform4(const float *m, const float *in, float *out)
@@ -83,15 +85,19 @@ typedef struct
 
 #define MAX_CLIP_VERTS 9
 
-static void pipe_lerp(const pipe_vert_t *a, const pipe_vert_t *b, float t,
-                       pipe_vert_t *out)
+static void pipe_lerp(const pipe_vert_t *a, const pipe_vert_t *b, float t, pipe_vert_t *out)
 {
     float s = 1.0f - t;
-    for (int i = 0; i < 4; i++) out->clip[i] = s * a->clip[i] + t * b->clip[i];
-    for (int i = 0; i < 3; i++) out->world[i] = s * a->world[i] + t * b->world[i];
-    for (int i = 0; i < 3; i++) out->normal[i] = s * a->normal[i] + t * b->normal[i];
-    for (int i = 0; i < 2; i++) out->uv[i] = s * a->uv[i] + t * b->uv[i];
-    for (int i = 0; i < 4; i++) out->color[i] = s * a->color[i] + t * b->color[i];
+    for (int i = 0; i < 4; i++)
+        out->clip[i] = s * a->clip[i] + t * b->clip[i];
+    for (int i = 0; i < 3; i++)
+        out->world[i] = s * a->world[i] + t * b->world[i];
+    for (int i = 0; i < 3; i++)
+        out->normal[i] = s * a->normal[i] + t * b->normal[i];
+    for (int i = 0; i < 2; i++)
+        out->uv[i] = s * a->uv[i] + t * b->uv[i];
+    for (int i = 0; i < 4; i++)
+        out->color[i] = s * a->color[i] + t * b->color[i];
 }
 
 /*==========================================================================
@@ -109,23 +115,30 @@ static float clip_dist(const pipe_vert_t *v, int plane)
     float x = v->clip[0], y = v->clip[1], z = v->clip[2], w = v->clip[3];
     switch (plane)
     {
-    case 0: return x + w;
-    case 1: return w - x;
-    case 2: return y + w;
-    case 3: return w - y;
-    case 4: return z + w;
-    case 5: return w - z;
-    default: return 0.0f;
+        case 0:
+            return x + w;
+        case 1:
+            return w - x;
+        case 2:
+            return y + w;
+        case 3:
+            return w - y;
+        case 4:
+            return z + w;
+        case 5:
+            return w - z;
+        default:
+            return 0.0f;
     }
 }
 
 /// @brief Sutherland-Hodgman: clip a convex polygon against one frustum plane.
 /// Walks each edge (i→j). If i is inside, emit it; if the edge crosses the
 /// plane, emit the intersection. Result is a new convex polygon in @p out.
-static int clip_poly_plane(const pipe_vert_t *in, int in_count,
-                            pipe_vert_t *out, int plane)
+static int clip_poly_plane(const pipe_vert_t *in, int in_count, pipe_vert_t *out, int plane)
 {
-    if (in_count < 1) return 0;
+    if (in_count < 1)
+        return 0;
     int out_count = 0;
     for (int i = 0; i < in_count; i++)
     {
@@ -134,23 +147,27 @@ static int clip_poly_plane(const pipe_vert_t *in, int in_count,
         float dj = clip_dist(&in[j], plane);
         if (di >= 0.0f)
         {
-            if (out_count < MAX_CLIP_VERTS) out[out_count++] = in[i];
+            if (out_count < MAX_CLIP_VERTS)
+                out[out_count++] = in[i];
             if (dj < 0.0f)
             {
                 float denom = di - dj;
                 if (fabsf(denom) > 1e-10f)
                 {
                     float t = di / denom;
-                    if (out_count < MAX_CLIP_VERTS) pipe_lerp(&in[i], &in[j], t, &out[out_count++]);
+                    if (out_count < MAX_CLIP_VERTS)
+                        pipe_lerp(&in[i], &in[j], t, &out[out_count++]);
                 }
             }
         }
         else if (dj >= 0.0f)
         {
             float denom = di - dj;
-            if (fabsf(denom) < 1e-10f) continue;
+            if (fabsf(denom) < 1e-10f)
+                continue;
             float t = di / denom;
-            if (out_count < MAX_CLIP_VERTS) pipe_lerp(&in[i], &in[j], t, &out[out_count++]);
+            if (out_count < MAX_CLIP_VERTS)
+                pipe_lerp(&in[i], &in[j], t, &out[out_count++]);
         }
     }
     return out_count;
@@ -169,7 +186,8 @@ static int clip_triangle(const pipe_vert_t *tri, pipe_vert_t *out)
         pipe_vert_t *src = (plane % 2 == 0) ? buf_a : buf_b;
         pipe_vert_t *dst = (plane % 2 == 0) ? buf_b : buf_a;
         count = clip_poly_plane(src, count, dst, plane);
-        if (count < 3) return 0;
+        if (count < 3)
+            return 0;
     }
     /* After 6 planes (even count), last output landed in buf_b */
     pipe_vert_t *result = (5 % 2 == 0) ? buf_b : buf_a;
@@ -181,10 +199,12 @@ static int clip_triangle(const pipe_vert_t *tri, pipe_vert_t *out)
  * Blinn-Phong per-vertex lighting (Gouraud)
  *=========================================================================*/
 
-static void compute_lighting(pipe_vert_t *v, const float *cam_pos,
-                              const vgfx3d_draw_cmd_t *cmd,
-                              const vgfx3d_light_params_t *lights,
-                              int32_t light_count, const float *ambient)
+static void compute_lighting(pipe_vert_t *v,
+                             const float *cam_pos,
+                             const vgfx3d_draw_cmd_t *cmd,
+                             const vgfx3d_light_params_t *lights,
+                             int32_t light_count,
+                             const float *ambient)
 {
     if (cmd->unlit)
     {
@@ -197,13 +217,23 @@ static void compute_lighting(pipe_vert_t *v, const float *cam_pos,
 
     float nx = v->normal[0], ny = v->normal[1], nz = v->normal[2];
     float nlen = sqrtf(nx * nx + ny * ny + nz * nz);
-    if (nlen > 1e-7f) { nx /= nlen; ny /= nlen; nz /= nlen; }
+    if (nlen > 1e-7f)
+    {
+        nx /= nlen;
+        ny /= nlen;
+        nz /= nlen;
+    }
 
     float vx = cam_pos[0] - v->world[0];
     float vy = cam_pos[1] - v->world[1];
     float vz = cam_pos[2] - v->world[2];
     float vlen = sqrtf(vx * vx + vy * vy + vz * vz);
-    if (vlen > 1e-7f) { vx /= vlen; vy /= vlen; vz /= vlen; }
+    if (vlen > 1e-7f)
+    {
+        vx /= vlen;
+        vy /= vlen;
+        vz /= vlen;
+    }
 
     float r = ambient[0] * cmd->diffuse_color[0];
     float g = ambient[1] * cmd->diffuse_color[1];
@@ -216,9 +246,16 @@ static void compute_lighting(pipe_vert_t *v, const float *cam_pos,
 
         if (light->type == 0) /* directional */
         {
-            lx = -light->direction[0]; ly = -light->direction[1]; lz = -light->direction[2];
+            lx = -light->direction[0];
+            ly = -light->direction[1];
+            lz = -light->direction[2];
             float ll = sqrtf(lx * lx + ly * ly + lz * lz);
-            if (ll > 1e-7f) { lx /= ll; ly /= ll; lz /= ll; }
+            if (ll > 1e-7f)
+            {
+                lx /= ll;
+                ly /= ll;
+                lz /= ll;
+            }
         }
         else if (light->type == 1) /* point */
         {
@@ -226,7 +263,12 @@ static void compute_lighting(pipe_vert_t *v, const float *cam_pos,
             ly = light->position[1] - v->world[1];
             lz = light->position[2] - v->world[2];
             float dist = sqrtf(lx * lx + ly * ly + lz * lz);
-            if (dist > 1e-7f) { lx /= dist; ly /= dist; lz /= dist; }
+            if (dist > 1e-7f)
+            {
+                lx /= dist;
+                ly /= dist;
+                lz /= dist;
+            }
             atten = 1.0f / (1.0f + light->attenuation * dist * dist);
         }
         else /* ambient */
@@ -239,7 +281,8 @@ static void compute_lighting(pipe_vert_t *v, const float *cam_pos,
 
         float intensity = light->intensity;
         float ndl = nx * lx + ny * ly + nz * lz;
-        if (ndl < 0.0f) ndl = 0.0f;
+        if (ndl < 0.0f)
+            ndl = 0.0f;
 
         r += light->color[0] * intensity * ndl * cmd->diffuse_color[0] * atten;
         g += light->color[1] * intensity * ndl * cmd->diffuse_color[1] * atten;
@@ -249,9 +292,15 @@ static void compute_lighting(pipe_vert_t *v, const float *cam_pos,
         {
             float hx = lx + vx, hy = ly + vy, hz = lz + vz;
             float hlen = sqrtf(hx * hx + hy * hy + hz * hz);
-            if (hlen > 1e-7f) { hx /= hlen; hy /= hlen; hz /= hlen; }
+            if (hlen > 1e-7f)
+            {
+                hx /= hlen;
+                hy /= hlen;
+                hz /= hlen;
+            }
             float ndh = nx * hx + ny * hy + nz * hz;
-            if (ndh < 0.0f) ndh = 0.0f;
+            if (ndh < 0.0f)
+                ndh = 0.0f;
             float spec = powf(ndh, cmd->shininess);
             r += light->color[0] * intensity * spec * cmd->specular[0] * atten;
             g += light->color[1] * intensity * spec * cmd->specular[1] * atten;
@@ -274,19 +323,28 @@ static void compute_lighting(pipe_vert_t *v, const float *cam_pos,
  * Texture sampling
  *=========================================================================*/
 
-typedef struct { int64_t width; int64_t height; uint32_t *data; } sw_pixels_view;
+typedef struct
+{
+    int64_t width;
+    int64_t height;
+    uint32_t *data;
+} sw_pixels_view;
 
-static void sample_texture(const sw_pixels_view *tex, float u, float v,
-                            float *r, float *g, float *b, float *a)
+static void sample_texture(
+    const sw_pixels_view *tex, float u, float v, float *r, float *g, float *b, float *a)
 {
     u = u - floorf(u);
     v = v - floorf(v);
     int x = (int)(u * (float)tex->width);
     int y = (int)(v * (float)tex->height);
-    if (x < 0) x = 0;
-    if (x >= (int)tex->width) x = (int)tex->width - 1;
-    if (y < 0) y = 0;
-    if (y >= (int)tex->height) y = (int)tex->height - 1;
+    if (x < 0)
+        x = 0;
+    if (x >= (int)tex->width)
+        x = (int)tex->width - 1;
+    if (y < 0)
+        y = 0;
+    if (y >= (int)tex->height)
+        y = (int)tex->height - 1;
     uint32_t pixel = tex->data[y * tex->width + x];
     *r = (float)((pixel >> 24) & 0xFF) / 255.0f;
     *g = (float)((pixel >> 16) & 0xFF) / 255.0f;
@@ -303,6 +361,7 @@ typedef struct
     float sx, sy, sz;
     float r, g, b, a;
     float u_over_w, v_over_w, inv_w;
+    float wx, wy, wz; /* world position (for fog distance computation) */
 } screen_vert_t;
 
 static inline float clamp01f(float x)
@@ -310,36 +369,44 @@ static inline float clamp01f(float x)
     return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x);
 }
 
-static void raster_triangle(uint8_t *pixels, float *zbuf,
-                            int32_t fb_w, int32_t fb_h, int32_t stride,
+static void raster_triangle(uint8_t *pixels,
+                            float *zbuf,
+                            int32_t fb_w,
+                            int32_t fb_h,
+                            int32_t stride,
                             const screen_vert_t *v0,
                             const screen_vert_t *v1,
                             const screen_vert_t *v2,
                             const sw_pixels_view *tex,
                             const sw_pixels_view *emissive_tex,
                             const float *emissive_color,
-                            int8_t backface_cull)
+                            int8_t backface_cull,
+                            const sw_context_t *fog_ctx)
 {
-    float area = (v1->sx - v0->sx) * (v2->sy - v0->sy) -
-                 (v2->sx - v0->sx) * (v1->sy - v0->sy);
+    float area = (v1->sx - v0->sx) * (v2->sy - v0->sy) - (v2->sx - v0->sx) * (v1->sy - v0->sy);
 
     /* After viewport Y-flip, CCW world-space triangles have NEGATIVE screen-space
      * area. So negative area = front face, positive area = back face.
      * Cull back faces (positive area) when backface culling is enabled. */
-    if (backface_cull && area >= 0.0f) return;
+    if (backface_cull && area >= 0.0f)
+        return;
     if (area < 0.0f)
     {
-        const screen_vert_t *tmp = v1; v1 = v2; v2 = tmp;
+        const screen_vert_t *tmp = v1;
+        v1 = v2;
+        v2 = tmp;
         area = -area;
     }
-    if (area < 1e-6f) return;
+    if (area < 1e-6f)
+        return;
 
     float inv_area = 1.0f / area;
     int min_x = (int)fmaxf(fminf(fminf(v0->sx, v1->sx), v2->sx), 0.0f);
     int max_x = (int)fminf(fmaxf(fmaxf(v0->sx, v1->sx), v2->sx), (float)(fb_w - 1));
     int min_y = (int)fmaxf(fminf(fminf(v0->sy, v1->sy), v2->sy), 0.0f);
     int max_y = (int)fminf(fmaxf(fmaxf(v0->sy, v1->sy), v2->sy), (float)(fb_h - 1));
-    if (min_x > max_x || min_y > max_y) return;
+    if (min_x > max_x || min_y > max_y)
+        return;
 
     /* Half-space edge functions for rasterization.
      * w0/w1/w2 are the signed distances from pixel center to each edge.
@@ -377,11 +444,15 @@ static void raster_triangle(uint8_t *pixels, float *zbuf,
                         float iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
                         if (fabsf(iw) > 1e-7f)
                         {
-                            float u = (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / iw;
-                            float vc = (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
+                            float u =
+                                (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / iw;
+                            float vc =
+                                (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
                             float tr, tg, tb, ta;
                             sample_texture(tex, u, vc, &tr, &tg, &tb, &ta);
-                            fr *= tr; fg *= tg; fb_c *= tb;
+                            fr *= tr;
+                            fg *= tg;
+                            fb_c *= tb;
                             tex_alpha = ta;
                         }
                     }
@@ -391,14 +462,35 @@ static void raster_triangle(uint8_t *pixels, float *zbuf,
                         float iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
                         if (fabsf(iw) > 1e-7f)
                         {
-                            float u = (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / iw;
-                            float vc = (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
+                            float u =
+                                (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / iw;
+                            float vc =
+                                (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
                             float er, eg, eb, ea;
                             sample_texture(emissive_tex, u, vc, &er, &eg, &eb, &ea);
                             fr += er * emissive_color[0];
                             fg += eg * emissive_color[1];
                             fb_c += eb * emissive_color[2];
                         }
+                    }
+
+                    /* Distance fog — interpolate world position, compute camera distance */
+                    if (fog_ctx && fog_ctx->fog_enabled)
+                    {
+                        float wx = b0 * v0->wx + b1 * v1->wx + b2 * v2->wx;
+                        float wy = b0 * v0->wy + b1 * v1->wy + b2 * v2->wy;
+                        float wz = b0 * v0->wz + b1 * v1->wz + b2 * v2->wz;
+                        float fdx = wx - fog_ctx->cam_pos[0];
+                        float fdy = wy - fog_ctx->cam_pos[1];
+                        float fdz = wz - fog_ctx->cam_pos[2];
+                        float dist = sqrtf(fdx*fdx + fdy*fdy + fdz*fdz);
+                        float fog_range = fog_ctx->fog_far - fog_ctx->fog_near;
+                        float fog_f = (fog_range > 1e-6f) ?
+                            (dist - fog_ctx->fog_near) / fog_range : 0.0f;
+                        fog_f = fog_f < 0.0f ? 0.0f : (fog_f > 1.0f ? 1.0f : fog_f);
+                        fr = fr * (1.0f - fog_f) + fog_ctx->fog_color[0] * fog_f;
+                        fg = fg * (1.0f - fog_f) + fog_ctx->fog_color[1] * fog_f;
+                        fb_c = fb_c * (1.0f - fog_f) + fog_ctx->fog_color[2] * fog_f;
                     }
 
                     /* Interpolate alpha, including per-texel alpha */
@@ -427,9 +519,13 @@ static void raster_triangle(uint8_t *pixels, float *zbuf,
                     /* else: alpha <= 0 → fully invisible, skip */
                 }
             }
-            w0 -= e12_dy; w1 -= e20_dy; w2 -= e01_dy;
+            w0 -= e12_dy;
+            w1 -= e20_dy;
+            w2 -= e01_dy;
         }
-        row_w0 += e12_dx; row_w1 += e20_dx; row_w2 += e01_dx;
+        row_w0 += e12_dx;
+        row_w1 += e20_dx;
+        row_w2 += e01_dx;
     }
 }
 
@@ -437,8 +533,17 @@ static void raster_triangle(uint8_t *pixels, float *zbuf,
  * Wireframe — Bresenham line
  *=========================================================================*/
 
-static void draw_line(uint8_t *pixels, int32_t fb_w, int32_t fb_h, int32_t stride,
-                      int x0, int y0, int x1, int y1, uint8_t r, uint8_t g, uint8_t b)
+static void draw_line(uint8_t *pixels,
+                      int32_t fb_w,
+                      int32_t fb_h,
+                      int32_t stride,
+                      int x0,
+                      int y0,
+                      int x1,
+                      int y1,
+                      uint8_t r,
+                      uint8_t g,
+                      uint8_t b)
 {
     int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
     int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
@@ -448,12 +553,24 @@ static void draw_line(uint8_t *pixels, int32_t fb_w, int32_t fb_h, int32_t strid
         if (x0 >= 0 && x0 < fb_w && y0 >= 0 && y0 < fb_h)
         {
             uint8_t *dst = &pixels[y0 * stride + x0 * 4];
-            dst[0] = r; dst[1] = g; dst[2] = b; dst[3] = 0xFF;
+            dst[0] = r;
+            dst[1] = g;
+            dst[2] = b;
+            dst[3] = 0xFF;
         }
-        if (x0 == x1 && y0 == y1) break;
+        if (x0 == x1 && y0 == y1)
+            break;
         int e2 = 2 * err;
-        if (e2 >= dy) { err += dy; x0 += sx; }
-        if (e2 <= dx) { err += dx; y0 += sy; }
+        if (e2 >= dy)
+        {
+            err += dy;
+            x0 += sx;
+        }
+        if (e2 <= dx)
+        {
+            err += dx;
+            y0 += sy;
+        }
     }
 }
 
@@ -464,7 +581,8 @@ static void draw_line(uint8_t *pixels, int32_t fb_w, int32_t fb_h, int32_t strid
 static void *sw_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
 {
     sw_context_t *ctx = (sw_context_t *)calloc(1, sizeof(sw_context_t));
-    if (!ctx) return NULL;
+    if (!ctx)
+        return NULL;
 
     /* Use physical framebuffer dimensions (HiDPI-aware), not logical dimensions.
      * The rasterizer writes to fb.pixels which is at physical resolution. */
@@ -481,13 +599,18 @@ static void *sw_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
     }
 
     ctx->zbuf = (float *)malloc((size_t)ctx->width * (size_t)ctx->height * sizeof(float));
-    if (!ctx->zbuf) { free(ctx); return NULL; }
+    if (!ctx->zbuf)
+    {
+        free(ctx);
+        return NULL;
+    }
     return ctx;
 }
 
 static void sw_destroy_ctx(void *ctx_ptr)
 {
-    if (!ctx_ptr) return;
+    if (!ctx_ptr)
+        return;
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     free(ctx->zbuf);
     free(ctx);
@@ -496,7 +619,8 @@ static void sw_destroy_ctx(void *ctx_ptr)
 static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b)
 {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
-    if (!ctx) return;
+    if (!ctx)
+        return;
 
     uint8_t cr = (uint8_t)(clamp01f(r) * 255.0f);
     uint8_t cg = (uint8_t)(clamp01f(g) * 255.0f);
@@ -509,7 +633,10 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
             for (int32_t x = 0; x < rt->width; x++)
             {
                 uint8_t *px = &rt->color_buf[y * rt->stride + x * 4];
-                px[0] = cr; px[1] = cg; px[2] = cb; px[3] = 0xFF;
+                px[0] = cr;
+                px[1] = cg;
+                px[2] = cb;
+                px[3] = 0xFF;
             }
         int32_t total = rt->width * rt->height;
         for (int32_t i = 0; i < total; i++)
@@ -524,7 +651,10 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
                 for (int32_t x = 0; x < fb.width; x++)
                 {
                     uint8_t *px = &fb.pixels[y * fb.stride + x * 4];
-                    px[0] = cr; px[1] = cg; px[2] = cb; px[3] = 0xFF;
+                    px[0] = cr;
+                    px[1] = cg;
+                    px[2] = cb;
+                    px[3] = 0xFF;
                 }
         }
         int32_t total = ctx->width * ctx->height;
@@ -536,21 +666,33 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
 static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam)
 {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
-    if (!ctx) return;
+    if (!ctx)
+        return;
     /* VP = projection * view */
     mat4f_mul(cam->projection, cam->view, ctx->vp);
     ctx->cam_pos[0] = cam->position[0];
     ctx->cam_pos[1] = cam->position[1];
     ctx->cam_pos[2] = cam->position[2];
+    ctx->fog_enabled = cam->fog_enabled;
+    ctx->fog_near = cam->fog_near;
+    ctx->fog_far = cam->fog_far;
+    ctx->fog_color[0] = cam->fog_color[0];
+    ctx->fog_color[1] = cam->fog_color[1];
+    ctx->fog_color[2] = cam->fog_color[2];
 }
 
-static void sw_submit_draw(void *ctx_ptr, vgfx_window_t win,
-                            const vgfx3d_draw_cmd_t *cmd,
-                            const vgfx3d_light_params_t *lights, int32_t light_count,
-                            const float *ambient, int8_t wireframe, int8_t backface_cull)
+static void sw_submit_draw(void *ctx_ptr,
+                           vgfx_window_t win,
+                           const vgfx3d_draw_cmd_t *cmd,
+                           const vgfx3d_light_params_t *lights,
+                           int32_t light_count,
+                           const float *ambient,
+                           int8_t wireframe,
+                           int8_t backface_cull)
 {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
-    if (!ctx || !cmd || cmd->vertex_count == 0 || cmd->index_count == 0) return;
+    if (!ctx || !cmd || cmd->vertex_count == 0 || cmd->index_count == 0)
+        return;
 
     /* Determine output buffers: render target or window framebuffer */
     uint8_t *out_pixels;
@@ -569,7 +711,8 @@ static void sw_submit_draw(void *ctx_ptr, vgfx_window_t win,
     else
     {
         vgfx_framebuffer_t fb;
-        if (!vgfx_get_framebuffer(win, &fb)) return;
+        if (!vgfx_get_framebuffer(win, &fb))
+            return;
         out_pixels = fb.pixels;
         out_zbuf = ctx->zbuf;
         out_w = fb.width;
@@ -605,7 +748,8 @@ static void sw_submit_draw(void *ctx_ptr, vgfx_window_t win,
     /* Transform mesh vertices */
     uint32_t vc = cmd->vertex_count;
     pipe_vert_t *pv = (pipe_vert_t *)malloc(vc * sizeof(pipe_vert_t));
-    if (!pv) return;
+    if (!pv)
+        return;
 
     for (uint32_t i = 0; i < vc; i++)
     {
@@ -616,20 +760,27 @@ static void sw_submit_draw(void *ctx_ptr, vgfx_window_t win,
         /* World-space */
         float world4[4];
         mat4f_transform4(cmd->model_matrix, pos4, world4);
-        dst->world[0] = world4[0]; dst->world[1] = world4[1]; dst->world[2] = world4[2];
+        dst->world[0] = world4[0];
+        dst->world[1] = world4[1];
+        dst->world[2] = world4[2];
 
         float nrm4[4] = {src->normal[0], src->normal[1], src->normal[2], 0.0f};
         float wnrm4[4];
         mat4f_transform4(cmd->model_matrix, nrm4, wnrm4);
-        dst->normal[0] = wnrm4[0]; dst->normal[1] = wnrm4[1]; dst->normal[2] = wnrm4[2];
+        dst->normal[0] = wnrm4[0];
+        dst->normal[1] = wnrm4[1];
+        dst->normal[2] = wnrm4[2];
 
         /* Clip-space */
         float clip[4];
         mat4f_transform4(mvp, pos4, clip);
-        dst->clip[0] = clip[0]; dst->clip[1] = clip[1];
-        dst->clip[2] = clip[2]; dst->clip[3] = clip[3];
+        dst->clip[0] = clip[0];
+        dst->clip[1] = clip[1];
+        dst->clip[2] = clip[2];
+        dst->clip[3] = clip[3];
 
-        dst->uv[0] = src->uv[0]; dst->uv[1] = src->uv[1];
+        dst->uv[0] = src->uv[0];
+        dst->uv[1] = src->uv[1];
 
         /* Per-vertex lighting */
         compute_lighting(dst, ctx->cam_pos, cmd, lights, light_count, ambient);
@@ -641,11 +792,13 @@ static void sw_submit_draw(void *ctx_ptr, vgfx_window_t win,
     for (uint32_t i = 0; i + 2 < cmd->index_count; i += 3)
     {
         uint32_t i0 = cmd->indices[i], i1 = cmd->indices[i + 1], i2 = cmd->indices[i + 2];
-        if (i0 >= vc || i1 >= vc || i2 >= vc) continue;
+        if (i0 >= vc || i1 >= vc || i2 >= vc)
+            continue;
 
         pipe_vert_t tri[3] = {pv[i0], pv[i1], pv[i2]};
         int clip_count = clip_triangle(tri, clipped);
-        if (clip_count < 3) continue;
+        if (clip_count < 3)
+            continue;
 
         for (int t = 1; t < clip_count - 1; t++)
         {
@@ -655,37 +808,83 @@ static void sw_submit_draw(void *ctx_ptr, vgfx_window_t win,
             for (int vi = 0; vi < 3; vi++)
             {
                 const pipe_vert_t *p = fan[vi];
-                if (fabsf(p->clip[3]) < 1e-7f) { ok = 0; break; }
+                if (fabsf(p->clip[3]) < 1e-7f)
+                {
+                    ok = 0;
+                    break;
+                }
                 float iw = 1.0f / p->clip[3];
                 sv[vi].sx = (p->clip[0] * iw + 1.0f) * half_w;
                 sv[vi].sy = (1.0f - p->clip[1] * iw) * half_h;
                 sv[vi].sz = p->clip[2] * iw;
-                sv[vi].r = p->color[0]; sv[vi].g = p->color[1];
-                sv[vi].b = p->color[2]; sv[vi].a = p->color[3];
+                sv[vi].r = p->color[0];
+                sv[vi].g = p->color[1];
+                sv[vi].b = p->color[2];
+                sv[vi].a = p->color[3];
                 sv[vi].inv_w = iw;
                 sv[vi].u_over_w = p->uv[0] * iw;
                 sv[vi].v_over_w = p->uv[1] * iw;
+                sv[vi].wx = p->world[0];
+                sv[vi].wy = p->world[1];
+                sv[vi].wz = p->world[2];
             }
-            if (!ok) continue;
+            if (!ok)
+                continue;
 
             if (wireframe)
             {
                 uint8_t wr = (uint8_t)(clamp01f(sv[0].r) * 255.0f);
                 uint8_t wg = (uint8_t)(clamp01f(sv[0].g) * 255.0f);
                 uint8_t wb = (uint8_t)(clamp01f(sv[0].b) * 255.0f);
-                draw_line(out_pixels, out_w, out_h, out_stride,
-                          (int)sv[0].sx, (int)sv[0].sy, (int)sv[1].sx, (int)sv[1].sy, wr, wg, wb);
-                draw_line(out_pixels, out_w, out_h, out_stride,
-                          (int)sv[1].sx, (int)sv[1].sy, (int)sv[2].sx, (int)sv[2].sy, wr, wg, wb);
-                draw_line(out_pixels, out_w, out_h, out_stride,
-                          (int)sv[2].sx, (int)sv[2].sy, (int)sv[0].sx, (int)sv[0].sy, wr, wg, wb);
+                draw_line(out_pixels,
+                          out_w,
+                          out_h,
+                          out_stride,
+                          (int)sv[0].sx,
+                          (int)sv[0].sy,
+                          (int)sv[1].sx,
+                          (int)sv[1].sy,
+                          wr,
+                          wg,
+                          wb);
+                draw_line(out_pixels,
+                          out_w,
+                          out_h,
+                          out_stride,
+                          (int)sv[1].sx,
+                          (int)sv[1].sy,
+                          (int)sv[2].sx,
+                          (int)sv[2].sy,
+                          wr,
+                          wg,
+                          wb);
+                draw_line(out_pixels,
+                          out_w,
+                          out_h,
+                          out_stride,
+                          (int)sv[2].sx,
+                          (int)sv[2].sy,
+                          (int)sv[0].sx,
+                          (int)sv[0].sy,
+                          wr,
+                          wg,
+                          wb);
             }
             else
             {
-                raster_triangle(out_pixels, out_zbuf, out_w, out_h, out_stride,
-                                &sv[0], &sv[1], &sv[2], tex_ptr,
-                                emissive_ptr, cmd->emissive_color,
-                                backface_cull);
+                raster_triangle(out_pixels,
+                                out_zbuf,
+                                out_w,
+                                out_h,
+                                out_stride,
+                                &sv[0],
+                                &sv[1],
+                                &sv[2],
+                                tex_ptr,
+                                emissive_ptr,
+                                cmd->emissive_color,
+                                backface_cull,
+                                ctx);
             }
         }
     }
@@ -723,8 +922,15 @@ const vgfx3d_backend_t vgfx3d_software_backend = {
 
 /* Stub for platforms without a GPU layer to hide */
 #if !defined(__APPLE__)
-void vgfx3d_hide_gpu_layer(void *backend_ctx) { (void)backend_ctx; }
-void vgfx3d_show_gpu_layer(void *backend_ctx) { (void)backend_ctx; }
+void vgfx3d_hide_gpu_layer(void *backend_ctx)
+{
+    (void)backend_ctx;
+}
+
+void vgfx3d_show_gpu_layer(void *backend_ctx)
+{
+    (void)backend_ctx;
+}
 #endif
 
 const vgfx3d_backend_t *vgfx3d_select_backend(void)

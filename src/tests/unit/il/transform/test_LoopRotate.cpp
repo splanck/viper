@@ -57,8 +57,7 @@ void setupAnalysisRegistry(il::transform::AnalysisRegistry &registry)
         "liveness",
         [](Module &mod, Function &fn) { return il::transform::computeLiveness(mod, fn); });
     registry.registerFunctionAnalysis<viper::analysis::BasicAA>(
-        "basic-aa",
-        [](Module &mod, Function &fn) { return viper::analysis::BasicAA(mod, fn); });
+        "basic-aa", [](Module &mod, Function &fn) { return viper::analysis::BasicAA(mod, fn); });
 }
 
 Param makeParam(const std::string &name, Type type, unsigned &nextId)

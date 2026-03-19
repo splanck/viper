@@ -122,11 +122,11 @@ TEST(DataflowLiveness, BuildPredecessors)
     auto preds = buildPredecessors(succs);
 
     EXPECT_EQ(preds.size(), 4u);
-    EXPECT_TRUE(preds[0].empty());                // block 0 has no predecessors
-    EXPECT_EQ(preds[1].size(), 1u);               // block 1 has pred 0
+    EXPECT_TRUE(preds[0].empty());  // block 0 has no predecessors
+    EXPECT_EQ(preds[1].size(), 1u); // block 1 has pred 0
     EXPECT_EQ(preds[1][0], 0u);
-    EXPECT_EQ(preds[2].size(), 1u);               // block 2 has pred 0
-    EXPECT_EQ(preds[3].size(), 2u);               // block 3 has preds 1, 2
+    EXPECT_EQ(preds[2].size(), 1u); // block 2 has pred 0
+    EXPECT_EQ(preds[3].size(), 2u); // block 3 has preds 1, 2
 }
 
 // ---------------------------------------------------------------------------
@@ -145,8 +145,8 @@ TEST(DataflowLiveness, ConvergesWithinBounds)
     for (std::size_t i = 0; i + 1 < n; ++i)
         succs[i] = {i + 1};
 
-    kill[0] = {42};                // block 0 defines v42
-    gen[n - 1] = {42};            // block 9 uses v42
+    kill[0] = {42};    // block 0 defines v42
+    gen[n - 1] = {42}; // block 9 uses v42
 
     auto result = solveBackwardDataflow(succs, gen, kill, 1000);
 

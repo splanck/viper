@@ -86,8 +86,7 @@ typedef struct
 
 void *rt_dialogue_new(int64_t x, int64_t y, int64_t width, int64_t height)
 {
-    rt_dialogue_impl *d =
-        (rt_dialogue_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_dialogue_impl));
+    rt_dialogue_impl *d = (rt_dialogue_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_dialogue_impl));
     if (!d)
         return NULL;
 

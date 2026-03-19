@@ -58,10 +58,10 @@ extern "C"
     void rt_dialogue_skip(void *dlg);
 
     // State queries
-    int8_t  rt_dialogue_is_active(void *dlg);
-    int8_t  rt_dialogue_is_line_complete(void *dlg);
-    int8_t  rt_dialogue_is_finished(void *dlg);
-    int8_t  rt_dialogue_is_waiting(void *dlg);
+    int8_t rt_dialogue_is_active(void *dlg);
+    int8_t rt_dialogue_is_line_complete(void *dlg);
+    int8_t rt_dialogue_is_finished(void *dlg);
+    int8_t rt_dialogue_is_waiting(void *dlg);
     int64_t rt_dialogue_get_line_count(void *dlg);
     int64_t rt_dialogue_get_current_line(void *dlg);
     rt_string rt_dialogue_get_speaker(void *dlg);

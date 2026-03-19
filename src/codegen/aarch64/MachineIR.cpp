@@ -112,8 +112,8 @@ namespace viper::codegen::aarch64
 {
     switch (opc)
     {
-#define VIPER_MIR_OPCODE(name) \
-    case MOpcode::name:        \
+#define VIPER_MIR_OPCODE(name)                                                                     \
+    case MOpcode::name:                                                                            \
         return #name;
 #include "codegen/aarch64/MOpcodeDef.inc"
     }

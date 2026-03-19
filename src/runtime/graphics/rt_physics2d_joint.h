@@ -32,75 +32,76 @@ extern "C"
 {
 #endif
 
-    /// Joint type constants
-    #define RT_JOINT_DISTANCE 0
-    #define RT_JOINT_SPRING   1
-    #define RT_JOINT_HINGE    2
-    #define RT_JOINT_ROPE     3
+/// Joint type constants
+#define RT_JOINT_DISTANCE 0
+#define RT_JOINT_SPRING 1
+#define RT_JOINT_HINGE 2
+#define RT_JOINT_ROPE 3
 
     //=========================================================================
     // Distance Joint
     //=========================================================================
 
-    void   *rt_physics2d_distance_joint_new(void *body_a, void *body_b, double length);
-    double  rt_physics2d_distance_joint_get_length(void *joint);
-    void    rt_physics2d_distance_joint_set_length(void *joint, double length);
+    void *rt_physics2d_distance_joint_new(void *body_a, void *body_b, double length);
+    double rt_physics2d_distance_joint_get_length(void *joint);
+    void rt_physics2d_distance_joint_set_length(void *joint, double length);
 
     //=========================================================================
     // Spring Joint
     //=========================================================================
 
-    void   *rt_physics2d_spring_joint_new(void *body_a, void *body_b,
-                                          double rest_length, double stiffness,
-                                          double damping);
-    double  rt_physics2d_spring_joint_get_stiffness(void *joint);
-    void    rt_physics2d_spring_joint_set_stiffness(void *joint, double stiffness);
-    double  rt_physics2d_spring_joint_get_damping(void *joint);
-    void    rt_physics2d_spring_joint_set_damping(void *joint, double damping);
+    void *rt_physics2d_spring_joint_new(
+        void *body_a, void *body_b, double rest_length, double stiffness, double damping);
+    double rt_physics2d_spring_joint_get_stiffness(void *joint);
+    void rt_physics2d_spring_joint_set_stiffness(void *joint, double stiffness);
+    double rt_physics2d_spring_joint_get_damping(void *joint);
+    void rt_physics2d_spring_joint_set_damping(void *joint, double damping);
 
     //=========================================================================
     // Hinge Joint
     //=========================================================================
 
-    void   *rt_physics2d_hinge_joint_new(void *body_a, void *body_b,
-                                         double anchor_x, double anchor_y);
-    double  rt_physics2d_hinge_joint_get_angle(void *joint);
+    void *rt_physics2d_hinge_joint_new(void *body_a,
+                                       void *body_b,
+                                       double anchor_x,
+                                       double anchor_y);
+    double rt_physics2d_hinge_joint_get_angle(void *joint);
 
     //=========================================================================
     // Rope Joint
     //=========================================================================
 
-    void   *rt_physics2d_rope_joint_new(void *body_a, void *body_b, double max_length);
-    double  rt_physics2d_rope_joint_get_max_length(void *joint);
-    void    rt_physics2d_rope_joint_set_max_length(void *joint, double max_length);
+    void *rt_physics2d_rope_joint_new(void *body_a, void *body_b, double max_length);
+    double rt_physics2d_rope_joint_get_max_length(void *joint);
+    void rt_physics2d_rope_joint_set_max_length(void *joint, double max_length);
 
     //=========================================================================
     // Joint Common
     //=========================================================================
 
-    void   *rt_physics2d_joint_get_body_a(void *joint);
-    void   *rt_physics2d_joint_get_body_b(void *joint);
+    void *rt_physics2d_joint_get_body_a(void *joint);
+    void *rt_physics2d_joint_get_body_b(void *joint);
     int64_t rt_physics2d_joint_get_type(void *joint);
-    int8_t  rt_physics2d_joint_is_active(void *joint);
+    int8_t rt_physics2d_joint_is_active(void *joint);
 
     //=========================================================================
     // World Joint Management
     //=========================================================================
 
-    void    rt_physics2d_world_add_joint(void *world, void *joint);
-    void    rt_physics2d_world_remove_joint(void *world, void *joint);
+    void rt_physics2d_world_add_joint(void *world, void *joint);
+    void rt_physics2d_world_remove_joint(void *world, void *joint);
     int64_t rt_physics2d_world_joint_count(void *world);
 
     /// Called from world_step to solve all joint constraints
-    void    rt_physics2d_solve_joints(void *world, double dt);
+    void rt_physics2d_solve_joints(void *world, double dt);
 
     //=========================================================================
     // Circle Bodies
     //=========================================================================
 
-    void   *rt_physics2d_circle_body_new(double cx, double cy, double radius, double mass);
-    double  rt_physics2d_body_radius(void *body);
-    int8_t  rt_physics2d_body_is_circle(void *body);
+    void *rt_physics2d_circle_body_new(double cx, double cy, double radius, double mass);
+    double rt_physics2d_body_radius(void *body);
+    int8_t rt_physics2d_body_is_circle(void *body);
 
 #ifdef __cplusplus
 }

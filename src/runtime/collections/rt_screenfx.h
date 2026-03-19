@@ -46,11 +46,11 @@ extern "C"
         RT_SCREENFX_PIXELATE = 9,
     } rt_screenfx_type_t;
 
-    /// Direction constants for Wipe.
-    #define RT_DIR_LEFT  0
-    #define RT_DIR_RIGHT 1
-    #define RT_DIR_UP    2
-    #define RT_DIR_DOWN  3
+/// Direction constants for Wipe.
+#define RT_DIR_LEFT 0
+#define RT_DIR_RIGHT 1
+#define RT_DIR_UP 2
+#define RT_DIR_DOWN 3
 
     /// Opaque handle to a ScreenFX manager.
     typedef struct rt_screenfx_impl *rt_screenfx;
@@ -196,12 +196,12 @@ extern "C"
     void rt_screenfx_wipe(rt_screenfx fx, int64_t direction, int64_t color, int64_t duration);
 
     /// @brief Start a circle-closing (iris-in) transition from center point.
-    void rt_screenfx_circle_in(rt_screenfx fx, int64_t cx, int64_t cy,
-                                int64_t color, int64_t duration);
+    void rt_screenfx_circle_in(
+        rt_screenfx fx, int64_t cx, int64_t cy, int64_t color, int64_t duration);
 
     /// @brief Start a circle-opening (iris-out) transition from center point.
-    void rt_screenfx_circle_out(rt_screenfx fx, int64_t cx, int64_t cy,
-                                 int64_t color, int64_t duration);
+    void rt_screenfx_circle_out(
+        rt_screenfx fx, int64_t cx, int64_t cy, int64_t color, int64_t duration);
 
     /// @brief Start a dissolve transition (random pixel coverage via Bayer dithering).
     void rt_screenfx_dissolve(rt_screenfx fx, int64_t color, int64_t duration);

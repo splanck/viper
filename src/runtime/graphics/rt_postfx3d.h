@@ -29,17 +29,20 @@ extern "C"
 {
 #endif
 
-    void   *rt_postfx3d_new(void);
-    void    rt_postfx3d_add_bloom(void *obj, double threshold, double intensity, int64_t blur_passes);
-    void    rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure);
-    void    rt_postfx3d_add_fxaa(void *obj);
-    void    rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, double saturation);
-    void    rt_postfx3d_add_vignette(void *obj, double radius, double softness);
-    void    rt_postfx3d_set_enabled(void *obj, int8_t enabled);
-    int8_t  rt_postfx3d_get_enabled(void *obj);
-    void    rt_postfx3d_clear(void *obj);
+    void *rt_postfx3d_new(void);
+    void rt_postfx3d_add_bloom(void *obj, double threshold, double intensity, int64_t blur_passes);
+    void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure);
+    void rt_postfx3d_add_fxaa(void *obj);
+    void rt_postfx3d_add_color_grade(void *obj,
+                                     double brightness,
+                                     double contrast,
+                                     double saturation);
+    void rt_postfx3d_add_vignette(void *obj, double radius, double softness);
+    void rt_postfx3d_set_enabled(void *obj, int8_t enabled);
+    int8_t rt_postfx3d_get_enabled(void *obj);
+    void rt_postfx3d_clear(void *obj);
     int64_t rt_postfx3d_get_effect_count(void *obj);
-    void    rt_canvas3d_set_post_fx(void *canvas, void *postfx);
+    void rt_canvas3d_set_post_fx(void *canvas, void *postfx);
 
 #ifdef __cplusplus
 }
