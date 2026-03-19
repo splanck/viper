@@ -927,9 +927,12 @@ static void fbx_extract_animations(fbx_node_t *root, const fbx_conn_table_t *ct,
         const char *sep = strstr(anim_name, "\x00\x01");
         if (sep) anim_name = sep + 2;
 
-        /* For now, create a placeholder animation. Full curve extraction
+        /* LIMITATION: Animation keyframe extraction is not yet implemented.
+         * This creates a named animation with no keyframes. Full extraction
          * requires walking AnimStack→AnimLayer→AnimCurveNode→AnimCurve
-         * chains and resolving bone connections. */
+         * chains, converting FBX ticks (46186158000/sec) to seconds, and
+         * resolving bone connections via the connection table.
+         * Users should construct Animation3D keyframes manually for now. */
         void *anim = rt_animation3d_new(rt_const_cstr(anim_name), 1.0);
         if (!anim) continue;
         rt_animation3d_set_looping(anim, 1);

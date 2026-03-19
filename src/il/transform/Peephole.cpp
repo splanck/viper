@@ -194,9 +194,15 @@ static void replaceAll(Function &f, unsigned id, const Value &v)
 {
     for (auto &b : f.blocks)
         for (auto &in : b.instructions)
+        {
             for (auto &op : in.operands)
                 if (op.kind == Value::Kind::Temp && op.id == id)
                     op = v;
+            for (auto &argVec : in.brArgs)
+                for (auto &arg : argVec)
+                    if (arg.kind == Value::Kind::Temp && arg.id == id)
+                        arg = v;
+        }
 }
 
 //===----------------------------------------------------------------------===//
@@ -383,14 +389,29 @@ void peephole(Module &m)
                 //===----------------------------------------------------------===//
                 if (in.op == Opcode::CBr)
                 {
-                    // Case 1: Both targets identical -> unconditional branch
+                    // Case 1: Both targets identical -> unconditional branch.
+                    // Only safe when both edge argument sets are identical;
+                    // if they differ (e.g., after block merging), leave the CBr
+                    // for SimplifyCFG to handle with proper phi insertion.
                     if (in.labels.size() == 2 && in.labels[0] == in.labels[1])
                     {
-                        in.op = Opcode::Br;
-                        in.labels = {in.labels[0]};
-                        in.operands.clear();
-                        if (in.brArgs.size() > 1)
-                            in.brArgs.resize(1);
+                        bool argsMatch = (in.brArgs.size() <= 1);
+                        if (!argsMatch && in.brArgs.size() == 2 &&
+                            in.brArgs[0].size() == in.brArgs[1].size())
+                        {
+                            argsMatch = true;
+                            for (size_t a = 0; a < in.brArgs[0].size(); ++a)
+                                if (!sameValue(in.brArgs[0][a], in.brArgs[1][a]))
+                                { argsMatch = false; break; }
+                        }
+                        if (argsMatch)
+                        {
+                            in.op = Opcode::Br;
+                            in.labels = {in.labels[0]};
+                            in.operands.clear();
+                            if (in.brArgs.size() > 1)
+                                in.brArgs.resize(1);
+                        }
                         continue;
                     }
 

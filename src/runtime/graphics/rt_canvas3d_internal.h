@@ -181,6 +181,9 @@ typedef struct
     /* Skybox */
     rt_cubemap3d *skybox; /* CubeMap3D for background (or NULL) */
 
+    /* Post-processing effect chain (NULL = disabled) */
+    void *postfx;
+
     /* Temporary buffers freed at end of frame (e.g., skinned vertex data) */
     void **temp_buffers;
     int32_t temp_buf_count;

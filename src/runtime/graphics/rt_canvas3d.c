@@ -205,6 +205,7 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h)
     c->backface_cull = 0; /* disabled by default — extreme perspective can reverse
                            * screen-space winding, causing false culling. Users can
                            * enable with SetBackfaceCull(canvas, true) if needed. */
+    c->postfx = NULL;
     c->temp_buffers = NULL;
     c->temp_buf_count = c->temp_buf_capacity = 0;
 

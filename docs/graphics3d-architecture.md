@@ -174,3 +174,61 @@ Canvas3D coexists with the existing 2D Canvas system:
 - GPU backends render via their own surface (CAMetalLayer / swap chain / GLX)
 - Software backend writes to the same vgfx framebuffer as 2D Canvas
 - Input handling (Keyboard, Mouse, Pad) is shared
+- Canvas3D.Poll() forwards keyboard/mouse events to the input modules
+
+## Scene Graph and Frustum Culling
+
+`Scene3D.Draw()` performs depth-first traversal of the scene node tree:
+
+1. Extract VP matrix from camera, build frustum planes (Gribb-Hartmann)
+2. For each visible node: recompute world matrix if dirty (lazy TRS propagation)
+3. If node has a mesh: transform its object-space AABB to world space (8-corner expansion), test against frustum (p-vertex/n-vertex method). Skip draw if fully outside.
+4. Children are ALWAYS traversed even if parent mesh is culled (child transforms may place them inside the frustum independently).
+
+## Skeletal Animation Pipeline
+
+Bone palette computation (per-frame, in `compute_bone_palette`):
+
+1. Start with bind pose for all bones (local transforms)
+2. Override with sampled animation channels (keyframe interpolation: SLERP for rotation, lerp for position/scale)
+3. Optional crossfade: blend local transforms between outgoing and incoming animations
+4. Two-phase global computation:
+   - Phase 1: compute global transforms (`globals[i] = globals[parent] * local[i]`) — requires topological order
+   - Phase 2: compute palette (`palette[i] = globals[i] * inverse_bind[i]`)
+5. CPU skinning: for each vertex, `pos = sum(weight[b] * palette[b] * base_pos)`, normals renormalized
+
+## Particle Billboard Rendering
+
+All particles are batched into a single draw call per `Particles3D.Draw()`:
+
+1. Extract camera right/up vectors from the view matrix (rows 0 and 1)
+2. For alpha blend mode: sort particles back-to-front by distance from camera (insertion sort)
+3. Build vertex buffer: 4 vertices per particle (center ± right*halfSize ± up*halfSize), with per-vertex color/alpha from lifetime interpolation
+4. Build index buffer: 2 triangles per quad (CCW winding)
+5. Submit as one `DrawMesh` call with an unlit material (vertex colors handle tinting)
+
+## Post-Processing Chain
+
+`PostFX3D` applies effects to the software framebuffer in `Canvas3D.Flip()`:
+
+1. Convert framebuffer RGBA8 → float RGB buffer
+2. Apply each enabled effect in chain order:
+   - **Bloom**: bright extract (half-res) → separable Gaussian blur (N passes) → additive composite
+   - **Tone mapping**: Reinhard (`c/(c+1)`) or ACES filmic (Narkowicz approximation) + gamma correction
+   - **FXAA**: luminance-based edge detection → 3x3 average on high-contrast pixels
+   - **Color grading**: brightness/contrast/saturation adjustments
+   - **Vignette**: radial distance falloff from center
+3. Convert float RGB → RGBA8 back to framebuffer
+
+PostFX is stored per-canvas (on the `rt_canvas3d` struct), allowing independent effect chains on multiple windows.
+
+## FPS Mouse Capture
+
+When `Mouse.Capture()` is active, `Canvas3D.Poll()` uses a warp-to-center approach:
+
+1. Read current platform cursor position
+2. Compute delta as `(cursor_pos - window_center)`
+3. Force-set mouse deltas (bypasses normal begin_frame delta computation)
+4. Process keyboard/mouse button events (mouse move events skipped when captured)
+5. Warp cursor back to window center (`CGWarpMouseCursorPosition` on macOS)
+6. Only warps when window has focus (`isKeyWindow` check prevents affecting other apps)

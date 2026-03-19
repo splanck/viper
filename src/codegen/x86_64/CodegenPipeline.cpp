@@ -256,6 +256,8 @@ int linkWithContext(const std::filesystem::path &inputPath,
         frameworks.push_back("IOKit");
         frameworks.push_back("CoreFoundation");
         frameworks.push_back("UniformTypeIdentifiers");
+        frameworks.push_back("Metal");
+        frameworks.push_back("QuartzCore");
 #endif
         common::appendGraphicsLibs(ctx, cmd, frameworks);
     }

@@ -493,30 +493,28 @@ int64_t rt_postfx3d_get_effect_count(void *obj)
  * Canvas3D integration
  *=========================================================================*/
 
-/* Stored as a borrowed pointer on the Canvas3D struct */
-static rt_postfx3d *canvas_postfx = NULL;
-
 void rt_canvas3d_set_post_fx(void *canvas, void *postfx)
 {
-    (void)canvas;
-    canvas_postfx = (rt_postfx3d *)postfx;
+    if (!canvas) return;
+    rt_canvas3d *c = (rt_canvas3d *)canvas;
+    c->postfx = postfx;
 }
 
 /// @brief Called from rt_canvas3d_flip to apply post-processing effects.
-/// This is an internal function, not part of the public API.
 void rt_postfx3d_apply_to_canvas(void *canvas)
 {
-    if (!canvas_postfx || !canvas_postfx->enabled || canvas_postfx->effect_count == 0)
-        return;
-
+    if (!canvas) return;
     rt_canvas3d *c = (rt_canvas3d *)canvas;
+    rt_postfx3d *fx = (rt_postfx3d *)c->postfx;
+    if (!fx || !fx->enabled || fx->effect_count == 0)
+        return;
     if (!c->gfx_win) return;
 
     vgfx_framebuffer_t fb;
     if (!vgfx_get_framebuffer(c->gfx_win, &fb) || !fb.pixels)
         return;
 
-    postfx_apply(canvas_postfx, fb.pixels, fb.width, fb.height, fb.stride);
+    postfx_apply(fx, fb.pixels, fb.width, fb.height, fb.stride);
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

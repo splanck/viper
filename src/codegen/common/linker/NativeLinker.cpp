@@ -260,6 +260,12 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                 {{"AudioQueue", "AudioServices"},
                  {},
                  "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox"},
+                {{"MTL", "MTLCreate"},
+                 {},
+                 "/System/Library/Frameworks/Metal.framework/Versions/A/Metal"},
+                {{"CAMetalLayer", "CATransaction", "CALayer"},
+                 {},
+                 "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore"},
             };
 
             // Helper: strip all leading underscores from a symbol name for

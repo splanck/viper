@@ -4,6 +4,31 @@ module DemoFPS;
 
 bind Viper.Terminal;
 
+func do_shoot(cam: Ptr, sparks: Ptr) {
+    var shoot_pos = Viper.Graphics3D.Camera3D.get_Position(cam);
+    var shoot_dir = Viper.Graphics3D.Camera3D.get_Forward(cam);
+
+    var d1 = Viper.Graphics3D.Ray3D.IntersectSphere(shoot_pos, shoot_dir,
+        new Viper.Math.Vec3(-3.0, 1.0, -5.0), 0.5);
+    var d2 = Viper.Graphics3D.Ray3D.IntersectSphere(shoot_pos, shoot_dir,
+        new Viper.Math.Vec3(4.0, 1.5, -3.0), 0.5);
+    var d3 = Viper.Graphics3D.Ray3D.IntersectSphere(shoot_pos, shoot_dir,
+        new Viper.Math.Vec3(0.0, 0.8, -8.0), 0.5);
+
+    var best = 999.0;
+    var hit_x = 0.0;
+    var hit_y = 0.0;
+    var hit_z = 0.0;
+    if (d1 >= 0.0) { best = d1; hit_x = -3.0; hit_y = 1.0; hit_z = -5.0; }
+    if (d2 >= 0.0) { if (d2 < best) { best = d2; hit_x = 4.0; hit_y = 1.5; hit_z = -3.0; } }
+    if (d3 >= 0.0) { if (d3 < best) { best = d3; hit_x = 0.0; hit_y = 0.8; hit_z = -8.0; } }
+
+    if (best < 999.0) {
+        Viper.Graphics3D.Particles3D.SetPosition(sparks, hit_x, hit_y, hit_z);
+        Viper.Graphics3D.Particles3D.Burst(sparks, 30);
+    }
+}
+
 func start() {
     var canvas = Viper.Graphics3D.Canvas3D.New("FPS Demo", 1280, 720);
     var cam = Viper.Graphics3D.Camera3D.New(70.0, 1280.0 / 720.0, 0.1, 100.0);
@@ -106,34 +131,11 @@ func start() {
 
         // Shoot on left click (with cooldown)
         shoot_cooldown = shoot_cooldown - dt;
-        if (Viper.Input.Mouse.Left()) {
+        var can_shoot = Viper.Input.Mouse.Left();
+        if (can_shoot) {
             if (shoot_cooldown <= 0.0) {
                 shoot_cooldown = 0.3;
-            var shoot_pos = Viper.Graphics3D.Camera3D.get_Position(cam);
-            var shoot_dir = Viper.Graphics3D.Camera3D.get_Forward(cam);
-
-            // Test against target spheres
-            var d1 = Viper.Graphics3D.Ray3D.IntersectSphere(shoot_pos, shoot_dir,
-                new Viper.Math.Vec3(-3.0, 1.0, -5.0), 0.5);
-            var d2 = Viper.Graphics3D.Ray3D.IntersectSphere(shoot_pos, shoot_dir,
-                new Viper.Math.Vec3(4.0, 1.5, -3.0), 0.5);
-            var d3 = Viper.Graphics3D.Ray3D.IntersectSphere(shoot_pos, shoot_dir,
-                new Viper.Math.Vec3(0.0, 0.8, -8.0), 0.5);
-
-            // Find closest hit
-            var best = 999.0;
-            var hit_x = 0.0;
-            var hit_y = 0.0;
-            var hit_z = 0.0;
-            if (d1 >= 0.0) { if (d1 < best) { best = d1; hit_x = -3.0; hit_y = 1.0; hit_z = -5.0; } }
-            if (d2 >= 0.0) { if (d2 < best) { best = d2; hit_x = 4.0; hit_y = 1.5; hit_z = -3.0; } }
-            if (d3 >= 0.0) { if (d3 < best) { best = d3; hit_x = 0.0; hit_y = 0.8; hit_z = -8.0; } }
-
-            if (best < 999.0) {
-                // Spawn particles at hit point
-                Viper.Graphics3D.Particles3D.SetPosition(sparks, hit_x, hit_y, hit_z);
-                Viper.Graphics3D.Particles3D.Burst(sparks, 30);
-            }
+                do_shoot(cam, sparks);
             }
         }
 

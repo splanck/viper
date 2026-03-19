@@ -243,7 +243,7 @@ static int linkToExe(const std::string &asmPath,
     {
         std::vector<std::string> frameworks;
 #if defined(__APPLE__)
-        frameworks = {"Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers"};
+        frameworks = {"Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers", "Metal", "QuartzCore"};
 #endif
         appendGraphicsLibs(ctx, linkCmd, frameworks);
     }
@@ -301,7 +301,7 @@ static int linkObjToExe(const std::string &objPath,
     {
         std::vector<std::string> frameworks;
 #if defined(__APPLE__)
-        frameworks = {"Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers"};
+        frameworks = {"Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers", "Metal", "QuartzCore"};
 #endif
         appendGraphicsLibs(ctx, linkCmd, frameworks);
     }

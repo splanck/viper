@@ -6,7 +6,7 @@ Viper.Graphics3D is a 3D rendering module for the Viper runtime. It provides a s
 
 **Namespace:** `Viper.Graphics3D`
 
-**Runtime types:** Canvas3D, Mesh3D, Camera3D, Material3D, Light3D
+**Runtime types:** Canvas3D, Mesh3D, Camera3D, Material3D, Light3D, RenderTarget3D, CubeMap3D, Scene3D, SceneNode3D, Skeleton3D, Animation3D, AnimPlayer3D, MorphTarget3D, Particles3D, PostFX3D, Ray3D, RayHit3D, Audio3D, FBX
 
 ## Quick Start
 
@@ -263,3 +263,242 @@ The software renderer is always available and produces identical visual output (
 ## Threading
 
 All Graphics3D operations must be called from the main thread. `Begin`/`End` must not nest. Do not modify scene node transforms during `Draw()` traversal.
+
+---
+
+## Scene3D / SceneNode3D
+
+Hierarchical scene graph with parent-child transform propagation (TRS: translate, rotate, scale).
+
+```zia
+var scene = Scene3D.New()
+var node = SceneNode3D.New()
+SceneNode3D.SetPosition(node, 5.0, 0.0, 0.0)
+SceneNode3D.set_Mesh(node, mesh)
+SceneNode3D.set_Material(node, mat)
+Scene3D.Add(scene, node)
+
+// In render loop:
+scene.Draw(canvas, cam)  // handles Begin/End internally
+```
+
+| Function | Description |
+|----------|-------------|
+| `Scene3D.New()` | Create scene with root node |
+| `Scene3D.Add(scene, node)` | Add node to root |
+| `Scene3D.Remove(scene, node)` | Detach node from parent |
+| `Scene3D.Find(scene, name)` | Recursive depth-first name search |
+| `Scene3D.Draw(scene, canvas, cam)` | Traverse + render (with frustum culling) |
+| `Scene3D.Clear(scene)` | Remove all children from root |
+| `Scene3D.get_NodeCount` | Total nodes in tree |
+| `Scene3D.get_CulledCount` | Nodes culled in last Draw |
+| `SceneNode3D.SetPosition(n, x, y, z)` | Set local position |
+| `SceneNode3D.set_Rotation(n, quat)` | Set local rotation (quaternion) |
+| `SceneNode3D.SetScale(n, x, y, z)` | Set local scale |
+| `SceneNode3D.get_WorldMatrix` | Computed world transform (lazy) |
+| `SceneNode3D.AddChild(parent, child)` | Attach child (auto-detaches from previous parent) |
+| `SceneNode3D.set_Visible(n, bool)` | Hide node + all descendants |
+| `SceneNode3D.set_Name(n, str)` | Set name for Find() lookup |
+
+Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty flags propagate to descendants automatically.
+
+## Skeleton3D / Animation3D / AnimPlayer3D
+
+Skeletal animation with bone hierarchy, keyframe interpolation, and CPU skinning.
+
+```zia
+var skel = Skeleton3D.New()
+Skeleton3D.AddBone(skel, "root", -1, Mat4.Identity())
+Skeleton3D.AddBone(skel, "arm", 0, Mat4.Translate(1.0, 0.0, 0.0))
+Skeleton3D.ComputeInverseBind(skel)
+
+var anim = Animation3D.New("walk", 1.0)
+Animation3D.AddKeyframe(anim, 0, 0.0, pos0, rot0, scl)
+Animation3D.AddKeyframe(anim, 0, 1.0, pos1, rot1, scl)
+
+var player = AnimPlayer3D.New(skel)
+AnimPlayer3D.Play(player, anim)
+
+// In render loop:
+AnimPlayer3D.Update(player, dt)
+Canvas3D.DrawMeshSkinned(canvas, mesh, transform, material, player)
+```
+
+- Bones must be added in topological order (parent before child)
+- Max 128 bones per skeleton
+- Rotation keyframes use SLERP; position/scale use linear interpolation
+- `Crossfade(player, newAnim, duration)` blends between animations
+- `DrawMeshSkinned` applies CPU skinning via weighted bone palette
+
+## MorphTarget3D
+
+Blend shapes for facial animation, muscle flex, and shape-based deformation.
+
+```zia
+var mt = MorphTarget3D.New(vertexCount)
+var smile = MorphTarget3D.AddShape(mt, "smile")
+MorphTarget3D.SetDelta(mt, smile, vertexIdx, dx, dy, dz)
+MorphTarget3D.SetWeight(mt, smile, 0.7)
+Canvas3D.DrawMeshMorphed(canvas, mesh, transform, material, mt)
+```
+
+- Max 32 shapes per MorphTarget3D
+- Normal deltas optional (lazy-allocated on first `SetNormalDelta`)
+- Weights can be negative (reverse deformation)
+- CPU-applied: `finalPos = basePos + sum(weight * delta)` per vertex
+
+## FBX Loader
+
+Load meshes, skeletons, and materials from binary FBX files (v7100-7700).
+
+```zia
+var asset = FBX.Load("model.fbx")
+var mesh = FBX.GetMesh(asset, 0)
+var skel = FBX.GetSkeleton(asset)
+var mat = FBX.GetMaterial(asset, 0)
+```
+
+| Function | Description |
+|----------|-------------|
+| `FBX.Load(path)` | Parse binary FBX file |
+| `FBX.get_MeshCount` | Number of geometry objects |
+| `FBX.GetMesh(asset, i)` | Get Mesh3D by index |
+| `FBX.GetSkeleton(asset)` | Get Skeleton3D (or null) |
+| `FBX.get_AnimationCount` | Number of animation stacks |
+| `FBX.GetAnimation(asset, i)` | Get Animation3D by index |
+| `FBX.get_MaterialCount` | Number of materials |
+| `FBX.GetMaterial(asset, i)` | Get Material3D by index |
+
+Supports zlib-compressed array properties, negative polygon indices, Z-up to Y-up coordinate conversion. **Note:** Animation keyframe extraction is not yet implemented — loaded animations have correct names but no keyframe data. Construct keyframes manually via `Animation3D.AddKeyframe`.
+
+## Particles3D
+
+Emitter-based 3D particle effects with physics, lifetime, and billboard rendering.
+
+```zia
+var sparks = Particles3D.New(500)
+Particles3D.SetPosition(sparks, 0.0, 0.0, 0.0)
+Particles3D.SetDirection(sparks, 0.0, 1.0, 0.0, 0.4)  // dir + spread
+Particles3D.SetSpeed(sparks, 2.0, 5.0)
+Particles3D.SetLifetime(sparks, 0.5, 1.5)
+Particles3D.SetSize(sparks, 0.2, 0.05)  // start, end
+Particles3D.SetGravity(sparks, 0.0, -9.8, 0.0)
+Particles3D.SetColor(sparks, 0xFFAA22, 0xFF2200)  // start, end
+Particles3D.SetAlpha(sparks, 1.0, 0.0)  // fade out
+Particles3D.SetRate(sparks, 50.0)
+Particles3D.Start(sparks)
+
+// In render loop (between Begin/End):
+Particles3D.Update(sparks, dt)
+Particles3D.Draw(sparks, canvas, cam)
+```
+
+- `Burst(count)` — instant spawn N particles
+- `SetAdditive(true)` — additive blending (fire, sparks)
+- `SetTexture(pixels)` — particle sprite (or NULL for solid quads)
+- `SetEmitterShape(1)` — 0=point, 1=sphere, 2=box
+- Particles are billboarded (camera-facing) and batched into a single draw call
+- Alpha blend mode sorts particles back-to-front; additive is order-independent
+
+## PostFX3D
+
+Full-screen post-processing effect chain applied automatically in `Canvas3D.Flip()`.
+
+```zia
+var fx = PostFX3D.New()
+PostFX3D.AddBloom(fx, 0.8, 0.5, 5)         // threshold, intensity, blur_passes
+PostFX3D.AddTonemap(fx, 1, 1.2)            // mode (0=Reinhard, 1=ACES), exposure
+PostFX3D.AddFXAA(fx)                        // edge-aware anti-aliasing
+PostFX3D.AddColorGrade(fx, 0.05, 1.1, 1.2) // brightness, contrast, saturation
+PostFX3D.AddVignette(fx, 0.6, 0.4)         // radius, softness
+Canvas3D.SetPostFX(canvas, fx)
+```
+
+Effects are applied in chain order (first added = first applied). Max 8 effects. Set `PostFX3D.set_Enabled(fx, false)` to bypass temporarily.
+
+## Ray3D / AABB3D / RayHit3D
+
+3D raycasting and collision detection for picking, shooting, and physics.
+
+```zia
+var origin = Camera3D.get_Position(cam)
+var dir = Camera3D.get_Forward(cam)
+
+// Ray-sphere test (returns distance or -1)
+var dist = Ray3D.IntersectSphere(origin, dir, center, radius)
+
+// Ray-mesh test (returns RayHit3D with point, normal, triangle)
+var hit = Ray3D.IntersectMesh(origin, dir, mesh, transform)
+if (hit != null) {
+    var point = RayHit3D.get_Point(hit)
+    var normal = RayHit3D.get_Normal(hit)
+}
+
+// AABB overlap test
+var overlaps = AABB3D.Overlaps(minA, maxA, minB, maxB)
+var pushout = AABB3D.Penetration(minA, maxA, minB, maxB)  // Vec3
+```
+
+| Function | Description |
+|----------|-------------|
+| `Ray3D.IntersectTriangle(o, d, v0, v1, v2)` | Möller-Trumbore, returns distance |
+| `Ray3D.IntersectMesh(o, d, mesh, transform)` | Test all triangles, closest hit |
+| `Ray3D.IntersectAABB(o, d, min, max)` | Slab method |
+| `Ray3D.IntersectSphere(o, d, center, r)` | Quadratic formula |
+| `AABB3D.Overlaps(minA, maxA, minB, maxB)` | Boolean overlap test |
+| `AABB3D.Penetration(minA, maxA, minB, maxB)` | Minimum push-out Vec3 |
+
+## FPS Camera
+
+First-person camera controller with yaw/pitch mouse look and WASD movement.
+
+```zia
+Camera3D.LookAt(cam, eye, target, up)
+Camera3D.FPSInit(cam)  // extract yaw/pitch from current view
+
+// In render loop:
+var mdx = Mouse.DeltaX() * sensitivity
+var mdy = Mouse.DeltaY() * sensitivity
+Camera3D.FPSUpdate(cam, mdx, -mdy, fwd, right, up, speed, dt)
+```
+
+- `FPSInit` decomposes the current view matrix to extract yaw/pitch
+- `FPSUpdate` accumulates yaw/pitch, clamps pitch to ±89°, applies WASD movement
+- Use `Mouse.Capture()` to hide cursor and enable warp-to-center mouse tracking
+
+## HUD Overlay
+
+Screen-space 2D drawing on top of the 3D scene (between `End()` and `Flip()`).
+
+```zia
+Canvas3D.DrawRect2D(canvas, x, y, width, height, 0xRRGGBB)
+Canvas3D.DrawCrosshair(canvas, 0xFFFFFF, 12)  // centered crosshair
+Canvas3D.DrawText2D(canvas, 10, 10, "Score: 100", 0xCCCCCC)
+```
+
+**Note:** On GPU backends (Metal), these draw to the software framebuffer which is behind the GPU layer. For GPU-visible HUD elements, render as 3D geometry (tiny unlit quads at the camera's near plane).
+
+## Audio3D
+
+Spatial audio with distance attenuation and stereo panning.
+
+```zia
+Audio3D.SetListener(camPosition, camForward)  // call each frame
+var voice = Audio3D.PlayAt(sound, worldPos, maxDistance, volume)
+Audio3D.UpdateVoice(voice, newPosition)  // for moving sounds
+```
+
+- Linear distance attenuation: `volume * max(0, 1 - dist/maxDist)`
+- Pan computed from dot product of source direction with listener's right vector
+- Listener must be updated manually each frame (not auto-tracked from Camera3D)
+
+## Mouse Capture
+
+For FPS-style games, capture the mouse to prevent it from leaving the window:
+
+```zia
+Mouse.Capture()   // hides cursor + warps to center each frame
+Mouse.Release()   // restores cursor
+```
+
+When captured, `Mouse.DeltaX()`/`Mouse.DeltaY()` report movement from center. The cursor is hidden and warped to the window center each `Canvas3D.Poll()` call. Only active when the window has focus.
