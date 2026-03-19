@@ -8,6 +8,14 @@
 // File: src/runtime/graphics/rt_material3d.c
 // Purpose: Viper.Graphics3D.Material3D — surface appearance properties.
 //
+// Key invariants:
+//   - Defaults: diffuse=(1,1,1,1), specular=(1,1,1), shininess=32,
+//     alpha=1.0, emissive=(0,0,0), reflectivity=0.0, unlit=false.
+//   - Texture/normal_map/specular_map/emissive_map/env_map are borrowed
+//     pointers to GC-managed Pixels/CubeMap3D objects (not owned).
+//   - Alpha [0.0=invisible, 1.0=opaque] controls transparency sorting
+//     in Canvas3D.End() — opaque draws first, transparent back-to-front.
+//
 // Links: rt_canvas3d.h, rt_canvas3d_internal.h
 //
 //===----------------------------------------------------------------------===//
@@ -44,6 +52,8 @@ void *rt_material3d_new(void)
     mat->emissive_map = NULL;
     mat->emissive[0] = mat->emissive[1] = mat->emissive[2] = 0.0;
     mat->alpha = 1.0;
+    mat->env_map = NULL;
+    mat->reflectivity = 0.0;
     mat->unlit = 0;
     return mat;
 }

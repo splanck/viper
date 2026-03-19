@@ -479,6 +479,13 @@ static void d3d11_submit_draw(void *ctx_ptr, vgfx_window_t win,
 }
 
 static void d3d11_end_frame(void *ctx_ptr) {
+    (void)ctx_ptr;
+    /* GPU work is committed implicitly by D3D11 command list.
+     * Presentation moved to d3d11_present() so only the LAST
+     * Begin/End pair's content is shown per frame. */
+}
+
+static void d3d11_present(void *ctx_ptr) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     IDXGISwapChain_Present(ctx->swapChain, 1, 0); /* VSync on */
 }
@@ -497,6 +504,7 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .submit_draw = d3d11_submit_draw,
     .end_frame = d3d11_end_frame,
     .set_render_target = d3d11_set_render_target,
+    .present = d3d11_present,
 };
 
 #endif /* _WIN32 && VIPER_ENABLE_GRAPHICS */

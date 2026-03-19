@@ -219,6 +219,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_camera3d.c
         graphics/rt_material3d.c
         graphics/rt_light3d.c
+        graphics/rt_cubemap3d.c
         graphics/rt_rendertarget3d.c
 )
 

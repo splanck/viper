@@ -8968,6 +8968,20 @@ RT_CLASS_BEGIN("Viper.GUI.FloatingPanel", GuiFloatingPanel, "obj", GuiFloatingPa
 RT_CLASS_END()
 
 //=============================================================================
+// GRAPHICS 3D - CUBEMAP3D
+//=============================================================================
+
+RT_FUNC(CubeMap3DNew,              rt_cubemap3d_new,              "Viper.Graphics3D.CubeMap3D.New",              "obj(obj,obj,obj,obj,obj,obj)")
+RT_FUNC(Canvas3DSetSkybox,         rt_canvas3d_set_skybox,        "Viper.Graphics3D.Canvas3D.SetSkybox",         "void(obj,obj)")
+RT_FUNC(Canvas3DClearSkybox,       rt_canvas3d_clear_skybox,      "Viper.Graphics3D.Canvas3D.ClearSkybox",       "void(obj)")
+RT_FUNC(Material3DSetEnvMap,       rt_material3d_set_env_map,     "Viper.Graphics3D.Material3D.SetEnvMap",       "void(obj,obj)")
+RT_FUNC(Material3DSetReflectivity, rt_material3d_set_reflectivity,"Viper.Graphics3D.Material3D.set_Reflectivity","void(obj,f64)")
+RT_FUNC(Material3DGetReflectivity, rt_material3d_get_reflectivity,"Viper.Graphics3D.Material3D.get_Reflectivity","f64(obj)")
+
+RT_CLASS_BEGIN("Viper.Graphics3D.CubeMap3D", CubeMap3D, "obj", CubeMap3DNew)
+RT_CLASS_END()
+
+//=============================================================================
 // GRAPHICS 3D - RENDERTARGET3D
 //=============================================================================
 
@@ -9031,6 +9045,8 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Canvas3D", Canvas3D, "obj", Canvas3DNew)
     RT_METHOD("DrawLine3D", "void(obj,obj,i64)", Canvas3DDrawLine3D)
     RT_METHOD("DrawPoint3D", "void(obj,i64,i64)", Canvas3DDrawPoint3D)
     RT_METHOD("Screenshot", "obj()", Canvas3DScreenshot)
+    RT_METHOD("SetSkybox", "void(obj)", Canvas3DSetSkybox)
+    RT_METHOD("ClearSkybox", "void()", Canvas3DClearSkybox)
     RT_METHOD("SetRenderTarget", "void(obj)", Canvas3DSetRenderTarget)
     RT_METHOD("ResetRenderTarget", "void()", Canvas3DResetRenderTarget)
 RT_CLASS_END()
@@ -9119,6 +9135,8 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Material3D", Material3D, "obj", Material3DNew)
     RT_METHOD("SetSpecularMap", "void(obj)", Material3DSetSpecularMap)
     RT_METHOD("SetEmissiveMap", "void(obj)", Material3DSetEmissiveMap)
     RT_METHOD("SetEmissiveColor", "void(f64,f64,f64)", Material3DSetEmissiveColor)
+    RT_METHOD("SetEnvMap", "void(obj)", Material3DSetEnvMap)
+    RT_PROP("Reflectivity", "f64", Material3DGetReflectivity, Material3DSetReflectivity)
 RT_CLASS_END()
 
 //=============================================================================

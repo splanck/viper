@@ -235,6 +235,10 @@ void *rt_camera3d_get_right(void *obj)
 }
 
 /* Invert a 4x4 row-major matrix. Returns 0 on success, -1 if singular. */
+/// @brief Invert a 4x4 row-major matrix using cofactor expansion.
+/// Each inv[i] is the cofactor (signed minor) of the transpose, so
+/// the adjugate matrix is built column-by-column. The determinant is
+/// computed from the first row and its cofactors. Returns -1 if singular.
 static int mat4d_invert(const double *m, double *out)
 {
     double inv[16];

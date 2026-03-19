@@ -390,9 +390,11 @@ void *rt_mesh3d_new_plane(double sx, double sz)
     rt_mesh3d_add_vertex(m, hx, 0, hz, 0, 1, 0, 1, 1);
     rt_mesh3d_add_vertex(m, -hx, 0, hz, 0, 1, 0, 0, 1);
 
-    /* CCW winding when viewed from above (+Y) → face normal +Y */
-    rt_mesh3d_add_triangle(m, 0, 2, 1);
-    rt_mesh3d_add_triangle(m, 0, 3, 2);
+    /* CCW winding — matches box/sphere/cylinder convention.
+     * Vertex normals are set explicitly to +Y above; face winding
+     * only affects backface culling, not lighting. */
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+    rt_mesh3d_add_triangle(m, 0, 2, 3);
 
     return m;
 }

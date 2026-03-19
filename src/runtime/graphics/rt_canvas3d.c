@@ -124,18 +124,11 @@ static int32_t build_light_params(const rt_canvas3d *c,
 static void rt_canvas3d_finalize(void *obj)
 {
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    /* Destroy the active backend context */
+    /* Destroy the backend context */
     if (c->backend && c->backend_ctx)
     {
         c->backend->destroy_ctx(c->backend_ctx);
         c->backend_ctx = NULL;
-    }
-    /* Destroy the saved GPU backend context (leaked during RTT if not restored) */
-    if (c->render_target_saved_backend && c->render_target_saved_ctx)
-    {
-        c->render_target_saved_backend->destroy_ctx(c->render_target_saved_ctx);
-        c->render_target_saved_ctx = NULL;
-        c->render_target_saved_backend = NULL;
     }
     /* Free deferred draw command buffer */
     free(c->draw_cmds);
@@ -203,7 +196,9 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h)
     c->ambient[0] = 0.1f;
     c->ambient[1] = 0.1f;
     c->ambient[2] = 0.1f;
-    c->backface_cull = 1;
+    c->backface_cull = 0; /* disabled by default — extreme perspective can reverse
+                           * screen-space winding, causing false culling. Users can
+                           * enable with SetBackfaceCull(canvas, true) if needed. */
 
     rt_keyboard_set_canvas(c->gfx_win);
     rt_mouse_set_canvas(c->gfx_win);
@@ -222,6 +217,25 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b)
     rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->gfx_win || !c->backend) return;
     c->backend->clear(c->backend_ctx, c->gfx_win, (float)r, (float)g, (float)b);
+
+    /* Also clear the software framebuffer so skybox/vgfx_update has
+     * correct background content regardless of active backend. */
+    if (c->backend != &vgfx3d_software_backend && !c->render_target)
+    {
+        vgfx_framebuffer_t fb;
+        if (vgfx_get_framebuffer(c->gfx_win, &fb))
+        {
+            uint8_t cr = (uint8_t)((float)r * 255.0f);
+            uint8_t cg = (uint8_t)((float)g * 255.0f);
+            uint8_t cb = (uint8_t)((float)b * 255.0f);
+            for (int32_t y = 0; y < fb.height; y++)
+                for (int32_t x = 0; x < fb.width; x++)
+                {
+                    uint8_t *px = &fb.pixels[y * fb.stride + x * 4];
+                    px[0] = cr; px[1] = cg; px[2] = cb; px[3] = 0xFF;
+                }
+        }
+    }
 }
 
 void rt_canvas3d_begin(void *obj, void *camera)
@@ -230,10 +244,6 @@ void rt_canvas3d_begin(void *obj, void *camera)
     rt_canvas3d *c = (rt_canvas3d *)obj;
     rt_camera3d *cam = (rt_camera3d *)camera;
     if (!c->backend) return;
-
-    /* GPU restoration from RTT happens in Flip(), not here.
-     * Begin() may be called for the main pass after ResetRenderTarget,
-     * which still needs software for Pixels texture support. */
 
     vgfx3d_camera_params_t params;
     mat4_d2f(cam->view, params.view);
@@ -341,10 +351,78 @@ void rt_canvas3d_end(void *obj)
 {
     if (!obj) return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->backend || c->draw_count == 0)
+    if (!c->backend)
     {
-        if (c->backend)
-            c->backend->end_frame(c->backend_ctx);
+        c->in_frame = 0;
+        return;
+    }
+
+    /* Skybox pass: render cube map as background BEFORE any scene geometry.
+     * Renders regardless of draw_count (skybox-only scenes are valid). */
+    if (c->skybox)
+    {
+        extern void rt_cubemap_sample(const rt_cubemap3d *cm, float dx, float dy, float dz,
+                                       float *out_r, float *out_g, float *out_b);
+
+        /* Determine output buffer: render target or window framebuffer */
+        uint8_t *out_pixels = NULL;
+        int32_t out_w = 0, out_h = 0, out_stride = 0;
+
+        if (c->render_target)
+        {
+            out_pixels = c->render_target->color_buf;
+            out_w = c->render_target->width;
+            out_h = c->render_target->height;
+            out_stride = c->render_target->stride;
+        }
+        else
+        {
+            vgfx_framebuffer_t fb;
+            if (c->gfx_win && vgfx_get_framebuffer(c->gfx_win, &fb))
+            {
+                out_pixels = fb.pixels;
+                out_w = fb.width;
+                out_h = fb.height;
+                out_stride = fb.stride;
+            }
+        }
+
+        if (out_pixels)
+        {
+            float vp_rot[16];
+            memcpy(vp_rot, c->cached_vp, sizeof(float) * 16);
+            vp_rot[3] = 0.0f;
+            vp_rot[7] = 0.0f;
+            vp_rot[11] = 0.0f;
+
+            for (int32_t y = 0; y < out_h; y++)
+            {
+                float ndc_y = 1.0f - 2.0f * ((float)y + 0.5f) / (float)out_h;
+                for (int32_t x = 0; x < out_w; x++)
+                {
+                    float ndc_x = 2.0f * ((float)x + 0.5f) / (float)out_w - 1.0f;
+
+                    float dx = vp_rot[0] * ndc_x + vp_rot[4] * ndc_y + vp_rot[8];
+                    float dy = vp_rot[1] * ndc_x + vp_rot[5] * ndc_y + vp_rot[9];
+                    float dz = vp_rot[2] * ndc_x + vp_rot[6] * ndc_y + vp_rot[10];
+
+                    float r, g, b;
+                    rt_cubemap_sample(c->skybox, dx, dy, dz, &r, &g, &b);
+
+                    uint8_t *dst = &out_pixels[y * out_stride + x * 4];
+                    dst[0] = (uint8_t)(r * 255.0f);
+                    dst[1] = (uint8_t)(g * 255.0f);
+                    dst[2] = (uint8_t)(b * 255.0f);
+                    dst[3] = 0xFF;
+                }
+            }
+        }
+    }
+
+    /* Early exit if no geometry to draw (skybox already rendered above) */
+    if (c->draw_count == 0)
+    {
+        c->backend->end_frame(c->backend_ctx);
         c->in_frame = 0;
         return;
     }
@@ -415,6 +493,12 @@ void rt_canvas3d_flip(void *obj)
     rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->gfx_win) return;
 
+    /* Present the GPU drawable / swap the back buffer. For GPU backends
+     * (Metal, D3D11, OpenGL) this presents only the LAST Begin/End pair's
+     * content, avoiding flicker with multi-pass rendering and RTT. */
+    if (c->backend && c->backend->present)
+        c->backend->present(c->backend_ctx);
+
     /* Always call vgfx_update to keep the window alive and process display
      * refresh on macOS. For GPU backends, the CAMetalLayer renders on top
      * of the software framebuffer. */
@@ -437,10 +521,6 @@ void rt_canvas3d_flip(void *obj)
         c->should_close = 1;
     }
 
-    /* GPU restoration from RTT is intentionally NOT done here.
-     * Programs that use RTT every frame stay on software continuously.
-     * The GPU backend is restored in the finalizer (resource cleanup).
-     * This avoids CAMetalLayer show/hide toggling that crashes AppKit. */
 }
 
 int64_t rt_canvas3d_poll(void *obj)

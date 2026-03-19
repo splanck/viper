@@ -98,6 +98,11 @@ typedef struct vgfx3d_backend
 
     /* Render target (NULL = render to window) */
     void (*set_render_target)(void *ctx, vgfx3d_rendertarget_t *rt);
+
+    /* Present the final frame to the display. Called once per Flip().
+     * For GPU backends, this presents the drawable / swaps the back buffer.
+     * NULL = no-op (software backend — vgfx_update handles display). */
+    void (*present)(void *ctx);
 } vgfx3d_backend_t;
 
 /*==========================================================================

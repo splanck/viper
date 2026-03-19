@@ -62,6 +62,17 @@ extern "C"
     void *rt_canvas3d_screenshot(void *obj);
 
     //=========================================================================
+    // CubeMap3D — 6-face cube map for skybox + reflections
+    //=========================================================================
+
+    void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *nz);
+    void  rt_canvas3d_set_skybox(void *canvas, void *cubemap);
+    void  rt_canvas3d_clear_skybox(void *canvas);
+    void  rt_material3d_set_env_map(void *obj, void *cubemap);
+    void  rt_material3d_set_reflectivity(void *obj, double r);
+    double rt_material3d_get_reflectivity(void *obj);
+
+    //=========================================================================
     // RenderTarget3D — offscreen rendering target
     //=========================================================================
 

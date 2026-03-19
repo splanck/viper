@@ -659,6 +659,40 @@ static void test_material_alpha()
 }
 
 //=============================================================================
+// Phase 11 — Cube map tests
+//=============================================================================
+
+static void test_cubemap_new()
+{
+    TEST("CubeMap3D.New — 6 faces creates valid cube map");
+    void *px = rt_pixels_new(16, 16);
+    void *cm = rt_cubemap3d_new(px, px, px, px, px, px);
+    assert(cm != NULL);
+    /* Skybox set/clear */
+    rt_canvas3d_set_skybox(NULL, cm); /* null canvas = no crash */
+    rt_canvas3d_clear_skybox(NULL);
+    PASS();
+}
+
+static void test_material_reflectivity()
+{
+    TEST("Material3D.Reflectivity — default 0.0, set/get works");
+    void *m = rt_material3d_new();
+    EXPECT_NEAR(rt_material3d_get_reflectivity(m), 0.0, 0.001);
+    rt_material3d_set_reflectivity(m, 0.5);
+    EXPECT_NEAR(rt_material3d_get_reflectivity(m), 0.5, 0.001);
+    /* Null safety */
+    rt_material3d_set_reflectivity(NULL, 0.5);
+    EXPECT_NEAR(rt_material3d_get_reflectivity(NULL), 0.0, 0.001);
+    /* Env map set */
+    void *px = rt_pixels_new(16, 16);
+    void *cm = rt_cubemap3d_new(px, px, px, px, px, px);
+    rt_material3d_set_env_map(m, cm);
+    rt_material3d_set_env_map(m, NULL);
+    PASS();
+}
+
+//=============================================================================
 // RenderTarget3D tests
 //=============================================================================
 
@@ -778,6 +812,10 @@ int main()
 
     /* Phase 10 — Alpha blending */
     test_material_alpha();
+
+    /* Phase 11 — Cube maps */
+    test_cubemap_new();
+    test_material_reflectivity();
 
     /* RenderTarget3D */
     test_rendertarget_new();

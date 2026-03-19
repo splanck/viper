@@ -86,7 +86,9 @@ typedef struct
     void *specular_map; /* Pixels (specular map, slot 2) or NULL */
     void *emissive_map; /* Pixels (emissive map, slot 3) or NULL */
     double emissive[3]; /* emissive color multiplier */
-    double alpha;       /* opacity [0.0=invisible, 1.0=opaque], default 1.0 */
+    double alpha;          /* opacity [0.0=invisible, 1.0=opaque], default 1.0 */
+    void *env_map;         /* CubeMap3D for environment reflections (or NULL) */
+    double reflectivity;   /* [0.0=no reflection, 1.0=mirror], default 0.0 */
     int8_t unlit;
 } rt_material3d;
 
@@ -113,6 +115,17 @@ typedef struct
 
 /* Forward declaration — defined in vgfx3d_backend.h */
 typedef struct vgfx3d_backend vgfx3d_backend_t;
+
+//=============================================================================
+// CubeMap3D — 6-face cube map texture for skybox + reflections
+//=============================================================================
+
+typedef struct
+{
+    void *vptr;
+    void *faces[6]; /* Pixels objects: +X, -X, +Y, -Y, +Z, -Z */
+    int64_t face_size; /* width = height per face (must be square) */
+} rt_cubemap3d;
 
 //=============================================================================
 // RenderTarget3D — offscreen color + depth buffers
@@ -158,12 +171,13 @@ typedef struct
 
     /* Render target (NULL = render to window) */
     vgfx3d_rendertarget_t *render_target;
-    const vgfx3d_backend_t *render_target_saved_backend; /* saved GPU backend during RTT */
-    void *render_target_saved_ctx;                        /* saved GPU context during RTT */
 
     /* Lighting */
     rt_light3d *lights[VGFX3D_MAX_LIGHTS];
     float ambient[3];
+
+    /* Skybox */
+    rt_cubemap3d *skybox; /* CubeMap3D for background (or NULL) */
 
     /* Rendering options */
     int8_t wireframe;

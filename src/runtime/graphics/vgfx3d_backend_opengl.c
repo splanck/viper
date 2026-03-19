@@ -594,6 +594,13 @@ static void gl_submit_draw(void *ctx_ptr, vgfx_window_t win,
 }
 
 static void gl_end_frame(void *ctx_ptr) {
+    (void)ctx_ptr;
+    /* GPU work is flushed implicitly by OpenGL.
+     * Buffer swap moved to gl_present() so only the LAST
+     * Begin/End pair's content is shown per frame. */
+}
+
+static void gl_present(void *ctx_ptr) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     glx.SwapBuffers(ctx->display, ctx->window);
 }
@@ -612,6 +619,7 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .submit_draw = gl_submit_draw,
     .end_frame = gl_end_frame,
     .set_render_target = gl_set_render_target,
+    .present = gl_present,
 };
 
 #endif /* __linux__ && VIPER_ENABLE_GRAPHICS */

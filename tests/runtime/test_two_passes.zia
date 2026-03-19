@@ -1,0 +1,43 @@
+// Test: Two Begin/End pairs without RTT — does Metal render in both?
+module TestTwoPasses;
+
+bind Viper.Terminal;
+
+func start() {
+    var canvas = Viper.Graphics3D.Canvas3D.New("Two Pass Test", 640, 480);
+    var cam = Viper.Graphics3D.Camera3D.New(60.0, 640.0 / 480.0, 0.1, 100.0);
+    var eye = new Viper.Math.Vec3(0.0, 2.0, 5.0);
+    var target = new Viper.Math.Vec3(0.0, 0.0, 0.0);
+    var up = new Viper.Math.Vec3(0.0, 1.0, 0.0);
+    Viper.Graphics3D.Camera3D.LookAt(cam, eye, target, up);
+
+    var floor = Viper.Graphics3D.Mesh3D.NewPlane(6.0, 6.0);
+    var sphere = Viper.Graphics3D.Mesh3D.NewSphere(0.8, 16);
+    var gray_mat = Viper.Graphics3D.Material3D.NewColor(0.5, 0.5, 0.5);
+    var red_mat = Viper.Graphics3D.Material3D.NewColor(0.9, 0.2, 0.2);
+
+    var sun_dir = new Viper.Math.Vec3(-1.0, -1.0, -0.5);
+    var sun = Viper.Graphics3D.Light3D.NewDirectional(sun_dir, 1.0, 1.0, 1.0);
+    Viper.Graphics3D.Canvas3D.SetLight(canvas, 0, sun);
+    Viper.Graphics3D.Canvas3D.SetAmbient(canvas, 0.2, 0.2, 0.2);
+
+    var floor_xform = Viper.Math.Mat4.Translate(0.0, -1.0, 0.0);
+
+    while (Viper.Graphics3D.Canvas3D.get_ShouldClose(canvas) == 0) {
+        Viper.Graphics3D.Canvas3D.Poll(canvas);
+
+        // Pass 1: render sphere (this will be overwritten by pass 2's clear)
+        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.0, 0.0, 0.3);
+        Viper.Graphics3D.Canvas3D.Begin(canvas, cam);
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, sphere, Viper.Math.Mat4.Identity(), red_mat);
+        Viper.Graphics3D.Canvas3D.End(canvas);
+
+        // Pass 2: render floor (should be visible — this is the final pass)
+        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.1, 0.1, 0.15);
+        Viper.Graphics3D.Canvas3D.Begin(canvas, cam);
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, floor, floor_xform, gray_mat);
+        Viper.Graphics3D.Canvas3D.End(canvas);
+
+        Viper.Graphics3D.Canvas3D.Flip(canvas);
+    }
+}

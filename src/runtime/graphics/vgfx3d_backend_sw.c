@@ -98,6 +98,12 @@ static void pipe_lerp(const pipe_vert_t *a, const pipe_vert_t *b, float t,
  * Sutherland-Hodgman frustum clipping
  *=========================================================================*/
 
+/// @brief Signed distance from a clip-space vertex to one of six frustum planes.
+/// In homogeneous clip coordinates, a point is inside the view volume when
+/// -w <= x,y,z <= w. Each plane's distance is arranged so that >= 0 = inside:
+///   0: left   (-x <= w  →  x+w >= 0)    1: right (x <= w  →  w-x >= 0)
+///   2: bottom (-y <= w  →  y+w >= 0)    3: top   (y <= w  →  w-y >= 0)
+///   4: near   (-z <= w  →  z+w >= 0)    5: far   (z <= w  →  w-z >= 0)
 static float clip_dist(const pipe_vert_t *v, int plane)
 {
     float x = v->clip[0], y = v->clip[1], z = v->clip[2], w = v->clip[3];
@@ -113,6 +119,9 @@ static float clip_dist(const pipe_vert_t *v, int plane)
     }
 }
 
+/// @brief Sutherland-Hodgman: clip a convex polygon against one frustum plane.
+/// Walks each edge (i→j). If i is inside, emit it; if the edge crosses the
+/// plane, emit the intersection. Result is a new convex polygon in @p out.
 static int clip_poly_plane(const pipe_vert_t *in, int in_count,
                             pipe_vert_t *out, int plane)
 {
@@ -147,6 +156,9 @@ static int clip_poly_plane(const pipe_vert_t *in, int in_count,
     return out_count;
 }
 
+/// @brief Clip a triangle against all 6 frustum planes, producing a convex polygon.
+/// Uses double-buffer ping-pong (buf_a ↔ buf_b) to avoid allocation.
+/// Returns vertex count (>= 3) or 0 if fully clipped.
 static int clip_triangle(const pipe_vert_t *tri, pipe_vert_t *out)
 {
     pipe_vert_t buf_a[MAX_CLIP_VERTS], buf_b[MAX_CLIP_VERTS];
@@ -159,6 +171,7 @@ static int clip_triangle(const pipe_vert_t *tri, pipe_vert_t *out)
         count = clip_poly_plane(src, count, dst, plane);
         if (count < 3) return 0;
     }
+    /* After 6 planes (even count), last output landed in buf_b */
     pipe_vert_t *result = (5 % 2 == 0) ? buf_b : buf_a;
     memcpy(out, result, (size_t)count * sizeof(pipe_vert_t));
     return count;
@@ -328,6 +341,10 @@ static void raster_triangle(uint8_t *pixels, float *zbuf,
     int max_y = (int)fminf(fmaxf(fmaxf(v0->sy, v1->sy), v2->sy), (float)(fb_h - 1));
     if (min_x > max_x || min_y > max_y) return;
 
+    /* Half-space edge functions for rasterization.
+     * w0/w1/w2 are the signed distances from pixel center to each edge.
+     * A pixel is inside when all three are >= 0. The edge function increments
+     * by -dy/+dx per pixel step, enabling efficient scanline traversal. */
     float e12_dx = v2->sx - v1->sx, e12_dy = v2->sy - v1->sy;
     float e20_dx = v0->sx - v2->sx, e20_dy = v0->sy - v2->sy;
     float e01_dx = v1->sx - v0->sx, e01_dy = v1->sy - v0->sy;
@@ -343,6 +360,9 @@ static void raster_triangle(uint8_t *pixels, float *zbuf,
         {
             if (w0 >= 0.0f && w1 >= 0.0f && w2 >= 0.0f)
             {
+                /* Barycentric weights from edge functions; z is linearly
+                 * interpolated in screen space (not perspective-correct,
+                 * but sufficient for depth testing). */
                 float b0 = w0 * inv_area, b1 = w1 * inv_area, b2 = w2 * inv_area;
                 float z = b0 * v0->sz + b1 * v1->sz + b2 * v2->sz;
                 int idx = y * fb_w + x;
@@ -698,6 +718,7 @@ const vgfx3d_backend_t vgfx3d_software_backend = {
     .submit_draw = sw_submit_draw,
     .end_frame = sw_end_frame,
     .set_render_target = sw_set_render_target,
+    .present = NULL, /* software renders to CPU framebuffer; vgfx_update handles display */
 };
 
 /* Stub for platforms without a GPU layer to hide */

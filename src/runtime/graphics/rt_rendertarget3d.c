@@ -180,11 +180,9 @@ void *rt_rendertarget3d_as_pixels(void *obj)
 // Canvas3D render target binding
 //=============================================================================
 
-/* When a render target is bound, we use the software backend for the offscreen
- * pass (GPU RTT requires backend-specific texture targets, deferred to later).
- * We save/restore the original backend on reset. */
-extern const vgfx3d_backend_t vgfx3d_software_backend;
-
+/// @brief Bind an offscreen render target. All subsequent Begin/DrawMesh/End
+/// calls render to the target instead of the window. The active backend
+/// (Metal, software, etc.) handles RTT natively — no backend switching needed.
 void rt_canvas3d_set_render_target(void *canvas, void *target)
 {
     if (!canvas || !target)
@@ -193,45 +191,17 @@ void rt_canvas3d_set_render_target(void *canvas, void *target)
     rt_rendertarget3d *rtd = (rt_rendertarget3d *)target;
     c->render_target = rtd->target;
 
-    /* If already in RTT mode, just update the target on the current backend */
-    if (c->render_target_saved_backend)
-    {
-        if (c->backend && c->backend->set_render_target)
-            c->backend->set_render_target(c->backend_ctx, rtd->target);
-        return;
-    }
-
-    /* If using a GPU backend, temporarily switch to software for RTT.
-     * Also hide the GPU layer so software output is visible. */
-    if (c->backend != &vgfx3d_software_backend)
-    {
-        if (!c->render_target_saved_backend)
-        {
-            c->render_target_saved_backend = c->backend;
-            c->render_target_saved_ctx = c->backend_ctx;
-            c->backend = &vgfx3d_software_backend;
-            c->backend_ctx = vgfx3d_software_backend.create_ctx(
-                c->gfx_win, c->width, c->height);
-
-            /* Hide GPU layer so software framebuffer is visible */
-            extern void vgfx3d_hide_gpu_layer(void *backend_ctx);
-            vgfx3d_hide_gpu_layer(c->render_target_saved_ctx);
-        }
-    }
-
     if (c->backend && c->backend->set_render_target)
         c->backend->set_render_target(c->backend_ctx, rtd->target);
 }
 
+/// @brief Unbind the render target. Subsequent rendering goes to the window.
 void rt_canvas3d_reset_render_target(void *canvas)
 {
     if (!canvas)
         return;
     rt_canvas3d *c = (rt_canvas3d *)canvas;
 
-    /* Clear render target — software backend continues for the rest of this frame.
-     * GPU backend is restored in the NEXT frame's Begin() when no RTT is active.
-     * This ensures Pixels textures (from AsPixels) work in the main pass. */
     if (c->backend && c->backend->set_render_target)
         c->backend->set_render_target(c->backend_ctx, NULL);
 

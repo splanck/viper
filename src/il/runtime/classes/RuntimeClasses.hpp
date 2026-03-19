@@ -364,6 +364,7 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_UIMenuList,
 
     // Graphics 3D
+    RTCLS_CubeMap3D,
     RTCLS_RenderTarget3D,
     RTCLS_Canvas3D,
     RTCLS_Mesh3D,

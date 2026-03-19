@@ -870,6 +870,13 @@ void rt_canvas_get_monitor_size(void *canvas, int64_t *w, int64_t *h)
 // Graphics 3D stubs — Canvas3D, Mesh3D, Camera3D, Material3D, Light3D
 //=============================================================================
 
+void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *nz) { (void)px; (void)nx; (void)py; (void)ny; (void)pz; (void)nz; rt_trap("CubeMap3D.New: graphics support not compiled in"); return NULL; }
+void rt_canvas3d_set_skybox(void *c, void *cm) { (void)c; (void)cm; }
+void rt_canvas3d_clear_skybox(void *c) { (void)c; }
+void rt_material3d_set_env_map(void *o, void *cm) { (void)o; (void)cm; }
+void rt_material3d_set_reflectivity(void *o, double r) { (void)o; (void)r; }
+double rt_material3d_get_reflectivity(void *o) { (void)o; return 0.0; }
+
 void *rt_rendertarget3d_new(int64_t w, int64_t h) { (void)w; (void)h; rt_trap("RenderTarget3D.New: graphics support not compiled in"); return NULL; }
 int64_t rt_rendertarget3d_get_width(void *o) { (void)o; return 0; }
 int64_t rt_rendertarget3d_get_height(void *o) { (void)o; return 0; }
