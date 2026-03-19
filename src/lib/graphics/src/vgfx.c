@@ -1472,6 +1472,29 @@ int32_t vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button)
     return window->mouse_button_state[button] != 0;
 }
 
+void vgfx_warp_cursor(vgfx_window_t window, int32_t x, int32_t y)
+{
+    if (!window) return;
+    float cs = window->coord_scale;
+    window->mouse_x = (int32_t)(x * cs);
+    window->mouse_y = (int32_t)(y * cs);
+
+    extern void vgfx_platform_warp_cursor(vgfx_window_t w, int32_t x, int32_t y);
+    vgfx_platform_warp_cursor(window, x, y);
+}
+
+void vgfx_hide_cursor(void)
+{
+    extern void vgfx_platform_hide_cursor(void);
+    vgfx_platform_hide_cursor();
+}
+
+void vgfx_show_cursor(void)
+{
+    extern void vgfx_platform_show_cursor(void);
+    vgfx_platform_show_cursor();
+}
+
 //===----------------------------------------------------------------------===//
 // Framebuffer Access
 //===----------------------------------------------------------------------===//

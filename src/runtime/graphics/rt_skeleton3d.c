@@ -820,10 +820,14 @@ void rt_canvas3d_draw_mesh_skinned(void *canvas, void *mesh, void *transform,
     rt_mesh3d tmp = *m;
     tmp.vertices = skinned;
 
+    /* Register skinned buffer for cleanup at end of frame.
+     * rt_canvas3d_draw_mesh stores a pointer to vertices in the deferred
+     * draw queue, so we can't free until End() has processed the draw. */
+    extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
+    rt_canvas3d_add_temp_buffer(canvas, skinned);
+
     /* Draw using the normal pipeline */
     rt_canvas3d_draw_mesh(canvas, &tmp, transform, material);
-
-    free(skinned);
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

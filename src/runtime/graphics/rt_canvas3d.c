@@ -134,6 +134,12 @@ static void rt_canvas3d_finalize(void *obj)
     free(c->draw_cmds);
     c->draw_cmds = NULL;
     c->draw_count = c->draw_capacity = 0;
+    /* Free any leftover temp buffers (e.g., from skinned draws) */
+    for (int32_t i = 0; i < c->temp_buf_count; i++)
+        free(c->temp_buffers[i]);
+    free(c->temp_buffers);
+    c->temp_buffers = NULL;
+    c->temp_buf_count = c->temp_buf_capacity = 0;
 
     if (c->gfx_win)
     {
@@ -199,6 +205,8 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h)
     c->backface_cull = 0; /* disabled by default — extreme perspective can reverse
                            * screen-space winding, causing false culling. Users can
                            * enable with SetBackfaceCull(canvas, true) if needed. */
+    c->temp_buffers = NULL;
+    c->temp_buf_count = c->temp_buf_capacity = 0;
 
     rt_keyboard_set_canvas(c->gfx_win);
     rt_mouse_set_canvas(c->gfx_win);
@@ -482,6 +490,11 @@ void rt_canvas3d_end(void *obj)
     c->backend->end_frame(c->backend_ctx);
     c->in_frame = 0;
     c->draw_count = 0;
+
+    /* Free per-frame temporary buffers (e.g., skinned vertex data) */
+    for (int32_t i = 0; i < c->temp_buf_count; i++)
+        free(c->temp_buffers[i]);
+    c->temp_buf_count = 0;
 }
 
 /*==========================================================================
@@ -493,6 +506,10 @@ void rt_canvas3d_flip(void *obj)
     if (!obj) return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->gfx_win) return;
+
+    /* Apply post-processing effects to the software framebuffer */
+    extern void rt_postfx3d_apply_to_canvas(void *canvas);
+    rt_postfx3d_apply_to_canvas(obj);
 
     /* Present the GPU drawable / swap the back buffer. For GPU backends
      * (Metal, D3D11, OpenGL) this presents only the LAST Begin/End pair's
@@ -529,12 +546,70 @@ int64_t rt_canvas3d_poll(void *obj)
     if (!obj) return 0;
     rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->gfx_win) return 0;
+    extern void rt_keyboard_on_key_down(int64_t key);
+    extern void rt_keyboard_on_key_up(int64_t key);
+    extern void rt_mouse_update_pos(int64_t x, int64_t y);
+    extern void rt_mouse_force_delta(int64_t dx, int64_t dy);
+    extern void rt_mouse_button_down(int64_t button);
+    extern void rt_mouse_button_up(int64_t button);
+    extern int8_t rt_mouse_is_captured(void);
+
+    int8_t captured = rt_mouse_is_captured();
+
+    /* Read current platform mouse position */
+    int32_t mx, my;
+    vgfx_mouse_pos(c->gfx_win, &mx, &my);
+
+    /* Begin frame (resets per-frame state for keyboard/mouse/pad) */
     rt_keyboard_begin_frame();
     rt_mouse_begin_frame();
     rt_pad_begin_frame();
     rt_pad_poll();
+
+    /* For captured (FPS) mode: compute delta as offset from window center.
+     * This avoids issues with warp timing, stale events, and OS mouse tracking. */
+    if (captured)
+    {
+        int32_t cw, ch;
+        vgfx_get_size(c->gfx_win, &cw, &ch);
+        int32_t cx = cw / 2, cy = ch / 2;
+        int64_t dx = (int64_t)mx - (int64_t)cx;
+        int64_t dy = (int64_t)my - (int64_t)cy;
+        rt_mouse_force_delta(dx, dy);
+    }
+    else
+    {
+        rt_mouse_update_pos((int64_t)mx, (int64_t)my);
+    }
+
+    /* Process events (keyboard + mouse buttons only — mouse moves handled above) */
     vgfx_event_t evt;
-    while (vgfx_poll_event(c->gfx_win, &evt)) { }
+    while (vgfx_poll_event(c->gfx_win, &evt))
+    {
+        if (evt.type == VGFX_EVENT_KEY_DOWN)
+            rt_keyboard_on_key_down((int64_t)evt.data.key.key);
+        else if (evt.type == VGFX_EVENT_KEY_UP)
+            rt_keyboard_on_key_up((int64_t)evt.data.key.key);
+        else if (!captured && evt.type == VGFX_EVENT_MOUSE_MOVE)
+        {
+            float cs = vgfx_window_get_scale(c->gfx_win);
+            rt_mouse_update_pos((int64_t)(evt.data.mouse_move.x / cs),
+                                (int64_t)(evt.data.mouse_move.y / cs));
+        }
+        else if (evt.type == VGFX_EVENT_MOUSE_DOWN)
+            rt_mouse_button_down((int64_t)evt.data.mouse_button.button);
+        else if (evt.type == VGFX_EVENT_MOUSE_UP)
+            rt_mouse_button_up((int64_t)evt.data.mouse_button.button);
+    }
+
+    /* Warp cursor to center for next frame (only when captured) */
+    if (captured)
+    {
+        int32_t cw, ch;
+        vgfx_get_size(c->gfx_win, &cw, &ch);
+        vgfx_warp_cursor(c->gfx_win, cw / 2, ch / 2);
+    }
+
     return 0;
 }
 
@@ -551,6 +626,21 @@ void rt_canvas3d_set_wireframe(void *obj, int8_t enabled)
 void rt_canvas3d_set_backface_cull(void *obj, int8_t enabled)
 {
     if (obj) ((rt_canvas3d *)obj)->backface_cull = enabled;
+}
+
+void rt_canvas3d_add_temp_buffer(void *obj, void *buffer)
+{
+    if (!obj || !buffer) return;
+    rt_canvas3d *c = (rt_canvas3d *)obj;
+    if (c->temp_buf_count >= c->temp_buf_capacity)
+    {
+        int32_t new_cap = c->temp_buf_capacity == 0 ? 8 : c->temp_buf_capacity * 2;
+        void **nb = (void **)realloc(c->temp_buffers, (size_t)new_cap * sizeof(void *));
+        if (!nb) { free(buffer); return; }
+        c->temp_buffers = nb;
+        c->temp_buf_capacity = new_cap;
+    }
+    c->temp_buffers[c->temp_buf_count++] = buffer;
 }
 
 int64_t rt_canvas3d_get_width(void *obj)
@@ -691,6 +781,211 @@ void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size)
                 dst[0] = r; dst[1] = g; dst[2] = b; dst[3] = 0xFF;
             }
         }
+}
+
+/*==========================================================================
+ * Screen-space HUD overlay (drawn directly to framebuffer, no 3D transform)
+ *=========================================================================*/
+
+void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y,
+                               int64_t w, int64_t h, int64_t color)
+{
+    if (!obj) return;
+    rt_canvas3d *c = (rt_canvas3d *)obj;
+    if (!c->gfx_win) return;
+    vgfx_framebuffer_t fb;
+    if (!vgfx_get_framebuffer(c->gfx_win, &fb)) return;
+
+    uint8_t cr = (uint8_t)((color >> 16) & 0xFF);
+    uint8_t cg = (uint8_t)((color >> 8) & 0xFF);
+    uint8_t cb = (uint8_t)(color & 0xFF);
+
+    for (int64_t py = y; py < y + h; py++)
+        for (int64_t px = x; px < x + w; px++)
+        {
+            if (px >= 0 && px < fb.width && py >= 0 && py < fb.height)
+            {
+                uint8_t *dst = &fb.pixels[py * fb.stride + px * 4];
+                dst[0] = cr; dst[1] = cg; dst[2] = cb; dst[3] = 0xFF;
+            }
+        }
+}
+
+void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size)
+{
+    if (!obj) return;
+    rt_canvas3d *c = (rt_canvas3d *)obj;
+    if (!c->gfx_win) return;
+    vgfx_framebuffer_t fb;
+    if (!vgfx_get_framebuffer(c->gfx_win, &fb)) return;
+
+    int32_t cx = fb.width / 2, cy = fb.height / 2;
+    int32_t half = (int32_t)(size / 2);
+    uint8_t cr = (uint8_t)((color >> 16) & 0xFF);
+    uint8_t cg = (uint8_t)((color >> 8) & 0xFF);
+    uint8_t cb = (uint8_t)(color & 0xFF);
+
+    /* Horizontal line */
+    for (int32_t dx = -half; dx <= half; dx++)
+    {
+        int32_t px = cx + dx;
+        if (px >= 0 && px < fb.width && cy >= 0 && cy < fb.height)
+        {
+            uint8_t *dst = &fb.pixels[cy * fb.stride + px * 4];
+            dst[0] = cr; dst[1] = cg; dst[2] = cb; dst[3] = 0xFF;
+        }
+    }
+    /* Vertical line */
+    for (int32_t dy = -half; dy <= half; dy++)
+    {
+        int32_t py = cy + dy;
+        if (cx >= 0 && cx < fb.width && py >= 0 && py < fb.height)
+        {
+            uint8_t *dst = &fb.pixels[py * fb.stride + cx * 4];
+            dst[0] = cr; dst[1] = cg; dst[2] = cb; dst[3] = 0xFF;
+        }
+    }
+}
+
+void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y,
+                               rt_string text, int64_t color)
+{
+    if (!obj || !text) return;
+    rt_canvas3d *c = (rt_canvas3d *)obj;
+    if (!c->gfx_win) return;
+    vgfx_framebuffer_t fb;
+    if (!vgfx_get_framebuffer(c->gfx_win, &fb)) return;
+
+    const char *str = rt_string_cstr(text);
+    if (!str) return;
+
+    uint8_t cr = (uint8_t)((color >> 16) & 0xFF);
+    uint8_t cg = (uint8_t)((color >> 8) & 0xFF);
+    uint8_t cb = (uint8_t)(color & 0xFF);
+
+    /* Minimal 5x7 bitmap font for ASCII 32-126 */
+    static const uint8_t font5x7[95][7] = {
+        {0x00,0x00,0x00,0x00,0x00,0x00,0x00}, /* space */
+        {0x04,0x04,0x04,0x04,0x00,0x04,0x00}, /* ! */
+        {0x0A,0x0A,0x00,0x00,0x00,0x00,0x00}, /* " */
+        {0x0A,0x1F,0x0A,0x1F,0x0A,0x00,0x00}, /* # */
+        {0x04,0x0F,0x14,0x0E,0x05,0x1E,0x04}, /* $ */
+        {0x19,0x1A,0x04,0x0B,0x13,0x00,0x00}, /* % */
+        {0x08,0x14,0x08,0x15,0x12,0x0D,0x00}, /* & */
+        {0x04,0x04,0x00,0x00,0x00,0x00,0x00}, /* ' */
+        {0x02,0x04,0x04,0x04,0x04,0x02,0x00}, /* ( */
+        {0x08,0x04,0x04,0x04,0x04,0x08,0x00}, /* ) */
+        {0x04,0x15,0x0E,0x15,0x04,0x00,0x00}, /* * */
+        {0x00,0x04,0x04,0x1F,0x04,0x04,0x00}, /* + */
+        {0x00,0x00,0x00,0x00,0x04,0x04,0x08}, /* , */
+        {0x00,0x00,0x00,0x1F,0x00,0x00,0x00}, /* - */
+        {0x00,0x00,0x00,0x00,0x00,0x04,0x00}, /* . */
+        {0x01,0x02,0x04,0x08,0x10,0x00,0x00}, /* / */
+        {0x0E,0x11,0x13,0x15,0x19,0x0E,0x00}, /* 0 */
+        {0x04,0x0C,0x04,0x04,0x04,0x0E,0x00}, /* 1 */
+        {0x0E,0x11,0x01,0x06,0x08,0x1F,0x00}, /* 2 */
+        {0x0E,0x11,0x02,0x01,0x11,0x0E,0x00}, /* 3 */
+        {0x02,0x06,0x0A,0x12,0x1F,0x02,0x00}, /* 4 */
+        {0x1F,0x10,0x1E,0x01,0x11,0x0E,0x00}, /* 5 */
+        {0x06,0x08,0x1E,0x11,0x11,0x0E,0x00}, /* 6 */
+        {0x1F,0x01,0x02,0x04,0x08,0x08,0x00}, /* 7 */
+        {0x0E,0x11,0x0E,0x11,0x11,0x0E,0x00}, /* 8 */
+        {0x0E,0x11,0x0F,0x01,0x02,0x0C,0x00}, /* 9 */
+        {0x00,0x04,0x00,0x00,0x04,0x00,0x00}, /* : */
+        {0x00,0x04,0x00,0x00,0x04,0x04,0x08}, /* ; */
+        {0x02,0x04,0x08,0x04,0x02,0x00,0x00}, /* < */
+        {0x00,0x00,0x1F,0x00,0x1F,0x00,0x00}, /* = */
+        {0x08,0x04,0x02,0x04,0x08,0x00,0x00}, /* > */
+        {0x0E,0x11,0x02,0x04,0x00,0x04,0x00}, /* ? */
+        {0x0E,0x11,0x17,0x15,0x17,0x10,0x0E}, /* @ */
+        {0x0E,0x11,0x11,0x1F,0x11,0x11,0x00}, /* A */
+        {0x1E,0x11,0x1E,0x11,0x11,0x1E,0x00}, /* B */
+        {0x0E,0x11,0x10,0x10,0x11,0x0E,0x00}, /* C */
+        {0x1E,0x11,0x11,0x11,0x11,0x1E,0x00}, /* D */
+        {0x1F,0x10,0x1E,0x10,0x10,0x1F,0x00}, /* E */
+        {0x1F,0x10,0x1E,0x10,0x10,0x10,0x00}, /* F */
+        {0x0E,0x11,0x10,0x17,0x11,0x0E,0x00}, /* G */
+        {0x11,0x11,0x1F,0x11,0x11,0x11,0x00}, /* H */
+        {0x0E,0x04,0x04,0x04,0x04,0x0E,0x00}, /* I */
+        {0x07,0x02,0x02,0x02,0x12,0x0C,0x00}, /* J */
+        {0x11,0x12,0x14,0x18,0x14,0x12,0x11}, /* K */
+        {0x10,0x10,0x10,0x10,0x10,0x1F,0x00}, /* L */
+        {0x11,0x1B,0x15,0x11,0x11,0x11,0x00}, /* M */
+        {0x11,0x19,0x15,0x13,0x11,0x11,0x00}, /* N */
+        {0x0E,0x11,0x11,0x11,0x11,0x0E,0x00}, /* O */
+        {0x1E,0x11,0x11,0x1E,0x10,0x10,0x00}, /* P */
+        {0x0E,0x11,0x11,0x15,0x12,0x0D,0x00}, /* Q */
+        {0x1E,0x11,0x11,0x1E,0x14,0x12,0x00}, /* R */
+        {0x0E,0x10,0x0E,0x01,0x11,0x0E,0x00}, /* S */
+        {0x1F,0x04,0x04,0x04,0x04,0x04,0x00}, /* T */
+        {0x11,0x11,0x11,0x11,0x11,0x0E,0x00}, /* U */
+        {0x11,0x11,0x11,0x0A,0x0A,0x04,0x00}, /* V */
+        {0x11,0x11,0x11,0x15,0x1B,0x11,0x00}, /* W */
+        {0x11,0x0A,0x04,0x04,0x0A,0x11,0x00}, /* X */
+        {0x11,0x0A,0x04,0x04,0x04,0x04,0x00}, /* Y */
+        {0x1F,0x02,0x04,0x08,0x10,0x1F,0x00}, /* Z */
+        {0x0E,0x08,0x08,0x08,0x08,0x0E,0x00}, /* [ */
+        {0x10,0x08,0x04,0x02,0x01,0x00,0x00}, /* \ */
+        {0x0E,0x02,0x02,0x02,0x02,0x0E,0x00}, /* ] */
+        {0x04,0x0A,0x11,0x00,0x00,0x00,0x00}, /* ^ */
+        {0x00,0x00,0x00,0x00,0x00,0x1F,0x00}, /* _ */
+        {0x08,0x04,0x00,0x00,0x00,0x00,0x00}, /* ` */
+        {0x00,0x0E,0x01,0x0F,0x11,0x0F,0x00}, /* a */
+        {0x10,0x10,0x1E,0x11,0x11,0x1E,0x00}, /* b */
+        {0x00,0x0E,0x10,0x10,0x10,0x0E,0x00}, /* c */
+        {0x01,0x01,0x0F,0x11,0x11,0x0F,0x00}, /* d */
+        {0x00,0x0E,0x11,0x1F,0x10,0x0E,0x00}, /* e */
+        {0x06,0x08,0x1C,0x08,0x08,0x08,0x00}, /* f */
+        {0x00,0x0F,0x11,0x0F,0x01,0x0E,0x00}, /* g */
+        {0x10,0x10,0x1E,0x11,0x11,0x11,0x00}, /* h */
+        {0x04,0x00,0x0C,0x04,0x04,0x0E,0x00}, /* i */
+        {0x02,0x00,0x06,0x02,0x02,0x12,0x0C}, /* j */
+        {0x10,0x10,0x12,0x14,0x18,0x14,0x12}, /* k */
+        {0x0C,0x04,0x04,0x04,0x04,0x0E,0x00}, /* l */
+        {0x00,0x1A,0x15,0x15,0x15,0x15,0x00}, /* m */
+        {0x00,0x1E,0x11,0x11,0x11,0x11,0x00}, /* n */
+        {0x00,0x0E,0x11,0x11,0x11,0x0E,0x00}, /* o */
+        {0x00,0x1E,0x11,0x1E,0x10,0x10,0x00}, /* p */
+        {0x00,0x0F,0x11,0x0F,0x01,0x01,0x00}, /* q */
+        {0x00,0x16,0x19,0x10,0x10,0x10,0x00}, /* r */
+        {0x00,0x0F,0x10,0x0E,0x01,0x1E,0x00}, /* s */
+        {0x08,0x1C,0x08,0x08,0x08,0x06,0x00}, /* t */
+        {0x00,0x11,0x11,0x11,0x11,0x0F,0x00}, /* u */
+        {0x00,0x11,0x11,0x0A,0x0A,0x04,0x00}, /* v */
+        {0x00,0x11,0x11,0x15,0x15,0x0A,0x00}, /* w */
+        {0x00,0x11,0x0A,0x04,0x0A,0x11,0x00}, /* x */
+        {0x00,0x11,0x11,0x0F,0x01,0x0E,0x00}, /* y */
+        {0x00,0x1F,0x02,0x04,0x08,0x1F,0x00}, /* z */
+        {0x02,0x04,0x08,0x04,0x02,0x00,0x00}, /* { */
+        {0x04,0x04,0x04,0x04,0x04,0x04,0x00}, /* | */
+        {0x08,0x04,0x02,0x04,0x08,0x00,0x00}, /* } */
+        {0x00,0x00,0x0A,0x15,0x00,0x00,0x00}, /* ~ */
+    };
+
+    int64_t cx = x;
+    for (const char *p = str; *p; p++)
+    {
+        int ch = (int)(unsigned char)*p;
+        if (ch < 32 || ch > 126) { cx += 6; continue; }
+        const uint8_t *glyph = font5x7[ch - 32];
+
+        for (int row = 0; row < 7; row++)
+        {
+            for (int col = 0; col < 5; col++)
+            {
+                if (glyph[row] & (1 << (4 - col)))
+                {
+                    int64_t px = cx + col, py = y + row;
+                    if (px >= 0 && px < fb.width && py >= 0 && py < fb.height)
+                    {
+                        uint8_t *dst = &fb.pixels[py * fb.stride + px * 4];
+                        dst[0] = cr; dst[1] = cg; dst[2] = cb; dst[3] = 0xFF;
+                    }
+                }
+            }
+        }
+        cx += 6; /* 5px glyph + 1px spacing */
+    }
 }
 
 rt_string rt_canvas3d_get_backend(void *obj)

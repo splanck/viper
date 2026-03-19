@@ -69,6 +69,8 @@ typedef struct
     double aspect;
     double near_plane;
     double far_plane;
+    double fps_yaw;    /* FPS mode: horizontal rotation (degrees) */
+    double fps_pitch;  /* FPS mode: vertical rotation (degrees, clamped ±89) */
 } rt_camera3d;
 
 //=============================================================================
@@ -178,6 +180,11 @@ typedef struct
 
     /* Skybox */
     rt_cubemap3d *skybox; /* CubeMap3D for background (or NULL) */
+
+    /* Temporary buffers freed at end of frame (e.g., skinned vertex data) */
+    void **temp_buffers;
+    int32_t temp_buf_count;
+    int32_t temp_buf_capacity;
 
     /* Rendering options */
     int8_t wireframe;

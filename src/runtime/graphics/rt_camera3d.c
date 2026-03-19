@@ -124,6 +124,8 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
     memset(cam->view, 0, 16 * sizeof(double));
     cam->view[0] = cam->view[5] = cam->view[10] = cam->view[15] = 1.0;
     cam->eye[0] = cam->eye[1] = cam->eye[2] = 0.0;
+    cam->fps_yaw = 0.0;
+    cam->fps_pitch = 0.0;
 
     return cam;
 }
@@ -322,6 +324,87 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy,
     }
 
     return rt_vec3_new(dx, dy, dz);
+}
+
+/*==========================================================================
+ * FPS camera controller
+ *=========================================================================*/
+
+void rt_camera3d_fps_init(void *obj)
+{
+    if (!obj) return;
+    rt_camera3d *cam = (rt_camera3d *)obj;
+    /* Extract yaw/pitch from current view matrix forward direction.
+     * Forward = -row2 of view matrix (negated because view Z points away). */
+    double fx = -cam->view[8];
+    double fy = -cam->view[9];
+    double fz = -cam->view[10];
+    cam->fps_yaw = atan2(fx, -fz) * (180.0 / M_PI);
+    cam->fps_pitch = asin(fy) * (180.0 / M_PI);
+    if (cam->fps_pitch > 89.0) cam->fps_pitch = 89.0;
+    if (cam->fps_pitch < -89.0) cam->fps_pitch = -89.0;
+}
+
+void rt_camera3d_fps_update(void *obj, double yaw_delta, double pitch_delta,
+                              double move_fwd, double move_right, double move_up,
+                              double speed, double dt)
+{
+    if (!obj) return;
+    rt_camera3d *cam = (rt_camera3d *)obj;
+
+    /* Accumulate yaw/pitch from mouse deltas */
+    cam->fps_yaw += yaw_delta;
+    cam->fps_pitch += pitch_delta;
+    if (cam->fps_pitch > 89.0) cam->fps_pitch = 89.0;
+    if (cam->fps_pitch < -89.0) cam->fps_pitch = -89.0;
+
+    /* Compute forward and right vectors from yaw/pitch */
+    double yaw_rad = cam->fps_yaw * (M_PI / 180.0);
+    double pitch_rad = cam->fps_pitch * (M_PI / 180.0);
+    double cp = cos(pitch_rad);
+
+    double fwd_x = sin(yaw_rad) * cp;
+    double fwd_y = sin(pitch_rad);
+    double fwd_z = -cos(yaw_rad) * cp;
+
+    /* Right = cross(forward, world_up), normalized on XZ plane */
+    double right_x = cos(yaw_rad);
+    double right_z = sin(yaw_rad);
+
+    /* Apply movement */
+    double move_scale = speed * dt;
+    cam->eye[0] += fwd_x * move_fwd * move_scale + right_x * move_right * move_scale;
+    cam->eye[1] += fwd_y * move_fwd * move_scale + move_up * move_scale;
+    cam->eye[2] += fwd_z * move_fwd * move_scale + right_z * move_right * move_scale;
+
+    /* Rebuild view matrix via LookAt */
+    double target[3] = {cam->eye[0] + fwd_x, cam->eye[1] + fwd_y, cam->eye[2] + fwd_z};
+    double up[3] = {0.0, 1.0, 0.0};
+    build_look_at(cam->view, cam->eye, target, up);
+}
+
+double rt_camera3d_get_yaw(void *obj)
+{
+    return obj ? ((rt_camera3d *)obj)->fps_yaw : 0.0;
+}
+
+double rt_camera3d_get_pitch(void *obj)
+{
+    return obj ? ((rt_camera3d *)obj)->fps_pitch : 0.0;
+}
+
+void rt_camera3d_set_yaw(void *obj, double yaw)
+{
+    if (obj) ((rt_camera3d *)obj)->fps_yaw = yaw;
+}
+
+void rt_camera3d_set_pitch(void *obj, double pitch)
+{
+    if (!obj) return;
+    rt_camera3d *cam = (rt_camera3d *)obj;
+    cam->fps_pitch = pitch;
+    if (cam->fps_pitch > 89.0) cam->fps_pitch = 89.0;
+    if (cam->fps_pitch < -89.0) cam->fps_pitch = -89.0;
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

@@ -717,6 +717,19 @@ extern "C"
     /// @return 1 if button is pressed, 0 otherwise
     int vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button);
 
+    /// @brief Warp the mouse cursor to the specified position within the window.
+    /// @details Used for FPS-style mouse capture — warp to center each frame.
+    /// @param window Window handle
+    /// @param x Target X coordinate (logical pixels)
+    /// @param y Target Y coordinate (logical pixels)
+    void vgfx_warp_cursor(vgfx_window_t window, int32_t x, int32_t y);
+
+    /// @brief Hide the OS mouse cursor.
+    void vgfx_hide_cursor(void);
+
+    /// @brief Show the OS mouse cursor.
+    void vgfx_show_cursor(void);
+
     //===----------------------------------------------------------------------===//
     // Event Queue
     //===----------------------------------------------------------------------===//

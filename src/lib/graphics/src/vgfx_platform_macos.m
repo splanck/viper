@@ -1331,6 +1331,35 @@ void *vgfx_get_native_view(vgfx_window_t window)
     return (__bridge void *)platform->view;
 }
 
+void vgfx_platform_warp_cursor(struct vgfx_window *win, int32_t x, int32_t y)
+{
+    if (!win || !win->platform_data) return;
+    vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+    if (!platform->window) return;
+
+    /* Only warp if our window is the key window (has focus) */
+    if (![platform->window isKeyWindow]) return;
+
+    NSRect frame = [platform->window frame];
+    NSRect content = [platform->window contentRectForFrameRect:frame];
+    CGFloat screen_x = content.origin.x + (CGFloat)x;
+    CGFloat screen_y = (CGFloat)CGDisplayPixelsHigh(CGMainDisplayID())
+                       - content.origin.y - content.size.height + (CGFloat)y;
+
+    CGWarpMouseCursorPosition(CGPointMake(screen_x, screen_y));
+    CGAssociateMouseAndMouseCursorPosition(true);
+}
+
+void vgfx_platform_hide_cursor(void)
+{
+    [NSCursor hide];
+}
+
+void vgfx_platform_show_cursor(void)
+{
+    [NSCursor unhide];
+}
+
 #endif /* __APPLE__ */
 
 //===----------------------------------------------------------------------===//

@@ -224,6 +224,11 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_scene3d.c
         graphics/rt_skeleton3d.c
         graphics/rt_fbx_loader.c
+        graphics/rt_morphtarget3d.c
+        graphics/rt_particles3d.c
+        graphics/rt_postfx3d.c
+        graphics/rt_raycast3d.c
+        graphics/rt_audio3d.c
         graphics/vgfx3d_frustum.c
         graphics/vgfx3d_skinning.c
 )

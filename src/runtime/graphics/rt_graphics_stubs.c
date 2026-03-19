@@ -30,6 +30,11 @@
 #include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
 #include "rt_fbx_loader.h"
+#include "rt_morphtarget3d.h"
+#include "rt_particles3d.h"
+#include "rt_postfx3d.h"
+#include "rt_raycast3d.h"
+#include "rt_audio3d.h"
 #include "rt_string.h"
 
 #include <stdint.h>
@@ -1027,3 +1032,83 @@ void *rt_fbx_get_animation(void *f, int64_t i) { (void)f; (void)i; return NULL; 
 rt_string rt_fbx_get_animation_name(void *f, int64_t i) { (void)f; (void)i; return NULL; }
 int64_t rt_fbx_material_count(void *f) { (void)f; return 0; }
 void *rt_fbx_get_material(void *f, int64_t i) { (void)f; (void)i; return NULL; }
+
+/* MorphTarget3D stubs */
+void *rt_morphtarget3d_new(int64_t vc) { (void)vc; rt_trap("MorphTarget3D.New: graphics support not compiled in"); return NULL; }
+int64_t rt_morphtarget3d_add_shape(void *m, rt_string n) { (void)m; (void)n; return -1; }
+void  rt_morphtarget3d_set_delta(void *m, int64_t s, int64_t v, double dx, double dy, double dz) { (void)m; (void)s; (void)v; (void)dx; (void)dy; (void)dz; }
+void  rt_morphtarget3d_set_normal_delta(void *m, int64_t s, int64_t v, double dx, double dy, double dz) { (void)m; (void)s; (void)v; (void)dx; (void)dy; (void)dz; }
+void  rt_morphtarget3d_set_weight(void *m, int64_t s, double w) { (void)m; (void)s; (void)w; }
+double rt_morphtarget3d_get_weight(void *m, int64_t s) { (void)m; (void)s; return 0.0; }
+void  rt_morphtarget3d_set_weight_by_name(void *m, rt_string n, double w) { (void)m; (void)n; (void)w; }
+int64_t rt_morphtarget3d_get_shape_count(void *m) { (void)m; return 0; }
+void  rt_mesh3d_set_morph_targets(void *m, void *mt) { (void)m; (void)mt; }
+void  rt_canvas3d_draw_mesh_morphed(void *c, void *m, void *t, void *mat, void *mt) { (void)c; (void)m; (void)t; (void)mat; (void)mt; }
+
+/* Particles3D stubs */
+void *rt_particles3d_new(int64_t n) { (void)n; rt_trap("Particles3D.New: graphics support not compiled in"); return NULL; }
+void  rt_particles3d_set_position(void *o, double x, double y, double z) { (void)o; (void)x; (void)y; (void)z; }
+void  rt_particles3d_set_direction(void *o, double dx, double dy, double dz, double s) { (void)o; (void)dx; (void)dy; (void)dz; (void)s; }
+void  rt_particles3d_set_speed(void *o, double mn, double mx) { (void)o; (void)mn; (void)mx; }
+void  rt_particles3d_set_lifetime(void *o, double mn, double mx) { (void)o; (void)mn; (void)mx; }
+void  rt_particles3d_set_size(void *o, double s, double e) { (void)o; (void)s; (void)e; }
+void  rt_particles3d_set_gravity(void *o, double gx, double gy, double gz) { (void)o; (void)gx; (void)gy; (void)gz; }
+void  rt_particles3d_set_color(void *o, int64_t sc, int64_t ec) { (void)o; (void)sc; (void)ec; }
+void  rt_particles3d_set_alpha(void *o, double sa, double ea) { (void)o; (void)sa; (void)ea; }
+void  rt_particles3d_set_rate(void *o, double r) { (void)o; (void)r; }
+void  rt_particles3d_set_additive(void *o, int8_t a) { (void)o; (void)a; }
+void  rt_particles3d_set_texture(void *o, void *t) { (void)o; (void)t; }
+void  rt_particles3d_set_emitter_shape(void *o, int64_t s) { (void)o; (void)s; }
+void  rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz) { (void)o; (void)sx; (void)sy; (void)sz; }
+void  rt_particles3d_start(void *o) { (void)o; }
+void  rt_particles3d_stop(void *o) { (void)o; }
+void  rt_particles3d_burst(void *o, int64_t n) { (void)o; (void)n; }
+void  rt_particles3d_clear(void *o) { (void)o; }
+void  rt_particles3d_update(void *o, double dt) { (void)o; (void)dt; }
+void  rt_particles3d_draw(void *o, void *c, void *cam) { (void)o; (void)c; (void)cam; }
+int64_t rt_particles3d_get_count(void *o) { (void)o; return 0; }
+int8_t  rt_particles3d_get_emitting(void *o) { (void)o; return 0; }
+
+/* PostFX3D stubs */
+void *rt_postfx3d_new(void) { rt_trap("PostFX3D.New: graphics support not compiled in"); return NULL; }
+void  rt_postfx3d_add_bloom(void *o, double t, double i, int64_t b) { (void)o; (void)t; (void)i; (void)b; }
+void  rt_postfx3d_add_tonemap(void *o, int64_t m, double e) { (void)o; (void)m; (void)e; }
+void  rt_postfx3d_add_fxaa(void *o) { (void)o; }
+void  rt_postfx3d_add_color_grade(void *o, double b, double c, double s) { (void)o; (void)b; (void)c; (void)s; }
+void  rt_postfx3d_add_vignette(void *o, double r, double s) { (void)o; (void)r; (void)s; }
+void  rt_postfx3d_set_enabled(void *o, int8_t e) { (void)o; (void)e; }
+int8_t rt_postfx3d_get_enabled(void *o) { (void)o; return 0; }
+void  rt_postfx3d_clear(void *o) { (void)o; }
+int64_t rt_postfx3d_get_effect_count(void *o) { (void)o; return 0; }
+void  rt_canvas3d_set_post_fx(void *c, void *fx) { (void)c; (void)fx; }
+void  rt_postfx3d_apply_to_canvas(void *c) { (void)c; }
+
+/* Ray3D / AABB3D / RayHit3D stubs */
+double  rt_ray3d_intersect_triangle(void *o, void *d, void *v0, void *v1, void *v2) { (void)o; (void)d; (void)v0; (void)v1; (void)v2; return -1.0; }
+void   *rt_ray3d_intersect_mesh(void *o, void *d, void *m, void *t) { (void)o; (void)d; (void)m; (void)t; return NULL; }
+double  rt_ray3d_intersect_aabb(void *o, void *d, void *mn, void *mx) { (void)o; (void)d; (void)mn; (void)mx; return -1.0; }
+double  rt_ray3d_intersect_sphere(void *o, void *d, void *c, double r) { (void)o; (void)d; (void)c; (void)r; return -1.0; }
+int8_t  rt_aabb3d_overlaps(void *a0, void *a1, void *b0, void *b1) { (void)a0; (void)a1; (void)b0; (void)b1; return 0; }
+void   *rt_aabb3d_penetration(void *a0, void *a1, void *b0, void *b1) { (void)a0; (void)a1; (void)b0; (void)b1; return NULL; }
+double  rt_ray3d_hit_distance(void *h) { (void)h; return -1.0; }
+void   *rt_ray3d_hit_point(void *h) { (void)h; return NULL; }
+void   *rt_ray3d_hit_normal(void *h) { (void)h; return NULL; }
+int64_t rt_ray3d_hit_triangle(void *h) { (void)h; return -1; }
+
+/* FPS Camera stubs */
+void   rt_camera3d_fps_init(void *c) { (void)c; }
+void   rt_camera3d_fps_update(void *c, double a, double b, double d, double e, double f, double g, double h) { (void)c; (void)a; (void)b; (void)d; (void)e; (void)f; (void)g; (void)h; }
+double rt_camera3d_get_yaw(void *c) { (void)c; return 0.0; }
+double rt_camera3d_get_pitch(void *c) { (void)c; return 0.0; }
+void   rt_camera3d_set_yaw(void *c, double v) { (void)c; (void)v; }
+void   rt_camera3d_set_pitch(void *c, double v) { (void)c; (void)v; }
+
+/* HUD overlay stubs */
+void  rt_canvas3d_draw_rect2d(void *c, int64_t x, int64_t y, int64_t w, int64_t h, int64_t cl) { (void)c; (void)x; (void)y; (void)w; (void)h; (void)cl; }
+void  rt_canvas3d_draw_crosshair(void *c, int64_t cl, int64_t sz) { (void)c; (void)cl; (void)sz; }
+void  rt_canvas3d_draw_text2d(void *c, int64_t x, int64_t y, rt_string t, int64_t cl) { (void)c; (void)x; (void)y; (void)t; (void)cl; }
+
+/* Audio3D stubs */
+void    rt_audio3d_set_listener(void *p, void *f) { (void)p; (void)f; }
+int64_t rt_audio3d_play_at(void *s, void *p, double d, int64_t v) { (void)s; (void)p; (void)d; (void)v; return 0; }
+void    rt_audio3d_update_voice(int64_t v, void *p) { (void)v; (void)p; }

@@ -148,6 +148,26 @@ extern "C"
     void  rt_light3d_set_intensity(void *obj, double intensity);
     void  rt_light3d_set_color(void *obj, double r, double g, double b);
 
+    /// @brief Register a temporary buffer to be freed at the end of the current frame.
+    void  rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
+
+    /* Screen-space HUD overlay */
+    void  rt_canvas3d_draw_rect2d(void *canvas, int64_t x, int64_t y,
+                                    int64_t w, int64_t h, int64_t color);
+    void  rt_canvas3d_draw_crosshair(void *canvas, int64_t color, int64_t size);
+    void  rt_canvas3d_draw_text2d(void *canvas, int64_t x, int64_t y,
+                                    rt_string text, int64_t color);
+
+    /* FPS camera */
+    void   rt_camera3d_fps_init(void *cam);
+    void   rt_camera3d_fps_update(void *cam, double yaw_delta, double pitch_delta,
+                                    double move_fwd, double move_right, double move_up,
+                                    double speed, double dt);
+    double rt_camera3d_get_yaw(void *cam);
+    double rt_camera3d_get_pitch(void *cam);
+    void   rt_camera3d_set_yaw(void *cam, double yaw);
+    void   rt_camera3d_set_pitch(void *cam, double pitch);
+
 #ifdef __cplusplus
 }
 #endif

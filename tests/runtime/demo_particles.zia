@@ -1,0 +1,72 @@
+// Demo: 3D particle system — fountain effect with gravity and fade-out.
+module DemoParticles;
+
+bind Viper.Terminal;
+
+func start() {
+    var canvas = Viper.Graphics3D.Canvas3D.New("Particle System", 800, 600);
+    var cam = Viper.Graphics3D.Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
+    var floor_mesh = Viper.Graphics3D.Mesh3D.NewPlane(12.0, 12.0);
+    var floor_mat = Viper.Graphics3D.Material3D.NewColor(0.15, 0.15, 0.2);
+
+    // Fountain particle system
+    var fountain = Viper.Graphics3D.Particles3D.New(500);
+    Viper.Graphics3D.Particles3D.SetPosition(fountain, 0.0, -0.5, 0.0);
+    Viper.Graphics3D.Particles3D.SetDirection(fountain, 0.0, 1.0, 0.0, 0.4);
+    Viper.Graphics3D.Particles3D.SetSpeed(fountain, 3.0, 6.0);
+    Viper.Graphics3D.Particles3D.SetLifetime(fountain, 1.0, 2.5);
+    Viper.Graphics3D.Particles3D.SetSize(fountain, 0.15, 0.03);
+    Viper.Graphics3D.Particles3D.SetGravity(fountain, 0.0, -4.0, 0.0);
+    Viper.Graphics3D.Particles3D.SetColor(fountain, 0x4488FF, 0x1122AA);
+    Viper.Graphics3D.Particles3D.SetAlpha(fountain, 0.9, 0.0);
+    Viper.Graphics3D.Particles3D.SetRate(fountain, 80.0);
+    Viper.Graphics3D.Particles3D.Start(fountain);
+
+    // Fire particle system (additive blending)
+    var fire = Viper.Graphics3D.Particles3D.New(300);
+    Viper.Graphics3D.Particles3D.SetPosition(fire, 2.0, -0.5, 0.0);
+    Viper.Graphics3D.Particles3D.SetDirection(fire, 0.0, 1.0, 0.0, 0.3);
+    Viper.Graphics3D.Particles3D.SetSpeed(fire, 1.0, 2.5);
+    Viper.Graphics3D.Particles3D.SetLifetime(fire, 0.3, 0.8);
+    Viper.Graphics3D.Particles3D.SetSize(fire, 0.3, 0.05);
+    Viper.Graphics3D.Particles3D.SetGravity(fire, 0.0, 1.0, 0.0);
+    Viper.Graphics3D.Particles3D.SetColor(fire, 0xFFAA22, 0xFF2200);
+    Viper.Graphics3D.Particles3D.SetAlpha(fire, 1.0, 0.0);
+    Viper.Graphics3D.Particles3D.SetRate(fire, 120.0);
+    Viper.Graphics3D.Particles3D.Start(fire);
+
+    // Lighting
+    var sun_dir = new Viper.Math.Vec3(-0.5, -1.0, -0.3);
+    var sun = Viper.Graphics3D.Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
+    Viper.Graphics3D.Canvas3D.SetLight(canvas, 0, sun);
+    Viper.Graphics3D.Canvas3D.SetAmbient(canvas, 0.1, 0.1, 0.15);
+
+    var time = 0.0;
+
+    while (Viper.Graphics3D.Canvas3D.get_ShouldClose(canvas) == 0) {
+        Viper.Graphics3D.Canvas3D.Poll(canvas);
+        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.02, 0.02, 0.05);
+
+        var target = new Viper.Math.Vec3(1.0, 0.5, 0.0);
+        Viper.Graphics3D.Camera3D.Orbit(cam, target, 8.0, time * 10.0, 20.0);
+
+        // Update particles
+        Viper.Graphics3D.Particles3D.Update(fountain, 0.016);
+        Viper.Graphics3D.Particles3D.Update(fire, 0.016);
+
+        Viper.Graphics3D.Canvas3D.Begin(canvas, cam);
+
+        // Floor
+        var floor_xform = Viper.Math.Mat4.Translate(0.0, -1.0, 0.0);
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, floor_mesh, floor_xform, floor_mat);
+
+        // Draw particles (between Begin/End for proper transparency sorting)
+        Viper.Graphics3D.Particles3D.Draw(fountain, canvas, cam);
+        Viper.Graphics3D.Particles3D.Draw(fire, canvas, cam);
+
+        Viper.Graphics3D.Canvas3D.End(canvas);
+        Viper.Graphics3D.Canvas3D.Flip(canvas);
+
+        time = time + 0.016;
+    }
+}

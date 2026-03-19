@@ -1192,6 +1192,12 @@ void rt_mouse_update_pos(int64_t x, int64_t y)
     g_mouse_y = y;
 }
 
+void rt_mouse_force_delta(int64_t dx, int64_t dy)
+{
+    g_mouse_delta_x = dx;
+    g_mouse_delta_y = dy;
+}
+
 void rt_mouse_button_down(int64_t button)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -1375,16 +1381,19 @@ int64_t rt_mouse_wheel_y(void)
 void rt_mouse_show(void)
 {
     RT_ASSERT_MAIN_THREAD();
+    if (!g_mouse_hidden) return;
     g_mouse_hidden = false;
-    // Platform-specific cursor show would go here
-    // vgfx doesn't currently have cursor hide/show API
+    extern void vgfx_show_cursor(void);
+    vgfx_show_cursor();
 }
 
 void rt_mouse_hide(void)
 {
     RT_ASSERT_MAIN_THREAD();
+    if (g_mouse_hidden) return;
     g_mouse_hidden = true;
-    // Platform-specific cursor hide would go here
+    extern void vgfx_hide_cursor(void);
+    vgfx_hide_cursor();
 }
 
 int8_t rt_mouse_is_hidden(void)
@@ -1397,14 +1406,14 @@ void rt_mouse_capture(void)
 {
     RT_ASSERT_MAIN_THREAD();
     g_mouse_captured = true;
-    // Platform-specific mouse capture would go here
+    rt_mouse_hide(); /* Hide cursor during capture */
 }
 
 void rt_mouse_release(void)
 {
     RT_ASSERT_MAIN_THREAD();
     g_mouse_captured = false;
-    // Platform-specific mouse release would go here
+    rt_mouse_show(); /* Restore cursor on release */
 }
 
 int8_t rt_mouse_is_captured(void)
