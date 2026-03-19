@@ -55,6 +55,33 @@ extern double rt_vec3_z(void *v);
 extern void *rt_pixels_new(int64_t width, int64_t height);
 
 /*==========================================================================
+ * Deferred draw command (for transparency sorting)
+ *=========================================================================*/
+
+typedef struct
+{
+    vgfx3d_draw_cmd_t cmd;
+    vgfx3d_light_params_t lights[VGFX3D_MAX_LIGHTS];
+    int32_t light_count;
+    float ambient[3];
+    int8_t wireframe;
+    int8_t backface_cull;
+    float sort_key; /* squared distance from camera (for transparent sorting) */
+} deferred_draw_t;
+
+/* Comparison for qsort: back-to-front (descending sort_key) */
+static int cmp_back_to_front(const void *a, const void *b)
+{
+    float ka = ((const deferred_draw_t *)a)->sort_key;
+    float kb = ((const deferred_draw_t *)b)->sort_key;
+    if (ka > kb)
+        return -1;
+    if (ka < kb)
+        return 1;
+    return 0;
+}
+
+/*==========================================================================
  * Helpers
  *=========================================================================*/
 
@@ -97,11 +124,24 @@ static int32_t build_light_params(const rt_canvas3d *c,
 static void rt_canvas3d_finalize(void *obj)
 {
     rt_canvas3d *c = (rt_canvas3d *)obj;
+    /* Destroy the active backend context */
     if (c->backend && c->backend_ctx)
     {
         c->backend->destroy_ctx(c->backend_ctx);
         c->backend_ctx = NULL;
     }
+    /* Destroy the saved GPU backend context (leaked during RTT if not restored) */
+    if (c->render_target_saved_backend && c->render_target_saved_ctx)
+    {
+        c->render_target_saved_backend->destroy_ctx(c->render_target_saved_ctx);
+        c->render_target_saved_ctx = NULL;
+        c->render_target_saved_backend = NULL;
+    }
+    /* Free deferred draw command buffer */
+    free(c->draw_cmds);
+    c->draw_cmds = NULL;
+    c->draw_count = c->draw_capacity = 0;
+
     if (c->gfx_win)
     {
         vgfx_destroy_window(c->gfx_win);
@@ -191,12 +231,37 @@ void rt_canvas3d_begin(void *obj, void *camera)
     rt_camera3d *cam = (rt_camera3d *)camera;
     if (!c->backend) return;
 
+    /* GPU restoration from RTT happens in Flip(), not here.
+     * Begin() may be called for the main pass after ResetRenderTarget,
+     * which still needs software for Pixels texture support. */
+
     vgfx3d_camera_params_t params;
     mat4_d2f(cam->view, params.view);
     mat4_d2f(cam->projection, params.projection);
     params.position[0] = (float)cam->eye[0];
     params.position[1] = (float)cam->eye[1];
     params.position[2] = (float)cam->eye[2];
+
+    /* Cache camera position for transparency sort key computation */
+    c->cached_cam_pos[0] = params.position[0];
+    c->cached_cam_pos[1] = params.position[1];
+    c->cached_cam_pos[2] = params.position[2];
+
+    /* Reset draw command queue for this frame */
+    c->draw_count = 0;
+
+    /* Cache VP matrix for debug drawing (backend-agnostic) */
+    {
+        float vf[16], pf[16];
+        mat4_d2f(cam->view, vf);
+        mat4_d2f(cam->projection, pf);
+        /* VP = P * V (row-major) */
+        for (int r = 0; r < 4; r++)
+            for (int col = 0; col < 4; col++)
+                c->cached_vp[r * 4 + col] =
+                    pf[r * 4 + 0] * vf[0 * 4 + col] + pf[r * 4 + 1] * vf[1 * 4 + col] +
+                    pf[r * 4 + 2] * vf[2 * 4 + col] + pf[r * 4 + 3] * vf[3 * 4 + col];
+    }
 
     c->backend->begin_frame(c->backend_ctx, &params);
     c->in_frame = 1;
@@ -215,40 +280,129 @@ void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj,
 
     if (mesh->vertex_count == 0 || mesh->index_count == 0) return;
 
+    /* Ensure draw command buffer has space */
+    if (c->draw_count >= c->draw_capacity)
+    {
+        int32_t new_cap = c->draw_capacity == 0 ? 32 : c->draw_capacity * 2;
+        deferred_draw_t *new_buf = (deferred_draw_t *)realloc(
+            c->draw_cmds, (size_t)new_cap * sizeof(deferred_draw_t));
+        if (!new_buf) return;
+        c->draw_cmds = new_buf;
+        c->draw_capacity = new_cap;
+    }
+
+    deferred_draw_t *dd = &((deferred_draw_t *)c->draw_cmds)[c->draw_count++];
+
     /* Build draw command */
-    vgfx3d_draw_cmd_t cmd;
-    cmd.vertices = mesh->vertices;
-    cmd.vertex_count = mesh->vertex_count;
-    cmd.indices = mesh->indices;
-    cmd.index_count = mesh->index_count;
-    mat4_d2f(model_d->m, cmd.model_matrix);
-    cmd.diffuse_color[0] = (float)mat->diffuse[0];
-    cmd.diffuse_color[1] = (float)mat->diffuse[1];
-    cmd.diffuse_color[2] = (float)mat->diffuse[2];
-    cmd.diffuse_color[3] = (float)mat->diffuse[3];
-    cmd.specular[0] = (float)mat->specular[0];
-    cmd.specular[1] = (float)mat->specular[1];
-    cmd.specular[2] = (float)mat->specular[2];
-    cmd.shininess = (float)mat->shininess;
-    cmd.unlit = mat->unlit;
-    cmd.texture = mat->texture;
+    dd->cmd.vertices = mesh->vertices;
+    dd->cmd.vertex_count = mesh->vertex_count;
+    dd->cmd.indices = mesh->indices;
+    dd->cmd.index_count = mesh->index_count;
+    mat4_d2f(model_d->m, dd->cmd.model_matrix);
+    dd->cmd.diffuse_color[0] = (float)mat->diffuse[0];
+    dd->cmd.diffuse_color[1] = (float)mat->diffuse[1];
+    dd->cmd.diffuse_color[2] = (float)mat->diffuse[2];
+    dd->cmd.diffuse_color[3] = (float)mat->diffuse[3];
+    dd->cmd.specular[0] = (float)mat->specular[0];
+    dd->cmd.specular[1] = (float)mat->specular[1];
+    dd->cmd.specular[2] = (float)mat->specular[2];
+    dd->cmd.shininess = (float)mat->shininess;
+    dd->cmd.alpha = (float)mat->alpha;
+    dd->cmd.unlit = mat->unlit;
+    dd->cmd.texture = mat->texture;
+    dd->cmd.normal_map = mat->normal_map;
+    dd->cmd.specular_map = mat->specular_map;
+    dd->cmd.emissive_map = mat->emissive_map;
+    dd->cmd.emissive_color[0] = (float)mat->emissive[0];
+    dd->cmd.emissive_color[1] = (float)mat->emissive[1];
+    dd->cmd.emissive_color[2] = (float)mat->emissive[2];
 
     /* Build light params */
-    vgfx3d_light_params_t lights[VGFX3D_MAX_LIGHTS];
-    int32_t light_count = build_light_params(c, lights, VGFX3D_MAX_LIGHTS);
+    dd->light_count = build_light_params(c, dd->lights, VGFX3D_MAX_LIGHTS);
+    dd->ambient[0] = c->ambient[0];
+    dd->ambient[1] = c->ambient[1];
+    dd->ambient[2] = c->ambient[2];
+    dd->wireframe = c->wireframe;
+    dd->backface_cull = c->backface_cull;
 
-    c->backend->submit_draw(c->backend_ctx, c->gfx_win, &cmd,
-                             lights, light_count, c->ambient,
-                             c->wireframe, c->backface_cull);
+    /* Compute sort key: squared distance from camera to mesh centroid.
+     * Uses model matrix translation (column 3 in row-major) as centroid proxy. */
+    {
+        const float *m = dd->cmd.model_matrix;
+        float cx = m[3], cy = m[7], cz = m[11]; /* row-major column 3 = translation */
+        float dx = cx - c->cached_cam_pos[0];
+        float dy = cy - c->cached_cam_pos[1];
+        float dz = cz - c->cached_cam_pos[2];
+        dd->sort_key = dx * dx + dy * dy + dz * dz;
+    }
 }
 
 void rt_canvas3d_end(void *obj)
 {
     if (!obj) return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (c->backend)
-        c->backend->end_frame(c->backend_ctx);
+    if (!c->backend || c->draw_count == 0)
+    {
+        if (c->backend)
+            c->backend->end_frame(c->backend_ctx);
+        c->in_frame = 0;
+        return;
+    }
+
+    deferred_draw_t *cmds = (deferred_draw_t *)c->draw_cmds;
+
+    /* Pass 1: submit all opaque draws (alpha >= 1.0) immediately */
+    for (int32_t i = 0; i < c->draw_count; i++)
+    {
+        if (cmds[i].cmd.alpha >= 1.0f)
+        {
+            c->backend->submit_draw(c->backend_ctx, c->gfx_win, &cmds[i].cmd,
+                                     cmds[i].lights, cmds[i].light_count,
+                                     cmds[i].ambient, cmds[i].wireframe,
+                                     cmds[i].backface_cull);
+        }
+    }
+
+    /* Pass 2: collect transparent draws, sort back-to-front, submit */
+    {
+        int32_t trans_count = 0;
+        for (int32_t i = 0; i < c->draw_count; i++)
+            if (cmds[i].cmd.alpha < 1.0f)
+                trans_count++;
+
+        if (trans_count > 0)
+        {
+            /* Build index array of transparent draws */
+            deferred_draw_t *trans = (deferred_draw_t *)malloc(
+                (size_t)trans_count * sizeof(deferred_draw_t));
+            if (trans)
+            {
+                int32_t ti = 0;
+                for (int32_t i = 0; i < c->draw_count; i++)
+                    if (cmds[i].cmd.alpha < 1.0f)
+                        trans[ti++] = cmds[i];
+
+                /* Sort back-to-front (farthest first) */
+                qsort(trans, (size_t)trans_count, sizeof(deferred_draw_t),
+                      cmp_back_to_front);
+
+                /* Submit sorted transparent draws */
+                for (int32_t i = 0; i < trans_count; i++)
+                {
+                    c->backend->submit_draw(c->backend_ctx, c->gfx_win,
+                                             &trans[i].cmd, trans[i].lights,
+                                             trans[i].light_count, trans[i].ambient,
+                                             trans[i].wireframe, trans[i].backface_cull);
+                }
+
+                free(trans);
+            }
+        }
+    }
+
+    c->backend->end_frame(c->backend_ctx);
     c->in_frame = 0;
+    c->draw_count = 0;
 }
 
 /*==========================================================================
@@ -282,6 +436,11 @@ void rt_canvas3d_flip(void *obj)
         c->gfx_win = NULL;
         c->should_close = 1;
     }
+
+    /* GPU restoration from RTT is intentionally NOT done here.
+     * Programs that use RTT every frame stay on software continuously.
+     * The GPU backend is restored in the finalizer (resource cleanup).
+     * This avoids CAMetalLayer show/hide toggling that crashes AppKit. */
 }
 
 int64_t rt_canvas3d_poll(void *obj)
@@ -365,23 +524,18 @@ void rt_canvas3d_set_ambient(void *obj, double r, double g, double b)
  * Debug drawing — transform 3D points to screen via backend VP
  *=========================================================================*/
 
-/* Helper: project 3D point to screen using the backend's current VP matrix.
- * We access the software backend's context directly here since debug drawing
- * is a Canvas3D feature, not a backend feature. For GPU backends, this would
- * need a backend-agnostic VP accessor. */
+/* Helper: project 3D point to screen using the cached VP matrix.
+ * Uses c->cached_vp set in begin_frame (backend-agnostic). */
 static int world_to_screen(const rt_canvas3d *c, const float *wp,
                             float *sx, float *sy, int32_t fb_w, int32_t fb_h)
 {
-    /* Access the VP matrix from the software backend context.
-     * This is tightly coupled to the SW backend but acceptable for Phase 2. */
-    typedef struct { float *zbuf; int32_t w, h; float vp[16]; float cp[3]; } sw_ctx_peek;
-    const sw_ctx_peek *sw = (const sw_ctx_peek *)c->backend_ctx;
+    const float *vp = c->cached_vp;
     float pos4[4] = {wp[0], wp[1], wp[2], 1.0f};
     float clip[4];
-    clip[0] = sw->vp[0]*pos4[0] + sw->vp[1]*pos4[1] + sw->vp[2]*pos4[2] + sw->vp[3]*pos4[3];
-    clip[1] = sw->vp[4]*pos4[0] + sw->vp[5]*pos4[1] + sw->vp[6]*pos4[2] + sw->vp[7]*pos4[3];
-    clip[2] = sw->vp[8]*pos4[0] + sw->vp[9]*pos4[1] + sw->vp[10]*pos4[2] + sw->vp[11]*pos4[3];
-    clip[3] = sw->vp[12]*pos4[0] + sw->vp[13]*pos4[1] + sw->vp[14]*pos4[2] + sw->vp[15]*pos4[3];
+    clip[0] = vp[0]*pos4[0] + vp[1]*pos4[1] + vp[2]*pos4[2] + vp[3]*pos4[3];
+    clip[1] = vp[4]*pos4[0] + vp[5]*pos4[1] + vp[6]*pos4[2] + vp[7]*pos4[3];
+    clip[2] = vp[8]*pos4[0] + vp[9]*pos4[1] + vp[10]*pos4[2] + vp[11]*pos4[3];
+    clip[3] = vp[12]*pos4[0] + vp[13]*pos4[1] + vp[14]*pos4[2] + vp[15]*pos4[3];
     if (clip[3] <= 0.0f) return 0;
     float iw = 1.0f / clip[3];
     *sx = (clip[0] * iw + 1.0f) * 0.5f * (float)fb_w;

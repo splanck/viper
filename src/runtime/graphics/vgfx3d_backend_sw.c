@@ -128,13 +128,19 @@ static int clip_poly_plane(const pipe_vert_t *in, int in_count,
             if (out_count < MAX_CLIP_VERTS) out[out_count++] = in[i];
             if (dj < 0.0f)
             {
-                float t = di / (di - dj);
-                if (out_count < MAX_CLIP_VERTS) pipe_lerp(&in[i], &in[j], t, &out[out_count++]);
+                float denom = di - dj;
+                if (fabsf(denom) > 1e-10f)
+                {
+                    float t = di / denom;
+                    if (out_count < MAX_CLIP_VERTS) pipe_lerp(&in[i], &in[j], t, &out[out_count++]);
+                }
             }
         }
         else if (dj >= 0.0f)
         {
-            float t = di / (di - dj);
+            float denom = di - dj;
+            if (fabsf(denom) < 1e-10f) continue;
+            float t = di / denom;
             if (out_count < MAX_CLIP_VERTS) pipe_lerp(&in[i], &in[j], t, &out[out_count++]);
         }
     }
@@ -240,10 +246,15 @@ static void compute_lighting(pipe_vert_t *v, const float *cam_pos,
         }
     }
 
+    /* Emissive contribution (additive, independent of lighting) */
+    r += cmd->emissive_color[0];
+    g += cmd->emissive_color[1];
+    b += cmd->emissive_color[2];
+
     v->color[0] = r;
     v->color[1] = g;
     v->color[2] = b;
-    v->color[3] = cmd->diffuse_color[3];
+    v->color[3] = cmd->diffuse_color[3] * cmd->alpha;
 }
 
 /*==========================================================================
@@ -257,10 +268,12 @@ static void sample_texture(const sw_pixels_view *tex, float u, float v,
 {
     u = u - floorf(u);
     v = v - floorf(v);
-    int x = (int)(u * (float)tex->width) % (int)tex->width;
-    int y = (int)(v * (float)tex->height) % (int)tex->height;
-    if (x < 0) x += (int)tex->width;
-    if (y < 0) y += (int)tex->height;
+    int x = (int)(u * (float)tex->width);
+    int y = (int)(v * (float)tex->height);
+    if (x < 0) x = 0;
+    if (x >= (int)tex->width) x = (int)tex->width - 1;
+    if (y < 0) y = 0;
+    if (y >= (int)tex->height) y = (int)tex->height - 1;
     uint32_t pixel = tex->data[y * tex->width + x];
     *r = (float)((pixel >> 24) & 0xFF) / 255.0f;
     *g = (float)((pixel >> 16) & 0xFF) / 255.0f;
@@ -290,6 +303,8 @@ static void raster_triangle(uint8_t *pixels, float *zbuf,
                             const screen_vert_t *v1,
                             const screen_vert_t *v2,
                             const sw_pixels_view *tex,
+                            const sw_pixels_view *emissive_tex,
+                            const float *emissive_color,
                             int8_t backface_cull)
 {
     float area = (v1->sx - v0->sx) * (v2->sy - v0->sy) -
@@ -333,10 +348,10 @@ static void raster_triangle(uint8_t *pixels, float *zbuf,
                 int idx = y * fb_w + x;
                 if (z < zbuf[idx])
                 {
-                    zbuf[idx] = z;
                     float fr = b0 * v0->r + b1 * v1->r + b2 * v2->r;
                     float fg = b0 * v0->g + b1 * v1->g + b2 * v2->g;
                     float fb_c = b0 * v0->b + b1 * v1->b + b2 * v2->b;
+                    float tex_alpha = 1.0f; /* per-texel alpha (for foliage, fences) */
                     if (tex)
                     {
                         float iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
@@ -347,13 +362,49 @@ static void raster_triangle(uint8_t *pixels, float *zbuf,
                             float tr, tg, tb, ta;
                             sample_texture(tex, u, vc, &tr, &tg, &tb, &ta);
                             fr *= tr; fg *= tg; fb_c *= tb;
+                            tex_alpha = ta;
                         }
                     }
+                    /* Emissive map sampling (per-pixel, additive) */
+                    if (emissive_tex)
+                    {
+                        float iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
+                        if (fabsf(iw) > 1e-7f)
+                        {
+                            float u = (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / iw;
+                            float vc = (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
+                            float er, eg, eb, ea;
+                            sample_texture(emissive_tex, u, vc, &er, &eg, &eb, &ea);
+                            fr += er * emissive_color[0];
+                            fg += eg * emissive_color[1];
+                            fb_c += eb * emissive_color[2];
+                        }
+                    }
+
+                    /* Interpolate alpha, including per-texel alpha */
+                    float fa = (b0 * v0->a + b1 * v1->a + b2 * v2->a) * tex_alpha;
+
                     uint8_t *dst = &pixels[y * stride + x * 4];
-                    dst[0] = (uint8_t)(clamp01f(fr) * 255.0f);
-                    dst[1] = (uint8_t)(clamp01f(fg) * 255.0f);
-                    dst[2] = (uint8_t)(clamp01f(fb_c) * 255.0f);
-                    dst[3] = 0xFF;
+                    if (fa >= 1.0f)
+                    {
+                        /* Opaque: overwrite pixel + update Z-buffer */
+                        zbuf[idx] = z;
+                        dst[0] = (uint8_t)(clamp01f(fr) * 255.0f);
+                        dst[1] = (uint8_t)(clamp01f(fg) * 255.0f);
+                        dst[2] = (uint8_t)(clamp01f(fb_c) * 255.0f);
+                        dst[3] = 0xFF;
+                    }
+                    else if (fa > 0.0f)
+                    {
+                        /* Transparent: alpha blend (src*a + dst*(1-a)).
+                         * No Z-buffer write — transparent fragments don't occlude. */
+                        float inv_a = 1.0f - fa;
+                        dst[0] = (uint8_t)(clamp01f(fr) * 255.0f * fa + (float)dst[0] * inv_a);
+                        dst[1] = (uint8_t)(clamp01f(fg) * 255.0f * fa + (float)dst[1] * inv_a);
+                        dst[2] = (uint8_t)(clamp01f(fb_c) * 255.0f * fa + (float)dst[2] * inv_a);
+                        dst[3] = 0xFF;
+                    }
+                    /* else: alpha <= 0 → fully invisible, skip */
                 }
             }
             w0 -= e12_dy; w1 -= e20_dy; w2 -= e01_dy;
@@ -392,12 +443,24 @@ static void draw_line(uint8_t *pixels, int32_t fb_w, int32_t fb_h, int32_t strid
 
 static void *sw_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
 {
-    (void)win;
     sw_context_t *ctx = (sw_context_t *)calloc(1, sizeof(sw_context_t));
     if (!ctx) return NULL;
-    ctx->width = w;
-    ctx->height = h;
-    ctx->zbuf = (float *)malloc((size_t)w * (size_t)h * sizeof(float));
+
+    /* Use physical framebuffer dimensions (HiDPI-aware), not logical dimensions.
+     * The rasterizer writes to fb.pixels which is at physical resolution. */
+    vgfx_framebuffer_t fb;
+    if (win && vgfx_get_framebuffer(win, &fb))
+    {
+        ctx->width = fb.width;
+        ctx->height = fb.height;
+    }
+    else
+    {
+        ctx->width = w;
+        ctx->height = h;
+    }
+
+    ctx->zbuf = (float *)malloc((size_t)ctx->width * (size_t)ctx->height * sizeof(float));
     if (!ctx->zbuf) { free(ctx); return NULL; }
     return ctx;
 }
@@ -499,14 +562,21 @@ static void sw_submit_draw(void *ctx_ptr, vgfx_window_t win,
     mat4f_mul(ctx->vp, cmd->model_matrix, mvp);
 
     /* Texture setup */
-    sw_pixels_view tex_view;
-    sw_pixels_view *tex_ptr = NULL;
+    sw_pixels_view tex_view, emissive_view;
+    sw_pixels_view *tex_ptr = NULL, *emissive_ptr = NULL;
     if (cmd->texture)
     {
         const sw_pixels_view *pv = (const sw_pixels_view *)cmd->texture;
         tex_view = *pv;
         if (tex_view.width > 0 && tex_view.height > 0 && tex_view.data)
             tex_ptr = &tex_view;
+    }
+    if (cmd->emissive_map)
+    {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->emissive_map;
+        emissive_view = *pv;
+        if (emissive_view.width > 0 && emissive_view.height > 0 && emissive_view.data)
+            emissive_ptr = &emissive_view;
     }
 
     float half_w = (float)out_w * 0.5f;
@@ -593,7 +663,9 @@ static void sw_submit_draw(void *ctx_ptr, vgfx_window_t win,
             else
             {
                 raster_triangle(out_pixels, out_zbuf, out_w, out_h, out_stride,
-                                &sv[0], &sv[1], &sv[2], tex_ptr, backface_cull);
+                                &sv[0], &sv[1], &sv[2], tex_ptr,
+                                emissive_ptr, cmd->emissive_color,
+                                backface_cull);
             }
         }
     }

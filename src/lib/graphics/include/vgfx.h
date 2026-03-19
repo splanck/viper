@@ -543,6 +543,14 @@ extern "C"
     /// @return Native view handle, or NULL if unavailable
     void *vgfx_get_native_view(vgfx_window_t window);
 
+    /// @brief Get the platform-specific native display/connection handle.
+    /// @details On Linux, returns the X11 Display* (as void*). Returns NULL
+    ///          on macOS, Windows, and mock backends. Used by the OpenGL backend
+    ///          to share the X11 connection with ViperGFX.
+    /// @param window Window handle
+    /// @return Native display handle, or NULL if unavailable
+    void *vgfx_get_native_display(vgfx_window_t window);
+
     //===----------------------------------------------------------------------===//
     // Clipping
     //===----------------------------------------------------------------------===//

@@ -69,13 +69,17 @@ static const char *hlsl_shader_source =
     "\n"
     "cbuffer PerMaterial : register(b2) {\n"
     "    float4 diffuseColor;\n"
-    "    float4 specularColor;\n"  /* w = shininess */
+    "    float4 specularColor;\n"  /* .w = shininess */
+    "    float4 emissiveColor;\n"
+    "    float alpha;\n"
     "    int hasTexture;\n"
     "    int unlit;\n"
-    "    int _matPad[2];\n"
+    "    int _matPad;\n"
     "};\n"
     "\n"
-    "StructuredBuffer<Light> lights : register(t0);\n"
+    "cbuffer PerLights : register(b3) {\n"
+    "    Light lights[8];\n"
+    "};\n"
     "\n"
     "struct VS_INPUT {\n"
     "    float3 pos    : POSITION;\n"
@@ -99,7 +103,7 @@ static const char *hlsl_shader_source =
     "    PS_INPUT output;\n"
     "    float4 wp = mul(float4(input.pos, 1.0), modelMatrix);\n"
     "    output.pos = mul(wp, viewProjection);\n"
-    "    /* D3D11 depth range [0,1] — transform from OpenGL NDC [-1,1] */\n"
+    "    /* D3D11 depth range [0,1] — remap from OpenGL NDC [-1,1] */\n"
     "    output.pos.z = output.pos.z * 0.5 + output.pos.w * 0.5;\n"
     "    output.worldPos = wp.xyz;\n"
     "    output.normal = mul(float4(input.normal, 0.0), normalMatrix).xyz;\n"
@@ -109,7 +113,7 @@ static const char *hlsl_shader_source =
     "}\n"
     "\n"
     "float4 PSMain(PS_INPUT input) : SV_Target {\n"
-    "    if (unlit) return diffuseColor;\n"
+    "    if (unlit) return float4(diffuseColor.rgb, alpha);\n"
     "    float3 N = normalize(input.normal);\n"
     "    float3 V = normalize(cameraPosition.xyz - input.worldPos);\n"
     "    float3 result = ambientColor.rgb * diffuseColor.rgb;\n"
@@ -133,7 +137,8 @@ static const char *hlsl_shader_source =
     "            result += lights[i].color.rgb * lights[i].intensity * spec * specularColor.rgb * atten;\n"
     "        }\n"
     "    }\n"
-    "    return float4(result, diffuseColor.a);\n"
+    "    result += emissiveColor.rgb;\n"
+    "    return float4(result, alpha);\n"
     "}\n";
 
 //=============================================================================
@@ -147,6 +152,8 @@ typedef struct {
     ID3D11RenderTargetView *rtv;
     ID3D11DepthStencilView *dsv;
     ID3D11DepthStencilState *dss;
+    ID3D11DepthStencilState *dssNoWrite; /* depth test ON, write OFF (transparent) */
+    ID3D11BlendState *blendState;
     ID3D11RasterizerState *rsState;
     ID3D11VertexShader *vs;
     ID3D11PixelShader *ps;
@@ -154,6 +161,7 @@ typedef struct {
     ID3D11Buffer *cbPerObject;
     ID3D11Buffer *cbPerScene;
     ID3D11Buffer *cbPerMaterial;
+    ID3D11Buffer *cbPerLights;
     int32_t width, height;
     float vp[16];
     float cam_pos[3];
@@ -171,7 +179,7 @@ typedef struct {
     float dir[4]; float pos[4]; float col[4];
     float intensity, attenuation; float _p3[2];
 } d3d_light_t;
-typedef struct { float dc[4]; float sc[4]; int32_t ht; int32_t unlit; int32_t _p[2]; } d3d_per_material_t;
+typedef struct { float dc[4]; float sc[4]; float ec[4]; float alpha; int32_t ht; int32_t unlit; int32_t _p; } d3d_per_material_t;
 
 //=============================================================================
 // Matrix helper
@@ -244,6 +252,23 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     dssDesc.DepthFunc = D3D11_COMPARISON_LESS;
     ID3D11Device_CreateDepthStencilState(ctx->device, &dssDesc, &ctx->dss);
 
+    /* Depth-stencil state for transparent draws (test ON, write OFF) */
+    dssDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    ID3D11Device_CreateDepthStencilState(ctx->device, &dssDesc, &ctx->dssNoWrite);
+
+    /* Blend state (src*srcAlpha + dst*(1-srcAlpha)) */
+    D3D11_BLEND_DESC blendDesc;
+    memset(&blendDesc, 0, sizeof(blendDesc));
+    blendDesc.RenderTarget[0].BlendEnable = TRUE;
+    blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    blendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+    blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+    blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    ID3D11Device_CreateBlendState(ctx->device, &blendDesc, &ctx->blendState);
+
     /* Rasterizer state */
     D3D11_RASTERIZER_DESC rsDesc;
     memset(&rsDesc, 0, sizeof(rsDesc));
@@ -304,6 +329,8 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     ID3D11Device_CreateBuffer(ctx->device, &cbDesc, NULL, &ctx->cbPerScene);
     cbDesc.ByteWidth = sizeof(d3d_per_material_t);
     ID3D11Device_CreateBuffer(ctx->device, &cbDesc, NULL, &ctx->cbPerMaterial);
+    cbDesc.ByteWidth = sizeof(d3d_light_t) * 8;
+    ID3D11Device_CreateBuffer(ctx->device, &cbDesc, NULL, &ctx->cbPerLights);
 
     return ctx;
 }
@@ -311,6 +338,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
 static void d3d11_destroy_ctx(void *ctx_ptr) {
     if (!ctx_ptr) return;
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    if (ctx->cbPerLights) ID3D11Buffer_Release(ctx->cbPerLights);
     if (ctx->cbPerMaterial) ID3D11Buffer_Release(ctx->cbPerMaterial);
     if (ctx->cbPerScene) ID3D11Buffer_Release(ctx->cbPerScene);
     if (ctx->cbPerObject) ID3D11Buffer_Release(ctx->cbPerObject);
@@ -318,6 +346,8 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     if (ctx->ps) ID3D11PixelShader_Release(ctx->ps);
     if (ctx->vs) ID3D11VertexShader_Release(ctx->vs);
     if (ctx->rsState) ID3D11RasterizerState_Release(ctx->rsState);
+    if (ctx->blendState) ID3D11BlendState_Release(ctx->blendState);
+    if (ctx->dssNoWrite) ID3D11DepthStencilState_Release(ctx->dssNoWrite);
     if (ctx->dss) ID3D11DepthStencilState_Release(ctx->dss);
     if (ctx->dsv) ID3D11DepthStencilView_Release(ctx->dsv);
     if (ctx->rtv) ID3D11RenderTargetView_Release(ctx->rtv);
@@ -352,6 +382,10 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ID3D11DeviceContext_VSSetShader(ctx->ctx, ctx->vs, NULL, 0);
     ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps, NULL, 0);
+
+    /* Enable alpha blending */
+    float blendFactor[4] = {0, 0, 0, 0};
+    ID3D11DeviceContext_OMSetBlendState(ctx->ctx, ctx->blendState, blendFactor, 0xFFFFFFFF);
 }
 
 static void d3d11_submit_draw(void *ctx_ptr, vgfx_window_t win,
@@ -360,6 +394,12 @@ static void d3d11_submit_draw(void *ctx_ptr, vgfx_window_t win,
                                const float *ambient, int8_t wireframe, int8_t backface_cull) {
     (void)win; (void)wireframe; (void)backface_cull;
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+
+    /* Toggle depth-stencil state for transparent draws */
+    if (cmd->alpha < 1.0f)
+        ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, ctx->dssNoWrite, 0);
+    else
+        ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, ctx->dss, 0);
 
     /* Create vertex + index buffers */
     D3D11_BUFFER_DESC bd;
@@ -409,13 +449,28 @@ static void d3d11_submit_draw(void *ctx_ptr, vgfx_window_t win,
     memset(mat, 0, sizeof(*mat));
     memcpy(mat->dc, cmd->diffuse_color, sizeof(float) * 4);
     mat->sc[0] = cmd->specular[0]; mat->sc[1] = cmd->specular[1]; mat->sc[2] = cmd->specular[2];
-    mat->sc[3] = cmd->shininess;
+    mat->sc[3] = cmd->shininess; /* specularColor.w = shininess in shader */
+    mat->ec[0] = cmd->emissive_color[0]; mat->ec[1] = cmd->emissive_color[1]; mat->ec[2] = cmd->emissive_color[2];
+    mat->alpha = cmd->alpha;
     mat->ht = cmd->texture ? 1 : 0;
     mat->unlit = cmd->unlit;
     ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->cbPerMaterial, 0);
     ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 2, 1, &ctx->cbPerMaterial);
 
-    /* TODO: Upload lights as StructuredBuffer (requires SRV creation) */
+    /* Per-lights (cbuffer PerLights : register(b3)) */
+    ID3D11DeviceContext_Map(ctx->ctx, (ID3D11Resource *)ctx->cbPerLights, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    d3d_light_t *dl = (d3d_light_t *)mapped.pData;
+    memset(dl, 0, sizeof(d3d_light_t) * 8);
+    for (int32_t i = 0; i < light_count && i < 8; i++) {
+        dl[i].type = lights[i].type;
+        dl[i].dir[0] = lights[i].direction[0]; dl[i].dir[1] = lights[i].direction[1]; dl[i].dir[2] = lights[i].direction[2];
+        dl[i].pos[0] = lights[i].position[0]; dl[i].pos[1] = lights[i].position[1]; dl[i].pos[2] = lights[i].position[2];
+        dl[i].col[0] = lights[i].color[0]; dl[i].col[1] = lights[i].color[1]; dl[i].col[2] = lights[i].color[2];
+        dl[i].intensity = lights[i].intensity;
+        dl[i].attenuation = lights[i].attenuation;
+    }
+    ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->cbPerLights, 0);
+    ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 3, 1, &ctx->cbPerLights);
 
     ID3D11DeviceContext_DrawIndexed(ctx->ctx, cmd->index_count, 0, 0);
 

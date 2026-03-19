@@ -81,7 +81,12 @@ typedef struct
     double diffuse[4]; /* RGBA diffuse color */
     double specular[3];
     double shininess;
-    void *texture; /* Pixels object or NULL */
+    void *texture;      /* Pixels (diffuse, slot 0) or NULL */
+    void *normal_map;   /* Pixels (normal map, slot 1) or NULL */
+    void *specular_map; /* Pixels (specular map, slot 2) or NULL */
+    void *emissive_map; /* Pixels (emissive map, slot 3) or NULL */
+    double emissive[3]; /* emissive color multiplier */
+    double alpha;       /* opacity [0.0=invisible, 1.0=opaque], default 1.0 */
     int8_t unlit;
 } rt_material3d;
 
@@ -142,7 +147,14 @@ typedef struct
     void *backend_ctx;               /* opaque backend state */
 
     /* Frame state */
-    int8_t in_frame; /* 1 = between Begin/End */
+    int8_t in_frame;    /* 1 = between Begin/End */
+    float cached_vp[16]; /* VP matrix cached in begin_frame for debug drawing */
+    float cached_cam_pos[3]; /* camera position cached for sort key computation */
+
+    /* Deferred draw command queue (for transparency sorting) */
+    void *draw_cmds;      /* dynamic array of deferred_draw_t */
+    int32_t draw_count;
+    int32_t draw_capacity;
 
     /* Render target (NULL = render to window) */
     vgfx3d_rendertarget_t *render_target;

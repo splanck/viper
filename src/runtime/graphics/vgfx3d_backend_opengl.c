@@ -77,6 +77,9 @@ typedef ptrdiff_t GLintptr;
 #define GL_RGBA8                  0x8058
 #define GL_DEPTH_COMPONENT32F     0x8CAC
 #define GL_TEXTURE0               0x84C0
+#define GL_BLEND                  0x0BE2
+#define GL_SRC_ALPHA              0x0302
+#define GL_ONE_MINUS_SRC_ALPHA    0x0303
 
 //=============================================================================
 // GL function pointer types
@@ -120,6 +123,8 @@ typedef void (*PFNGLENABLEVERTEXATTRIBARRAYPROC)(GLuint);
 typedef void (*PFNGLDELETEBUFFERSPROC)(GLsizei, const GLuint *);
 typedef void (*PFNGLDELETEVERTEXARRAYSPROC)(GLsizei, const GLuint *);
 typedef void (*PFNGLDELETEPROGRAMPROC)(GLuint);
+typedef void (*PFNGLBLENDFUNCPROC)(GLenum, GLenum);
+typedef void (*PFNGLDEPTHMASKPROC)(GLboolean);
 
 //=============================================================================
 // Loaded GL function pointers
@@ -165,6 +170,8 @@ static struct {
     PFNGLDELETEBUFFERSPROC DeleteBuffers;
     PFNGLDELETEVERTEXARRAYSPROC DeleteVertexArrays;
     PFNGLDELETEPROGRAMPROC DeleteProgram;
+    PFNGLBLENDFUNCPROC BlendFunc;
+    PFNGLDEPTHMASKPROC DepthMask;
 } gl;
 
 /* GLX types */
@@ -215,6 +222,8 @@ static int load_gl(void) {
     LOAD(Enable); LOAD(Disable); LOAD(DepthFunc);
     LOAD(CullFace); LOAD(FrontFace); LOAD(Viewport);
     LOAD(DrawElements);
+    LOAD(BlendFunc);
+    LOAD(DepthMask);
 
     LOADX(ChooseFBConfig); LOADX(CreateNewContext); LOADX(SwapBuffers);
     LOADX(MakeCurrent); LOADX(DestroyContext); LOADX(GetProcAddress);
@@ -252,7 +261,7 @@ static const char *glsl_vertex_src =
     "layout(location=2) in vec2 aUV;\n"
     "layout(location=3) in vec4 aColor;\n"
     "layout(location=4) in vec3 aTangent;\n"
-    "layout(location=5) in ivec4 aBoneIdx;\n"
+    "layout(location=5) in uvec4 aBoneIdx;\n"
     "layout(location=6) in vec4 aBoneWt;\n"
     "uniform mat4 uModelMatrix;\n"
     "uniform mat4 uViewProjection;\n"
@@ -281,6 +290,7 @@ static const char *glsl_fragment_src =
     "uniform vec3 uAmbientColor;\n"
     "uniform vec4 uDiffuseColor;\n"
     "uniform vec4 uSpecularColor;\n" /* w = shininess */
+    "uniform vec3 uEmissiveColor;\n"
     "uniform int uUnlit;\n"
     "uniform int uLightCount;\n"
     "uniform int uLightType[8];\n"
@@ -290,7 +300,7 @@ static const char *glsl_fragment_src =
     "uniform float uLightIntensity[8];\n"
     "uniform float uLightAtten[8];\n"
     "void main() {\n"
-    "    if (uUnlit != 0) { FragColor = uDiffuseColor; return; }\n"
+    "    if (uUnlit != 0) { FragColor = vec4(uDiffuseColor.rgb, uAlpha); return; }\n"
     "    vec3 N = normalize(vNormal);\n"
     "    vec3 V = normalize(uCameraPos - vWorldPos);\n"
     "    vec3 result = uAmbientColor * uDiffuseColor.rgb;\n"
@@ -314,7 +324,8 @@ static const char *glsl_fragment_src =
     "            result += uLightColor[i] * uLightIntensity[i] * spec * uSpecularColor.rgb * atten;\n"
     "        }\n"
     "    }\n"
-    "    FragColor = vec4(result, uDiffuseColor.a);\n"
+    "    result += uEmissiveColor;\n"
+    "    FragColor = vec4(result, uAlpha);\n"
     "}\n";
 
 //=============================================================================
@@ -333,7 +344,7 @@ typedef struct {
     float clearR, clearG, clearB;
     /* Uniform locations */
     GLint uModelMatrix, uViewProjection, uNormalMatrix;
-    GLint uCameraPos, uAmbientColor, uDiffuseColor, uSpecularColor;
+    GLint uCameraPos, uAmbientColor, uDiffuseColor, uSpecularColor, uEmissiveColor, uAlpha;
     GLint uUnlit, uLightCount;
     GLint uLightType[8], uLightDir[8], uLightPos[8];
     GLint uLightColor[8], uLightIntensity[8], uLightAtten[8];
@@ -378,11 +389,9 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     if (!native) return NULL;
     Window xwin = (Window)(uintptr_t)native;
 
-    /* We need the Display pointer — get it from the vgfx internals.
-     * Since vgfx_get_native_view returns the Window, we need Display separately.
-     * For now, open a new connection (simple but suboptimal). */
-    Display *dpy = XOpenDisplay(NULL);
-    if (!dpy) return NULL;
+    /* Get Display from vgfx (shared X11 connection) */
+    Display *dpy = (Display *)vgfx_get_native_display(win);
+    if (!dpy) return NULL; /* No X11 display available */
 
     /* Choose FBConfig */
     int fb_attribs[] = {
@@ -395,17 +404,17 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     };
     int fb_count = 0;
     GLXFBConfig *configs = glx.ChooseFBConfig(dpy, DefaultScreen(dpy), fb_attribs, &fb_count);
-    if (!configs || fb_count == 0) { XCloseDisplay(dpy); return NULL; }
+    if (!configs || fb_count == 0) { /* dpy owned by vgfx */return NULL; }
 
     /* Create GLX context */
     GLXContext glxCtx = glx.CreateNewContext(dpy, configs[0], GLX_RGBA_TYPE, NULL, 1);
     XFree(configs);
-    if (!glxCtx) { XCloseDisplay(dpy); return NULL; }
+    if (!glxCtx) { /* dpy owned by vgfx */return NULL; }
 
     glx.MakeCurrent(dpy, xwin, glxCtx);
 
     gl_context_t *ctx = (gl_context_t *)calloc(1, sizeof(gl_context_t));
-    if (!ctx) { glx.DestroyContext(dpy, glxCtx); XCloseDisplay(dpy); return NULL; }
+    if (!ctx) { glx.DestroyContext(dpy, glxCtx); /* dpy owned by vgfx */return NULL; }
     ctx->display = dpy;
     ctx->window = xwin;
     ctx->glxCtx = glxCtx;
@@ -415,7 +424,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     /* Compile shaders */
     GLuint vs = compile_shader(GL_VERTEX_SHADER, glsl_vertex_src);
     GLuint fs = compile_shader(GL_FRAGMENT_SHADER, glsl_fragment_src);
-    if (!vs || !fs) { free(ctx); glx.DestroyContext(dpy, glxCtx); XCloseDisplay(dpy); return NULL; }
+    if (!vs || !fs) { free(ctx); glx.DestroyContext(dpy, glxCtx); /* dpy owned by vgfx */return NULL; }
 
     ctx->program = gl.CreateProgram();
     gl.AttachShader(ctx->program, vs);
@@ -426,7 +435,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
 
     GLint linked;
     gl.GetProgramiv(ctx->program, GL_LINK_STATUS, &linked);
-    if (!linked) { free(ctx); glx.DestroyContext(dpy, glxCtx); XCloseDisplay(dpy); return NULL; }
+    if (!linked) { free(ctx); glx.DestroyContext(dpy, glxCtx); /* dpy owned by vgfx */return NULL; }
 
     /* Get uniform locations */
     ctx->uModelMatrix = gl.GetUniformLocation(ctx->program, "uModelMatrix");
@@ -436,6 +445,8 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     ctx->uAmbientColor = gl.GetUniformLocation(ctx->program, "uAmbientColor");
     ctx->uDiffuseColor = gl.GetUniformLocation(ctx->program, "uDiffuseColor");
     ctx->uSpecularColor = gl.GetUniformLocation(ctx->program, "uSpecularColor");
+    ctx->uEmissiveColor = gl.GetUniformLocation(ctx->program, "uEmissiveColor");
+    ctx->uAlpha = gl.GetUniformLocation(ctx->program, "uAlpha");
     ctx->uUnlit = gl.GetUniformLocation(ctx->program, "uUnlit");
     ctx->uLightCount = gl.GetUniformLocation(ctx->program, "uLightCount");
     for (int i = 0; i < 8; i++) {
@@ -474,8 +485,8 @@ static void gl_destroy_ctx(void *ctx_ptr) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (ctx->program) gl.DeleteProgram(ctx->program);
     if (ctx->vao) gl.DeleteVertexArrays(1, &ctx->vao);
-    if (ctx->glxCtx) glx.DestroyContext(ctx->display, ctx->glxCtx);
-    if (ctx->display) XCloseDisplay(ctx->display);
+    if (ctx->glxCtx && ctx->display) glx.DestroyContext(ctx->display, ctx->glxCtx);
+    /* Display is owned by vgfx — do NOT close it here */
     free(ctx);
 }
 
@@ -495,6 +506,8 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     gl.ClearColor(ctx->clearR, ctx->clearG, ctx->clearB, 1.0f);
     gl.ClearDepth(1.0);
     gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    gl.Enable(GL_BLEND);
+    gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     gl.UseProgram(ctx->program);
 }
 
@@ -520,7 +533,12 @@ static void gl_submit_draw(void *ctx_ptr, vgfx_window_t win,
                  cmd->diffuse_color[2], cmd->diffuse_color[3]);
     gl.Uniform4f(ctx->uSpecularColor, cmd->specular[0], cmd->specular[1],
                  cmd->specular[2], cmd->shininess);
+    gl.Uniform3f(ctx->uEmissiveColor, cmd->emissive_color[0], cmd->emissive_color[1], cmd->emissive_color[2]);
+    gl.Uniform1f(ctx->uAlpha, cmd->alpha);
     gl.Uniform1i(ctx->uUnlit, cmd->unlit);
+
+    /* Toggle depth write for transparent draws */
+    gl.DepthMask(cmd->alpha >= 1.0f ? GL_TRUE : GL_FALSE);
 
     /* Scene uniforms */
     gl.Uniform3f(ctx->uCameraPos, ctx->cam_pos[0], ctx->cam_pos[1], ctx->cam_pos[2]);
@@ -553,7 +571,7 @@ static void gl_submit_draw(void *ctx_ptr, vgfx_window_t win,
                   cmd->indices, GL_STATIC_DRAW);
 
     /* Vertex attributes (80-byte stride) */
-    GLsizei stride = 80;
+    GLsizei stride = (GLsizei)sizeof(vgfx3d_vertex_t);
     gl.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void *)0);   /* pos */
     gl.EnableVertexAttribArray(0);
     gl.VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void *)12);  /* normal */

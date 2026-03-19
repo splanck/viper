@@ -1,0 +1,81 @@
+// Demo: Alpha blending — transparent glass panels over a lit scene
+module DemoTransparency;
+
+bind Viper.Terminal;
+
+func start() {
+    var canvas = Viper.Graphics3D.Canvas3D.New("Transparency Demo", 640, 480);
+    var cam = Viper.Graphics3D.Camera3D.New(60.0, 640.0 / 480.0, 0.1, 100.0);
+
+    var sphere = Viper.Graphics3D.Mesh3D.NewSphere(0.6, 16);
+    var floor = Viper.Graphics3D.Mesh3D.NewPlane(10.0, 10.0);
+    var box = Viper.Graphics3D.Mesh3D.NewBox(1.0, 1.0, 1.0);
+
+    // Build glass panel (vertical quad)
+    var panel = Viper.Graphics3D.Mesh3D.New();
+    Viper.Graphics3D.Mesh3D.AddVertex(panel, -1.0, -1.0, 0.0, 0, 0, 1, 0, 1);
+    Viper.Graphics3D.Mesh3D.AddVertex(panel,  1.0, -1.0, 0.0, 0, 0, 1, 1, 1);
+    Viper.Graphics3D.Mesh3D.AddVertex(panel,  1.0,  1.0, 0.0, 0, 0, 1, 1, 0);
+    Viper.Graphics3D.Mesh3D.AddVertex(panel, -1.0,  1.0, 0.0, 0, 0, 1, 0, 0);
+    Viper.Graphics3D.Mesh3D.AddTriangle(panel, 0, 1, 2);
+    Viper.Graphics3D.Mesh3D.AddTriangle(panel, 0, 2, 3);
+
+    // Opaque materials
+    var floor_mat = Viper.Graphics3D.Material3D.NewColor(0.3, 0.3, 0.35);
+    var sphere_mat = Viper.Graphics3D.Material3D.NewColor(0.9, 0.2, 0.15);
+    Viper.Graphics3D.Material3D.SetShininess(sphere_mat, 64.0);
+    var box_mat = Viper.Graphics3D.Material3D.NewColor(0.2, 0.5, 0.9);
+
+    // Transparent materials (glass panels)
+    var red_glass = Viper.Graphics3D.Material3D.NewColor(1.0, 0.2, 0.2);
+    Viper.Graphics3D.Material3D.set_Alpha(red_glass, 0.35);
+
+    var green_glass = Viper.Graphics3D.Material3D.NewColor(0.2, 1.0, 0.3);
+    Viper.Graphics3D.Material3D.set_Alpha(green_glass, 0.35);
+
+    var blue_glass = Viper.Graphics3D.Material3D.NewColor(0.3, 0.4, 1.0);
+    Viper.Graphics3D.Material3D.set_Alpha(blue_glass, 0.35);
+
+    // Light
+    var sun_dir = new Viper.Math.Vec3(-0.5, -1.0, -0.3);
+    var sun = Viper.Graphics3D.Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
+    Viper.Graphics3D.Canvas3D.SetLight(canvas, 0, sun);
+    Viper.Graphics3D.Canvas3D.SetAmbient(canvas, 0.12, 0.12, 0.18);
+
+    var floor_xform = Viper.Math.Mat4.Translate(0.0, -1.0, 0.0);
+    var angle = 0.0;
+
+    while (Viper.Graphics3D.Canvas3D.get_ShouldClose(canvas) == 0) {
+        Viper.Graphics3D.Canvas3D.Poll(canvas);
+
+        var target = new Viper.Math.Vec3(0.0, 0.5, 0.0);
+        Viper.Graphics3D.Camera3D.Orbit(cam, target, 7.0, angle * 20.0, 15.0);
+
+        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.05, 0.05, 0.1);
+        Viper.Graphics3D.Canvas3D.Begin(canvas, cam);
+
+        // Opaque objects (rendered first automatically)
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, floor, floor_xform, floor_mat);
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, sphere,
+            Viper.Math.Mat4.Translate(0.0, 0.0, 0.0), sphere_mat);
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, box,
+            Viper.Math.Mat4.Mul(Viper.Math.Mat4.Translate(-2.0, 0.0, 0.0),
+                                Viper.Math.Mat4.RotateY(angle * 0.5)), box_mat);
+
+        // Transparent panels — disable backface culling so they're visible from both sides
+        Viper.Graphics3D.Canvas3D.SetBackfaceCull(canvas, false);
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, panel,
+            Viper.Math.Mat4.Translate(-1.5, 0.5, 1.0), red_glass);
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, panel,
+            Viper.Math.Mat4.Translate(0.0, 0.5, 1.5), green_glass);
+        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, panel,
+            Viper.Math.Mat4.Translate(1.5, 0.5, 1.0), blue_glass);
+
+        Viper.Graphics3D.Canvas3D.SetBackfaceCull(canvas, true);
+
+        Viper.Graphics3D.Canvas3D.End(canvas);
+        Viper.Graphics3D.Canvas3D.Flip(canvas);
+
+        angle = angle + 0.01;
+    }
+}

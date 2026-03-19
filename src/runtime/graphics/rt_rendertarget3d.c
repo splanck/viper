@@ -193,6 +193,14 @@ void rt_canvas3d_set_render_target(void *canvas, void *target)
     rt_rendertarget3d *rtd = (rt_rendertarget3d *)target;
     c->render_target = rtd->target;
 
+    /* If already in RTT mode, just update the target on the current backend */
+    if (c->render_target_saved_backend)
+    {
+        if (c->backend && c->backend->set_render_target)
+            c->backend->set_render_target(c->backend_ctx, rtd->target);
+        return;
+    }
+
     /* If using a GPU backend, temporarily switch to software for RTT.
      * Also hide the GPU layer so software output is visible. */
     if (c->backend != &vgfx3d_software_backend)
@@ -221,11 +229,9 @@ void rt_canvas3d_reset_render_target(void *canvas)
         return;
     rt_canvas3d *c = (rt_canvas3d *)canvas;
 
-    /* Clear render target — software backend will now write to window framebuffer.
-     * We keep using the software backend (don't restore GPU) because the GPU
-     * backend doesn't support Pixels-based textures yet. The software backend
-     * handles texture sampling from the render target output. GPU backend is
-     * restored in the finalizer or on next frame if no RTT is used. */
+    /* Clear render target — software backend continues for the rest of this frame.
+     * GPU backend is restored in the NEXT frame's Begin() when no RTT is active.
+     * This ensures Pixels textures (from AsPixels) work in the main pass. */
     if (c->backend && c->backend->set_render_target)
         c->backend->set_render_target(c->backend_ctx, NULL);
 

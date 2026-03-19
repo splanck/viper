@@ -43,6 +43,7 @@
 @property (nonatomic, strong) id<MTLCommandQueue> commandQueue;
 @property (nonatomic, strong) id<MTLRenderPipelineState> pipelineState;
 @property (nonatomic, strong) id<MTLDepthStencilState> depthState;
+@property (nonatomic, strong) id<MTLDepthStencilState> depthStateNoWrite;
 @property (nonatomic, strong) CAMetalLayer *metalLayer;
 @property (nonatomic, strong) id<MTLTexture> depthTexture;
 @property (nonatomic, strong) id<MTLLibrary> library;
@@ -110,9 +111,11 @@ static NSString *metal_shader_source = @
     "struct PerMaterial {\n"
     "    float4 diffuseColor;\n"
     "    float4 specularColor;\n"
+    "    float4 emissiveColor;\n"
+    "    float alpha;\n"
     "    int hasTexture;\n"
     "    int unlit;\n"
-    "    int _pad[2];\n"
+    "    int _pad;\n"
     "};\n"
     "\n"
     "vertex VertexOut vertex_main(\n"
@@ -137,7 +140,7 @@ static NSString *metal_shader_source = @
     "    constant PerMaterial &material [[buffer(1)]],\n"
     "    constant Light *lights [[buffer(2)]]\n"
     ") {\n"
-    "    if (material.unlit) return material.diffuseColor;\n"
+    "    if (material.unlit) return float4(material.diffuseColor.rgb, material.alpha);\n"
     "    float3 N = normalize(in.normal);\n"
     "    float3 V = normalize(scene.cameraPosition.xyz - in.worldPos);\n"
     "    float3 result = scene.ambientColor.rgb * material.diffuseColor.rgb;\n"
@@ -161,7 +164,8 @@ static NSString *metal_shader_source = @
     "            result += lights[i].color.rgb * lights[i].intensity * spec * material.specularColor.rgb * atten;\n"
     "        }\n"
     "    }\n"
-    "    return float4(result, material.diffuseColor.a);\n"
+    "    result += material.emissiveColor.rgb;\n"
+    "    return float4(result, material.alpha);\n"
     "}\n";
 
 //=============================================================================
@@ -175,7 +179,7 @@ typedef struct {
     float dir[4]; float pos[4]; float col[4];
     float intensity; float attenuation; float _p3[2];
 } mtl_light_t;
-typedef struct { float dc[4]; float sc[4]; int32_t ht; int32_t unlit; int32_t _p[2]; } mtl_per_material_t;
+typedef struct { float dc[4]; float sc[4]; float ec[4]; float alpha; int32_t ht; int32_t unlit; int32_t _p; } mtl_per_material_t;
 
 //=============================================================================
 // Helpers
@@ -262,6 +266,12 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         pd.fragmentFunction = ff;
         pd.vertexDescriptor = create_vertex_descriptor();
         pd.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        /* Enable alpha blending: src*srcAlpha + dst*(1-srcAlpha) */
+        pd.colorAttachments[0].blendingEnabled = YES;
+        pd.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        pd.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        pd.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+        pd.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
         pd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
 
         ctx.pipelineState = [device newRenderPipelineStateWithDescriptor:pd error:&error];
@@ -274,6 +284,9 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         dd.depthCompareFunction = MTLCompareFunctionLess;
         dd.depthWriteEnabled = YES;
         ctx.depthState = [device newDepthStencilStateWithDescriptor:dd];
+        /* Depth state for transparent draws: test ON, write OFF */
+        dd.depthWriteEnabled = NO;
+        ctx.depthStateNoWrite = [device newDepthStencilStateWithDescriptor:dd];
 
         /* Depth texture */
         MTLTextureDescriptor *td = [MTLTextureDescriptor
@@ -351,6 +364,12 @@ static void metal_submit_draw(void *ctx_ptr, vgfx_window_t win,
 
         [ctx.encoder setCullMode:backface_cull ? MTLCullModeBack : MTLCullModeNone];
 
+        /* Switch depth state: no Z-write for transparent draws */
+        if (cmd->alpha < 1.0f)
+            [ctx.encoder setDepthStencilState:ctx.depthStateNoWrite];
+        else
+            [ctx.encoder setDepthStencilState:ctx.depthState];
+
         id<MTLBuffer> vb = [ctx.device newBufferWithBytes:cmd->vertices
             length:cmd->vertex_count * sizeof(vgfx3d_vertex_t)
             options:MTLResourceStorageModeShared];
@@ -382,12 +401,14 @@ static void metal_submit_draw(void *ctx_ptr, vgfx_window_t win,
         memcpy(mat.dc, cmd->diffuse_color, sizeof(float) * 4);
         mat.sc[0] = cmd->specular[0]; mat.sc[1] = cmd->specular[1]; mat.sc[2] = cmd->specular[2];
         mat.sc[3] = cmd->shininess;
+        mat.ec[0] = cmd->emissive_color[0]; mat.ec[1] = cmd->emissive_color[1]; mat.ec[2] = cmd->emissive_color[2]; mat.ec[3] = 0;
+        mat.alpha = cmd->alpha;
         mat.ht = cmd->texture ? 1 : 0;
         mat.unlit = cmd->unlit;
         [ctx.encoder setFragmentBytes:&mat length:sizeof(mat) atIndex:1];
 
-        /* Lights */
-        if (light_count > 0) {
+        /* Lights — always set buffer 2, even if empty (prevents validation warnings) */
+        {
             mtl_light_t ml[8];
             memset(ml, 0, sizeof(ml));
             for (int32_t i = 0; i < light_count && i < 8; i++) {
@@ -398,7 +419,8 @@ static void metal_submit_draw(void *ctx_ptr, vgfx_window_t win,
                 ml[i].intensity = lights[i].intensity;
                 ml[i].attenuation = lights[i].attenuation;
             }
-            [ctx.encoder setFragmentBytes:ml length:sizeof(mtl_light_t) * light_count atIndex:2];
+            int32_t buf_count = light_count > 0 ? light_count : 1;
+            [ctx.encoder setFragmentBytes:ml length:sizeof(mtl_light_t) * buf_count atIndex:2];
         }
 
         [ctx.encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle

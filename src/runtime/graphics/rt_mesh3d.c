@@ -29,6 +29,9 @@
 #include "rt_string.h"
 
 #include <math.h>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -210,16 +213,28 @@ void *rt_mesh3d_clone(void *obj)
     free(dst->vertices);
     free(dst->indices);
 
-    dst->vertex_count = src->vertex_count;
     dst->vertex_capacity = src->vertex_count > 0 ? src->vertex_count : 1;
     dst->vertices = (vgfx3d_vertex_t *)malloc(dst->vertex_capacity * sizeof(vgfx3d_vertex_t));
-    if (dst->vertices && src->vertex_count > 0)
+    dst->index_capacity = src->index_count > 0 ? src->index_count : 1;
+    dst->indices = (uint32_t *)malloc(dst->index_capacity * sizeof(uint32_t));
+
+    if (!dst->vertices || !dst->indices)
+    {
+        free(dst->vertices);
+        dst->vertices = NULL;
+        free(dst->indices);
+        dst->indices = NULL;
+        dst->vertex_count = 0;
+        dst->index_count = 0;
+        return dst;
+    }
+
+    dst->vertex_count = src->vertex_count;
+    if (src->vertex_count > 0)
         memcpy(dst->vertices, src->vertices, src->vertex_count * sizeof(vgfx3d_vertex_t));
 
     dst->index_count = src->index_count;
-    dst->index_capacity = src->index_count > 0 ? src->index_count : 1;
-    dst->indices = (uint32_t *)malloc(dst->index_capacity * sizeof(uint32_t));
-    if (dst->indices && src->index_count > 0)
+    if (src->index_count > 0)
         memcpy(dst->indices, src->indices, src->index_count * sizeof(uint32_t));
 
     return dst;
@@ -503,6 +518,91 @@ static double obj_parse_double(const char **p)
     return val;
 }
 
+void rt_mesh3d_calc_tangents(void *obj)
+{
+    if (!obj)
+        return;
+    rt_mesh3d *m = (rt_mesh3d *)obj;
+    if (m->vertex_count == 0 || m->index_count == 0)
+        return;
+
+    /* Zero all tangents */
+    for (uint32_t i = 0; i < m->vertex_count; i++)
+    {
+        m->vertices[i].tangent[0] = 0.0f;
+        m->vertices[i].tangent[1] = 0.0f;
+        m->vertices[i].tangent[2] = 0.0f;
+    }
+
+    /* Accumulate tangents per triangle (Lengyel's method) */
+    for (uint32_t i = 0; i + 2 < m->index_count; i += 3)
+    {
+        uint32_t i0 = m->indices[i], i1 = m->indices[i + 1], i2 = m->indices[i + 2];
+        if (i0 >= m->vertex_count || i1 >= m->vertex_count || i2 >= m->vertex_count)
+            continue;
+
+        float *p0 = m->vertices[i0].pos;
+        float *p1 = m->vertices[i1].pos;
+        float *p2 = m->vertices[i2].pos;
+        float *uv0 = m->vertices[i0].uv;
+        float *uv1 = m->vertices[i1].uv;
+        float *uv2 = m->vertices[i2].uv;
+
+        float edge1[3] = {p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]};
+        float edge2[3] = {p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]};
+        float duv1[2] = {uv1[0] - uv0[0], uv1[1] - uv0[1]};
+        float duv2[2] = {uv2[0] - uv0[0], uv2[1] - uv0[1]};
+
+        float det = duv1[0] * duv2[1] - duv1[1] * duv2[0];
+        if (fabsf(det) < 1e-8f)
+            continue; /* degenerate UV */
+        float inv_det = 1.0f / det;
+
+        float tx = (edge1[0] * duv2[1] - edge2[0] * duv1[1]) * inv_det;
+        float ty = (edge1[1] * duv2[1] - edge2[1] * duv1[1]) * inv_det;
+        float tz = (edge1[2] * duv2[1] - edge2[2] * duv1[1]) * inv_det;
+
+        m->vertices[i0].tangent[0] += tx;
+        m->vertices[i0].tangent[1] += ty;
+        m->vertices[i0].tangent[2] += tz;
+        m->vertices[i1].tangent[0] += tx;
+        m->vertices[i1].tangent[1] += ty;
+        m->vertices[i1].tangent[2] += tz;
+        m->vertices[i2].tangent[0] += tx;
+        m->vertices[i2].tangent[1] += ty;
+        m->vertices[i2].tangent[2] += tz;
+    }
+
+    /* Normalize and Gram-Schmidt orthogonalize against normal */
+    for (uint32_t i = 0; i < m->vertex_count; i++)
+    {
+        float *t = m->vertices[i].tangent;
+        float *n = m->vertices[i].normal;
+
+        /* Gram-Schmidt: T = T - N * dot(N, T) */
+        float dot = n[0] * t[0] + n[1] * t[1] + n[2] * t[2];
+        t[0] -= n[0] * dot;
+        t[1] -= n[1] * dot;
+        t[2] -= n[2] * dot;
+
+        /* Normalize */
+        float len = sqrtf(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]);
+        if (len > 1e-8f)
+        {
+            t[0] /= len;
+            t[1] /= len;
+            t[2] /= len;
+        }
+        else
+        {
+            /* Default tangent for degenerate UVs */
+            t[0] = 1.0f;
+            t[1] = 0.0f;
+            t[2] = 0.0f;
+        }
+    }
+}
+
 void *rt_mesh3d_from_obj(rt_string path)
 {
     if (!path)
@@ -538,7 +638,7 @@ void *rt_mesh3d_from_obj(rt_string path)
         return mesh;
     }
 
-    char line[1024];
+    char line[4096];
     while (fgets(line, sizeof(line), f))
     {
         const char *p = line;
@@ -555,7 +655,10 @@ void *rt_mesh3d_from_obj(rt_string path)
             if (cnt_p >= cap_p)
             {
                 cap_p *= 2;
-                positions = (float *)realloc(positions, (size_t)cap_p * 3 * sizeof(float));
+                float *tmp = (float *)realloc(positions, (size_t)cap_p * 3 * sizeof(float));
+                if (!tmp)
+                    break;
+                positions = tmp;
             }
             positions[cnt_p * 3 + 0] = (float)obj_parse_double(&p);
             positions[cnt_p * 3 + 1] = (float)obj_parse_double(&p);
@@ -569,7 +672,10 @@ void *rt_mesh3d_from_obj(rt_string path)
             if (cnt_n >= cap_n)
             {
                 cap_n *= 2;
-                normals = (float *)realloc(normals, (size_t)cap_n * 3 * sizeof(float));
+                float *tmp = (float *)realloc(normals, (size_t)cap_n * 3 * sizeof(float));
+                if (!tmp)
+                    break;
+                normals = tmp;
             }
             normals[cnt_n * 3 + 0] = (float)obj_parse_double(&p);
             normals[cnt_n * 3 + 1] = (float)obj_parse_double(&p);
@@ -583,7 +689,10 @@ void *rt_mesh3d_from_obj(rt_string path)
             if (cnt_t >= cap_t)
             {
                 cap_t *= 2;
-                texcoords = (float *)realloc(texcoords, (size_t)cap_t * 2 * sizeof(float));
+                float *tmp = (float *)realloc(texcoords, (size_t)cap_t * 2 * sizeof(float));
+                if (!tmp)
+                    break;
+                texcoords = tmp;
             }
             texcoords[cnt_t * 2 + 0] = (float)obj_parse_double(&p);
             texcoords[cnt_t * 2 + 1] = (float)obj_parse_double(&p);

@@ -1259,4 +1259,14 @@ void *vgfx_get_native_view(vgfx_window_t window)
     return (void *)(uintptr_t)x11->window; /* X11 Window is unsigned long */
 }
 
+void *vgfx_get_native_display(vgfx_window_t window)
+{
+    if (!window)
+        return NULL;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)window->platform_data;
+    if (!x11)
+        return NULL;
+    return (void *)x11->display;
+}
+
 #endif /* __linux__ || __unix__ */

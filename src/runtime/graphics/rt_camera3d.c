@@ -24,6 +24,9 @@
 #include "rt_canvas3d_internal.h"
 
 #include <math.h>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 #include <stdint.h>
 #include <string.h>
 
@@ -57,12 +60,20 @@ static void build_perspective(double *m, double fov_deg, double aspect,
 static void build_look_at(double *m, const double *eye,
                            const double *target, const double *up)
 {
-    /* Forward = normalize(eye - target) — right-handed */
+    /* Forward = normalize(eye - target) — right-handed.
+     * If eye == target (flen ≈ 0), return identity matrix to avoid
+     * producing a degenerate view matrix with NaN/zero rows. */
     double fx = eye[0] - target[0];
     double fy = eye[1] - target[1];
     double fz = eye[2] - target[2];
     double flen = sqrt(fx * fx + fy * fy + fz * fz);
-    if (flen > 1e-12)
+    if (flen < 1e-12)
+    {
+        /* eye == target: produce identity view matrix */
+        memset(m, 0, 16 * sizeof(double));
+        m[0] = m[5] = m[10] = m[15] = 1.0;
+        return;
+    }
     {
         fx /= flen;
         fy /= flen;

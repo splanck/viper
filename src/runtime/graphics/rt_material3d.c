@@ -39,6 +39,11 @@ void *rt_material3d_new(void)
     mat->specular[0] = mat->specular[1] = mat->specular[2] = 1.0;
     mat->shininess = 32.0;
     mat->texture = NULL;
+    mat->normal_map = NULL;
+    mat->specular_map = NULL;
+    mat->emissive_map = NULL;
+    mat->emissive[0] = mat->emissive[1] = mat->emissive[2] = 0.0;
+    mat->alpha = 1.0;
     mat->unlit = 0;
     return mat;
 }
@@ -93,6 +98,51 @@ void rt_material3d_set_unlit(void *obj, int8_t unlit)
     if (!obj)
         return;
     ((rt_material3d *)obj)->unlit = unlit;
+}
+
+void rt_material3d_set_alpha(void *obj, double alpha)
+{
+    if (!obj)
+        return;
+    ((rt_material3d *)obj)->alpha = alpha;
+}
+
+double rt_material3d_get_alpha(void *obj)
+{
+    if (!obj)
+        return 1.0;
+    return ((rt_material3d *)obj)->alpha;
+}
+
+void rt_material3d_set_normal_map(void *obj, void *pixels)
+{
+    if (!obj)
+        return;
+    ((rt_material3d *)obj)->normal_map = pixels;
+}
+
+void rt_material3d_set_specular_map(void *obj, void *pixels)
+{
+    if (!obj)
+        return;
+    ((rt_material3d *)obj)->specular_map = pixels;
+}
+
+void rt_material3d_set_emissive_map(void *obj, void *pixels)
+{
+    if (!obj)
+        return;
+    ((rt_material3d *)obj)->emissive_map = pixels;
+}
+
+void rt_material3d_set_emissive_color(void *obj, double r, double g, double b)
+{
+    if (!obj)
+        return;
+    rt_material3d *m = (rt_material3d *)obj;
+    m->emissive[0] = r;
+    m->emissive[1] = g;
+    m->emissive[2] = b;
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

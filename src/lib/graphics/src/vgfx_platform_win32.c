@@ -1222,6 +1222,12 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     SetWindowPos(data->hwnd, NULL, 0, 0, w, h, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
+void *vgfx_get_native_display(vgfx_window_t window)
+{
+    (void)window;
+    return NULL; /* Windows doesn't have a separate display connection */
+}
+
 void *vgfx_get_native_view(vgfx_window_t window)
 {
     if (!window)

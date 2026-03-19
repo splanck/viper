@@ -92,6 +92,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `SetLight(index, light)` | Method | Bind a light (0-7) to the scene |
 | `SetAmbient(r, g, b)` | Method | Set ambient light color |
 | `SetBackfaceCull(enabled)` | Method | Toggle backface culling (default: on) |
+| `Wireframe` | Property | Toggle wireframe rendering (write-only, default: off) |
 | `DrawLine3D(from, to, color)` | Method | Debug: draw 3D line (color = 0xRRGGBB) |
 | `DrawPoint3D(pos, color, size)` | Method | Debug: draw 3D point |
 | `Screenshot()` | Method | Capture framebuffer as Pixels object |
@@ -177,6 +178,13 @@ Surface appearance properties.
 | `SetTexture(pixels)` | Set/change texture |
 | `SetShininess(s)` | Specular exponent (default 32.0, higher = sharper highlights) |
 | `SetUnlit(flag)` | Skip lighting (render flat color) |
+| `Alpha` | Property | Opacity [0.0=invisible, 1.0=opaque]. Default 1.0. Transparent objects are sorted back-to-front automatically |
+| `SetNormalMap(pixels)` | Set tangent-space normal map (Pixels) |
+| `SetSpecularMap(pixels)` | Set specular intensity map (Pixels) |
+| `SetEmissiveMap(pixels)` | Set emissive color map (Pixels) |
+| `SetEmissiveColor(r, g, b)` | Set emissive color multiplier (additive glow) |
+
+**Ownership:** Material3D holds a reference to Pixels objects (textures, maps). The user must keep Pixels alive while the material references them. If a Pixels object is collected while still set on a material, rendering may crash.
 
 ## Light3D
 
@@ -194,6 +202,25 @@ Light sources for the scene. Up to 8 lights simultaneously.
 | `SetColor(r, g, b)` | Change light color |
 
 **Lighting model:** Blinn-Phong with per-vertex (software) or per-pixel (GPU) shading. Includes diffuse and specular components.
+
+## RenderTarget3D
+
+Offscreen rendering targets for render-to-texture effects (TV screens, mirrors, security cameras, post-processing).
+
+| Member | Description |
+|--------|-------------|
+| `New(width, height)` | Create offscreen target (1-8192 pixels per dimension) |
+| `Width` / `Height` | Target dimensions (read-only) |
+| `AsPixels()` | Read back color buffer as a new Pixels object |
+
+**Usage pattern:**
+1. `canvas.SetRenderTarget(target)` — redirect rendering to offscreen target
+2. `canvas.Clear / Begin / DrawMesh / End` — render scene to target
+3. `material.SetTexture(target.AsPixels())` — use result as texture
+4. `canvas.ResetRenderTarget()` — return to window rendering
+5. Render main scene with the textured material
+
+**Note:** `AsPixels()` returns a fresh copy each call. The render target's buffers are independent from the window framebuffer.
 
 ## Backend Selection
 
@@ -215,6 +242,7 @@ The software renderer is always available and produces identical visual output (
 - **Mesh generators:** `NewSphere(r, 8)` is adequate for most uses. Higher segments (16-32) for close-up objects.
 - **Lights:** Each additional light adds computation. Use 1-3 lights for best performance.
 - **Backface culling:** Enabled by default. Disable only for double-sided geometry (leaves, glass).
+- **Non-uniform scaling:** Normal vectors are transformed by the model matrix directly (not the inverse-transpose). This is correct for rotation, translation, and uniform scaling. Non-uniform scaling (e.g., squashing one axis) will distort lighting.
 
 ## Resource Limits
 

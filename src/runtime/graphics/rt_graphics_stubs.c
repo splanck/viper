@@ -930,7 +930,14 @@ void *rt_material3d_new_textured(void *p) { (void)p; rt_trap("Material3D.NewText
 void  rt_material3d_set_color(void *o, double r, double g, double b) { (void)o; (void)r; (void)g; (void)b; }
 void  rt_material3d_set_texture(void *o, void *p) { (void)o; (void)p; }
 void  rt_material3d_set_shininess(void *o, double s) { (void)o; (void)s; }
+void  rt_material3d_set_alpha(void *o, double a) { (void)o; (void)a; }
+double rt_material3d_get_alpha(void *o) { (void)o; return 1.0; }
 void  rt_material3d_set_unlit(void *o, int8_t u) { (void)o; (void)u; }
+void  rt_material3d_set_normal_map(void *o, void *p) { (void)o; (void)p; }
+void  rt_material3d_set_specular_map(void *o, void *p) { (void)o; (void)p; }
+void  rt_material3d_set_emissive_map(void *o, void *p) { (void)o; (void)p; }
+void  rt_material3d_set_emissive_color(void *o, double r, double g, double b) { (void)o; (void)r; (void)g; (void)b; }
+void  rt_mesh3d_calc_tangents(void *o) { (void)o; }
 
 void *rt_light3d_new_directional(void *d, double r, double g, double b) { (void)d; (void)r; (void)g; (void)b; rt_trap("Light3D.NewDirectional: graphics support not compiled in"); return NULL; }
 void *rt_light3d_new_point(void *p, double r, double g, double b, double a) { (void)p; (void)r; (void)g; (void)b; (void)a; rt_trap("Light3D.NewPoint: graphics support not compiled in"); return NULL; }

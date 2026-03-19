@@ -41,8 +41,13 @@ typedef struct
     float diffuse_color[4]; /* RGBA material color */
     float specular[3];      /* RGB specular color */
     float shininess;        /* specular exponent */
+    float alpha;            /* opacity [0.0=invisible, 1.0=opaque] */
     int8_t unlit;           /* skip lighting if true */
-    const void *texture;    /* Pixels object (rt_pixels_view*) or NULL */
+    const void *texture;    /* Pixels object (diffuse, slot 0) or NULL */
+    const void *normal_map;   /* Pixels (normal map, slot 1) or NULL */
+    const void *specular_map; /* Pixels (specular map, slot 2) or NULL */
+    const void *emissive_map; /* Pixels (emissive map, slot 3) or NULL */
+    float emissive_color[3];  /* emissive color multiplier */
 } vgfx3d_draw_cmd_t;
 
 /*==========================================================================

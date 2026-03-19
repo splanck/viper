@@ -595,6 +595,111 @@ static void test_light_null_safety()
 }
 
 //=============================================================================
+// Phase 9 — Multi-texture material tests
+//=============================================================================
+
+static void test_material_set_emissive()
+{
+    TEST("Material3D.SetEmissiveColor — no crash");
+    void *m = rt_material3d_new();
+    rt_material3d_set_emissive_color(m, 1.0, 0.5, 0.2);
+    PASS();
+}
+
+static void test_material_set_maps()
+{
+    TEST("Material3D — set normal/specular/emissive maps");
+    void *m = rt_material3d_new();
+    void *px = rt_pixels_new(4, 4);
+    rt_material3d_set_normal_map(m, px);
+    rt_material3d_set_specular_map(m, px);
+    rt_material3d_set_emissive_map(m, px);
+    /* Set to NULL should also work */
+    rt_material3d_set_normal_map(m, NULL);
+    rt_material3d_set_specular_map(m, NULL);
+    rt_material3d_set_emissive_map(m, NULL);
+    PASS();
+}
+
+static void test_mesh_calc_tangents()
+{
+    TEST("Mesh3D.CalcTangents — plane tangent along +X");
+    void *m = rt_mesh3d_new();
+    /* Flat quad in XZ plane with standard UVs */
+    rt_mesh3d_add_vertex(m, -1, 0, -1, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_vertex(m,  1, 0, -1, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m,  1, 0,  1, 0, 1, 0, 1, 1);
+    rt_mesh3d_add_vertex(m, -1, 0,  1, 0, 1, 0, 0, 1);
+    rt_mesh3d_add_triangle(m, 0, 2, 1);
+    rt_mesh3d_add_triangle(m, 0, 3, 2);
+    rt_mesh3d_calc_tangents(m);
+    /* No crash = pass. Can't directly inspect tangent from public API */
+    /* Also test null safety */
+    rt_mesh3d_calc_tangents(NULL);
+    PASS();
+}
+
+//=============================================================================
+// Phase 10 — Alpha blending tests
+//=============================================================================
+
+static void test_material_alpha()
+{
+    TEST("Material3D.Alpha — default 1.0, set/get works");
+    void *m = rt_material3d_new();
+    EXPECT_NEAR(rt_material3d_get_alpha(m), 1.0, 0.001);
+    rt_material3d_set_alpha(m, 0.5);
+    EXPECT_NEAR(rt_material3d_get_alpha(m), 0.5, 0.001);
+    rt_material3d_set_alpha(m, 0.0);
+    EXPECT_NEAR(rt_material3d_get_alpha(m), 0.0, 0.001);
+    /* Null safety */
+    rt_material3d_set_alpha(NULL, 0.5);
+    EXPECT_NEAR(rt_material3d_get_alpha(NULL), 1.0, 0.001);
+    PASS();
+}
+
+//=============================================================================
+// RenderTarget3D tests
+//=============================================================================
+
+static void test_rendertarget_new()
+{
+    TEST("RenderTarget3D.New — creates target");
+    void *rt = rt_rendertarget3d_new(256, 256);
+    assert(rt);
+    PASS();
+}
+
+static void test_rendertarget_dimensions()
+{
+    TEST("RenderTarget3D — width/height match constructor");
+    void *rt = rt_rendertarget3d_new(128, 64);
+    EXPECT_EQ(rt_rendertarget3d_get_width(rt), 128);
+    EXPECT_EQ(rt_rendertarget3d_get_height(rt), 64);
+    PASS();
+}
+
+static void test_rendertarget_as_pixels()
+{
+    TEST("RenderTarget3D.AsPixels — returns non-null");
+    void *rt = rt_rendertarget3d_new(16, 16);
+    void *px = rt_rendertarget3d_as_pixels(rt);
+    assert(px != NULL);
+    PASS();
+}
+
+static void test_rendertarget_null_safety()
+{
+    TEST("RenderTarget3D — null safety");
+    EXPECT_EQ(rt_rendertarget3d_get_width(NULL), 0);
+    EXPECT_EQ(rt_rendertarget3d_get_height(NULL), 0);
+    assert(rt_rendertarget3d_as_pixels(NULL) == NULL);
+    rt_canvas3d_set_render_target(NULL, NULL);
+    rt_canvas3d_reset_render_target(NULL);
+    PASS();
+}
+
+//=============================================================================
 // Backend selection tests
 //=============================================================================
 
@@ -665,6 +770,20 @@ int main()
     test_light_set_intensity();
     test_light_set_color();
     test_light_null_safety();
+
+    /* Phase 9 — Multi-texture materials */
+    test_material_set_emissive();
+    test_material_set_maps();
+    test_mesh_calc_tangents();
+
+    /* Phase 10 — Alpha blending */
+    test_material_alpha();
+
+    /* RenderTarget3D */
+    test_rendertarget_new();
+    test_rendertarget_dimensions();
+    test_rendertarget_as_pixels();
+    test_rendertarget_null_safety();
 
     /* Backend */
     test_backend_select();

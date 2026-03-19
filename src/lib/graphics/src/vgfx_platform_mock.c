@@ -208,6 +208,12 @@ void vgfx_mock_set_time_ms(int64_t ms)
     g_mock_time_ms = ms;
 }
 
+void *vgfx_get_native_display(vgfx_window_t window)
+{
+    (void)window;
+    return NULL;
+}
+
 void *vgfx_get_native_view(vgfx_window_t window)
 {
     (void)window;

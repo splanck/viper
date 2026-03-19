@@ -92,6 +92,7 @@ extern "C"
     void  rt_mesh3d_recalc_normals(void *obj);
     void *rt_mesh3d_clone(void *obj);
     void  rt_mesh3d_transform(void *obj, void *mat4);
+    void  rt_mesh3d_calc_tangents(void *obj);
 
     //=========================================================================
     // Camera3D — perspective camera with view/projection matrices
@@ -119,6 +120,12 @@ extern "C"
     void  rt_material3d_set_texture(void *obj, void *pixels);
     void  rt_material3d_set_shininess(void *obj, double s);
     void  rt_material3d_set_unlit(void *obj, int8_t unlit);
+    void   rt_material3d_set_alpha(void *obj, double alpha);
+    double rt_material3d_get_alpha(void *obj);
+    void  rt_material3d_set_normal_map(void *obj, void *pixels);
+    void  rt_material3d_set_specular_map(void *obj, void *pixels);
+    void  rt_material3d_set_emissive_map(void *obj, void *pixels);
+    void  rt_material3d_set_emissive_color(void *obj, double r, double g, double b);
 
     //=========================================================================
     // Light3D — directional, point, or ambient light source
