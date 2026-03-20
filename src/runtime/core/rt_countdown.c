@@ -209,6 +209,8 @@ void *rt_countdown_new(int64_t interval_ms)
 /// @see rt_countdown_reset For resetting to initial state
 void rt_countdown_start(void *obj)
 {
+    if (!obj)
+        return;
     ViperCountdown *cd = (ViperCountdown *)obj;
 
     if (!cd->running)
@@ -249,6 +251,8 @@ void rt_countdown_start(void *obj)
 /// @see rt_countdown_reset For clearing elapsed time
 void rt_countdown_stop(void *obj)
 {
+    if (!obj)
+        return;
     ViperCountdown *cd = (ViperCountdown *)obj;
 
     if (cd->running)
@@ -285,6 +289,8 @@ void rt_countdown_stop(void *obj)
 /// @see rt_countdown_set_interval For changing the interval
 void rt_countdown_reset(void *obj)
 {
+    if (!obj)
+        return;
     ViperCountdown *cd = (ViperCountdown *)obj;
 
     cd->accumulated_ms = 0;

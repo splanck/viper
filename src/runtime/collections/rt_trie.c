@@ -7,7 +7,7 @@
 //
 // File: src/runtime/collections/rt_trie.c
 // Purpose: Implements a prefix tree (Trie) for string keys with associated
-//   object values. Each trie node stores up to TRIE_ALPHABET_SIZE (128) child
+//   object values. Each trie node stores up to TRIE_ALPHABET_SIZE (256) child
 //   pointers indexed by ASCII byte value. Supports exact lookup, prefix search
 //   (all keys with a given prefix), longest-prefix-match, and lexicographic
 //   key enumeration.
@@ -47,7 +47,7 @@
 
 extern void rt_trap(const char *msg);
 
-#define TRIE_ALPHABET_SIZE 128
+#define TRIE_ALPHABET_SIZE 256
 
 typedef struct rt_trie_node
 {
@@ -92,6 +92,7 @@ static void collect_keys(rt_trie_node *node, char **buf, size_t *buf_cap, size_t
     {
         rt_string key = rt_string_from_bytes(*buf, depth);
         rt_seq_push(seq, (void *)key);
+        rt_str_release_maybe(key);
     }
     for (int i = 0; i < TRIE_ALPHABET_SIZE; ++i)
     {
@@ -179,8 +180,6 @@ void rt_trie_set(void *obj, rt_string key, void *value)
     for (size_t i = 0; i < len; ++i)
     {
         unsigned char c = (unsigned char)cstr[i];
-        if (c >= TRIE_ALPHABET_SIZE)
-            continue; // Skip non-ASCII
         if (!node->children[c])
             node->children[c] = new_node();
         if (!node->children[c])
@@ -215,7 +214,7 @@ void *rt_trie_get(void *obj, rt_string key)
     for (size_t i = 0; i < len; ++i)
     {
         unsigned char c = (unsigned char)cstr[i];
-        if (c >= TRIE_ALPHABET_SIZE || !node->children[c])
+        if (!node->children[c])
             return NULL;
         node = node->children[c];
     }
@@ -237,7 +236,7 @@ int8_t rt_trie_has(void *obj, rt_string key)
     for (size_t i = 0; i < len; ++i)
     {
         unsigned char c = (unsigned char)cstr[i];
-        if (c >= TRIE_ALPHABET_SIZE || !node->children[c])
+        if (!node->children[c])
             return 0;
         node = node->children[c];
     }
@@ -259,7 +258,7 @@ int8_t rt_trie_has_prefix(void *obj, rt_string prefix)
     for (size_t i = 0; i < len; ++i)
     {
         unsigned char c = (unsigned char)cstr[i];
-        if (c >= TRIE_ALPHABET_SIZE || !node->children[c])
+        if (!node->children[c])
             return 0;
         node = node->children[c];
     }
@@ -283,7 +282,7 @@ void *rt_trie_with_prefix(void *obj, rt_string prefix)
     for (size_t i = 0; i < plen; ++i)
     {
         unsigned char c = (unsigned char)cstr[i];
-        if (c >= TRIE_ALPHABET_SIZE || !node->children[c])
+        if (!node->children[c])
             return result;
         node = node->children[c];
     }
@@ -324,7 +323,7 @@ rt_string rt_trie_longest_prefix(void *obj, rt_string str)
     for (size_t i = 0; i < len; ++i)
     {
         unsigned char c = (unsigned char)cstr[i];
-        if (c >= TRIE_ALPHABET_SIZE || !node->children[c])
+        if (!node->children[c])
             break;
         node = node->children[c];
         if (node->is_terminal)
@@ -355,7 +354,7 @@ int8_t rt_trie_remove(void *obj, rt_string key)
     for (size_t i = 0; i < len; ++i)
     {
         unsigned char c = (unsigned char)cstr[i];
-        if (c >= TRIE_ALPHABET_SIZE || !node->children[c])
+        if (!node->children[c])
             return 0;
         node = node->children[c];
     }
@@ -391,6 +390,7 @@ void rt_trie_clear(void *obj)
 void *rt_trie_keys(void *obj)
 {
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
     if (!obj)
         return result;
     rt_trie_impl *trie = (rt_trie_impl *)obj;

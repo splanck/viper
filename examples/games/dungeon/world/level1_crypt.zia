@@ -48,10 +48,14 @@ func build(level: LevelGeometry, physics: Physics3DWorld) {
     // Player spawn (row 1, col 1)
     level.addCell(1, 1, config.TILE_SPAWN, physics);
 
-    // Torches
-    level.addCell(3, 6, config.TILE_TORCH, physics);
-    level.addCell(15, 3, config.TILE_TORCH, physics);
-    level.addCell(4, 14, config.TILE_TORCH, physics);
+    // Torches — place generously for atmospheric lighting
+    level.addCell(3, 1, config.TILE_TORCH, physics);   // near spawn
+    level.addCell(3, 6, config.TILE_TORCH, physics);   // west corridor
+    level.addCell(9, 5, config.TILE_TORCH, physics);   // central area
+    level.addCell(15, 3, config.TILE_TORCH, physics);  // east wing
+    level.addCell(15, 7, config.TILE_TORCH, physics);  // east wing south
+    level.addCell(4, 14, config.TILE_TORCH, physics);  // near key
+    level.addCell(12, 16, config.TILE_TORCH, physics); // near exit
 
     // Key
     level.addCell(13, 14, config.TILE_KEY, physics);

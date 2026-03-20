@@ -55,6 +55,9 @@
 @property(nonatomic) int32_t height;
 @property(nonatomic) float clearR, clearG, clearB;
 @property(nonatomic) BOOL inFrame;
+/* Per-frame Metal buffer references — prevents ARC from releasing vertex/index
+ * buffers before the GPU finishes executing draw commands. */
+@property(nonatomic, strong) NSMutableArray *frameBuffers;
 /* Default 1x1 white texture (bound when no material texture is set) */
 @property(nonatomic, strong) id<MTLTexture> defaultTexture;
 @property(nonatomic, strong) id<MTLSamplerState> defaultSampler;
@@ -433,6 +436,9 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam)
         memcpy(ctx->_vp, vp, sizeof(float) * 16);
         memcpy(ctx->_camPos, cam->position, sizeof(float) * 3);
 
+        /* Clear per-frame buffer references from previous frame */
+        ctx.frameBuffers = [NSMutableArray arrayWithCapacity:32];
+
         /* Reuse the command buffer if one is already open (multi-pass frame).
          * RTT end_frame commits and nils the cmdBuf, so on-screen passes
          * after an RTT pass will create a fresh one. */
@@ -546,6 +552,13 @@ static void metal_submit_draw(void *ctx_ptr,
                                                    length:cmd->index_count * sizeof(uint32_t)
                                                   options:MTLResourceStorageModeShared];
         [ctx.encoder setVertexBuffer:vb offset:0 atIndex:0];
+
+        /* Retain buffers until frame commit — prevents ARC from releasing
+         * them before the GPU executes the draw commands. */
+        if (ctx.frameBuffers) {
+            [ctx.frameBuffers addObject:vb];
+            [ctx.frameBuffers addObject:ib];
+        }
 
         /* Per-object uniforms */
         mtl_per_object_t obj;
@@ -743,6 +756,7 @@ static void metal_present(void *backend_ctx)
             [ctx.cmdBuf presentDrawable:ctx.drawable];
             [ctx.cmdBuf commit];
             [ctx.cmdBuf waitUntilCompleted];
+            ctx.frameBuffers = nil; /* release per-frame buffers after GPU is done */
             ctx.cmdBuf = nil;
             ctx.drawable = nil;
         }

@@ -96,11 +96,19 @@ int64_t rt_retry_next_delay(void *policy)
                 delay = data->max_delay_ms;
         }
 
-        // Add ±25% jitter to prevent thundering-herd on coordinated retries
+        // Add jitter to prevent thundering-herd on coordinated retries
+        // Uses thread-safe local xorshift PRNG instead of global rand()
         if (delay > 0)
         {
+            static _Thread_local uint64_t jitter_rng = 0;
+            if (!jitter_rng)
+                jitter_rng = (uint64_t)(uintptr_t)&jitter_rng ^ 0x5DEECE66DULL;
+            jitter_rng ^= jitter_rng >> 12;
+            jitter_rng ^= jitter_rng << 25;
+            jitter_rng ^= jitter_rng >> 27;
+            uint64_t r = jitter_rng * 0x2545F4914F6CDD1DULL;
             int64_t jitter_range = delay / 4 + 1;
-            delay += (int64_t)(rand() % (int)jitter_range);
+            delay += (int64_t)(r % (uint64_t)jitter_range);
             // Keep within max_delay_ms (jitter may push slightly over)
             if (delay > data->max_delay_ms)
                 delay = data->max_delay_ms;

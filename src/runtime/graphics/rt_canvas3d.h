@@ -42,6 +42,11 @@ extern "C"
     void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h);
     void rt_canvas3d_clear(void *obj, double r, double g, double b);
     void rt_canvas3d_begin(void *obj, void *camera);
+    void rt_canvas3d_begin_2d(void *obj);
+    void rt_canvas3d_draw_rect_3d(void *canvas, int64_t x, int64_t y,
+                                   int64_t w, int64_t h, int64_t color);
+    void rt_canvas3d_draw_text_3d(void *canvas, int64_t x, int64_t y,
+                                   rt_string text, int64_t color);
     void rt_canvas3d_draw_mesh(void *obj, void *mesh, void *transform, void *material);
     void rt_canvas3d_end(void *obj);
     void rt_canvas3d_flip(void *obj);

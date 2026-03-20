@@ -104,6 +104,7 @@ static void *create_request(rest_client *client, rt_string method, rt_string pat
 {
     rt_string url = join_url(client->base_url, path);
     void *req = rt_http_req_new(method, url);
+    rt_string_unref(url); // Release after use — req copies the C string
 
     // Apply default headers
     void *keys = rt_map_keys(client->headers);
@@ -117,6 +118,9 @@ static void *create_request(rest_client *client, rt_string method, rt_string pat
             rt_http_req_set_header(req, key, (rt_string)val);
         }
     }
+    // Release the keys Seq (its owns_elements finalizer releases the strings)
+    if (rt_obj_release_check0(keys))
+        rt_obj_free(keys);
 
     // Apply timeout
     if (client->timeout_ms > 0)

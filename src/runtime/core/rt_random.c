@@ -114,8 +114,14 @@ long long rt_rand_range(long long min, long long max)
         min = max;
         max = tmp;
     }
-    long long range = max - min + 1;
-    return min + rt_rand_int(range);
+    // Use unsigned arithmetic to avoid signed overflow when max - min == LLONG_MAX
+    unsigned long long urange = (unsigned long long)max - (unsigned long long)min + 1ULL;
+    if (urange == 0)
+    {
+        // Full range (overflow wrapped to 0) — return any random value
+        return (long long)rt_rand_int(0);
+    }
+    return min + (long long)rt_rand_int((long long)urange);
 }
 
 /// @brief Generate a random number from a Gaussian (normal) distribution.
@@ -230,9 +236,15 @@ void rt_rand_shuffle(void *seq)
         int64_t j = rt_rand_int(i + 1);
         if (i != j)
         {
+            // Retain tmp before swap to prevent use-after-free when Seq owns elements.
+            // rt_seq_set releases the old value at i (which is tmp); retaining prevents
+            // premature deallocation before tmp is stored at j.
             void *tmp = rt_seq_get(seq, i);
+            rt_obj_retain_maybe(tmp);
             rt_seq_set(seq, i, rt_seq_get(seq, j));
             rt_seq_set(seq, j, tmp);
+            if (rt_obj_release_check0(tmp))
+                rt_obj_free(tmp);
         }
     }
 }

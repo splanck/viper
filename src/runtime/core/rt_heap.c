@@ -272,6 +272,8 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
         return 0;
     RT_HEAP_VALIDATE(hdr);
     const size_t old = __atomic_fetch_sub(&hdr->refcnt, 1, __ATOMIC_RELEASE);
+    if (old == 0)
+        rt_trap("rt_heap: double release (refcount already zero)");
     assert(old > 0);
     const size_t next = old - 1;
 #ifdef VIPER_RC_DEBUG

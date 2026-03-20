@@ -220,6 +220,7 @@ static void ensure_parent_dir(const char *file_path)
         *last_sep = '\0';
         rt_string dir_str = rt_string_from_bytes(dir, strlen(dir));
         rt_dir_make_all(dir_str);
+        rt_string_unref(dir_str);
     }
     free(dir);
 }

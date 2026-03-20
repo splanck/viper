@@ -7,7 +7,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen" alt="Platform">
-  <img src="https://img.shields.io/badge/LOC-700K%2B-orange" alt="LOC">
+  <img src="https://img.shields.io/badge/SLOC-474K-orange" alt="SLOC">
 </p>
 
 **Viper** is an IL-first compiler toolchain and virtual machine for building platform-native applications. Programs compile through a strongly typed, SSA-based intermediate language (**[Viper IL](docs/il-guide.md)**) that can be executed by the [VM](docs/vm.md) or compiled directly to native machine code.
@@ -154,14 +154,14 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 │   Bytecode   │   │   Native Backends    │
 │      VM      │   │   (AArch64 · x86-64) │
 │              │   ├──────────────────────┤
-│              │   │  Assembler · Linker   │
-│              │   │  (ELF · Mach-O · PE)  │
+│              │   │  Assembler · Linker  │
+│              │   │  (ELF · Mach-O · PE) │
 └──────┬───────┘   └──────────┬───────────┘
        └──────────┬───────────┘
                   ▼
 ┌─────────────────────────────────────────┐
 │            Viper Runtime                │
-│  Collections · Graphics · 3D · GUI ·   │
+│  Collections · Graphics · 3D · GUI ·    │
 │  Game Engine · Audio · Network · I/O ·  │
 │  Threads · Crypto · Math · Text · ...   │
 └─────────────────────────────────────────┘

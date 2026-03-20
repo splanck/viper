@@ -1,0 +1,195 @@
+// menu.zia — Menu system: title screen, pause, death, level complete
+module menu;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
+bind Viper.Terminal;
+bind "../config";
+
+entity MenuSystem {
+    hide Integer selectedItem;
+    hide Integer itemCount;
+    hide Float animTime;
+    hide Boolean keyDebounce;  // prevent rapid key repeat
+
+    expose func initMenu() {
+        selectedItem = 0;
+        itemCount = 3;
+        animTime = 0.0;
+        keyDebounce = false;
+    }
+
+    // =========================================================================
+    // Title Screen — returns: 0=none, 1=start game, 2=quit
+    // =========================================================================
+    expose func updateTitle(dt: Float) -> Integer {
+        animTime = animTime + dt;
+
+        // Navigation
+        if (Keyboard.WasPressed(Keyboard.get_KEY_W()) || Keyboard.WasPressed(Keyboard.get_KEY_UP())) {
+            selectedItem = selectedItem - 1;
+            if (selectedItem < 0) { selectedItem = itemCount - 1; }
+        }
+        if (Keyboard.WasPressed(Keyboard.get_KEY_S()) || Keyboard.WasPressed(Keyboard.get_KEY_DOWN())) {
+            selectedItem = selectedItem + 1;
+            if (selectedItem >= itemCount) { selectedItem = 0; }
+        }
+
+        // Confirm
+        if (Keyboard.WasPressed(Keyboard.get_KEY_ENTER()) || Keyboard.WasPressed(Keyboard.get_KEY_SPACE())) {
+            if (selectedItem == 0) { return 1; } // New Game
+            if (selectedItem == 2) { return 2; } // Quit
+        }
+
+        return 0;
+    }
+
+    expose func drawTitle(canvas: Canvas3D) {
+        var cw = config.WINDOW_WIDTH;
+        var ch = config.WINDOW_HEIGHT;
+        var cx = cw / 2;
+
+        // Dark background
+        Canvas3D.DrawRect3D(canvas, 0, 0, cw, ch, 0x0A0A14);
+
+        // Title
+        Canvas3D.DrawText3D(canvas, cx - 80, 120, "DUNGEON OF VIPER", 0xFFCC44);
+
+        // Subtitle
+        Canvas3D.DrawText3D(canvas, cx - 60, 160, "A Viper 3D Game", 0x888888);
+
+        // Menu items
+        var y = 280;
+        var spacing = 40;
+
+        // New Game
+        var c0 = 0x888888;
+        if (selectedItem == 0) { c0 = 0xFFFFFF; }
+        var prefix0 = "   ";
+        if (selectedItem == 0) { prefix0 = ">> "; }
+        Canvas3D.DrawText3D(canvas, cx - 50, y, prefix0 + "New Game", c0);
+
+        // Controls
+        var c1 = 0x888888;
+        if (selectedItem == 1) { c1 = 0xFFFFFF; }
+        var prefix1 = "   ";
+        if (selectedItem == 1) { prefix1 = ">> "; }
+        Canvas3D.DrawText3D(canvas, cx - 50, y + spacing, prefix1 + "Controls", c1);
+
+        // Quit
+        var c2 = 0x888888;
+        if (selectedItem == 2) { c2 = 0xFFFFFF; }
+        var prefix2 = "   ";
+        if (selectedItem == 2) { prefix2 = ">> "; }
+        Canvas3D.DrawText3D(canvas, cx - 50, y + spacing * 2, prefix2 + "Quit", c2);
+
+        // Controls display (when selected)
+        if (selectedItem == 1) {
+            Canvas3D.DrawText3D(canvas, cx - 90, y + spacing * 4, "WASD = Move", 0x666666);
+            Canvas3D.DrawText3D(canvas, cx - 90, y + spacing * 4 + 18, "Mouse = Look", 0x666666);
+            Canvas3D.DrawText3D(canvas, cx - 90, y + spacing * 4 + 36, "Click = Shoot", 0x666666);
+            Canvas3D.DrawText3D(canvas, cx - 90, y + spacing * 4 + 54, "Shift = Sprint", 0x666666);
+            Canvas3D.DrawText3D(canvas, cx - 90, y + spacing * 4 + 72, "ESC = Pause", 0x666666);
+        }
+
+        // Version
+        Canvas3D.DrawText3D(canvas, 10, ch - 20, "Viper Engine v0.2.3", 0x444444);
+    }
+
+    // =========================================================================
+    // Pause Screen — returns: 0=none, 1=resume, 2=restart, 3=quit to menu
+    // =========================================================================
+    expose func updatePause() -> Integer {
+        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) { return 1; } // resume
+        if (Keyboard.WasPressed(Keyboard.get_KEY_R())) { return 2; }     // restart
+        if (Keyboard.WasPressed(Keyboard.get_KEY_M())) { return 3; }     // menu
+        return 0;
+    }
+
+    expose func drawPause(canvas: Canvas3D) {
+        var cw = config.WINDOW_WIDTH;
+        var ch = config.WINDOW_HEIGHT;
+        var cx = cw / 2;
+
+        // Dark overlay
+        Canvas3D.DrawRect3D(canvas, 0, 0, cw, ch, 0x000000);
+
+        Canvas3D.DrawText3D(canvas, cx - 30, ch / 2 - 40, "PAUSED", 0xFFFFFF);
+        Canvas3D.DrawText3D(canvas, cx - 70, ch / 2, "ESC = Resume", 0xCCCCCC);
+        Canvas3D.DrawText3D(canvas, cx - 70, ch / 2 + 20, "R = Restart Level", 0xCCCCCC);
+        Canvas3D.DrawText3D(canvas, cx - 70, ch / 2 + 40, "M = Main Menu", 0xCCCCCC);
+    }
+
+    // =========================================================================
+    // Death Screen — returns: 0=none, 1=retry, 2=menu
+    // =========================================================================
+    expose func updateDeath(dt: Float) -> Integer {
+        animTime = animTime + dt;
+        if (Keyboard.WasPressed(Keyboard.get_KEY_R())) { return 1; }
+        if (Keyboard.WasPressed(Keyboard.get_KEY_M())) { return 2; }
+        // Auto-retry after 5 seconds
+        if (animTime > 5.0) { return 1; }
+        return 0;
+    }
+
+    expose func drawDeath(canvas: Canvas3D, kills: Integer) {
+        var cw = config.WINDOW_WIDTH;
+        var ch = config.WINDOW_HEIGHT;
+        var cx = cw / 2;
+
+        // Red overlay
+        Canvas3D.DrawRect3D(canvas, 0, 0, cw, ch, 0x330000);
+
+        Canvas3D.DrawText3D(canvas, cx - 35, ch / 2 - 40, "YOU DIED", 0xFF0000);
+        Canvas3D.DrawText3D(canvas, cx - 50, ch / 2, "Kills: " + toString(kills), 0xFFFFFF);
+        Canvas3D.DrawText3D(canvas, cx - 60, ch / 2 + 30, "R = Retry", 0xCCCCCC);
+        Canvas3D.DrawText3D(canvas, cx - 60, ch / 2 + 50, "M = Main Menu", 0xCCCCCC);
+    }
+
+    // =========================================================================
+    // Level Complete — returns: 0=none, 1=next level, 2=menu
+    // =========================================================================
+    expose func updateLevelComplete() -> Integer {
+        if (Keyboard.WasPressed(Keyboard.get_KEY_ENTER())) { return 1; }
+        if (Keyboard.WasPressed(Keyboard.get_KEY_M())) { return 2; }
+        return 0;
+    }
+
+    expose func drawLevelComplete(canvas: Canvas3D, levelNum: Integer,
+                                    kills: Integer, sc: Integer) {
+        var cw = config.WINDOW_WIDTH;
+        var ch = config.WINDOW_HEIGHT;
+        var cx = cw / 2;
+
+        // Dark overlay
+        Canvas3D.DrawRect3D(canvas, 0, 0, cw, ch, 0x0A0A14);
+
+        Canvas3D.DrawText3D(canvas, cx - 60, ch / 2 - 60, "LEVEL COMPLETE!", 0xFFCC44);
+        Canvas3D.DrawText3D(canvas, cx - 60, ch / 2 - 20, "Level " + toString(levelNum), 0xFFFFFF);
+        Canvas3D.DrawText3D(canvas, cx - 60, ch / 2 + 10, "Kills: " + toString(kills), 0xCCCCCC);
+        Canvas3D.DrawText3D(canvas, cx - 60, ch / 2 + 30, "Score: " + toString(sc), 0xCCCCCC);
+        Canvas3D.DrawText3D(canvas, cx - 70, ch / 2 + 70, "ENTER = Next Level", 0x88FF88);
+        Canvas3D.DrawText3D(canvas, cx - 70, ch / 2 + 90, "M = Main Menu", 0x888888);
+    }
+
+    // =========================================================================
+    // Victory Screen
+    // =========================================================================
+    expose func drawVictory(canvas: Canvas3D, totalScore: Integer) {
+        var cw = config.WINDOW_WIDTH;
+        var ch = config.WINDOW_HEIGHT;
+        var cx = cw / 2;
+
+        Canvas3D.DrawRect3D(canvas, 0, 0, cw, ch, 0x0A0A14);
+
+        Canvas3D.DrawText3D(canvas, cx - 40, ch / 2 - 60, "VICTORY!", 0xFFCC44);
+        Canvas3D.DrawText3D(canvas, cx - 80, ch / 2 - 20, "You conquered the dungeon!", 0xFFFFFF);
+        Canvas3D.DrawText3D(canvas, cx - 60, ch / 2 + 20, "Final Score: " + toString(totalScore), 0x88FF88);
+        Canvas3D.DrawText3D(canvas, cx - 70, ch / 2 + 60, "M = Main Menu", 0x888888);
+    }
+
+    expose func resetAnim() {
+        animTime = 0.0;
+    }
+}

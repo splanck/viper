@@ -151,6 +151,11 @@ static void rt_watcher_finalize(void *obj)
         rt_string_unref(w->last_event_path);
         w->last_event_path = NULL;
     }
+    if (w->watch_path)
+    {
+        rt_string_unref(w->watch_path);
+        w->watch_path = NULL;
+    }
 }
 
 /// @brief Queue an event internally.

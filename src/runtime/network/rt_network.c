@@ -646,7 +646,9 @@ int64_t rt_tcp_send(void *obj, void *data)
     if (len == 0)
         return 0;
 
-    int sent = send(tcp->sock, (const char *)buf, (int)len, SEND_FLAGS);
+    // Clamp to INT_MAX to prevent silent truncation on large buffers
+    int to_send = (len > INT_MAX) ? INT_MAX : (int)len;
+    int sent = send(tcp->sock, (const char *)buf, to_send, SEND_FLAGS);
     if (sent == SOCK_ERROR)
     {
         tcp->is_open = false;
@@ -780,7 +782,10 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes)
 rt_string rt_tcp_recv_str(void *obj, int64_t max_bytes)
 {
     void *bytes = rt_tcp_recv(obj, max_bytes);
-    return rt_bytes_to_str(bytes);
+    rt_string str = rt_bytes_to_str(bytes);
+    if (bytes && rt_obj_release_check0(bytes))
+        rt_obj_free(bytes);
+    return str;
 }
 
 void *rt_tcp_recv_exact(void *obj, int64_t count)
@@ -1530,7 +1535,9 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes)
         if (errno == EAGAIN || errno == EWOULDBLOCK)
 #endif
         {
-            // Return empty bytes on timeout
+            // Release over-allocated buffer and return empty bytes on timeout
+            if (rt_obj_release_check0(result))
+                rt_obj_free(result);
             return rt_bytes_new(0);
         }
         rt_trap_net("Network: receive failed", net_classify_errno());
@@ -1545,6 +1552,9 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes)
     {
         void *exact = rt_bytes_new(received);
         memcpy(bytes_data(exact), buf, received);
+        // Release the over-allocated buffer
+        if (rt_obj_release_check0(result))
+            rt_obj_free(result);
         return exact;
     }
 
@@ -1806,6 +1816,7 @@ void *rt_dns_resolve_all(rt_string hostname)
     }
 
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
 
     for (struct addrinfo *rp = result; rp != NULL; rp = rp->ai_next)
     {
@@ -1828,6 +1839,7 @@ void *rt_dns_resolve_all(rt_string hostname)
 
         rt_string addr_str = rt_string_from_bytes(ip_str, strlen(ip_str));
         rt_seq_push(seq, (void *)addr_str);
+        rt_str_release_maybe(addr_str);
     }
 
     freeaddrinfo(result);
@@ -1978,6 +1990,7 @@ void *rt_dns_local_addrs(void)
     rt_net_init_wsa();
 
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
 
 #ifdef _WIN32
     // Windows: use GetAdaptersAddresses for complete interface enumeration
@@ -2029,6 +2042,7 @@ void *rt_dns_local_addrs(void)
 
             rt_string addr_str = rt_string_from_bytes(ip_str, strlen(ip_str));
             rt_seq_push(seq, (void *)addr_str);
+            rt_str_release_maybe(addr_str);
         }
     }
 
@@ -2065,6 +2079,7 @@ void *rt_dns_local_addrs(void)
 
         rt_string addr_str = rt_string_from_bytes(ip_str, strlen(ip_str));
         rt_seq_push(seq, (void *)addr_str);
+        rt_str_release_maybe(addr_str);
     }
 
     freeifaddrs(ifaddr);

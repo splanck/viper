@@ -108,6 +108,10 @@ void rt_output_begin_batch(void)
 
 void rt_output_end_batch(void)
 {
+    // Guard against unbalanced end without begin
+    int cur = __atomic_load_n(&g_batch_mode_depth, __ATOMIC_ACQUIRE);
+    if (cur <= 0)
+        return;
     int prev = __atomic_fetch_sub(&g_batch_mode_depth, 1, __ATOMIC_ACQ_REL);
     if (prev <= 1)
     {

@@ -9,10 +9,12 @@ bind "./config";
 bind "./engine/renderer";
 bind "./engine/camera_ctrl";
 bind "./engine/hud";
+bind "./engine/menu";
 bind "./entities/player";
 bind "./entities/enemy";
 bind "./effects/blood";
 bind "./effects/muzzle_flash";
+bind "./effects/torch";
 bind "./world/level_builder";
 bind "./world/level1_crypt";
 
@@ -26,9 +28,11 @@ entity Game {
     hide Renderer render;
     hide CameraController camCtrl;
     hide HUD hudObj;
+    hide MenuSystem menuSys;
     hide Player playerObj;
     hide BloodSystem bloodFx;
     hide MuzzleFlash muzzleFx;
+    hide TorchManager torchMgr;
     hide LevelGeometry level;
 
     // Enemies
@@ -44,11 +48,15 @@ entity Game {
     hide Material3D keyMat;
     hide Float keyBobTime;
 
+    // Exit marker (pre-created to avoid per-frame allocation)
+    hide Mesh3D exitMesh;
+    hide Material3D exitMat;
+
     // Exit trigger
     hide Boolean nearExit;
 
     expose func init() {
-        state = config.STATE_PLAYING; // Skip menu for Phase 1 — jump straight into gameplay
+        state = config.STATE_MENU;
         currentLevel = 1;
         score = 0;
         levelTime = 0.0;
@@ -77,6 +85,9 @@ entity Game {
         hudObj = new HUD();
         hudObj.initHUD();
 
+        menuSys = new MenuSystem();
+        menuSys.initMenu();
+
         playerObj = new Player();
         playerObj.initPlayer();
 
@@ -86,6 +97,9 @@ entity Game {
         muzzleFx = new MuzzleFlash();
         muzzleFx.initFlash();
 
+        torchMgr = new TorchManager();
+        torchMgr.initManager();
+
         // Physics world
         physWorld = Physics3DWorld.New(0.0, -9.8, 0.0);
 
@@ -94,6 +108,11 @@ entity Game {
         keyMat = Material3D.NewColor(1.0, 0.85, 0.0);
         Material3D.SetShininess(keyMat, 128.0);
         Material3D.SetEmissiveColor(keyMat, 0.5, 0.4, 0.0);
+
+        exitMesh = Mesh3D.NewSphere(0.4, 8);
+        exitMat = Material3D.NewColor(0.1, 0.9, 0.2);
+        Material3D.SetEmissiveColor(exitMat, 0.2, 1.0, 0.3);
+        Material3D.SetUnlit(exitMat, true);
 
         // Load FBX character
         Say("Loading character assets...");
@@ -105,10 +124,6 @@ entity Game {
             Say("  WARNING: Could not load Monk.fbx — using fallback meshes");
         }
 
-        // Build Level 1
-        self.loadLevel(1);
-
-        Say("Game started! Level 1: The Crypt");
         Say("");
 
         // ═══════════════════════════════════════
@@ -119,48 +134,90 @@ entity Game {
             var dt = render.getDeltaTime();
             if (dt <= 0.0) { dt = 0.016; }
 
-            // Handle ESC to quit
-            if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) {
-                break;
-            }
-
-            if (state == config.STATE_PLAYING) {
-                self.updateGame(dt);
-                self.drawGame(dt);
-            }
-
-            if (state == config.STATE_GAMEOVER) {
-                self.drawGame(dt);
-                // Draw death overlay
-                var cx = config.WINDOW_WIDTH / 2;
-                var cy = config.WINDOW_HEIGHT / 2;
-                Canvas3D.DrawRect2D(render.getCanvas(), 0, 0,
-                    config.WINDOW_WIDTH, config.WINDOW_HEIGHT, 0x440000);
-                Canvas3D.DrawText2D(render.getCanvas(), cx - 40, cy - 20, "YOU DIED", 0xFF0000);
-                Canvas3D.DrawText2D(render.getCanvas(), cx - 70, cy + 10,
-                    "Kills: " + toString(playerObj.getKillCount()), 0xFFFFFF);
-                Canvas3D.DrawText2D(render.getCanvas(), cx - 70, cy + 30,
-                    "Press R to retry", 0xCCCCCC);
-
-                if (Keyboard.WasPressed(Keyboard.get_KEY_R())) {
-                    self.loadLevel(currentLevel);
+            // ─── MENU STATE ───
+            if (state == config.STATE_MENU) {
+                var menuResult = menuSys.updateTitle(dt);
+                render.clear();
+                render.begin2D();
+                menuSys.drawTitle(render.getCanvas());
+                render.end2D();
+                if (menuResult == 1) {
+                    // New Game
+                    self.loadLevel(1);
                     playerObj.reset();
                     state = config.STATE_PLAYING;
+                    Mouse.Capture();
+                    Say("Game started! Level " + toString(currentLevel));
+                }
+                if (menuResult == 2) {
+                    break; // Quit
                 }
             }
 
-            if (state == config.STATE_LEVELCOMPLETE) {
-                self.drawGame(dt);
-                var cx = config.WINDOW_WIDTH / 2;
-                var cy = config.WINDOW_HEIGHT / 2;
-                Canvas3D.DrawText2D(render.getCanvas(), cx - 60, cy - 20,
-                    "LEVEL COMPLETE!", 0xFFCC44);
-                Canvas3D.DrawText2D(render.getCanvas(), cx - 70, cy + 10,
-                    "Score: " + toString(score), 0xFFFFFF);
-                Canvas3D.DrawText2D(render.getCanvas(), cx - 70, cy + 30,
-                    "Press ENTER for next level", 0xCCCCCC);
+            // ─── PLAYING STATE ───
+            if (state == config.STATE_PLAYING) {
+                // ESC → pause
+                if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) {
+                    state = config.STATE_PAUSED;
+                    Mouse.Release();
+                } else {
+                    self.updateGame(dt);
+                    self.drawGame(dt);
+                }
+            }
 
-                if (Keyboard.WasPressed(Keyboard.get_KEY_ENTER())) {
+            // ─── PAUSED STATE ───
+            if (state == config.STATE_PAUSED) {
+                render.clear();
+                render.begin2D();
+                menuSys.drawPause(render.getCanvas());
+                render.end2D();
+                var pauseResult = menuSys.updatePause();
+                if (pauseResult == 1) {
+                    state = config.STATE_PLAYING;
+                    Mouse.Capture();
+                }
+                if (pauseResult == 2) {
+                    self.loadLevel(currentLevel);
+                    playerObj.reset();
+                    state = config.STATE_PLAYING;
+                    Mouse.Capture();
+                }
+                if (pauseResult == 3) {
+                    state = config.STATE_MENU;
+                    menuSys.initMenu();
+                }
+            }
+
+            // ─── GAME OVER STATE ───
+            if (state == config.STATE_GAMEOVER) {
+                render.clear();
+                render.begin2D();
+                menuSys.drawDeath(render.getCanvas(), playerObj.getKillCount());
+                render.end2D();
+                var deathResult = menuSys.updateDeath(dt);
+                if (deathResult == 1) {
+                    self.loadLevel(currentLevel);
+                    playerObj.reset();
+                    state = config.STATE_PLAYING;
+                    menuSys.resetAnim();
+                    Mouse.Capture();
+                }
+                if (deathResult == 2) {
+                    state = config.STATE_MENU;
+                    menuSys.initMenu();
+                }
+            }
+
+            // ─── LEVEL COMPLETE STATE ───
+            if (state == config.STATE_LEVELCOMPLETE) {
+                render.clear();
+                render.begin2D();
+                menuSys.drawLevelComplete(render.getCanvas(), currentLevel,
+                    playerObj.getKillCount(), score);
+                render.end2D();
+                var lcResult = menuSys.updateLevelComplete();
+                if (lcResult == 1) {
                     currentLevel = currentLevel + 1;
                     if (currentLevel > 3) {
                         state = config.STATE_VICTORY;
@@ -168,20 +225,26 @@ entity Game {
                         self.loadLevel(currentLevel);
                         playerObj.reset();
                         state = config.STATE_PLAYING;
+                        Mouse.Capture();
+                        Say("Level " + toString(currentLevel) + " started!");
                     }
+                }
+                if (lcResult == 2) {
+                    state = config.STATE_MENU;
+                    menuSys.initMenu();
                 }
             }
 
+            // ─── VICTORY STATE ───
             if (state == config.STATE_VICTORY) {
-                self.drawGame(dt);
-                var cx = config.WINDOW_WIDTH / 2;
-                var cy = config.WINDOW_HEIGHT / 2;
-                Canvas3D.DrawText2D(render.getCanvas(), cx - 60, cy - 20,
-                    "VICTORY!", 0xFFCC44);
-                Canvas3D.DrawText2D(render.getCanvas(), cx - 70, cy + 10,
-                    "Final Score: " + toString(score), 0xFFFFFF);
-                Canvas3D.DrawText2D(render.getCanvas(), cx - 70, cy + 30,
-                    "Thanks for playing!", 0x88FF88);
+                render.clear();
+                render.begin2D();
+                menuSys.drawVictory(render.getCanvas(), score);
+                render.end2D();
+                if (Keyboard.WasPressed(Keyboard.get_KEY_M())) {
+                    state = config.STATE_MENU;
+                    menuSys.initMenu();
+                }
             }
 
             render.flip();
@@ -247,6 +310,7 @@ entity Game {
         nearExit = (dex * dex + dez * dez < 4.0);
         if (nearExit && playerObj.getHasKey()) {
             state = config.STATE_LEVELCOMPLETE;
+            Mouse.Release();
             // Time bonus
             var timeBonus = config.SCORE_TIME_BONUS_MAX;
             if (levelTime > config.SCORE_TIME_BONUS_THRESHOLD) {
@@ -263,11 +327,14 @@ entity Game {
         // Player death check
         if (playerObj.isDead()) {
             state = config.STATE_GAMEOVER;
+            Mouse.Release();
+            menuSys.resetAnim();
             Say("You died! Kills: " + toString(playerObj.getKillCount()));
         }
 
         // Update effects
         bloodFx.update(dt);
+        torchMgr.updateAll(dt, render.getCanvas());
         muzzleFx.update(dt);
         hudObj.update(dt);
 
@@ -340,12 +407,20 @@ entity Game {
             Canvas3D.DrawMesh(render.getCanvas(), keyMesh, keyXform, keyMat);
         }
 
+        // Draw exit marker (green glowing sphere, pre-created)
+        var exitY = 0.5 + Sin(keyBobTime * 2.0) * 0.15;
+        var exitXform = Mat4.Translate(level.getExitX(), exitY, level.getExitZ());
+        Canvas3D.DrawMesh(render.getCanvas(), exitMesh, exitXform, exitMat);
+
         // Draw enemies
         var i = 0;
         while (i < enemies.count) {
             enemies.get(i).draw(render.getCanvas(), render.getCamera());
             i = i + 1;
         }
+
+        // Draw torches (lights + fire particles)
+        torchMgr.drawAll(render.getCanvas(), render.getCamera());
 
         // Draw blood effects
         bloodFx.draw(render.getCanvas(), render.getCamera());
@@ -361,6 +436,24 @@ entity Game {
 
         // Muzzle screen flash
         muzzleFx.drawScreenFlash(render.getCanvas());
+
+        // Contextual prompts
+        if (nearExit && playerObj.getHasKey() == false) {
+            var cx = config.WINDOW_WIDTH / 2;
+            Canvas3D.DrawText3D(render.getCanvas(), cx - 50, config.WINDOW_HEIGHT - 60,
+                "FIND THE KEY!", 0xFF4444);
+        }
+        if (nearExit && playerObj.getHasKey()) {
+            var cx = config.WINDOW_WIDTH / 2;
+            Canvas3D.DrawText3D(render.getCanvas(), cx - 50, config.WINDOW_HEIGHT - 60,
+                "PRESS FORWARD TO EXIT", 0x44FF44);
+        }
+        if (keyPickedUp == false) {
+            // Show key indicator
+            Canvas3D.DrawText3D(render.getCanvas(), 10, 30, "Key: --", 0x888888);
+        } else {
+            Canvas3D.DrawText3D(render.getCanvas(), 10, 30, "Key: FOUND", 0xFFCC44);
+        }
     }
 
     hide func loadLevel(levelNum: Integer) {
@@ -394,7 +487,18 @@ entity Game {
             i = i + 1;
         }
 
+        // Create torches at torch positions from level data
+        torchMgr = new TorchManager();
+        torchMgr.initManager();
+        var torchCount = level.getTorchCount();
+        var t = 0;
+        while (t < torchCount) {
+            // Light indices 1-7 (0 is sun)
+            torchMgr.addTorch(level.getTorchX(t), level.getTorchZ(t), t + 1);
+            t = t + 1;
+        }
+
         Say("Level " + toString(levelNum) + " loaded: " +
-            toString(enemyCount) + " enemies");
+            toString(enemyCount) + " enemies, " + toString(torchCount) + " torches");
     }
 }

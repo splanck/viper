@@ -2780,6 +2780,9 @@ void    rt_postfx3d_add_motion_blur(void *p, double i, int64_t s) { (void)p; (vo
 
 /* Occlusion culling stub (F3) */
 void    rt_canvas3d_set_occlusion_culling(void *c, int8_t e) { (void)c; (void)e; }
+void    rt_canvas3d_begin_2d(void *c) { (void)c; }
+void    rt_canvas3d_draw_rect_3d(void *c, int64_t x, int64_t y, int64_t w, int64_t h, int64_t cl) { (void)c; (void)x; (void)y; (void)w; (void)h; (void)cl; }
+void    rt_canvas3d_draw_text_3d(void *c, int64_t x, int64_t y, rt_string t, int64_t cl) { (void)c; (void)x; (void)y; (void)t; (void)cl; }
 
 /* TextureAtlas3D stubs (F4) */
 void   *rt_texatlas3d_new(int64_t w, int64_t h) { (void)w; (void)h; return NULL; }

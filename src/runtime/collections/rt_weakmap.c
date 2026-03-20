@@ -140,6 +140,8 @@ void *rt_weakmap_new(void)
     void *obj = rt_obj_new_i64(0, sizeof(rt_weakmap_data));
     rt_weakmap_data *data = (rt_weakmap_data *)obj;
     data->entries = (wm_entry *)calloc(WM_INITIAL_CAP, sizeof(wm_entry));
+    if (!data->entries)
+        rt_trap("WeakMap: memory allocation failed");
     data->capacity = WM_INITIAL_CAP;
     data->count = 0;
     rt_obj_set_finalizer(obj, weakmap_finalizer);

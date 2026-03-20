@@ -165,7 +165,7 @@ static BOOL CALLBACK gc_lock_init_callback(PINIT_ONCE InitOnce, PVOID Parameter,
 
 static void gc_lock(void)
 {
-    if (g_gc_is_shutdown)
+    if (__atomic_load_n(&g_gc_is_shutdown, __ATOMIC_ACQUIRE))
         return; // Lock destroyed after shutdown — no-op to prevent UB
     InitOnceExecuteOnce(&g_gc_lock_once, gc_lock_init_callback, NULL, NULL);
     EnterCriticalSection(&g_gc_lock_cs);
@@ -173,21 +173,21 @@ static void gc_lock(void)
 
 static void gc_unlock(void)
 {
-    if (g_gc_is_shutdown)
+    if (__atomic_load_n(&g_gc_is_shutdown, __ATOMIC_ACQUIRE))
         return;
     LeaveCriticalSection(&g_gc_lock_cs);
 }
 #else
 static void gc_lock(void)
 {
-    if (g_gc_is_shutdown)
+    if (__atomic_load_n(&g_gc_is_shutdown, __ATOMIC_ACQUIRE))
         return;
     pthread_mutex_lock(&g_gc_lock_mtx);
 }
 
 static void gc_unlock(void)
 {
-    if (g_gc_is_shutdown)
+    if (__atomic_load_n(&g_gc_is_shutdown, __ATOMIC_ACQUIRE))
         return;
     pthread_mutex_unlock(&g_gc_lock_mtx);
 }
@@ -832,7 +832,7 @@ void rt_gc_shutdown(void)
 
     /* Mark as shut down BEFORE destroying the lock to prevent gc_lock()
        from re-initializing a destroyed primitive (e.g., from a late finalizer). */
-    g_gc_is_shutdown = 1;
+    __atomic_store_n(&g_gc_is_shutdown, 1, __ATOMIC_RELEASE);
 
     /* Destroy and reinitialize lock primitive so it can be reused. */
 #ifdef _WIN32

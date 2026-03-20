@@ -79,7 +79,7 @@ rt_smoothvalue rt_smoothvalue_new(double initial, double smoothing)
 
 void rt_smoothvalue_destroy(rt_smoothvalue sv)
 {
-    if (sv)
+    if (sv && rt_obj_release_check0(sv))
         rt_obj_free(sv);
 }
 

@@ -891,7 +891,8 @@ long rt_tls_recv(rt_tls_session_t *session, void *buffer, size_t len)
         return (long)copy;
     }
 
-    // Receive new record (retry_recv: loop label for skipping non-application records)
+    // Receive new record (retry loop for skipping non-application records)
+    int non_app_retries = 0;
 retry_recv:;
     uint8_t content_type;
     size_t data_len;
@@ -909,8 +910,12 @@ retry_recv:;
     if (content_type != TLS_CONTENT_APPLICATION)
     {
         // Skip non-application records (e.g., NewSessionTicket post-handshake messages).
-        // M-13 fix: use an iterative loop instead of recursion to prevent stack overflow
-        // when a misbehaving server sends many consecutive non-application records.
+        // Limit retries to prevent CPU starvation from malicious servers.
+        if (++non_app_retries > 100)
+        {
+            session->error = "TLS: too many non-application records";
+            return RT_TLS_ERROR;
+        }
         goto retry_recv;
     }
 
@@ -1126,7 +1131,11 @@ void *rt_viper_tls_connect(rt_string host, int64_t port)
 
     tls->host = strdup(host_cstr);
     if (!tls->host)
+    {
+        if (rt_obj_release_check0(tls))
+            rt_obj_free(tls);
         return NULL;
+    }
 
     return tls;
 }
@@ -1169,7 +1178,11 @@ void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
 
     tls->host = strdup(host_cstr);
     if (!tls->host)
+    {
+        if (rt_obj_release_check0(tls))
+            rt_obj_free(tls);
         return NULL;
+    }
 
     return tls;
 }

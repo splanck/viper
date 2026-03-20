@@ -83,6 +83,15 @@ void *rt_unionfind_new(int64_t n)
     uf->parent = (int64_t *)malloc((size_t)n * sizeof(int64_t));
     uf->rank = (int64_t *)calloc((size_t)n, sizeof(int64_t));
     uf->size = (int64_t *)malloc((size_t)n * sizeof(int64_t));
+    if (!uf->parent || !uf->rank || !uf->size)
+    {
+        free(uf->parent);
+        free(uf->rank);
+        free(uf->size);
+        if (rt_obj_release_check0(uf))
+            rt_obj_free(uf);
+        return NULL;
+    }
     uf->n = n;
     uf->sets = n;
 

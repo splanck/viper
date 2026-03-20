@@ -163,6 +163,12 @@ rt_string rt_string_intern(rt_string s)
     intern_lock();
     intern_ensure_capacity();
 
+    if (!g_slots_ || g_cap_ == 0)
+    {
+        intern_unlock();
+        return s; // Table allocation failed — return input as-is (not interned)
+    }
+
     size_t slot = (size_t)(h & (g_cap_ - 1));
     for (;;)
     {

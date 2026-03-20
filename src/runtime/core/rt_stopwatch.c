@@ -211,6 +211,8 @@ void *rt_stopwatch_start_new(void)
 /// @see rt_stopwatch_restart For resetting and starting
 void rt_stopwatch_start(void *obj)
 {
+    if (!obj)
+        return;
     ViperStopwatch *sw = (ViperStopwatch *)obj;
 
     if (!sw->running)
@@ -250,6 +252,8 @@ void rt_stopwatch_start(void *obj)
 /// @see rt_stopwatch_reset For clearing elapsed time
 void rt_stopwatch_stop(void *obj)
 {
+    if (!obj)
+        return;
     ViperStopwatch *sw = (ViperStopwatch *)obj;
 
     if (sw->running)
@@ -285,6 +289,8 @@ void rt_stopwatch_stop(void *obj)
 /// @see rt_stopwatch_start For starting after reset
 void rt_stopwatch_reset(void *obj)
 {
+    if (!obj)
+        return;
     ViperStopwatch *sw = (ViperStopwatch *)obj;
 
     sw->accumulated_ns = 0;

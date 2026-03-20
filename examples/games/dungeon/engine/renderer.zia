@@ -42,8 +42,7 @@ entity Renderer {
         PostFX3D.AddColorGrade(postfx, 1.05, 1.0, 1.1);
         Canvas3D.SetPostFX(canvas, postfx);
 
-        // Capture mouse for FPS control
-        Viper.Input.Mouse.Capture();
+        // Mouse capture handled by game state transitions, not here
     }
 
     expose func getCanvas() -> Canvas3D {
@@ -86,6 +85,22 @@ entity Renderer {
 
     expose func flip() {
         Canvas3D.Flip(canvas);
+    }
+
+    // Begin 2D overlay mode — orthographic projection through Metal pipeline
+    expose func begin2D() {
+        Canvas3D.Clear(canvas, 0.04, 0.04, 0.08);
+        Canvas3D.Begin2D(canvas);
+    }
+
+    // End 2D overlay mode
+    expose func end2D() {
+        Canvas3D.End(canvas);
+    }
+
+    // Draw rectangle through 3D pipeline (works on Metal, not software FB)
+    expose func drawRect(x: Integer, y: Integer, w: Integer, h: Integer, color: Integer) {
+        Canvas3D.DrawRect3D(canvas, x, y, w, h, color);
     }
 
     expose func setTorchLight(index: Integer, x: Float, y: Float, z: Float, intensity: Float) {

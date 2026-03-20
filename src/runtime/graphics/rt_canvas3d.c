@@ -261,6 +261,247 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b)
     }
 }
 
+void rt_canvas3d_begin_2d(void *obj)
+{
+    if (!obj) return;
+    rt_canvas3d *c = (rt_canvas3d *)obj;
+    if (!c->backend) return;
+
+    /* Set up an orthographic camera for screen-space 2D rendering.
+     * This renders 2D content THROUGH the Metal pipeline (as 3D quads),
+     * avoiding the software framebuffer compositing issue on Metal. */
+    vgfx3d_camera_params_t params;
+    memset(&params, 0, sizeof(params));
+
+    /* Orthographic projection: maps pixel coords (0,0=top-left) to NDC.
+     * Add 2-pixel margin so full-screen rects at (0,0,w,h) don't land
+     * exactly on the NDC ±1.0 clip boundary (Metal discards edge vertices). */
+    float w = (float)c->width + 2.0f;
+    float h = (float)c->height + 2.0f;
+    /* ortho(-1, w-1, h-1, -1, -1, 1) — Y-flipped for screen coords */
+    memset(params.projection, 0, sizeof(params.projection));
+    params.projection[0] = 2.0f / w;          /* X scale */
+    params.projection[5] = -2.0f / h;         /* Y scale (flipped) */
+    params.projection[10] = -1.0f;            /* Z scale */
+    params.projection[3] = -1.0f + 2.0f / w;  /* X translate (shift for margin) */
+    params.projection[7] = 1.0f - 2.0f / h;   /* Y translate (shift for margin) */
+    params.projection[15] = 1.0f;
+
+    /* Identity view matrix (camera at origin) */
+    memset(params.view, 0, sizeof(params.view));
+    params.view[0] = params.view[5] = params.view[10] = params.view[15] = 1.0f;
+
+    params.position[0] = params.position[1] = 0.0f;
+    params.position[2] = 1.0f;
+    params.fog_enabled = 0;
+
+    c->cached_cam_pos[0] = 0.0f;
+    c->cached_cam_pos[1] = 0.0f;
+    c->cached_cam_pos[2] = 1.0f;
+    c->draw_count = 0;
+
+    c->backend->begin_frame(c->backend_ctx, &params);
+    c->in_frame = 1;
+}
+
+/// @brief Draw a filled rectangle through the 3D pipeline (screen-space coords).
+/// Must be called between Begin2D/End or Begin/End.
+void rt_canvas3d_draw_rect_3d(void *obj, int64_t x, int64_t y,
+                                int64_t w, int64_t h, int64_t color)
+{
+    if (!obj) return;
+    rt_canvas3d *c = (rt_canvas3d *)obj;
+    if (!c->in_frame || !c->backend) return;
+
+    float fx = (float)x, fy = (float)y;
+    float fw = (float)w, fh = (float)h;
+    float r = (float)((color >> 16) & 0xFF) / 255.0f;
+    float g = (float)((color >> 8) & 0xFF) / 255.0f;
+    float b = (float)(color & 0xFF) / 255.0f;
+
+    /* Build a quad mesh with 4 vertices in screen-space */
+    static vgfx3d_vertex_t verts[4];
+    memset(verts, 0, sizeof(verts));
+    /* Top-left */
+    verts[0].pos[0] = fx;      verts[0].pos[1] = fy;      verts[0].pos[2] = 0;
+    verts[0].normal[2] = 1.0f; verts[0].color[0] = r; verts[0].color[1] = g;
+    verts[0].color[2] = b; verts[0].color[3] = 1.0f;
+    /* Top-right */
+    verts[1].pos[0] = fx + fw; verts[1].pos[1] = fy;      verts[1].pos[2] = 0;
+    verts[1].normal[2] = 1.0f; verts[1].color[0] = r; verts[1].color[1] = g;
+    verts[1].color[2] = b; verts[1].color[3] = 1.0f;
+    /* Bottom-right */
+    verts[2].pos[0] = fx + fw; verts[2].pos[1] = fy + fh; verts[2].pos[2] = 0;
+    verts[2].normal[2] = 1.0f; verts[2].color[0] = r; verts[2].color[1] = g;
+    verts[2].color[2] = b; verts[2].color[3] = 1.0f;
+    /* Bottom-left */
+    verts[3].pos[0] = fx;      verts[3].pos[1] = fy + fh; verts[3].pos[2] = 0;
+    verts[3].normal[2] = 1.0f; verts[3].color[0] = r; verts[3].color[1] = g;
+    verts[3].color[2] = b; verts[3].color[3] = 1.0f;
+
+    static uint32_t indices[6] = {0, 1, 2, 0, 2, 3};
+
+    vgfx3d_draw_cmd_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.vertices = verts;
+    cmd.vertex_count = 4;
+    cmd.indices = indices;
+    cmd.index_count = 6;
+    /* Identity model matrix */
+    cmd.model_matrix[0] = cmd.model_matrix[5] = cmd.model_matrix[10] = cmd.model_matrix[15] = 1.0f;
+    cmd.diffuse_color[0] = r; cmd.diffuse_color[1] = g;
+    cmd.diffuse_color[2] = b; cmd.diffuse_color[3] = 1.0f;
+    cmd.alpha = 1.0f;
+    cmd.unlit = 1; /* no lighting for 2D UI */
+
+    c->backend->submit_draw(c->backend_ctx, c->gfx_win, &cmd,
+                             NULL, 0, c->ambient, 0, 0);
+}
+
+/// @brief Draw text through the 3D pipeline using the 5×7 bitmap font.
+/// Each character's "on" pixels are rendered as 2×2 quads batched into one mesh.
+void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, int64_t color)
+{
+    if (!obj || !text) return;
+    rt_canvas3d *c = (rt_canvas3d *)obj;
+    if (!c->in_frame || !c->backend) return;
+
+    const char *str = rt_string_cstr(text);
+    if (!str) return;
+
+    float r = (float)((color >> 16) & 0xFF) / 255.0f;
+    float g = (float)((color >> 8) & 0xFF) / 255.0f;
+    float b = (float)(color & 0xFF) / 255.0f;
+
+    /* Reference the font data from draw_text2d (defined later in this file).
+     * We duplicate the font table reference here for self-containment. */
+    static const uint8_t font5x7[95][7] = {
+        {0x00,0x00,0x00,0x00,0x00,0x00,0x00},{0x04,0x04,0x04,0x04,0x00,0x04,0x00},
+        {0x0A,0x0A,0x00,0x00,0x00,0x00,0x00},{0x0A,0x1F,0x0A,0x1F,0x0A,0x00,0x00},
+        {0x04,0x0F,0x14,0x0E,0x05,0x1E,0x04},{0x19,0x1A,0x04,0x0B,0x13,0x00,0x00},
+        {0x08,0x14,0x08,0x15,0x12,0x0D,0x00},{0x04,0x04,0x00,0x00,0x00,0x00,0x00},
+        {0x02,0x04,0x04,0x04,0x04,0x02,0x00},{0x08,0x04,0x04,0x04,0x04,0x08,0x00},
+        {0x04,0x15,0x0E,0x15,0x04,0x00,0x00},{0x00,0x04,0x04,0x1F,0x04,0x04,0x00},
+        {0x00,0x00,0x00,0x00,0x04,0x04,0x08},{0x00,0x00,0x00,0x1F,0x00,0x00,0x00},
+        {0x00,0x00,0x00,0x00,0x00,0x04,0x00},{0x01,0x02,0x04,0x08,0x10,0x00,0x00},
+        {0x0E,0x11,0x13,0x15,0x19,0x0E,0x00},{0x04,0x0C,0x04,0x04,0x04,0x0E,0x00},
+        {0x0E,0x11,0x01,0x06,0x08,0x1F,0x00},{0x0E,0x11,0x02,0x01,0x11,0x0E,0x00},
+        {0x02,0x06,0x0A,0x12,0x1F,0x02,0x00},{0x1F,0x10,0x1E,0x01,0x11,0x0E,0x00},
+        {0x06,0x08,0x1E,0x11,0x11,0x0E,0x00},{0x1F,0x01,0x02,0x04,0x08,0x08,0x00},
+        {0x0E,0x11,0x0E,0x11,0x11,0x0E,0x00},{0x0E,0x11,0x0F,0x01,0x02,0x0C,0x00},
+        {0x00,0x04,0x00,0x00,0x04,0x00,0x00},{0x00,0x04,0x00,0x00,0x04,0x04,0x08},
+        {0x02,0x04,0x08,0x04,0x02,0x00,0x00},{0x00,0x00,0x1F,0x00,0x1F,0x00,0x00},
+        {0x08,0x04,0x02,0x04,0x08,0x00,0x00},{0x0E,0x11,0x02,0x04,0x00,0x04,0x00},
+        {0x0E,0x11,0x17,0x17,0x16,0x10,0x0E},{0x0E,0x11,0x11,0x1F,0x11,0x11,0x00},
+        {0x1E,0x11,0x1E,0x11,0x11,0x1E,0x00},{0x0E,0x11,0x10,0x10,0x11,0x0E,0x00},
+        {0x1E,0x11,0x11,0x11,0x11,0x1E,0x00},{0x1F,0x10,0x1E,0x10,0x10,0x1F,0x00},
+        {0x1F,0x10,0x1E,0x10,0x10,0x10,0x00},{0x0E,0x11,0x10,0x13,0x11,0x0E,0x00},
+        {0x11,0x11,0x1F,0x11,0x11,0x11,0x00},{0x0E,0x04,0x04,0x04,0x04,0x0E,0x00},
+        {0x01,0x01,0x01,0x01,0x11,0x0E,0x00},{0x11,0x12,0x14,0x18,0x14,0x12,0x11},
+        {0x10,0x10,0x10,0x10,0x10,0x1F,0x00},{0x11,0x1B,0x15,0x11,0x11,0x11,0x00},
+        {0x11,0x19,0x15,0x13,0x11,0x11,0x00},{0x0E,0x11,0x11,0x11,0x11,0x0E,0x00},
+        {0x1E,0x11,0x1E,0x10,0x10,0x10,0x00},{0x0E,0x11,0x11,0x15,0x12,0x0D,0x00},
+        {0x1E,0x11,0x1E,0x14,0x12,0x11,0x00},{0x0E,0x11,0x10,0x0E,0x01,0x1E,0x00},
+        {0x1F,0x04,0x04,0x04,0x04,0x04,0x00},{0x11,0x11,0x11,0x11,0x11,0x0E,0x00},
+        {0x11,0x11,0x11,0x0A,0x0A,0x04,0x00},{0x11,0x11,0x11,0x15,0x15,0x0A,0x00},
+        {0x11,0x0A,0x04,0x04,0x0A,0x11,0x00},{0x11,0x0A,0x04,0x04,0x04,0x04,0x00},
+        {0x1F,0x02,0x04,0x08,0x10,0x1F,0x00},{0x0E,0x08,0x08,0x08,0x08,0x0E,0x00},
+        {0x10,0x08,0x04,0x02,0x01,0x00,0x00},{0x0E,0x02,0x02,0x02,0x02,0x0E,0x00},
+        {0x04,0x0A,0x11,0x00,0x00,0x00,0x00},{0x00,0x00,0x00,0x00,0x00,0x1F,0x00},
+        {0x08,0x04,0x00,0x00,0x00,0x00,0x00},{0x00,0x0E,0x01,0x0F,0x11,0x0F,0x00},
+        {0x10,0x10,0x1E,0x11,0x11,0x1E,0x00},{0x00,0x0E,0x11,0x10,0x11,0x0E,0x00},
+        {0x01,0x01,0x0F,0x11,0x11,0x0F,0x00},{0x00,0x0E,0x11,0x1F,0x10,0x0E,0x00},
+        {0x06,0x08,0x1E,0x08,0x08,0x08,0x00},{0x00,0x0F,0x11,0x0F,0x01,0x0E,0x00},
+        {0x10,0x10,0x1E,0x11,0x11,0x11,0x00},{0x04,0x00,0x0C,0x04,0x04,0x0E,0x00},
+        {0x02,0x00,0x06,0x02,0x02,0x12,0x0C},{0x10,0x12,0x14,0x18,0x14,0x12,0x00},
+        {0x0C,0x04,0x04,0x04,0x04,0x0E,0x00},{0x00,0x1A,0x15,0x15,0x11,0x11,0x00},
+        {0x00,0x1E,0x11,0x11,0x11,0x11,0x00},{0x00,0x0E,0x11,0x11,0x11,0x0E,0x00},
+        {0x00,0x1E,0x11,0x1E,0x10,0x10,0x00},{0x00,0x0F,0x11,0x0F,0x01,0x01,0x00},
+        {0x00,0x16,0x19,0x10,0x10,0x10,0x00},{0x00,0x0F,0x10,0x0E,0x01,0x1E,0x00},
+        {0x08,0x1E,0x08,0x08,0x0A,0x04,0x00},{0x00,0x11,0x11,0x11,0x13,0x0D,0x00},
+        {0x00,0x11,0x11,0x0A,0x0A,0x04,0x00},{0x00,0x11,0x11,0x15,0x15,0x0A,0x00},
+        {0x00,0x11,0x0A,0x04,0x0A,0x11,0x00},{0x00,0x11,0x11,0x0F,0x01,0x0E,0x00},
+        {0x00,0x1F,0x02,0x04,0x08,0x1F,0x00},{0x02,0x04,0x0C,0x04,0x04,0x02,0x00},
+        {0x04,0x04,0x04,0x04,0x04,0x04,0x04},{0x08,0x04,0x06,0x04,0x04,0x08,0x00},
+        {0x00,0x00,0x0D,0x12,0x00,0x00,0x00},
+    };
+
+    /* Count "on" pixels to allocate mesh */
+    int32_t len = 0;
+    for (const char *p = str; *p; p++) len++;
+
+    /* Build a single mesh with all character quads. Each "on" pixel = 1 quad (4 verts, 6 indices).
+     * Max pixels per char = 5*7 = 35. Allocate conservatively. */
+    int32_t max_quads = len * 35;
+    vgfx3d_vertex_t *verts = (vgfx3d_vertex_t *)malloc((size_t)(max_quads * 4) * sizeof(vgfx3d_vertex_t));
+    uint32_t *indices = (uint32_t *)malloc((size_t)(max_quads * 6) * sizeof(uint32_t));
+    if (!verts || !indices) { free(verts); free(indices); return; }
+
+    int32_t quad_count = 0;
+    float scale = 2.0f; /* pixel size for each font dot */
+    float cx = (float)x;
+
+    for (const char *p = str; *p; p++)
+    {
+        int ch = *p;
+        if (ch < 32 || ch > 126) ch = 32;
+        const uint8_t *glyph = font5x7[ch - 32];
+
+        for (int row = 0; row < 7; row++)
+        {
+            for (int col = 0; col < 5; col++)
+            {
+                if (glyph[row] & (1 << (4 - col)))
+                {
+                    float px = cx + col * scale;
+                    float py = (float)y + row * scale;
+                    int32_t vi = quad_count * 4;
+                    int32_t ii = quad_count * 6;
+
+                    /* 4 vertices for this pixel quad */
+                    for (int v = 0; v < 4; v++) {
+                        memset(&verts[vi + v], 0, sizeof(vgfx3d_vertex_t));
+                        verts[vi + v].normal[2] = 1.0f;
+                        verts[vi + v].color[0] = r;
+                        verts[vi + v].color[1] = g;
+                        verts[vi + v].color[2] = b;
+                        verts[vi + v].color[3] = 1.0f;
+                    }
+                    verts[vi + 0].pos[0] = px;           verts[vi + 0].pos[1] = py;
+                    verts[vi + 1].pos[0] = px + scale;   verts[vi + 1].pos[1] = py;
+                    verts[vi + 2].pos[0] = px + scale;   verts[vi + 2].pos[1] = py + scale;
+                    verts[vi + 3].pos[0] = px;           verts[vi + 3].pos[1] = py + scale;
+
+                    indices[ii + 0] = vi;     indices[ii + 1] = vi + 1; indices[ii + 2] = vi + 2;
+                    indices[ii + 3] = vi;     indices[ii + 4] = vi + 2; indices[ii + 5] = vi + 3;
+                    quad_count++;
+                }
+            }
+        }
+        cx += 6.0f * scale; /* char width + 1px spacing */
+    }
+
+    if (quad_count > 0)
+    {
+        vgfx3d_draw_cmd_t cmd;
+        memset(&cmd, 0, sizeof(cmd));
+        cmd.vertices = verts;
+        cmd.vertex_count = (uint32_t)(quad_count * 4);
+        cmd.indices = indices;
+        cmd.index_count = (uint32_t)(quad_count * 6);
+        cmd.model_matrix[0] = cmd.model_matrix[5] = cmd.model_matrix[10] = cmd.model_matrix[15] = 1.0f;
+        cmd.diffuse_color[0] = r; cmd.diffuse_color[1] = g;
+        cmd.diffuse_color[2] = b; cmd.diffuse_color[3] = 1.0f;
+        cmd.alpha = 1.0f;
+        cmd.unlit = 1;
+        c->backend->submit_draw(c->backend_ctx, c->gfx_win, &cmd,
+                                 NULL, 0, c->ambient, 0, 0);
+    }
+
+    free(verts);
+    free(indices);
+}
+
 void rt_canvas3d_begin(void *obj, void *camera)
 {
     if (!obj || !camera)
@@ -269,6 +510,10 @@ void rt_canvas3d_begin(void *obj, void *camera)
     rt_camera3d *cam = (rt_camera3d *)camera;
     if (!c->backend)
         return;
+
+    /* Show Metal layer for 3D rendering (in case it was hidden for 2D menu) */
+    extern void vgfx3d_show_gpu_layer(void *backend_ctx);
+    vgfx3d_show_gpu_layer(c->backend_ctx);
 
     vgfx3d_camera_params_t params;
     mat4_d2f(cam->view, params.view);
@@ -555,14 +800,20 @@ void rt_canvas3d_flip(void *obj)
 
     /* Present the GPU drawable / swap the back buffer. For GPU backends
      * (Metal, D3D11, OpenGL) this presents only the LAST Begin/End pair's
-     * content, avoiding flicker with multi-pass rendering and RTT. */
-    if (c->backend && c->backend->present)
+     * content, avoiding flicker with multi-pass rendering and RTT.
+     * Skip when in 2D-only mode (in_frame == -1) — the software framebuffer
+     * is displayed via drawRect:/CGImage blit instead. */
+    if (c->in_frame != -1 && c->backend && c->backend->present)
         c->backend->present(c->backend_ctx);
 
     /* Always call vgfx_update to keep the window alive and process display
      * refresh on macOS. For GPU backends, the CAMetalLayer renders on top
      * of the software framebuffer. */
     vgfx_update(c->gfx_win);
+
+    /* Reset 2D-only flag after present */
+    if (c->in_frame == -1)
+        c->in_frame = 0;
 
     int64_t now_us = rt_clock_ticks_us();
     if (c->last_flip_us > 0)

@@ -23,6 +23,8 @@ entity Enemy {
     hide Float deathTimer;
     hide Float hitFlashTimer;
     hide Float bodyRadius;
+    hide Float modelScale;
+    hide Mat4 scaleMat;
 
     // FBX mesh + animation
     hide Mesh3D mesh;
@@ -52,7 +54,9 @@ entity Enemy {
         attackCooldown = 0.0;
         deathTimer = 0.0;
         hitFlashTimer = 0.0;
-        bodyRadius = 0.5;
+        bodyRadius = 0.8;
+        modelScale = 1.5;
+        scaleMat = Mat4.ScaleUniform(1.5);
 
         // Extract mesh and animations from FBX
         if (fbxAsset != null) {
@@ -235,7 +239,8 @@ entity Enemy {
             Material3D.set_Alpha(drawMat, 1.0);
         }
 
-        var xform = Mat4.Translate(posX, posY, posZ);
+        var translate = Mat4.Translate(posX, posY, posZ);
+        var xform = Mat4.Mul(translate, scaleMat);
 
         if (mesh != null && animPlayer != null) {
             Canvas3D.DrawMeshSkinned(canvas, mesh, xform, drawMat, animPlayer);
@@ -243,9 +248,7 @@ entity Enemy {
             if (mesh != null) {
                 Canvas3D.DrawMesh(canvas, mesh, xform, drawMat);
             } else {
-                // Fallback: draw a sphere if no mesh
-                var fallback = Mesh3D.NewSphere(0.5, 8);
-                Canvas3D.DrawMesh(canvas, fallback, xform, drawMat);
+                // No mesh available — skip drawing
             }
         }
     }

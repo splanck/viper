@@ -287,6 +287,8 @@ void *rt_treemap_new(void)
 /// @note O(1) time complexity.
 int64_t rt_treemap_len(void *obj)
 {
+    if (!obj)
+        return 0;
     treemap_impl *tm = (treemap_impl *)obj;
     return (int64_t)tm->count;
 }
@@ -300,6 +302,8 @@ int64_t rt_treemap_len(void *obj)
 /// @note O(1) time complexity.
 int8_t rt_treemap_is_empty(void *obj)
 {
+    if (!obj)
+        return 1;
     treemap_impl *tm = (treemap_impl *)obj;
     return tm->count == 0 ? 1 : 0;
 }
@@ -328,6 +332,8 @@ int8_t rt_treemap_is_empty(void *obj)
 /// @see rt_treemap_get For retrieving values by key
 void rt_treemap_set(void *obj, rt_string key, void *value)
 {
+    if (!obj)
+        return;
     treemap_impl *tm = (treemap_impl *)obj;
 
     size_t keylen;
@@ -395,6 +401,8 @@ void rt_treemap_set(void *obj, rt_string key, void *value)
 /// @see rt_treemap_set For storing key-value pairs
 void *rt_treemap_get(void *obj, rt_string key)
 {
+    if (!obj)
+        return NULL;
     treemap_impl *tm = (treemap_impl *)obj;
 
     size_t keylen;
@@ -418,6 +426,8 @@ void *rt_treemap_get(void *obj, rt_string key)
 /// @note O(log n) time complexity (binary search).
 int8_t rt_treemap_has(void *obj, rt_string key)
 {
+    if (!obj)
+        return 0;
     treemap_impl *tm = (treemap_impl *)obj;
 
     size_t keylen;
@@ -442,6 +452,8 @@ int8_t rt_treemap_has(void *obj, rt_string key)
 /// @note O(log n) for lookup + O(n) for removal (array shifting).
 int8_t rt_treemap_remove(void *obj, rt_string key)
 {
+    if (!obj)
+        return 0;
     treemap_impl *tm = (treemap_impl *)obj;
 
     size_t keylen;
@@ -478,6 +490,8 @@ int8_t rt_treemap_remove(void *obj, rt_string key)
 /// @note O(n) time complexity where n is the number of entries.
 void rt_treemap_clear(void *obj)
 {
+    if (!obj)
+        return;
     treemap_impl *tm = (treemap_impl *)obj;
 
     for (size_t i = 0; i < tm->count; i++)
@@ -512,13 +526,17 @@ void rt_treemap_clear(void *obj)
 /// @see rt_treemap_values For retrieving values
 void *rt_treemap_keys(void *obj)
 {
-    treemap_impl *tm = (treemap_impl *)obj;
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
+    if (!obj)
+        return seq;
+    treemap_impl *tm = (treemap_impl *)obj;
 
     for (size_t i = 0; i < tm->count; i++)
     {
         rt_string str = rt_string_from_bytes(tm->entries[i].key, tm->entries[i].keylen);
         rt_seq_push(seq, (void *)str);
+        rt_str_release_maybe(str);
     }
 
     return seq;
@@ -538,8 +556,10 @@ void *rt_treemap_keys(void *obj)
 /// @see rt_treemap_keys For retrieving keys
 void *rt_treemap_values(void *obj)
 {
-    treemap_impl *tm = (treemap_impl *)obj;
     void *seq = rt_seq_new();
+    if (!obj)
+        return seq;
+    treemap_impl *tm = (treemap_impl *)obj;
 
     for (size_t i = 0; i < tm->count; i++)
     {
@@ -572,6 +592,8 @@ void *rt_treemap_values(void *obj)
 /// @see rt_treemap_last For the largest key
 rt_string rt_treemap_first(void *obj)
 {
+    if (!obj)
+        return rt_const_cstr("");
     treemap_impl *tm = (treemap_impl *)obj;
 
     if (tm->count == 0)
@@ -603,6 +625,8 @@ rt_string rt_treemap_first(void *obj)
 /// @see rt_treemap_first For the smallest key
 rt_string rt_treemap_last(void *obj)
 {
+    if (!obj)
+        return rt_const_cstr("");
     treemap_impl *tm = (treemap_impl *)obj;
 
     if (tm->count == 0)
@@ -639,6 +663,8 @@ rt_string rt_treemap_last(void *obj)
 /// @see rt_treemap_ceil For finding the smallest key >= a given key
 rt_string rt_treemap_floor(void *obj, rt_string key)
 {
+    if (!obj)
+        return rt_const_cstr("");
     treemap_impl *tm = (treemap_impl *)obj;
 
     if (tm->count == 0)
@@ -690,6 +716,8 @@ rt_string rt_treemap_floor(void *obj, rt_string key)
 /// @see rt_treemap_floor For finding the largest key <= a given key
 rt_string rt_treemap_ceil(void *obj, rt_string key)
 {
+    if (!obj)
+        return rt_const_cstr("");
     treemap_impl *tm = (treemap_impl *)obj;
 
     if (tm->count == 0)

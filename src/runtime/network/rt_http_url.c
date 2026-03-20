@@ -149,7 +149,14 @@ static char *percent_decode(const char *str)
             int low = rt_hex_digit_value(str[i + 2]);
             if (high >= 0 && low >= 0)
             {
-                *p++ = (char)((high << 4) | low);
+                char decoded = (char)((high << 4) | low);
+                if (decoded == '\0')
+                {
+                    // Reject %00 NUL byte injection — pass through un-decoded
+                    *p++ = '%';
+                    continue;
+                }
+                *p++ = decoded;
                 i += 2;
                 continue;
             }

@@ -139,6 +139,8 @@ static int http_conn_send(http_conn_t *conn, const uint8_t *data, size_t len)
         void *bytes = rt_bytes_new((int64_t)len);
         memcpy(bytes_data(bytes), data, len);
         rt_tcp_send_all(conn->tcp, bytes);
+        if (rt_obj_release_check0(bytes))
+            rt_obj_free(bytes);
         return 0;
     }
 }
@@ -173,6 +175,8 @@ static long http_conn_recv(http_conn_t *conn, uint8_t *buf, size_t len)
             memcpy(buf + total, bytes_data(data), data_len);
             total += data_len;
         }
+        if (data && rt_obj_release_check0(data))
+            rt_obj_free(data);
     }
 
     return (long)total;
@@ -202,8 +206,14 @@ static int http_conn_recv_byte(http_conn_t *conn, uint8_t *byte)
         void *data = rt_tcp_recv(conn->tcp, (int64_t)sizeof(conn->read_buf));
         int64_t data_len = rt_bytes_len(data);
         if (data_len <= 0)
+        {
+            if (data && rt_obj_release_check0(data))
+                rt_obj_free(data);
             return 0;
+        }
         memcpy(conn->read_buf, bytes_data(data), data_len);
+        if (rt_obj_release_check0(data))
+            rt_obj_free(data);
         conn->read_buf_len = (size_t)data_len;
         conn->read_buf_pos = 0;
     }

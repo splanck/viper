@@ -184,6 +184,8 @@ void *rt_sparse_new(void)
     sa->count = 0;
     sa->capacity = 16;
     sa->slots = (sa_slot *)calloc(16, sizeof(sa_slot));
+    if (!sa->slots)
+        rt_trap("SparseArray: memory allocation failed");
     rt_obj_set_finalizer(sa, sa_finalizer);
     return (void *)sa;
 }

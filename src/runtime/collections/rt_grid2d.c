@@ -79,6 +79,8 @@ rt_grid2d rt_grid2d_new(int64_t width, int64_t height, int64_t default_value)
     grid->data = malloc((size_t)size * sizeof(int64_t));
     if (!grid->data)
     {
+        if (rt_obj_release_check0(grid))
+            rt_obj_free(grid);
         return NULL;
     }
 

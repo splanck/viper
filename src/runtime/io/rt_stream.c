@@ -84,7 +84,12 @@ static void stream_finalizer(void *obj)
         {
             rt_binfile_close(s->wrapped);
         }
-        // MemStream doesn't need explicit close
+        else
+        {
+            // MemStream or other wrapped types: release via object API
+            if (rt_obj_release_check0(s->wrapped))
+                rt_obj_free(s->wrapped);
+        }
         s->wrapped = NULL;
     }
 }

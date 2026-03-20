@@ -11,26 +11,33 @@
 
 ### Release Overview
 
-Version 0.2.3 is a hardening, tooling, and infrastructure release. Headline features include a
-**native assembler and linker** (zero external tool dependencies for compilation), **enum types** for
-both language frontends, a **dual-protocol language server** (LSP + MCP), and a comprehensive
-**backend codegen review** that decomposed monolithic files, added CFG-aware register allocation
-liveness, and shared core algorithms across both backends. The native linker gained **DWARF v5
-debug info**, **Identical Code Folding (ICF)**, **branch trampolines**, and **Mach-O two-level
-namespace** support (resolving PAC crashes on macOS ARM64). The release also includes comprehensive
-safety audits across every layer (VM, codegen, runtime, network), concurrency hardening with TSan
-verification, three new IL optimizer passes, major AArch64 backend performance work (post-RA
-scheduler, register coalescer, loop-invariant hoisting, cross-block store-load forwarding), an
-interactive REPL for both languages, a multi-language benchmark suite, a **frontend decomposition**
-that extracted shared utilities and split the largest parser/lowerer files, and a large-scale
-codebase reorganization that consolidates documentation and examples into clean hierarchies. The
-full O2 optimization pipeline was restored for native codegen (10 passes were missing) combined
-with division strength reduction, yielding **24-87% benchmark improvements** on Apple M4 Max.
+Version 0.2.3 is a major hardening, tooling, and infrastructure release. Highlights:
 
-2,970 files changed across 57 commits. ~120K lines added and ~316K lines removed (including
-ViperDOS cleanup of 658 files). 1,100 stale files deleted and 341 new files added. Test count
-increased from 1,261 to 1,307 (+46 net; large stale test fixture deletion offset by new coverage).
-Source file count: 2,546 files totaling ~700K LOC.
+- **3D Graphics Engine** — 28-class engine with scene graph, skeletal animation, physics, particles, terrain, post-processing, and FBX loading. Four backends: Metal, D3D11, OpenGL, software rasterizer.
+- **Native Assembler + Linker** — zero external tool dependencies. Source → executable using only Viper's own code. DWARF v5 debug info, ICF, branch trampolines, Mach-O two-level namespace.
+- **Enum Types** — for both Zia and BASIC, with match exhaustiveness checking.
+- **Language Server** — dual-protocol (LSP + MCP) `zia-server` for editors and AI assistants.
+- **AArch64 Performance** — post-RA scheduler, register coalescer, loop-invariant hoisting, cross-block store-load forwarding, division strength reduction. **24-87% benchmark improvements** on Apple M4 Max.
+- **3 New IL Optimizer Passes** — EH optimization, loop rotation, reassociation. Full O2 pipeline restored (10 passes were missing from native codegen).
+- **Interactive REPL** — `viper repl` for both Zia and BASIC with tab completion, persistent history, and meta-commands.
+- **Comprehensive Safety Audits** — VM, codegen, runtime, network, and concurrency hardening with TSan verification.
+- **Backend Codegen Review** — decomposed monolithic files, CFG-aware register allocation liveness, shared infrastructure across both backends.
+- **Game Engine Framework** — GameBase/IScene, screen transitions, A* pathfinding, SaveData, DebugOverlay, SoundBank/Synth.
+- **Frontend Decomposition** — shared utilities, parser/lowerer file splits, CRTP LexerBase.
+- **Codebase Reorganization** — demos consolidated into `examples/`, devdocs merged into `docs/`, 900+ doc fixes.
+- **Website** — Solarized dark/light theme, 66-page project site.
+
+#### By the Numbers
+
+| Metric | Value |
+|--------|-------|
+| Commits | 82 |
+| Files changed | 3,322 |
+| Lines added | ~245K |
+| Lines removed | ~321K |
+| Source files | 2,637 |
+| Runtime classes | 272 |
+| Codebase | ~700K LOC |
 
 ---
 
@@ -481,17 +488,50 @@ game loops.
 **Camera.SnapTo** — Instant camera repositioning for level transitions and respawn events, bypassing
 the normal smooth-follow interpolation.
 
+#### 3D Graphics Engine (Graphics3D)
+
+A complete 3D graphics engine built as a zero-dependency C runtime module with pluggable GPU backends.
+
+**Core Architecture**
+- Scene graph with frustum culling and node hierarchy (`Scene3D`, `SceneNode3D`)
+- Transform system with parent-child propagation (`Transform3D`)
+- Material system with PBR properties, environment mapping, and emissive surfaces (`Material3D`)
+- Camera system with shake, follow, and smooth interpolation (`Camera3D`)
+- Light system with point, directional, and spot lights (`Light3D`)
+
+**Rendering**
+- Four backends: Metal (macOS), D3D11 (Windows), OpenGL (Linux), software rasterizer (fallback)
+- Multi-pass rendering pipeline with alpha blending and depth sorting
+- Render-to-texture for post-processing and offscreen rendering (`RenderTarget3D`)
+- Post-processing effects: bloom, vignette, color grading, screen-space effects (`PostFX3D`)
+- Skybox rendering with cubemap support (`CubeMap3D`)
+- Instance batching for efficient rendering of repeated meshes (`InstanceBatch3D`)
+- Decal projection (`Decal3D`), terrain rendering (`Terrain3D`), water simulation (`Water3D`)
+
+**Animation & Physics**
+- Skeletal animation with bone hierarchies and blend trees (`Skeleton3D`, `Animation3D`, `AnimBlend3D`, `AnimPlayer3D`)
+- Morph targets for facial animation and mesh deformation (`MorphTarget3D`)
+- Character controller combining skeletal animation and physics (`Character3D`)
+- 3D physics with rigid bodies and trigger volumes (`Physics3DBody`, `Physics3DWorld`, `Trigger3D`)
+
+**Navigation & Loading**
+- Navigation mesh for AI pathfinding (`NavMesh3D`)
+- Path system for waypoint-based movement (`Path3D`)
+- FBX file loader for importing meshes, skeletons, and animations (`FBX`)
+- Raycasting for object picking and interaction (`RayHit3D`)
+- Particle systems (`Particles3D`)
+
+28 classes total. Documented in [Graphics3D Guide](../graphics3d-guide.md) and [Graphics3D Architecture](../graphics3d-architecture.md).
+
 #### Website
 
-A hand-crafted project website under `site/` for GitHub Pages deployment:
+A hand-crafted project website under `misc/site/` for GitHub Pages deployment:
 
-- **Landing page** (`site/index.html`): Hero with logo, code sample tabs (Zia/BASIC/IL), 6 feature
-  cards, showcase preview, architecture diagram, quick install block
-- **Documentation hub** (`site/docs/index.html`): 8-category table of contents linking to
-  GitHub-rendered markdown (Start Here, Zia, BASIC, IL, Runtime, Modules, Tools, Architecture)
-- **Showcase gallery** (`site/showcase.html`): All applications and games with language badges
-- Dark/light theme with localStorage persistence, responsive layout, syntax highlighting
-- Zero dependencies — plain HTML/CSS/JS matching Viper's zero-dependency philosophy
+- **66 pages**: Landing, docs hub, showcase gallery, feature pages, blog, learning paths
+- **Solarized dark/light theme** with CSS custom properties (single `style.css` themes all pages)
+- Syntax highlighting with Solarized accent palette
+- Responsive layout, localStorage theme persistence
+- Zero dependencies — plain HTML/CSS/JS
 
 ---
 
@@ -902,20 +942,18 @@ table of contents to cover all 80+ sections.
 
 | Metric              | v0.2.2    | v0.2.3 (draft) | Change     |
 |---------------------|-----------|----------------|------------|
-| C/C++ Source (LOC)  | ~1,000,000 | ~700,000*     | -300,000*  |
-| C/C++ Source Files  | 2,288     | 2,546          | +258       |
+| Codebase (LOC)      | ~700,000  | ~700,000       | (net zero after cleanup) |
+| Source Files         | 2,288     | 2,637          | +349       |
+| Runtime Classes      | 226       | 272            | +46        |
 | Test Count          | 1,261     | 1,307          | +46        |
-| Commits             | —         | 57             | —          |
-| Files Changed       | —         | 2,970          | —          |
-| Lines Added         | —         | 120,145        | —          |
-| Lines Removed       | —         | 315,974        | —          |
-| New Files           | —         | 341            | —          |
-| Deleted Files       | —         | 1,100          | —          |
+| Commits             | —         | 82             | —          |
+| Files Changed       | —         | 3,322          | —          |
+| Lines Added         | —         | ~245K          | —          |
+| Lines Removed       | —         | ~321K          | —          |
 
-*\* Net LOC decreased due to deletion of 1,100 files: 658 ViperDOS files, 286 obsolete test
-fixtures, devdocs, dead demos, and zia-review. Test count is net +46 because obsolete test fixture
-files were removed while ~340 new tests were added across Zia frontend, REPL, determinism, pool
-allocator, native assembler, dataflow liveness, and codegen review suites.*
+> Net LOC is roughly flat because ~1,100 stale files were deleted (obsolete test fixtures,
+> dead demos, devdocs, zia-review) while ~349 new source files were added across 3D graphics,
+> game engine, native toolchain, and test suites.
 
 ---
 
@@ -994,50 +1032,28 @@ allocator, native assembler, dataflow liveness, and codegen review suites.*
 
 ### Feature Comparison
 
-| Feature                    | v0.2.2               | v0.2.3 (draft)                     |
-|----------------------------|----------------------|------------------------------------|
-| Native Assembler/Linker    | External as/ld/link  | In-process, zero external deps, DWARF debug info |
-| Interactive REPL           | No                   | Full REPL for Zia and BASIC        |
-| Enum Types                 | No                   | Zia + BASIC, match exhaustiveness  |
-| Language Server            | No                   | Dual MCP/LSP (zia-server)          |
-| IL Optimizer Passes        | 35                   | 38 (+EH-Opt, LoopRotate, Reassoc)  |
-| Test Count                 | 1,261                | 1,307 (+46 net)                    |
-| Fuzz Harnesses             | No                   | Zia lexer + parser                 |
-| Determinism Tests          | No                   | 357 checks, 407 compilations       |
-| AArch64 EH Opcodes        | No                   | Full support                       |
-| AArch64 PassManager        | No                   | Wired into CodegenPipeline         |
-| AArch64 Post-RA Scheduler  | No                   | List scheduler with latency model  |
-| AArch64 Reg Coalescer      | No                   | Pre-regalloc MovRR elimination     |
-| AArch64 Loop Hoisting      | No                   | MovRI hoisting with BFS loop body  |
-| AArch64 Cross-Block SLF    | No                   | Store-load forwarding across BBs   |
-| AArch64 Peephole Sub-passes| Monolithic (2750 LOC)| 6 focused sub-passes + shared templates |
-| x86-64 Peephole Sub-passes | Monolithic (1470 LOC)| 4 focused sub-passes in peephole/  |
-| x86-64 CFG-Aware Liveness  | Unconditional spill  | Backward dataflow liveness analysis|
-| Shared Dataflow Solver     | No                   | Template in common/ra/, both backends |
-| SipHash (HashDoS resist.)  | FNV-1a               | SipHash-2-4 with OS CSPRNG seed    |
-| GC Epoch Tagging           | No                   | Survival counter, promoted skip    |
-| Async/Await (Zia)          | No                   | Parser + sema + Future.Get lower   |
-| ECDSA P-256 (native)       | OpenSSL-dependent    | Pure C, MSVC-compatible            |
-| Linux Graphics             | Broken colors        | Correct X11 TrueColor + BGRA      |
-| Benchmark Suite            | No                   | 6 languages × 9 benchmarks         |
-| AArch64 RegAlloc Decomp    | Monolithic (1478 LOC)| 8 files in ra/ subdirectory         |
-| Canvas.DeltaTime           | No                   | Frame delta + SetDTMax clamping     |
-| Camera Parallax            | No                   | Multi-layer parallax scrolling      |
-| ParticleEmitter Rendering  | No                   | Draw/DrawAt/DrawToPixels            |
-| Project Website            | No                   | Landing + docs hub + showcase       |
-| Sidescroller Demo          | 1 level, rectangles  | 5 levels, sprite art, full game     |
-| Game Engine Framework      | No                   | GameBase/IScene + 7 runtime APIs   |
-| Runtime API Audit          | Mixed naming         | Consistent rt_type_verb + runtime.def |
-| DWARF Debug Info           | No                   | DWARF v5 .debug_line across ELF/Mach-O/PE |
-| Identical Code Folding     | No                   | ICF linker pass for binary size reduction |
-| Branch Trampolines         | No                   | Auto-generated veneers for long branches |
-| Mach-O Two-Level Namespace | No                   | Per-symbol dylib ordinals, PAC-safe |
-| Division Strength Reduction | No                   | Power-of-2 shift, magic multiply   |
-| Full O2 Pipeline (native)  | O1-level only        | All 10 missing passes restored     |
-| Frontend Shared Infra      | Separate per-frontend| fe_common/ shared utilities        |
-| Zia Parser/Lowerer Splits  | Monolithic files     | 9 focused sub-files                |
-| BASIC LexerBase CRTP       | Independent lexer    | Shared cursor management           |
-| Codebase Organization      | demos/ + devdocs/    | Unified examples/ + docs/          |
+| Feature | v0.2.2 | v0.2.3 |
+|---------|--------|--------|
+| **3D Graphics Engine** | No | 28-class engine: Metal/D3D11/OpenGL/software |
+| **Native Assembler/Linker** | External as/ld/link | In-process, zero deps, DWARF v5 |
+| **Interactive REPL** | No | Full REPL for Zia and BASIC |
+| **Enum Types** | No | Zia + BASIC, match exhaustiveness |
+| **Language Server** | No | Dual MCP/LSP (zia-server) |
+| **Game Engine Framework** | No | GameBase/IScene + 7 runtime APIs |
+| **Runtime Classes** | 226 | 272 (+46) |
+| **IL Optimizer Passes** | 35 | 38 (+EH-Opt, LoopRotate, Reassoc) |
+| **Test Count** | 1,261 | 1,307 (+46 net) |
+| **Full O2 Pipeline** | O1-level only | All 10 missing passes restored |
+| **Benchmark Results** | — | 24-87% improvement (Apple M4 Max) |
+| **AArch64 Peephole** | Monolithic (2750 LOC) | 6 sub-passes + shared templates |
+| **x86-64 Peephole** | Monolithic (1470 LOC) | 4 sub-passes in peephole/ |
+| **x86-64 Liveness** | Unconditional spill | CFG-aware backward dataflow |
+| **AArch64 Scheduler** | No | Post-RA list scheduler + coalescer |
+| **SipHash** | FNV-1a | SipHash-2-4 with OS CSPRNG seed |
+| **ECDSA P-256** | OpenSSL-dependent | Pure C, MSVC-compatible |
+| **Website** | No | 66-page Solarized site |
+| **Sidescroller Demo** | 1 level, rectangles | 5 levels, sprite art, full game |
+| **Codebase Organization** | demos/ + devdocs/ | Unified examples/ + docs/ |
 
 ---
 

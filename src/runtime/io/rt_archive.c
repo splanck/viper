@@ -801,6 +801,10 @@ void rt_archive_extract(void *obj, rt_string name, rt_string dest_path)
     const char *cpath = rt_string_cstr(dest_path);
     if (!cpath || *cpath == '\0')
         rt_trap("Archive: invalid destination path");
+    // Reject path traversal attempts
+    if (cpath[0] == '/' || cpath[0] == '\\' || strstr(cpath, "..") ||
+        (cpath[0] != '\0' && cpath[1] == ':'))
+        rt_trap("Archive.Extract: unsafe destination path (absolute or traversal)");
 
 #ifdef _WIN32
     HANDLE h =

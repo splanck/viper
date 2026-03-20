@@ -111,7 +111,7 @@ rt_tween rt_tween_new(void)
 
 void rt_tween_destroy(rt_tween tween)
 {
-    if (tween)
+    if (tween && rt_obj_release_check0(tween))
         rt_obj_free(tween);
 }
 

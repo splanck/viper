@@ -50,7 +50,7 @@ entity HUD {
         var hh = config.HUD_HEALTH_H;
 
         // Background (dark red)
-        Canvas3D.DrawRect2D(canvas, hx - 1, hy - 1, hw + 2, hh + 2, 0x330000);
+        Canvas3D.DrawRect3D(canvas, hx - 1, hy - 1, hw + 2, hh + 2, 0x330000);
 
         // Fill (green proportional to health)
         var fillW = hw * health / maxHealth;
@@ -60,10 +60,10 @@ entity HUD {
         var healthColor = 0x00CC00;
         if (health < 50) { healthColor = 0xCCCC00; }
         if (health < 25) { healthColor = 0xCC0000; }
-        Canvas3D.DrawRect2D(canvas, hx, hy, fillW, hh, healthColor);
+        Canvas3D.DrawRect3D(canvas, hx, hy, fillW, hh, healthColor);
 
         // Health text
-        Canvas3D.DrawText2D(canvas, hx, hy - 18, "HP: " + toString(health), 0xFFFFFF);
+        Canvas3D.DrawText3D(canvas, hx, hy - 18, "HP: " + toString(health), 0xFFFFFF);
 
         // ─── Crosshair (center) ───
         var cx = cw / 2;
@@ -76,34 +76,34 @@ entity HUD {
         }
 
         // Horizontal line
-        Canvas3D.DrawRect2D(canvas, cx - cs, cy, cs * 2, 1, crossColor);
+        Canvas3D.DrawRect3D(canvas, cx - cs, cy, cs * 2, 1, crossColor);
         // Vertical line
-        Canvas3D.DrawRect2D(canvas, cx, cy - cs, 1, cs * 2, crossColor);
+        Canvas3D.DrawRect3D(canvas, cx, cy - cs, 1, cs * 2, crossColor);
 
         // ─── Kill counter (top-right) ───
-        Canvas3D.DrawText2D(canvas, cw - 120, 10, "Kills: " + toString(kills), 0xFFFFFF);
+        Canvas3D.DrawText3D(canvas, cw - 120, 10, "Kills: " + toString(kills), 0xFFFFFF);
 
         // ─── FPS (top-right, below kills) ───
-        Canvas3D.DrawText2D(canvas, cw - 120, 28, "FPS: " + toString(fps), 0x888888);
+        Canvas3D.DrawText3D(canvas, cw - 120, 28, "FPS: " + toString(fps), 0x888888);
 
         // ─── Level name (top-center, fades) ───
         if (levelNameTimer > 0.0) {
             var nameColor = 0xFFCC44;
-            Canvas3D.DrawText2D(canvas, cx - 60, 30, currentLevelName, nameColor);
+            Canvas3D.DrawText3D(canvas, cx - 60, 30, currentLevelName, nameColor);
         }
 
         // ─── Level number (top-left) ───
-        Canvas3D.DrawText2D(canvas, 10, 10, "Level " + toString(levelNum), 0xCCCCCC);
+        Canvas3D.DrawText3D(canvas, 10, 10, "Level " + toString(levelNum), 0xCCCCCC);
 
         // ─── Damage flash (red screen edges) ───
         if (damageFlashTimer > 0.0) {
             // Red vignette overlay — draw red rectangles at edges
             var intensity = damageFlashTimer / config.HUD_DAMAGE_FLASH_DURATION;
             var edgeW = 40;
-            Canvas3D.DrawRect2D(canvas, 0, 0, edgeW, ch, 0xAA0000);      // left
-            Canvas3D.DrawRect2D(canvas, cw - edgeW, 0, edgeW, ch, 0xAA0000); // right
-            Canvas3D.DrawRect2D(canvas, 0, 0, cw, edgeW, 0xAA0000);      // top
-            Canvas3D.DrawRect2D(canvas, 0, ch - edgeW, cw, edgeW, 0xAA0000); // bottom
+            Canvas3D.DrawRect3D(canvas, 0, 0, edgeW, ch, 0xAA0000);      // left
+            Canvas3D.DrawRect3D(canvas, cw - edgeW, 0, edgeW, ch, 0xAA0000); // right
+            Canvas3D.DrawRect3D(canvas, 0, 0, cw, edgeW, 0xAA0000);      // top
+            Canvas3D.DrawRect3D(canvas, 0, ch - edgeW, cw, edgeW, 0xAA0000); // bottom
         }
     }
 }

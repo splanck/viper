@@ -43,6 +43,24 @@
 #include <stdlib.h>
 
 //=============================================================================
+// Thread-local free-list pool (mirrors Vec3 pool pattern)
+//=============================================================================
+#define MAT4_POOL_CAPACITY 32
+
+static _Thread_local void *mat4_pool_buf_[MAT4_POOL_CAPACITY];
+static _Thread_local int mat4_pool_top_ = 0;
+
+static void mat4_pool_return(void *p)
+{
+    if (mat4_pool_top_ < MAT4_POOL_CAPACITY)
+    {
+        rt_obj_resurrect(p);
+        rt_obj_set_finalizer(p, mat4_pool_return);
+        mat4_pool_buf_[mat4_pool_top_++] = p;
+    }
+}
+
+//=============================================================================
 // Internal Structure
 //=============================================================================
 
@@ -53,6 +71,24 @@ typedef struct mat4_impl
 } mat4_impl;
 
 #define M(mat, r, c) ((mat)->m[(r) * 4 + (c)])
+
+/// @brief Allocate a Mat4 from pool or heap.
+static mat4_impl *mat4_alloc(void)
+{
+    mat4_impl *mat;
+    if (mat4_pool_top_ > 0)
+    {
+        mat = (mat4_impl *)mat4_pool_buf_[--mat4_pool_top_];
+    }
+    else
+    {
+        mat = (mat4_impl *)rt_obj_new_i64(0, sizeof(mat4_impl));
+        if (!mat)
+            return NULL;
+        rt_obj_set_finalizer(mat, mat4_pool_return);
+    }
+    return mat;
+}
 
 //=============================================================================
 // Construction
@@ -75,7 +111,7 @@ void *rt_mat4_new(double m00,
                   double m32,
                   double m33)
 {
-    mat4_impl *mat = (mat4_impl *)rt_obj_new_i64(0, sizeof(mat4_impl));
+    mat4_impl *mat = mat4_alloc();
     if (!mat)
         return NULL;
 

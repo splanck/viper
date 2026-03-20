@@ -107,6 +107,11 @@ typedef struct rt_pool_slab
 // - Pool blocks are aligned to at least 8 bytes
 // - The version counter detects ABA scenarios where a pointer is recycled
 //
+// WARNING: This 48-bit mask is incompatible with ARM64 Pointer Authentication
+// (PAC), which stores authentication codes in bits 54-63. On PAC-enabled
+// systems, the mask strips PAC signatures, causing authentication failures.
+// A future fix should store the version counter separately on PAC platforms.
+//
 //===----------------------------------------------------------------------===//
 
 /// @brief Pack a pointer and version into a tagged pointer.

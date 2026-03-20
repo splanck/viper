@@ -68,10 +68,8 @@ rt_timer rt_timer_new(void)
 
 void rt_timer_destroy(rt_timer timer)
 {
-    if (timer)
-    {
+    if (timer && rt_obj_release_check0(timer))
         rt_obj_free(timer);
-    }
 }
 
 void rt_timer_start(rt_timer timer, int64_t frames)

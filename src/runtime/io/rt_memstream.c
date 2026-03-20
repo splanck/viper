@@ -101,6 +101,8 @@ static void ensure_capacity(rt_memstream_impl *ms, int64_t required)
 /// Expands buffer and fills gaps with zeros if needed.
 static void prepare_write(rt_memstream_impl *ms, int64_t count)
 {
+    if (count < 0 || ms->pos > INT64_MAX - count)
+        rt_trap("MemStream: write position overflow");
     int64_t end_pos = ms->pos + count;
     ensure_capacity(ms, end_pos);
 
@@ -118,7 +120,7 @@ static void prepare_write(rt_memstream_impl *ms, int64_t count)
 /// @brief Check that we have enough bytes to read.
 static void check_read(rt_memstream_impl *ms, int64_t count, const char *op)
 {
-    if (ms->pos + count > ms->len)
+    if (count < 0 || count > ms->len || ms->pos > ms->len - count)
     {
         rt_trap(op);
     }

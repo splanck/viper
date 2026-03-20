@@ -31,6 +31,7 @@
 #include "rt_glob.h"
 
 #include "rt_dir.h"
+#include "rt_object.h"
 #include "rt_file_ext.h"
 #include "rt_path.h"
 #include "rt_seq.h"
@@ -155,6 +156,10 @@ void *rt_glob_files(rt_string dir, rt_string pattern)
             rt_seq_push(result, full_path);
         }
     }
+
+    // Release the intermediate files Seq
+    if (rt_obj_release_check0(files))
+        rt_obj_free(files);
 
     return result;
 }
