@@ -133,6 +133,11 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
     cam->eye[0] = cam->eye[1] = cam->eye[2] = 0.0;
     cam->fps_yaw = 0.0;
     cam->fps_pitch = 0.0;
+    cam->shake_intensity = 0.0;
+    cam->shake_duration = 0.0;
+    cam->shake_decay = 5.0;
+    cam->shake_offset[0] = cam->shake_offset[1] = cam->shake_offset[2] = 0.0;
+    cam->shake_seed = 0x12345678;
 
     return cam;
 }
@@ -441,6 +446,117 @@ void rt_camera3d_set_pitch(void *obj, double pitch)
         cam->fps_pitch = 89.0;
     if (cam->fps_pitch < -89.0)
         cam->fps_pitch = -89.0;
+}
+
+/*==========================================================================
+ * Camera shake
+ *=========================================================================*/
+
+static void apply_shake(rt_camera3d *cam, double dt)
+{
+    if (cam->shake_duration <= 0.0)
+    {
+        cam->shake_offset[0] = cam->shake_offset[1] = cam->shake_offset[2] = 0.0;
+        return;
+    }
+    cam->shake_duration -= dt;
+    cam->shake_intensity *= exp(-cam->shake_decay * dt);
+
+    /* Xorshift PRNG for deterministic random offsets */
+    cam->shake_seed ^= cam->shake_seed << 13;
+    cam->shake_seed ^= cam->shake_seed >> 17;
+    cam->shake_seed ^= cam->shake_seed << 5;
+    double r1 = ((double)(cam->shake_seed & 0xFFFF) / 65535.0) * 2.0 - 1.0;
+    cam->shake_seed ^= cam->shake_seed << 13;
+    cam->shake_seed ^= cam->shake_seed >> 17;
+    cam->shake_seed ^= cam->shake_seed << 5;
+    double r2 = ((double)(cam->shake_seed & 0xFFFF) / 65535.0) * 2.0 - 1.0;
+
+    cam->shake_offset[0] = r1 * cam->shake_intensity;
+    cam->shake_offset[1] = r2 * cam->shake_intensity;
+    cam->shake_offset[2] = (r1 * r2) * cam->shake_intensity * 0.3;
+}
+
+void rt_camera3d_shake(void *obj, double intensity, double duration, double decay)
+{
+    if (!obj) return;
+    rt_camera3d *cam = (rt_camera3d *)obj;
+    cam->shake_intensity = intensity;
+    cam->shake_duration = duration;
+    cam->shake_decay = decay > 0.0 ? decay : 5.0;
+}
+
+/*==========================================================================
+ * Smooth follow (third-person camera)
+ *=========================================================================*/
+
+void rt_camera3d_smooth_follow(void *obj, void *target_pos,
+                                double distance, double height,
+                                double speed, double dt)
+{
+    if (!obj || !target_pos) return;
+    rt_camera3d *cam = (rt_camera3d *)obj;
+
+    double tx = rt_vec3_x(target_pos);
+    double ty = rt_vec3_y(target_pos) + height;
+    double tz = rt_vec3_z(target_pos);
+
+    /* Desired position: behind target using current yaw */
+    double yaw_rad = cam->fps_yaw * (M_PI / 180.0);
+    double desired[3] = {
+        tx - sin(yaw_rad) * distance,
+        ty,
+        tz + cos(yaw_rad) * distance
+    };
+
+    /* Framerate-independent exponential damping */
+    double t = 1.0 - exp(-speed * dt);
+    cam->eye[0] += (desired[0] - cam->eye[0]) * t;
+    cam->eye[1] += (desired[1] - cam->eye[1]) * t;
+    cam->eye[2] += (desired[2] - cam->eye[2]) * t;
+
+    apply_shake(cam, dt);
+    cam->eye[0] += cam->shake_offset[0];
+    cam->eye[1] += cam->shake_offset[1];
+    cam->eye[2] += cam->shake_offset[2];
+
+    double look_at[3] = {tx, ty - height * 0.3, tz};
+    double up[3] = {0, 1, 0};
+    build_look_at(cam->view, cam->eye, look_at, up);
+}
+
+/*==========================================================================
+ * Smooth look-at (gradual rotation toward target)
+ *=========================================================================*/
+
+void rt_camera3d_smooth_look_at(void *obj, void *target, double speed, double dt)
+{
+    if (!obj || !target) return;
+    rt_camera3d *cam = (rt_camera3d *)obj;
+
+    /* Current forward from view matrix */
+    double cur_fwd[3] = {-cam->view[8], -cam->view[9], -cam->view[10]};
+
+    /* Desired forward */
+    double dx = rt_vec3_x(target) - cam->eye[0];
+    double dy = rt_vec3_y(target) - cam->eye[1];
+    double dz = rt_vec3_z(target) - cam->eye[2];
+    double len = sqrt(dx*dx + dy*dy + dz*dz);
+    if (len > 1e-8) { dx /= len; dy /= len; dz /= len; }
+
+    /* Exponential lerp toward desired */
+    double t = 1.0 - exp(-speed * dt);
+    double new_fwd[3] = {
+        cur_fwd[0] + (dx - cur_fwd[0]) * t,
+        cur_fwd[1] + (dy - cur_fwd[1]) * t,
+        cur_fwd[2] + (dz - cur_fwd[2]) * t
+    };
+    len = sqrt(new_fwd[0]*new_fwd[0] + new_fwd[1]*new_fwd[1] + new_fwd[2]*new_fwd[2]);
+    if (len > 1e-8) { new_fwd[0] /= len; new_fwd[1] /= len; new_fwd[2] /= len; }
+
+    double look[3] = {cam->eye[0] + new_fwd[0], cam->eye[1] + new_fwd[1], cam->eye[2] + new_fwd[2]};
+    double up[3] = {0, 1, 0};
+    build_look_at(cam->view, cam->eye, look, up);
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

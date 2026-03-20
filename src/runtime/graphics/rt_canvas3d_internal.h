@@ -71,6 +71,12 @@ typedef struct
     double far_plane;
     double fps_yaw;   /* FPS mode: horizontal rotation (degrees) */
     double fps_pitch; /* FPS mode: vertical rotation (degrees, clamped ±89) */
+    /* Camera shake state */
+    double shake_intensity;
+    double shake_duration;
+    double shake_decay;
+    double shake_offset[3];
+    uint32_t shake_seed;
 } rt_camera3d;
 
 //=============================================================================

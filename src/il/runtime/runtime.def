@@ -9128,6 +9128,10 @@ RT_FUNC(Camera3DGetForward,     rt_camera3d_get_forward,    "Viper.Graphics3D.Ca
 RT_FUNC(Camera3DGetRight,       rt_camera3d_get_right,      "Viper.Graphics3D.Camera3D.get_Right",      "obj(obj)")
 RT_FUNC(Camera3DScreenToRay,    rt_camera3d_screen_to_ray,  "Viper.Graphics3D.Camera3D.ScreenToRay",    "obj(obj,i64,i64,i64,i64)")
 
+RT_FUNC(Camera3DShake,          rt_camera3d_shake,          "Viper.Graphics3D.Camera3D.Shake",          "void(obj,f64,f64,f64)")
+RT_FUNC(Camera3DSmoothFollow,   rt_camera3d_smooth_follow,  "Viper.Graphics3D.Camera3D.SmoothFollow",   "void(obj,obj,f64,f64,f64,f64)")
+RT_FUNC(Camera3DSmoothLookAt,   rt_camera3d_smooth_look_at, "Viper.Graphics3D.Camera3D.SmoothLookAt",   "void(obj,obj,f64,f64)")
+
 RT_CLASS_BEGIN("Viper.Graphics3D.Camera3D", Camera3D, "obj", Camera3DNew)
     RT_PROP("Fov", "f64", Camera3DGetFov, Camera3DSetFov)
     RT_PROP("Position", "obj", Camera3DGetPosition, Camera3DSetPosition)
@@ -9136,6 +9140,9 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Camera3D", Camera3D, "obj", Camera3DNew)
     RT_METHOD("LookAt", "void(obj,obj,obj)", Camera3DLookAt)
     RT_METHOD("Orbit", "void(obj,f64,f64,f64)", Camera3DOrbit)
     RT_METHOD("ScreenToRay", "obj(i64,i64,i64,i64)", Camera3DScreenToRay)
+    RT_METHOD("Shake", "void(f64,f64,f64)", Camera3DShake)
+    RT_METHOD("SmoothFollow", "void(obj,f64,f64,f64,f64)", Camera3DSmoothFollow)
+    RT_METHOD("SmoothLookAt", "void(obj,f64,f64)", Camera3DSmoothLookAt)
 RT_CLASS_END()
 
 //=============================================================================
@@ -9574,4 +9581,57 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Trigger3D", Trigger3D, "obj", Trigger3DNew)
     RT_METHOD("Contains", "i1(obj)", Trigger3DContains)
     RT_METHOD("Update", "void(obj)", Trigger3DUpdate)
     RT_METHOD("SetBounds", "void(f64,f64,f64,f64,f64,f64)", Trigger3DSetBounds)
+RT_CLASS_END()
+
+//=============================================================================
+// GRAPHICS 3D - TRANSFORM3D
+//=============================================================================
+
+RT_FUNC(Transform3DNew,          rt_transform3d_new,          "Viper.Graphics3D.Transform3D.New",          "obj()")
+RT_FUNC(Transform3DSetPosition,  rt_transform3d_set_position, "Viper.Graphics3D.Transform3D.SetPosition",  "void(obj,f64,f64,f64)")
+RT_FUNC(Transform3DGetPosition,  rt_transform3d_get_position, "Viper.Graphics3D.Transform3D.get_Position", "obj(obj)")
+RT_FUNC(Transform3DSetRotation,  rt_transform3d_set_rotation, "Viper.Graphics3D.Transform3D.set_Rotation", "void(obj,obj)")
+RT_FUNC(Transform3DGetRotation,  rt_transform3d_get_rotation, "Viper.Graphics3D.Transform3D.get_Rotation", "obj(obj)")
+RT_FUNC(Transform3DSetEuler,     rt_transform3d_set_euler,    "Viper.Graphics3D.Transform3D.SetEuler",     "void(obj,f64,f64,f64)")
+RT_FUNC(Transform3DSetScale,     rt_transform3d_set_scale,    "Viper.Graphics3D.Transform3D.SetScale",     "void(obj,f64,f64,f64)")
+RT_FUNC(Transform3DGetScale,     rt_transform3d_get_scale,    "Viper.Graphics3D.Transform3D.get_Scale",    "obj(obj)")
+RT_FUNC(Transform3DGetMatrix,    rt_transform3d_get_matrix,   "Viper.Graphics3D.Transform3D.get_Matrix",   "obj(obj)")
+RT_FUNC(Transform3DTranslate,    rt_transform3d_translate,    "Viper.Graphics3D.Transform3D.Translate",    "void(obj,obj)")
+RT_FUNC(Transform3DRotate,       rt_transform3d_rotate,       "Viper.Graphics3D.Transform3D.Rotate",       "void(obj,obj,f64)")
+RT_FUNC(Transform3DLookAt,       rt_transform3d_look_at,      "Viper.Graphics3D.Transform3D.LookAt",       "void(obj,obj,obj)")
+
+RT_CLASS_BEGIN("Viper.Graphics3D.Transform3D", Transform3D, "obj", Transform3DNew)
+    RT_PROP("Position", "obj", Transform3DGetPosition, none)
+    RT_PROP("Rotation", "obj", Transform3DGetRotation, Transform3DSetRotation)
+    RT_PROP("Scale", "obj", Transform3DGetScale, none)
+    RT_PROP("Matrix", "obj", Transform3DGetMatrix, none)
+    RT_METHOD("SetPosition", "void(f64,f64,f64)", Transform3DSetPosition)
+    RT_METHOD("SetEuler", "void(f64,f64,f64)", Transform3DSetEuler)
+    RT_METHOD("SetScale", "void(f64,f64,f64)", Transform3DSetScale)
+    RT_METHOD("Translate", "void(obj)", Transform3DTranslate)
+    RT_METHOD("Rotate", "void(obj,f64)", Transform3DRotate)
+    RT_METHOD("LookAt", "void(obj,obj)", Transform3DLookAt)
+RT_CLASS_END()
+
+//=============================================================================
+// GRAPHICS 3D - PATH3D
+//=============================================================================
+
+RT_FUNC(Path3DNew,              rt_path3d_new,              "Viper.Graphics3D.Path3D.New",              "obj()")
+RT_FUNC(Path3DAddPoint,         rt_path3d_add_point,        "Viper.Graphics3D.Path3D.AddPoint",         "void(obj,obj)")
+RT_FUNC(Path3DGetPositionAt,    rt_path3d_get_position_at,  "Viper.Graphics3D.Path3D.GetPositionAt",    "obj(obj,f64)")
+RT_FUNC(Path3DGetDirectionAt,   rt_path3d_get_direction_at, "Viper.Graphics3D.Path3D.GetDirectionAt",   "obj(obj,f64)")
+RT_FUNC(Path3DGetLength,        rt_path3d_get_length,       "Viper.Graphics3D.Path3D.get_Length",       "f64(obj)")
+RT_FUNC(Path3DGetPointCount,    rt_path3d_get_point_count,  "Viper.Graphics3D.Path3D.get_PointCount",   "i64(obj)")
+RT_FUNC(Path3DSetLooping,       rt_path3d_set_looping,      "Viper.Graphics3D.Path3D.set_Looping",      "void(obj,i1)")
+RT_FUNC(Path3DClear,            rt_path3d_clear,            "Viper.Graphics3D.Path3D.Clear",            "void(obj)")
+
+RT_CLASS_BEGIN("Viper.Graphics3D.Path3D", Path3D, "obj", Path3DNew)
+    RT_PROP("Length", "f64", Path3DGetLength, none)
+    RT_PROP("PointCount", "i64", Path3DGetPointCount, none)
+    RT_PROP("Looping", "i1", none, Path3DSetLooping)
+    RT_METHOD("AddPoint", "void(obj)", Path3DAddPoint)
+    RT_METHOD("GetPositionAt", "obj(f64)", Path3DGetPositionAt)
+    RT_METHOD("GetDirectionAt", "obj(f64)", Path3DGetDirectionAt)
+    RT_METHOD("Clear", "void()", Path3DClear)
 RT_CLASS_END()

@@ -32,6 +32,8 @@
 #include "rt_morphtarget3d.h"
 #include "rt_particles3d.h"
 #include "rt_physics3d.h"
+#include "rt_transform3d.h"
+#include "rt_path3d.h"
 #include "rt_postfx3d.h"
 #include "rt_raycast3d.h"
 #include "rt_scene3d.h"
@@ -2661,3 +2663,40 @@ void rt_character3d_set_position(void *c, double x, double y, double z)
     (void)y;
     (void)z;
 }
+
+/* Trigger3D stubs */
+void   *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, double z1) { (void)x0; (void)y0; (void)z0; (void)x1; (void)y1; (void)z1; return NULL; }
+int8_t  rt_trigger3d_contains(void *t, void *p) { (void)t; (void)p; return 0; }
+void    rt_trigger3d_update(void *t, void *w) { (void)t; (void)w; }
+int64_t rt_trigger3d_get_enter_count(void *t) { (void)t; return 0; }
+int64_t rt_trigger3d_get_exit_count(void *t) { (void)t; return 0; }
+void    rt_trigger3d_set_bounds(void *t, double x0, double y0, double z0, double x1, double y1, double z1) { (void)t; (void)x0; (void)y0; (void)z0; (void)x1; (void)y1; (void)z1; }
+
+/* Camera shake/follow stubs */
+void rt_camera3d_shake(void *c, double i, double d, double dc) { (void)c; (void)i; (void)d; (void)dc; }
+void rt_camera3d_smooth_follow(void *c, void *t, double d, double h, double s, double dt) { (void)c; (void)t; (void)d; (void)h; (void)s; (void)dt; }
+void rt_camera3d_smooth_look_at(void *c, void *t, double s, double dt) { (void)c; (void)t; (void)s; (void)dt; }
+
+/* Transform3D stubs */
+void   *rt_transform3d_new(void) { return NULL; }
+void    rt_transform3d_set_position(void *x, double a, double b, double c) { (void)x; (void)a; (void)b; (void)c; }
+void   *rt_transform3d_get_position(void *x) { (void)x; return NULL; }
+void    rt_transform3d_set_rotation(void *x, void *q) { (void)x; (void)q; }
+void   *rt_transform3d_get_rotation(void *x) { (void)x; return NULL; }
+void    rt_transform3d_set_euler(void *x, double p, double y, double r) { (void)x; (void)p; (void)y; (void)r; }
+void    rt_transform3d_set_scale(void *x, double a, double b, double c) { (void)x; (void)a; (void)b; (void)c; }
+void   *rt_transform3d_get_scale(void *x) { (void)x; return NULL; }
+void   *rt_transform3d_get_matrix(void *x) { (void)x; return NULL; }
+void    rt_transform3d_translate(void *x, void *d) { (void)x; (void)d; }
+void    rt_transform3d_rotate(void *x, void *a, double ang) { (void)x; (void)a; (void)ang; }
+void    rt_transform3d_look_at(void *x, void *t, void *u) { (void)x; (void)t; (void)u; }
+
+/* Path3D stubs */
+void   *rt_path3d_new(void) { return NULL; }
+void    rt_path3d_add_point(void *p, void *v) { (void)p; (void)v; }
+void   *rt_path3d_get_position_at(void *p, double t) { (void)p; (void)t; return NULL; }
+void   *rt_path3d_get_direction_at(void *p, double t) { (void)p; (void)t; return NULL; }
+double  rt_path3d_get_length(void *p) { (void)p; return 0.0; }
+int64_t rt_path3d_get_point_count(void *p) { (void)p; return 0; }
+void    rt_path3d_set_looping(void *p, int8_t l) { (void)p; (void)l; }
+void    rt_path3d_clear(void *p) { (void)p; }

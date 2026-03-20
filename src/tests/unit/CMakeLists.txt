@@ -557,6 +557,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_physics3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_physics3d test_rt_physics3d)
 
+    viper_add_test(test_rt_transform_path ${VIPER_TESTS_DIR}/unit/test_rt_transform_path.cpp)
+    target_link_libraries(test_rt_transform_path PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_transform_path test_rt_transform_path)
+
     viper_add_test(test_rt_math_core ${VIPER_TESTS_DIR}/runtime/RTMathCoreTests.cpp)
     target_link_libraries(test_rt_math_core PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_math_core test_rt_math_core)

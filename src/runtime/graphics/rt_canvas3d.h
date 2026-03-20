@@ -180,6 +180,12 @@ extern "C"
     void rt_canvas3d_disable_shadows(void *canvas);
     void rt_canvas3d_set_shadow_bias(void *canvas, double bias);
 
+    /* Camera shake + smooth follow */
+    void rt_camera3d_shake(void *cam, double intensity, double duration, double decay);
+    void rt_camera3d_smooth_follow(void *cam, void *target, double distance,
+                                    double height, double speed, double dt);
+    void rt_camera3d_smooth_look_at(void *cam, void *target, double speed, double dt);
+
     /* FPS camera */
     void rt_camera3d_fps_init(void *cam);
     void rt_camera3d_fps_update(void *cam,

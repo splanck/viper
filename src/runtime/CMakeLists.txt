@@ -230,6 +230,8 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_raycast3d.c
         graphics/rt_audio3d.c
         graphics/rt_physics3d.c
+        graphics/rt_transform3d.c
+        graphics/rt_path3d.c
         graphics/vgfx3d_frustum.c
         graphics/vgfx3d_skinning.c
 )

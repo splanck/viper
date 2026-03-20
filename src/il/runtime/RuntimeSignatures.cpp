@@ -173,6 +173,8 @@
 #include "rt_physics2d.h"
 #include "rt_physics2d_joint.h"
 #include "rt_physics3d.h"
+#include "rt_transform3d.h"
+#include "rt_path3d.h"
 #include "rt_pixels.h"
 #include "rt_playlist.h"
 #include "rt_pluralize.h"

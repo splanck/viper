@@ -387,6 +387,8 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_Physics3DBody,
     RTCLS_Character3D,
     RTCLS_Trigger3D,
+    RTCLS_Transform3D,
+    RTCLS_Path3D,
 };
 
 /// @brief Describes a property on a runtime class.
