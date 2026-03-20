@@ -6,12 +6,10 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_bag.c
-// Purpose: Implements a multiset (Bag) of strings using an FNV-1a hash table
-//   with separate chaining. A Bag tracks how many times each distinct string
-//   has been added, supporting add, remove, count, and membership queries.
-//   Distinct from a Set in that adding the same string multiple times keeps
-//   independent counts; remove decrements the count and only fully removes the
-//   entry when the count reaches zero.
+// Purpose: Implements a string set (Bag) using an FNV-1a hash table with
+//   separate chaining. A Bag stores distinct strings, supporting add, remove,
+//   and membership queries. Adding an already-present string is a no-op
+//   (set semantics).
 //
 // Key invariants:
 //   - Backed by a hash table with initial capacity BAG_INITIAL_CAPACITY (16)
@@ -708,6 +706,7 @@ void *rt_bag_union(void *obj, void *other)
             {
                 rt_string str = rt_string_from_bytes(entry->key, entry->key_len);
                 rt_bag_add(result, str);
+                rt_str_release_maybe(str);
                 entry = entry->next;
             }
         }
@@ -724,6 +723,7 @@ void *rt_bag_union(void *obj, void *other)
             {
                 rt_string str = rt_string_from_bytes(entry->key, entry->key_len);
                 rt_bag_add(result, str);
+                rt_str_release_maybe(str);
                 entry = entry->next;
             }
         }
@@ -797,6 +797,7 @@ void *rt_bag_intersect(void *obj, void *other)
             {
                 rt_bag_add(result, str);
             }
+            rt_str_release_maybe(str);
             entry = entry->next;
         }
     }
@@ -867,6 +868,7 @@ void *rt_bag_clone(void *obj)
         {
             rt_string str = rt_string_from_bytes(entry->key, entry->key_len);
             rt_bag_add(result, str);
+            rt_str_release_maybe(str);
             entry = entry->next;
         }
     }
@@ -893,6 +895,7 @@ void *rt_bag_diff(void *obj, void *other)
             {
                 rt_bag_add(result, str);
             }
+            rt_str_release_maybe(str);
             entry = entry->next;
         }
     }

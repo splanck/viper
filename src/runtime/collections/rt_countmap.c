@@ -153,7 +153,11 @@ void *rt_countmap_new(void)
     cm->total = 0;
     cm->buckets = (rt_cm_entry **)calloc(CM_INITIAL_CAPACITY, sizeof(rt_cm_entry *));
     if (!cm->buckets)
+    {
+        if (rt_obj_release_check0(cm))
+            rt_obj_free(cm);
         return NULL;
+    }
 
     rt_obj_set_finalizer(cm, countmap_finalizer);
     return cm;
@@ -354,6 +358,7 @@ int64_t rt_countmap_total(void *obj)
 void *rt_countmap_keys(void *obj)
 {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     rt_countmap_impl *cm = (rt_countmap_impl *)obj;
@@ -364,6 +369,7 @@ void *rt_countmap_keys(void *obj)
         {
             rt_string k = rt_string_from_bytes(e->key, e->key_len);
             rt_seq_push(seq, (void *)k);
+            rt_str_release_maybe(k);
         }
     }
     return seq;
@@ -384,6 +390,7 @@ static int cmp_entries_desc(const void *a, const void *b)
 void *rt_countmap_most_common(void *obj, int64_t n)
 {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!obj || n <= 0)
         return seq;
     rt_countmap_impl *cm = (rt_countmap_impl *)obj;
@@ -417,6 +424,7 @@ void *rt_countmap_most_common(void *obj, int64_t n)
     {
         rt_string k = rt_string_from_bytes(entries[i]->key, entries[i]->key_len);
         rt_seq_push(seq, (void *)k);
+        rt_str_release_maybe(k);
     }
 
     free(entries);

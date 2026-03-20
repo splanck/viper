@@ -70,7 +70,7 @@ rt_collision_rect rt_collision_rect_new(double x, double y, double width, double
 
 void rt_collision_rect_destroy(rt_collision_rect rect)
 {
-    if (rect)
+    if (rect && rt_obj_release_check0(rect))
         rt_obj_free(rect);
 }
 

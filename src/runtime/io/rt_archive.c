@@ -929,12 +929,19 @@ void *rt_archive_info(void *obj, rt_string name)
         rt_trap("Archive: entry not found");
 
     void *map = rt_map_new();
+    void *boxed;
 
     // Add size
-    rt_map_set(map, rt_const_cstr("size"), rt_box_i64(e->uncompressed_size));
+    boxed = rt_box_i64(e->uncompressed_size);
+    rt_map_set(map, rt_const_cstr("size"), boxed);
+    if (boxed && rt_obj_release_check0(boxed))
+        rt_obj_free(boxed);
 
     // Add compressed size
-    rt_map_set(map, rt_const_cstr("compressedSize"), rt_box_i64(e->compressed_size));
+    boxed = rt_box_i64(e->compressed_size);
+    rt_map_set(map, rt_const_cstr("compressedSize"), boxed);
+    if (boxed && rt_obj_release_check0(boxed))
+        rt_obj_free(boxed);
 
     // Add modified time (convert DOS time to Unix timestamp)
     // DOS date: bits 0-4 = day, 5-8 = month, 9-15 = year from 1980
@@ -954,10 +961,16 @@ void *rt_archive_info(void *obj, rt_string name)
     timestamp += (int64_t)minute * 60;
     timestamp += second;
 
-    rt_map_set(map, rt_const_cstr("modifiedTime"), rt_box_i64(timestamp));
+    boxed = rt_box_i64(timestamp);
+    rt_map_set(map, rt_const_cstr("modifiedTime"), boxed);
+    if (boxed && rt_obj_release_check0(boxed))
+        rt_obj_free(boxed);
 
     // Add isDirectory
-    rt_map_set(map, rt_const_cstr("isDirectory"), rt_box_i1(e->is_directory ? 1 : 0));
+    boxed = rt_box_i1(e->is_directory ? 1 : 0);
+    rt_map_set(map, rt_const_cstr("isDirectory"), boxed);
+    if (boxed && rt_obj_release_check0(boxed))
+        rt_obj_free(boxed);
 
     return map;
 }

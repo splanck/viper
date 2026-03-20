@@ -93,6 +93,8 @@ static void rt_pqueue_finalize(void *obj)
 /// @brief Grows the heap capacity.
 static void heap_grow(rt_pqueue_impl *h)
 {
+    if (h->cap > INT64_MAX / HEAP_GROWTH_FACTOR)
+        rt_trap("Heap: capacity overflow");
     int64_t new_cap = h->cap * HEAP_GROWTH_FACTOR;
     heap_entry *new_items = malloc((size_t)new_cap * sizeof(heap_entry));
 

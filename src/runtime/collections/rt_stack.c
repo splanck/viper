@@ -121,6 +121,8 @@ static void stack_ensure_capacity(rt_stack_impl *stack, int64_t needed)
     int64_t new_cap = stack->cap;
     while (new_cap < needed)
     {
+        if (new_cap > INT64_MAX / STACK_GROWTH_FACTOR)
+            rt_trap("Stack: capacity overflow");
         new_cap *= STACK_GROWTH_FACTOR;
     }
 

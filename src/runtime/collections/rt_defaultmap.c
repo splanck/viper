@@ -315,6 +315,7 @@ int8_t rt_defaultmap_remove(void *map, rt_string key)
 void *rt_defaultmap_keys(void *map)
 {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!map)
         return seq;
     rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
@@ -326,6 +327,7 @@ void *rt_defaultmap_keys(void *map)
         {
             rt_string k = rt_string_from_bytes(e->key, e->key_len);
             rt_seq_push(seq, k);
+            rt_str_release_maybe(k);
             e = e->next;
         }
     }

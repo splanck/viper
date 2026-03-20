@@ -120,6 +120,16 @@ static int64_t rand_range_i64(struct rt_particle_emitter_impl *e, int64_t min, i
     return min + (int64_t)(rand_double(e) * (double)(max - min + 1));
 }
 
+static void particle_emitter_finalizer(void *obj)
+{
+    struct rt_particle_emitter_impl *e = (struct rt_particle_emitter_impl *)obj;
+    if (e && e->particles)
+    {
+        free(e->particles);
+        e->particles = NULL;
+    }
+}
+
 rt_particle_emitter rt_particle_emitter_new(int64_t max_particles)
 {
     if (max_particles < 1)
@@ -163,6 +173,7 @@ rt_particle_emitter rt_particle_emitter_new(int64_t max_particles)
     // Seed random with address (simple seeding)
     e->rand_state = (uint64_t)(uintptr_t)e ^ 0x5DEECE66DULL;
 
+    rt_obj_set_finalizer(e, particle_emitter_finalizer);
     return e;
 }
 
@@ -496,8 +507,14 @@ int64_t rt_particle_emitter_draw_to_pixels(rt_particle_emitter emitter,
             color = (color & 0x00FFFFFF) | (new_alpha << 24);
         }
 
-        // Convert ARGB (0xAARRGGBB) to Canvas RGB (0x00RRGGBB) — drop alpha for now
-        int64_t canvas_color = color & 0x00FFFFFF;
+        // Convert ARGB (0xAARRGGBB) to Canvas RGB (0x00RRGGBB)
+        // Apply fade alpha by scaling RGB channels (approximates alpha blending
+        // against a black background, which is correct for particle effects)
+        int64_t alpha = (color >> 24) & 0xFF;
+        int64_t r = ((color >> 16) & 0xFF) * alpha / 255;
+        int64_t g = ((color >> 8) & 0xFF) * alpha / 255;
+        int64_t b = (color & 0xFF) * alpha / 255;
+        int64_t canvas_color = (r << 16) | (g << 8) | b;
 
         int64_t px = (int64_t)p->x + offset_x;
         int64_t py = (int64_t)p->y + offset_y;

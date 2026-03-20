@@ -114,7 +114,11 @@ static rt_pathfinder_impl *pf_alloc(int32_t w, int32_t h)
     int32_t count = w * h;
     pf->cells = (pf_cell *)malloc((size_t)count * sizeof(pf_cell));
     if (!pf->cells)
+    {
+        if (rt_obj_release_check0(pf))
+            rt_obj_free(pf);
         return NULL;
+    }
 
     pf->width = w;
     pf->height = h;
@@ -427,8 +431,15 @@ static void *pf_build_path(pf_node *nodes, int32_t goal_idx, int32_t width)
     void *list = rt_list_new();
     for (int32_t i = 0; i < len; i++)
     {
-        rt_list_push(list, rt_box_i64(coords[i * 2]));
-        rt_list_push(list, rt_box_i64(coords[i * 2 + 1]));
+        void *bx = rt_box_i64(coords[i * 2]);
+        rt_list_push(list, bx);
+        if (bx && rt_obj_release_check0(bx))
+            rt_obj_free(bx);
+
+        void *by = rt_box_i64(coords[i * 2 + 1]);
+        rt_list_push(list, by);
+        if (by && rt_obj_release_check0(by))
+            rt_obj_free(by);
     }
 
     free(coords);

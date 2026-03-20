@@ -243,6 +243,23 @@ static void free_entry_contents(treemap_entry *e)
 ///
 /// @see rt_treemap_set For adding key-value pairs
 /// @see rt_treemap_keys For retrieving keys in sorted order
+
+static void treemap_finalizer(void *obj)
+{
+    treemap_impl *tm = (treemap_impl *)obj;
+    if (!tm)
+        return;
+    if (tm->entries)
+    {
+        for (size_t i = 0; i < tm->count; i++)
+            free_entry_contents(&tm->entries[i]);
+        free(tm->entries);
+        tm->entries = NULL;
+    }
+    tm->count = 0;
+    tm->capacity = 0;
+}
+
 void *rt_treemap_new(void)
 {
     treemap_impl *tm = (treemap_impl *)rt_obj_new_i64(0, (int64_t)sizeof(treemap_impl));
@@ -257,6 +274,7 @@ void *rt_treemap_new(void)
     tm->capacity = 0;
     tm->count = 0;
 
+    rt_obj_set_finalizer(tm, treemap_finalizer);
     return tm;
 }
 

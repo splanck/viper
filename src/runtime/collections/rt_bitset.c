@@ -83,10 +83,16 @@ static void bitset_grow(rt_bitset_impl *bs, size_t min_bits)
         return;
     }
 
-    // Double or use min, whichever is larger
-    size_t grow = bs->word_count * 2;
+    // Double or use min, whichever is larger (with overflow guards)
+    size_t grow;
+    if (bs->word_count > SIZE_MAX / 2)
+        grow = new_word_count; // Can't double safely, use exact fit
+    else
+        grow = bs->word_count * 2;
     if (grow < new_word_count)
         grow = new_word_count;
+    if (grow > SIZE_MAX / sizeof(uint64_t))
+        return; // Allocation would overflow
 
     uint64_t *new_words = (uint64_t *)realloc(bs->words, grow * sizeof(uint64_t));
     if (!new_words)

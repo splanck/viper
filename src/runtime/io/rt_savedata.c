@@ -154,8 +154,30 @@ static char *get_home_dir(void)
 #endif
 }
 
+/// @brief Validate game_name contains only safe characters for use in file paths.
+/// Rejects path traversal (.. / \) and non-alphanumeric characters except - and _.
+static int is_safe_game_name(const char *name)
+{
+    if (!name || !name[0] || strlen(name) > 64)
+        return 0;
+    for (const char *p = name; *p; p++)
+    {
+        char c = *p;
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+              c == '_' || c == '-'))
+            return 0;
+    }
+    return 1;
+}
+
 static char *compute_save_path(const char *game_name)
 {
+    if (!is_safe_game_name(game_name))
+    {
+        rt_trap("SaveData: invalid game name (must be alphanumeric, dash, or underscore, max 64 "
+                "chars)");
+        return NULL;
+    }
     char *home = get_home_dir();
     if (!home)
         return NULL;

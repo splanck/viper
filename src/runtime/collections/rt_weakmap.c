@@ -277,19 +277,51 @@ int64_t rt_weakmap_compact(void *map)
     if (!map)
         return 0;
     rt_weakmap_data *data = (rt_weakmap_data *)map;
-    int64_t removed = 0;
 
-    // Collect entries with NULL values
+    // Count dead entries (NULL values)
+    int64_t removed = 0;
     for (int64_t i = 0; i < data->capacity; i++)
     {
         if (data->entries[i].occupied && data->entries[i].value == NULL)
-        {
-            rt_string_unref(data->entries[i].key);
-            data->entries[i].key = NULL;
-            data->entries[i].occupied = 0;
-            data->count--;
             removed++;
+    }
+    if (removed == 0)
+        return 0;
+
+    // Rehash into a fresh table to preserve linear-probing chains.
+    // Simply clearing occupied flags would break probe sequences.
+    wm_entry *old = data->entries;
+    int64_t old_cap = data->capacity;
+
+    wm_entry *fresh = (wm_entry *)calloc((size_t)data->capacity, sizeof(wm_entry));
+    if (!fresh)
+        return 0; // Allocation failed — leave table as-is
+
+    data->entries = fresh;
+    data->count = 0;
+
+    for (int64_t i = 0; i < old_cap; i++)
+    {
+        if (old[i].occupied)
+        {
+            if (old[i].value == NULL)
+            {
+                // Dead entry — release key, don't reinsert
+                rt_string_unref(old[i].key);
+            }
+            else
+            {
+                // Live entry — reinsert into fresh table
+                const char *key_cstr = rt_string_cstr(old[i].key);
+                int64_t slot = wm_find_slot(data, key_cstr);
+                if (slot >= 0)
+                {
+                    data->entries[slot] = old[i];
+                    data->count++;
+                }
+            }
         }
     }
+    free(old);
     return removed;
 }

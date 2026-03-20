@@ -74,6 +74,8 @@ static void ensure_capacity(Deque *d, int64_t required)
     if (new_cap < required)
         new_cap = required;
 
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(void *))
+        trap_with_message("Deque: allocation size overflow");
     void **new_data = (void **)malloc((size_t)new_cap * sizeof(void *));
     if (!new_data)
         trap_with_message("Failed to allocate memory for deque");
@@ -116,6 +118,8 @@ void *rt_deque_with_capacity(int64_t cap)
     if (!d)
         return NULL;
 
+    if ((uint64_t)cap > SIZE_MAX / sizeof(void *))
+        trap_with_message("Deque: allocation size overflow");
     d->data = (void **)malloc((size_t)cap * sizeof(void *));
     if (!d->data)
     {

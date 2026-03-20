@@ -1074,8 +1074,9 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
 
     const uint8_t *sig_bytes = data + 4;
 
-    // Build the content hash
-    uint8_t content_hash[32];
+    // Build the content hash (64 bytes to accommodate future SHA-384/SHA-512)
+    uint8_t content_hash[64];
+    memset(content_hash, 0, sizeof(content_hash));
     build_cert_verify_content(session->cert_transcript_hash, content_hash);
 
     // Reconstruct SecCertificateRef from stored DER
@@ -1185,7 +1186,8 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
 
     const uint8_t *sig_bytes = data + 4;
 
-    uint8_t content_hash[32];
+    uint8_t content_hash[64];
+    memset(content_hash, 0, sizeof(content_hash));
     build_cert_verify_content(session->cert_transcript_hash, content_hash);
 
     PCCERT_CONTEXT cert_ctx = CertCreateCertificateContext(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
@@ -1637,7 +1639,11 @@ static int tls_verify_rsa_pss_dlopen(rt_tls_session_t *session,
         fn_set_pss(ctx, RSA_PSS_SALTLEN_DIGEST);
     }
 
-    size_t hash_len = (sig_scheme == 0x0805) ? 48 : (sig_scheme == 0x0806) ? 64 : 32;
+    // content_hash is always SHA-256 (32 bytes) from build_cert_verify_content.
+    // EVP_PKEY_verify expects the digest matching the scheme's hash algorithm,
+    // but we only have SHA-256 today. Use 32 unconditionally to prevent over-read.
+    // TODO: implement SHA-384/SHA-512 content hashing for full RSA-PSS support
+    size_t hash_len = 32;
 
     int rc = fn_verify(ctx, sig_bytes, sig_len, content_hash, hash_len);
 
@@ -1673,7 +1679,8 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
     }
     const uint8_t *sig_bytes = data + 4;
 
-    uint8_t content_hash[32];
+    uint8_t content_hash[64];
+    memset(content_hash, 0, sizeof(content_hash));
     build_cert_verify_content(session->cert_transcript_hash, content_hash);
 
     // Native ECDSA P-256 verification (no external dependencies)

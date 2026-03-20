@@ -142,8 +142,7 @@ void rt_arr_obj_put(void **arr, size_t idx, void *obj)
 
 /// @brief Resize an object array to the requested length.
 /// @details When growing, new elements are zero-initialized. When shrinking,
-///          the logical length is reduced without releasing truncated elements,
-///          so callers should release or clear elements explicitly if required.
+///          truncated elements are released before the buffer is reallocated.
 ///          The array may move in memory due to reallocation.
 /// @param arr Existing array payload pointer (may be NULL).
 /// @param len New logical length.
@@ -155,6 +154,22 @@ void **rt_arr_obj_resize(void **arr, size_t len)
 
     rt_heap_hdr_t *hdr = rt_arr_obj_hdr(arr);
     rt_arr_obj_assert_header(hdr);
+
+    // Release truncated elements before shrinking
+    size_t old_len = hdr->len;
+    if (len < old_len)
+    {
+        for (size_t i = len; i < old_len; i++)
+        {
+            void *p = arr[i];
+            if (p)
+            {
+                if (rt_obj_release_check0(p))
+                    rt_obj_free(p);
+                arr[i] = NULL;
+            }
+        }
+    }
 
     size_t new_cap = len;
     // compute total bytes with overflow checks similar to rt_arr_i32
@@ -169,7 +184,6 @@ void **rt_arr_obj_resize(void **arr, size_t len)
         return NULL;
 
     void **payload = (void **)rt_heap_data(resized);
-    size_t old_len = resized->len;
     if (len > old_len)
     {
         size_t grow = len - old_len;

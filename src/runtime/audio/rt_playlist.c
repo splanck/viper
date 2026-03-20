@@ -88,17 +88,25 @@ static void generate_shuffle_order(playlist_impl *pl)
         indices[i] = i;
     }
 
-    // Fisher-Yates shuffle
-    static int seeded = 0;
-    if (!seeded)
+    // Fisher-Yates shuffle using thread-safe local PRNG
+    uint64_t rng_state = (uint64_t)time(NULL) ^ (uint64_t)(uintptr_t)&indices;
+    // Warm up the PRNG
+    for (int w = 0; w < 5; w++)
     {
-        srand((unsigned int)time(NULL));
-        seeded = 1;
+        rng_state ^= rng_state >> 12;
+        rng_state ^= rng_state << 25;
+        rng_state ^= rng_state >> 27;
+        rng_state *= 0x2545F4914F6CDD1DULL;
     }
 
     for (int64_t i = count - 1; i > 0; i--)
     {
-        int64_t j = rand() % (i + 1);
+        // xorshift64star step
+        rng_state ^= rng_state >> 12;
+        rng_state ^= rng_state << 25;
+        rng_state ^= rng_state >> 27;
+        uint64_t r = rng_state * 0x2545F4914F6CDD1DULL;
+        int64_t j = (int64_t)(r % (uint64_t)(i + 1));
         int64_t tmp = indices[i];
         indices[i] = indices[j];
         indices[j] = tmp;

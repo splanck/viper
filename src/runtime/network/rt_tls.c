@@ -428,7 +428,7 @@ static int recv_record(rt_tls_session_t *session,
 // Build and send ClientHello
 static int send_client_hello(rt_tls_session_t *session)
 {
-    uint8_t msg[512];
+    uint8_t msg[1024];
     size_t pos = 0;
 
     // Legacy version
@@ -461,6 +461,11 @@ static int send_client_hello(rt_tls_session_t *session)
     if (session->hostname[0] != '\0')
     {
         size_t name_len = strlen(session->hostname);
+        if (pos + name_len + 11 > sizeof(msg) - 64)
+        {
+            session->error = "ClientHello: hostname too long";
+            return RT_TLS_ERROR;
+        }
         write_u16(msg + pos, TLS_EXT_SERVER_NAME);
         pos += 2;
         write_u16(msg + pos, (uint16_t)(name_len + 5));
@@ -503,7 +508,7 @@ static int send_client_hello(rt_tls_session_t *session)
     write_u16(msg + ext_start, (uint16_t)(pos - ext_start - 2));
 
     // Wrap in handshake header
-    uint8_t hs[4 + 512];
+    uint8_t hs[4 + 1024];
     hs[0] = TLS_HS_CLIENT_HELLO;
     write_u24(hs + 1, (uint32_t)pos);
     memcpy(hs + 4, msg, pos);

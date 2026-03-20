@@ -262,6 +262,8 @@ void *rt_frozenset_union(void *obj, void *other)
     }
 
     void *result = rt_frozenset_from_seq(seq);
+    if (rt_obj_release_check0(seq))
+        rt_obj_free(seq);
     return result;
 }
 
@@ -269,7 +271,12 @@ void *rt_frozenset_intersect(void *obj, void *other)
 {
     void *seq = rt_seq_new();
     if (!obj || !other)
-        return rt_frozenset_from_seq(seq);
+    {
+        void *result = rt_frozenset_from_seq(seq);
+        if (rt_obj_release_check0(seq))
+            rt_obj_free(seq);
+        return result;
+    }
 
     rt_frozenset_impl *a = (rt_frozenset_impl *)obj;
     rt_frozenset_impl *b = (rt_frozenset_impl *)other;
@@ -280,14 +287,22 @@ void *rt_frozenset_intersect(void *obj, void *other)
             rt_seq_push(seq, a->slots[i].key);
     }
 
-    return rt_frozenset_from_seq(seq);
+    void *result = rt_frozenset_from_seq(seq);
+    if (rt_obj_release_check0(seq))
+        rt_obj_free(seq);
+    return result;
 }
 
 void *rt_frozenset_diff(void *obj, void *other)
 {
     void *seq = rt_seq_new();
     if (!obj)
-        return rt_frozenset_from_seq(seq);
+    {
+        void *result = rt_frozenset_from_seq(seq);
+        if (rt_obj_release_check0(seq))
+            rt_obj_free(seq);
+        return result;
+    }
 
     rt_frozenset_impl *a = (rt_frozenset_impl *)obj;
 
@@ -300,7 +315,10 @@ void *rt_frozenset_diff(void *obj, void *other)
         }
     }
 
-    return rt_frozenset_from_seq(seq);
+    void *result = rt_frozenset_from_seq(seq);
+    if (rt_obj_release_check0(seq))
+        rt_obj_free(seq);
+    return result;
 }
 
 int8_t rt_frozenset_is_subset(void *obj, void *other)

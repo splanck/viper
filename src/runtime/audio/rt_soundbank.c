@@ -278,7 +278,9 @@ void *rt_soundbank_get(void *bank_ptr, rt_string name)
     if (idx < 0)
         return NULL;
 
-    return bank->entries[idx].sound;
+    void *sound = bank->entries[idx].sound;
+    rt_obj_retain_maybe(sound);
+    return sound;
 }
 
 void rt_soundbank_remove(void *bank_ptr, rt_string name)

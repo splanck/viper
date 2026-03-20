@@ -155,6 +155,8 @@ void *rt_orderedmap_new(void)
     m->capacity = 16;
     m->count = 0;
     m->buckets = (rt_om_entry **)calloc(16, sizeof(rt_om_entry *));
+    if (!m->buckets)
+        rt_trap("OrderedMap: memory allocation failed");
     m->head = m->tail = NULL;
     rt_obj_set_finalizer(m, orderedmap_finalizer);
     return m;
@@ -212,7 +214,14 @@ void rt_orderedmap_set(void *map, rt_string key, void *value)
 
     // Create new entry
     rt_om_entry *e = (rt_om_entry *)calloc(1, sizeof(rt_om_entry));
+    if (!e)
+        rt_trap("OrderedMap: entry allocation failed");
     e->key = (char *)malloc(klen + 1);
+    if (!e->key)
+    {
+        free(e);
+        rt_trap("OrderedMap: key allocation failed");
+    }
     memcpy(e->key, kstr, klen + 1);
     e->key_len = klen;
     if (value)
@@ -324,6 +333,7 @@ int8_t rt_orderedmap_remove(void *map, rt_string key)
 void *rt_orderedmap_keys(void *map)
 {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!map)
         return seq;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
@@ -333,6 +343,7 @@ void *rt_orderedmap_keys(void *map)
     {
         rt_string k = rt_string_from_bytes(e->key, e->key_len);
         rt_seq_push(seq, k);
+        rt_str_release_maybe(k);
         e = e->next;
     }
     return seq;

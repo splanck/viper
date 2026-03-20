@@ -86,6 +86,8 @@ rt_objpool rt_objpool_new(int64_t capacity)
     pool->slots = calloc((size_t)capacity, sizeof(struct pool_slot));
     if (!pool->slots)
     {
+        if (rt_obj_release_check0(pool))
+            rt_obj_free(pool);
         return NULL;
     }
 

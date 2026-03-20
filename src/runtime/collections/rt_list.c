@@ -43,6 +43,7 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include <time.h>
 #include <string.h>
 
 /// @brief Internal List implementation structure.
@@ -920,10 +921,23 @@ void rt_list_shuffle(void *list)
     if (len < 2)
         return;
 
-    // Fisher-Yates shuffle
+    // Fisher-Yates shuffle using thread-safe local PRNG
+    uint64_t rng_state = (uint64_t)time(NULL) ^ (uint64_t)(uintptr_t)&L;
+    for (int w = 0; w < 5; w++)
+    {
+        rng_state ^= rng_state >> 12;
+        rng_state ^= rng_state << 25;
+        rng_state ^= rng_state >> 27;
+        rng_state *= 0x2545F4914F6CDD1DULL;
+    }
+
     for (size_t i = len - 1; i > 0; --i)
     {
-        size_t j = (size_t)(rand() % (int)(i + 1));
+        rng_state ^= rng_state >> 12;
+        rng_state ^= rng_state << 25;
+        rng_state ^= rng_state >> 27;
+        uint64_t r = rng_state * 0x2545F4914F6CDD1DULL;
+        size_t j = (size_t)(r % (uint64_t)(i + 1));
         void *a = L->arr[i];
         void *b = L->arr[j];
         L->arr[i] = b;

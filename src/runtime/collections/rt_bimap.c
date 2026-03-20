@@ -249,6 +249,8 @@ void *rt_bimap_new(void)
     {
         free(bm->fwd_buckets);
         free(bm->inv_chains);
+        if (rt_obj_release_check0(bm))
+            rt_obj_free(bm);
         return NULL;
     }
 
@@ -459,6 +461,7 @@ int8_t rt_bimap_remove_by_value(void *obj, rt_string value)
 void *rt_bimap_keys(void *obj)
 {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     rt_bimap_impl *bm = (rt_bimap_impl *)obj;
@@ -469,6 +472,7 @@ void *rt_bimap_keys(void *obj)
         {
             rt_string k = rt_string_from_bytes(e->key, e->key_len);
             rt_seq_push(seq, (void *)k);
+            rt_str_release_maybe(k);
         }
     }
     return seq;
@@ -477,6 +481,7 @@ void *rt_bimap_keys(void *obj)
 void *rt_bimap_values(void *obj)
 {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     rt_bimap_impl *bm = (rt_bimap_impl *)obj;
@@ -487,6 +492,7 @@ void *rt_bimap_values(void *obj)
         {
             rt_string v = rt_string_from_bytes(e->value, e->value_len);
             rt_seq_push(seq, (void *)v);
+            rt_str_release_maybe(v);
         }
     }
     return seq;

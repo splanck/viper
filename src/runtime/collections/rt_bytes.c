@@ -936,7 +936,7 @@ static inline void bytes_check_bounds(rt_bytes_impl *b, int64_t offset, int64_t 
 {
     if (!b)
         rt_trap("Bytes: null object");
-    if (offset < 0 || offset + size > b->len)
+    if (offset < 0 || size < 0 || size > b->len || offset > b->len - size)
         rt_trap("Bytes: binary read/write out of bounds");
 }
 

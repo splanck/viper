@@ -183,6 +183,8 @@ static void maybe_resize(rt_lrucache_impl *cache)
     if (cache->count * LRU_LOAD_FACTOR_DEN <= cache->bucket_count * LRU_LOAD_FACTOR_NUM)
         return;
 
+    if (cache->bucket_count > SIZE_MAX / 2)
+        return; // Can't grow further
     size_t new_bucket_count = cache->bucket_count * 2;
     rt_lru_node **new_buckets = (rt_lru_node **)calloc(new_bucket_count, sizeof(rt_lru_node *));
     if (!new_buckets)
@@ -283,6 +285,8 @@ void *rt_lrucache_new(int64_t capacity)
     // immediate resizing
     while (cache->bucket_count * LRU_LOAD_FACTOR_NUM / LRU_LOAD_FACTOR_DEN < (size_t)capacity)
     {
+        if (cache->bucket_count > SIZE_MAX / 2)
+            break;
         cache->bucket_count *= 2;
     }
 
@@ -509,6 +513,7 @@ void rt_lrucache_clear(void *obj)
 void *rt_lrucache_keys(void *obj)
 {
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
     if (!obj)
         return result;
 
@@ -519,6 +524,7 @@ void *rt_lrucache_keys(void *obj)
     {
         rt_string key_str = rt_string_from_bytes(node->key, node->key_len);
         rt_seq_push(result, (void *)key_str);
+        rt_str_release_maybe(key_str);
     }
 
     return result;

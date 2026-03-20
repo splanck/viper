@@ -763,6 +763,7 @@ void rt_map_clear(void *obj)
 void *rt_map_keys(void *obj)
 {
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
     if (!obj)
         return result;
 
@@ -777,6 +778,7 @@ void *rt_map_keys(void *obj)
             // Create a copy of the key as rt_string and push to seq
             rt_string key_str = rt_string_from_bytes(entry->key, entry->key_len);
             rt_seq_push(result, (void *)key_str);
+            rt_str_release_maybe(key_str);
             entry = entry->next;
         }
     }
@@ -845,6 +847,9 @@ void rt_map_set_int(void *obj, rt_string key, int64_t value)
 {
     void *boxed = rt_box_i64(value);
     rt_map_set(obj, key, boxed);
+    // Release local ref — map_set already retained the boxed value
+    if (boxed && rt_obj_release_check0(boxed))
+        rt_obj_free(boxed);
 }
 
 int64_t rt_map_get_int(void *obj, rt_string key)
@@ -867,6 +872,9 @@ void rt_map_set_float(void *obj, rt_string key, double value)
 {
     void *boxed = rt_box_f64(value);
     rt_map_set(obj, key, boxed);
+    // Release local ref — map_set already retained the boxed value
+    if (boxed && rt_obj_release_check0(boxed))
+        rt_obj_free(boxed);
 }
 
 double rt_map_get_float(void *obj, rt_string key)
@@ -920,6 +928,7 @@ void *rt_map_clone(void *obj)
         {
             rt_string key_str = rt_string_from_bytes(entry->key, entry->key_len);
             rt_map_set(result, key_str, entry->value);
+            rt_str_release_maybe(key_str);
             entry = entry->next;
         }
     }

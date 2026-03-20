@@ -221,7 +221,7 @@ void rt_multimap_put(void *obj, rt_string key, void *value)
     entry->key_len = key_len;
 
     entry->values = rt_seq_new();
-    rt_obj_retain_maybe(entry->values);
+    // rt_seq_new() already returns refcount=1 — do not retain again
     rt_seq_push(entry->values, value);
 
     entry->next = mm->buckets[idx];
@@ -361,6 +361,7 @@ void rt_multimap_clear(void *obj)
 void *rt_multimap_keys(void *obj)
 {
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
     if (!obj)
         return result;
     rt_multimap_impl *mm = (rt_multimap_impl *)obj;
@@ -370,6 +371,7 @@ void *rt_multimap_keys(void *obj)
         {
             rt_string ks = rt_string_from_bytes(e->key, e->key_len);
             rt_seq_push(result, (void *)ks);
+            rt_str_release_maybe(ks);
         }
     }
     return result;

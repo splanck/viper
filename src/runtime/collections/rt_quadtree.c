@@ -410,15 +410,13 @@ static void collect_pairs_node(struct rt_quadtree_impl *tree,
     {
         // Expand ancestors to include this node's items
         int64_t new_ancestors[256];
-        int64_t new_count = ancestor_count;
+        int64_t new_count = 0;
+        // Copy old ancestors first
+        for (int64_t i = 0; i < ancestor_count && new_count < 256; i++)
+            new_ancestors[new_count++] = ancestors[i];
+        // Then append this node's items
         for (int64_t i = 0; i < node->item_count && new_count < 256; i++)
-        {
             new_ancestors[new_count++] = node->items[i];
-        }
-        for (int64_t i = 0; i < ancestor_count; i++)
-        {
-            new_ancestors[i] = ancestors[i];
-        }
 
         for (int i = 0; i < 4; i++)
         {
@@ -448,6 +446,8 @@ rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height)
     tree->root = create_node(x, y, width, height, 0);
     if (!tree->root)
     {
+        if (rt_obj_release_check0(tree))
+            rt_obj_free(tree);
         return NULL;
     }
 

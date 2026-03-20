@@ -127,6 +127,8 @@ static void rt_queue_finalize(void *obj)
 /// @note O(n) time complexity where n is the number of elements.
 static void queue_grow(rt_queue_impl *q)
 {
+    if (q->cap > INT64_MAX / QUEUE_GROWTH_FACTOR)
+        rt_trap("Queue: capacity overflow");
     int64_t new_cap = q->cap * QUEUE_GROWTH_FACTOR;
     void **new_items = malloc((size_t)new_cap * sizeof(void *));
 

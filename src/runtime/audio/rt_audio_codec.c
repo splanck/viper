@@ -227,6 +227,9 @@ int64_t rt_adpcm_decode_block(const uint8_t *adpcm,
 
 #define VAF_MAGIC 0x56414631 // "VAF1" in little-endian
 
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+#endif
 typedef struct
 {
     uint32_t magic;
@@ -235,7 +238,14 @@ typedef struct
     uint32_t total_samples;
     uint32_t block_size;
     uint16_t bits_per_sample;
-} __attribute__((packed)) vaf_header;
+}
+#ifndef _MSC_VER
+    __attribute__((packed))
+#endif
+        vaf_header;
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
 
 int8_t rt_audio_is_vaf(const char *path)
 {
@@ -264,6 +274,19 @@ int16_t *rt_audio_decode_vaf(const char *path,
 
     vaf_header hdr;
     if (fread(&hdr, 1, sizeof(hdr), f) != sizeof(hdr) || hdr.magic != VAF_MAGIC)
+    {
+        fclose(f);
+        return NULL;
+    }
+
+    // Validate header fields from untrusted file
+    if (hdr.channels == 0 || hdr.channels > 2)
+    {
+        fclose(f);
+        return NULL;
+    }
+    // Cap at ~2 hours of stereo 48kHz audio (345M samples)
+    if ((uint64_t)hdr.total_samples > 48000ULL * 3600 * 2)
     {
         fclose(f);
         return NULL;
@@ -370,6 +393,11 @@ static wav_data parse_wav(const char *path)
     }
 
     result.channels = (int32_t)(header[22] | (header[23] << 8));
+    if (result.channels == 0)
+    {
+        fclose(f);
+        return result;
+    }
     result.sample_rate =
         (int32_t)(header[24] | (header[25] << 8) | (header[26] << 16) | (header[27] << 24));
     uint16_t bits_per_sample = (uint16_t)(header[34] | (header[35] << 8));

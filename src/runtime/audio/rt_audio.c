@@ -155,7 +155,11 @@ static int ensure_audio_init(void)
         return state > 0;
 
     // Slow path: acquire spinlock and double-check
+#if RT_COMPILER_MSVC
+    while (_InterlockedExchange8((volatile char *)&g_audio_init_lock, 1))
+#else
     while (__atomic_test_and_set(&g_audio_init_lock, __ATOMIC_ACQUIRE))
+#endif
     {
 #ifdef _WIN32
         SwitchToThread();
@@ -173,7 +177,11 @@ static int ensure_audio_init(void)
     if (state != 0)
     {
         // Another thread already initialized - release lock and return
+#if RT_COMPILER_MSVC
+        _InterlockedExchange8((volatile char *)&g_audio_init_lock, 0);
+#else
         __atomic_clear(&g_audio_init_lock, __ATOMIC_RELEASE);
+#endif
         return state > 0;
     }
 
@@ -187,7 +195,11 @@ static int ensure_audio_init(void)
     __atomic_store_n(&g_audio_initialized, g_audio_ctx ? 1 : -1, __ATOMIC_RELEASE);
 #endif
 
+#if RT_COMPILER_MSVC
+    _InterlockedExchange8((volatile char *)&g_audio_init_lock, 0);
+#else
     __atomic_clear(&g_audio_init_lock, __ATOMIC_RELEASE);
+#endif
     return g_audio_ctx != NULL;
 }
 
@@ -199,7 +211,11 @@ int64_t rt_audio_init(void)
 void rt_audio_shutdown(void)
 {
     // Acquire lock to ensure exclusive access during shutdown
+#if RT_COMPILER_MSVC
+    while (_InterlockedExchange8((volatile char *)&g_audio_init_lock, 1))
+#else
     while (__atomic_test_and_set(&g_audio_init_lock, __ATOMIC_ACQUIRE))
+#endif
     {
 #ifdef _WIN32
         SwitchToThread();
@@ -221,7 +237,11 @@ void rt_audio_shutdown(void)
     __atomic_store_n(&g_audio_initialized, 0, __ATOMIC_RELEASE);
 #endif
 
+#if RT_COMPILER_MSVC
+    _InterlockedExchange8((volatile char *)&g_audio_init_lock, 0);
+#else
     __atomic_clear(&g_audio_init_lock, __ATOMIC_RELEASE);
+#endif
 }
 
 void rt_audio_set_master_volume(int64_t volume)
@@ -649,12 +669,23 @@ int64_t rt_audio_get_group_volume(int64_t group)
 
 void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duration_ms)
 {
-    // Cancel any existing crossfade
+    // Cancel any existing crossfade and release retained music objects
     if (g_crossfade.active)
     {
         // Complete the previous crossfade immediately
         if (g_crossfade.fade_out)
+        {
             rt_music_stop(g_crossfade.fade_out);
+            if (rt_obj_release_check0(g_crossfade.fade_out))
+                rt_obj_free(g_crossfade.fade_out);
+        }
+        if (g_crossfade.fade_in)
+        {
+            if (rt_obj_release_check0(g_crossfade.fade_in))
+                rt_obj_free(g_crossfade.fade_in);
+        }
+        g_crossfade.fade_out = NULL;
+        g_crossfade.fade_in = NULL;
         g_crossfade.active = 0;
     }
 
@@ -672,7 +703,11 @@ void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duratio
         return;
     }
 
-    // Start crossfade
+    // Start crossfade — retain both music objects for the duration
+    if (current_music)
+        rt_obj_retain_maybe(current_music);
+    if (new_music)
+        rt_obj_retain_maybe(new_music);
     g_crossfade.fade_out = current_music;
     g_crossfade.fade_in = new_music;
     g_crossfade.duration = duration_ms;
@@ -716,6 +751,17 @@ void rt_music_crossfade_update(int64_t dt_ms)
         if (g_crossfade.fade_in)
             rt_music_set_volume(g_crossfade.fade_in, (int64_t)g_crossfade.vol_out);
 
+        // Release retained music objects
+        if (g_crossfade.fade_out)
+        {
+            if (rt_obj_release_check0(g_crossfade.fade_out))
+                rt_obj_free(g_crossfade.fade_out);
+        }
+        if (g_crossfade.fade_in)
+        {
+            if (rt_obj_release_check0(g_crossfade.fade_in))
+                rt_obj_free(g_crossfade.fade_in);
+        }
         g_crossfade.active = 0;
         g_crossfade.fade_out = NULL;
         g_crossfade.fade_in = NULL;

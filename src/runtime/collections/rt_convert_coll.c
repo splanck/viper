@@ -37,8 +37,10 @@
 #include "rt_convert_coll.h"
 #include "rt_bag.h"
 #include "rt_deque.h"
+#include "rt_internal.h"
 #include "rt_list.h"
 #include "rt_map.h"
+#include "rt_object.h"
 #include "rt_queue.h"
 #include "rt_ring.h"
 #include "rt_seq.h"
@@ -221,6 +223,8 @@ void *rt_set_to_list(void *set)
 {
     void *seq = rt_set_to_seq(set);
     void *list = rt_seq_to_list(seq);
+    if (rt_obj_release_check0(seq))
+        rt_obj_free(seq);
     return list;
 }
 
@@ -235,12 +239,13 @@ void *rt_stack_to_seq(void *stack)
         return seq;
 
     int64_t len = rt_stack_len(stack);
-    // We need to iterate from bottom to top
-    // Stack doesn't expose indexed access, so we need to use peek_at if available
-    // For now, use rt_stack_to_array if available, otherwise reverse approach
+    if (len <= 0)
+        return seq;
+    if ((uint64_t)len > SIZE_MAX / sizeof(void *))
+        rt_trap("stack_to_seq: size overflow");
 
     // Create temporary array by popping all
-    void **temp = malloc(sizeof(void *) * len);
+    void **temp = malloc(sizeof(void *) * (size_t)len);
     if (!temp)
         return seq;
 
@@ -266,6 +271,8 @@ void *rt_stack_to_list(void *stack)
 {
     void *seq = rt_stack_to_seq(stack);
     void *list = rt_seq_to_list(seq);
+    if (rt_obj_release_check0(seq))
+        rt_obj_free(seq);
     return list;
 }
 
@@ -280,9 +287,13 @@ void *rt_queue_to_seq(void *queue)
         return seq;
 
     int64_t len = rt_queue_len(queue);
+    if (len <= 0)
+        return seq;
+    if ((uint64_t)len > SIZE_MAX / sizeof(void *))
+        rt_trap("queue_to_seq: size overflow");
 
     // Create temporary array by dequeuing all
-    void **temp = malloc(sizeof(void *) * len);
+    void **temp = malloc(sizeof(void *) * (size_t)len);
     if (!temp)
         return seq;
 
@@ -307,6 +318,8 @@ void *rt_queue_to_list(void *queue)
 {
     void *seq = rt_queue_to_seq(queue);
     void *list = rt_seq_to_list(seq);
+    if (rt_obj_release_check0(seq))
+        rt_obj_free(seq);
     return list;
 }
 
@@ -385,6 +398,9 @@ void *rt_bag_to_set(void *bag)
         void *elem = rt_seq_get(items, i);
         rt_set_add(set, elem);
     }
+    // Release the intermediate Seq from rt_bag_items
+    if (rt_obj_release_check0(items))
+        rt_obj_free(items);
     return set;
 }
 

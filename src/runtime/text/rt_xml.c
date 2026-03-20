@@ -1615,12 +1615,8 @@ static void format_element(
             buf_append(buf, cap, len, "=\"");
             buf_append_escaped(buf, cap, len, rt_string_cstr((rt_string)val), 1);
             buf_append_char(buf, cap, len, '"');
-
-            if (rt_obj_release_check0(key))
-                rt_obj_free(key);
-            if (rt_obj_release_check0(val))
-                rt_obj_free(val);
         }
+        // Release the keys Seq (its owns_elements finalizer releases the strings)
         if (rt_obj_release_check0(keys))
             rt_obj_free(keys);
     }

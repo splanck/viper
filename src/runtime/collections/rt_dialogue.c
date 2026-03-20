@@ -71,7 +71,7 @@ typedef struct
     // Typewriter state
     int32_t chars_per_second;
     int32_t revealed_chars;
-    int32_t accumulator_us;
+    int64_t accumulator_us;
 
     // State
     int8_t active;
@@ -305,12 +305,12 @@ void rt_dialogue_update(void *dlg, int64_t dt_ms)
     }
 
     // Accumulate microseconds
-    d->accumulator_us += (int32_t)(dt_ms * 1000);
-    int32_t us_per_char = 1000000 / d->chars_per_second;
+    d->accumulator_us += (int64_t)(dt_ms * 1000);
+    int64_t us_per_char = 1000000 / d->chars_per_second;
     if (us_per_char < 1)
         us_per_char = 1;
 
-    int32_t chars_to_add = d->accumulator_us / us_per_char;
+    int64_t chars_to_add = d->accumulator_us / us_per_char;
     d->accumulator_us %= us_per_char;
     d->revealed_chars += chars_to_add;
 
@@ -506,10 +506,11 @@ void rt_dialogue_draw(void *dlg, void *canvas)
         if (cy + lh > max_y)
             break;
 
-        // Draw single character
+        // Draw single character (copy to heap to avoid dangling stack pointer)
         char ch_buf[2] = {buf[i], '\0'};
-        rt_string ch = rt_const_cstr(ch_buf);
+        rt_string ch = rt_string_from_bytes(ch_buf, 1);
         rt_canvas_text_scaled(canvas, cx, cy, ch, scale, d->text_color);
+        rt_str_release_maybe(ch);
         cx += cw;
 
         if (cx >= max_x)

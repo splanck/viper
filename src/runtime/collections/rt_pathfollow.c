@@ -101,7 +101,9 @@ static int64_t distance(int64_t x1, int64_t y1, int64_t x2, int64_t y2)
 /// Recalculate cached segment lengths.
 static void recalculate_lengths(rt_pathfollow path)
 {
-    if (!path || path->point_count < 2)
+    if (!path)
+        return;
+    if (path->point_count < 2)
     {
         path->total_length = 0;
         return;
@@ -153,7 +155,8 @@ void rt_pathfollow_destroy(rt_pathfollow path)
     if (!path)
         return;
 
-    rt_obj_free(path);
+    if (rt_obj_release_check0(path))
+        rt_obj_free(path);
 }
 
 void rt_pathfollow_clear(rt_pathfollow path)
@@ -440,7 +443,10 @@ void rt_pathfollow_set_progress(rt_pathfollow path, int64_t progress)
         {
             path->segment = i;
             int64_t seg_dist = target_dist - accumulated;
-            path->segment_progress = (seg_dist * 1000) / path->segment_lengths[i];
+            if (path->segment_lengths[i] == 0)
+                path->segment_progress = 0;
+            else
+                path->segment_progress = (seg_dist * 1000) / path->segment_lengths[i];
             break;
         }
         accumulated += path->segment_lengths[i];

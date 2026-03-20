@@ -74,6 +74,10 @@ typedef struct rt_binbuf_impl
 /// @param needed Number of bytes needed from the current position.
 static void binbuf_ensure(rt_binbuf_impl *buf, int64_t needed)
 {
+    if (needed < 0)
+        rt_trap("BinaryBuffer: negative size");
+    if (buf->position > INT64_MAX - needed)
+        rt_trap("BinaryBuffer: position overflow");
     int64_t required = buf->position + needed;
     if (required <= buf->capacity)
         return;
@@ -128,6 +132,10 @@ static void binbuf_advance_write(rt_binbuf_impl *buf, int64_t n)
 /// @param count Number of bytes to read.
 static void binbuf_check_read(rt_binbuf_impl *buf, int64_t count)
 {
+    if (count < 0)
+        rt_trap("BinaryBuffer: negative count");
+    if (buf->position > INT64_MAX - count)
+        rt_trap("BinaryBuffer: read position overflow");
     if (buf->position + count > buf->len)
         rt_trap("BinaryBuffer: read past end");
 }

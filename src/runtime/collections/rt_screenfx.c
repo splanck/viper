@@ -93,7 +93,7 @@ rt_screenfx rt_screenfx_new(void)
 
 void rt_screenfx_destroy(rt_screenfx fx)
 {
-    if (fx)
+    if (fx && rt_obj_release_check0(fx))
         rt_obj_free(fx);
 }
 
