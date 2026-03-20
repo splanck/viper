@@ -14,7 +14,7 @@
 //
 // Key invariants:
 //   - Optimal bit count: m = -n * ln(p) / (ln(2)^2), minimum 64 bits.
-//   - Optimal hash count: k = (m/n) * ln(2), clamped to [1, 20].
+//   - Optimal hash count: k = (m/n) * ln(2), clamped to [1, 30].
 //   - Hash functions are derived from a MurmurHash3-style mix seeded with
 //     different seed values per function index; no external hash table is used.
 //   - MightContain returns 1 if ALL k bits for a key are set; false positives

@@ -62,6 +62,28 @@ typedef struct
 } Lazy;
 
 //=============================================================================
+// Lazy Finalizer
+//=============================================================================
+
+static void lazy_finalizer(void *obj)
+{
+    Lazy *l = (Lazy *)obj;
+    if (!l || !l->evaluated)
+        return;
+    if (l->value_type == VALUE_PTR && l->value.ptr)
+    {
+        if (rt_obj_release_check0(l->value.ptr))
+            rt_obj_free(l->value.ptr);
+        l->value.ptr = NULL;
+    }
+    else if (l->value_type == VALUE_STR && l->value.str)
+    {
+        rt_str_release_maybe(l->value.str);
+        l->value.str = NULL;
+    }
+}
+
+//=============================================================================
 // Lazy Creation
 //=============================================================================
 
@@ -73,6 +95,7 @@ void *rt_lazy_new(void *(*supplier)(void))
     l->value_type = VALUE_PTR;
     l->supplier = supplier;
     l->value.ptr = NULL;
+    rt_obj_set_finalizer(l, lazy_finalizer);
     return l;
 }
 
@@ -84,6 +107,7 @@ void *rt_lazy_of(void *value)
     l->value_type = VALUE_PTR;
     l->supplier = NULL;
     l->value.ptr = value;
+    rt_obj_set_finalizer(l, lazy_finalizer);
     return l;
 }
 
@@ -95,6 +119,7 @@ void *rt_lazy_of_str(rt_string value)
     l->value_type = VALUE_STR;
     l->supplier = NULL;
     l->value.str = value;
+    rt_obj_set_finalizer(l, lazy_finalizer);
     return l;
 }
 
@@ -106,6 +131,7 @@ void *rt_lazy_of_i64(int64_t value)
     l->value_type = VALUE_I64;
     l->supplier = NULL;
     l->value.i64 = value;
+    rt_obj_set_finalizer(l, lazy_finalizer);
     return l;
 }
 
@@ -115,14 +141,16 @@ void *rt_lazy_of_i64(int64_t value)
 
 static void evaluate(Lazy *l)
 {
-    if (l->evaluated)
+    // Use atomic load/store for thread safety on ARM64 and other weak-memory platforms.
+    // Double evaluation is possible but benign (Lazy contract assumes pure suppliers).
+    if (__atomic_load_n(&l->evaluated, __ATOMIC_ACQUIRE))
         return;
 
     if (l->supplier)
     {
         l->value.ptr = l->supplier();
     }
-    l->evaluated = 1;
+    __atomic_store_n(&l->evaluated, 1, __ATOMIC_RELEASE);
 }
 
 void *rt_lazy_get(void *obj)

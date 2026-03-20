@@ -67,6 +67,8 @@ struct rt_objpool_impl
 
 static void objpool_finalizer(void *obj)
 {
+    if (!obj)
+        return;
     struct rt_objpool_impl *pool = (struct rt_objpool_impl *)obj;
     free(pool->slots);
     pool->slots = NULL;

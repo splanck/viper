@@ -18,7 +18,7 @@
 //   - Resizes (doubles) when distinct-key count/capacity exceeds 75%.
 //   - `total` tracks the sum of all stored counts and is updated atomically
 //     with every increment, decrement, and set operation.
-//   - Decrementing below zero is allowed; negative counts are valid states.
+//   - Decrementing to zero removes the entry (count and total adjusted).
 //   - Removing an entry (count set to 0 via Remove) frees the entry node and
 //     adjusts both `count` (distinct keys) and `total`.
 //   - All operations are O(1) average case; O(n) worst case due to chaining.
@@ -399,6 +399,8 @@ void *rt_countmap_most_common(void *obj, int64_t n)
         return seq;
 
     // Collect all entries into a flat array
+    if (cm->count > SIZE_MAX / sizeof(rt_cm_entry *))
+        return seq;
     rt_cm_entry **entries = (rt_cm_entry **)malloc(cm->count * sizeof(rt_cm_entry *));
     if (!entries)
         return seq;

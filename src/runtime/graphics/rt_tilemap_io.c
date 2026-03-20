@@ -57,7 +57,8 @@ typedef struct
     int32_t count;
 } tile_props;
 
-// Property storage — static for simplicity (one tilemap at a time)
+// Property storage — static for simplicity (one tilemap at a time).
+// WARNING: NOT thread-safe. Concurrent tilemap loading will corrupt shared data.
 // In a real implementation this would be embedded in the tilemap struct.
 static tile_props s_props[MAX_TILE_PROPS];
 static int8_t s_props_initialized = 0;

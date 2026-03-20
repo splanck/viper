@@ -136,8 +136,25 @@ void *rt_diff_lines(rt_string a, rt_string b)
 
     // Build LCS table
     int **table = (int **)malloc((size_t)(m + 1) * sizeof(int *));
+    if (!table)
+    {
+        free_lines(&la);
+        free_lines(&lb);
+        return result;
+    }
     for (int i = 0; i <= m; i++)
+    {
         table[i] = (int *)calloc((size_t)(n + 1), sizeof(int));
+        if (!table[i])
+        {
+            for (int k = 0; k < i; k++)
+                free(table[k]);
+            free(table);
+            free_lines(&la);
+            free_lines(&lb);
+            return result;
+        }
+    }
 
     compute_lcs_table(&la, &lb, table);
 

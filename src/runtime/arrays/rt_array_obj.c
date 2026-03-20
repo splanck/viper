@@ -59,9 +59,10 @@ static rt_heap_hdr_t *rt_arr_obj_hdr(void **payload)
 /// @param hdr Heap header to validate (must be non-NULL).
 static void rt_arr_obj_assert_header(rt_heap_hdr_t *hdr)
 {
+    if (!hdr || hdr->kind != RT_HEAP_ARRAY || hdr->elem_kind != RT_ELEM_NONE)
+        rt_trap("rt_array_obj: corrupted header");
     assert(hdr);
     assert(hdr->kind == RT_HEAP_ARRAY);
-    // No dedicated elem_kind for object; use NONE to indicate generic pointer
     assert(hdr->elem_kind == RT_ELEM_NONE);
 }
 

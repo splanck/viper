@@ -131,7 +131,13 @@ void rt_dialogue_set_font(void *dlg, void *font)
 {
     if (!dlg)
         return;
-    ((rt_dialogue_impl *)dlg)->font = font;
+    rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
+    // Retain new font, release old to prevent dangling pointer
+    if (font)
+        rt_obj_retain_maybe(font);
+    if (d->font && rt_obj_release_check0(d->font))
+        rt_obj_free(d->font);
+    d->font = font;
 }
 
 void rt_dialogue_set_text_color(void *dlg, int64_t color)

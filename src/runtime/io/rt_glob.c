@@ -68,8 +68,12 @@ static int glob_match_impl(const char *pattern, const char *text, int allow_slas
                     return 1; // ** at end matches everything
 
                 // Try matching rest of pattern at each position
+                // Limit iterations to prevent exponential backtracking on adversarial input
+                int attempts = 0;
                 for (const char *p = text; *p; p++)
                 {
+                    if (++attempts > 10000)
+                        return 0; // Bail out on pathological patterns
                     if (glob_match_impl(pattern, p, 1))
                         return 1;
                 }

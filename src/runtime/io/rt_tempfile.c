@@ -213,13 +213,19 @@ rt_string rt_tempfile_create_with_prefix(rt_string prefix)
 #endif
 
     rt_string path = rt_tempfile_path_with_prefix(prefix);
+    const char *cpath = rt_string_cstr(path);
 
-    // Create empty file
-    FILE *f = fopen(rt_string_cstr(path), "wb");
-    if (f)
-    {
-        fclose(f);
-    }
+    // Create file atomically to prevent TOCTOU race
+#ifdef _WIN32
+    HANDLE h = CreateFileA(
+        cpath, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h != INVALID_HANDLE_VALUE)
+        CloseHandle(h);
+#else
+    int tmp_fd = open(cpath, O_CREAT | O_EXCL | O_WRONLY, 0600);
+    if (tmp_fd >= 0)
+        close(tmp_fd);
+#endif
 
     return path;
 }

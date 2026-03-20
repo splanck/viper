@@ -327,7 +327,8 @@ int64_t rt_particle_emitter_color(rt_particle_emitter emitter)
 /// Emit a single particle.
 static void emit_one(struct rt_particle_emitter_impl *e)
 {
-    // Find an inactive slot
+    // Find an inactive slot (O(n) linear scan; could be optimized with a free-list
+    // for high-emission-rate systems near capacity)
     for (int64_t i = 0; i < e->max_particles; i++)
     {
         if (!e->particles[i].active)

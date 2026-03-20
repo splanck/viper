@@ -18,7 +18,8 @@
 //     For max-heap: parent.priority >= child.priority (root = maximum).
 //   - Initial capacity is HEAP_DEFAULT_CAP (16); grows by HEAP_GROWTH_FACTOR (2).
 //   - Each element is a heap_entry { int64_t priority; void* value }.
-//     The value pointer is NOT retained; callers manage value lifetime.
+//     The value pointer is NOT retained (borrowed reference); callers must
+//     ensure values outlive the queue or remove them before releasing.
 //   - Enqueue is O(log n) via sift-up; dequeue is O(log n) via sift-down.
 //   - Peek is O(1); returns NULL if the heap is empty.
 //   - Not thread-safe; external synchronization required.

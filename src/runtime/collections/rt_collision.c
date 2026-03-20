@@ -14,9 +14,9 @@
 //   projectile hit detection, UI hover regions).
 //
 // Key invariants:
-//   - CollisionRect is an axis-aligned bounding box (AABB) with integer x, y,
+//   - CollisionRect is an axis-aligned bounding box (AABB) with double x, y,
 //     width, height fields. x, y is the top-left corner.
-//   - CollisionCircle has integer cx, cy center and integer radius.
+//   - CollisionCircle has double cx, cy center and double radius.
 //   - All overlap tests return int64: 1 = overlapping, 0 = separated.
 //     Tests are strict (touching edges count as overlapping unless noted).
 //   - rt_collision_rect_vs_rect: SAT test on both axes, returns 1 if any area

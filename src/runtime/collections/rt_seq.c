@@ -513,6 +513,8 @@ void rt_seq_push(void *obj, void *val)
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
 
+    if (seq->len >= INT64_MAX)
+        rt_trap("Seq: maximum length reached");
     seq_ensure_capacity(seq, seq->len + 1);
     if (seq->owns_elements && val)
         rt_obj_retain_maybe(val);
@@ -660,7 +662,9 @@ void *rt_seq_pop(void *obj)
     }
 
     seq->len--;
-    return seq->items[seq->len];
+    void *val = seq->items[seq->len];
+    seq->items[seq->len] = NULL; // Clear slot to prevent stale pointer access
+    return val;
 }
 
 /// @brief Returns the last element without removing it.

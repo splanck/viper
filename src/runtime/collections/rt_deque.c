@@ -187,6 +187,8 @@ void rt_deque_push_front(void *obj, void *elem)
         return;
     Deque *d = (Deque *)obj;
 
+    if (d->len >= INT64_MAX)
+        trap_with_message("Deque: maximum capacity reached");
     ensure_capacity(d, d->len + 1);
 
     // Move front pointer backward (with wrap-around)

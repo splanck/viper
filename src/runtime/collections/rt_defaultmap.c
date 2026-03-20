@@ -18,10 +18,10 @@
 //   - Resizes (doubles) when count/capacity exceeds 75%.
 //   - Get returns default_value (NOT a copy) for missing keys; callers must
 //     not mutate the returned default object.
-//   - The default_value pointer is stored at construction time and is NOT
-//     retained by the DefaultMap (caller must keep it alive).
-//   - Each entry owns a heap-copied key string; values are stored as raw
-//     pointers (not retained by the map).
+//   - The default_value pointer is retained at construction time and released
+//     by the finalizer.
+//   - Each entry owns a heap-copied key string; values are retained by the map
+//     and released on removal or finalization.
 //   - All operations are O(1) average case; O(n) worst case.
 //   - Not thread-safe; external synchronization required.
 //
@@ -125,8 +125,8 @@ static void defaultmap_finalizer(void *obj)
         {
             rt_dm_entry *next = e->next;
             free(e->key);
-            if (e->value)
-                rt_obj_release_check0(e->value);
+            if (e->value && rt_obj_release_check0(e->value))
+                rt_obj_free(e->value);
             free(e);
             e = next;
         }
@@ -219,8 +219,8 @@ void rt_defaultmap_set(void *map, rt_string key, void *value)
         {
             if (value)
                 rt_obj_retain_maybe(value);
-            if (e->value)
-                rt_obj_release_check0(e->value);
+            if (e->value && rt_obj_release_check0(e->value))
+                rt_obj_free(e->value);
             e->value = value;
             return;
         }
@@ -297,8 +297,8 @@ int8_t rt_defaultmap_remove(void *map, rt_string key)
         {
             *pp = e->next;
             free(e->key);
-            if (e->value)
-                rt_obj_release_check0(e->value);
+            if (e->value && rt_obj_release_check0(e->value))
+                rt_obj_free(e->value);
             free(e);
             m->count--;
             return 1;
@@ -358,8 +358,8 @@ void rt_defaultmap_clear(void *map)
         {
             rt_dm_entry *next = e->next;
             free(e->key);
-            if (e->value)
-                rt_obj_release_check0(e->value);
+            if (e->value && rt_obj_release_check0(e->value))
+                rt_obj_free(e->value);
             free(e);
             e = next;
         }

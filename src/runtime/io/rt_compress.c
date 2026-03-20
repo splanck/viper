@@ -134,16 +134,11 @@ static bool br_fill(bit_reader_t *br, int n)
     {
         if (br->pos >= br->len)
         {
-            // At end of stream with some bits remaining - zero-fill for table lookup
-            // This is valid because DEFLATE streams are zero-padded to byte boundary
-            // The remaining bits contain the final symbol (e.g., end-of-block)
-            if (br->bits_in_buf > 0)
-            {
-                br->bits_in_buf = n;
-                return true;
-            }
-            // No bits at all - genuine EOF
-            return false;
+            // At end of stream — return what we have without fabricating bits.
+            // DEFLATE streams are zero-padded to byte boundary, so remaining
+            // bits in the buffer are valid. Don't inflate bits_in_buf beyond
+            // what was actually read to prevent processing fabricated data.
+            return br->bits_in_buf > 0;
         }
         br->buffer |= ((uint32_t)br->data[br->pos++]) << br->bits_in_buf;
         br->bits_in_buf += 8;

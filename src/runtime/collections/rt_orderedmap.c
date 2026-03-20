@@ -21,7 +21,7 @@
 //   - Removing an entry unlinks it from both the bucket chain and the list.
 //   - Key strings are heap-copied into entry nodes; the OrderedMap is
 //     independent of the source rt_string lifetime.
-//   - Values are stored as raw void* pointers (not retained by the map).
+//   - Values are retained on insertion and released on removal/finalization.
 //   - Not thread-safe; external synchronization required.
 //
 // Ownership/Lifetime:

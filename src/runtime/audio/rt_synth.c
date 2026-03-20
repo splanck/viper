@@ -300,7 +300,7 @@ void *rt_synth_noise(int64_t duration_ms, int64_t volume)
         rng_state = rng_state * 1103515245u + 12345u;
         int16_t noise_val = (int16_t)(rng_state >> 16);
 
-        /* Exponential decay envelope */
+        /* Quadratic decay envelope */
         double t = (double)i / (double)num_samples;
         double env = 1.0 - t; /* Linear decay */
         env = env * env;      /* Quadratic decay for more natural sound */

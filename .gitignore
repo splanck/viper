@@ -140,6 +140,11 @@ benchmarks/bench_pure.*
 # --- Demo binaries ---
 examples/bin/
 
+# --- Large binary assets ---
+*.blend
+*.fbx
+*.zip
+
 # --- Root-level scratch/analysis files ---
 viper_issues*.txt
 viper_runtime_*.md

@@ -97,7 +97,9 @@ static void derive_key(const char *password,
     rt_hkdf_expand(prk, (const uint8_t *)HKDF_INFO, strlen(HKDF_INFO), key, CIPHER_KEY_SIZE);
 
     // Clear PRK from stack
-    memset(prk, 0, sizeof(prk));
+    // Use volatile to prevent compiler from eliding the key-scrubbing write
+    volatile uint8_t *vp = (volatile uint8_t *)prk;
+    for (size_t i = 0; i < sizeof(prk); i++) vp[i] = 0;
 }
 
 //=============================================================================
@@ -152,7 +154,9 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password)
                                  out_data + CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE);
 
     // Clear key from stack
-    memset(key, 0, sizeof(key));
+    // Use volatile to prevent compiler from eliding the key-scrubbing write
+    volatile uint8_t *vk = (volatile uint8_t *)key;
+    for (size_t i = 0; i < sizeof(key); i++) vk[i] = 0;
 
     return result;
 }
@@ -209,7 +213,9 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password)
                                                        plain_data);
 
     // Clear key from stack
-    memset(key, 0, sizeof(key));
+    // Use volatile to prevent compiler from eliding the key-scrubbing write
+    volatile uint8_t *vk = (volatile uint8_t *)key;
+    for (size_t i = 0; i < sizeof(key); i++) vk[i] = 0;
 
     if (decrypt_result < 0)
     {

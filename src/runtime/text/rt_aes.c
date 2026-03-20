@@ -876,6 +876,9 @@ static void generate_iv(uint8_t iv[16])
     void *rand_bytes = rt_crypto_rand_bytes(16);
     for (int i = 0; i < 16; i++)
         iv[i] = (uint8_t)rt_bytes_get(rand_bytes, i);
+    // Release the Bytes object after extracting the random data
+    if (rt_obj_release_check0(rand_bytes))
+        rt_obj_free(rand_bytes);
 }
 
 /// @brief Encrypt string using AES-256-CBC with key derivation.

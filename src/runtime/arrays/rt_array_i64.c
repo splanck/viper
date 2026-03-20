@@ -180,6 +180,8 @@ void rt_arr_i64_copy_payload(int64_t *dst, const int64_t *src, size_t count)
     if (!dst || !src)
         rt_arr_oob_panic(0, count);
 
+    if (count > SIZE_MAX / sizeof(int64_t))
+        rt_arr_oob_panic(0, count);
     memcpy(dst, src, count * sizeof(int64_t));
 }
 

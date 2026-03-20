@@ -75,6 +75,21 @@ typedef struct
 // Promise Implementation
 //=============================================================================
 
+static void promise_finalizer(void *obj)
+{
+    promise_impl *p = (promise_impl *)obj;
+    if (!p)
+        return;
+#ifdef _WIN32
+    DeleteCriticalSection(&p->mutex);
+#else
+    pthread_mutex_destroy(&p->mutex);
+    pthread_cond_destroy(&p->cond);
+#endif
+    if (p->error)
+        rt_str_release_maybe(p->error);
+}
+
 void *rt_promise_new(void)
 {
     promise_impl *p = (promise_impl *)rt_obj_new_i64(0, (int64_t)sizeof(promise_impl));
@@ -95,6 +110,7 @@ void *rt_promise_new(void)
     p->is_error = 0;
     p->future = NULL;
 
+    rt_obj_set_finalizer(p, promise_finalizer);
     return p;
 }
 
@@ -124,6 +140,7 @@ void *rt_promise_get_future(void *obj)
             rt_trap("Future: memory allocation failed");
         }
         f->promise = p;
+        rt_obj_retain_maybe(p); // Future holds a reference to prevent premature GC of promise
         p->future = f;
     }
 

@@ -21,7 +21,7 @@
 //     suffix left: O(n) per remove.
 //   - Capacity doubles when the array is full (starting from 8 entries).
 //   - Each entry stores a heap-copied key string (owned) and a void* value
-//     (not retained). Values must be kept alive by the caller.
+//     (retained on insertion, released on removal/finalization).
 //   - Floor(k): largest key <= k; Ceiling(k): smallest key >= k; both O(log n).
 //   - Not thread-safe; external synchronization required.
 //

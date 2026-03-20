@@ -487,15 +487,25 @@ static void sha256_init(SHA256_CTX *ctx)
 
 static void sha256_update(SHA256_CTX *ctx, const uint8_t *data, size_t len)
 {
-    for (size_t i = 0; i < len; ++i)
+    size_t idx = (size_t)(ctx->bitcount / 8 % 64);
+    ctx->bitcount += (uint64_t)len * 8;
+
+    // Fill remaining buffer space
+    size_t fill = 64 - idx;
+    if (len >= fill)
     {
-        ctx->buffer[ctx->bitcount / 8 % 64] = data[i];
-        ctx->bitcount += 8;
-        if ((ctx->bitcount / 8 % 64) == 0)
-        {
-            sha256_transform(ctx, ctx->buffer);
-        }
+        memcpy(ctx->buffer + idx, data, fill);
+        sha256_transform(ctx, ctx->buffer);
+        size_t offset = fill;
+        // Process complete 64-byte blocks directly from input
+        for (; offset + 63 < len; offset += 64)
+            sha256_transform(ctx, data + offset);
+        idx = 0;
+        len -= offset;
+        data += offset;
     }
+    // Buffer remaining bytes
+    memcpy(ctx->buffer + idx, data, len);
 }
 
 static void sha256_final(uint8_t hash[32], SHA256_CTX *ctx)

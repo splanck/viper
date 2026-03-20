@@ -21,7 +21,8 @@
 //   - Character classes are byte-level; Unicode codepoints are not decomposed.
 //
 // Ownership/Lifetime:
-//   - Compiled patterns are cached in a global table; entries are not freed.
+//   - Compiled patterns are cached in a bounded LRU table (max 16 entries);
+//     least-recently-used entries are freed on eviction.
 //   - Returned match strings and sequences are fresh allocations owned by caller.
 //
 // Links: src/runtime/text/rt_regex.h (public API),

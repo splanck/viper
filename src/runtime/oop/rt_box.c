@@ -88,6 +88,16 @@ void *rt_box_i1(int64_t val)
     return box;
 }
 
+static void box_str_finalizer(void *obj)
+{
+    rt_box_t *box = (rt_box_t *)obj;
+    if (box && box->tag == RT_BOX_STR && box->data.str_val)
+    {
+        rt_str_release_maybe(box->data.str_val);
+        box->data.str_val = NULL;
+    }
+}
+
 void *rt_box_str(rt_string val)
 {
     rt_box_t *box = (rt_box_t *)alloc_box();
@@ -101,6 +111,7 @@ void *rt_box_str(rt_string val)
     {
         rt_string_ref(val);
     }
+    rt_obj_set_finalizer(box, box_str_finalizer);
     return box;
 }
 

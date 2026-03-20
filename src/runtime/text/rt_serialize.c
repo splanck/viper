@@ -54,11 +54,15 @@ static _Thread_local rt_string g_last_error = NULL;
 
 static void set_error(const char *msg)
 {
+    if (g_last_error)
+        rt_string_unref(g_last_error);
     g_last_error = rt_string_from_bytes(msg, strlen(msg));
 }
 
 static void clear_error(void)
 {
+    if (g_last_error)
+        rt_string_unref(g_last_error);
     g_last_error = NULL;
 }
 

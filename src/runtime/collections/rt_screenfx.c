@@ -193,6 +193,7 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt)
             case RT_SCREENFX_FLASH:
             {
                 // Flash starts bright and fades
+                // Color format: 0xRRGGBBAA — alpha in low byte
                 int64_t alpha = ((e->color & 0xFF) * (1000 - progress)) / 1000;
                 if (alpha > max_overlay_alpha)
                 {

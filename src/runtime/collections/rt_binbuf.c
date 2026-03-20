@@ -465,8 +465,9 @@ void *rt_binbuf_read_bytes(void *obj, int64_t count)
     binbuf_check_read(buf, count);
 
     void *result = rt_bytes_new(count);
-    for (int64_t i = 0; i < count; i++)
-        rt_bytes_set(result, i, buf->data[buf->position + i]);
+    uint8_t *dst = binbuf_bytes_data(result);
+    if (dst && count > 0)
+        memcpy(dst, buf->data + buf->position, (size_t)count);
 
     buf->position += count;
     return result;

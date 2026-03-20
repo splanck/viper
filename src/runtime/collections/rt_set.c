@@ -19,7 +19,7 @@
 //   - Hash dispatch: RT_ELEM_BOX elements use content hash (FNV-1a for strings,
 //     bit-mix for integers/floats); all other elements use pointer address.
 //   - Equality dispatch matches the hash dispatch to ensure correctness.
-//   - Elements are stored as raw void* pointers; the set does NOT retain them.
+//   - Elements are retained on insertion and released on removal/finalization.
 //   - Contains, add, and remove are O(1) average case; O(n) worst case.
 //   - Set algebra (union, intersection, difference) iterates all buckets: O(n+m).
 //   - Not thread-safe; external synchronization required for concurrent access.

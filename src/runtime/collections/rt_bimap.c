@@ -62,7 +62,6 @@ typedef struct rt_bimap_impl
 {
     void **vptr;
     rt_bm_entry **fwd_buckets; // key -> entry
-    rt_bm_entry **inv_buckets; // value -> entry (same entry objects, different chain)
     size_t fwd_capacity;
     size_t inv_capacity;
     size_t count;

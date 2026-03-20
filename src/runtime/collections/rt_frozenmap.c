@@ -20,8 +20,7 @@
 //   - FNV-1a hash over the raw string bytes; linear probing on collision.
 //   - Keys are stored as retained rt_string references (not copied); the FrozenMap
 //     keeps a reference to prevent GC collection of key strings.
-//   - Values are stored as raw void* pointers (not retained); callers must
-//     ensure value lifetime exceeds the FrozenMap lifetime.
+//   - Values are retained on insertion and released by the finalizer.
 //   - Not thread-safe for construction; safe for concurrent read-only access
 //     after construction completes.
 //
@@ -93,7 +92,7 @@ static uint64_t fm_hash(const char *data, int64_t len)
 static uint64_t fm_str_hash(rt_string s)
 {
     const char *cstr = rt_string_cstr(s);
-    return fm_hash(cstr, (int64_t)strlen(cstr));
+    return fm_hash(cstr, rt_str_len(s));
 }
 
 // --- Internal helpers ---
@@ -290,6 +289,8 @@ void *rt_frozenmap_merge(void *obj, void *other)
 {
     int64_t la = rt_frozenmap_len(obj);
     int64_t lb = rt_frozenmap_len(other);
+    if (la > INT64_MAX - lb)
+        rt_trap("FrozenMap: merge size overflow");
     rt_frozenmap_impl *fm = fm_alloc(la + lb);
 
     // Insert from first map

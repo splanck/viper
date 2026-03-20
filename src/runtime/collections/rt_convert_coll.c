@@ -244,7 +244,9 @@ void *rt_stack_to_seq(void *stack)
     if ((uint64_t)len > SIZE_MAX / sizeof(void *))
         rt_trap("stack_to_seq: size overflow");
 
-    // Create temporary array by popping all
+    // Create temporary array by popping all elements, then re-pushing to restore.
+    // WARNING: Stack is temporarily empty during this operation. Not safe if another
+    // thread reads the stack concurrently.
     void **temp = malloc(sizeof(void *) * (size_t)len);
     if (!temp)
         return seq;

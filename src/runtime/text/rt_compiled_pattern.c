@@ -67,6 +67,16 @@ typedef struct
 // Creation and Lifecycle
 //=============================================================================
 
+static void compiled_pattern_finalizer(void *obj)
+{
+    compiled_pattern_obj *cpo = (compiled_pattern_obj *)obj;
+    if (cpo && cpo->pattern)
+    {
+        re_free(cpo->pattern);
+        cpo->pattern = NULL;
+    }
+}
+
 void *rt_compiled_pattern_new(rt_string pattern)
 {
     const char *pat_str = rt_string_cstr(pattern);
@@ -77,6 +87,7 @@ void *rt_compiled_pattern_new(rt_string pattern)
         (compiled_pattern_obj *)rt_obj_new_i64(0, (int64_t)sizeof(compiled_pattern_obj));
 
     obj->pattern = re_compile(pat_str);
+    rt_obj_set_finalizer(obj, compiled_pattern_finalizer);
     return obj;
 }
 

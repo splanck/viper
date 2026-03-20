@@ -305,7 +305,8 @@ void rt_ring_push(void *obj, void *elem)
 
     if (ring->count == ring->capacity)
     {
-        // Ring is full - overwrite oldest element at head position
+        // Ring is full - overwrite oldest element (caller-owned; not released here
+        // since ring does not retain elements). Data loss is by design for ring buffers.
         ring->items[ring->head] = elem;
         // Advance head to next oldest
         ring->head = (ring->head + 1) % ring->capacity;

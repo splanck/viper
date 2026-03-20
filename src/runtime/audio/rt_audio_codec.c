@@ -369,7 +369,9 @@ static wav_data parse_wav(const char *path)
     if (!f)
         return result;
 
-    // Read RIFF header
+    // Read WAV header (assumes standard 44-byte PCM header layout).
+    // NOTE: Does not handle WAV files with extra chunks (LIST, INFO, fact)
+    // between fmt and data. A full implementation would scan chunk-by-chunk.
     uint8_t header[44];
     if (fread(header, 1, 44, f) != 44)
     {

@@ -837,22 +837,14 @@ void *rt_bag_intersect(void *obj, void *other)
 /// - Filtering out unwanted elements
 ///
 /// **Asymmetric operation:**
-/// Note that A.Diff(B) is NOT the same as B.Diff(A):
-/// - {apple, banana}.Diff({banana, cherry}) = {apple}
-/// - {banana, cherry}.Diff({apple, banana}) = {cherry}
+/// @brief Creates a deep copy (clone) of a Bag.
 ///
-/// @param obj Pointer to the first Bag (the minuend). If NULL, returns empty Bag.
-/// @param other Pointer to the second Bag (the subtrahend). If NULL, returns
-///              a copy of the first Bag.
+/// @param obj Pointer to the Bag to clone. If NULL, returns empty Bag.
 ///
-/// @return A new Bag containing strings from obj that are not in other.
+/// @return A new Bag containing all strings from obj.
 ///
-/// @note O(n) time complexity where n is the size of the first Bag.
-/// @note The input Bags are not modified.
-/// @note Thread safety: Not thread-safe.
-///
-/// @see rt_bag_union For set union
-/// @see rt_bag_intersect For set intersection
+/// @note O(n) time complexity where n is the size of the Bag.
+/// @note The input Bag is not modified.
 void *rt_bag_clone(void *obj)
 {
     void *result = rt_bag_new();

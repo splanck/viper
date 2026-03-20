@@ -90,7 +90,7 @@ static uint64_t fs_hash(const char *data, int64_t len)
 static uint64_t fs_str_hash(rt_string s)
 {
     const char *cstr = rt_string_cstr(s);
-    return fs_hash(cstr, (int64_t)strlen(cstr));
+    return fs_hash(cstr, rt_str_len(s));
 }
 
 // --- Internal helpers ---

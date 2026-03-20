@@ -387,7 +387,9 @@ void rt_list_remove_at(void *list, int64_t index)
     // Shift elements left from index
     if (len > 0)
     {
-        // Release element at index by overwriting it via put with next (or NULL for last)
+        // Shift elements left. Direct array read (L->arr[i+1]) is intentional:
+        // rt_arr_obj_put handles retain/release for the destination slot, while
+        // the source is just a raw read (no extra retain needed for shifting).
         for (size_t i = (size_t)index; i + 1 < len; ++i)
         {
             void *next = L->arr[i + 1];
@@ -822,7 +824,7 @@ static int64_t list_default_compare(void *a, void *b)
         return 0;
     }
 
-    // Fallback: pointer comparison
+    // Fallback: pointer comparison (deterministic but arbitrary order for untyped elements)
     if (a < b)
         return -1;
     if (a > b)
@@ -882,6 +884,8 @@ static void list_sort_impl(void *list, int64_t (*cmp)(void *, void *))
         return;
 
     // Allocate temporary buffer for merge sort
+    if (len > SIZE_MAX / sizeof(void *))
+        return; // Overflow — cannot allocate
     void **temp = (void **)malloc(len * sizeof(void *));
     if (!temp)
     {

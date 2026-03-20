@@ -410,6 +410,7 @@ void *rt_lrucache_get(void *obj, rt_string key)
 
     // Promote to MRU
     list_move_to_front(cache, node);
+    // Returns borrowed reference — caller must not store past next cache mutation
     return node->value;
 }
 

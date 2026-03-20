@@ -500,7 +500,8 @@ void **rt_get_class_vtable(int type_id)
 /// @brief Runtime-string bridge for @ref rt_register_class_direct.
 void rt_register_class_direct_rs(int type_id, void **vtable, rt_string qname, int64_t vslot_count)
 {
-    const char *name = qname ? rt_string_cstr(qname) : NULL;
+    // strdup the name to avoid dangling pointer if the rt_string is freed
+    const char *name = qname ? strdup(rt_string_cstr(qname)) : NULL;
     rt_register_class_direct(type_id, vtable, name, (int)vslot_count);
 }
 
@@ -509,7 +510,8 @@ void rt_register_class_direct_rs(int type_id, void **vtable, rt_string qname, in
 void rt_register_class_with_base_rs(
     int type_id, void **vtable, rt_string qname, int64_t vslot_count, int64_t base_type_id)
 {
-    const char *name = qname ? rt_string_cstr(qname) : NULL;
+    // strdup the name to avoid dangling pointer if the rt_string is freed
+    const char *name = qname ? strdup(rt_string_cstr(qname)) : NULL;
     rt_register_class_with_base(type_id, vtable, name, (int)vslot_count, (int)base_type_id);
 }
 

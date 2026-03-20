@@ -409,6 +409,8 @@ static void collect_pairs_node(struct rt_quadtree_impl *tree,
     if (node->is_split)
     {
         // Expand ancestors to include this node's items
+        // NOTE: 2KB stack allocation per recursion level (256 × 8 bytes).
+        // Bounded by quadtree max depth which is typically < 20 levels.
         int64_t new_ancestors[256];
         int64_t new_count = 0;
         // Copy old ancestors first

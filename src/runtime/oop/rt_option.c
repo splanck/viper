@@ -70,6 +70,28 @@ typedef struct
 } Option;
 
 //=============================================================================
+// Option Finalizer
+//=============================================================================
+
+static void option_finalizer(void *obj)
+{
+    Option *o = (Option *)obj;
+    if (!o || o->variant != OPTION_SOME)
+        return;
+    if (o->value_type == VALUE_PTR && o->value.ptr)
+    {
+        if (rt_obj_release_check0(o->value.ptr))
+            rt_obj_free(o->value.ptr);
+        o->value.ptr = NULL;
+    }
+    else if (o->value_type == VALUE_STR && o->value.str)
+    {
+        rt_str_release_maybe(o->value.str);
+        o->value.str = NULL;
+    }
+}
+
+//=============================================================================
 // Option Creation
 //=============================================================================
 
@@ -80,6 +102,7 @@ void *rt_option_some(void *value)
     o->variant = OPTION_SOME;
     o->value_type = VALUE_PTR;
     o->value.ptr = value;
+    rt_obj_set_finalizer(o, option_finalizer);
     return o;
 }
 
@@ -90,6 +113,7 @@ void *rt_option_some_str(rt_string value)
     o->variant = OPTION_SOME;
     o->value_type = VALUE_STR;
     o->value.str = value;
+    rt_obj_set_finalizer(o, option_finalizer);
     return o;
 }
 
@@ -100,6 +124,7 @@ void *rt_option_some_i64(int64_t value)
     o->variant = OPTION_SOME;
     o->value_type = VALUE_I64;
     o->value.i64 = value;
+    rt_obj_set_finalizer(o, option_finalizer);
     return o;
 }
 
@@ -110,6 +135,7 @@ void *rt_option_some_f64(double value)
     o->variant = OPTION_SOME;
     o->value_type = VALUE_F64;
     o->value.f64 = value;
+    rt_obj_set_finalizer(o, option_finalizer);
     return o;
 }
 
@@ -120,6 +146,7 @@ void *rt_option_none(void)
     o->variant = OPTION_NONE;
     o->value_type = VALUE_PTR;
     o->value.ptr = NULL;
+    rt_obj_set_finalizer(o, option_finalizer);
     return o;
 }
 

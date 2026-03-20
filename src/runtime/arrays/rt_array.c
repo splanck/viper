@@ -186,6 +186,8 @@ void rt_arr_i32_copy_payload(int32_t *dst, const int32_t *src, size_t count)
     if (!dst || !src)
         rt_arr_oob_panic(0, count);
 
+    if (count > SIZE_MAX / sizeof(int32_t))
+        rt_arr_oob_panic(0, count);
     memcpy(dst, src, count * sizeof(int32_t));
 }
 

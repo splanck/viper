@@ -69,6 +69,28 @@ typedef struct
 } Result;
 
 //=============================================================================
+// Result Finalizer
+//=============================================================================
+
+static void result_finalizer(void *obj)
+{
+    Result *r = (Result *)obj;
+    if (!r)
+        return;
+    if (r->value_type == VALUE_PTR && r->value.ptr)
+    {
+        if (rt_obj_release_check0(r->value.ptr))
+            rt_obj_free(r->value.ptr);
+        r->value.ptr = NULL;
+    }
+    else if (r->value_type == VALUE_STR && r->value.str)
+    {
+        rt_str_release_maybe(r->value.str);
+        r->value.str = NULL;
+    }
+}
+
+//=============================================================================
 // Result Creation
 //=============================================================================
 
@@ -78,6 +100,7 @@ void *rt_result_ok(void *value)
     r->variant = RESULT_OK;
     r->value_type = VALUE_PTR;
     r->value.ptr = value;
+    rt_obj_set_finalizer(r, result_finalizer);
     return r;
 }
 
@@ -87,6 +110,7 @@ void *rt_result_ok_str(rt_string value)
     r->variant = RESULT_OK;
     r->value_type = VALUE_STR;
     r->value.str = value;
+    rt_obj_set_finalizer(r, result_finalizer);
     return r;
 }
 
@@ -96,6 +120,7 @@ void *rt_result_ok_i64(int64_t value)
     r->variant = RESULT_OK;
     r->value_type = VALUE_I64;
     r->value.i64 = value;
+    rt_obj_set_finalizer(r, result_finalizer);
     return r;
 }
 
@@ -105,6 +130,7 @@ void *rt_result_ok_f64(double value)
     r->variant = RESULT_OK;
     r->value_type = VALUE_F64;
     r->value.f64 = value;
+    rt_obj_set_finalizer(r, result_finalizer);
     return r;
 }
 
@@ -114,6 +140,7 @@ void *rt_result_err(void *error)
     r->variant = RESULT_ERR;
     r->value_type = VALUE_PTR;
     r->value.ptr = error;
+    rt_obj_set_finalizer(r, result_finalizer);
     return r;
 }
 
@@ -123,6 +150,7 @@ void *rt_result_err_str(rt_string message)
     r->variant = RESULT_ERR;
     r->value_type = VALUE_STR;
     r->value.str = message;
+    rt_obj_set_finalizer(r, result_finalizer);
     return r;
 }
 

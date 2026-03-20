@@ -17,7 +17,7 @@
 //     header for cache locality; a single allocation covers header + data.
 //   - Length is fixed at construction time and cannot change (no resize).
 //   - Byte values are in [0, 255]; get returns 0 for out-of-bounds indices.
-//   - Set ignores out-of-bounds indices silently (no trap).
+//   - Set traps on out-of-bounds indices.
 //   - Base64 and hex conversions produce rt_string results allocated via the
 //     Viper string allocator; the Bytes object is not modified.
 //   - Not thread-safe; external synchronization required for concurrent writes.

@@ -466,6 +466,9 @@ int64_t rt_pathfollow_get_segment(rt_pathfollow path)
     return path ? path->segment : 0;
 }
 
+/// @brief Get the approximate direction angle of the current path segment.
+/// @note Returns one of 8 cardinal/ordinal directions (0, 45, 90, ..., 315 degrees).
+///       For smoother rotation, use atan2 on consecutive positions instead.
 int64_t rt_pathfollow_get_angle(rt_pathfollow path)
 {
     if (!path || path->point_count < 2)
