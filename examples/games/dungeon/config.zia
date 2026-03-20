@@ -1,0 +1,146 @@
+// config.zia — All game constants for Dungeon of Viper
+module config;
+
+// =========================================================================
+// Game States
+// =========================================================================
+var STATE_MENU: Integer = 0;
+var STATE_PLAYING: Integer = 1;
+var STATE_PAUSED: Integer = 2;
+var STATE_GAMEOVER: Integer = 3;
+var STATE_LEVELCOMPLETE: Integer = 4;
+var STATE_VICTORY: Integer = 5;
+
+// =========================================================================
+// Window
+// =========================================================================
+var WINDOW_WIDTH: Integer = 1280;
+var WINDOW_HEIGHT: Integer = 720;
+var WINDOW_TITLE: String = "Dungeon of Viper";
+
+// =========================================================================
+// Player
+// =========================================================================
+var PLAYER_HEALTH: Integer = 100;
+var PLAYER_SPEED: Float = 5.0;
+var PLAYER_SPRINT_SPEED: Float = 8.0;
+var PLAYER_DAMAGE: Integer = 25;
+var PLAYER_EYE_HEIGHT: Float = 1.5;
+var PLAYER_INVULN_TIME: Float = 0.5;
+
+// =========================================================================
+// Camera
+// =========================================================================
+var CAMERA_FOV: Float = 70.0;
+var CAMERA_NEAR: Float = 0.1;
+var CAMERA_FAR: Float = 100.0;
+var CAMERA_SENSITIVITY: Float = 0.15;
+
+// =========================================================================
+// Combat
+// =========================================================================
+var FIRE_COOLDOWN: Float = 0.33;
+var SHOOT_SHAKE_INTENSITY: Float = 0.08;
+var SHOOT_SHAKE_DURATION: Float = 0.12;
+var SHOOT_SHAKE_DECAY: Float = 6.0;
+var HIT_SHAKE_INTENSITY: Float = 0.15;
+var HIT_SHAKE_DURATION: Float = 0.2;
+var HIT_SHAKE_DECAY: Float = 5.0;
+
+// =========================================================================
+// Enemies
+// =========================================================================
+var ENEMY_HEALTH_MONK: Integer = 50;
+var ENEMY_HEALTH_CLERIC: Integer = 75;
+var BOSS_HEALTH: Integer = 150;
+var ENEMY_DETECT_RADIUS: Float = 15.0;
+var ENEMY_ATTACK_RANGE_MELEE: Float = 2.5;
+var ENEMY_ATTACK_RANGE_RANGED: Float = 10.0;
+var ENEMY_DAMAGE: Integer = 10;
+var ENEMY_SPEED: Float = 3.0;
+var ENEMY_CHASE_SPEED: Float = 4.5;
+var ENEMY_ATTACK_COOLDOWN: Float = 1.0;
+var ENEMY_DEATH_FADE_TIME: Float = 2.0;
+var ENEMY_HIT_FLASH_TIME: Float = 0.1;
+
+// Enemy AI states
+var AI_IDLE: Integer = 0;
+var AI_PATROL: Integer = 1;
+var AI_CHASE: Integer = 2;
+var AI_ATTACK: Integer = 3;
+var AI_DYING: Integer = 4;
+var AI_DEAD: Integer = 5;
+
+// =========================================================================
+// Blood Effects
+// =========================================================================
+var BLOOD_PARTICLE_COUNT: Integer = 25;
+var BLOOD_DECAL_SIZE_MIN: Float = 0.3;
+var BLOOD_DECAL_SIZE_MAX: Float = 0.6;
+var BLOOD_DECAL_LIFETIME: Float = 10.0;
+var BLOOD_COLOR_START: Integer = 0xCC0000;
+var BLOOD_COLOR_END: Integer = 0x440000;
+
+// =========================================================================
+// Muzzle Flash
+// =========================================================================
+var MUZZLE_PARTICLE_COUNT: Integer = 8;
+var MUZZLE_FLASH_DURATION: Float = 0.05;
+var MUZZLE_COLOR_START: Integer = 0xFFCC44;
+var MUZZLE_COLOR_END: Integer = 0xFF6600;
+
+// =========================================================================
+// HUD
+// =========================================================================
+var HUD_HEALTH_X: Integer = 20;
+var HUD_HEALTH_Y: Integer = 660;
+var HUD_HEALTH_W: Integer = 200;
+var HUD_HEALTH_H: Integer = 20;
+var HUD_CROSSHAIR_SIZE: Integer = 12;
+var HUD_HIT_MARKER_DURATION: Float = 0.1;
+var HUD_DAMAGE_FLASH_DURATION: Float = 0.3;
+
+// =========================================================================
+// Level Building
+// =========================================================================
+var CELL_SIZE: Float = 3.0;
+var WALL_HEIGHT: Float = 3.0;
+
+// Tile types in level grid
+var TILE_EMPTY: Integer = 0;
+var TILE_WALL: Integer = 1;
+var TILE_FLOOR: Integer = 2;
+var TILE_DOOR: Integer = 3;
+var TILE_SPAWN: Integer = 4;
+var TILE_EXIT: Integer = 5;
+var TILE_TORCH: Integer = 6;
+var TILE_KEY: Integer = 7;
+var TILE_HEALTH: Integer = 8;
+
+// =========================================================================
+// Lighting
+// =========================================================================
+var AMBIENT_R: Float = 0.08;
+var AMBIENT_G: Float = 0.08;
+var AMBIENT_B: Float = 0.12;
+var TORCH_LIGHT_COLOR_R: Float = 1.0;
+var TORCH_LIGHT_COLOR_G: Float = 0.7;
+var TORCH_LIGHT_COLOR_B: Float = 0.3;
+var TORCH_LIGHT_RANGE: Float = 8.0;
+
+// =========================================================================
+// Fog
+// =========================================================================
+var FOG_NEAR: Float = 5.0;
+var FOG_FAR: Float = 30.0;
+var FOG_R: Float = 0.03;
+var FOG_G: Float = 0.03;
+var FOG_B: Float = 0.06;
+
+// =========================================================================
+// Scoring
+// =========================================================================
+var SCORE_PER_KILL: Integer = 100;
+var SCORE_PER_KEY: Integer = 250;
+var SCORE_TIME_BONUS_MAX: Integer = 5000;
+var SCORE_TIME_BONUS_THRESHOLD: Integer = 120; // seconds — full bonus if under this

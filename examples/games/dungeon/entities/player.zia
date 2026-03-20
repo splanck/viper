@@ -1,0 +1,78 @@
+// player.zia — Player entity: health, shooting, damage system
+module player;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
+bind "../config";
+
+entity Player {
+    hide Integer health;
+    hide Integer maxHealth;
+    hide Float invulnTimer;
+    hide Boolean hasKey;
+    hide Float shootCooldown;
+    hide Integer killCount;
+
+    expose func initPlayer() {
+        health = config.PLAYER_HEALTH;
+        maxHealth = config.PLAYER_HEALTH;
+        invulnTimer = 0.0;
+        hasKey = false;
+        shootCooldown = 0.0;
+        killCount = 0;
+    }
+
+    expose func update(dt: Float) {
+        if (invulnTimer > 0.0) { invulnTimer = invulnTimer - dt; }
+        if (shootCooldown > 0.0) { shootCooldown = shootCooldown - dt; }
+    }
+
+    expose func canShoot() -> Boolean {
+        return shootCooldown <= 0.0 && Mouse.Left();
+    }
+
+    expose func onShoot() {
+        shootCooldown = config.FIRE_COOLDOWN;
+    }
+
+    expose func takeDamage(amount: Integer) {
+        if (invulnTimer > 0.0) { return; }
+        health = health - amount;
+        if (health < 0) { health = 0; }
+        invulnTimer = config.PLAYER_INVULN_TIME;
+    }
+
+    expose func heal(amount: Integer) {
+        health = health + amount;
+        if (health > maxHealth) { health = maxHealth; }
+    }
+
+    expose func giveKey() {
+        hasKey = true;
+    }
+
+    expose func getHasKey() -> Boolean {
+        return hasKey;
+    }
+
+    expose func addKill() {
+        killCount = killCount + 1;
+    }
+
+    expose func isDead() -> Boolean {
+        return health <= 0;
+    }
+
+    expose func getHealth() -> Integer { return health; }
+    expose func getMaxHealth() -> Integer { return maxHealth; }
+    expose func getKillCount() -> Integer { return killCount; }
+    expose func isInvulnerable() -> Boolean { return invulnTimer > 0.0; }
+
+    expose func reset() {
+        health = maxHealth;
+        invulnTimer = 0.0;
+        hasKey = false;
+        shootCooldown = 0.0;
+    }
+}

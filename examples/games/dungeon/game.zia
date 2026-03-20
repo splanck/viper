@@ -1,0 +1,400 @@
+// game.zia — Main game entity: state machine, level management, game loop
+module game;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
+bind Viper.Terminal;
+bind "./config";
+bind "./engine/renderer";
+bind "./engine/camera_ctrl";
+bind "./engine/hud";
+bind "./entities/player";
+bind "./entities/enemy";
+bind "./effects/blood";
+bind "./effects/muzzle_flash";
+bind "./world/level_builder";
+bind "./world/level1_crypt";
+
+entity Game {
+    hide Integer state;
+    hide Integer currentLevel;
+    hide Integer score;
+    hide Float levelTime;
+
+    // Subsystems
+    hide Renderer render;
+    hide CameraController camCtrl;
+    hide HUD hudObj;
+    hide Player playerObj;
+    hide BloodSystem bloodFx;
+    hide MuzzleFlash muzzleFx;
+    hide LevelGeometry level;
+
+    // Enemies
+    hide List[Enemy] enemies;
+    hide FBX monkFbx;
+
+    // Physics
+    hide Physics3DWorld physWorld;
+
+    // Key pickup state
+    hide Boolean keyPickedUp;
+    hide Mesh3D keyMesh;
+    hide Material3D keyMat;
+    hide Float keyBobTime;
+
+    // Exit trigger
+    hide Boolean nearExit;
+
+    expose func init() {
+        state = config.STATE_PLAYING; // Skip menu for Phase 1 — jump straight into gameplay
+        currentLevel = 1;
+        score = 0;
+        levelTime = 0.0;
+        keyPickedUp = false;
+        nearExit = false;
+        keyBobTime = 0.0;
+    }
+
+    expose func run() {
+        Say("╔══════════════════════════════════════╗");
+        Say("║       DUNGEON OF VIPER               ║");
+        Say("║       A Viper 3D Game                 ║");
+        Say("╚══════════════════════════════════════╝");
+        Say("");
+        Say("Controls: WASD=Move, Mouse=Look, Click=Shoot");
+        Say("          Shift=Sprint, ESC=Quit");
+        Say("");
+
+        // Initialize subsystems
+        render = new Renderer();
+        render.initRenderer();
+
+        camCtrl = new CameraController();
+        camCtrl.initCamera(render.getCamera());
+
+        hudObj = new HUD();
+        hudObj.initHUD();
+
+        playerObj = new Player();
+        playerObj.initPlayer();
+
+        bloodFx = new BloodSystem();
+        bloodFx.initBlood();
+
+        muzzleFx = new MuzzleFlash();
+        muzzleFx.initFlash();
+
+        // Physics world
+        physWorld = Physics3DWorld.New(0.0, -9.8, 0.0);
+
+        // Key pickup visual
+        keyMesh = Mesh3D.NewSphere(0.3, 10);
+        keyMat = Material3D.NewColor(1.0, 0.85, 0.0);
+        Material3D.SetShininess(keyMat, 128.0);
+        Material3D.SetEmissiveColor(keyMat, 0.5, 0.4, 0.0);
+
+        // Load FBX character
+        Say("Loading character assets...");
+        monkFbx = FBX.Load("tests/runtime/assets/characters/Monk.fbx");
+        if (monkFbx != null) {
+            Say("  Monk loaded: " + toString(FBX.get_MeshCount(monkFbx)) + " meshes, " +
+                toString(FBX.get_AnimationCount(monkFbx)) + " animations");
+        } else {
+            Say("  WARNING: Could not load Monk.fbx — using fallback meshes");
+        }
+
+        // Build Level 1
+        self.loadLevel(1);
+
+        Say("Game started! Level 1: The Crypt");
+        Say("");
+
+        // ═══════════════════════════════════════
+        // MAIN GAME LOOP
+        // ═══════════════════════════════════════
+        while (render.shouldClose() == false) {
+            render.poll();
+            var dt = render.getDeltaTime();
+            if (dt <= 0.0) { dt = 0.016; }
+
+            // Handle ESC to quit
+            if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) {
+                break;
+            }
+
+            if (state == config.STATE_PLAYING) {
+                self.updateGame(dt);
+                self.drawGame(dt);
+            }
+
+            if (state == config.STATE_GAMEOVER) {
+                self.drawGame(dt);
+                // Draw death overlay
+                var cx = config.WINDOW_WIDTH / 2;
+                var cy = config.WINDOW_HEIGHT / 2;
+                Canvas3D.DrawRect2D(render.getCanvas(), 0, 0,
+                    config.WINDOW_WIDTH, config.WINDOW_HEIGHT, 0x440000);
+                Canvas3D.DrawText2D(render.getCanvas(), cx - 40, cy - 20, "YOU DIED", 0xFF0000);
+                Canvas3D.DrawText2D(render.getCanvas(), cx - 70, cy + 10,
+                    "Kills: " + toString(playerObj.getKillCount()), 0xFFFFFF);
+                Canvas3D.DrawText2D(render.getCanvas(), cx - 70, cy + 30,
+                    "Press R to retry", 0xCCCCCC);
+
+                if (Keyboard.WasPressed(Keyboard.get_KEY_R())) {
+                    self.loadLevel(currentLevel);
+                    playerObj.reset();
+                    state = config.STATE_PLAYING;
+                }
+            }
+
+            if (state == config.STATE_LEVELCOMPLETE) {
+                self.drawGame(dt);
+                var cx = config.WINDOW_WIDTH / 2;
+                var cy = config.WINDOW_HEIGHT / 2;
+                Canvas3D.DrawText2D(render.getCanvas(), cx - 60, cy - 20,
+                    "LEVEL COMPLETE!", 0xFFCC44);
+                Canvas3D.DrawText2D(render.getCanvas(), cx - 70, cy + 10,
+                    "Score: " + toString(score), 0xFFFFFF);
+                Canvas3D.DrawText2D(render.getCanvas(), cx - 70, cy + 30,
+                    "Press ENTER for next level", 0xCCCCCC);
+
+                if (Keyboard.WasPressed(Keyboard.get_KEY_ENTER())) {
+                    currentLevel = currentLevel + 1;
+                    if (currentLevel > 3) {
+                        state = config.STATE_VICTORY;
+                    } else {
+                        self.loadLevel(currentLevel);
+                        playerObj.reset();
+                        state = config.STATE_PLAYING;
+                    }
+                }
+            }
+
+            if (state == config.STATE_VICTORY) {
+                self.drawGame(dt);
+                var cx = config.WINDOW_WIDTH / 2;
+                var cy = config.WINDOW_HEIGHT / 2;
+                Canvas3D.DrawText2D(render.getCanvas(), cx - 60, cy - 20,
+                    "VICTORY!", 0xFFCC44);
+                Canvas3D.DrawText2D(render.getCanvas(), cx - 70, cy + 10,
+                    "Final Score: " + toString(score), 0xFFFFFF);
+                Canvas3D.DrawText2D(render.getCanvas(), cx - 70, cy + 30,
+                    "Thanks for playing!", 0x88FF88);
+            }
+
+            render.flip();
+        }
+
+        render.cleanup();
+        Say("");
+        Say("Game over! Final score: " + toString(score));
+    }
+
+    hide func updateGame(dt: Float) {
+        levelTime = levelTime + dt;
+
+        // Camera/movement
+        camCtrl.update(dt);
+
+        // Player
+        playerObj.update(dt);
+
+        // Shooting
+        if (playerObj.canShoot()) {
+            playerObj.onShoot();
+            self.handleShooting();
+        }
+
+        // Update enemies
+        var camPos = camCtrl.getPosition();
+        var px = Vec3.get_X(camPos);
+        var pz = Vec3.get_Z(camPos);
+        var i = 0;
+        while (i < enemies.count) {
+            var e = enemies.get(i);
+            if (e.isAlive()) {
+                var attacked = e.update(dt, px, pz);
+                if (attacked == 1) {
+                    playerObj.takeDamage(config.ENEMY_DAMAGE);
+                    camCtrl.shake(config.HIT_SHAKE_INTENSITY, config.HIT_SHAKE_DURATION);
+                    hudObj.flashDamage();
+                }
+            }
+            i = i + 1;
+        }
+
+        // Key pickup check
+        if (keyPickedUp == false) {
+            var kx = level.getKeyX();
+            var kz = level.getKeyZ();
+            var dkx = px - kx;
+            var dkz = pz - kz;
+            if (dkx * dkx + dkz * dkz < 4.0) {
+                keyPickedUp = true;
+                playerObj.giveKey();
+                score = score + config.SCORE_PER_KEY;
+                Say("Key found!");
+            }
+        }
+
+        // Exit check
+        var ex = level.getExitX();
+        var ez = level.getExitZ();
+        var dex = px - ex;
+        var dez = pz - ez;
+        nearExit = (dex * dex + dez * dez < 4.0);
+        if (nearExit && playerObj.getHasKey()) {
+            state = config.STATE_LEVELCOMPLETE;
+            // Time bonus
+            var timeBonus = config.SCORE_TIME_BONUS_MAX;
+            if (levelTime > config.SCORE_TIME_BONUS_THRESHOLD) {
+                timeBonus = 0;
+            } else {
+                timeBonus = config.SCORE_TIME_BONUS_MAX *
+                    (config.SCORE_TIME_BONUS_THRESHOLD - levelTime) /
+                    config.SCORE_TIME_BONUS_THRESHOLD;
+            }
+            score = score + timeBonus;
+            Say("Level " + toString(currentLevel) + " complete! Score: " + toString(score));
+        }
+
+        // Player death check
+        if (playerObj.isDead()) {
+            state = config.STATE_GAMEOVER;
+            Say("You died! Kills: " + toString(playerObj.getKillCount()));
+        }
+
+        // Update effects
+        bloodFx.update(dt);
+        muzzleFx.update(dt);
+        hudObj.update(dt);
+
+        keyBobTime = keyBobTime + dt;
+    }
+
+    hide func handleShooting() {
+        // Camera shake + muzzle flash
+        camCtrl.shake(config.SHOOT_SHAKE_INTENSITY, config.SHOOT_SHAKE_DURATION);
+        var camPos = camCtrl.getPosition();
+        var camFwd = camCtrl.getForward();
+        muzzleFx.fire(camPos, camFwd);
+
+        // Raycast: check against each enemy
+        var bestDist = 999.0;
+        var bestIdx = -1;
+        var fx = Vec3.get_X(camFwd);
+        var fy = Vec3.get_Y(camFwd);
+        var fz = Vec3.get_Z(camFwd);
+        var ox = Vec3.get_X(camPos);
+        var oy = Vec3.get_Y(camPos);
+        var oz = Vec3.get_Z(camPos);
+
+        var i = 0;
+        while (i < enemies.count) {
+            var e = enemies.get(i);
+            if (e.isAlive()) {
+                // Ray-sphere intersection (enemy as sphere at position)
+                var center = new Vec3(e.getX(), e.getY() + 0.8, e.getZ());
+                var dist = Ray3D.IntersectSphere(camPos, camFwd, center, e.getRadius());
+                if (dist >= 0.0 && dist < bestDist) {
+                    bestDist = dist;
+                    bestIdx = i;
+                }
+            }
+            i = i + 1;
+        }
+
+        if (bestIdx >= 0) {
+            var hitEnemy = enemies.get(bestIdx);
+            hitEnemy.takeDamage(config.PLAYER_DAMAGE);
+            hudObj.flashHitMarker();
+
+            // Blood effect at hit point
+            var hitX = ox + fx * bestDist;
+            var hitY = oy + fy * bestDist;
+            var hitZ = oz + fz * bestDist;
+            bloodFx.spawnAtHit(hitX, hitY, hitZ, fx, fy, fz);
+            bloodFx.spawnDecal(hitX, 0.01, hitZ, 0.0, 1.0, 0.0); // floor decal
+
+            // Check if enemy died
+            if (hitEnemy.isDying()) {
+                playerObj.addKill();
+                score = score + config.SCORE_PER_KILL;
+            }
+        }
+    }
+
+    hide func drawGame(dt: Float) {
+        render.clear();
+        render.beginFrame();
+
+        // Draw level geometry
+        level.draw(render.getCanvas());
+
+        // Draw key pickup (if not collected)
+        if (keyPickedUp == false) {
+            var ky = 0.8 + Sin(keyBobTime * 3.0) * 0.2;
+            var keyXform = Mat4.Translate(level.getKeyX(), ky, level.getKeyZ());
+            Canvas3D.DrawMesh(render.getCanvas(), keyMesh, keyXform, keyMat);
+        }
+
+        // Draw enemies
+        var i = 0;
+        while (i < enemies.count) {
+            enemies.get(i).draw(render.getCanvas(), render.getCamera());
+            i = i + 1;
+        }
+
+        // Draw blood effects
+        bloodFx.draw(render.getCanvas(), render.getCamera());
+
+        // Draw muzzle flash particles
+        muzzleFx.draw(render.getCanvas(), render.getCamera());
+
+        render.endFrame();
+
+        // HUD (after End, before Flip)
+        hudObj.draw(render.getCanvas(), playerObj.getHealth(), playerObj.getMaxHealth(),
+                     playerObj.getKillCount(), render.getFps(), currentLevel);
+
+        // Muzzle screen flash
+        muzzleFx.drawScreenFlash(render.getCanvas());
+    }
+
+    hide func loadLevel(levelNum: Integer) {
+        enemies = [];
+        keyPickedUp = false;
+        nearExit = false;
+        levelTime = 0.0;
+
+        level = new LevelGeometry();
+        level.initLevel();
+
+        // Build level geometry
+        level1_crypt.build(level, physWorld);
+
+        // Set player position at spawn
+        camCtrl.setPosition(level.getSpawnX(), config.PLAYER_EYE_HEIGHT, level.getSpawnZ());
+
+        // Show level name
+        hudObj.showLevelName(level1_crypt.LEVEL_NAME);
+
+        // Spawn enemies
+        var enemyCount = level1_crypt.getEnemyCount();
+        var i = 0;
+        while (i < enemyCount) {
+            var e = new Enemy();
+            e.initEnemy(monkFbx,
+                        level1_crypt.getEnemyX(i), level1_crypt.getEnemyZ(i),
+                        level1_crypt.getPatrolX(i), level1_crypt.getPatrolZ(i),
+                        config.ENEMY_HEALTH_MONK);
+            enemies.add(e);
+            i = i + 1;
+        }
+
+        Say("Level " + toString(levelNum) + " loaded: " +
+            toString(enemyCount) + " enemies");
+    }
+}

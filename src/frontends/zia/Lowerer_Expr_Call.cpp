@@ -649,13 +649,29 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         };
         buildQualifiedName(expr->callee.get());
 
-        // Check if the qualified name is a defined function
-        if (!qualifiedName.empty() &&
-            definedFunctions_.find(qualifiedName) != definedFunctions_.end())
+        // Check if the qualified name is a defined function.
+        // Try both mangled and unmangled names (mirrors line 596 which
+        // correctly uses mangleFunctionName for ident-based calls).
+        if (!qualifiedName.empty())
         {
-            // This is a namespace-qualified function call - emit as direct call
-            calleeName = qualifiedName;
-            isIndirectCall = false;
+            std::string mangledQN = mangleFunctionName(qualifiedName);
+            if (definedFunctions_.find(mangledQN) != definedFunctions_.end())
+            {
+                calleeName = mangledQN;
+                isIndirectCall = false;
+            }
+            else if (definedFunctions_.find(qualifiedName) != definedFunctions_.end())
+            {
+                calleeName = qualifiedName;
+                isIndirectCall = false;
+            }
+            else
+            {
+                // Regular field access on a value - lower and use as indirect call
+                auto calleeResult = lowerExpr(expr->callee.get());
+                funcPtr = calleeResult.value;
+                isIndirectCall = true;
+            }
         }
         else
         {

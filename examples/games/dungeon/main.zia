@@ -1,0 +1,9 @@
+// main.zia — Entry point for Dungeon of Viper
+module main;
+
+bind "./game";
+
+func start() {
+    var g = new Game();
+    g.run();
+}

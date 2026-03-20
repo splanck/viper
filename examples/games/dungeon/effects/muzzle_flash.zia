@@ -1,0 +1,57 @@
+// muzzle_flash.zia — Muzzle flash particles + screen flash effect
+module muzzle_flash;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind "../config";
+
+entity MuzzleFlash {
+    hide Particles3D particles;
+    hide Float flashTimer;
+
+    expose func initFlash() {
+        particles = Particles3D.New(50);
+        Particles3D.SetDirection(particles, 0.0, 0.0, -1.0, 0.3);
+        Particles3D.SetSpeed(particles, 5.0, 10.0);
+        Particles3D.SetLifetime(particles, 0.03, 0.08);
+        Particles3D.SetSize(particles, 0.1, 0.02);
+        Particles3D.SetGravity(particles, 0.0, 0.0, 0.0);
+        Particles3D.SetColor(particles, config.MUZZLE_COLOR_START, config.MUZZLE_COLOR_END);
+        Particles3D.SetAlpha(particles, 1.0, 0.0);
+        flashTimer = 0.0;
+    }
+
+    expose func fire(camPos: Vec3, camForward: Vec3) {
+        // Position muzzle flash slightly in front of camera
+        var px = Vec3.get_X(camPos) + Vec3.get_X(camForward) * 0.5;
+        var py = Vec3.get_Y(camPos) + Vec3.get_Y(camForward) * 0.5 - 0.1;
+        var pz = Vec3.get_Z(camPos) + Vec3.get_Z(camForward) * 0.5;
+
+        Particles3D.SetPosition(particles, px, py, pz);
+        Particles3D.SetDirection(particles,
+            Vec3.get_X(camForward),
+            Vec3.get_Y(camForward),
+            Vec3.get_Z(camForward), 0.3);
+        Particles3D.Burst(particles, config.MUZZLE_PARTICLE_COUNT);
+        flashTimer = config.MUZZLE_FLASH_DURATION;
+    }
+
+    expose func update(dt: Float) {
+        Particles3D.Update(particles, dt);
+        if (flashTimer > 0.0) { flashTimer = flashTimer - dt; }
+    }
+
+    expose func draw(canvas: Canvas3D, cam: Camera3D) {
+        Particles3D.Draw(particles, canvas, cam);
+    }
+
+    expose func drawScreenFlash(canvas: Canvas3D) {
+        // Brief white flash at screen edges when firing
+        if (flashTimer > 0.0) {
+            var cw = config.WINDOW_WIDTH;
+            var ch = config.WINDOW_HEIGHT;
+            Canvas3D.DrawRect2D(canvas, 0, ch - 3, cw, 3, 0xFFCC44);
+            Canvas3D.DrawRect2D(canvas, 0, 0, cw, 2, 0xFFCC44);
+        }
+    }
+}

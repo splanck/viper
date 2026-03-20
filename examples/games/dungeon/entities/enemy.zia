@@ -1,0 +1,252 @@
+// enemy.zia — Enemy entity with AI states and FBX animation
+module enemy;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+bind "../config";
+
+entity Enemy {
+    hide Float posX;
+    hide Float posY;
+    hide Float posZ;
+    hide Float patrolStartX;
+    hide Float patrolStartZ;
+    hide Float patrolEndX;
+    hide Float patrolEndZ;
+    hide Float patrolT;       // 0→1→0 lerp
+    hide Integer patrolDir;   // +1 or -1
+    hide Integer health;
+    hide Integer maxHealth;
+    hide Integer aiState;
+    hide Float attackCooldown;
+    hide Float deathTimer;
+    hide Float hitFlashTimer;
+    hide Float bodyRadius;
+
+    // FBX mesh + animation
+    hide Mesh3D mesh;
+    hide Skeleton3D skeleton;
+    hide AnimPlayer3D animPlayer;
+    hide Animation3D idleAnim;
+    hide Animation3D walkAnim;
+    hide Animation3D deathAnim;
+    hide Animation3D attackAnim;
+    hide Material3D material;
+    hide Material3D hitMaterial;   // red flash material
+
+    expose func initEnemy(fbxAsset: FBX, spawnX: Float, spawnZ: Float,
+                          endX: Float, endZ: Float, hp: Integer) {
+        posX = spawnX * config.CELL_SIZE;
+        posY = 0.0;
+        posZ = spawnZ * config.CELL_SIZE;
+        patrolStartX = posX;
+        patrolStartZ = posZ;
+        patrolEndX = endX * config.CELL_SIZE;
+        patrolEndZ = endZ * config.CELL_SIZE;
+        patrolT = 0.0;
+        patrolDir = 1;
+        health = hp;
+        maxHealth = hp;
+        aiState = config.AI_PATROL;
+        attackCooldown = 0.0;
+        deathTimer = 0.0;
+        hitFlashTimer = 0.0;
+        bodyRadius = 0.5;
+
+        // Extract mesh and animations from FBX
+        if (fbxAsset != null) {
+            var meshCount = FBX.get_MeshCount(fbxAsset);
+            if (meshCount > 0) {
+                mesh = FBX.GetMesh(fbxAsset, 0);
+            }
+            skeleton = FBX.GetSkeleton(fbxAsset);
+
+            // Find animations by name
+            var animCount = FBX.get_AnimationCount(fbxAsset);
+            var i = 0;
+            while (i < animCount) {
+                var name = FBX.GetAnimationName(fbxAsset, i);
+                var anim = FBX.GetAnimation(fbxAsset, i);
+                if (Viper.String.IndexOf(name, "Idle") >= 0) {
+                    if (idleAnim == null) { idleAnim = anim; }
+                }
+                if (Viper.String.IndexOf(name, "Walk") >= 0) { walkAnim = anim; }
+                if (Viper.String.IndexOf(name, "Death") >= 0) { deathAnim = anim; }
+                if (Viper.String.IndexOf(name, "Attack") >= 0) {
+                    if (attackAnim == null) { attackAnim = anim; }
+                }
+                i = i + 1;
+            }
+
+            // Create animation player
+            if (skeleton != null) {
+                animPlayer = AnimPlayer3D.New(skeleton);
+                if (walkAnim != null) {
+                    AnimPlayer3D.Play(animPlayer, walkAnim);
+                } else {
+                    if (idleAnim != null) {
+                        AnimPlayer3D.Play(animPlayer, idleAnim);
+                    }
+                }
+            }
+        }
+
+        // Materials
+        material = Material3D.NewColor(0.6, 0.5, 0.4);
+        Material3D.SetShininess(material, 16.0);
+        hitMaterial = Material3D.NewColor(1.0, 0.2, 0.2);
+        Material3D.SetShininess(hitMaterial, 16.0);
+    }
+
+    expose func update(dt: Float, playerX: Float, playerZ: Float) -> Integer {
+        // Returns: 0=nothing, 1=attacked player this frame
+        var result = 0;
+
+        if (aiState == config.AI_DEAD) { return 0; }
+
+        // Update hit flash
+        if (hitFlashTimer > 0.0) { hitFlashTimer = hitFlashTimer - dt; }
+
+        // Update attack cooldown
+        if (attackCooldown > 0.0) { attackCooldown = attackCooldown - dt; }
+
+        // Distance to player
+        var dx = playerX - posX;
+        var dz = playerZ - posZ;
+        var distSq = dx * dx + dz * dz;
+        var dist = Sqrt(distSq);
+
+        if (aiState == config.AI_DYING) {
+            deathTimer = deathTimer - dt;
+            if (animPlayer != null) { AnimPlayer3D.Update(animPlayer, dt); }
+            if (deathTimer <= 0.0) { aiState = config.AI_DEAD; }
+            return 0;
+        }
+
+        // AI state transitions
+        if (aiState == config.AI_PATROL || aiState == config.AI_IDLE) {
+            if (dist < config.ENEMY_DETECT_RADIUS) {
+                aiState = config.AI_CHASE;
+                if (walkAnim != null && animPlayer != null) {
+                    AnimPlayer3D.Play(animPlayer, walkAnim);
+                }
+            }
+        }
+
+        if (aiState == config.AI_CHASE) {
+            if (dist < config.ENEMY_ATTACK_RANGE_MELEE) {
+                aiState = config.AI_ATTACK;
+                if (attackAnim != null && animPlayer != null) {
+                    AnimPlayer3D.Play(animPlayer, attackAnim);
+                }
+            }
+            if (dist > config.ENEMY_DETECT_RADIUS * 1.5) {
+                aiState = config.AI_PATROL;
+            }
+        }
+
+        if (aiState == config.AI_ATTACK) {
+            if (dist > config.ENEMY_ATTACK_RANGE_MELEE * 1.5) {
+                aiState = config.AI_CHASE;
+                if (walkAnim != null && animPlayer != null) {
+                    AnimPlayer3D.Play(animPlayer, walkAnim);
+                }
+            }
+        }
+
+        // Movement
+        if (aiState == config.AI_PATROL) {
+            // Lerp between patrol start and end
+            patrolT = patrolT + 1.0 * patrolDir * config.ENEMY_SPEED * dt / 10.0;
+            if (patrolT >= 1.0) { patrolT = 1.0; patrolDir = -1; }
+            if (patrolT <= 0.0) { patrolT = 0.0; patrolDir = 1; }
+
+            posX = patrolStartX + (patrolEndX - patrolStartX) * patrolT;
+            posZ = patrolStartZ + (patrolEndZ - patrolStartZ) * patrolT;
+        }
+
+        if (aiState == config.AI_CHASE) {
+            // Move toward player
+            if (dist > 0.5) {
+                var moveX = dx / dist * config.ENEMY_CHASE_SPEED * dt;
+                var moveZ = dz / dist * config.ENEMY_CHASE_SPEED * dt;
+                posX = posX + moveX;
+                posZ = posZ + moveZ;
+            }
+        }
+
+        if (aiState == config.AI_ATTACK) {
+            // Face player, attack on cooldown
+            if (attackCooldown <= 0.0) {
+                attackCooldown = config.ENEMY_ATTACK_COOLDOWN;
+                result = 1; // signal: attacked player
+            }
+        }
+
+        // Update animation
+        if (animPlayer != null) { AnimPlayer3D.Update(animPlayer, dt); }
+
+        return result;
+    }
+
+    expose func takeDamage(amount: Integer) {
+        if (aiState == config.AI_DEAD || aiState == config.AI_DYING) { return; }
+        health = health - amount;
+        hitFlashTimer = config.ENEMY_HIT_FLASH_TIME;
+        if (health <= 0) {
+            aiState = config.AI_DYING;
+            deathTimer = config.ENEMY_DEATH_FADE_TIME;
+            if (deathAnim != null && animPlayer != null) {
+                AnimPlayer3D.Play(animPlayer, deathAnim);
+            }
+        }
+    }
+
+    expose func isDead() -> Boolean {
+        return aiState == config.AI_DEAD;
+    }
+
+    expose func isDying() -> Boolean {
+        return aiState == config.AI_DYING;
+    }
+
+    expose func isAlive() -> Boolean {
+        return aiState != config.AI_DEAD && aiState != config.AI_DYING;
+    }
+
+    expose func getX() -> Float { return posX; }
+    expose func getY() -> Float { return posY; }
+    expose func getZ() -> Float { return posZ; }
+    expose func getRadius() -> Float { return bodyRadius; }
+
+    expose func draw(canvas: Canvas3D, cam: Camera3D) {
+        if (aiState == config.AI_DEAD) { return; }
+
+        // Choose material (flash red on hit)
+        var drawMat = material;
+        if (hitFlashTimer > 0.0) { drawMat = hitMaterial; }
+
+        // Alpha fade during death
+        if (aiState == config.AI_DYING) {
+            var alpha = deathTimer / config.ENEMY_DEATH_FADE_TIME;
+            Material3D.set_Alpha(drawMat, alpha);
+        } else {
+            Material3D.set_Alpha(drawMat, 1.0);
+        }
+
+        var xform = Mat4.Translate(posX, posY, posZ);
+
+        if (mesh != null && animPlayer != null) {
+            Canvas3D.DrawMeshSkinned(canvas, mesh, xform, drawMat, animPlayer);
+        } else {
+            if (mesh != null) {
+                Canvas3D.DrawMesh(canvas, mesh, xform, drawMat);
+            } else {
+                // Fallback: draw a sphere if no mesh
+                var fallback = Mesh3D.NewSphere(0.5, 8);
+                Canvas3D.DrawMesh(canvas, fallback, xform, drawMat);
+            }
+        }
+    }
+}

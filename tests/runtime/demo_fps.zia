@@ -7,7 +7,7 @@ bind Viper.Graphics3D;
 bind Viper.Math;
 bind Viper.Input;
 
-func do_shoot(cam: Ptr, sparks: Ptr) {
+func do_shoot(cam: Camera3D, sparks: Particles3D) {
     var shoot_pos = Camera3D.get_Position(cam);
     var shoot_dir = Camera3D.get_Forward(cam);
 
