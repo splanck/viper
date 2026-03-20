@@ -2,79 +2,82 @@
 module DemoEmissive;
 
 bind Viper.Terminal;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
 
 func start() {
-    var canvas = Viper.Graphics3D.Canvas3D.New("Emissive Demo", 640, 480);
-    var cam = Viper.Graphics3D.Camera3D.New(60.0, 640.0 / 480.0, 0.1, 100.0);
-    var eye = new Viper.Math.Vec3(0.0, 2.0, 6.0);
-    var target = new Viper.Math.Vec3(0.0, 0.0, 0.0);
-    var up = new Viper.Math.Vec3(0.0, 1.0, 0.0);
-    Viper.Graphics3D.Camera3D.LookAt(cam, eye, target, up);
+    var canvas = Canvas3D.New("Emissive Demo", 640, 480);
+    var cam = Camera3D.New(60.0, 640.0 / 480.0, 0.1, 100.0);
+    var eye = new Vec3(0.0, 2.0, 6.0);
+    var target = new Vec3(0.0, 0.0, 0.0);
+    var up = new Vec3(0.0, 1.0, 0.0);
+    Camera3D.LookAt(cam, eye, target, up);
 
-    var sphere = Viper.Graphics3D.Mesh3D.NewSphere(0.5, 16);
-    var floor = Viper.Graphics3D.Mesh3D.NewPlane(10.0, 10.0);
-    var cube = Viper.Graphics3D.Mesh3D.NewBox(0.8, 0.8, 0.8);
+    var sphere = Mesh3D.NewSphere(0.5, 16);
+    var floor = Mesh3D.NewPlane(10.0, 10.0);
+    var cube = Mesh3D.NewBox(0.8, 0.8, 0.8);
 
     // Regular lit material
-    var floor_mat = Viper.Graphics3D.Material3D.NewColor(0.2, 0.2, 0.25);
+    var floor_mat = Material3D.NewColor(0.2, 0.2, 0.25);
 
     // Emissive materials — glow without needing light
-    var red_glow = Viper.Graphics3D.Material3D.NewColor(0.1, 0.0, 0.0);
-    Viper.Graphics3D.Material3D.SetEmissiveColor(red_glow, 1.0, 0.2, 0.1);
+    var red_glow = Material3D.NewColor(0.1, 0.0, 0.0);
+    Material3D.SetEmissiveColor(red_glow, 1.0, 0.2, 0.1);
 
-    var green_glow = Viper.Graphics3D.Material3D.NewColor(0.0, 0.1, 0.0);
-    Viper.Graphics3D.Material3D.SetEmissiveColor(green_glow, 0.1, 1.0, 0.3);
+    var green_glow = Material3D.NewColor(0.0, 0.1, 0.0);
+    Material3D.SetEmissiveColor(green_glow, 0.1, 1.0, 0.3);
 
-    var blue_glow = Viper.Graphics3D.Material3D.NewColor(0.0, 0.0, 0.1);
-    Viper.Graphics3D.Material3D.SetEmissiveColor(blue_glow, 0.2, 0.3, 1.0);
+    var blue_glow = Material3D.NewColor(0.0, 0.0, 0.1);
+    Material3D.SetEmissiveColor(blue_glow, 0.2, 0.3, 1.0);
 
-    var white_glow = Viper.Graphics3D.Material3D.NewColor(0.1, 0.1, 0.1);
-    Viper.Graphics3D.Material3D.SetEmissiveColor(white_glow, 0.8, 0.8, 0.9);
-    Viper.Graphics3D.Material3D.SetShininess(white_glow, 128.0);
+    var white_glow = Material3D.NewColor(0.1, 0.1, 0.1);
+    Material3D.SetEmissiveColor(white_glow, 0.8, 0.8, 0.9);
+    Material3D.SetShininess(white_glow, 128.0);
 
     // Very dim ambient — emissive objects should stand out
-    Viper.Graphics3D.Canvas3D.SetAmbient(canvas, 0.03, 0.03, 0.05);
+    Canvas3D.SetAmbient(canvas, 0.03, 0.03, 0.05);
 
     // One dim directional light
-    var light_dir = new Viper.Math.Vec3(-1.0, -1.0, -0.5);
-    var light = Viper.Graphics3D.Light3D.NewDirectional(light_dir, 0.3, 0.3, 0.35);
-    Viper.Graphics3D.Canvas3D.SetLight(canvas, 0, light);
+    var light_dir = new Vec3(-1.0, -1.0, -0.5);
+    var light = Light3D.NewDirectional(light_dir, 0.3, 0.3, 0.35);
+    Canvas3D.SetLight(canvas, 0, light);
 
-    var floor_xform = Viper.Math.Mat4.Translate(0.0, -1.0, 0.0);
+    var floor_xform = Mat4.Translate(0.0, -1.0, 0.0);
     var angle = 0.0;
 
-    while (Viper.Graphics3D.Canvas3D.get_ShouldClose(canvas) == 0) {
-        Viper.Graphics3D.Canvas3D.Poll(canvas);
-        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.02, 0.02, 0.04);
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        Canvas3D.Clear(canvas, 0.02, 0.02, 0.04);
 
         // Floating glowing spheres
-        var r_xform = Viper.Math.Mat4.Translate(
-            2.0 * Viper.Math.Cos(angle),
-            0.5 + 0.3 * Viper.Math.Sin(angle * 2.0),
-            2.0 * Viper.Math.Sin(angle));
-        var g_xform = Viper.Math.Mat4.Translate(
-            2.0 * Viper.Math.Cos(angle + 2.094),
-            0.5 + 0.3 * Viper.Math.Sin(angle * 2.0 + 1.0),
-            2.0 * Viper.Math.Sin(angle + 2.094));
-        var b_xform = Viper.Math.Mat4.Translate(
-            2.0 * Viper.Math.Cos(angle + 4.189),
-            0.5 + 0.3 * Viper.Math.Sin(angle * 2.0 + 2.0),
-            2.0 * Viper.Math.Sin(angle + 4.189));
+        var r_xform = Mat4.Translate(
+            2.0 * Cos(angle),
+            0.5 + 0.3 * Sin(angle * 2.0),
+            2.0 * Sin(angle));
+        var g_xform = Mat4.Translate(
+            2.0 * Cos(angle + 2.094),
+            0.5 + 0.3 * Sin(angle * 2.0 + 1.0),
+            2.0 * Sin(angle + 2.094));
+        var b_xform = Mat4.Translate(
+            2.0 * Cos(angle + 4.189),
+            0.5 + 0.3 * Sin(angle * 2.0 + 2.0),
+            2.0 * Sin(angle + 4.189));
 
         // Rotating glowing cube in center
-        var cube_rot = Viper.Math.Mat4.RotateY(angle * 1.5);
-        var cube_tilt = Viper.Math.Mat4.RotateX(angle * 0.7);
-        var cube_pos = Viper.Math.Mat4.Translate(0.0, 0.5, 0.0);
-        var cube_xform = Viper.Math.Mat4.Mul(cube_pos, Viper.Math.Mat4.Mul(cube_rot, cube_tilt));
+        var cube_rot = Mat4.RotateY(angle * 1.5);
+        var cube_tilt = Mat4.RotateX(angle * 0.7);
+        var cube_pos = Mat4.Translate(0.0, 0.5, 0.0);
+        var cube_xform = Mat4.Mul(cube_pos, Mat4.Mul(cube_rot, cube_tilt));
 
-        Viper.Graphics3D.Canvas3D.Begin(canvas, cam);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, floor, floor_xform, floor_mat);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, sphere, r_xform, red_glow);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, sphere, g_xform, green_glow);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, sphere, b_xform, blue_glow);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, cube, cube_xform, white_glow);
-        Viper.Graphics3D.Canvas3D.End(canvas);
-        Viper.Graphics3D.Canvas3D.Flip(canvas);
+        Canvas3D.Begin(canvas, cam);
+        Canvas3D.DrawMesh(canvas, floor, floor_xform, floor_mat);
+        Canvas3D.DrawMesh(canvas, sphere, r_xform, red_glow);
+        Canvas3D.DrawMesh(canvas, sphere, g_xform, green_glow);
+        Canvas3D.DrawMesh(canvas, sphere, b_xform, blue_glow);
+        Canvas3D.DrawMesh(canvas, cube, cube_xform, white_glow);
+        Canvas3D.End(canvas);
+        Canvas3D.Flip(canvas);
 
         angle = angle + 0.015;
     }

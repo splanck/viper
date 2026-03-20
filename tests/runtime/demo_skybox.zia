@@ -2,9 +2,12 @@
 module DemoSkybox;
 
 bind Viper.Terminal;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
 
 func start() {
-    var canvas = Viper.Graphics3D.Canvas3D.New("Skybox Demo", 640, 480);
+    var canvas = Canvas3D.New("Skybox Demo", 640, 480);
 
     // Create 6 colored face textures for the cube map
     // Each face is a solid color so we can verify orientation
@@ -32,39 +35,39 @@ func start() {
         x = x + 1;
     }
 
-    var skybox = Viper.Graphics3D.CubeMap3D.New(face_px, face_nx, face_py, face_ny, face_pz, face_nz);
-    Viper.Graphics3D.Canvas3D.SetSkybox(canvas, skybox);
+    var skybox = CubeMap3D.New(face_px, face_nx, face_py, face_ny, face_pz, face_nz);
+    Canvas3D.SetSkybox(canvas, skybox);
 
-    var cam = Viper.Graphics3D.Camera3D.New(60.0, 640.0 / 480.0, 0.1, 100.0);
+    var cam = Camera3D.New(60.0, 640.0 / 480.0, 0.1, 100.0);
 
     // A few objects in the scene
-    var sphere = Viper.Graphics3D.Mesh3D.NewSphere(0.8, 16);
-    var floor = Viper.Graphics3D.Mesh3D.NewPlane(6.0, 6.0);
+    var sphere = Mesh3D.NewSphere(0.8, 16);
+    var floor = Mesh3D.NewPlane(6.0, 6.0);
 
-    var sphere_mat = Viper.Graphics3D.Material3D.NewColor(0.9, 0.9, 0.9);
-    Viper.Graphics3D.Material3D.SetShininess(sphere_mat, 128.0);
-    var floor_mat = Viper.Graphics3D.Material3D.NewColor(0.4, 0.4, 0.45);
+    var sphere_mat = Material3D.NewColor(0.9, 0.9, 0.9);
+    Material3D.SetShininess(sphere_mat, 128.0);
+    var floor_mat = Material3D.NewColor(0.4, 0.4, 0.45);
 
-    var sun_dir = new Viper.Math.Vec3(-0.5, -1.0, -0.3);
-    var sun = Viper.Graphics3D.Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
-    Viper.Graphics3D.Canvas3D.SetLight(canvas, 0, sun);
-    Viper.Graphics3D.Canvas3D.SetAmbient(canvas, 0.15, 0.15, 0.2);
+    var sun_dir = new Vec3(-0.5, -1.0, -0.3);
+    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
+    Canvas3D.SetLight(canvas, 0, sun);
+    Canvas3D.SetAmbient(canvas, 0.15, 0.15, 0.2);
 
-    var floor_xform = Viper.Math.Mat4.Translate(0.0, -1.0, 0.0);
+    var floor_xform = Mat4.Translate(0.0, -1.0, 0.0);
     var angle = 0.0;
 
-    while (Viper.Graphics3D.Canvas3D.get_ShouldClose(canvas) == 0) {
-        Viper.Graphics3D.Canvas3D.Poll(canvas);
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
 
-        var target = new Viper.Math.Vec3(0.0, 0.0, 0.0);
-        Viper.Graphics3D.Camera3D.Orbit(cam, target, 5.0, angle * 20.0, 10.0);
+        var target = new Vec3(0.0, 0.0, 0.0);
+        Camera3D.Orbit(cam, target, 5.0, angle * 20.0, 10.0);
 
-        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
-        Viper.Graphics3D.Canvas3D.Begin(canvas, cam);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, sphere, Viper.Math.Mat4.Identity(), sphere_mat);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, floor, floor_xform, floor_mat);
-        Viper.Graphics3D.Canvas3D.End(canvas);
-        Viper.Graphics3D.Canvas3D.Flip(canvas);
+        Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+        Canvas3D.Begin(canvas, cam);
+        Canvas3D.DrawMesh(canvas, sphere, Mat4.Identity(), sphere_mat);
+        Canvas3D.DrawMesh(canvas, floor, floor_xform, floor_mat);
+        Canvas3D.End(canvas);
+        Canvas3D.Flip(canvas);
 
         angle = angle + 0.01;
     }

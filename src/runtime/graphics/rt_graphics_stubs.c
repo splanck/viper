@@ -34,6 +34,13 @@
 #include "rt_physics3d.h"
 #include "rt_transform3d.h"
 #include "rt_path3d.h"
+#include "rt_instbatch3d.h"
+#include "rt_terrain3d.h"
+#include "rt_navmesh3d.h"
+#include "rt_decal3d.h"
+#include "rt_sprite3d.h"
+#include "rt_water3d.h"
+#include "rt_texatlas3d.h"
 #include "rt_postfx3d.h"
 #include "rt_raycast3d.h"
 #include "rt_scene3d.h"
@@ -1597,6 +1604,10 @@ int64_t rt_scene3d_get_culled_count(void *s)
     return 0;
 }
 
+/* LOD stubs */
+void rt_scene_node3d_add_lod(void *n, double d, void *m) { (void)n; (void)d; (void)m; }
+void rt_scene_node3d_clear_lod(void *n) { (void)n; }
+
 /* Skeleton3D / Animation3D / AnimPlayer3D stubs */
 void *rt_skeleton3d_new(void)
 {
@@ -2700,3 +2711,78 @@ double  rt_path3d_get_length(void *p) { (void)p; return 0.0; }
 int64_t rt_path3d_get_point_count(void *p) { (void)p; return 0; }
 void    rt_path3d_set_looping(void *p, int8_t l) { (void)p; (void)l; }
 void    rt_path3d_clear(void *p) { (void)p; }
+
+/* InstanceBatch3D stubs */
+void   *rt_instbatch3d_new(void *m, void *mt) { (void)m; (void)mt; return NULL; }
+void    rt_instbatch3d_add(void *b, void *t) { (void)b; (void)t; }
+void    rt_instbatch3d_remove(void *b, int64_t i) { (void)b; (void)i; }
+void    rt_instbatch3d_set(void *b, int64_t i, void *t) { (void)b; (void)i; (void)t; }
+void    rt_instbatch3d_clear(void *b) { (void)b; }
+int64_t rt_instbatch3d_count(void *b) { (void)b; return 0; }
+void    rt_canvas3d_draw_instanced(void *c, void *b) { (void)c; (void)b; }
+
+/* Terrain3D stubs */
+void   *rt_terrain3d_new(int64_t w, int64_t d) { (void)w; (void)d; return NULL; }
+void    rt_terrain3d_set_heightmap(void *t, void *p) { (void)t; (void)p; }
+void    rt_terrain3d_set_material(void *t, void *m) { (void)t; (void)m; }
+void    rt_terrain3d_set_scale(void *t, double sx, double sy, double sz) { (void)t; (void)sx; (void)sy; (void)sz; }
+double  rt_terrain3d_get_height_at(void *t, double x, double z) { (void)t; (void)x; (void)z; return 0.0; }
+void   *rt_terrain3d_get_normal_at(void *t, double x, double z) { (void)t; (void)x; (void)z; return NULL; }
+void    rt_canvas3d_draw_terrain(void *c, void *t) { (void)c; (void)t; }
+
+/* NavMesh3D stubs */
+void   *rt_navmesh3d_build(void *m, double r, double h) { (void)m; (void)r; (void)h; return NULL; }
+void   *rt_navmesh3d_find_path(void *n, void *f, void *t) { (void)n; (void)f; (void)t; return NULL; }
+void   *rt_navmesh3d_sample_position(void *n, void *p) { (void)n; (void)p; return NULL; }
+int8_t  rt_navmesh3d_is_walkable(void *n, void *p) { (void)n; (void)p; return 0; }
+int64_t rt_navmesh3d_get_triangle_count(void *n) { (void)n; return 0; }
+void    rt_navmesh3d_set_max_slope(void *n, double d) { (void)n; (void)d; }
+void    rt_navmesh3d_debug_draw(void *n, void *c) { (void)n; (void)c; }
+
+/* AnimBlend3D stubs */
+void   *rt_anim_blend3d_new(void *s) { (void)s; return NULL; }
+int64_t rt_anim_blend3d_add_state(void *b, rt_string n, void *a) { (void)b; (void)n; (void)a; return -1; }
+void    rt_anim_blend3d_set_weight(void *b, int64_t s, double w) { (void)b; (void)s; (void)w; }
+void    rt_anim_blend3d_set_weight_by_name(void *b, rt_string n, double w) { (void)b; (void)n; (void)w; }
+double  rt_anim_blend3d_get_weight(void *b, int64_t s) { (void)b; (void)s; return 0.0; }
+void    rt_anim_blend3d_set_speed(void *b, int64_t s, double sp) { (void)b; (void)s; (void)sp; }
+void    rt_anim_blend3d_update(void *b, double dt) { (void)b; (void)dt; }
+int64_t rt_anim_blend3d_state_count(void *b) { (void)b; return 0; }
+void    rt_canvas3d_draw_mesh_blended(void *c, void *m, void *t, void *mt, void *bl) { (void)c; (void)m; (void)t; (void)mt; (void)bl; }
+
+/* Decal3D stubs */
+void   *rt_decal3d_new(void *p, void *n, double s, void *t) { (void)p; (void)n; (void)s; (void)t; return NULL; }
+void    rt_decal3d_set_lifetime(void *d, double s) { (void)d; (void)s; }
+void    rt_decal3d_update(void *d, double dt) { (void)d; (void)dt; }
+int8_t  rt_decal3d_is_expired(void *d) { (void)d; return 1; }
+void    rt_canvas3d_draw_decal(void *c, void *d) { (void)c; (void)d; }
+
+/* Sprite3D stubs */
+void   *rt_sprite3d_new(void *t) { (void)t; return NULL; }
+void    rt_sprite3d_set_position(void *s, double x, double y, double z) { (void)s; (void)x; (void)y; (void)z; }
+void    rt_sprite3d_set_scale(void *s, double w, double h) { (void)s; (void)w; (void)h; }
+void    rt_sprite3d_set_anchor(void *s, double ax, double ay) { (void)s; (void)ax; (void)ay; }
+void    rt_sprite3d_set_frame(void *s, int64_t fx, int64_t fy, int64_t fw, int64_t fh) { (void)s; (void)fx; (void)fy; (void)fw; (void)fh; }
+void    rt_canvas3d_draw_sprite3d(void *c, void *s, void *cam) { (void)c; (void)s; (void)cam; }
+
+/* Water3D stubs */
+void   *rt_water3d_new(double w, double d) { (void)w; (void)d; return NULL; }
+void    rt_water3d_set_height(void *w, double y) { (void)w; (void)y; }
+void    rt_water3d_set_wave_params(void *w, double s, double a, double f) { (void)w; (void)s; (void)a; (void)f; }
+void    rt_water3d_set_color(void *w, double r, double g, double b, double a) { (void)w; (void)r; (void)g; (void)b; (void)a; }
+void    rt_water3d_update(void *w, double dt) { (void)w; (void)dt; }
+void    rt_canvas3d_draw_water(void *c, void *w, void *cam) { (void)c; (void)w; (void)cam; }
+
+/* PostFX F5-F7 stubs */
+void    rt_postfx3d_add_ssao(void *p, double r, double i, int64_t s) { (void)p; (void)r; (void)i; (void)s; }
+void    rt_postfx3d_add_dof(void *p, double f, double a, double m) { (void)p; (void)f; (void)a; (void)m; }
+void    rt_postfx3d_add_motion_blur(void *p, double i, int64_t s) { (void)p; (void)i; (void)s; }
+
+/* Occlusion culling stub (F3) */
+void    rt_canvas3d_set_occlusion_culling(void *c, int8_t e) { (void)c; (void)e; }
+
+/* TextureAtlas3D stubs (F4) */
+void   *rt_texatlas3d_new(int64_t w, int64_t h) { (void)w; (void)h; return NULL; }
+int64_t rt_texatlas3d_add(void *a, void *p) { (void)a; (void)p; return -1; }
+void   *rt_texatlas3d_get_texture(void *a) { (void)a; return NULL; }
+void    rt_texatlas3d_get_uv_rect(void *a, int64_t id, double *u0, double *v0, double *u1, double *v1) { (void)a; (void)id; if(u0)*u0=0; if(v0)*v0=0; if(u1)*u1=1; if(v1)*v1=1; }

@@ -1,0 +1,150 @@
+// Demo: Sprite3D — camera-facing billboards in a 3D scene.
+// Shows procedural pixel-art sprites floating above a ground plane.
+module DemoSprite3D;
+
+bind Viper.Terminal;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
+
+func make_tree_sprite() -> Ptr {
+    var tex = new Viper.Graphics.Pixels(16, 32);
+    // Draw a simple tree: brown trunk + green canopy
+    var y = 0;
+    while (y < 32) {
+        var x = 0;
+        while (x < 16) {
+            // Trunk (center, bottom half)
+            if (y >= 20) {
+                if (x >= 6) {
+                    if (x <= 9) {
+                        Viper.Graphics.Pixels.Set(tex, x, y, 0x6B3A20FF);
+                    }
+                }
+            }
+            // Canopy (top portion, circular-ish)
+            if (y < 22) {
+                var dx = x - 8;
+                var dy = y - 10;
+                var dist = Sqrt(1.0 * dx * dx + 1.0 * dy * dy);
+                if (dist < 8.0) {
+                    var green = 100 + (8.0 - dist) * 15;
+                    if (green > 200) { green = 200; }
+                    Viper.Graphics.Pixels.Set(tex, x, y, 0x228B22FF);
+                }
+            }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    return tex;
+}
+
+func make_star_sprite() -> Ptr {
+    var tex = new Viper.Graphics.Pixels(16, 16);
+    var y = 0;
+    while (y < 16) {
+        var x = 0;
+        while (x < 16) {
+            var dx = x - 8;
+            var dy = y - 8;
+            var dist = Sqrt(1.0 * dx * dx + 1.0 * dy * dy);
+            if (dist < 3.0) {
+                Viper.Graphics.Pixels.Set(tex, x, y, 0xFFFF44FF);
+            } else {
+                if (dist < 6.0) {
+                    Viper.Graphics.Pixels.Set(tex, x, y, 0xFFAA2288);
+                }
+            }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    return tex;
+}
+
+func start() {
+    var canvas = Canvas3D.New("Sprite3D Demo", 800, 600);
+    var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
+
+    var floor_mesh = Mesh3D.NewPlane(30.0, 30.0);
+    var floor_mat = Material3D.NewColor(0.25, 0.4, 0.2);
+
+    // Lighting
+    var sun_dir = new Vec3(-0.5, -1.0, -0.3);
+    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.85);
+    Canvas3D.SetLight(canvas, 0, sun);
+    Canvas3D.SetAmbient(canvas, 0.2, 0.2, 0.25);
+
+    // Create sprite textures
+    var tree_tex = make_tree_sprite();
+    var star_tex = make_star_sprite();
+
+    // Create tree sprites scattered around
+    var trees: List[Ptr] = [];
+    var i = 0;
+    while (i < 12) {
+        var angle = i * 0.524;
+        var radius = 5.0 + (i % 3) * 3.0;
+        var tx = Cos(angle) * radius;
+        var tz = Sin(angle) * radius;
+        var tree = Sprite3D.New(tree_tex);
+        Sprite3D.SetPosition(tree, tx, 1.5, tz);
+        Sprite3D.SetScale(tree, 2.0, 3.0);
+        Sprite3D.SetAnchor(tree, 0.5, 1.0); // bottom-center anchor
+        trees.add(tree);
+        i = i + 1;
+    }
+
+    // Floating star collectibles
+    var stars: List[Ptr] = [];
+    i = 0;
+    while (i < 6) {
+        var sx = Cos(i * 1.047) * 4.0;
+        var sz = Sin(i * 1.047) * 4.0;
+        var star = Sprite3D.New(star_tex);
+        Sprite3D.SetPosition(star, sx, 1.5, sz);
+        Sprite3D.SetScale(star, 0.8, 0.8);
+        stars.add(star);
+        i = i + 1;
+    }
+
+    var time = 0.0;
+
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        Canvas3D.Clear(canvas, 0.4, 0.6, 0.9);
+
+        var target = new Vec3(0.0, 1.0, 0.0);
+        Camera3D.Orbit(cam, target, 12.0, time * 12.0, 20.0);
+
+        Canvas3D.Begin(canvas, cam);
+
+        // Floor
+        var floor_xform = Mat4.Translate(0.0, 0.0, 0.0);
+        Canvas3D.DrawMesh(canvas, floor_mesh, floor_xform, floor_mat);
+
+        // Draw tree sprites (always face camera)
+        i = 0;
+        while (i < trees.count) {
+            Canvas3D.DrawSprite3D(canvas, trees.get(i), cam);
+            i = i + 1;
+        }
+
+        // Animate and draw star sprites (bob up and down)
+        i = 0;
+        while (i < stars.count) {
+            var star = stars.get(i);
+            var sx = Cos(i * 1.047) * 4.0;
+            var sz = Sin(i * 1.047) * 4.0;
+            var sy = 1.5 + Sin(time * 2.0 + i * 1.0) * 0.5;
+            Sprite3D.SetPosition(star, sx, sy, sz);
+            Canvas3D.DrawSprite3D(canvas, star, cam);
+            i = i + 1;
+        }
+
+        Canvas3D.End(canvas);
+        Canvas3D.Flip(canvas);
+        time = time + 0.016;
+    }
+}

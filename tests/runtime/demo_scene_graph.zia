@@ -3,95 +3,98 @@
 module DemoSceneGraph;
 
 bind Viper.Terminal;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
 
 func start() {
-    var canvas = Viper.Graphics3D.Canvas3D.New("Scene Graph Demo", 800, 600);
-    var cam = Viper.Graphics3D.Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
+    var canvas = Canvas3D.New("Scene Graph Demo", 800, 600);
+    var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
 
     // Meshes
-    var sun_mesh = Viper.Graphics3D.Mesh3D.NewSphere(1.0, 20);
-    var planet_mesh = Viper.Graphics3D.Mesh3D.NewSphere(0.4, 16);
-    var moon_mesh = Viper.Graphics3D.Mesh3D.NewSphere(0.15, 12);
-    var floor_mesh = Viper.Graphics3D.Mesh3D.NewPlane(20.0, 20.0);
+    var sun_mesh = Mesh3D.NewSphere(1.0, 20);
+    var planet_mesh = Mesh3D.NewSphere(0.4, 16);
+    var moon_mesh = Mesh3D.NewSphere(0.15, 12);
+    var floor_mesh = Mesh3D.NewPlane(20.0, 20.0);
 
     // Materials
-    var sun_mat = Viper.Graphics3D.Material3D.NewColor(1.0, 0.9, 0.3);
-    Viper.Graphics3D.Material3D.SetUnlit(sun_mat, true);
-    var planet_mat = Viper.Graphics3D.Material3D.NewColor(0.2, 0.5, 0.9);
-    Viper.Graphics3D.Material3D.SetShininess(planet_mat, 64.0);
-    var moon_mat = Viper.Graphics3D.Material3D.NewColor(0.7, 0.7, 0.7);
-    var floor_mat = Viper.Graphics3D.Material3D.NewColor(0.15, 0.15, 0.2);
+    var sun_mat = Material3D.NewColor(1.0, 0.9, 0.3);
+    Material3D.SetUnlit(sun_mat, true);
+    var planet_mat = Material3D.NewColor(0.2, 0.5, 0.9);
+    Material3D.SetShininess(planet_mat, 64.0);
+    var moon_mat = Material3D.NewColor(0.7, 0.7, 0.7);
+    var floor_mat = Material3D.NewColor(0.15, 0.15, 0.2);
 
     // Lights
-    var sun_dir = new Viper.Math.Vec3(-0.3, -1.0, -0.5);
-    var sun_light = Viper.Graphics3D.Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.85);
-    Viper.Graphics3D.Canvas3D.SetLight(canvas, 0, sun_light);
-    var point_pos = new Viper.Math.Vec3(0.0, 2.0, 0.0);
-    var point_light = Viper.Graphics3D.Light3D.NewPoint(point_pos, 1.0, 0.9, 0.5, 0.1);
-    Viper.Graphics3D.Canvas3D.SetLight(canvas, 1, point_light);
-    Viper.Graphics3D.Canvas3D.SetAmbient(canvas, 0.1, 0.1, 0.15);
+    var sun_dir = new Vec3(-0.3, -1.0, -0.5);
+    var sun_light = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.85);
+    Canvas3D.SetLight(canvas, 0, sun_light);
+    var point_pos = new Vec3(0.0, 2.0, 0.0);
+    var point_light = Light3D.NewPoint(point_pos, 1.0, 0.9, 0.5, 0.1);
+    Canvas3D.SetLight(canvas, 1, point_light);
+    Canvas3D.SetAmbient(canvas, 0.1, 0.1, 0.15);
 
     // Build scene graph
-    var scene = Viper.Graphics3D.Scene3D.New();
+    var scene = Scene3D.New();
 
     // Floor
-    var floor_node = Viper.Graphics3D.SceneNode3D.New();
-    Viper.Graphics3D.SceneNode3D.SetPosition(floor_node, 0.0, -2.0, 0.0);
-    Viper.Graphics3D.SceneNode3D.set_Mesh(floor_node, floor_mesh);
-    Viper.Graphics3D.SceneNode3D.set_Material(floor_node, floor_mat);
-    Viper.Graphics3D.Scene3D.Add(scene, floor_node);
+    var floor_node = SceneNode3D.New();
+    SceneNode3D.SetPosition(floor_node, 0.0, -2.0, 0.0);
+    SceneNode3D.set_Mesh(floor_node, floor_mesh);
+    SceneNode3D.set_Material(floor_node, floor_mat);
+    Scene3D.Add(scene, floor_node);
 
     // Sun (center, unlit emissive look)
-    var sun_node = Viper.Graphics3D.SceneNode3D.New();
-    Viper.Graphics3D.SceneNode3D.SetPosition(sun_node, 0.0, 0.0, 0.0);
-    Viper.Graphics3D.SceneNode3D.set_Mesh(sun_node, sun_mesh);
-    Viper.Graphics3D.SceneNode3D.set_Material(sun_node, sun_mat);
-    Viper.Graphics3D.Scene3D.Add(scene, sun_node);
+    var sun_node = SceneNode3D.New();
+    SceneNode3D.SetPosition(sun_node, 0.0, 0.0, 0.0);
+    SceneNode3D.set_Mesh(sun_node, sun_mesh);
+    SceneNode3D.set_Material(sun_node, sun_mat);
+    Scene3D.Add(scene, sun_node);
 
     // Planet orbit arm (invisible transform group — rotated each frame)
-    var planet_arm = Viper.Graphics3D.SceneNode3D.New();
-    Viper.Graphics3D.SceneNode3D.AddChild(sun_node, planet_arm);
+    var planet_arm = SceneNode3D.New();
+    SceneNode3D.AddChild(sun_node, planet_arm);
 
     // Planet (offset from sun)
-    var planet_node = Viper.Graphics3D.SceneNode3D.New();
-    Viper.Graphics3D.SceneNode3D.SetPosition(planet_node, 4.0, 0.0, 0.0);
-    Viper.Graphics3D.SceneNode3D.set_Mesh(planet_node, planet_mesh);
-    Viper.Graphics3D.SceneNode3D.set_Material(planet_node, planet_mat);
-    Viper.Graphics3D.SceneNode3D.AddChild(planet_arm, planet_node);
+    var planet_node = SceneNode3D.New();
+    SceneNode3D.SetPosition(planet_node, 4.0, 0.0, 0.0);
+    SceneNode3D.set_Mesh(planet_node, planet_mesh);
+    SceneNode3D.set_Material(planet_node, planet_mat);
+    SceneNode3D.AddChild(planet_arm, planet_node);
 
     // Moon orbit arm (parented to planet)
-    var moon_arm = Viper.Graphics3D.SceneNode3D.New();
-    Viper.Graphics3D.SceneNode3D.AddChild(planet_node, moon_arm);
+    var moon_arm = SceneNode3D.New();
+    SceneNode3D.AddChild(planet_node, moon_arm);
 
     // Moon (offset from planet)
-    var moon_node = Viper.Graphics3D.SceneNode3D.New();
-    Viper.Graphics3D.SceneNode3D.SetPosition(moon_node, 1.0, 0.0, 0.0);
-    Viper.Graphics3D.SceneNode3D.set_Mesh(moon_node, moon_mesh);
-    Viper.Graphics3D.SceneNode3D.set_Material(moon_node, moon_mat);
-    Viper.Graphics3D.SceneNode3D.AddChild(moon_arm, moon_node);
+    var moon_node = SceneNode3D.New();
+    SceneNode3D.SetPosition(moon_node, 1.0, 0.0, 0.0);
+    SceneNode3D.set_Mesh(moon_node, moon_mesh);
+    SceneNode3D.set_Material(moon_node, moon_mat);
+    SceneNode3D.AddChild(moon_arm, moon_node);
 
     var time = 0.0;
 
-    while (Viper.Graphics3D.Canvas3D.get_ShouldClose(canvas) == 0) {
-        Viper.Graphics3D.Canvas3D.Poll(canvas);
-        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.02, 0.02, 0.05);
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        Canvas3D.Clear(canvas, 0.02, 0.02, 0.05);
 
         // Orbit camera
-        var target = new Viper.Math.Vec3(0.0, 0.0, 0.0);
-        Viper.Graphics3D.Camera3D.Orbit(cam, target, 10.0, time * 8.0, 25.0);
+        var target = new Vec3(0.0, 0.0, 0.0);
+        Camera3D.Orbit(cam, target, 10.0, time * 8.0, 25.0);
 
         // Animate: rotate planet arm around Y (planet orbits sun)
-        var planet_rot = Viper.Math.Quat.FromEuler(time * 0.5, 0.0, 0.0);
-        Viper.Graphics3D.SceneNode3D.set_Rotation(planet_arm, planet_rot);
+        var planet_rot = Quat.FromEuler(time * 0.5, 0.0, 0.0);
+        SceneNode3D.set_Rotation(planet_arm, planet_rot);
 
         // Animate: rotate moon arm around Y (moon orbits planet)
-        var moon_rot = Viper.Math.Quat.FromEuler(time * 2.0, 0.0, 0.0);
-        Viper.Graphics3D.SceneNode3D.set_Rotation(moon_arm, moon_rot);
+        var moon_rot = Quat.FromEuler(time * 2.0, 0.0, 0.0);
+        SceneNode3D.set_Rotation(moon_arm, moon_rot);
 
         // Draw entire scene graph
-        Viper.Graphics3D.Scene3D.Draw(scene, canvas, cam);
+        Scene3D.Draw(scene, canvas, cam);
 
-        Viper.Graphics3D.Canvas3D.Flip(canvas);
+        Canvas3D.Flip(canvas);
         time = time + 0.016;
     }
 }

@@ -211,6 +211,7 @@ typedef struct
     /* Rendering options */
     int8_t wireframe;
     int8_t backface_cull;
+    int8_t occlusion_culling;
 
     /* Timing */
     int64_t last_flip_us;

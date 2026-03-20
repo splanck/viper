@@ -64,6 +64,10 @@ extern "C"
     void *rt_scene_node3d_get_aabb_min(void *node);
     void *rt_scene_node3d_get_aabb_max(void *node);
 
+    /* LOD — Level of Detail */
+    void rt_scene_node3d_add_lod(void *node, double distance, void *mesh);
+    void rt_scene_node3d_clear_lod(void *node);
+
     /* Scene3D — frustum culling stats */
     int64_t rt_scene3d_get_culled_count(void *scene);
     int64_t rt_scene3d_get_node_count(void *scene);

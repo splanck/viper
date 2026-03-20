@@ -953,4 +953,243 @@ void rt_canvas3d_draw_mesh_skinned(
     rt_canvas3d_draw_mesh(canvas, &tmp, transform, material);
 }
 
+/*==========================================================================
+ * AnimBlend3D — multi-state animation blending
+ *=========================================================================*/
+
+#define MAX_BLEND_STATES 8
+
+typedef struct
+{
+    char name[64];
+    rt_animation3d *animation;
+    float weight;
+    float anim_time;
+    float speed;
+    int8_t looping;
+} anim_blend_state_t;
+
+typedef struct
+{
+    void *vptr;
+    rt_skeleton3d *skeleton;
+    anim_blend_state_t states[MAX_BLEND_STATES];
+    int32_t state_count;
+    float *bone_palette;
+    float *local_transforms;
+    float *temp_state_local;
+} rt_anim_blend3d;
+
+static void anim_blend3d_finalizer(void *obj)
+{
+    rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
+    free(b->bone_palette);
+    free(b->local_transforms);
+    free(b->temp_state_local);
+    b->bone_palette = b->local_transforms = b->temp_state_local = NULL;
+}
+
+void *rt_anim_blend3d_new(void *skel_obj)
+{
+    if (!skel_obj) return NULL;
+    rt_skeleton3d *skel = (rt_skeleton3d *)skel_obj;
+    rt_anim_blend3d *b = (rt_anim_blend3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_anim_blend3d));
+    if (!b) { rt_trap("AnimBlend3D.New: allocation failed"); return NULL; }
+    b->vptr = NULL;
+    b->skeleton = skel;
+    b->state_count = 0;
+    memset(b->states, 0, sizeof(b->states));
+
+    size_t buf_sz = (size_t)skel->bone_count * 16 * sizeof(float);
+    b->bone_palette = (float *)calloc(1, buf_sz);
+    b->local_transforms = (float *)calloc(1, buf_sz);
+    b->temp_state_local = (float *)calloc(1, buf_sz);
+
+    /* Initialize bone palette to identity */
+    for (int32_t i = 0; i < skel->bone_count; i++)
+        mat4f_identity(&b->bone_palette[i * 16]);
+
+    rt_obj_set_finalizer(b, anim_blend3d_finalizer);
+    return b;
+}
+
+int64_t rt_anim_blend3d_add_state(void *obj, rt_string name, void *anim_obj)
+{
+    if (!obj || !anim_obj) return -1;
+    rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
+    if (b->state_count >= MAX_BLEND_STATES) return -1;
+
+    anim_blend_state_t *st = &b->states[b->state_count];
+    memset(st, 0, sizeof(anim_blend_state_t));
+    if (name)
+    {
+        const char *cstr = rt_string_cstr(name);
+        if (cstr)
+        {
+            size_t len = strlen(cstr);
+            if (len > 63) len = 63;
+            memcpy(st->name, cstr, len);
+            st->name[len] = '\0';
+        }
+    }
+    st->animation = (rt_animation3d *)anim_obj;
+    st->weight = 0.0f;
+    st->anim_time = 0.0f;
+    st->speed = 1.0f;
+    st->looping = 1;
+    return b->state_count++;
+}
+
+void rt_anim_blend3d_set_weight(void *obj, int64_t state, double weight)
+{
+    if (!obj) return;
+    rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
+    if (state < 0 || state >= b->state_count) return;
+    b->states[state].weight = (float)weight;
+}
+
+void rt_anim_blend3d_set_weight_by_name(void *obj, rt_string name, double weight)
+{
+    if (!obj || !name) return;
+    rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
+    const char *target = rt_string_cstr(name);
+    if (!target) return;
+    for (int32_t i = 0; i < b->state_count; i++)
+    {
+        if (strcmp(b->states[i].name, target) == 0)
+        {
+            b->states[i].weight = (float)weight;
+            return;
+        }
+    }
+}
+
+double rt_anim_blend3d_get_weight(void *obj, int64_t state)
+{
+    if (!obj) return 0.0;
+    rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
+    if (state < 0 || state >= b->state_count) return 0.0;
+    return (double)b->states[state].weight;
+}
+
+void rt_anim_blend3d_set_speed(void *obj, int64_t state, double speed)
+{
+    if (!obj) return;
+    rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
+    if (state < 0 || state >= b->state_count) return;
+    b->states[state].speed = (float)speed;
+}
+
+void rt_anim_blend3d_update(void *obj, double dt)
+{
+    if (!obj || dt <= 0) return;
+    rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
+    rt_skeleton3d *skel = b->skeleton;
+    if (!skel || skel->bone_count == 0) return;
+    int32_t bc = skel->bone_count;
+
+    /* Advance all state timers */
+    for (int32_t s = 0; s < b->state_count; s++)
+    {
+        anim_blend_state_t *st = &b->states[s];
+        if (!st->animation || st->weight < 1e-6f) continue;
+        st->anim_time += (float)dt * st->speed;
+        if (st->looping && st->animation->duration > 0)
+            st->anim_time = fmodf(st->anim_time, st->animation->duration);
+        else if (st->anim_time > st->animation->duration)
+            st->anim_time = st->animation->duration;
+    }
+
+    /* Start with bind pose */
+    for (int32_t i = 0; i < bc; i++)
+        memcpy(&b->local_transforms[i * 16], skel->bones[i].bind_pose_local, 16 * sizeof(float));
+
+    /* Blend active states */
+    float total_weight = 0.0f;
+    for (int32_t s = 0; s < b->state_count; s++)
+    {
+        anim_blend_state_t *st = &b->states[s];
+        if (!st->animation || st->weight < 1e-6f) continue;
+
+        /* Sample this state's channels into temp */
+        for (int32_t i = 0; i < bc; i++)
+            memcpy(&b->temp_state_local[i * 16], skel->bones[i].bind_pose_local, 16 * sizeof(float));
+
+        for (int32_t c = 0; c < st->animation->channel_count; c++)
+        {
+            int32_t bone = st->animation->channels[c].bone_index;
+            if (bone < 0 || bone >= bc) continue;
+            sample_channel(&st->animation->channels[c], st->anim_time,
+                           &b->temp_state_local[bone * 16]);
+        }
+
+        /* Weighted blend into local_transforms */
+        float w = st->weight;
+        total_weight += w;
+        float blend_t = (total_weight > 1e-6f) ? w / total_weight : 1.0f;
+
+        for (int32_t i = 0; i < bc * 16; i++)
+            b->local_transforms[i] += (b->temp_state_local[i] - b->local_transforms[i]) * blend_t;
+    }
+
+    /* Two-phase: globals + inverse_bind → bone palette */
+    float *globals = (float *)malloc((size_t)bc * 16 * sizeof(float));
+    if (!globals) return;
+    for (int32_t i = 0; i < bc; i++)
+    {
+        if (skel->bones[i].parent_index >= 0)
+            mat4f_mul_local(&globals[skel->bones[i].parent_index * 16],
+                            &b->local_transforms[i * 16], &globals[i * 16]);
+        else
+            memcpy(&globals[i * 16], &b->local_transforms[i * 16], 16 * sizeof(float));
+    }
+    for (int32_t i = 0; i < bc; i++)
+        mat4f_mul_local(&globals[i * 16], skel->bones[i].inverse_bind,
+                        &b->bone_palette[i * 16]);
+    free(globals);
+}
+
+int64_t rt_anim_blend3d_state_count(void *obj)
+{
+    return obj ? ((rt_anim_blend3d *)obj)->state_count : 0;
+}
+
+void rt_canvas3d_draw_mesh_blended(void *canvas, void *mesh_obj, void *transform,
+                                     void *material, void *blend_obj)
+{
+    if (!canvas || !mesh_obj || !transform || !material || !blend_obj) return;
+    rt_anim_blend3d *b = (rt_anim_blend3d *)blend_obj;
+    rt_skeleton3d *skel = b->skeleton;
+    if (!skel || skel->bone_count == 0) return;
+
+    rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
+    if (mesh->vertex_count == 0) return;
+
+    /* CPU skinning with blend palette */
+    vgfx3d_vertex_t *skinned = (vgfx3d_vertex_t *)malloc(
+        mesh->vertex_count * sizeof(vgfx3d_vertex_t));
+    if (!skinned) return;
+
+    extern void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
+                                       vgfx3d_vertex_t *dst,
+                                       uint32_t count,
+                                       const float *palette, int32_t bone_count);
+    vgfx3d_skin_vertices(mesh->vertices, skinned, mesh->vertex_count,
+                          b->bone_palette, skel->bone_count);
+
+    rt_mesh3d tmp;
+    tmp.vptr = NULL;
+    tmp.vertices = skinned;
+    tmp.vertex_count = mesh->vertex_count;
+    tmp.vertex_capacity = mesh->vertex_count;
+    tmp.indices = mesh->indices;
+    tmp.index_count = mesh->index_count;
+    tmp.index_capacity = mesh->index_count;
+
+    extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
+    rt_canvas3d_add_temp_buffer(canvas, skinned);
+
+    rt_canvas3d_draw_mesh(canvas, &tmp, transform, material);
+}
+
 #endif /* VIPER_ENABLE_GRAPHICS */

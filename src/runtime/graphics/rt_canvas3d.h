@@ -180,6 +180,13 @@ extern "C"
     void rt_canvas3d_disable_shadows(void *canvas);
     void rt_canvas3d_set_shadow_bias(void *canvas, double bias);
 
+    /* Occlusion culling */
+    void rt_canvas3d_set_occlusion_culling(void *canvas, int8_t enabled);
+
+    /* Instanced rendering + Terrain */
+    void rt_canvas3d_draw_instanced(void *canvas, void *batch);
+    void rt_canvas3d_draw_terrain(void *canvas, void *terrain);
+
     /* Camera shake + smooth follow */
     void rt_camera3d_shake(void *cam, double intensity, double duration, double decay);
     void rt_camera3d_smooth_follow(void *cam, void *target, double distance,

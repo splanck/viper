@@ -2,80 +2,83 @@
 module DemoFBXLoader;
 
 bind Viper.Terminal;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
 
 func start() {
-    var canvas = Viper.Graphics3D.Canvas3D.New("FBX Loader Demo", 800, 600);
-    var cam = Viper.Graphics3D.Camera3D.New(60.0, 800.0 / 600.0, 0.1, 200.0);
+    var canvas = Canvas3D.New("FBX Loader Demo", 800, 600);
+    var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 200.0);
 
     // Load complex binary FBX file (pyramob — multi-mesh model)
-    var asset = Viper.Graphics3D.FBX.Load("tests/runtime/test_humanoid.fbx");
+    var asset = FBX.Load("tests/runtime/test_humanoid.fbx");
 
-    var floor_mesh = Viper.Graphics3D.Mesh3D.NewPlane(20.0, 20.0);
-    var floor_mat = Viper.Graphics3D.Material3D.NewColor(0.2, 0.2, 0.25);
+    var floor_mesh = Mesh3D.NewPlane(20.0, 20.0);
+    var floor_mat = Material3D.NewColor(0.2, 0.2, 0.25);
 
     // Material palette for multiple meshes
-    var mat0 = Viper.Graphics3D.Material3D.NewColor(0.8, 0.3, 0.2);
-    Viper.Graphics3D.Material3D.SetShininess(mat0, 32.0);
-    var mat1 = Viper.Graphics3D.Material3D.NewColor(0.2, 0.6, 0.8);
-    Viper.Graphics3D.Material3D.SetShininess(mat1, 64.0);
-    var mat2 = Viper.Graphics3D.Material3D.NewColor(0.3, 0.8, 0.3);
-    Viper.Graphics3D.Material3D.SetShininess(mat2, 48.0);
+    var mat0 = Material3D.NewColor(0.8, 0.3, 0.2);
+    Material3D.SetShininess(mat0, 32.0);
+    var mat1 = Material3D.NewColor(0.2, 0.6, 0.8);
+    Material3D.SetShininess(mat1, 64.0);
+    var mat2 = Material3D.NewColor(0.3, 0.8, 0.3);
+    Material3D.SetShininess(mat2, 48.0);
 
     // Lighting
-    var sun_dir = new Viper.Math.Vec3(-0.5, -1.0, -0.3);
-    var sun = Viper.Graphics3D.Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
-    Viper.Graphics3D.Canvas3D.SetLight(canvas, 0, sun);
-    var fill_dir = new Viper.Math.Vec3(0.5, 0.5, 0.5);
-    var fill = Viper.Graphics3D.Light3D.NewDirectional(fill_dir, 0.4, 0.4, 0.5);
-    Viper.Graphics3D.Canvas3D.SetLight(canvas, 1, fill);
-    Viper.Graphics3D.Canvas3D.SetAmbient(canvas, 0.12, 0.12, 0.18);
+    var sun_dir = new Vec3(-0.5, -1.0, -0.3);
+    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
+    Canvas3D.SetLight(canvas, 0, sun);
+    var fill_dir = new Vec3(0.5, 0.5, 0.5);
+    var fill = Light3D.NewDirectional(fill_dir, 0.4, 0.4, 0.5);
+    Canvas3D.SetLight(canvas, 1, fill);
+    Canvas3D.SetAmbient(canvas, 0.12, 0.12, 0.18);
 
     // Scene graph
-    var scene = Viper.Graphics3D.Scene3D.New();
+    var scene = Scene3D.New();
 
-    var floor_node = Viper.Graphics3D.SceneNode3D.New();
-    Viper.Graphics3D.SceneNode3D.SetPosition(floor_node, 0.0, -2.0, 0.0);
-    Viper.Graphics3D.SceneNode3D.set_Mesh(floor_node, floor_mesh);
-    Viper.Graphics3D.SceneNode3D.set_Material(floor_node, floor_mat);
-    Viper.Graphics3D.Scene3D.Add(scene, floor_node);
+    var floor_node = SceneNode3D.New();
+    SceneNode3D.SetPosition(floor_node, 0.0, -2.0, 0.0);
+    SceneNode3D.set_Mesh(floor_node, floor_mesh);
+    SceneNode3D.set_Material(floor_node, floor_mat);
+    Scene3D.Add(scene, floor_node);
 
     // Add all meshes from FBX as scene nodes
-    var mesh_count = Viper.Graphics3D.FBX.get_MeshCount(asset);
+    var mesh_count = FBX.get_MeshCount(asset);
     var mats = [mat0, mat1, mat2];
 
     var i = 0;
     while (i < mesh_count) {
-        var m = Viper.Graphics3D.FBX.GetMesh(asset, i);
+        var m = FBX.GetMesh(asset, i);
         if (m != null) {
-            var node = Viper.Graphics3D.SceneNode3D.New();
-            Viper.Graphics3D.SceneNode3D.set_Mesh(node, m);
+            var node = SceneNode3D.New();
+            SceneNode3D.set_Mesh(node, m);
             // Cycle through material palette
             if (i == 0) {
-                Viper.Graphics3D.SceneNode3D.set_Material(node, mat0);
+                SceneNode3D.set_Material(node, mat0);
             }
             if (i == 1) {
-                Viper.Graphics3D.SceneNode3D.set_Material(node, mat1);
+                SceneNode3D.set_Material(node, mat1);
             }
             if (i >= 2) {
-                Viper.Graphics3D.SceneNode3D.set_Material(node, mat2);
+                SceneNode3D.set_Material(node, mat2);
             }
-            Viper.Graphics3D.SceneNode3D.SetScale(node, 0.02, 0.02, 0.02);
-            Viper.Graphics3D.Scene3D.Add(scene, node);
+            SceneNode3D.SetScale(node, 0.02, 0.02, 0.02);
+            Scene3D.Add(scene, node);
         }
         i = i + 1;
     }
 
     var time = 0.0;
 
-    while (Viper.Graphics3D.Canvas3D.get_ShouldClose(canvas) == 0) {
-        Viper.Graphics3D.Canvas3D.Poll(canvas);
-        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.05, 0.05, 0.1);
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        Canvas3D.Clear(canvas, 0.05, 0.05, 0.1);
 
-        var target = new Viper.Math.Vec3(0.0, 0.0, 0.0);
-        Viper.Graphics3D.Camera3D.Orbit(cam, target, 8.0, time * 15.0, 20.0);
+        var target = new Vec3(0.0, 0.0, 0.0);
+        Camera3D.Orbit(cam, target, 8.0, time * 15.0, 20.0);
 
-        Viper.Graphics3D.Scene3D.Draw(scene, canvas, cam);
-        Viper.Graphics3D.Canvas3D.Flip(canvas);
+        Scene3D.Draw(scene, canvas, cam);
+        Canvas3D.Flip(canvas);
 
         time = time + 0.016;
     }

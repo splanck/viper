@@ -1,8 +1,12 @@
 # Viper
 
-**Viper** is an IL-first compiler toolchain and virtual machine for building platform-native applications. Programs are compiled through a strongly typed, SSA-inspired intermediate language (**Viper IL**) that can be executed by the VM or compiled directly to native machine code.
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen)]()
+[![LOC](https://img.shields.io/badge/LOC-700K%2B-orange)]()
 
-**Zia** is Viper's flagship language — a modern, statically typed language with entities, generics, modules, and pattern matching, designed for building real applications on the Viper platform. A BASIC frontend is also included for educational use and rapid prototyping.
+**Viper** is an IL-first compiler toolchain and virtual machine for building platform-native applications. Programs compile through a strongly typed, SSA-based intermediate language (**[Viper IL](docs/il-guide.md)**) that can be executed by the [VM](docs/vm.md) or compiled directly to native machine code.
+
+**[Zia](docs/zia-reference.md)** is Viper's flagship language — a modern, statically typed language with entities, generics, enums, modules, and pattern matching, designed for building real applications on the Viper platform. A **[BASIC](docs/basic-reference.md)** frontend is also included for educational use and rapid prototyping.
 
 > **Status:** Early development. APIs, IL, and tooling change frequently. Not production-ready.
 
@@ -17,8 +21,7 @@
 - [Release Notes](docs/release_notes/Viper_Release_Notes_0_2_2.md)
 
 > **Working with the latest code:** The `master` branch is a live snapshot of current
-> development and may be ahead of (or different from) any tagged release. To work with
-> the most recent code, clone the repository directly:
+> development and may be ahead of any tagged release. To work with the most recent code:
 >
 > ```bash
 > git clone https://github.com/splanck/viper.git
@@ -27,7 +30,7 @@
 
 ---
 
-## Quickstart
+## 🚀 Quickstart
 
 Build and test:
 
@@ -35,15 +38,15 @@ Build and test:
 ./scripts/build_viper.sh
 ```
 
-Create a new project:
+Create and run a project:
 
 ```bash
-viper init my-app          # Zia project (default)
-viper init my-app --lang basic  # BASIC project
+viper init my-app              # Zia project (default)
+viper init my-app --lang basic # BASIC project
 viper run my-app
 ```
 
-Try the interactive REPL:
+Try the interactive [REPL](docs/repl.md):
 
 ```bash
 viper repl
@@ -56,164 +59,115 @@ zia> Say(Fmt.Int(2 + 3))
 5
 ```
 
-Run a Zia program:
-
-```bash
-./build/src/tools/viper/viper run examples/apps/paint/main.zia
-```
-
-Run a project directory (auto-discovers language and entry point):
-
-```bash
-./build/src/tools/viper/viper run examples/games/pacman/
-```
-
-Run an IL program directly:
-
-```bash
-./build/src/tools/ilrun/ilrun examples/il/ex1_hello_cond.il
-```
+> See the **[Getting Started Guide](docs/getting-started.md)** for full setup instructions.
 
 ---
 
-## What is Viper?
-
-Viper is a compiler infrastructure with several components:
+## 🧩 Components
 
 | Component | Description |
 |-----------|-------------|
-| **Zia** | Modern, statically typed language with entities, generics, and modules |
-| **IL** | Typed, SSA-based intermediate representation |
-| **VM** | Bytecode interpreter with pluggable dispatch strategies |
-| **Backends** | Native code generators (AArch64, x86-64) |
-| **Runtime** | Portable C libraries for core types, collections, I/O, text, math, graphics, audio, GUI, input, networking, system, diagnostics, utilities, crypto, time, threading |
-| **Tools** | Compiler drivers, verifier, disassembler |
-| **BASIC** | Educational frontend for rapid prototyping |
+| **[Zia](docs/zia-reference.md)** | Modern, statically typed language with entities, generics, enums, modules, and pattern matching |
+| **[BASIC](docs/basic-reference.md)** | Educational frontend for rapid prototyping |
+| **[Viper IL](docs/il-guide.md)** | Typed, SSA-based intermediate representation |
+| **[Optimizer](docs/il-passes.md)** | 20-pass pipeline: GVN, LICM, SCCP, loop opts, inlining, and more |
+| **[VM](docs/vm.md)** | Bytecode interpreter with switch, table, and threaded dispatch |
+| **[AArch64](docs/codegen/aarch64.md) · [x86-64](docs/codegen/x86_64.md)** | Native code generators |
+| **[Assembler](docs/codegen/native-assembler.md) · [Linker](docs/codegen/native-linker.md)** | Built-in ELF/Mach-O/PE toolchain — zero external dependencies |
+| **[Runtime](docs/viperlib/README.md)** | 269 classes across 22 modules (graphics, 3D, GUI, game engine, networking, and more) |
+| **[Language Servers](docs/zia-server.md)** | Dual-protocol (LSP + MCP) servers for Zia and BASIC |
+| **[Tools](docs/tools.md)** | Compiler drivers, verifier, disassembler, [REPL](docs/repl.md), packager |
 
 ### Why Viper?
 
-- **Platform-native**: Zia compiles to native machine code via Viper IL — no VM required for production
-- **IL-centric**: A readable, typed IR makes semantics explicit and frontends interchangeable
-- **Full runtime**: Rich standard library with graphics, networking, threading, GUI, and more
-- **Composable**: Parser, IL builder, verifier, and VM work as standalone scriptable tools
+- **Platform-native** — [Zia](docs/zia-reference.md) compiles to native machine code via [Viper IL](docs/il-guide.md) — no VM required for production
+- **IL-centric** — A readable, typed IR makes semantics explicit and frontends interchangeable
+- **Self-contained** — Built-in [assembler](docs/codegen/native-assembler.md) and [linker](docs/codegen/native-linker.md) — zero external tool dependencies for native compilation
+- **Full runtime** — 269 classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), and more
 
 ---
 
-## Project Status
+## 📊 Project Status
 
-Viper is in **early development**. All components are functional but incomplete:
+Viper is in **early development**. All components are functional but evolving:
 
 | Component | Notes |
 |-----------|-------|
-| Zia Frontend | Full feature parity with BASIC: entities, generics, properties, destructors, try/catch, modules, 18 warning codes |
-| Viper IL | Stable core; module linker for cross-language interop |
-| Virtual Machine | Functional with multiple dispatch strategies; SIGINT handling, SEH trap conversion |
-| AArch64 Backend | Validated on Apple Silicon and Windows ARM64; actively developed |
-| x86-64 Backend | Validated on Windows and Linux; 300+ stress tests, IEEE 754 NaN-safe comparisons |
-| Runtime Libraries | 226 classes: core types, collections, I/O, text, math, graphics, audio, GUI, input, networking, system, diagnostics, utilities, crypto, time, threads |
-| BASIC Frontend | Core language implemented; OOP features work but are evolving |
-| IL Optimizer | SimplifyCFG, SCCP, EarlyCSE, Mem2Reg, DSE (MemorySSA), CheckOpt, Inliner |
-| Packaging | `viper package` generates native installers (.app, .deb, .exe, .tar.gz) |
-| Debugger/IDE | Early work; not yet usable |
+| [Zia Frontend](docs/zia-reference.md) | Entities, generics, enums, pattern matching with exhaustiveness, try/catch, modules |
+| [BASIC Frontend](docs/basic-reference.md) | Core language + OOP; enums, select-case, namespaces |
+| [Viper IL](docs/il-guide.md) | Stable core; module linker for cross-language interop |
+| [Optimizer](docs/il-passes.md) | 20 passes (SSA opts, loop opts, inlining, peephole, GVN, LICM, DSE) |
+| [VM](docs/vm.md) | Switch, table, and threaded dispatch; SIGINT/SEH trap handling |
+| [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon + Windows ARM64; register coalescer, post-RA scheduler |
+| [x86-64 Backend](docs/codegen/x86_64.md) | Windows + Linux; 300+ stress tests, IEEE 754 NaN-safe |
+| [Native Toolchain](docs/codegen/native-assembler.md) | Assembler (ELF/Mach-O/COFF) + linker (dead stripping, ICF, DWARF v5, code signing) |
+| [Runtime](docs/viperlib/README.md) | 269 classes across 22 modules |
+| [3D Graphics](docs/graphics3d-guide.md) | 28 classes; Metal, D3D11, OpenGL, software backends |
+| [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, UI widgets |
+| [GUI](docs/viperlib/gui/README.md) | 46 widget classes; cross-platform desktop apps |
+| [IDE / Language Servers](docs/zia-server.md) | ViperIDE demo; LSP + MCP protocol servers for both languages |
+| [Packaging](docs/tools.md) | `viper package` → .app, .deb, .exe, .tar.gz |
 
 Expect breaking changes. The IL specification, APIs, and tool interfaces are not stable.
 
 ---
 
-## Demos
-
-Several demos showcase the platform's capabilities. All demos can be compiled to native binaries using the demo build script:
-
-```bash
-# macOS / Linux (ARM64)
-./scripts/build_demos.sh          # Build all demos as native ARM64 binaries
-./scripts/build_demos.sh --clean  # Clean and rebuild
-
-# Windows (x86-64)
-scripts\build_demos.cmd           # Build all demos as native x86-64 binaries
-scripts\build_demos.cmd --clean   # Clean and rebuild
-```
-
-Native binaries are output to `examples/bin/`. See the **[examples/](examples/README.md)** directory for more details.
-
-### Applications
+## 🎮 Demos
 
 | Demo | Description |
 |------|-------------|
-| `examples/apps/viperide` | Simple Viper IDE with tabs, find/replace, and integrated build |
-| `examples/apps/paint` | Paint application with drawing tools, shapes, and color picker |
-| `examples/apps/sqldb` | SQL database engine with REPL, query execution, and persistent storage |
-| `examples/apps/webserver` | Multi-threaded HTTP server with routing and request logging |
-| `examples/apps/telnet` | Telnet client and server with interactive shell |
-| `examples/apps/varc` | Archive utility with DEFLATE compression and AES encryption |
+| [ViperIDE](examples/apps/viperide/) | IDE with tabs, IntelliSense, project tree, integrated build |
+| [SQLdb](examples/apps/sqldb/) | SQL database engine with MVCC, WAL, B-tree indexes |
+| [Paint](examples/apps/paint/) | Drawing app with 8 tools, shapes, color palette |
+| [Chess](examples/games/chess/) | Chess with alpha-beta AI, transposition tables, drag-and-drop GUI |
+| [Pac-Man](examples/games/pacman/) | Pac-Man with ghost AI, BFS pathfinding, scatter/chase modes |
+| [Sidescroller](examples/games/sidescroller/) | Platform game engine: physics, camera, enemies, particles, menus |
 
-### Games
-
-| Demo | Language | Description |
-|------|----------|-------------|
-| `examples/games/chess` | Zia | Chess engine with alpha-beta AI, transposition tables, and canvas UI |
-| `examples/games/pacman` | Zia | Pac-Man clone with ghost AI, animations, and tile-based rendering |
-| `examples/games/sidescroller` | Zia | 2D sidescroller platformer with boss fights and parallax backgrounds |
-| `examples/games/centipede` | Zia | Centipede arcade game using the Canvas graphics API |
-| `examples/games/chess-basic` | BASIC | Console chess with AI opponent |
-| `examples/games/vtris` | BASIC | Tetris clone with high scores |
-| `examples/games/frogger-basic` | BASIC | Frogger clone (console) |
-| `examples/games/centipede-basic` | BASIC | Classic arcade game with OOP |
-| `examples/games/pacman-basic` | BASIC | Pac-Man clone with ghost AI |
-
-Run demos via the VM or compile to native:
-
-```bash
-# Run in VM
-./build/src/tools/viper/viper run examples/apps/paint/
-
-# Compile to native binary
-./build/src/tools/viper/viper build examples/apps/paint/ -o paint
-./paint
-```
+> **[See all demos →](examples/README.md)** — 6 applications, 12+ games, API coverage audits, IL examples, and C++ embedding demos.
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────┐
 │           Source Languages              │
-│           (Zia, BASIC, ...)             │
+│          (Zia · BASIC · ...)            │
 └─────────────────┬───────────────────────┘
-                  │
                   ▼
 ┌─────────────────────────────────────────┐
-│     Frontend (Parser + Semantics +      │
-│              Lowering)                  │
+│    Frontend (Parser · Sema · Lowerer)   │
 └─────────────────┬───────────────────────┘
-                  │
                   ▼
 ┌─────────────────────────────────────────┐
-│         Viper IL (Typed SSA)            │
-│        + Verifier + Optimizer           │
+│         Viper IL  (Typed SSA)           │
+│      Verifier · Optimizer (20 passes)   │
 └─────────┬───────────────┬───────────────┘
-          │               │
           ▼               ▼
 ┌──────────────┐   ┌──────────────────────┐
-│   Virtual    │   │   Native Backend     │
-│   Machine    │   │  (AArch64, x86-64)   │
-└──────────────┘   └──────────────────────┘
-        │                   │
-        └─────────┬─────────┘
+│   Bytecode   │   │   Native Backends    │
+│      VM      │   │   (AArch64 · x86-64) │
+│              │   ├──────────────────────┤
+│              │   │  Assembler · Linker   │
+│              │   │  (ELF · Mach-O · PE)  │
+└──────┬───────┘   └──────────┬───────────┘
+       └──────────┬───────────┘
                   ▼
 ┌─────────────────────────────────────────┐
-│           Viper Runtime                 │
-│ (Collections, I/O, Text, Math, Graphics,│
-│  Audio, GUI, Input, Network, Threads)   │
+│            Viper Runtime                │
+│  Collections · Graphics · 3D · GUI ·   │
+│  Game Engine · Audio · Network · I/O ·  │
+│  Threads · Crypto · Math · Text · ...   │
 └─────────────────────────────────────────┘
 ```
 
+> See [Architecture Overview](docs/architecture.md) and [Code Map](docs/codemap.md) for detailed design.
+
 ---
 
-## IL at a Glance
+## 💡 IL at a Glance
 
-Frontends lower to a typed IL that is compact, explicit, and inspectable.
+Frontends lower to a typed [IL](docs/il-guide.md) that is compact, explicit, and inspectable.
 
 **Zia Source:**
 
@@ -256,104 +210,63 @@ entry_0:
 }
 ```
 
+> See the **[IL Quickstart](docs/il-quickstart.md)** for a hands-on introduction, or the **[IL Reference](docs/il-guide.md)** for the full specification.
+
 ---
 
-## Runtime Library
+## 📚 Runtime Library
 
-All frontends share the **Viper Runtime**, providing a growing set of modules:
+All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 269 classes across 22 modules:
 
 | Module | Classes | Description |
-|--------|---------|-------------|
-| **Collections** | `Bag`, `Bytes`, `Heap`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Stack`, `TreeMap` | Data structures for any use case |
-| **Core** | `Box`, `Object`, `String` | Base types and string operations |
-| **Crypto** | `Hash`, `KeyDerive`, `Rand` | CRC32, MD5, SHA1, SHA256, PBKDF2, secure RNG |
-| **Diagnostics** | `Assert`, `Trap` | Debugging and assertions |
-| **Graphics** | `Camera`, `Canvas`, `Color`, `Pixels`, `Sprite`, `Tilemap` | 2D graphics, sprites, tilemaps, cameras |
-| **GUI** | `App`, `Button`, `Checkbox`, `Label`, `Slider`, `TextInput`, etc. | Cross-platform GUI widgets and layouts |
-| **I/O** | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` | File system access and streaming |
-| **Input** | `Keyboard`, `Mouse`, `Pad` | Input devices for games and interactive apps |
-| **Math** | `Bits`, `Math`, `Random`, `Vec2`, `Vec3` | Mathematical functions and vectors |
-| **Network** | `Dns`, `Http`, `HttpReq`, `HttpRes`, `Tcp`, `TcpServer`, `Udp`, `Url` | Networking and sockets |
-| **Sound** | `Audio`, `Music`, `Sound`, `Voice` | Audio playback and sound effects |
-| **System** | `Environment`, `Exec`, `Machine`, `Terminal` | System interaction and console I/O |
-| **Text** | `Codec`, `Csv`, `Uuid`, `Pattern`, `StringBuilder`, `Template` | String building and text encoding |
-| **Threads** | `Barrier`, `Gate`, `Monitor`, `RwLock`, `SafeI64`, `Thread` | Concurrent programming primitives |
-| **Time** | `Clock`, `Countdown`, `DateTime`, `Stopwatch` | Time utilities and measurement |
-| **Utilities** | `Convert`, `Fmt`, `Log`, `Parse` | Conversion, formatting, parsing, logging |
+|--------|:-------:|-------------|
+| [Collections](docs/viperlib/collections) | 29 | Lists, maps, sets, trees, heaps, queues, rings, tries |
+| [Core](docs/viperlib/core.md) | 6 | Base types, string operations, messaging |
+| [Crypto](docs/viperlib/crypto.md) | 7 | AES, SHA, PBKDF2, TLS, secure RNG |
+| [Data](docs/viperlib/README.md) | 3 | XML, YAML, binary serialization |
+| [Game](docs/viperlib/game/README.md) | 17 | Collision, pathfinding, tweening, particles, state machines |
+| [Game.Physics2D](docs/viperlib/game/physics.md) | 6 | Rigid bodies, joints (hinge, spring, rope, distance) |
+| [Game.UI](docs/viperlib/game/ui.md) | 5 | In-game HUD widgets (bars, labels, menus, panels) |
+| [Graphics](docs/viperlib/graphics/README.md) | 11 | Canvas, sprites, tilemaps, cameras, bitmap fonts |
+| [Graphics3D](docs/graphics3d-guide.md) | 28 | Meshes, materials, lights, skeletal animation, physics, terrain, particles, FBX |
+| [GUI](docs/viperlib/gui/README.md) | 46 | Desktop widgets, layouts, menus, code editor, tree views |
+| [I/O](docs/viperlib/io) | 15 | Files, directories, archives, compression, streaming |
+| [Input](docs/viperlib/input.md) | 6 | Keyboard, mouse, gamepad, action mapping |
+| [Math](docs/viperlib/math.md) | 12 | Vectors, matrices, quaternions, noise, splines, BigInt |
+| [Network](docs/viperlib/network.md) | 12 | HTTP, TCP, UDP, WebSocket, DNS, rate limiting |
+| [Sound](docs/viperlib/audio.md) | 7 | Audio playback, synthesis, playlists, sound banks |
+| [Text](docs/viperlib/text) | 20 | JSON, TOML, CSV, XML, HTML, Markdown, templates, regex |
+| [Threads](docs/viperlib/threads.md) | 18 | Async, channels, futures, pools, concurrent collections |
+| [Time](docs/viperlib/time.md) | 8 | Clocks, dates, durations, countdowns, stopwatches |
+| [Utilities](docs/viperlib/README.md) | 12 | Fmt, Log, Convert, Parse, Option, Result, Lazy |
 
-See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete API documentation.
+> See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete API documentation.
 
 ---
 
-## Tools
-
-**Primary tools:**
+## 🔧 Tools
 
 | Tool | Purpose |
 |------|---------|
-| `viper` | Unified compiler driver — run, build, compile, and package projects |
-| `viper repl` | Interactive REPL for experimenting with Zia code |
-| `viper package` | Generate platform-native installers (.app, .deb, .exe, .tar.gz) |
-| `zia` | Run or compile Zia programs |
-| `vbasic` | Run or compile BASIC programs |
-| `ilrun` | Execute IL programs |
-| `il-verify` | Validate IL with detailed diagnostics |
-| `il-dis` | Disassemble IL for inspection |
-
-**Examples:**
+| `viper` | Unified driver — [run, build, compile, package](docs/tools.md) |
+| `viper repl` | [Interactive REPL](docs/repl.md) for Zia and BASIC |
+| `viper package` | Generate installers (.app, .deb, .exe, .tar.gz) |
+| `zia` / `vbasic` | Standalone language compilers |
+| `zia-server` | [Language server](docs/zia-server.md) (LSP + MCP) |
+| `ilrun` | Execute IL programs directly |
+| `il-verify` / `il-dis` | [Validate](docs/il-guide.md) and disassemble IL |
 
 ```bash
-# Run a Zia source file
-./build/src/tools/viper/viper run program.zia
-
-# Run a project directory (discovers files and entry point)
-./build/src/tools/viper/viper run examples/games/pacman/
-
-# Compile to IL
-./build/src/tools/viper/viper build program.zia -o output.il
-
-# Run with standalone tools
-./build/src/tools/zia/zia program.zia
-./build/src/tools/ilrun/ilrun program.il
-
-# Verify IL
-./build/src/tools/il-verify/il-verify program.il
+viper run program.zia          # Run source
+viper build project/ -o app    # Compile to native binary
+viper repl                     # Interactive REPL
 ```
 
-**Native compilation (experimental):**
-
-```bash
-./build/src/tools/viper/viper build program.zia -o program.il
-./build/src/tools/viper/viper codegen arm64 program.il -o program
-```
+> See **[Tools Reference](docs/tools.md)** for all commands and flags.
 
 ---
 
-## VM Dispatch Strategies
-
-The VM supports three dispatch strategies:
-
-| Strategy | Description | Portability |
-|----------|-------------|-------------|
-| `switch` | Switch-based dispatch | All compilers |
-| `table` | Function-pointer dispatch | All compilers |
-| `threaded` | Direct-threaded (labels-as-values) | GCC/Clang only |
-
-Set at runtime:
-
-```bash
-VIPER_DISPATCH=threaded ./build/src/tools/ilrun/ilrun program.il
-```
-
-Build with threaded dispatch enabled by default:
-
-```bash
-cmake -S . -B build -DVIPER_VM_THREADED=ON
-```
-
----
-
-## Building
+## 🔨 Building
 
 ### Requirements
 
@@ -370,29 +283,25 @@ This configures, builds, tests, and installs Viper in one step.
 
 ### Platform Notes
 
-- **macOS**: Use Apple Clang. ARM64 tests skip x86-64-specific checks automatically.
-- **Linux**: Clang recommended.
-- **Windows**: Use `scripts/build_viper.cmd` instead. Clang-CL preferred. Some POSIX tests are skipped.
+- **[macOS](docs/getting-started/macos.md)** — Use Apple Clang. ARM64 tests skip x86-64-specific checks automatically.
+- **[Linux](docs/getting-started/linux.md)** — Clang recommended.
+- **[Windows](docs/getting-started/windows.md)** — Use `scripts\build_viper.cmd` instead. Clang-CL preferred. Some POSIX tests are skipped.
 
 ---
 
-## Documentation
+## 📖 Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Getting Started](docs/getting-started.md) | Build and run your first program |
-| [REPL Guide](docs/repl.md) | Interactive Zia experimentation |
-| [Zia Getting Started](docs/zia-getting-started.md) | Learn Zia by example |
-| [Zia Reference](docs/zia-reference.md) | Complete Zia language specification |
-| [Runtime Library](docs/viperlib/README.md) | Viper.* classes, methods, and properties |
-| [IL Guide](docs/il-guide.md) | IL specification and examples |
-| [IL Quickstart](docs/il-quickstart.md) | Fast introduction to Viper IL |
-| [VM Architecture](docs/vm.md) | VM design and internals |
-| [BASIC Tutorial](docs/basic-language.md) | Learn Viper BASIC by example |
-| [BASIC Reference](docs/basic-reference.md) | Complete BASIC language specification |
-| [Frontend How-To](docs/frontend-howto.md) | Build your own language frontend |
+**Getting Started** — [Setup Guide](docs/getting-started.md) · [REPL Guide](docs/repl.md) · [Zia Tutorial](docs/zia-getting-started.md) · [The Viper Bible](docs/bible/README.md)
 
-Developer documentation is in `docs/devdocs/`.
+**Language References** — [Zia Reference](docs/zia-reference.md) · [BASIC Reference](docs/basic-reference.md) · [IL Guide](docs/il-guide.md) · [IL Quickstart](docs/il-quickstart.md)
+
+**Runtime & APIs** — [Runtime Library](docs/viperlib/README.md) · [3D Graphics](docs/graphics3d-guide.md) · [Game Engine](docs/viperlib/game/README.md) · [GUI](docs/viperlib/gui/README.md)
+
+**Internals** — [Architecture](docs/architecture.md) · [VM Design](docs/vm.md) · [Code Map](docs/codemap.md) · [Backend](docs/backend.md) · [IL Passes](docs/il-passes.md)
+
+**For Contributors** — [Contributor Guide](docs/contributor-guide.md) · [Frontend How-To](docs/frontend-howto.md) · [Testing](docs/testing.md)
+
+> Browse the full **[docs/](docs/)** hierarchy for 210+ documents.
 
 ---
 

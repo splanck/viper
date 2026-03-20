@@ -106,6 +106,11 @@ typedef struct rt_scene_node3d
     float aabb_min[3];
     float aabb_max[3];
     float bsphere_radius;
+
+    /* LOD levels (F1) — sorted by distance ascending */
+    struct { double distance; void *mesh; } *lod_levels;
+    int32_t lod_count;
+    int32_t lod_capacity;
 } rt_scene_node3d;
 
 typedef struct
@@ -228,7 +233,8 @@ static rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target)
 static void draw_node(rt_scene_node3d *node,
                       void *canvas3d,
                       const vgfx3d_frustum_t *frustum,
-                      int32_t *culled)
+                      int32_t *culled,
+                      const float *cam_pos)
 {
     if (!node->visible)
         return;
@@ -270,11 +276,28 @@ static void draw_node(rt_scene_node3d *node,
                                  m[13],
                                  m[14],
                                  m[15]);
-        rt_canvas3d_draw_mesh(canvas3d, node->mesh, mat4, node->material);
+        /* LOD selection: pick mesh by distance from camera */
+        void *draw_mesh = node->mesh;
+        if (node->lod_count > 0 && cam_pos)
+        {
+            float dx = (float)m[3] - cam_pos[0];
+            float dy = (float)m[7] - cam_pos[1];
+            float dz = (float)m[11] - cam_pos[2];
+            float dist = sqrtf(dx * dx + dy * dy + dz * dz);
+            for (int32_t l = node->lod_count - 1; l >= 0; l--)
+            {
+                if (dist >= (float)node->lod_levels[l].distance)
+                {
+                    draw_mesh = node->lod_levels[l].mesh;
+                    break;
+                }
+            }
+        }
+        rt_canvas3d_draw_mesh(canvas3d, draw_mesh, mat4, node->material);
     }
 
     for (int32_t i = 0; i < node->child_count; i++)
-        draw_node(node->children[i], canvas3d, frustum, culled);
+        draw_node(node->children[i], canvas3d, frustum, culled, cam_pos);
 }
 
 /*==========================================================================
@@ -287,6 +310,9 @@ static void rt_scene_node3d_finalize(void *obj)
     free(node->children);
     node->children = NULL;
     node->child_count = 0;
+    free(node->lod_levels);
+    node->lod_levels = NULL;
+    node->lod_count = 0;
 }
 
 void *rt_scene_node3d_new(void)
@@ -322,6 +348,10 @@ void *rt_scene_node3d_new(void)
     memset(node->aabb_min, 0, sizeof(float) * 3);
     memset(node->aabb_max, 0, sizeof(float) * 3);
     node->bsphere_radius = 0.0f;
+
+    node->lod_levels = NULL;
+    node->lod_count = 0;
+    node->lod_capacity = 0;
 
     rt_obj_set_finalizer(node, rt_scene_node3d_finalize);
     return node;
@@ -668,7 +698,8 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera)
 
     int32_t culled = 0;
     rt_canvas3d_begin(canvas3d, camera);
-    draw_node(s->root, canvas3d, &frustum, &culled);
+    float cam_pos[3] = {(float)cam->eye[0], (float)cam->eye[1], (float)cam->eye[2]};
+    draw_node(s->root, canvas3d, &frustum, &culled, cam_pos);
     rt_canvas3d_end(canvas3d);
     s->last_culled_count = culled;
 }
@@ -693,6 +724,49 @@ int64_t rt_scene3d_get_node_count(void *obj)
 int64_t rt_scene3d_get_culled_count(void *obj)
 {
     return obj ? ((rt_scene3d *)obj)->last_culled_count : 0;
+}
+
+/*==========================================================================
+ * LOD — Level of Detail per SceneNode3D
+ *=========================================================================*/
+
+void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh)
+{
+    if (!obj || !mesh) return;
+    rt_scene_node3d *node = (rt_scene_node3d *)obj;
+
+    if (node->lod_count >= node->lod_capacity)
+    {
+        int32_t new_cap = node->lod_capacity < 4 ? 4 : node->lod_capacity * 2;
+        node->lod_levels = realloc(node->lod_levels,
+                                    (size_t)new_cap * sizeof(node->lod_levels[0]));
+        node->lod_capacity = new_cap;
+    }
+
+    /* Insert sorted by distance ascending */
+    int32_t pos = node->lod_count;
+    for (int32_t i = 0; i < node->lod_count; i++)
+    {
+        if (distance < node->lod_levels[i].distance)
+        {
+            pos = i;
+            break;
+        }
+    }
+    /* Shift elements right */
+    for (int32_t i = node->lod_count; i > pos; i--)
+        node->lod_levels[i] = node->lod_levels[i - 1];
+
+    node->lod_levels[pos].distance = distance;
+    node->lod_levels[pos].mesh = mesh;
+    node->lod_count++;
+}
+
+void rt_scene_node3d_clear_lod(void *obj)
+{
+    if (!obj) return;
+    rt_scene_node3d *node = (rt_scene_node3d *)obj;
+    node->lod_count = 0;
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

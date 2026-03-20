@@ -3,22 +3,25 @@
 module DemoMorphTargets;
 
 bind Viper.Terminal;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
 
 func start() {
-    var canvas = Viper.Graphics3D.Canvas3D.New("Morph Targets", 800, 600);
-    var cam = Viper.Graphics3D.Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
+    var canvas = Canvas3D.New("Morph Targets", 800, 600);
+    var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
 
-    var sphere = Viper.Graphics3D.Mesh3D.NewSphere(1.0, 16);
-    var floor_mesh = Viper.Graphics3D.Mesh3D.NewPlane(10.0, 10.0);
+    var sphere = Mesh3D.NewSphere(1.0, 16);
+    var floor_mesh = Mesh3D.NewPlane(10.0, 10.0);
 
     // Create morph targets matching sphere vertex count
-    var vert_count = Viper.Graphics3D.Mesh3D.get_VertexCount(sphere);
-    var mt = Viper.Graphics3D.MorphTarget3D.New(vert_count);
+    var vert_count = Mesh3D.get_VertexCount(sphere);
+    var mt = MorphTarget3D.New(vert_count);
 
     // Shape 0: "squash" — compress Y, expand X/Z
-    var squash = Viper.Graphics3D.MorphTarget3D.AddShape(mt, "squash");
+    var squash = MorphTarget3D.AddShape(mt, "squash");
     // Shape 1: "stretch" — expand Y, compress X/Z
-    var stretch = Viper.Graphics3D.MorphTarget3D.AddShape(mt, "stretch");
+    var stretch = MorphTarget3D.AddShape(mt, "stretch");
 
     // Set deltas for each vertex based on its position
     // We access vertex positions indirectly by knowing the sphere generator pattern
@@ -27,49 +30,49 @@ func start() {
         // Approximate: push Y vertices outward for stretch, inward for squash
         // Since we can't read vertex positions from Zia, use vertex index as proxy
         var frac = 1.0 * i / (1.0 * vert_count);
-        var y_factor = Viper.Math.Sin(frac * 3.14159);
+        var y_factor = Sin(frac * 3.14159);
 
         // Squash: flatten Y by -0.3, expand XZ by +0.15
-        Viper.Graphics3D.MorphTarget3D.SetDelta(mt, squash, i, 0.15 * (1.0 - y_factor), -0.3 * y_factor, 0.15 * (1.0 - y_factor));
+        MorphTarget3D.SetDelta(mt, squash, i, 0.15 * (1.0 - y_factor), -0.3 * y_factor, 0.15 * (1.0 - y_factor));
         // Stretch: expand Y by +0.4, compress XZ by -0.1
-        Viper.Graphics3D.MorphTarget3D.SetDelta(mt, stretch, i, -0.1 * (1.0 - y_factor), 0.4 * y_factor, -0.1 * (1.0 - y_factor));
+        MorphTarget3D.SetDelta(mt, stretch, i, -0.1 * (1.0 - y_factor), 0.4 * y_factor, -0.1 * (1.0 - y_factor));
 
         i = i + 1;
     }
 
-    var mat = Viper.Graphics3D.Material3D.NewColor(0.9, 0.4, 0.2);
-    Viper.Graphics3D.Material3D.SetShininess(mat, 64.0);
-    var floor_mat = Viper.Graphics3D.Material3D.NewColor(0.2, 0.2, 0.25);
+    var mat = Material3D.NewColor(0.9, 0.4, 0.2);
+    Material3D.SetShininess(mat, 64.0);
+    var floor_mat = Material3D.NewColor(0.2, 0.2, 0.25);
 
-    var sun_dir = new Viper.Math.Vec3(-0.5, -1.0, -0.3);
-    var sun = Viper.Graphics3D.Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
-    Viper.Graphics3D.Canvas3D.SetLight(canvas, 0, sun);
-    Viper.Graphics3D.Canvas3D.SetAmbient(canvas, 0.15, 0.15, 0.2);
+    var sun_dir = new Vec3(-0.5, -1.0, -0.3);
+    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
+    Canvas3D.SetLight(canvas, 0, sun);
+    Canvas3D.SetAmbient(canvas, 0.15, 0.15, 0.2);
 
     var time = 0.0;
 
-    while (Viper.Graphics3D.Canvas3D.get_ShouldClose(canvas) == 0) {
-        Viper.Graphics3D.Canvas3D.Poll(canvas);
-        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.05, 0.05, 0.1);
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        Canvas3D.Clear(canvas, 0.05, 0.05, 0.1);
 
-        var target = new Viper.Math.Vec3(0.0, 0.0, 0.0);
-        Viper.Graphics3D.Camera3D.Orbit(cam, target, 4.0, 20.0, 15.0);
+        var target = new Vec3(0.0, 0.0, 0.0);
+        Camera3D.Orbit(cam, target, 4.0, 20.0, 15.0);
 
         // Animate morph weights with sine waves
-        var squash_w = Viper.Math.Max(0.0, Viper.Math.Sin(time * 3.0));
-        var stretch_w = Viper.Math.Max(0.0, Viper.Math.Sin(time * 3.0 + 3.14159));
-        Viper.Graphics3D.MorphTarget3D.SetWeight(mt, squash, squash_w);
-        Viper.Graphics3D.MorphTarget3D.SetWeight(mt, stretch, stretch_w);
+        var squash_w = Max(0.0, Sin(time * 3.0));
+        var stretch_w = Max(0.0, Sin(time * 3.0 + 3.14159));
+        MorphTarget3D.SetWeight(mt, squash, squash_w);
+        MorphTarget3D.SetWeight(mt, stretch, stretch_w);
 
-        Viper.Graphics3D.Canvas3D.Begin(canvas, cam);
+        Canvas3D.Begin(canvas, cam);
 
-        var floor_xform = Viper.Math.Mat4.Translate(0.0, -1.5, 0.0);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, floor_mesh, floor_xform, floor_mat);
+        var floor_xform = Mat4.Translate(0.0, -1.5, 0.0);
+        Canvas3D.DrawMesh(canvas, floor_mesh, floor_xform, floor_mat);
 
-        Viper.Graphics3D.Canvas3D.DrawMeshMorphed(canvas, sphere, Viper.Math.Mat4.Identity(), mat, mt);
+        Canvas3D.DrawMeshMorphed(canvas, sphere, Mat4.Identity(), mat, mt);
 
-        Viper.Graphics3D.Canvas3D.End(canvas);
-        Viper.Graphics3D.Canvas3D.Flip(canvas);
+        Canvas3D.End(canvas);
+        Canvas3D.Flip(canvas);
 
         time = time + 0.016;
     }

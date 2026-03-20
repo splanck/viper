@@ -1,0 +1,90 @@
+// Demo: LOD (Level of Detail) — spheres switch mesh detail based on camera distance.
+// 3 LOD levels: high-poly (close), medium-poly (mid), low-poly (far).
+// Orbiting camera reveals transitions as objects move between distance thresholds.
+module DemoLOD;
+
+bind Viper.Terminal;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
+
+func start() {
+    var canvas = Canvas3D.New("LOD Demo", 800, 600);
+    var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 200.0);
+
+    // Create 3 LOD meshes for spheres
+    var sphere_hi = Mesh3D.NewSphere(1.0, 24);   // 24 segments — high detail
+    var sphere_mid = Mesh3D.NewSphere(1.0, 8);   // 8 segments — medium
+    var sphere_lo = Mesh3D.NewBox(1.4, 1.4, 1.4); // box as lowest LOD
+
+    var mat_red = Material3D.NewColor(0.9, 0.2, 0.2);
+    Material3D.SetShininess(mat_red, 32.0);
+    var mat_green = Material3D.NewColor(0.2, 0.8, 0.2);
+    Material3D.SetShininess(mat_green, 32.0);
+    var mat_blue = Material3D.NewColor(0.2, 0.2, 0.9);
+    Material3D.SetShininess(mat_blue, 32.0);
+    var floor_mat = Material3D.NewColor(0.3, 0.3, 0.35);
+
+    // Floor
+    var floor_mesh = Mesh3D.NewPlane(50.0, 50.0);
+
+    // Scene graph with LOD nodes
+    var scene = Scene3D.New();
+
+    // Floor node
+    var floor_node = SceneNode3D.New();
+    SceneNode3D.set_Mesh(floor_node, floor_mesh);
+    SceneNode3D.set_Material(floor_node, floor_mat);
+    SceneNode3D.SetPosition(floor_node, 0.0, -1.0, 0.0);
+    Scene3D.Add(scene, floor_node);
+
+    // Create a row of 10 spheres with LOD at different distances
+    var i = 0;
+    while (i < 10) {
+        var node = SceneNode3D.New();
+        SceneNode3D.set_Mesh(node, sphere_hi); // base mesh = high detail
+        if (i % 3 == 0) {
+            SceneNode3D.set_Material(node, mat_red);
+        } else {
+            if (i % 3 == 1) {
+                SceneNode3D.set_Material(node, mat_green);
+            } else {
+                SceneNode3D.set_Material(node, mat_blue);
+            }
+        }
+
+        // Position in a line along Z axis
+        var x = (i - 5) * 4.0;
+        SceneNode3D.SetPosition(node, x, 0.0, 0.0);
+
+        // Add LOD levels: at 10 units switch to medium, at 25 units switch to low
+        SceneNode3D.AddLOD(node, 10.0, sphere_mid);
+        SceneNode3D.AddLOD(node, 25.0, sphere_lo);
+
+        Scene3D.Add(scene, node);
+        i = i + 1;
+    }
+
+    // Lighting
+    var sun_dir = new Vec3(-0.5, -1.0, -0.3);
+    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.85);
+    Canvas3D.SetLight(canvas, 0, sun);
+    Canvas3D.SetAmbient(canvas, 0.15, 0.15, 0.2);
+
+    var time = 0.0;
+
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        Canvas3D.Clear(canvas, 0.05, 0.05, 0.1);
+
+        // Orbit camera — changes distance to objects, revealing LOD transitions
+        var target = new Vec3(0.0, 0.0, 0.0);
+        Camera3D.Orbit(cam, target, 8.0 + Sin(time * 0.3) * 20.0, time * 15.0, 15.0);
+
+        // Scene3D.Draw handles LOD selection internally using camera position
+        Scene3D.Draw(scene, canvas, cam);
+
+        Canvas3D.Flip(canvas);
+        time = time + 0.016;
+    }
+}

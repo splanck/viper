@@ -1299,4 +1299,10 @@ void rt_canvas3d_set_shadow_bias(void *obj, double bias)
     ((rt_canvas3d *)obj)->shadow_bias = (float)bias;
 }
 
+void rt_canvas3d_set_occlusion_culling(void *obj, int8_t enabled)
+{
+    if (!obj) return;
+    ((rt_canvas3d *)obj)->occlusion_culling = enabled;
+}
+
 #endif /* VIPER_ENABLE_GRAPHICS */

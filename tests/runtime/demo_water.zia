@@ -1,0 +1,89 @@
+// Demo: Water3D — animated water plane with sine waves over a terrain-like scene.
+module DemoWater;
+
+bind Viper.Terminal;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
+
+func start() {
+    var canvas = Canvas3D.New("Water Demo", 800, 600);
+    var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
+
+    // Ground
+    var floor_mesh = Mesh3D.NewPlane(30.0, 30.0);
+    var floor_mat = Material3D.NewColor(0.35, 0.25, 0.15);
+
+    // Islands (boxes rising from the floor)
+    var island1 = Mesh3D.NewBox(4.0, 1.5, 4.0);
+    var island2 = Mesh3D.NewBox(3.0, 2.0, 3.0);
+    var island3 = Mesh3D.NewBox(5.0, 1.0, 3.0);
+    var rock_mat = Material3D.NewColor(0.5, 0.45, 0.4);
+    Material3D.SetShininess(rock_mat, 8.0);
+
+    // Trees on islands (cylinders + spheres)
+    var trunk_mesh = Mesh3D.NewCylinder(0.2, 2.0, 8);
+    var canopy_mesh = Mesh3D.NewSphere(1.0, 10);
+    var trunk_mat = Material3D.NewColor(0.5, 0.3, 0.15);
+    var leaf_mat = Material3D.NewColor(0.15, 0.55, 0.1);
+
+    // Water plane
+    var water = Water3D.New(30.0, 30.0);
+    Water3D.SetHeight(water, 0.3);
+    Water3D.SetWaveParams(water, 2.5, 0.12, 2.0);
+    Water3D.SetColor(water, 0.1, 0.35, 0.55, 0.45);
+
+    // Lighting
+    var sun_dir = new Vec3(-0.4, -1.0, -0.3);
+    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.85);
+    Canvas3D.SetLight(canvas, 0, sun);
+    Canvas3D.SetAmbient(canvas, 0.15, 0.18, 0.25);
+
+    // Fog for atmosphere
+    Canvas3D.SetFog(canvas, 10.0, 40.0, 0.5, 0.6, 0.75);
+
+    var time = 0.0;
+
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        Canvas3D.Clear(canvas, 0.5, 0.6, 0.75);
+
+        var target = new Vec3(0.0, 0.5, 0.0);
+        Camera3D.Orbit(cam, target, 15.0, time * 8.0, 20.0);
+
+        // Update water waves
+        Water3D.Update(water, 0.016);
+
+        Canvas3D.Begin(canvas, cam);
+
+        // Ground (below water)
+        var floor_xform = Mat4.Translate(0.0, -1.0, 0.0);
+        Canvas3D.DrawMesh(canvas, floor_mesh, floor_xform, floor_mat);
+
+        // Islands
+        var i1_xform = Mat4.Translate(-5.0, 0.0, -3.0);
+        Canvas3D.DrawMesh(canvas, island1, i1_xform, rock_mat);
+        var i2_xform = Mat4.Translate(4.0, 0.2, 2.0);
+        Canvas3D.DrawMesh(canvas, island2, i2_xform, rock_mat);
+        var i3_xform = Mat4.Translate(0.0, -0.2, -7.0);
+        Canvas3D.DrawMesh(canvas, island3, i3_xform, rock_mat);
+
+        // Trees on islands
+        var t1 = Mat4.Translate(-5.0, 1.75, -3.0);
+        Canvas3D.DrawMesh(canvas, trunk_mesh, t1, trunk_mat);
+        var c1 = Mat4.Translate(-5.0, 3.5, -3.0);
+        Canvas3D.DrawMesh(canvas, canopy_mesh, c1, leaf_mat);
+
+        var t2 = Mat4.Translate(4.0, 2.2, 2.0);
+        Canvas3D.DrawMesh(canvas, trunk_mesh, t2, trunk_mat);
+        var c2 = Mat4.Translate(4.0, 3.9, 2.0);
+        Canvas3D.DrawMesh(canvas, canopy_mesh, c2, leaf_mat);
+
+        // Water (drawn after opaque geometry for proper transparency)
+        Canvas3D.DrawWater(canvas, water, cam);
+
+        Canvas3D.End(canvas);
+        Canvas3D.Flip(canvas);
+        time = time + 0.016;
+    }
+}

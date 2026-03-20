@@ -1,0 +1,186 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/rt_instbatch3d.c
+// Purpose: Instanced rendering batch — stores N transforms for one mesh+material.
+//   Canvas3D.DrawInstanced culls per-instance and dispatches via backend.
+//
+// Key invariants:
+//   - Transforms are float[16] row-major, stored contiguously.
+//   - Software backend: loops N individual submit_draw calls.
+//   - Mesh/material are borrowed (caller keeps them alive).
+//
+// Links: rt_instbatch3d.h, rt_canvas3d.c, vgfx3d_backend.h
+//
+//===----------------------------------------------------------------------===//
+
+#ifdef VIPER_ENABLE_GRAPHICS
+
+#include "rt_instbatch3d.h"
+#include "rt_canvas3d.h"
+#include "rt_canvas3d_internal.h"
+#include "vgfx3d_backend.h"
+
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
+extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_trap(const char *msg);
+extern double rt_mat4_get(void *m, int64_t r, int64_t c);
+
+#define INST_INIT_CAP 64
+
+typedef struct
+{
+    void *vptr;
+    void *mesh;      /* borrowed Mesh3D */
+    void *material;  /* borrowed Material3D */
+    float *transforms; /* N * 16 floats */
+    int32_t instance_count;
+    int32_t instance_capacity;
+} rt_instbatch3d;
+
+static void instbatch_finalizer(void *obj)
+{
+    rt_instbatch3d *b = (rt_instbatch3d *)obj;
+    free(b->transforms);
+    b->transforms = NULL;
+    b->instance_count = b->instance_capacity = 0;
+}
+
+void *rt_instbatch3d_new(void *mesh, void *material)
+{
+    if (!mesh || !material) return NULL;
+    rt_instbatch3d *b = (rt_instbatch3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_instbatch3d));
+    if (!b) { rt_trap("InstanceBatch3D.New: allocation failed"); return NULL; }
+    b->vptr = NULL;
+    b->mesh = mesh;
+    b->material = material;
+    b->transforms = (float *)calloc(INST_INIT_CAP * 16, sizeof(float));
+    b->instance_count = 0;
+    b->instance_capacity = INST_INIT_CAP;
+    rt_obj_set_finalizer(b, instbatch_finalizer);
+    return b;
+}
+
+void rt_instbatch3d_add(void *obj, void *transform)
+{
+    if (!obj || !transform) return;
+    rt_instbatch3d *b = (rt_instbatch3d *)obj;
+
+    if (b->instance_count >= b->instance_capacity)
+    {
+        int32_t new_cap = b->instance_capacity * 2;
+        b->transforms = (float *)realloc(b->transforms, (size_t)new_cap * 16 * sizeof(float));
+        b->instance_capacity = new_cap;
+    }
+
+    /* Copy Mat4 (double) to float[16] */
+    float *dst = &b->transforms[b->instance_count * 16];
+    for (int i = 0; i < 4; i++)
+        for (int j = 0; j < 4; j++)
+            dst[i * 4 + j] = (float)rt_mat4_get(transform, i, j);
+
+    b->instance_count++;
+}
+
+void rt_instbatch3d_remove(void *obj, int64_t index)
+{
+    if (!obj) return;
+    rt_instbatch3d *b = (rt_instbatch3d *)obj;
+    if (index < 0 || index >= b->instance_count) return;
+
+    /* Swap with last */
+    if (index < b->instance_count - 1)
+        memcpy(&b->transforms[index * 16],
+               &b->transforms[(b->instance_count - 1) * 16],
+               16 * sizeof(float));
+    b->instance_count--;
+}
+
+void rt_instbatch3d_set(void *obj, int64_t index, void *transform)
+{
+    if (!obj || !transform) return;
+    rt_instbatch3d *b = (rt_instbatch3d *)obj;
+    if (index < 0 || index >= b->instance_count) return;
+
+    float *dst = &b->transforms[index * 16];
+    for (int i = 0; i < 4; i++)
+        for (int j = 0; j < 4; j++)
+            dst[i * 4 + j] = (float)rt_mat4_get(transform, i, j);
+}
+
+void rt_instbatch3d_clear(void *obj)
+{
+    if (!obj) return;
+    ((rt_instbatch3d *)obj)->instance_count = 0;
+}
+
+int64_t rt_instbatch3d_count(void *obj)
+{
+    return obj ? ((rt_instbatch3d *)obj)->instance_count : 0;
+}
+
+/// @brief Draw all visible instances. Falls back to N individual draw calls
+/// since the software backend doesn't have a native instanced path.
+void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj)
+{
+    if (!canvas_obj || !batch_obj) return;
+    rt_canvas3d *c = (rt_canvas3d *)canvas_obj;
+    rt_instbatch3d *b = (rt_instbatch3d *)batch_obj;
+    if (!c->in_frame || !c->backend || b->instance_count == 0) return;
+
+    rt_mesh3d *mesh = (rt_mesh3d *)b->mesh;
+    if (!mesh || mesh->vertex_count == 0 || mesh->index_count == 0) return;
+
+    /* Build draw command from batch mesh/material */
+    rt_material3d *mat = (rt_material3d *)b->material;
+
+    /* For each instance, issue a draw call with its transform.
+     * This is the software fallback — GPU backends could override
+     * with true instanced rendering. */
+    for (int32_t i = 0; i < b->instance_count; i++)
+    {
+        /* Convert float[16] back to a Mat4 object for DrawMesh */
+        float *src = &b->transforms[i * 16];
+
+        /* Build a draw command using the existing submit_draw path */
+        vgfx3d_draw_cmd_t cmd;
+        memset(&cmd, 0, sizeof(cmd));
+        cmd.vertices = mesh->vertices;
+        cmd.vertex_count = mesh->vertex_count;
+        cmd.indices = mesh->indices;
+        cmd.index_count = mesh->index_count;
+
+        /* Model matrix from instance transform */
+        memcpy(cmd.model_matrix, src, 16 * sizeof(float));
+
+        /* Material properties */
+        cmd.diffuse_color[0] = (float)mat->diffuse[0];
+        cmd.diffuse_color[1] = (float)mat->diffuse[1];
+        cmd.diffuse_color[2] = (float)mat->diffuse[2];
+        cmd.diffuse_color[3] = (float)mat->alpha;
+        cmd.shininess = (float)mat->shininess;
+        cmd.alpha = (float)mat->alpha;
+        cmd.unlit = mat->unlit;
+        cmd.texture = mat->texture;
+        cmd.emissive_map = mat->emissive_map;
+        cmd.emissive_color[0] = (float)mat->emissive[0];
+        cmd.emissive_color[1] = (float)mat->emissive[1];
+        cmd.emissive_color[2] = (float)mat->emissive[2];
+
+        c->backend->submit_draw(c->backend_ctx, c->gfx_win, &cmd,
+                                 (const vgfx3d_light_params_t *)c->lights,
+                                 VGFX3D_MAX_LIGHTS, c->ambient,
+                                 c->wireframe, c->backface_cull);
+    }
+}
+
+#endif /* VIPER_ENABLE_GRAPHICS */

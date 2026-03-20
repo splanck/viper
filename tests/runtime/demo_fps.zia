@@ -3,17 +3,20 @@
 module DemoFPS;
 
 bind Viper.Terminal;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
 
 func do_shoot(cam: Ptr, sparks: Ptr) {
-    var shoot_pos = Viper.Graphics3D.Camera3D.get_Position(cam);
-    var shoot_dir = Viper.Graphics3D.Camera3D.get_Forward(cam);
+    var shoot_pos = Camera3D.get_Position(cam);
+    var shoot_dir = Camera3D.get_Forward(cam);
 
-    var d1 = Viper.Graphics3D.Ray3D.IntersectSphere(shoot_pos, shoot_dir,
-        new Viper.Math.Vec3(-3.0, 1.0, -5.0), 0.5);
-    var d2 = Viper.Graphics3D.Ray3D.IntersectSphere(shoot_pos, shoot_dir,
-        new Viper.Math.Vec3(4.0, 1.5, -3.0), 0.5);
-    var d3 = Viper.Graphics3D.Ray3D.IntersectSphere(shoot_pos, shoot_dir,
-        new Viper.Math.Vec3(0.0, 0.8, -8.0), 0.5);
+    var d1 = Ray3D.IntersectSphere(shoot_pos, shoot_dir,
+        new Vec3(-3.0, 1.0, -5.0), 0.5);
+    var d2 = Ray3D.IntersectSphere(shoot_pos, shoot_dir,
+        new Vec3(4.0, 1.5, -3.0), 0.5);
+    var d3 = Ray3D.IntersectSphere(shoot_pos, shoot_dir,
+        new Vec3(0.0, 0.8, -8.0), 0.5);
 
     var best = 999.0;
     var hit_x = 0.0;
@@ -24,114 +27,114 @@ func do_shoot(cam: Ptr, sparks: Ptr) {
     if (d3 >= 0.0) { if (d3 < best) { best = d3; hit_x = 0.0; hit_y = 0.8; hit_z = -8.0; } }
 
     if (best < 999.0) {
-        Viper.Graphics3D.Particles3D.SetPosition(sparks, hit_x, hit_y, hit_z);
-        Viper.Graphics3D.Particles3D.Burst(sparks, 30);
+        Particles3D.SetPosition(sparks, hit_x, hit_y, hit_z);
+        Particles3D.Burst(sparks, 30);
     }
 }
 
 func start() {
-    var canvas = Viper.Graphics3D.Canvas3D.New("FPS Demo", 1280, 720);
-    var cam = Viper.Graphics3D.Camera3D.New(70.0, 1280.0 / 720.0, 0.1, 100.0);
+    var canvas = Canvas3D.New("FPS Demo", 1280, 720);
+    var cam = Camera3D.New(70.0, 1280.0 / 720.0, 0.1, 100.0);
 
     // Initialize FPS camera at starting position
-    var eye = new Viper.Math.Vec3(0.0, 1.5, 5.0);
-    var target = new Viper.Math.Vec3(0.0, 1.5, 0.0);
-    var up = new Viper.Math.Vec3(0.0, 1.0, 0.0);
-    Viper.Graphics3D.Camera3D.LookAt(cam, eye, target, up);
-    Viper.Graphics3D.Camera3D.FPSInit(cam);
+    var eye = new Vec3(0.0, 1.5, 5.0);
+    var target = new Vec3(0.0, 1.5, 0.0);
+    var up = new Vec3(0.0, 1.0, 0.0);
+    Camera3D.LookAt(cam, eye, target, up);
+    Camera3D.FPSInit(cam);
 
     // Build arena from boxes
-    var floor_mesh = Viper.Graphics3D.Mesh3D.NewPlane(20.0, 20.0);
-    var wall_mesh = Viper.Graphics3D.Mesh3D.NewBox(20.0, 4.0, 0.5);
-    var pillar_mesh = Viper.Graphics3D.Mesh3D.NewCylinder(0.4, 3.0, 12);
-    var target_mesh = Viper.Graphics3D.Mesh3D.NewSphere(0.5, 12);
+    var floor_mesh = Mesh3D.NewPlane(20.0, 20.0);
+    var wall_mesh = Mesh3D.NewBox(20.0, 4.0, 0.5);
+    var pillar_mesh = Mesh3D.NewCylinder(0.4, 3.0, 12);
+    var target_mesh = Mesh3D.NewSphere(0.5, 12);
 
-    var floor_mat = Viper.Graphics3D.Material3D.NewColor(0.3, 0.3, 0.35);
-    var wall_mat = Viper.Graphics3D.Material3D.NewColor(0.5, 0.45, 0.4);
-    var pillar_mat = Viper.Graphics3D.Material3D.NewColor(0.6, 0.55, 0.5);
-    var target_mat = Viper.Graphics3D.Material3D.NewColor(0.9, 0.2, 0.2);
-    Viper.Graphics3D.Material3D.SetShininess(target_mat, 64.0);
+    var floor_mat = Material3D.NewColor(0.3, 0.3, 0.35);
+    var wall_mat = Material3D.NewColor(0.5, 0.45, 0.4);
+    var pillar_mat = Material3D.NewColor(0.6, 0.55, 0.5);
+    var target_mat = Material3D.NewColor(0.9, 0.2, 0.2);
+    Material3D.SetShininess(target_mat, 64.0);
 
     // Lighting
-    var sun_dir = new Viper.Math.Vec3(-0.3, -1.0, -0.5);
-    var sun = Viper.Graphics3D.Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.85);
-    Viper.Graphics3D.Canvas3D.SetLight(canvas, 0, sun);
-    var point_pos = new Viper.Math.Vec3(0.0, 3.0, 0.0);
-    var point = Viper.Graphics3D.Light3D.NewPoint(point_pos, 0.8, 0.7, 0.5, 0.1);
-    Viper.Graphics3D.Canvas3D.SetLight(canvas, 1, point);
-    Viper.Graphics3D.Canvas3D.SetAmbient(canvas, 0.12, 0.12, 0.18);
+    var sun_dir = new Vec3(-0.3, -1.0, -0.5);
+    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.85);
+    Canvas3D.SetLight(canvas, 0, sun);
+    var point_pos = new Vec3(0.0, 3.0, 0.0);
+    var point = Light3D.NewPoint(point_pos, 0.8, 0.7, 0.5, 0.1);
+    Canvas3D.SetLight(canvas, 1, point);
+    Canvas3D.SetAmbient(canvas, 0.12, 0.12, 0.18);
 
     // Post-processing
-    var fx = Viper.Graphics3D.PostFX3D.New();
-    Viper.Graphics3D.PostFX3D.AddBloom(fx, 0.7, 0.3, 3);
-    Viper.Graphics3D.PostFX3D.AddVignette(fx, 0.55, 0.4);
-    Viper.Graphics3D.Canvas3D.SetPostFX(canvas, fx);
+    var fx = PostFX3D.New();
+    PostFX3D.AddBloom(fx, 0.7, 0.3, 3);
+    PostFX3D.AddVignette(fx, 0.55, 0.4);
+    Canvas3D.SetPostFX(canvas, fx);
 
     // Impact particles
-    var sparks = Viper.Graphics3D.Particles3D.New(200);
-    Viper.Graphics3D.Particles3D.SetDirection(sparks, 0.0, 1.0, 0.0, 1.5);
-    Viper.Graphics3D.Particles3D.SetSpeed(sparks, 2.0, 5.0);
-    Viper.Graphics3D.Particles3D.SetLifetime(sparks, 0.2, 0.5);
-    Viper.Graphics3D.Particles3D.SetSize(sparks, 0.08, 0.02);
-    Viper.Graphics3D.Particles3D.SetGravity(sparks, 0.0, -8.0, 0.0);
-    Viper.Graphics3D.Particles3D.SetColor(sparks, 0xFFCC44, 0xFF4400);
-    Viper.Graphics3D.Particles3D.SetAlpha(sparks, 1.0, 0.0);
+    var sparks = Particles3D.New(200);
+    Particles3D.SetDirection(sparks, 0.0, 1.0, 0.0, 1.5);
+    Particles3D.SetSpeed(sparks, 2.0, 5.0);
+    Particles3D.SetLifetime(sparks, 0.2, 0.5);
+    Particles3D.SetSize(sparks, 0.08, 0.02);
+    Particles3D.SetGravity(sparks, 0.0, -8.0, 0.0);
+    Particles3D.SetColor(sparks, 0xFFCC44, 0xFF4400);
+    Particles3D.SetAlpha(sparks, 1.0, 0.0);
 
     // Target positions
-    var t1_pos = Viper.Math.Mat4.Translate(-3.0, 1.0, -5.0);
-    var t2_pos = Viper.Math.Mat4.Translate(4.0, 1.5, -3.0);
-    var t3_pos = Viper.Math.Mat4.Translate(0.0, 0.8, -8.0);
+    var t1_pos = Mat4.Translate(-3.0, 1.0, -5.0);
+    var t2_pos = Mat4.Translate(4.0, 1.5, -3.0);
+    var t3_pos = Mat4.Translate(0.0, 0.8, -8.0);
 
     // Build a tiny crosshair mesh (rendered in 3D so it shows on Metal layer)
-    var cross_h = Viper.Graphics3D.Mesh3D.NewBox(0.012, 0.001, 0.001);
-    var cross_v = Viper.Graphics3D.Mesh3D.NewBox(0.001, 0.012, 0.001);
-    var cross_mat = Viper.Graphics3D.Material3D.NewColor(1.0, 1.0, 1.0);
-    Viper.Graphics3D.Material3D.SetUnlit(cross_mat, true);
+    var cross_h = Mesh3D.NewBox(0.012, 0.001, 0.001);
+    var cross_v = Mesh3D.NewBox(0.001, 0.012, 0.001);
+    var cross_mat = Material3D.NewColor(1.0, 1.0, 1.0);
+    Material3D.SetUnlit(cross_mat, true);
 
     // Capture mouse for FPS control (also hides cursor)
-    Viper.Input.Mouse.Capture();
+    Mouse.Capture();
 
     var sensitivity = 0.15;
     var speed = 5.0;
     var shoot_cooldown = 0.0;
     var eye_height = 1.5;
 
-    while (Viper.Graphics3D.Canvas3D.get_ShouldClose(canvas) == 0) {
-        Viper.Graphics3D.Canvas3D.Poll(canvas);
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
 
-        var dt = Viper.Graphics3D.Canvas3D.get_DeltaTime(canvas) / 1000.0;
+        var dt = Canvas3D.get_DeltaTime(canvas) / 1000.0;
         if (dt > 0.05) { dt = 0.05; }
 
         // Mouse look
-        var mdx = 1.0 * Viper.Input.Mouse.DeltaX();
-        var mdy = 1.0 * Viper.Input.Mouse.DeltaY();
+        var mdx = 1.0 * Mouse.DeltaX();
+        var mdy = 1.0 * Mouse.DeltaY();
 
         // WASD movement
         var fwd = 0.0;
         var right = 0.0;
-        if (Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.get_KEY_W())) { fwd = 1.0; }
-        if (Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.get_KEY_S())) { fwd = -1.0; }
-        if (Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.get_KEY_A())) { right = -1.0; }
-        if (Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.get_KEY_D())) { right = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_W())) { fwd = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_S())) { fwd = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_A())) { right = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_D())) { right = 1.0; }
         // Update FPS camera (no vertical movement — grounded)
-        Viper.Graphics3D.Camera3D.FPSUpdate(cam,
+        Camera3D.FPSUpdate(cam,
             mdx * sensitivity, -mdy * sensitivity,
             fwd, right, 0.0, speed, dt);
 
         // Clamp camera to floor height (prevent falling through)
-        var cur_pos = Viper.Graphics3D.Camera3D.get_Position(cam);
-        var cur_y = Viper.Math.Vec3.get_Y(cur_pos);
+        var cur_pos = Camera3D.get_Position(cam);
+        var cur_y = Vec3.get_Y(cur_pos);
         if (cur_y < eye_height) {
-            var clamped = new Viper.Math.Vec3(
-                Viper.Math.Vec3.get_X(cur_pos), eye_height, Viper.Math.Vec3.get_Z(cur_pos));
-            var look_fwd = Viper.Graphics3D.Camera3D.get_Forward(cam);
-            var look_tgt = Viper.Math.Vec3.Add(clamped, look_fwd);
-            Viper.Graphics3D.Camera3D.LookAt(cam, clamped, look_tgt, up);
+            var clamped = new Vec3(
+                Vec3.get_X(cur_pos), eye_height, Vec3.get_Z(cur_pos));
+            var look_fwd = Camera3D.get_Forward(cam);
+            var look_tgt = Vec3.Add(clamped, look_fwd);
+            Camera3D.LookAt(cam, clamped, look_tgt, up);
         }
 
         // Shoot on left click (with cooldown)
         shoot_cooldown = shoot_cooldown - dt;
-        var can_shoot = Viper.Input.Mouse.Left();
+        var can_shoot = Mouse.Left();
         if (can_shoot) {
             if (shoot_cooldown <= 0.0) {
                 shoot_cooldown = 0.3;
@@ -140,51 +143,51 @@ func start() {
         }
 
         // Update particles
-        Viper.Graphics3D.Particles3D.Update(sparks, dt);
+        Particles3D.Update(sparks, dt);
 
         // Render
-        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.02, 0.02, 0.05);
-        Viper.Graphics3D.Canvas3D.Begin(canvas, cam);
+        Canvas3D.Clear(canvas, 0.02, 0.02, 0.05);
+        Canvas3D.Begin(canvas, cam);
 
         // Floor
-        var floor_xform = Viper.Math.Mat4.Translate(0.0, 0.0, 0.0);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, floor_mesh, floor_xform, floor_mat);
+        var floor_xform = Mat4.Translate(0.0, 0.0, 0.0);
+        Canvas3D.DrawMesh(canvas, floor_mesh, floor_xform, floor_mat);
 
         // Walls
-        var wall_back = Viper.Math.Mat4.Translate(0.0, 2.0, -10.0);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, wall_mesh, wall_back, wall_mat);
+        var wall_back = Mat4.Translate(0.0, 2.0, -10.0);
+        Canvas3D.DrawMesh(canvas, wall_mesh, wall_back, wall_mat);
 
         // Pillars
-        var p1 = Viper.Math.Mat4.Translate(-5.0, 1.5, -3.0);
-        var p2 = Viper.Math.Mat4.Translate(5.0, 1.5, -3.0);
-        var p3 = Viper.Math.Mat4.Translate(-5.0, 1.5, -7.0);
-        var p4 = Viper.Math.Mat4.Translate(5.0, 1.5, -7.0);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, pillar_mesh, p1, pillar_mat);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, pillar_mesh, p2, pillar_mat);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, pillar_mesh, p3, pillar_mat);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, pillar_mesh, p4, pillar_mat);
+        var p1 = Mat4.Translate(-5.0, 1.5, -3.0);
+        var p2 = Mat4.Translate(5.0, 1.5, -3.0);
+        var p3 = Mat4.Translate(-5.0, 1.5, -7.0);
+        var p4 = Mat4.Translate(5.0, 1.5, -7.0);
+        Canvas3D.DrawMesh(canvas, pillar_mesh, p1, pillar_mat);
+        Canvas3D.DrawMesh(canvas, pillar_mesh, p2, pillar_mat);
+        Canvas3D.DrawMesh(canvas, pillar_mesh, p3, pillar_mat);
+        Canvas3D.DrawMesh(canvas, pillar_mesh, p4, pillar_mat);
 
         // Target spheres
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, target_mesh, t1_pos, target_mat);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, target_mesh, t2_pos, target_mat);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, target_mesh, t3_pos, target_mat);
+        Canvas3D.DrawMesh(canvas, target_mesh, t1_pos, target_mat);
+        Canvas3D.DrawMesh(canvas, target_mesh, t2_pos, target_mat);
+        Canvas3D.DrawMesh(canvas, target_mesh, t3_pos, target_mat);
 
         // Particles
-        Viper.Graphics3D.Particles3D.Draw(sparks, canvas, cam);
+        Particles3D.Draw(sparks, canvas, cam);
 
         // 3D crosshair: position tiny boxes right in front of the camera
-        var ch_pos = Viper.Graphics3D.Camera3D.get_Position(cam);
-        var ch_fwd = Viper.Graphics3D.Camera3D.get_Forward(cam);
-        var ch_x = Viper.Math.Vec3.get_X(ch_pos) + Viper.Math.Vec3.get_X(ch_fwd) * 0.3;
-        var ch_y = Viper.Math.Vec3.get_Y(ch_pos) + Viper.Math.Vec3.get_Y(ch_fwd) * 0.3;
-        var ch_z = Viper.Math.Vec3.get_Z(ch_pos) + Viper.Math.Vec3.get_Z(ch_fwd) * 0.3;
-        var ch_xform = Viper.Math.Mat4.Translate(ch_x, ch_y, ch_z);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, cross_h, ch_xform, cross_mat);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, cross_v, ch_xform, cross_mat);
+        var ch_pos = Camera3D.get_Position(cam);
+        var ch_fwd = Camera3D.get_Forward(cam);
+        var ch_x = Vec3.get_X(ch_pos) + Vec3.get_X(ch_fwd) * 0.3;
+        var ch_y = Vec3.get_Y(ch_pos) + Vec3.get_Y(ch_fwd) * 0.3;
+        var ch_z = Vec3.get_Z(ch_pos) + Vec3.get_Z(ch_fwd) * 0.3;
+        var ch_xform = Mat4.Translate(ch_x, ch_y, ch_z);
+        Canvas3D.DrawMesh(canvas, cross_h, ch_xform, cross_mat);
+        Canvas3D.DrawMesh(canvas, cross_v, ch_xform, cross_mat);
 
-        Viper.Graphics3D.Canvas3D.End(canvas);
-        Viper.Graphics3D.Canvas3D.Flip(canvas);
+        Canvas3D.End(canvas);
+        Canvas3D.Flip(canvas);
     }
 
-    Viper.Input.Mouse.Release();
+    Mouse.Release();
 }

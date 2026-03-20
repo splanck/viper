@@ -389,6 +389,14 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_Trigger3D,
     RTCLS_Transform3D,
     RTCLS_Path3D,
+    RTCLS_InstanceBatch3D,
+    RTCLS_Terrain3D,
+    RTCLS_NavMesh3D,
+    RTCLS_AnimBlend3D,
+    RTCLS_Decal3D,
+    RTCLS_Sprite3D,
+    RTCLS_Water3D,
+    RTCLS_TextureAtlas3D,
 };
 
 /// @brief Describes a property on a runtime class.

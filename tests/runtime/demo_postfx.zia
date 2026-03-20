@@ -3,72 +3,75 @@
 module DemoPostFX;
 
 bind Viper.Terminal;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
 
 func start() {
-    var canvas = Viper.Graphics3D.Canvas3D.New("Post-Processing FX", 800, 600);
-    var cam = Viper.Graphics3D.Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
+    var canvas = Canvas3D.New("Post-Processing FX", 800, 600);
+    var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
 
     // Scene objects
-    var cube = Viper.Graphics3D.Mesh3D.NewBox(1.0, 1.0, 1.0);
-    var sphere = Viper.Graphics3D.Mesh3D.NewSphere(0.5, 16);
-    var floor_mesh = Viper.Graphics3D.Mesh3D.NewPlane(12.0, 12.0);
+    var cube = Mesh3D.NewBox(1.0, 1.0, 1.0);
+    var sphere = Mesh3D.NewSphere(0.5, 16);
+    var floor_mesh = Mesh3D.NewPlane(12.0, 12.0);
 
     // Materials — bright emissive-style colors to trigger bloom
-    var bright_mat = Viper.Graphics3D.Material3D.NewColor(1.0, 0.8, 0.3);
-    Viper.Graphics3D.Material3D.SetShininess(bright_mat, 128.0);
-    var blue_mat = Viper.Graphics3D.Material3D.NewColor(0.2, 0.5, 1.0);
-    Viper.Graphics3D.Material3D.SetShininess(blue_mat, 64.0);
-    var red_mat = Viper.Graphics3D.Material3D.NewColor(1.0, 0.15, 0.15);
-    var floor_mat = Viper.Graphics3D.Material3D.NewColor(0.25, 0.25, 0.3);
+    var bright_mat = Material3D.NewColor(1.0, 0.8, 0.3);
+    Material3D.SetShininess(bright_mat, 128.0);
+    var blue_mat = Material3D.NewColor(0.2, 0.5, 1.0);
+    Material3D.SetShininess(blue_mat, 64.0);
+    var red_mat = Material3D.NewColor(1.0, 0.15, 0.15);
+    var floor_mat = Material3D.NewColor(0.25, 0.25, 0.3);
 
     // Lighting
-    var sun_dir = new Viper.Math.Vec3(-0.5, -1.0, -0.3);
-    var sun = Viper.Graphics3D.Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
-    Viper.Graphics3D.Canvas3D.SetLight(canvas, 0, sun);
-    var point_pos = new Viper.Math.Vec3(0.0, 2.0, 0.0);
-    var point = Viper.Graphics3D.Light3D.NewPoint(point_pos, 1.0, 0.9, 0.7, 0.15);
-    Viper.Graphics3D.Canvas3D.SetLight(canvas, 1, point);
-    Viper.Graphics3D.Canvas3D.SetAmbient(canvas, 0.1, 0.1, 0.15);
+    var sun_dir = new Vec3(-0.5, -1.0, -0.3);
+    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
+    Canvas3D.SetLight(canvas, 0, sun);
+    var point_pos = new Vec3(0.0, 2.0, 0.0);
+    var point = Light3D.NewPoint(point_pos, 1.0, 0.9, 0.7, 0.15);
+    Canvas3D.SetLight(canvas, 1, point);
+    Canvas3D.SetAmbient(canvas, 0.1, 0.1, 0.15);
 
     // Post-processing chain
-    var fx = Viper.Graphics3D.PostFX3D.New();
-    Viper.Graphics3D.PostFX3D.AddBloom(fx, 0.6, 0.4, 4);
-    Viper.Graphics3D.PostFX3D.AddColorGrade(fx, 0.03, 1.15, 1.2);
-    Viper.Graphics3D.PostFX3D.AddVignette(fx, 0.5, 0.4);
-    Viper.Graphics3D.Canvas3D.SetPostFX(canvas, fx);
+    var fx = PostFX3D.New();
+    PostFX3D.AddBloom(fx, 0.6, 0.4, 4);
+    PostFX3D.AddColorGrade(fx, 0.03, 1.15, 1.2);
+    PostFX3D.AddVignette(fx, 0.5, 0.4);
+    Canvas3D.SetPostFX(canvas, fx);
 
     var time = 0.0;
 
-    while (Viper.Graphics3D.Canvas3D.get_ShouldClose(canvas) == 0) {
-        Viper.Graphics3D.Canvas3D.Poll(canvas);
-        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.02, 0.02, 0.05);
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        Canvas3D.Clear(canvas, 0.02, 0.02, 0.05);
 
-        var target = new Viper.Math.Vec3(0.0, 0.0, 0.0);
-        Viper.Graphics3D.Camera3D.Orbit(cam, target, 6.0, time * 15.0, 20.0);
+        var target = new Vec3(0.0, 0.0, 0.0);
+        Camera3D.Orbit(cam, target, 6.0, time * 15.0, 20.0);
 
-        Viper.Graphics3D.Canvas3D.Begin(canvas, cam);
+        Canvas3D.Begin(canvas, cam);
 
         // Floor
-        var floor_xform = Viper.Math.Mat4.Translate(0.0, -1.5, 0.0);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, floor_mesh, floor_xform, floor_mat);
+        var floor_xform = Mat4.Translate(0.0, -1.5, 0.0);
+        Canvas3D.DrawMesh(canvas, floor_mesh, floor_xform, floor_mat);
 
         // Rotating bright cube (triggers bloom)
-        var cube_rot = Viper.Math.Mat4.RotateY(time * 0.5);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, cube, cube_rot, bright_mat);
+        var cube_rot = Mat4.RotateY(time * 0.5);
+        Canvas3D.DrawMesh(canvas, cube, cube_rot, bright_mat);
 
         // Orbiting spheres
-        var s1x = 2.5 * Viper.Math.Cos(time * 1.5);
-        var s1z = 2.5 * Viper.Math.Sin(time * 1.5);
-        var s1_xform = Viper.Math.Mat4.Translate(s1x, 0.0, s1z);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, sphere, s1_xform, blue_mat);
+        var s1x = 2.5 * Cos(time * 1.5);
+        var s1z = 2.5 * Sin(time * 1.5);
+        var s1_xform = Mat4.Translate(s1x, 0.0, s1z);
+        Canvas3D.DrawMesh(canvas, sphere, s1_xform, blue_mat);
 
-        var s2x = 2.5 * Viper.Math.Cos(time * 1.5 + 2.094);
-        var s2z = 2.5 * Viper.Math.Sin(time * 1.5 + 2.094);
-        var s2_xform = Viper.Math.Mat4.Translate(s2x, 0.0, s2z);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, sphere, s2_xform, red_mat);
+        var s2x = 2.5 * Cos(time * 1.5 + 2.094);
+        var s2z = 2.5 * Sin(time * 1.5 + 2.094);
+        var s2_xform = Mat4.Translate(s2x, 0.0, s2z);
+        Canvas3D.DrawMesh(canvas, sphere, s2_xform, red_mat);
 
-        Viper.Graphics3D.Canvas3D.End(canvas);
-        Viper.Graphics3D.Canvas3D.Flip(canvas);
+        Canvas3D.End(canvas);
+        Canvas3D.Flip(canvas);
 
         time = time + 0.016;
     }

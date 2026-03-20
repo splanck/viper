@@ -1,0 +1,91 @@
+// Demo: Decals — click to place decals on the floor surface.
+// Decals fade out over 3 seconds. Shows surface-aligned quad rendering.
+module DemoDecals;
+
+bind Viper.Terminal;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
+
+func start() {
+    var canvas = Canvas3D.New("Decal Demo", 800, 600);
+    var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
+
+    var floor_mesh = Mesh3D.NewPlane(20.0, 20.0);
+    var floor_mat = Material3D.NewColor(0.3, 0.3, 0.35);
+
+    // Create a simple "splash" texture (red circle on transparent background)
+    var splash_tex = new Viper.Graphics.Pixels(16, 16);
+    var tx = 0;
+    while (tx < 16) {
+        var ty = 0;
+        while (ty < 16) {
+            var dx = tx - 8;
+            var dy = ty - 8;
+            var dist = Sqrt(1.0 * dx * dx + 1.0 * dy * dy);
+            if (dist < 6.0) {
+                var alpha = 255 - (dist * 40);
+                if (alpha < 0) { alpha = 0; }
+                Viper.Graphics.Pixels.Set(splash_tex, tx, ty, 0xFF2200FF);
+            } else {
+                Viper.Graphics.Pixels.Set(splash_tex, tx, ty, 0x00000000);
+            }
+            ty = ty + 1;
+        }
+        tx = tx + 1;
+    }
+
+    // Lighting
+    var sun_dir = new Vec3(-0.5, -1.0, -0.3);
+    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.85);
+    Canvas3D.SetLight(canvas, 0, sun);
+    Canvas3D.SetAmbient(canvas, 0.15, 0.15, 0.2);
+
+    // Store decals in a simple array (up to 20)
+    var decals: List[Ptr] = [];
+    var up_normal = new Vec3(0.0, 1.0, 0.0);
+
+    // Place some initial decals
+    var i = 0;
+    while (i < 8) {
+        var angle = i * 0.785;
+        var px = Cos(angle) * 3.0;
+        var pz = Sin(angle) * 3.0;
+        var pos = new Vec3(px, 0.0, pz);
+        var d = Decal3D.New(pos, up_normal, 0.5, splash_tex);
+        Decal3D.SetLifetime(d, 5.0 + i * 1.0);
+        decals.add(d);
+        i = i + 1;
+    }
+
+    var time = 0.0;
+
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        Canvas3D.Clear(canvas, 0.05, 0.05, 0.1);
+
+        var target = new Vec3(0.0, 0.0, 0.0);
+        Camera3D.Orbit(cam, target, 10.0, time * 10.0, 30.0);
+
+        Canvas3D.Begin(canvas, cam);
+
+        // Floor
+        var floor_xform = Mat4.Translate(0.0, 0.0, 0.0);
+        Canvas3D.DrawMesh(canvas, floor_mesh, floor_xform, floor_mat);
+
+        // Draw and update all decals
+        i = 0;
+        while (i < decals.count) {
+            var decal = decals.get(i);
+            Decal3D.Update(decal, 0.016);
+            if (Decal3D.get_Expired(decal) == 0) {
+                Canvas3D.DrawDecal(canvas, decal);
+            }
+            i = i + 1;
+        }
+
+        Canvas3D.End(canvas);
+        Canvas3D.Flip(canvas);
+        time = time + 0.016;
+    }
+}

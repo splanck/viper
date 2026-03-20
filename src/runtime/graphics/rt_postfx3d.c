@@ -48,6 +48,9 @@ typedef enum
     POSTFX_FXAA,
     POSTFX_COLOR_GRADE,
     POSTFX_VIGNETTE,
+    POSTFX_SSAO,
+    POSTFX_DOF,
+    POSTFX_MOTION_BLUR,
 } postfx_type_t;
 
 typedef struct
@@ -88,6 +91,26 @@ typedef struct
             float radius;
             float softness;
         } vignette;
+
+        struct
+        {
+            float ao_radius;
+            float ao_intensity;
+            int32_t ao_samples;
+        } ssao;
+
+        struct
+        {
+            float focus_distance;
+            float aperture;
+            float max_blur;
+        } dof;
+
+        struct
+        {
+            float mb_intensity;
+            int32_t mb_samples;
+        } motion_blur;
     } p;
 } postfx_entry_t;
 
@@ -434,6 +457,13 @@ static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h,
             case POSTFX_VIGNETTE:
                 apply_vignette(fbuf, w, h, e->p.vignette.radius, e->p.vignette.softness);
                 break;
+            case POSTFX_SSAO:
+            case POSTFX_DOF:
+            case POSTFX_MOTION_BLUR:
+                /* These effects require depth buffer access which is not available
+                 * in the current PostFX software pipeline. Parameters are stored
+                 * and ready for GPU shader implementation. */
+                break;
         }
     }
 
@@ -603,6 +633,44 @@ void rt_postfx3d_apply_to_canvas(void *canvas)
         return;
 
     postfx_apply(fx, fb.pixels, fb.width, fb.height, fb.stride);
+}
+
+void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t samples)
+{
+    if (!obj) return;
+    rt_postfx3d *fx = (rt_postfx3d *)obj;
+    if (fx->effect_count >= 8) return;
+    postfx_entry_t *e = &fx->effects[fx->effect_count++];
+    e->type = POSTFX_SSAO;
+    e->enabled = 1;
+    e->p.ssao.ao_radius = (float)radius;
+    e->p.ssao.ao_intensity = (float)intensity;
+    e->p.ssao.ao_samples = (int32_t)samples;
+}
+
+void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, double max_blur)
+{
+    if (!obj) return;
+    rt_postfx3d *fx = (rt_postfx3d *)obj;
+    if (fx->effect_count >= 8) return;
+    postfx_entry_t *e = &fx->effects[fx->effect_count++];
+    e->type = POSTFX_DOF;
+    e->enabled = 1;
+    e->p.dof.focus_distance = (float)focus_distance;
+    e->p.dof.aperture = (float)aperture;
+    e->p.dof.max_blur = (float)max_blur;
+}
+
+void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples)
+{
+    if (!obj) return;
+    rt_postfx3d *fx = (rt_postfx3d *)obj;
+    if (fx->effect_count >= 8) return;
+    postfx_entry_t *e = &fx->effects[fx->effect_count++];
+    e->type = POSTFX_MOTION_BLUR;
+    e->enabled = 1;
+    e->p.motion_blur.mb_intensity = (float)intensity;
+    e->p.motion_blur.mb_samples = (int32_t)samples;
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */
