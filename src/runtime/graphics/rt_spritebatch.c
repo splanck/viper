@@ -137,6 +137,13 @@ static void add_item(spritebatch_impl *batch, batch_item *item)
 // SpriteBatch Creation
 //=============================================================================
 
+static void spritebatch_finalize(void *obj)
+{
+    spritebatch_impl *batch = (spritebatch_impl *)obj;
+    free(batch->items);
+    batch->items = NULL;
+}
+
 void *rt_spritebatch_new(int64_t capacity)
 {
     spritebatch_impl *batch =
@@ -159,6 +166,7 @@ void *rt_spritebatch_new(int64_t capacity)
     batch->tint_color = 0;
     batch->alpha = 255;
 
+    rt_obj_set_finalizer(batch, spritebatch_finalize);
     return batch;
 }
 
@@ -230,15 +238,22 @@ void rt_spritebatch_end(void *batch_ptr, void *canvas)
             case BATCH_ITEM_PIXELS:
                 if (item->source)
                 {
+                    void *draw_src = item->source;
+                    if (batch->tint_color != 0)
+                    {
+                        void *tinted = rt_pixels_tint(draw_src, batch->tint_color);
+                        if (tinted)
+                            draw_src = tinted;
+                    }
                     if (batch->alpha < 255 || batch->tint_color != 0)
                     {
                         // With alpha/tint, use alpha blit
-                        rt_canvas_blit_alpha(canvas, item->x, item->y, item->source);
+                        rt_canvas_blit_alpha(canvas, item->x, item->y, draw_src);
                     }
                     else
                     {
                         // Simple blit
-                        rt_canvas_blit(canvas, item->x, item->y, item->source);
+                        rt_canvas_blit(canvas, item->x, item->y, draw_src);
                     }
                 }
                 break;

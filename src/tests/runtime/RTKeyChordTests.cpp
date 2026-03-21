@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_box.h"
 #include "rt_input.h"
 #include "rt_internal.h"
 #include "rt_keychord.h"
@@ -29,13 +30,13 @@ static rt_string make_str(const char *s)
     return rt_const_cstr(s);
 }
 
-/// Helper: create a Seq of key codes from a C array.
+/// Helper: create a Seq of boxed key codes from a C array.
 static void *make_key_seq(const int64_t *keys, int count)
 {
     void *seq = rt_seq_new();
     for (int i = 0; i < count; i++)
     {
-        rt_seq_push(seq, (void *)(intptr_t)keys[i]);
+        rt_seq_push(seq, rt_box_i64(keys[i]));
     }
     return seq;
 }

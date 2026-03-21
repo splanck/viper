@@ -9499,7 +9499,7 @@ RT_FUNC(Canvas3DDrawText2D,     rt_canvas3d_draw_text2d,     "Viper.Graphics3D.C
 // Audio3D — spatial audio
 RT_FUNC(Audio3DSetListener,  rt_audio3d_set_listener,  "Viper.Graphics3D.Audio3D.SetListener",  "void(obj,obj)")
 RT_FUNC(Audio3DPlayAt,       rt_audio3d_play_at,       "Viper.Graphics3D.Audio3D.PlayAt",       "i64(obj,obj,f64,i64)")
-RT_FUNC(Audio3DUpdateVoice,  rt_audio3d_update_voice,  "Viper.Graphics3D.Audio3D.UpdateVoice",  "void(i64,obj)")
+RT_FUNC(Audio3DUpdateVoice,  rt_audio3d_update_voice,  "Viper.Graphics3D.Audio3D.UpdateVoice",  "void(i64,obj,f64)")
 
 //=============================================================================
 // GRAPHICS 3D - PHYSICS3D (World, Body, Character)

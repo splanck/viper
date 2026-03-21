@@ -245,6 +245,8 @@ int64_t rt_canvas_poll(void *canvas_ptr)
         if (canvas->last_event.type == VGFX_EVENT_MOUSE_MOVE)
         {
             float cs = vgfx_window_get_scale(canvas->gfx_win);
+            if (cs < 0.001f)
+                cs = 1.0f;
             int64_t emx = (int64_t)(canvas->last_event.data.mouse_move.x / cs);
             int64_t emy = (int64_t)(canvas->last_event.data.mouse_move.y / cs);
             rt_mouse_update_pos(emx, emy);
@@ -263,6 +265,8 @@ int64_t rt_canvas_poll(void *canvas_ptr)
     // Action.Pressed/Held/Released reflect this frame's input.
     rt_action_update();
 
+    /* Returns the type of the LAST event processed this frame (not a boolean).
+     * Close detection is via Canvas.ShouldClose, not via this return value. */
     return (int64_t)canvas->last_event.type;
 }
 

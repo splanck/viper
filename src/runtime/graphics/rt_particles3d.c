@@ -78,21 +78,24 @@ typedef struct
     void *texture;
     int32_t emitter_shape; /* 0=point, 1=sphere, 2=box */
     double emitter_size[3];
+    uint32_t prng_state; /* per-instance PRNG seed */
+    void *cached_material; /* reused across frames (GFX-052) */
 } rt_particles3d;
 
-/*==========================================================================
- * xorshift32 PRNG (deterministic, no external dependency)
- *=========================================================================*/
+/* Per-instance PRNG state pointer (set before emit/update) */
+static rt_particles3d *s_current_ps = NULL;
 
-static uint32_t prng_state = 0x12345678;
+/*==========================================================================
+ * xorshift32 PRNG (per-instance, deterministic)
+ *=========================================================================*/
 
 static uint32_t xorshift32(void)
 {
-    uint32_t x = prng_state;
+    uint32_t x = s_current_ps->prng_state;
     x ^= x << 13;
     x ^= x >> 17;
     x ^= x << 5;
-    prng_state = x;
+    s_current_ps->prng_state = x;
     return x;
 }
 
@@ -263,6 +266,8 @@ void *rt_particles3d_new(int64_t max_particles)
     ps->texture = NULL;
     ps->emitter_shape = 0;
     ps->emitter_size[0] = ps->emitter_size[1] = ps->emitter_size[2] = 1.0;
+    ps->prng_state = (uint32_t)(uintptr_t)ps ^ 0x12345678; /* unique per instance */
+    ps->cached_material = NULL;
 
     rt_obj_set_finalizer(ps, rt_particles3d_finalize);
     return ps;
@@ -495,6 +500,7 @@ void rt_particles3d_update(void *o, double delta_time)
     if (!o || delta_time <= 0.0)
         return;
     rt_particles3d *ps = (rt_particles3d *)o;
+    s_current_ps = ps;
     float dt = (float)delta_time;
 
     /* Update alive particles */
@@ -665,9 +671,13 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera)
     extern void rt_material3d_set_texture(void *m, void *tex);
     extern void *rt_mat4_identity(void);
 
-    void *mat = rt_material3d_new();
-    rt_material3d_set_color(mat, 1.0, 1.0, 1.0); /* vertex colors handle tinting */
-    rt_material3d_set_unlit(mat, 1);
+    if (!ps->cached_material)
+    {
+        ps->cached_material = rt_material3d_new();
+        rt_material3d_set_color(ps->cached_material, 1.0, 1.0, 1.0);
+        rt_material3d_set_unlit(ps->cached_material, 1);
+    }
+    void *mat = ps->cached_material;
     /* Use average particle alpha for draw sorting (approximate) */
     float avg_alpha = 0.0f;
     for (int32_t i = 0; i < ps->count; i++)

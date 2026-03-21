@@ -176,9 +176,29 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj)
         cmd.emissive_color[1] = (float)mat->emissive[1];
         cmd.emissive_color[2] = (float)mat->emissive[2];
 
+        /* Build light params from pointer array (same as rt_canvas3d_draw_mesh) */
+        vgfx3d_light_params_t lp[VGFX3D_MAX_LIGHTS];
+        int32_t lc = 0;
+        for (int li = 0; li < VGFX3D_MAX_LIGHTS; li++)
+        {
+            const rt_light3d *l = c->lights[li];
+            if (!l) continue;
+            lp[lc].type = l->type;
+            lp[lc].direction[0] = (float)l->direction[0];
+            lp[lc].direction[1] = (float)l->direction[1];
+            lp[lc].direction[2] = (float)l->direction[2];
+            lp[lc].position[0] = (float)l->position[0];
+            lp[lc].position[1] = (float)l->position[1];
+            lp[lc].position[2] = (float)l->position[2];
+            lp[lc].color[0] = (float)l->color[0];
+            lp[lc].color[1] = (float)l->color[1];
+            lp[lc].color[2] = (float)l->color[2];
+            lp[lc].intensity = (float)l->intensity;
+            lp[lc].attenuation = (float)l->attenuation;
+            lc++;
+        }
         c->backend->submit_draw(c->backend_ctx, c->gfx_win, &cmd,
-                                 (const vgfx3d_light_params_t *)c->lights,
-                                 VGFX3D_MAX_LIGHTS, c->ambient,
+                                 lp, lc, c->ambient,
                                  c->wireframe, c->backface_cull);
     }
 }

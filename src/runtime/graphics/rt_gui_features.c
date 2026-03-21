@@ -78,6 +78,11 @@ void *rt_commandpalette_new(void *parent)
 
     rt_commandpalette_data_t *data =
         (rt_commandpalette_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_commandpalette_data_t));
+    if (!data)
+    {
+        vg_commandpalette_destroy(palette);
+        return NULL;
+    }
     data->palette = palette;
     data->selected_command = NULL;
     data->was_selected = 0;
@@ -510,6 +515,11 @@ void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms)
     char *cmsg = rt_string_to_cstr(message);
 
     rt_toast_data_t *data = (rt_toast_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_toast_data_t));
+    if (!data)
+    {
+        free(cmsg);
+        return NULL;
+    }
 
     data->id =
         vg_notification_show(mgr, rt_toast_type_to_vg(type), NULL, cmsg, (uint32_t)duration_ms);
@@ -677,6 +687,11 @@ void *rt_breadcrumb_new(void *parent)
 
     rt_breadcrumb_data_t *data =
         (rt_breadcrumb_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_breadcrumb_data_t));
+    if (!data)
+    {
+        vg_breadcrumb_destroy(bc);
+        return NULL;
+    }
     data->breadcrumb = bc;
     data->clicked_index = -1;
     data->clicked_data = NULL;
@@ -874,6 +889,11 @@ void *rt_minimap_new(void *parent)
 
     rt_minimap_data_t *data =
         (rt_minimap_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_minimap_data_t));
+    if (!data)
+    {
+        vg_minimap_destroy(minimap);
+        return NULL;
+    }
     data->minimap = minimap;
     data->width = 80; // Default width
 

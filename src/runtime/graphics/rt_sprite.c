@@ -73,6 +73,16 @@ typedef struct rt_sprite_impl
 // Forward declaration for time function
 extern int64_t rt_timer_ms(void);
 
+static void sprite_finalize(void *obj)
+{
+    rt_sprite_impl *sprite = (rt_sprite_impl *)obj;
+    for (int i = 0; i < MAX_SPRITE_FRAMES; i++)
+    {
+        if (sprite->frames[i])
+            rt_heap_release(sprite->frames[i]);
+    }
+}
+
 /// @brief Allocate a new sprite.
 static rt_sprite_impl *sprite_alloc(void)
 {
@@ -98,6 +108,7 @@ static rt_sprite_impl *sprite_alloc(void)
     for (int i = 0; i < MAX_SPRITE_FRAMES; i++)
         sprite->frames[i] = NULL;
 
+    rt_obj_set_finalizer(sprite, sprite_finalize);
     return sprite;
 }
 
@@ -407,21 +418,26 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr)
         return;
     }
 
-    // Apply flips, scale, and rotation
+    // Apply flips, scale, and rotation.
+    // NOTE: each transform creates a new GC-managed Pixels object. In tight
+    // render loops this creates GC pressure. Future optimization: cache the
+    // transformed frame when (flip_x, flip_y, scale_x, scale_y, rotation)
+    // haven't changed since last draw.
     void *transformed = frame;
 
-    // Flip first (before scale/rotation)
+    // Flip on a clone (flip_h/v operate in-place; don't corrupt source frame)
     if (sprite->flip_x)
     {
-        void *flipped = rt_pixels_flip_h(transformed);
-        if (flipped)
-            transformed = flipped;
+        transformed = rt_pixels_clone(transformed);
+        if (transformed)
+            rt_pixels_flip_h(transformed);
     }
     if (sprite->flip_y)
     {
-        void *flipped = rt_pixels_flip_v(transformed);
-        if (flipped)
-            transformed = flipped;
+        if (transformed == frame)
+            transformed = rt_pixels_clone(transformed);
+        if (transformed)
+            rt_pixels_flip_v(transformed);
     }
 
     if (sprite->scale_x != 100 || sprite->scale_y != 100)

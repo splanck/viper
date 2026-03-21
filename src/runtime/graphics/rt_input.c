@@ -1122,12 +1122,11 @@ static void *g_mouse_canvas = NULL;
 // Initialization flag
 static bool g_mouse_initialized = false;
 
-// Simple timestamp function
+extern int64_t rt_clock_ticks_us(void);
+
 static int64_t get_time_ms(void)
 {
-    // Use a simple approach - this could be improved with actual time functions
-    static int64_t counter = 0;
-    return ++counter; // For now, just increment - real impl would use clock
+    return rt_clock_ticks_us() / 1000;
 }
 
 void rt_mouse_init(void)

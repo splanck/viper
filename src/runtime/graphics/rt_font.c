@@ -27,7 +27,7 @@
 //     map to the space glyph (all-zero bytes) to avoid out-of-bounds access.
 //   - The font table is a plain C array with internal linkage (not exported).
 //     It is the only content of this file — all rendering logic lives in
-//     rt_pixels.c and rt_graphics.c.
+//     rt_pixels.c and rt_drawing.c.
 //
 // Ownership/Lifetime:
 //   - Static read-only data (no allocation, no cleanup needed).

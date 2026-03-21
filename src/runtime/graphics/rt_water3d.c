@@ -106,8 +106,15 @@ void rt_water3d_update(void *obj, double dt)
     rt_water3d *w = (rt_water3d *)obj;
     w->time += dt;
 
-    /* Regenerate mesh with new wave positions */
-    w->mesh = rt_mesh3d_new();
+    /* Regenerate mesh with new wave positions (reuse allocation to avoid GC pressure) */
+    if (!w->mesh)
+        w->mesh = rt_mesh3d_new();
+    else
+    {
+        rt_mesh3d *m = (rt_mesh3d *)w->mesh;
+        m->vertex_count = 0;
+        m->index_count = 0;
+    }
     double hx = w->width * 0.5, hz = w->depth * 0.5;
     double step_x = w->width / WATER_GRID;
     double step_z = w->depth / WATER_GRID;
@@ -148,11 +155,15 @@ void rt_water3d_update(void *obj, double dt)
         }
     }
 
-    /* Update material */
+    /* Update material — create on first use, update color every frame */
     if (!w->material)
     {
         w->material = rt_material3d_new_color(w->color[0], w->color[1], w->color[2]);
         rt_material3d_set_shininess(w->material, 128.0);
+    }
+    else
+    {
+        rt_material3d_set_color(w->material, w->color[0], w->color[1], w->color[2]);
     }
     rt_material3d_set_alpha(w->material, w->alpha);
 }

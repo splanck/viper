@@ -49,9 +49,10 @@ void rt_audio3d_set_listener(void *position, void *forward)
     listener_fwd[1] = rt_vec3_y(forward);
     listener_fwd[2] = rt_vec3_z(forward);
 
-    /* Compute right = cross(forward, world_up), normalized */
-    double rx = listener_fwd[2]; /* fwd_y * up_z - fwd_z * up_y simplified for up=(0,1,0) */
-    double rz = -listener_fwd[0];
+    /* Compute right = cross(forward, world_up), normalized.
+     * forward × (0,1,0) = (-fz, 0, fx) */
+    double rx = -listener_fwd[2];
+    double rz = listener_fwd[0];
     double rlen = sqrt(rx * rx + rz * rz);
     if (rlen > 1e-8)
     {
@@ -100,12 +101,14 @@ int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int
     return rt_sound_play_ex(sound, vol, pan);
 }
 
-void rt_audio3d_update_voice(int64_t voice, void *position)
+void rt_audio3d_update_voice(int64_t voice, void *position, double max_distance)
 {
     if (!position || voice <= 0)
         return;
+    if (max_distance <= 0.0)
+        max_distance = saved_max_dist; /* fallback to last play_at value */
     int64_t vol, pan;
-    compute_3d_params(position, saved_max_dist, 100, &vol, &pan);
+    compute_3d_params(position, max_distance, 100, &vol, &pan);
     rt_voice_set_volume(voice, vol);
     rt_voice_set_pan(voice, pan);
 }

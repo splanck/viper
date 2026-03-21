@@ -119,6 +119,9 @@ void rt_gui_set_active_dialog(void *dlg);
 /// @details Called from rt_gui_app_destroy. Defined in rt_gui_features.c.
 void rt_gui_features_cleanup(void);
 
+/// @brief Re-apply HiDPI scale to the current theme. Called after theme switch.
+void rt_theme_apply_hidpi_scale(void);
+
 /// @brief Record a dropped file path (called from rt_gui_app_poll on FILE_DROP events).
 /// @details Adds the path to the g_file_drop array. The first call after
 ///          was_dropped is consumed clears old entries. Defined in rt_gui_features.c.

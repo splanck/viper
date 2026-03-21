@@ -189,6 +189,34 @@ static void resolve_collision(rt_body3d *a, rt_body3d *b, const double *n, doubl
     b->velocity[1] += j * b->inv_mass * n[1];
     b->velocity[2] += j * b->inv_mass * n[2];
 
+    /* Coulomb friction — tangential impulse capped by mu * normal impulse */
+    {
+        double mu = sqrt(a->friction * b->friction);
+        double rvx = b->velocity[0] - a->velocity[0];
+        double rvy = b->velocity[1] - a->velocity[1];
+        double rvz = b->velocity[2] - a->velocity[2];
+        double rv_n = rvx * n[0] + rvy * n[1] + rvz * n[2];
+        double tx = rvx - rv_n * n[0];
+        double ty = rvy - rv_n * n[1];
+        double tz = rvz - rv_n * n[2];
+        double tlen = sqrt(tx * tx + ty * ty + tz * tz);
+        if (tlen > 1e-8)
+        {
+            tx /= tlen;
+            ty /= tlen;
+            tz /= tlen;
+            double jt = -(rvx * tx + rvy * ty + rvz * tz) / inv_sum;
+            if (fabs(jt) > mu * j)
+                jt = (jt > 0 ? 1.0 : -1.0) * mu * j;
+            a->velocity[0] -= jt * a->inv_mass * tx;
+            a->velocity[1] -= jt * a->inv_mass * ty;
+            a->velocity[2] -= jt * a->inv_mass * tz;
+            b->velocity[0] += jt * b->inv_mass * tx;
+            b->velocity[1] += jt * b->inv_mass * ty;
+            b->velocity[2] += jt * b->inv_mass * tz;
+        }
+    }
+
     /* Baumgarte positional correction (40%, 1% slop) */
     double slop = 0.01;
     double correction = fmax(depth - slop, 0.0) * 0.4 / inv_sum;
@@ -306,7 +334,10 @@ void rt_world3d_add(void *obj, void *body)
         return;
     rt_world3d *w = (rt_world3d *)obj;
     if (w->body_count >= PH3D_MAX_BODIES)
+    {
+        rt_trap("Physics3D: max body limit (256) exceeded");
         return;
+    }
     w->bodies[w->body_count++] = (rt_body3d *)body;
 }
 
@@ -514,6 +545,8 @@ void rt_body3d_set_static(void *o, int8_t s)
         b->is_static = s;
         if (s)
             b->inv_mass = 0;
+        else
+            b->inv_mass = b->mass > 1e-12 ? 1.0 / b->mass : 0.0;
     }
 }
 

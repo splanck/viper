@@ -24,7 +24,7 @@
 //
 // Ownership/Lifetime:
 //   - Shortcut id/keys/description strings are strdup'd into the static table
-//     and freed by rt_shortcuts_destroy_all().
+//     and freed by rt_shortcuts_clear().
 //   - Clipboard text returned by vgfx_clipboard_get_text is malloc'd by the
 //     platform; this file frees it after converting to rt_string.
 //
@@ -157,6 +157,30 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
                 *key = VG_KEY_F1 + (fnum - 1);
             }
         }
+        else if (strcasecmp(token, "Enter") == 0 || strcasecmp(token, "Return") == 0)
+            *key = VG_KEY_ENTER;
+        else if (strcasecmp(token, "Escape") == 0 || strcasecmp(token, "Esc") == 0)
+            *key = VG_KEY_ESCAPE;
+        else if (strcasecmp(token, "Space") == 0)
+            *key = VG_KEY_SPACE;
+        else if (strcasecmp(token, "Tab") == 0)
+            *key = VG_KEY_TAB;
+        else if (strcasecmp(token, "Backspace") == 0)
+            *key = VG_KEY_BACKSPACE;
+        else if (strcasecmp(token, "Delete") == 0 || strcasecmp(token, "Del") == 0)
+            *key = VG_KEY_DELETE;
+        else if (strcasecmp(token, "Home") == 0)
+            *key = VG_KEY_HOME;
+        else if (strcasecmp(token, "End") == 0)
+            *key = VG_KEY_END;
+        else if (strcasecmp(token, "Left") == 0)
+            *key = VG_KEY_LEFT;
+        else if (strcasecmp(token, "Right") == 0)
+            *key = VG_KEY_RIGHT;
+        else if (strcasecmp(token, "Up") == 0)
+            *key = VG_KEY_UP;
+        else if (strcasecmp(token, "Down") == 0)
+            *key = VG_KEY_DOWN;
         token = rt_strtok_r(NULL, "+", &saveptr);
     }
 
@@ -695,6 +719,7 @@ void rt_cursor_set_visible(int64_t visible)
         vgfx_set_cursor_visible(s_current_app->window, (int32_t)visible);
 }
 
+/// @note Cursor is global — not per-widget. The widget parameter is reserved for future use.
 void rt_widget_set_cursor(void *widget, int64_t type)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -702,6 +727,7 @@ void rt_widget_set_cursor(void *widget, int64_t type)
     rt_cursor_set(type);
 }
 
+/// @note Cursor is global — not per-widget. The widget parameter is reserved for future use.
 void rt_widget_reset_cursor(void *widget)
 {
     RT_ASSERT_MAIN_THREAD();

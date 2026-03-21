@@ -367,7 +367,7 @@ void rt_camera3d_fps_init(void *obj)
     double fy = -cam->view[9];
     double fz = -cam->view[10];
     cam->fps_yaw = atan2(fx, -fz) * (180.0 / M_PI);
-    cam->fps_pitch = asin(fy) * (180.0 / M_PI);
+    cam->fps_pitch = asin(fmax(-1.0, fmin(1.0, fy))) * (180.0 / M_PI);
     if (cam->fps_pitch > 89.0)
         cam->fps_pitch = 89.0;
     if (cam->fps_pitch < -89.0)

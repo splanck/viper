@@ -385,14 +385,20 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
             if (new_cap > max_cap)
                 new_cap = max_cap;
             int64_t *nx = (int64_t *)realloc(stack_x, (size_t)new_cap * sizeof(int64_t));
-            int64_t *ny = (int64_t *)realloc(stack_y, (size_t)new_cap * sizeof(int64_t));
-            if (!nx || !ny)
+            if (!nx)
             {
-                free(nx ? nx : stack_x);
-                free(ny ? ny : stack_y);
+                free(stack_x);
+                free(stack_y);
                 return;
             }
             stack_x = nx;
+            int64_t *ny = (int64_t *)realloc(stack_y, (size_t)new_cap * sizeof(int64_t));
+            if (!ny)
+            {
+                free(stack_x);
+                free(stack_y);
+                return;
+            }
             stack_y = ny;
             stack_cap = new_cap;
         }
@@ -727,13 +733,9 @@ void rt_canvas_arc(void *canvas_ptr,
 
     vgfx_color_t col = (vgfx_color_t)color;
 
-    // Normalize angles
-    while (start_angle < 0)
-        start_angle += 360;
-    while (end_angle < 0)
-        end_angle += 360;
-    start_angle = start_angle % 360;
-    end_angle = end_angle % 360;
+    // Normalize angles (modulo avoids near-infinite loop for extreme values)
+    start_angle = ((start_angle % 360) + 360) % 360;
+    end_angle = ((end_angle % 360) + 360) % 360;
 
     if (end_angle <= start_angle)
         end_angle += 360;
@@ -794,13 +796,9 @@ void rt_canvas_arc_frame(void *canvas_ptr,
 
     vgfx_color_t col = (vgfx_color_t)color;
 
-    // Normalize angles
-    while (start_angle < 0)
-        start_angle += 360;
-    while (end_angle < 0)
-        end_angle += 360;
-    start_angle = start_angle % 360;
-    end_angle = end_angle % 360;
+    // Normalize angles (modulo avoids near-infinite loop for extreme values)
+    start_angle = ((start_angle % 360) + 360) % 360;
+    end_angle = ((end_angle % 360) + 360) % 360;
 
     if (end_angle <= start_angle)
         end_angle += 360;
@@ -1289,7 +1287,7 @@ rt_string rt_color_to_hex(int64_t color)
     int64_t g = (color >> 8) & 0xFF;
     int64_t b = color & 0xFF;
     int len;
-    if (a != 0 && a != 255)
+    if (a != 0)
         len = snprintf(buf, sizeof(buf), "#%02X%02X%02X%02X", (int)r, (int)g, (int)b, (int)a);
     else
         len = snprintf(buf, sizeof(buf), "#%02X%02X%02X", (int)r, (int)g, (int)b);

@@ -131,6 +131,11 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
     /* Phase 1: Copy vertices */
     nm->vertex_count = (int32_t)m->vertex_count;
     nm->vertices = (nav_vertex_t *)malloc((size_t)nm->vertex_count * sizeof(nav_vertex_t));
+    if (!nm->vertices)
+    {
+        rt_trap("NavMesh3D.Build: vertex allocation failed");
+        return NULL;
+    }
     for (uint32_t i = 0; i < m->vertex_count; i++)
     {
         nm->vertices[i].position[0] = m->vertices[i].pos[0];
@@ -141,6 +146,11 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
     /* Phase 2: Filter triangles by slope */
     int32_t tri_cap = (int32_t)(m->index_count / 3);
     nm->triangles = (nav_triangle_t *)malloc((size_t)tri_cap * sizeof(nav_triangle_t));
+    if (!nm->triangles)
+    {
+        rt_trap("NavMesh3D.Build: triangle allocation failed");
+        return NULL;
+    }
     nm->triangle_count = 0;
 
     for (uint32_t i = 0; i + 2 < m->index_count; i += 3)
@@ -236,8 +246,10 @@ static int32_t find_tri(const rt_navmesh3d *nm, float px, float py, float pz)
 
 typedef struct { int32_t tri; float f; } heap_entry_t;
 
-static void heap_push(heap_entry_t *heap, int32_t *size, int32_t tri, float f)
+static void heap_push(heap_entry_t *heap, int32_t *size, int32_t capacity, int32_t tri, float f)
 {
+    if (*size >= capacity)
+        return;
     int32_t i = (*size)++;
     heap[i].tri = tri;
     heap[i].f = f;
@@ -306,11 +318,12 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v)
     memset(parent, -1, (size_t)tc * sizeof(int32_t));
     for (int32_t i = 0; i < tc; i++) g_cost[i] = FLT_MAX;
 
-    heap_entry_t *heap = (heap_entry_t *)malloc((size_t)tc * sizeof(heap_entry_t));
+    int32_t heap_cap = tc * 3;
+    heap_entry_t *heap = (heap_entry_t *)malloc((size_t)heap_cap * sizeof(heap_entry_t));
     int32_t heap_size = 0;
 
     g_cost[start] = 0;
-    heap_push(heap, &heap_size, start, centroid_dist(nm, start, goal));
+    heap_push(heap, &heap_size, heap_cap, start, centroid_dist(nm, start, goal));
 
     int found = 0;
     while (heap_size > 0)
@@ -330,7 +343,7 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v)
             {
                 g_cost[next] = new_g;
                 parent[next] = cur;
-                heap_push(heap, &heap_size, next, new_g + centroid_dist(nm, next, goal));
+                heap_push(heap, &heap_size, heap_cap, next, new_g + centroid_dist(nm, next, goal));
             }
         }
     }

@@ -738,8 +738,11 @@ void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh)
     if (node->lod_count >= node->lod_capacity)
     {
         int32_t new_cap = node->lod_capacity < 4 ? 4 : node->lod_capacity * 2;
-        node->lod_levels = realloc(node->lod_levels,
-                                    (size_t)new_cap * sizeof(node->lod_levels[0]));
+        void *tmp = realloc(node->lod_levels,
+                            (size_t)new_cap * sizeof(node->lod_levels[0]));
+        if (!tmp)
+            return;
+        node->lod_levels = tmp;
         node->lod_capacity = new_cap;
     }
 

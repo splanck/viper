@@ -135,7 +135,7 @@ static void ensure_decal_mesh(rt_decal3d *d)
     double tuy = nz * rx - nx * rz;
     double tuz = nx * ry - ny * rx;
 
-    double hs = d->size; /* half-size */
+    double hs = d->size * 0.5; /* half-size */
     double off = 0.01; /* surface offset to prevent z-fighting */
     double cx = d->position[0] + nx * off;
     double cy = d->position[1] + ny * off;

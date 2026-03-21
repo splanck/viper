@@ -126,8 +126,20 @@ static int64_t find_or_create_debounce_slot(rt_inputmgr mgr, int64_t key)
         return slot;
     }
 
-    // No space - reuse oldest slot (slot 0)
-    return 0;
+    // No space - evict the slot with the oldest (largest) timer
+    int64_t oldest_slot = 0;
+    double oldest_time = mgr->debounce_timers[0];
+    for (int64_t i = 1; i < mgr->debounce_count; i++)
+    {
+        if (mgr->debounce_timers[i] > oldest_time)
+        {
+            oldest_time = mgr->debounce_timers[i];
+            oldest_slot = i;
+        }
+    }
+    mgr->debounce_keys[oldest_slot] = key;
+    mgr->debounce_timers[oldest_slot] = 0;
+    return oldest_slot;
 }
 
 int8_t rt_inputmgr_key_pressed_debounced(rt_inputmgr mgr, int64_t key)

@@ -40,6 +40,8 @@
 #include "rt_input.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+
+extern int64_t rt_unbox_i64(void *box);
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -164,7 +166,7 @@ static void add_entry(
         for (i = 0; i < key_count; i++)
         {
             void *item = rt_seq_get(keys, i);
-            e->keys[i] = (int64_t)(intptr_t)item;
+            e->keys[i] = rt_unbox_i64(item);
         }
     }
 

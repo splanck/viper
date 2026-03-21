@@ -349,7 +349,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
     {
         if (errBlob)
             ID3D10Blob_Release(errBlob);
-        free(ctx);
+        d3d11_destroy_ctx(ctx);
         return NULL;
     }
 
@@ -369,7 +369,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
         ID3D10Blob_Release(vsBlob);
         if (errBlob)
             ID3D10Blob_Release(errBlob);
-        free(ctx);
+        d3d11_destroy_ctx(ctx);
         return NULL;
     }
 

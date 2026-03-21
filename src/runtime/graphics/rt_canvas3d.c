@@ -54,6 +54,7 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 extern void *rt_pixels_new(int64_t width, int64_t height);
+extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
 
 /*==========================================================================
  * Deferred draw command (for transparency sorting)
@@ -141,6 +142,15 @@ static void rt_canvas3d_finalize(void *obj)
     free(c->temp_buffers);
     c->temp_buffers = NULL;
     c->temp_buf_count = c->temp_buf_capacity = 0;
+
+    /* Free shadow render target if allocated */
+    if (c->shadow_rt)
+    {
+        free(c->shadow_rt->color_buf);
+        free(c->shadow_rt->depth_buf);
+        free(c->shadow_rt);
+        c->shadow_rt = NULL;
+    }
 
     if (c->gfx_win)
     {
@@ -887,6 +897,8 @@ int64_t rt_canvas3d_poll(void *obj)
         else if (!captured && evt.type == VGFX_EVENT_MOUSE_MOVE)
         {
             float cs = vgfx_window_get_scale(c->gfx_win);
+            if (cs < 0.001f)
+                cs = 1.0f;
             rt_mouse_update_pos((int64_t)(evt.data.mouse_move.x / cs),
                                 (int64_t)(evt.data.mouse_move.y / cs));
         }
@@ -1386,20 +1398,13 @@ void *rt_canvas3d_screenshot(void *obj)
     if (!pixels)
         return NULL;
 
-    typedef struct
-    {
-        int64_t w;
-        int64_t h;
-        uint32_t *data;
-    } px_view;
-
-    px_view *pv = (px_view *)pixels;
     for (int32_t y = 0; y < fb.height; y++)
         for (int32_t x = 0; x < fb.width; x++)
         {
             const uint8_t *src = &fb.pixels[y * fb.stride + x * 4];
-            pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
-                                      ((uint32_t)src[2] << 8) | (uint32_t)src[3];
+            int64_t color = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
+                            ((uint32_t)src[2] << 8) | (uint32_t)src[3];
+            rt_pixels_set(pixels, (int64_t)x, (int64_t)y, color);
         }
     return pixels;
 }

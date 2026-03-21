@@ -99,6 +99,22 @@ typedef struct rt_tilemap_impl
 // Tilemap Creation
 //=============================================================================
 
+static void tilemap_finalize(void *obj)
+{
+    rt_tilemap_impl *tm = (rt_tilemap_impl *)obj;
+    /* Release base tileset */
+    if (tm->tileset)
+        rt_heap_release(tm->tileset);
+    /* Free per-layer owned tiles and release per-layer tilesets */
+    for (int32_t i = 0; i < tm->layer_count; i++)
+    {
+        if (tm->layers[i].owns_tiles && tm->layers[i].tiles)
+            free(tm->layers[i].tiles);
+        if (tm->layers[i].tileset)
+            rt_heap_release(tm->layers[i].tileset);
+    }
+}
+
 void *rt_tilemap_new(int64_t width, int64_t height, int64_t tile_width, int64_t tile_height)
 {
     if (width <= 0)
@@ -155,6 +171,7 @@ void *rt_tilemap_new(int64_t width, int64_t height, int64_t tile_width, int64_t 
     tilemap->layers[0].owns_tiles = 0; // inline allocation
     memcpy(tilemap->layers[0].name, "base", 5);
 
+    rt_obj_set_finalizer(tilemap, tilemap_finalize);
     return tilemap;
 }
 

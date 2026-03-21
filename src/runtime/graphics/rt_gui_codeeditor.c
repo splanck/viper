@@ -1252,6 +1252,11 @@ void *rt_messagebox_new(rt_string title, rt_string message, int64_t type)
 
     rt_messagebox_data_t *data =
         (rt_messagebox_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_messagebox_data_t));
+    if (!data)
+    {
+        vg_widget_destroy((vg_widget_t *)dlg);
+        return NULL;
+    }
     data->dialog = dlg;
     data->result = -1;
     data->default_button = 0;
@@ -1552,6 +1557,11 @@ void *rt_filedialog_new(int64_t type)
 
     rt_filedialog_data_t *data =
         (rt_filedialog_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_filedialog_data_t));
+    if (!data)
+    {
+        vg_filedialog_destroy(dlg);
+        return NULL;
+    }
     data->dialog = dlg;
     data->selected_paths = NULL;
     data->selected_count = 0;
@@ -1729,6 +1739,11 @@ void *rt_findbar_new(void *parent)
 
     rt_findbar_data_t *data =
         (rt_findbar_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_findbar_data_t));
+    if (!data)
+    {
+        vg_findreplacebar_destroy(bar);
+        return NULL;
+    }
     data->bar = bar;
     data->bound_editor = NULL;
     data->find_text = NULL;

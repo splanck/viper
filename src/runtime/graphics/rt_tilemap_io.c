@@ -525,7 +525,7 @@ void *rt_tilemap_load_csv(rt_string path, int64_t tile_w, int64_t tile_h)
     // First pass: count rows and max columns
     int64_t max_cols = 0;
     int64_t rows = 0;
-    char line_buf[4096];
+    char line_buf[16384]; /* max CSV line length — rows wider than this are truncated */
 
     while (fgets(line_buf, sizeof(line_buf), f))
     {

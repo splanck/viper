@@ -107,6 +107,8 @@ static int bf_hex_digit(char c)
 /// @brief Parse a hex byte from two characters. Returns -1 on error.
 static int bf_hex_byte(const char *s)
 {
+    if (!s[0] || !s[1])
+        return -1;
     int hi = bf_hex_digit(s[0]);
     int lo = bf_hex_digit(s[1]);
     if (hi < 0 || lo < 0)
@@ -135,6 +137,7 @@ void *rt_bitmapfont_load_bdf(rt_string path)
         return NULL;
     }
     memset(font, 0, sizeof(rt_bitmapfont_impl));
+    rt_obj_set_finalizer(font, rt_bitmapfont_destroy);
 
     char line[1024];
     int encoding = -1;
@@ -213,7 +216,8 @@ void *rt_bitmapfont_load_bdf(rt_string path)
         }
         else if (strncmp(line, "BBX ", 4) == 0)
         {
-            sscanf(line + 4, "%d %d %d %d", &bbx_w, &bbx_h, &bbx_xoff, &bbx_yoff);
+            if (sscanf(line + 4, "%d %d %d %d", &bbx_w, &bbx_h, &bbx_xoff, &bbx_yoff) != 4)
+                continue;
         }
         else if (strncmp(line, "FONTBOUNDINGBOX ", 16) == 0)
         {
@@ -242,9 +246,11 @@ void *rt_bitmapfont_load_bdf(rt_string path)
             if (bbx_h <= 0)
                 bbx_h = default_bbx_h;
 
+            if (bbx_w > 4096 || bbx_h > 4096)
+                continue;
             int rb = bf_row_bytes(bbx_w);
-            int alloc_size = rb * bbx_h;
-            if (alloc_size > 0)
+            int64_t alloc_size = (int64_t)rb * bbx_h;
+            if (alloc_size > 0 && alloc_size <= 1024 * 1024)
             {
                 cur_bitmap = (uint8_t *)calloc(1, (size_t)alloc_size);
             }
@@ -258,6 +264,7 @@ void *rt_bitmapfont_load_bdf(rt_string path)
     }
 
     fclose(f);
+    free(cur_bitmap); /* Free any partial glyph from truncated file */
 
     if (font->glyph_count == 0)
     {
@@ -379,6 +386,7 @@ void *rt_bitmapfont_load_psf(rt_string path)
         return NULL;
     }
     memset(font, 0, sizeof(rt_bitmapfont_impl));
+    rt_obj_set_finalizer(font, rt_bitmapfont_destroy);
 
     fseek(f, data_offset, SEEK_SET);
 
@@ -398,7 +406,12 @@ void *rt_bitmapfont_load_psf(rt_string path)
 
         // PSF glyph bitmaps are already packed MSB-left, row-major
         // but we need to copy only the relevant bytes per row
-        int alloc_size = rb * glyph_height;
+        int64_t alloc_size = (int64_t)rb * glyph_height;
+        if (alloc_size <= 0 || alloc_size > 1024 * 1024)
+        {
+            free(raw);
+            break;
+        }
         uint8_t *bitmap = (uint8_t *)calloc(1, (size_t)alloc_size);
         if (!bitmap)
         {

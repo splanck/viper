@@ -46,6 +46,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern int64_t rt_unbox_i64(void *box);
+
 //=========================================================================
 // Internal Data Structures
 //=========================================================================
@@ -690,7 +692,7 @@ int8_t rt_action_bind_chord(rt_string action, void *keys)
 
     b->chord_len = (int32_t)len;
     for (i = 0; i < len; i++)
-        b->chord_keys[i] = (int64_t)rt_seq_get(keys, i);
+        b->chord_keys[i] = rt_unbox_i64(rt_seq_get(keys, i));
 
     add_binding(a, b);
     return 1;
@@ -718,7 +720,7 @@ int8_t rt_action_unbind_chord(rt_string action, void *keys)
             int8_t match = 1;
             for (i = 0; i < len; i++)
             {
-                if (b->chord_keys[i] != (int64_t)rt_seq_get(keys, i))
+                if (b->chord_keys[i] != rt_unbox_i64(rt_seq_get(keys, i)))
                 {
                     match = 0;
                     break;

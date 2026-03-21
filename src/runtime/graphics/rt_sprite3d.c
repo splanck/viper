@@ -37,6 +37,8 @@ extern void rt_mesh3d_add_vertex(void *m, double x, double y, double z,
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
 extern void *rt_mat4_identity(void);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
+extern int64_t rt_pixels_width(void *pixels);
+extern int64_t rt_pixels_height(void *pixels);
 extern void *rt_material3d_new(void);
 extern void rt_material3d_set_texture(void *m, void *tex);
 extern void rt_material3d_set_unlit(void *m, int8_t u);
@@ -70,10 +72,8 @@ void *rt_sprite3d_new(void *texture)
     /* Try to get texture dimensions */
     if (texture)
     {
-        typedef struct { int64_t w; int64_t h; uint32_t *data; } px_view;
-        px_view *pv = (px_view *)texture;
-        s->tex_w = (int32_t)pv->w;
-        s->tex_h = (int32_t)pv->h;
+        s->tex_w = (int32_t)rt_pixels_width(texture);
+        s->tex_h = (int32_t)rt_pixels_height(texture);
         s->frame_w = s->tex_w;
         s->frame_h = s->tex_h;
     }

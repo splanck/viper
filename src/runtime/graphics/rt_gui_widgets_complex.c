@@ -240,7 +240,6 @@ void *rt_codeeditor_new(void *parent)
         rt_gui_ensure_default_font();
         if (s_current_app->default_font)
         {
-    RT_ASSERT_MAIN_THREAD();
             vg_codeeditor_set_font(
                 editor, s_current_app->default_font, s_current_app->default_font_size);
         }
@@ -375,16 +374,47 @@ void rt_codeeditor_set_font_size(void *editor, double size)
 // Theme Functions
 //=============================================================================
 
+void rt_theme_apply_hidpi_scale(void)
+{
+    if (!s_current_app || !s_current_app->window)
+        return;
+    float _s = vgfx_window_get_scale(s_current_app->window);
+    if (_s <= 0.0f)
+        _s = 1.0f;
+    vg_theme_t *_t = vg_theme_get_current();
+    if (!_t)
+        return;
+    _t->ui_scale = _s;
+    /* Re-apply scaling from the base theme values (theme_dark/light return
+     * fresh unscaled copies, so the values are unscaled at this point). */
+    _t->typography.size_small *= _s;
+    _t->typography.size_normal *= _s;
+    _t->typography.size_large *= _s;
+    _t->typography.size_heading *= _s;
+    _t->spacing.xs *= _s;
+    _t->spacing.sm *= _s;
+    _t->spacing.md *= _s;
+    _t->spacing.lg *= _s;
+    _t->spacing.xl *= _s;
+    _t->button.height *= _s;
+    _t->button.padding_h *= _s;
+    _t->input.height *= _s;
+    _t->input.padding_h *= _s;
+    _t->scrollbar.width *= _s;
+}
+
 void rt_theme_set_dark(void)
 {
     RT_ASSERT_MAIN_THREAD();
     vg_theme_set_current(vg_theme_dark());
+    rt_theme_apply_hidpi_scale();
 }
 
 void rt_theme_set_light(void)
 {
     RT_ASSERT_MAIN_THREAD();
     vg_theme_set_current(vg_theme_light());
+    rt_theme_apply_hidpi_scale();
 }
 
 rt_string rt_theme_get_name(void)
@@ -733,7 +763,6 @@ int64_t rt_listbox_was_selection_changed(void *listbox)
     // (matches the pattern used by rt_tabbar_was_changed / prev_active_tab).
     if (lb->selected != lb->prev_selected)
     {
-    RT_ASSERT_MAIN_THREAD();
         lb->prev_selected = lb->selected;
         return 1;
     }

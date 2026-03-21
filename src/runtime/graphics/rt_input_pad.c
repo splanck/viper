@@ -1013,7 +1013,7 @@ static void platform_pad_vibrate(int64_t index, double left, double right)
 // Deadzone Application
 //=============================================================================
 
-/// @brief Apply radial deadzone to stick value
+/// @brief Apply per-axis deadzone to stick value
 static double apply_deadzone(double value)
 {
     if (g_pad_deadzone <= 0.0)

@@ -250,10 +250,10 @@ void *rt_mat4_perspective(double fov, double aspect, double near, double far)
                        0.0,
                        0.0,
                        (far + near) * nf,
-                       -1.0,
-                       0.0,
-                       0.0,
                        2.0 * far * near * nf,
+                       0.0,
+                       0.0,
+                       -1.0,
                        0.0);
 }
 

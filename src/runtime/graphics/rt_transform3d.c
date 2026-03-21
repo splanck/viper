@@ -247,40 +247,42 @@ void rt_transform3d_look_at(void *obj, void *target, void *up_vec)
     /* True up = cross(right, forward) */
     double tux = ry*tz - rz*ty, tuy = rz*tx - rx*tz, tuz = rx*ty - ry*tx;
 
-    /* Extract quaternion from rotation matrix (Shepperd method) */
-    /* Matrix: row0=right, row1=true_up, row2=forward */
-    double m00 = rx, m11 = tuy, m22 = tz;
+    /* Extract quaternion from full 3x3 rotation matrix (Shepperd method).
+     * Matrix columns: right(r), true_up(tu), forward(f) */
+    double m00 = rx,  m01 = tux, m02 = tx;
+    double m10 = ry,  m11 = tuy, m12 = ty;
+    double m20 = rz,  m21 = tuz, m22 = tz;
     double trace = m00 + m11 + m22;
     if (trace > 0.0)
     {
         double s = sqrt(trace + 1.0) * 2.0;
         xf->rotation[3] = 0.25 * s;
-        xf->rotation[0] = (tuz - ry) / s;
-        xf->rotation[1] = (rx - tux) / s; /* note: using full matrix elements would be more precise */
-        xf->rotation[2] = (tux - rx) / s;
+        xf->rotation[0] = (m21 - m12) / s;
+        xf->rotation[1] = (m02 - m20) / s;
+        xf->rotation[2] = (m10 - m01) / s;
     }
     else if (m00 > m11 && m00 > m22)
     {
         double s = sqrt(1.0 + m00 - m11 - m22) * 2.0;
-        xf->rotation[3] = (tuz - ry) / s;
+        xf->rotation[3] = (m21 - m12) / s;
         xf->rotation[0] = 0.25 * s;
-        xf->rotation[1] = (rx + tux) / s;
-        xf->rotation[2] = (rz + tx) / s;
+        xf->rotation[1] = (m01 + m10) / s;
+        xf->rotation[2] = (m02 + m20) / s;
     }
     else if (m11 > m22)
     {
         double s = sqrt(1.0 + m11 - m00 - m22) * 2.0;
-        xf->rotation[3] = (rx - tux) / s;
-        xf->rotation[0] = (rx + tux) / s;
+        xf->rotation[3] = (m02 - m20) / s;
+        xf->rotation[0] = (m01 + m10) / s;
         xf->rotation[1] = 0.25 * s;
-        xf->rotation[2] = (tuy + tz) / s;
+        xf->rotation[2] = (m12 + m21) / s;
     }
     else
     {
         double s = sqrt(1.0 + m22 - m00 - m11) * 2.0;
-        xf->rotation[3] = (tux - rx) / s;
-        xf->rotation[0] = (rz + tx) / s;
-        xf->rotation[1] = (tuy + tz) / s;
+        xf->rotation[3] = (m10 - m01) / s;
+        xf->rotation[0] = (m02 + m20) / s;
+        xf->rotation[1] = (m12 + m21) / s;
         xf->rotation[2] = 0.25 * s;
     }
     xf->dirty = 1;

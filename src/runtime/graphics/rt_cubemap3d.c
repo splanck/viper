@@ -30,13 +30,9 @@
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_trap(const char *msg);
 
-/* Access Pixels dimensions */
-typedef struct
-{
-    int64_t width;
-    int64_t height;
-    uint32_t *data;
-} cubemap_pixels_view;
+extern int64_t rt_pixels_width(void *pixels);
+extern int64_t rt_pixels_height(void *pixels);
+extern int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y);
 
 void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *nz)
 {
@@ -53,9 +49,8 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
     }
 
     /* Validate: all faces must be square and same dimensions */
-    cubemap_pixels_view *first = (cubemap_pixels_view *)faces[0];
-    int64_t size = first->width;
-    if (size <= 0 || first->height != size)
+    int64_t size = rt_pixels_width(faces[0]);
+    if (size <= 0 || rt_pixels_height(faces[0]) != size)
     {
         rt_trap("CubeMap3D.New: faces must be square");
         return NULL;
@@ -63,8 +58,7 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
 
     for (int i = 1; i < 6; i++)
     {
-        cubemap_pixels_view *f = (cubemap_pixels_view *)faces[i];
-        if (f->width != size || f->height != size)
+        if (rt_pixels_width(faces[i]) != size || rt_pixels_height(faces[i]) != size)
         {
             rt_trap("CubeMap3D.New: all faces must have same dimensions");
             return NULL;
@@ -166,26 +160,28 @@ void rt_cubemap_sample(
     u = (u / ma + 1.0f) * 0.5f;
     v = (v / ma + 1.0f) * 0.5f;
 
-    /* Sample face texture */
-    cubemap_pixels_view *pv = (cubemap_pixels_view *)cm->faces[face];
-    if (!pv || !pv->data)
+    /* Sample face texture using public API */
+    void *face_pixels = cm->faces[face];
+    if (!face_pixels)
     {
         *out_r = *out_g = *out_b = 0.0f;
         return;
     }
+    int64_t fw = rt_pixels_width(face_pixels);
+    int64_t fh = rt_pixels_height(face_pixels);
 
-    int px = (int)(u * (float)pv->width);
-    int py = (int)(v * (float)pv->height);
+    int px = (int)(u * (float)fw);
+    int py = (int)(v * (float)fh);
     if (px < 0)
         px = 0;
-    if (px >= (int)pv->width)
-        px = (int)pv->width - 1;
+    if (px >= (int)fw)
+        px = (int)fw - 1;
     if (py < 0)
         py = 0;
-    if (py >= (int)pv->height)
-        py = (int)pv->height - 1;
+    if (py >= (int)fh)
+        py = (int)fh - 1;
 
-    uint32_t pixel = pv->data[py * pv->width + px];
+    int64_t pixel = rt_pixels_get(face_pixels, px, py);
     *out_r = (float)((pixel >> 24) & 0xFF) / 255.0f;
     *out_g = (float)((pixel >> 16) & 0xFF) / 255.0f;
     *out_b = (float)((pixel >> 8) & 0xFF) / 255.0f;

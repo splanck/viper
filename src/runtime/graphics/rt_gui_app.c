@@ -74,6 +74,8 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
 {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = (rt_gui_app_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_gui_app_t));
+    if (!app)
+        return NULL;
     memset(app, 0, sizeof(rt_gui_app_t));
 
     // Create window
@@ -112,7 +114,10 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
 
     // Set dark theme by default, then propagate the HiDPI scale factor so that
     // widget creation functions can derive correctly-scaled pixel measurements.
+    // Guard: only scale once (cumulative scaling produces wrong metrics).
     vg_theme_set_current(vg_theme_dark());
+    static int s_theme_scaled = 0;
+    if (!s_theme_scaled)
     {
         float _s = app->window ? vgfx_window_get_scale(app->window) : 1.0f;
         if (_s <= 0.0f)
@@ -136,6 +141,7 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
         _t->input.height *= _s;
         _t->input.padding_h *= _s;
         _t->scrollbar.width *= _s;
+        s_theme_scaled = 1;
     }
 
     s_current_app = app;
@@ -407,7 +413,8 @@ void rt_gui_app_poll(void *app_ptr)
                         }
                         else if (has_shift)
                         {
-                            // Shift mapping for US keyboard layout
+                            // US QWERTY shift mapping — non-US layouts may produce wrong
+                        // shifted characters. TODO: use platform-level translation.
                             switch (key)
                             {
                                 case '1':
@@ -605,6 +612,8 @@ void rt_gui_app_set_font(void *app_ptr, void *font, double size)
     if (!app_ptr)
         return;
     rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;
+    if (app->default_font)
+        vg_font_destroy(app->default_font);
     app->default_font = (vg_font_t *)font;
     app->default_font_size = (float)size;
 }

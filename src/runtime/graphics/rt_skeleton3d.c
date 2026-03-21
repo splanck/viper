@@ -43,6 +43,7 @@ extern double rt_quat_x(void *q);
 extern double rt_quat_y(void *q);
 extern double rt_quat_z(void *q);
 extern double rt_quat_w(void *q);
+extern double rt_mat4_get(void *m, int64_t row, int64_t col);
 extern void *rt_mat4_new(double m0,
                          double m1,
                          double m2,
@@ -135,6 +136,7 @@ typedef struct
     int8_t playing;
     float *bone_palette;     /* bone_count * 16 floats */
     float *local_transforms; /* bone_count * 16 floats (workspace) */
+    float *globals_buf;      /* bone_count * 16 floats (reused across frames) */
 } rt_anim_player3d;
 
 /*==========================================================================
@@ -334,14 +336,9 @@ int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, 
     /* Copy bind pose from Mat4 (double → float) */
     if (bind_mat4)
     {
-        typedef struct
-        {
-            double m[16];
-        } mat4_view;
-
-        const mat4_view *mv = (const mat4_view *)bind_mat4;
-        for (int i = 0; i < 16; i++)
-            bone->bind_pose_local[i] = (float)mv->m[i];
+        for (int r = 0; r < 4; r++)
+            for (int c = 0; c < 4; c++)
+                bone->bind_pose_local[r * 4 + c] = (float)rt_mat4_get(bind_mat4, r, c);
     }
     else
     {
@@ -635,6 +632,8 @@ static void rt_anim_player3d_finalize(void *obj)
     p->bone_palette = NULL;
     free(p->local_transforms);
     p->local_transforms = NULL;
+    free(p->globals_buf);
+    p->globals_buf = NULL;
 }
 
 void *rt_anim_player3d_new(void *skeleton)
@@ -756,9 +755,14 @@ static void compute_bone_palette(rt_anim_player3d *p)
      * multiply each by its inverse bind pose to produce the palette.
      * Using bone_palette as scratch for globals would be wrong because
      * palette entries include inverse_bind, which would corrupt children. */
-    float *globals = (float *)malloc((size_t)skel->bone_count * 16 * sizeof(float));
-    if (!globals)
-        return;
+    /* Reuse globals workspace across frames to avoid per-frame malloc */
+    if (!p->globals_buf)
+    {
+        p->globals_buf = (float *)malloc((size_t)skel->bone_count * 16 * sizeof(float));
+        if (!p->globals_buf)
+            return;
+    }
+    float *globals = p->globals_buf;
 
     /* Phase 1: compute global transforms (parent_global * local) */
     for (int32_t i = 0; i < skel->bone_count; i++)
@@ -778,8 +782,6 @@ static void compute_bone_palette(rt_anim_player3d *p)
     /* Phase 2: palette[i] = global[i] * inverse_bind[i] */
     for (int32_t i = 0; i < skel->bone_count; i++)
         mat4f_mul_local(&globals[i * 16], skel->bones[i].inverse_bind, &p->bone_palette[i * 16]);
-
-    free(globals);
 }
 
 void rt_anim_player3d_update(void *obj, double delta_time)
@@ -796,8 +798,7 @@ void rt_anim_player3d_update(void *obj, double delta_time)
     if (p->current->looping)
     {
         if (p->current->duration > 0.0f)
-            while (p->current_time >= p->current->duration)
-                p->current_time -= p->current->duration;
+            p->current_time = fmodf(p->current_time, p->current->duration);
     }
     else
     {

@@ -44,6 +44,7 @@
 #include "rt_graphics.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_pixels.h"
 
 #include <string.h>
 
@@ -262,6 +263,7 @@ void rt_camera_follow(void *camera_ptr, int64_t x, int64_t y)
     // Center the camera on the given position
     camera->x = x - camera->width / 2;
     camera->y = y - camera->height / 2;
+    camera->dirty = 1;
     camera_clamp_bounds(camera);
 }
 
@@ -333,6 +335,7 @@ void rt_camera_move(void *camera_ptr, int64_t dx, int64_t dy)
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     camera->x += dx;
     camera->y += dy;
+    camera->dirty = 1;
     camera_clamp_bounds(camera);
 }
 
@@ -480,10 +483,8 @@ int64_t rt_camera_draw_parallax(void *camera_ptr, void *canvas)
         if (!layer->active || !layer->pixels)
             continue;
 
-        /* Read pixel dimensions from rt_pixels_impl layout: {int64_t w, h, ...} */
-        int64_t *pdata = (int64_t *)layer->pixels;
-        int64_t pw = pdata[0];
-        int64_t ph = pdata[1];
+        int64_t pw = rt_pixels_width(layer->pixels);
+        int64_t ph = rt_pixels_height(layer->pixels);
 
         if (pw <= 0 || ph <= 0)
             continue;

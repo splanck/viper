@@ -101,6 +101,11 @@ static int compare_depth(const void *a, const void *b);
 void *rt_scene_node_new(void)
 {
     scene_node_impl *node = (scene_node_impl *)rt_obj_new_i64(0, (int64_t)sizeof(scene_node_impl));
+    if (!node)
+    {
+        rt_trap("SceneNode: allocation failed");
+        return NULL;
+    }
     memset(node, 0, sizeof(scene_node_impl));
 
     node->x = 0;
@@ -593,7 +598,7 @@ void rt_scene_node_draw(void *node_ptr, void *canvas)
         rt_sprite_set_rotation(node->sprite, old_rot);
     }
 
-    // Draw children (sorted by depth for this level)
+    // Draw children in insertion order
     int64_t count = rt_seq_len(node->children);
     for (int64_t i = 0; i < count; i++)
     {
@@ -722,6 +727,11 @@ void rt_scene_node_set_scale(void *node_ptr, int64_t scale)
 void *rt_scene_new(void)
 {
     scene_impl *scene = (scene_impl *)rt_obj_new_i64(0, (int64_t)sizeof(scene_impl));
+    if (!scene)
+    {
+        rt_trap("Scene: allocation failed");
+        return NULL;
+    }
     memset(scene, 0, sizeof(scene_impl));
 
     scene->root = (scene_node_impl *)rt_scene_node_new();
@@ -988,7 +998,14 @@ void rt_scene_clear(void *scene_ptr)
         return;
     scene_impl *scene = (scene_impl *)scene_ptr;
 
-    // Clear all children from root
+    // Clear parent pointers before removing children to avoid stale references
+    int64_t n = rt_seq_len(scene->root->children);
+    for (int64_t i = 0; i < n; i++)
+    {
+        scene_node_impl *child = (scene_node_impl *)rt_seq_get(scene->root->children, i);
+        if (child)
+            child->parent = NULL;
+    }
     while (rt_seq_len(scene->root->children) > 0)
     {
         rt_seq_pop(scene->root->children);

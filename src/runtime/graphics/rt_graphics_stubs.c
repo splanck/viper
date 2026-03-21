@@ -2408,10 +2408,11 @@ int64_t rt_audio3d_play_at(void *s, void *p, double d, int64_t v)
     return 0;
 }
 
-void rt_audio3d_update_voice(int64_t v, void *p)
+void rt_audio3d_update_voice(int64_t v, void *p, double md)
 {
     (void)v;
     (void)p;
+    (void)md;
 }
 
 /* Physics3D World stubs */
