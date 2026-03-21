@@ -866,8 +866,10 @@ void *rt_url_set_query_param(void *obj, rt_string name, rt_string value)
     }
 
     // Parse existing query into map
-    void *map = rt_url_decode_query(
-        rt_string_from_bytes(url->query ? url->query : "", url->query ? strlen(url->query) : 0));
+    rt_string tmp_query =
+        rt_string_from_bytes(url->query ? url->query : "", url->query ? strlen(url->query) : 0);
+    void *map = rt_url_decode_query(tmp_query);
+    rt_string_unref(tmp_query);
 
     // Set the new param
     void *boxed = rt_box_str(value);
@@ -881,6 +883,11 @@ void *rt_url_set_query_param(void *obj, rt_string name, rt_string value)
     if (url->query)
         free(url->query);
     url->query = strdup(rt_string_cstr(new_query));
+    rt_string_unref(new_query);
+
+    // Release temporary map
+    if (map && rt_obj_release_check0(map))
+        rt_obj_free(map);
 
     free(enc_name);
     free(enc_value);
@@ -896,13 +903,22 @@ rt_string rt_url_get_query_param(void *obj, rt_string name)
     if (!url->query)
         return rt_string_from_bytes("", 0);
 
-    void *map = rt_url_decode_query(rt_string_from_bytes(url->query, strlen(url->query)));
+    rt_string tmp_query = rt_string_from_bytes(url->query, strlen(url->query));
+    void *map = rt_url_decode_query(tmp_query);
+    rt_string_unref(tmp_query);
+
     void *boxed = rt_map_get(map, name);
 
+    rt_string result;
     if (!boxed || rt_box_type(boxed) != RT_BOX_STR)
-        return rt_string_from_bytes("", 0);
+        result = rt_string_from_bytes("", 0);
+    else
+        result = rt_unbox_str(boxed);
 
-    return rt_unbox_str(boxed);
+    if (map && rt_obj_release_check0(map))
+        rt_obj_free(map);
+
+    return result;
 }
 
 int8_t rt_url_has_query_param(void *obj, rt_string name)
@@ -914,8 +930,16 @@ int8_t rt_url_has_query_param(void *obj, rt_string name)
     if (!url->query)
         return 0;
 
-    void *map = rt_url_decode_query(rt_string_from_bytes(url->query, strlen(url->query)));
-    return rt_map_has(map, name);
+    rt_string tmp_query = rt_string_from_bytes(url->query, strlen(url->query));
+    void *map = rt_url_decode_query(tmp_query);
+    rt_string_unref(tmp_query);
+
+    int8_t result = rt_map_has(map, name);
+
+    if (map && rt_obj_release_check0(map))
+        rt_obj_free(map);
+
+    return result;
 }
 
 void *rt_url_del_query_param(void *obj, rt_string name)
@@ -927,7 +951,10 @@ void *rt_url_del_query_param(void *obj, rt_string name)
     if (!url->query)
         return obj;
 
-    void *map = rt_url_decode_query(rt_string_from_bytes(url->query, strlen(url->query)));
+    rt_string tmp_query = rt_string_from_bytes(url->query, strlen(url->query));
+    void *map = rt_url_decode_query(tmp_query);
+    rt_string_unref(tmp_query);
+
     rt_map_remove(map, name);
 
     rt_string new_query = rt_url_encode_query(map);
@@ -937,6 +964,10 @@ void *rt_url_del_query_param(void *obj, rt_string name)
 
     const char *query_str = rt_string_cstr(new_query);
     url->query = query_str && *query_str ? strdup(query_str) : NULL;
+    rt_string_unref(new_query);
+
+    if (map && rt_obj_release_check0(map))
+        rt_obj_free(map);
 
     return obj;
 }
@@ -964,10 +995,11 @@ void *rt_url_resolve(void *obj, rt_string relative)
     if (!rel_str || *rel_str == '\0')
         return rt_url_clone(obj);
 
-    // Parse relative URL
+    // Parse relative URL (failure yields empty rel → resolution uses base only)
     rt_url_t rel;
     memset(&rel, 0, sizeof(rel));
-    parse_url_full(rel_str, &rel);
+    if (parse_url_full(rel_str, &rel) != 0)
+        memset(&rel, 0, sizeof(rel));
 
     // Create new URL
     rt_url_t *result = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
@@ -1229,6 +1261,7 @@ void *rt_url_decode_query(rt_string query)
                         rt_map_set(map, key_str, boxed);
                         if (boxed && rt_obj_release_check0(boxed))
                             rt_obj_free(boxed);
+                        rt_string_unref(key_str);
                         rt_string_unref(empty);
                         free(dec_key);
                     }
@@ -1265,6 +1298,7 @@ void *rt_url_decode_query(rt_string query)
                     rt_map_set(map, key_str, boxed);
                     if (boxed && rt_obj_release_check0(boxed))
                         rt_obj_free(boxed);
+                    rt_string_unref(key_str);
                     rt_string_unref(val_str);
                 }
 

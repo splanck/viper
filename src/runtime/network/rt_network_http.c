@@ -1054,10 +1054,21 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     }
 
     // Handle redirects (3xx with Location)
-    if ((status == 301 || status == 302 || status == 307 || status == 308) && redirect_location)
+    if ((status == 301 || status == 302 || status == 303 || status == 307 || status == 308) &&
+        redirect_location)
     {
         http_conn_close(&conn);
         free(status_text);
+
+        // RFC 7231 §6.4.4: 303 See Other must change method to GET and remove body
+        if (status == 303)
+        {
+            free(req->method);
+            req->method = strdup("GET");
+            free(req->body);
+            req->body = NULL;
+            req->body_len = 0;
+        }
 
         // Parse new URL
         parsed_url_t new_url;
@@ -1394,7 +1405,14 @@ void *rt_http_head(rt_string url)
     if (!res)
         rt_trap_net("HTTP: request failed", Err_NetworkError);
 
-    return res;
+    // Return the headers map (matching the API contract and test expectations).
+    // Detach headers from the response to prevent the finalizer from freeing them.
+    void *headers = res->headers;
+    res->headers = NULL;
+    if (rt_obj_release_check0(res))
+        rt_obj_free(res);
+
+    return headers;
 }
 
 rt_string rt_http_patch(rt_string url, rt_string body)

@@ -89,7 +89,8 @@ static void suppress_sigpipe(socket_t sock)
 #define TLS_HS_CERTIFICATE_VERIFY 15
 #define TLS_HS_FINISHED 20
 
-// Cipher suite
+// Cipher suites
+#define TLS_AES_128_GCM_SHA256 0x1301
 #define TLS_CHACHA20_POLY1305_SHA256 0x1303
 
 // Extensions
@@ -184,15 +185,16 @@ static void derive_handshake_keys(rt_tls_session_t *session, const uint8_t share
                          session->server_handshake_traffic_secret,
                          32);
 
-    // Derive keys
+    // Derive keys (AES-128-GCM uses 16-byte keys; ChaCha20 uses 32-byte keys)
+    int key_len = (session->cipher_suite == TLS_AES_128_GCM_SHA256) ? 16 : 32;
     rt_hkdf_expand_label(
-        session->server_handshake_traffic_secret, "key", NULL, 0, session->read_keys.key, 32);
+        session->server_handshake_traffic_secret, "key", NULL, 0, session->read_keys.key, key_len);
     rt_hkdf_expand_label(
         session->server_handshake_traffic_secret, "iv", NULL, 0, session->read_keys.iv, 12);
     session->read_keys.seq_num = 0;
 
     rt_hkdf_expand_label(
-        session->client_handshake_traffic_secret, "key", NULL, 0, session->write_keys.key, 32);
+        session->client_handshake_traffic_secret, "key", NULL, 0, session->write_keys.key, key_len);
     rt_hkdf_expand_label(
         session->client_handshake_traffic_secret, "iv", NULL, 0, session->write_keys.iv, 12);
     session->write_keys.seq_num = 0;
@@ -229,15 +231,18 @@ static void derive_application_keys(rt_tls_session_t *session)
                          session->server_application_traffic_secret,
                          32);
 
-    // Derive application keys
+    // Derive application keys (AES-128-GCM uses 16-byte keys; ChaCha20 uses 32-byte keys)
+    int app_key_len = (session->cipher_suite == TLS_AES_128_GCM_SHA256) ? 16 : 32;
     rt_hkdf_expand_label(
-        session->server_application_traffic_secret, "key", NULL, 0, session->read_keys.key, 32);
+        session->server_application_traffic_secret, "key", NULL, 0, session->read_keys.key,
+        app_key_len);
     rt_hkdf_expand_label(
         session->server_application_traffic_secret, "iv", NULL, 0, session->read_keys.iv, 12);
     session->read_keys.seq_num = 0;
 
     rt_hkdf_expand_label(
-        session->client_application_traffic_secret, "key", NULL, 0, session->write_keys.key, 32);
+        session->client_application_traffic_secret, "key", NULL, 0, session->write_keys.key,
+        app_key_len);
     rt_hkdf_expand_label(
         session->client_application_traffic_secret, "iv", NULL, 0, session->write_keys.iv, 12);
     session->write_keys.seq_num = 0;
@@ -281,8 +286,13 @@ static int send_record(rt_tls_session_t *session,
 
         record[0] = TLS_CONTENT_APPLICATION;
         write_u16(record + 1, TLS_VERSION_1_2);
-        size_t ciphertext_len = rt_chacha20_poly1305_encrypt(
-            session->write_keys.key, nonce, aad, 5, plaintext, len + 1, record + 5);
+        size_t ciphertext_len;
+        if (session->cipher_suite == TLS_AES_128_GCM_SHA256)
+            ciphertext_len = rt_aes128_gcm_encrypt(
+                session->write_keys.key, nonce, aad, 5, plaintext, len + 1, record + 5);
+        else
+            ciphertext_len = rt_chacha20_poly1305_encrypt(
+                session->write_keys.key, nonce, aad, 5, plaintext, len + 1, record + 5);
         write_u16(record + 3, (uint16_t)ciphertext_len);
         record_len = 5 + ciphertext_len;
 
@@ -390,8 +400,13 @@ static int recv_record(rt_tls_session_t *session,
         uint8_t nonce[12];
         build_nonce(session->read_keys.iv, session->read_keys.seq_num, nonce);
 
-        long plaintext_len = rt_chacha20_poly1305_decrypt(
-            session->read_keys.key, nonce, aad, 5, payload, length, data);
+        long plaintext_len;
+        if (session->cipher_suite == TLS_AES_128_GCM_SHA256)
+            plaintext_len = rt_aes128_gcm_decrypt(
+                session->read_keys.key, nonce, aad, 5, payload, length, data);
+        else
+            plaintext_len = rt_chacha20_poly1305_decrypt(
+                session->read_keys.key, nonce, aad, 5, payload, length, data);
         if (plaintext_len < 0)
         {
             session->error = "decryption failed";
@@ -446,8 +461,10 @@ static int send_client_hello(rt_tls_session_t *session)
     // Session ID (empty for TLS 1.3)
     msg[pos++] = 0;
 
-    // Cipher suites
-    write_u16(msg + pos, 2);
+    // Cipher suites (RFC 8446 §9.1: AES-128-GCM-SHA256 is mandatory)
+    write_u16(msg + pos, 4); // 2 suites × 2 bytes
+    pos += 2;
+    write_u16(msg + pos, TLS_AES_128_GCM_SHA256);
     pos += 2;
     write_u16(msg + pos, TLS_CHACHA20_POLY1305_SHA256);
     pos += 2;
@@ -560,7 +577,8 @@ static int process_server_hello(rt_tls_session_t *session, const uint8_t *data, 
     session->cipher_suite = read_u16(data + pos);
     pos += 2;
 
-    if (session->cipher_suite != TLS_CHACHA20_POLY1305_SHA256)
+    if (session->cipher_suite != TLS_AES_128_GCM_SHA256 &&
+        session->cipher_suite != TLS_CHACHA20_POLY1305_SHA256)
     {
         session->error = "unsupported cipher suite";
         return RT_TLS_ERROR_HANDSHAKE;
@@ -972,6 +990,13 @@ const char *rt_tls_get_error(rt_tls_session_t *session)
     return session->error ? session->error : "no error";
 }
 
+int rt_tls_has_buffered_data(rt_tls_session_t *session)
+{
+    if (!session)
+        return 0;
+    return session->app_buffer_pos < session->app_buffer_len ? 1 : 0;
+}
+
 int rt_tls_get_socket(rt_tls_session_t *session)
 {
     if (!session)
@@ -1004,7 +1029,11 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
 
     // Create socket
     socket_t sock = socket(AF_INET, SOCK_STREAM, 0);
+#ifdef _WIN32
+    if (sock == INVALID_SOCKET)
+#else
     if (sock < 0)
+#endif
     {
         freeaddrinfo(res);
         return NULL;
@@ -1372,11 +1401,19 @@ rt_string rt_viper_tls_recv_line(void *obj)
             break;
         }
 
+        // Cap at 64KB to prevent unbounded memory growth from a malicious peer
+        // (matches the limit in rt_tcp_recv_line).
+        if (len >= 65536)
+        {
+            free(line);
+            return rt_string_from_bytes("", 0);
+        }
+
         if (len >= cap)
         {
-            if (cap > SIZE_MAX / 2)
-                break; // Capacity overflow — return what we have
             cap *= 2;
+            if (cap > 65536)
+                cap = 65536;
             char *new_line = (char *)realloc(line, cap);
             if (!new_line)
             {

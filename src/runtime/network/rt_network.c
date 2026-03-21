@@ -672,7 +672,9 @@ int64_t rt_tcp_send_str(void *obj, rt_string text)
     if (len == 0)
         return 0;
 
-    int sent = send(tcp->sock, text_ptr, (int)len, SEND_FLAGS);
+    // Clamp to INT_MAX to prevent silent truncation on large strings
+    int to_send = (len > INT_MAX) ? INT_MAX : (int)len;
+    int sent = send(tcp->sock, text_ptr, to_send, SEND_FLAGS);
     if (sent == SOCK_ERROR)
     {
         tcp->is_open = false;
@@ -2047,6 +2049,9 @@ void *rt_dns_local_addrs(void)
     }
 
     free(addrs);
+#elif defined(__viperdos__)
+    // ViperDOS does not provide getifaddrs(); return empty list.
+    (void)seq;
 #else
     // Unix: use getifaddrs for local addresses
     struct ifaddrs *ifaddr, *ifa;

@@ -4708,6 +4708,135 @@ RT_FUNC(RateLimitReset,          rt_ratelimit_reset,           "Viper.Network.Ra
 RT_FUNC(RateLimitGetMax,         rt_ratelimit_get_max,         "Viper.Network.RateLimiter.get_Max",         "i64(obj)")
 RT_FUNC(RateLimitGetRate,        rt_ratelimit_get_rate,        "Viper.Network.RateLimiter.get_Rate",        "f64(obj)")
 
+//=============================================================================
+// NETWORK - HTTPROUTER
+//=============================================================================
+
+RT_FUNC(HttpRouterNew,           rt_http_router_new,           "Viper.Network.HttpRouter.New",              "obj()")
+RT_FUNC(HttpRouterAdd,           rt_http_router_add,           "Viper.Network.HttpRouter.Add",              "obj(obj,str,str)")
+RT_FUNC(HttpRouterGet,           rt_http_router_get,           "Viper.Network.HttpRouter.Get",              "obj(obj,str)")
+RT_FUNC(HttpRouterPost,          rt_http_router_post,          "Viper.Network.HttpRouter.Post",             "obj(obj,str)")
+RT_FUNC(HttpRouterPut,           rt_http_router_put,           "Viper.Network.HttpRouter.Put",              "obj(obj,str)")
+RT_FUNC(HttpRouterDelete,        rt_http_router_delete,        "Viper.Network.HttpRouter.Delete",           "obj(obj,str)")
+RT_FUNC(HttpRouterMatch,         rt_http_router_match,         "Viper.Network.HttpRouter.Match",            "obj(obj,str,str)")
+RT_FUNC(HttpRouterCount,         rt_http_router_count,         "Viper.Network.HttpRouter.get_Count",        "i64(obj)")
+RT_FUNC(RouteMatchParam,         rt_route_match_param,         "Viper.Network.RouteMatch.Param",            "str(obj,str)")
+RT_FUNC(RouteMatchIndex,         rt_route_match_index,         "Viper.Network.RouteMatch.get_Index",        "i64(obj)")
+RT_FUNC(RouteMatchPattern,       rt_route_match_pattern,       "Viper.Network.RouteMatch.get_Pattern",      "str(obj)")
+
+//=============================================================================
+// NETWORK - HTTPSERVER
+//=============================================================================
+
+RT_FUNC(HttpServerNew,           rt_http_server_new,           "Viper.Network.HttpServer.New",              "obj(i64)")
+RT_FUNC(HttpServerGetRoute,      rt_http_server_get,           "Viper.Network.HttpServer.Get",              "void(obj,str,str)")
+RT_FUNC(HttpServerPostRoute,     rt_http_server_post,          "Viper.Network.HttpServer.Post",             "void(obj,str,str)")
+RT_FUNC(HttpServerPutRoute,      rt_http_server_put,           "Viper.Network.HttpServer.Put",              "void(obj,str,str)")
+RT_FUNC(HttpServerDeleteRoute,   rt_http_server_del,           "Viper.Network.HttpServer.Delete",           "void(obj,str,str)")
+RT_FUNC(HttpServerStart,         rt_http_server_start,         "Viper.Network.HttpServer.Start",            "void(obj)")
+RT_FUNC(HttpServerStop,          rt_http_server_stop,          "Viper.Network.HttpServer.Stop",             "void(obj)")
+RT_FUNC(HttpServerPort,          rt_http_server_port,          "Viper.Network.HttpServer.get_Port",         "i64(obj)")
+RT_FUNC(HttpServerIsRunning,     rt_http_server_is_running,    "Viper.Network.HttpServer.get_IsRunning",    "i1(obj)")
+
+//=============================================================================
+// NETWORK - CONNECTIONPOOL
+//=============================================================================
+
+RT_FUNC(ConnPoolNew,             rt_connpool_new,              "Viper.Network.ConnectionPool.New",          "obj(i64)")
+RT_FUNC(ConnPoolAcquire,         rt_connpool_acquire,          "Viper.Network.ConnectionPool.Acquire",      "obj(obj,str,i64)")
+RT_FUNC(ConnPoolRelease,         rt_connpool_release,          "Viper.Network.ConnectionPool.Release",      "void(obj,obj)")
+RT_FUNC(ConnPoolClear,           rt_connpool_clear,            "Viper.Network.ConnectionPool.Clear",        "void(obj)")
+RT_FUNC(ConnPoolSize,            rt_connpool_size,             "Viper.Network.ConnectionPool.get_Size",     "i64(obj)")
+RT_FUNC(ConnPoolAvailable,       rt_connpool_available,        "Viper.Network.ConnectionPool.get_Available","i64(obj)")
+
+//=============================================================================
+// NETWORK - MULTIPART
+//=============================================================================
+
+RT_FUNC(MultipartNew,            rt_multipart_new,             "Viper.Network.Multipart.New",               "obj()")
+RT_FUNC(MultipartAddField,       rt_multipart_add_field,       "Viper.Network.Multipart.AddField",          "obj(obj,str,str)")
+RT_FUNC(MultipartAddFile,        rt_multipart_add_file,        "Viper.Network.Multipart.AddFile",           "obj(obj,str,str,obj)")
+RT_FUNC(MultipartContentType,    rt_multipart_content_type,    "Viper.Network.Multipart.get_ContentType",   "str(obj)")
+RT_FUNC(MultipartBuild,          rt_multipart_build,           "Viper.Network.Multipart.Build",             "obj(obj)")
+RT_FUNC(MultipartCount,          rt_multipart_count,           "Viper.Network.Multipart.get_Count",         "i64(obj)")
+RT_FUNC(MultipartParse,          rt_multipart_parse,           "Viper.Network.Multipart.Parse",             "obj(str,obj)")
+RT_FUNC(MultipartGetField,       rt_multipart_get_field,       "Viper.Network.Multipart.GetField",          "str(obj,str)")
+RT_FUNC(MultipartGetFile,        rt_multipart_get_file,        "Viper.Network.Multipart.GetFile",           "obj(obj,str)")
+
+//=============================================================================
+// NETWORK - NETUTILS
+//=============================================================================
+
+RT_FUNC(NetUtilsIsPortOpen,      rt_netutils_is_port_open,     "Viper.Network.NetUtils.IsPortOpen",         "i1(str,i64,i64)")
+RT_FUNC(NetUtilsGetFreePort,     rt_netutils_get_free_port,    "Viper.Network.NetUtils.GetFreePort",        "i64()")
+RT_FUNC(NetUtilsMatchCIDR,       rt_netutils_match_cidr,       "Viper.Network.NetUtils.MatchCIDR",          "i1(str,str)")
+RT_FUNC(NetUtilsIsPrivateIP,     rt_netutils_is_private_ip,    "Viper.Network.NetUtils.IsPrivateIP",        "i1(str)")
+RT_FUNC(NetUtilsLocalIPv4,       rt_netutils_local_ipv4,       "Viper.Network.NetUtils.LocalIPv4",          "str()")
+
+//=============================================================================
+// NETWORK - WSSERVER
+//=============================================================================
+
+RT_FUNC(WsServerNew,             rt_ws_server_new,             "Viper.Network.WsServer.New",                "obj(i64)")
+RT_FUNC(WsServerStart,           rt_ws_server_start,           "Viper.Network.WsServer.Start",              "void(obj)")
+RT_FUNC(WsServerStop,            rt_ws_server_stop,            "Viper.Network.WsServer.Stop",               "void(obj)")
+RT_FUNC(WsServerBroadcast,       rt_ws_server_broadcast,       "Viper.Network.WsServer.Broadcast",          "void(obj,str)")
+RT_FUNC(WsServerBroadcastBytes,  rt_ws_server_broadcast_bytes, "Viper.Network.WsServer.BroadcastBytes",     "void(obj,obj)")
+RT_FUNC(WsServerClientCount,     rt_ws_server_client_count,    "Viper.Network.WsServer.get_ClientCount",    "i64(obj)")
+RT_FUNC(WsServerPort,            rt_ws_server_port,            "Viper.Network.WsServer.get_Port",           "i64(obj)")
+RT_FUNC(WsServerIsRunning,       rt_ws_server_is_running,      "Viper.Network.WsServer.get_IsRunning",      "i1(obj)")
+
+//=============================================================================
+// NETWORK - SSE
+//=============================================================================
+
+RT_FUNC(SseConnect,              rt_sse_connect,               "Viper.Network.SseClient.Connect",           "obj(str)")
+RT_FUNC(SseRecv,                 rt_sse_recv,                  "Viper.Network.SseClient.Recv",              "str(obj)")
+RT_FUNC(SseRecvFor,              rt_sse_recv_for,              "Viper.Network.SseClient.RecvFor",           "str(obj,i64)")
+RT_FUNC(SseIsOpen,               rt_sse_is_open,               "Viper.Network.SseClient.get_IsOpen",        "i1(obj)")
+RT_FUNC(SseClose,                rt_sse_close,                 "Viper.Network.SseClient.Close",             "void(obj)")
+RT_FUNC(SseLastEventType,        rt_sse_last_event_type,       "Viper.Network.SseClient.get_LastEventType", "str(obj)")
+RT_FUNC(SseLastEventId,          rt_sse_last_event_id,         "Viper.Network.SseClient.get_LastEventId",   "str(obj)")
+
+//=============================================================================
+// NETWORK - HTTPCLIENT
+//=============================================================================
+
+RT_FUNC(HttpClientNew,           rt_http_client_new,           "Viper.Network.HttpClient.New",              "obj()")
+RT_FUNC(HttpClientGet,           rt_http_client_get,           "Viper.Network.HttpClient.Get",              "obj(obj,str)")
+RT_FUNC(HttpClientPost,          rt_http_client_post,          "Viper.Network.HttpClient.Post",             "obj(obj,str,str)")
+RT_FUNC(HttpClientPut,           rt_http_client_put,           "Viper.Network.HttpClient.Put",              "obj(obj,str,str)")
+RT_FUNC(HttpClientDelete,        rt_http_client_delete,        "Viper.Network.HttpClient.Delete",           "obj(obj,str)")
+RT_FUNC(HttpClientSetHeader,     rt_http_client_set_header,    "Viper.Network.HttpClient.SetHeader",        "void(obj,str,str)")
+RT_FUNC(HttpClientSetTimeout,    rt_http_client_set_timeout,   "Viper.Network.HttpClient.SetTimeout",       "void(obj,i64)")
+RT_FUNC(HttpClientSetMaxRedir,   rt_http_client_set_max_redirects,"Viper.Network.HttpClient.SetMaxRedirects","void(obj,i64)")
+RT_FUNC(HttpClientFollowRedirGet,rt_http_client_get_follow_redirects,"Viper.Network.HttpClient.get_FollowRedirects","i1(obj)")
+RT_FUNC(HttpClientFollowRedirSet,rt_http_client_set_follow_redirects,"Viper.Network.HttpClient.set_FollowRedirects","void(obj,i1)")
+RT_FUNC(HttpClientSetCookie,     rt_http_client_set_cookie,    "Viper.Network.HttpClient.SetCookie",        "void(obj,str,str,str)")
+RT_FUNC(HttpClientGetCookies,    rt_http_client_get_cookies,   "Viper.Network.HttpClient.GetCookies",       "obj(obj,str)")
+
+//=============================================================================
+// NETWORK - SMTP
+//=============================================================================
+
+RT_FUNC(SmtpNew,                 rt_smtp_new,                  "Viper.Network.SmtpClient.New",              "obj(str,i64)")
+RT_FUNC(SmtpSetAuth,             rt_smtp_set_auth,             "Viper.Network.SmtpClient.SetAuth",          "void(obj,str,str)")
+RT_FUNC(SmtpSetTls,              rt_smtp_set_tls,              "Viper.Network.SmtpClient.SetTls",           "void(obj,i1)")
+RT_FUNC(SmtpSend,                rt_smtp_send,                 "Viper.Network.SmtpClient.Send",             "i1(obj,str,str,str,str)")
+RT_FUNC(SmtpSendHtml,            rt_smtp_send_html,            "Viper.Network.SmtpClient.SendHtml",         "i1(obj,str,str,str,str)")
+RT_FUNC(SmtpLastError,           rt_smtp_last_error,           "Viper.Network.SmtpClient.get_LastError",    "str(obj)")
+RT_FUNC(SmtpClose,               rt_smtp_close,                "Viper.Network.SmtpClient.Close",            "void(obj)")
+
+//=============================================================================
+// NETWORK - ASYNC SOCKET
+//=============================================================================
+
+RT_FUNC(AsyncConnect,            rt_async_connect,             "Viper.Network.AsyncSocket.ConnectAsync",    "obj(str,i64)")
+RT_FUNC(AsyncSend,               rt_async_send,                "Viper.Network.AsyncSocket.SendAsync",       "obj(obj,obj)")
+RT_FUNC(AsyncRecv,               rt_async_recv,                "Viper.Network.AsyncSocket.RecvAsync",       "obj(obj,i64)")
+RT_FUNC(AsyncHttpGet,            rt_async_http_get,            "Viper.Network.AsyncSocket.HttpGetAsync",    "obj(str)")
+RT_FUNC(AsyncHttpPost,           rt_async_http_post,           "Viper.Network.AsyncSocket.HttpPostAsync",   "obj(str,str)")
+
 RT_FUNC(TcpConnect, rt_tcp_connect, "Viper.Network.Tcp.Connect", "obj(str,i64)")
 RT_FUNC(TcpConnectFor, rt_tcp_connect_for, "Viper.Network.Tcp.ConnectFor", "obj(str,i64,i64)")
 RT_FUNC(TcpHost, rt_tcp_host, "Viper.Network.Tcp.get_Host", "str(obj)")
@@ -8952,6 +9081,120 @@ RT_CLASS_BEGIN("Viper.Network.RateLimiter", RateLimiter, "obj", RateLimitNew)
     RT_METHOD("TryAcquire", "i1()", RateLimitTryAcquire)
     RT_METHOD("TryAcquireN", "i1(i64)", RateLimitTryAcquireN)
     RT_METHOD("Reset", "void()", RateLimitReset)
+RT_CLASS_END()
+
+// Viper.Network.HttpRouter - URL pattern matching with parameter extraction
+RT_CLASS_BEGIN("Viper.Network.HttpRouter", HttpRouter, "obj", HttpRouterNew)
+    RT_METHOD("Add", "obj(str,str)", HttpRouterAdd)
+    RT_METHOD("Get", "obj(str)", HttpRouterGet)
+    RT_METHOD("Post", "obj(str)", HttpRouterPost)
+    RT_METHOD("Put", "obj(str)", HttpRouterPut)
+    RT_METHOD("Delete", "obj(str)", HttpRouterDelete)
+    RT_METHOD("Match", "obj(str,str)", HttpRouterMatch)
+    RT_PROP("Count", "i64", HttpRouterCount, none)
+RT_CLASS_END()
+
+// Viper.Network.RouteMatch - result of a route match
+RT_CLASS_BEGIN("Viper.Network.RouteMatch", RouteMatch, "obj", none)
+    RT_METHOD("Param", "str(str)", RouteMatchParam)
+    RT_PROP("Index", "i64", RouteMatchIndex, none)
+    RT_PROP("Pattern", "str", RouteMatchPattern, none)
+RT_CLASS_END()
+
+// Viper.Network.HttpServer - threaded HTTP/1.1 server
+RT_CLASS_BEGIN("Viper.Network.HttpServer", HttpServer, "obj", HttpServerNew)
+    RT_METHOD("Get", "void(str,str)", HttpServerGetRoute)
+    RT_METHOD("Post", "void(str,str)", HttpServerPostRoute)
+    RT_METHOD("Put", "void(str,str)", HttpServerPutRoute)
+    RT_METHOD("Delete", "void(str,str)", HttpServerDeleteRoute)
+    RT_METHOD("Start", "void()", HttpServerStart)
+    RT_METHOD("Stop", "void()", HttpServerStop)
+    RT_PROP("Port", "i64", HttpServerPort, none)
+    RT_PROP("IsRunning", "i1", HttpServerIsRunning, none)
+RT_CLASS_END()
+
+// Viper.Network.ConnectionPool - thread-safe TCP connection pooling
+RT_CLASS_BEGIN("Viper.Network.ConnectionPool", ConnectionPool, "obj", ConnPoolNew)
+    RT_METHOD("Acquire", "obj(str,i64)", ConnPoolAcquire)
+    RT_METHOD("Release", "void(obj)", ConnPoolRelease)
+    RT_METHOD("Clear", "void()", ConnPoolClear)
+    RT_PROP("Size", "i64", ConnPoolSize, none)
+    RT_PROP("Available", "i64", ConnPoolAvailable, none)
+RT_CLASS_END()
+
+// Viper.Network.Multipart - multipart form-data builder and parser
+RT_CLASS_BEGIN("Viper.Network.Multipart", Multipart, "obj", MultipartNew)
+    RT_METHOD("AddField", "obj(str,str)", MultipartAddField)
+    RT_METHOD("AddFile", "obj(str,str,obj)", MultipartAddFile)
+    RT_METHOD("Build", "obj()", MultipartBuild)
+    RT_METHOD("Parse", "obj(str,obj)", MultipartParse)
+    RT_METHOD("GetField", "str(str)", MultipartGetField)
+    RT_METHOD("GetFile", "obj(str)", MultipartGetFile)
+    RT_PROP("ContentType", "str", MultipartContentType, none)
+    RT_PROP("Count", "i64", MultipartCount, none)
+RT_CLASS_END()
+
+// Viper.Network.NetUtils - static network utilities
+RT_CLASS_BEGIN("Viper.Network.NetUtils", NetUtils, "none", none)
+    RT_METHOD("IsPortOpen", "i1(str,i64,i64)", NetUtilsIsPortOpen)
+    RT_METHOD("GetFreePort", "i64()", NetUtilsGetFreePort)
+    RT_METHOD("MatchCIDR", "i1(str,str)", NetUtilsMatchCIDR)
+    RT_METHOD("IsPrivateIP", "i1(str)", NetUtilsIsPrivateIP)
+    RT_METHOD("LocalIPv4", "str()", NetUtilsLocalIPv4)
+RT_CLASS_END()
+
+// Viper.Network.WsServer - WebSocket server
+RT_CLASS_BEGIN("Viper.Network.WsServer", WsServer, "obj", WsServerNew)
+    RT_METHOD("Start", "void()", WsServerStart)
+    RT_METHOD("Stop", "void()", WsServerStop)
+    RT_METHOD("Broadcast", "void(str)", WsServerBroadcast)
+    RT_METHOD("BroadcastBytes", "void(obj)", WsServerBroadcastBytes)
+    RT_PROP("ClientCount", "i64", WsServerClientCount, none)
+    RT_PROP("Port", "i64", WsServerPort, none)
+    RT_PROP("IsRunning", "i1", WsServerIsRunning, none)
+RT_CLASS_END()
+
+// Viper.Network.SseClient - Server-Sent Events client
+RT_CLASS_BEGIN("Viper.Network.SseClient", SseClient, "obj", SseConnect)
+    RT_METHOD("Recv", "str()", SseRecv)
+    RT_METHOD("RecvFor", "str(i64)", SseRecvFor)
+    RT_METHOD("Close", "void()", SseClose)
+    RT_PROP("IsOpen", "i1", SseIsOpen, none)
+    RT_PROP("LastEventType", "str", SseLastEventType, none)
+    RT_PROP("LastEventId", "str", SseLastEventId, none)
+RT_CLASS_END()
+
+// Viper.Network.HttpClient - session-based HTTP client with cookies
+RT_CLASS_BEGIN("Viper.Network.HttpClient", HttpClient, "obj", HttpClientNew)
+    RT_METHOD("Get", "obj(str)", HttpClientGet)
+    RT_METHOD("Post", "obj(str,str)", HttpClientPost)
+    RT_METHOD("Put", "obj(str,str)", HttpClientPut)
+    RT_METHOD("Delete", "obj(str)", HttpClientDelete)
+    RT_METHOD("SetHeader", "void(str,str)", HttpClientSetHeader)
+    RT_METHOD("SetTimeout", "void(i64)", HttpClientSetTimeout)
+    RT_METHOD("SetMaxRedirects", "void(i64)", HttpClientSetMaxRedir)
+    RT_METHOD("SetCookie", "void(str,str,str)", HttpClientSetCookie)
+    RT_METHOD("GetCookies", "obj(str)", HttpClientGetCookies)
+    RT_PROP("FollowRedirects", "i1", HttpClientFollowRedirGet, HttpClientFollowRedirSet)
+RT_CLASS_END()
+
+// Viper.Network.SmtpClient - simple email sending
+RT_CLASS_BEGIN("Viper.Network.SmtpClient", SmtpClient, "obj", SmtpNew)
+    RT_METHOD("SetAuth", "void(str,str)", SmtpSetAuth)
+    RT_METHOD("SetTls", "void(i1)", SmtpSetTls)
+    RT_METHOD("Send", "i1(str,str,str,str)", SmtpSend)
+    RT_METHOD("SendHtml", "i1(str,str,str,str)", SmtpSendHtml)
+    RT_METHOD("Close", "void()", SmtpClose)
+    RT_PROP("LastError", "str", SmtpLastError, none)
+RT_CLASS_END()
+
+// Viper.Network.AsyncSocket - non-blocking socket with Future integration
+RT_CLASS_BEGIN("Viper.Network.AsyncSocket", AsyncSocket, "none", none)
+    RT_METHOD("ConnectAsync", "obj(str,i64)", AsyncConnect)
+    RT_METHOD("SendAsync", "obj(obj,obj)", AsyncSend)
+    RT_METHOD("RecvAsync", "obj(obj,i64)", AsyncRecv)
+    RT_METHOD("HttpGetAsync", "obj(str)", AsyncHttpGet)
+    RT_METHOD("HttpPostAsync", "obj(str,str)", AsyncHttpPost)
 RT_CLASS_END()
 
 // Viper.Text.Html - HTML parsing and utilities

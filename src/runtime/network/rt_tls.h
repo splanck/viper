@@ -1,12 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_tls.h
-// Purpose: TLS 1.3 client for secure HTTPS connections using ChaCha20-Poly1305 AEAD and X25519 key
-// exchange, implemented in pure C without external TLS libraries.
+// Purpose: TLS 1.3 client for secure HTTPS connections using AES-128-GCM-SHA256
+// and ChaCha20-Poly1305-SHA256 AEAD with X25519 key exchange, implemented in
+// pure C without external TLS libraries.
 //
 // Key invariants:
 //   - Implements TLS 1.3 handshake with X25519 key exchange.
-//   - Uses ChaCha20-Poly1305 for all record encryption.
+//   - Supports AES-128-GCM-SHA256 (0x1301) and ChaCha20-Poly1305-SHA256 (0x1303).
 //   - Certificate verification is performed against the system trust store.
 //   - Only client mode is supported; server-side TLS is not implemented.
 //
@@ -92,6 +93,10 @@ extern "C"
 
     /// @brief Get underlying socket file descriptor.
     int rt_tls_get_socket(rt_tls_session_t *session);
+
+    /// @brief Check if the TLS session has buffered application data available.
+    /// @return 1 if buffered data exists, 0 otherwise.
+    int rt_tls_has_buffered_data(rt_tls_session_t *session);
 
     //=========================================================================
     // Viper API wrappers (Viper.Crypto.Tls)

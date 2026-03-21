@@ -128,6 +128,46 @@ extern "C"
                                       uint8_t *plaintext);
 
     //=========================================================================
+    // AES-128-GCM AEAD (NIST SP 800-38D)
+    //=========================================================================
+
+    /// @brief Encrypt with AES-128-GCM.
+    /// @param key The 128-bit encryption key (16 bytes).
+    /// @param nonce The 96-bit nonce (12 bytes, must be unique per key).
+    /// @param aad Pointer to additional authenticated data (can be NULL).
+    /// @param aad_len Length of @p aad in bytes.
+    /// @param plaintext Pointer to the plaintext to encrypt.
+    /// @param plaintext_len Length of @p plaintext in bytes.
+    /// @param ciphertext Output buffer for ciphertext and 16-byte
+    ///                   authentication tag (must hold plaintext_len + 16 bytes).
+    /// @return Ciphertext length (plaintext_len + 16 for tag).
+    size_t rt_aes128_gcm_encrypt(const uint8_t key[16],
+                                  const uint8_t nonce[12],
+                                  const void *aad,
+                                  size_t aad_len,
+                                  const void *plaintext,
+                                  size_t plaintext_len,
+                                  uint8_t *ciphertext);
+
+    /// @brief Decrypt with AES-128-GCM.
+    /// @param key The 128-bit decryption key (16 bytes).
+    /// @param nonce The 96-bit nonce (12 bytes, same as used during encryption).
+    /// @param aad Pointer to additional authenticated data (can be NULL).
+    /// @param aad_len Length of @p aad in bytes.
+    /// @param ciphertext Pointer to the ciphertext with appended 16-byte tag.
+    /// @param ciphertext_len Length of @p ciphertext in bytes (including tag).
+    /// @param plaintext Output buffer for decrypted data (must hold
+    ///                  ciphertext_len - 16 bytes).
+    /// @return Plaintext length on success, -1 on authentication failure.
+    long rt_aes128_gcm_decrypt(const uint8_t key[16],
+                                const uint8_t nonce[12],
+                                const void *aad,
+                                size_t aad_len,
+                                const void *ciphertext,
+                                size_t ciphertext_len,
+                                uint8_t *plaintext);
+
+    //=========================================================================
     // X25519 Key Exchange
     //=========================================================================
 

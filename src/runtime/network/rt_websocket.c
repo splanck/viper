@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_websocket.c
+// File: src/runtime/network/rt_websocket.c
 // Purpose: WebSocket client implementing RFC 6455.
 // Structure: [vptr | socket_fd | tls_session | url | is_open | close_code | ...]
 //
@@ -1143,12 +1143,21 @@ rt_string rt_ws_recv_for(void *obj, int64_t timeout_ms)
     if (!ws->is_open)
         return NULL;
 
-    // Wait for data to arrive with timeout
+    // Wait for data to arrive with timeout.
+    // Check TLS buffer first — select() on the raw socket won't see data that
+    // has already been decrypted and buffered by the TLS layer.
     if (timeout_ms > 0)
     {
-        int ready = ws_wait_socket(ws->socket_fd, (int)timeout_ms, 0);
-        if (ready <= 0)
-            return NULL; // Timeout or error
+        if (ws->tls && rt_tls_has_buffered_data(ws->tls))
+        {
+            // Data already available in TLS buffer — skip select()
+        }
+        else
+        {
+            int ready = ws_wait_socket(ws->socket_fd, (int)timeout_ms, 0);
+            if (ready <= 0)
+                return NULL; // Timeout or error
+        }
     }
 
     return rt_ws_recv(obj);
@@ -1246,12 +1255,21 @@ void *rt_ws_recv_bytes_for(void *obj, int64_t timeout_ms)
     if (!ws->is_open)
         return NULL;
 
-    // Wait for data to arrive with timeout
+    // Wait for data to arrive with timeout.
+    // Check TLS buffer first — select() on the raw socket won't see data that
+    // has already been decrypted and buffered by the TLS layer.
     if (timeout_ms > 0)
     {
-        int ready = ws_wait_socket(ws->socket_fd, (int)timeout_ms, 0);
-        if (ready <= 0)
-            return NULL; // Timeout or error
+        if (ws->tls && rt_tls_has_buffered_data(ws->tls))
+        {
+            // Data already available in TLS buffer — skip select()
+        }
+        else
+        {
+            int ready = ws_wait_socket(ws->socket_fd, (int)timeout_ms, 0);
+            if (ready <= 0)
+                return NULL; // Timeout or error
+        }
     }
 
     return rt_ws_recv_bytes(obj);

@@ -25,6 +25,16 @@ last-verified: 2026-03-04
 - [Viper.Network.RestClient](#vipernetworkrestclient)
 - [Viper.Network.RetryPolicy](#vipernetworkretrypolicy)
 - [Viper.Network.RateLimiter](#vipernetworkratelimiter)
+- [Viper.Network.HttpRouter](#vipernetworkhttprouter)
+- [Viper.Network.HttpServer](#vipernetworkhttpserver)
+- [Viper.Network.ConnectionPool](#vipernetworkconnectionpool)
+- [Viper.Network.Multipart](#vipernetworkmultipart)
+- [Viper.Network.NetUtils](#vipernetworknetutils)
+- [Viper.Network.WsServer](#vipernetworkwsserver)
+- [Viper.Network.SseClient](#vipernetworksseclient)
+- [Viper.Network.HttpClient](#vipernetworkhttpclient)
+- [Viper.Network.SmtpClient](#vipernetworksmtpclient)
+- [Viper.Network.AsyncSocket](#vipernetworkasyncsocket)
 
 ---
 
@@ -1738,11 +1748,288 @@ This allows:
 
 ---
 
+## Viper.Network.HttpRouter
+
+URL pattern matching with parameter extraction for HTTP routing.
+
+**Type:** Instance class
+
+**Constructors:**
+- `Viper.Network.HttpRouter.New()` - Create a new router
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Add(method, pattern)` | HttpRouter | Add a route for any HTTP method |
+| `Get(pattern)` | HttpRouter | Add a GET route |
+| `Post(pattern)` | HttpRouter | Add a POST route |
+| `Put(pattern)` | HttpRouter | Add a PUT route |
+| `Delete(pattern)` | HttpRouter | Add a DELETE route |
+| `Match(method, path)` | RouteMatch | Match a request; returns NULL if no match |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Count` | Integer | Number of registered routes |
+
+### Pattern Syntax
+
+- `/users` — Exact match
+- `/users/:id` — Parameter capture (`:id` matches one segment)
+- `/static/*path` — Wildcard (captures rest of path)
+
+### RouteMatch
+
+| Property/Method | Type | Description |
+|-----------------|------|-------------|
+| `Param(name)` | String | Get captured parameter value |
+| `Index` | Integer | Route index (registration order) |
+| `Pattern` | String | Matched pattern string |
+
+---
+
+## Viper.Network.HttpServer
+
+Threaded HTTP/1.1 server with routing and automatic request dispatching.
+
+**Type:** Instance class
+
+**Constructors:**
+- `Viper.Network.HttpServer.New(port)` - Create server on the given port
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Get(pattern, tag)` | void | Register a GET route with handler tag |
+| `Post(pattern, tag)` | void | Register a POST route |
+| `Put(pattern, tag)` | void | Register a PUT route |
+| `Delete(pattern, tag)` | void | Register a DELETE route |
+| `Start()` | void | Start accepting connections in background |
+| `Stop()` | void | Stop the server gracefully |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Port` | Integer | Listening port number |
+| `IsRunning` | Boolean | True if server is accepting connections |
+
+---
+
+## Viper.Network.ConnectionPool
+
+Thread-safe TCP connection pooling for reuse across HTTP requests.
+
+**Type:** Instance class
+
+**Constructors:**
+- `Viper.Network.ConnectionPool.New(maxSize)` - Create pool with max connections
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Acquire(host, port)` | Tcp | Get a connection (pooled or new) |
+| `Release(conn)` | void | Return connection to pool |
+| `Clear()` | void | Close all pooled connections |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Size` | Integer | Total connections in pool |
+| `Available` | Integer | Idle (available) connections |
+
+---
+
+## Viper.Network.Multipart
+
+Multipart form-data builder and parser for HTTP file uploads.
+
+**Type:** Instance class
+
+**Constructors:**
+- `Viper.Network.Multipart.New()` - Create a new multipart builder
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `AddField(name, value)` | Multipart | Add a text field (fluent) |
+| `AddFile(name, filename, data)` | Multipart | Add a file (fluent) |
+| `Build()` | Bytes | Build the complete multipart body |
+| `Parse(contentType, body)` | Multipart | Parse a multipart body |
+| `GetField(name)` | String | Get field value from parsed multipart |
+| `GetFile(name)` | Bytes | Get file data from parsed multipart |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `ContentType` | String | Content-Type header with boundary |
+| `Count` | Integer | Number of parts |
+
+---
+
+## Viper.Network.NetUtils
+
+Static network utility functions for port checking, CIDR matching, and IP classification.
+
+**Type:** Static class
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `IsPortOpen(host, port, timeoutMs)` | Boolean | Check if a remote port accepts connections |
+| `GetFreePort()` | Integer | Get a free (available) port on localhost |
+| `MatchCIDR(ip, cidr)` | Boolean | Check if IP matches CIDR range (e.g., `"10.0.0.0/8"`) |
+| `IsPrivateIP(ip)` | Boolean | Check if IP is RFC 1918 private range |
+| `LocalIPv4()` | String | Get primary local IPv4 address |
+
+---
+
+## Viper.Network.WsServer
+
+WebSocket server that accepts upgrade requests and manages connected clients.
+
+**Type:** Instance class
+
+**Constructors:**
+- `Viper.Network.WsServer.New(port)` - Create server on the given port
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Start()` | void | Start accepting WebSocket connections in background |
+| `Stop()` | void | Stop server and disconnect all clients |
+| `Broadcast(message)` | void | Send text message to all connected clients |
+| `BroadcastBytes(data)` | void | Send binary data to all connected clients |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `ClientCount` | Integer | Number of currently connected clients |
+| `Port` | Integer | Listening port number |
+| `IsRunning` | Boolean | True if server is accepting connections |
+
+---
+
+## Viper.Network.SseClient
+
+Server-Sent Events (SSE) client for receiving event streams over HTTP.
+
+**Type:** Instance class
+
+**Constructors:**
+- `Viper.Network.SseClient.Connect(url)` - Connect to an SSE endpoint
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Recv()` | String | Receive next event data (blocking) |
+| `RecvFor(timeoutMs)` | String | Receive with timeout |
+| `Close()` | void | Close the connection |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `IsOpen` | Boolean | True if connection is active |
+| `LastEventType` | String | Most recent `event:` field value |
+| `LastEventId` | String | Most recent `id:` field value |
+
+---
+
+## Viper.Network.HttpClient
+
+Session-based HTTP client with cookie jar, auto-redirect, and persistent headers.
+
+**Type:** Instance class
+
+**Constructors:**
+- `Viper.Network.HttpClient.New()` - Create a new HTTP client session
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Get(url)` | HttpRes | HTTP GET request |
+| `Post(url, body)` | HttpRes | HTTP POST with string body |
+| `Put(url, body)` | HttpRes | HTTP PUT with string body |
+| `Delete(url)` | HttpRes | HTTP DELETE request |
+| `SetHeader(name, value)` | void | Set default header for all requests |
+| `SetTimeout(ms)` | void | Set request timeout in milliseconds |
+| `SetMaxRedirects(max)` | void | Set maximum redirect count |
+| `SetCookie(domain, name, value)` | void | Manually set a cookie |
+| `GetCookies(domain)` | Map | Get all cookies for a domain |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `FollowRedirects` | Boolean | Whether to auto-follow redirects (default: true) |
+
+---
+
+## Viper.Network.SmtpClient
+
+Simple SMTP client for sending emails with optional AUTH LOGIN.
+
+**Type:** Instance class
+
+**Constructors:**
+- `Viper.Network.SmtpClient.New(host, port)` - Create SMTP client
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `SetAuth(username, password)` | void | Set AUTH LOGIN credentials |
+| `SetTls(enable)` | void | Enable/disable TLS |
+| `Send(from, to, subject, body)` | Boolean | Send plain text email |
+| `SendHtml(from, to, subject, html)` | Boolean | Send HTML email |
+| `Close()` | void | Close the connection |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `LastError` | String | Most recent error message |
+
+---
+
+## Viper.Network.AsyncSocket
+
+Non-blocking socket operations integrated with `Threads.Future`.
+
+**Type:** Static class
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `ConnectAsync(host, port)` | Future | Async TCP connect → resolves to Tcp |
+| `SendAsync(tcp, data)` | Future | Async send → resolves to bytes sent |
+| `RecvAsync(tcp, maxBytes)` | Future | Async receive → resolves to Bytes |
+| `HttpGetAsync(url)` | Future | Async HTTP GET → resolves to String |
+| `HttpPostAsync(url, body)` | Future | Async HTTP POST → resolves to String |
+
+All methods return a `Future` that can be awaited using `Threads.Future.Get()`.
+
+---
+
 ## See Also
 
 - [Collections](collections/README.md) - `Bytes`, `Map`, `Seq` types used by network classes
 - [Input/Output](io/README.md) - File operations for saving downloaded content
 - [Cryptography](crypto.md) - `Tls` for secure connections
 
-> **Note:** `Viper.Crypto.Tls` provides a low-level TLS 1.3 client API (connect/send/recv/close) that can be used independently of the HTTP layer. It supports ChaCha20-Poly1305 encryption with X25519 key exchange. When `verify_cert=1` (the default), it performs full TLS 1.3 authentication: certificate chain validation against the OS trust store, hostname verification against SubjectAltName/CommonName, and CertificateVerify signature verification. Documentation for this class is in `crypto.md`.
+> **Note:** `Viper.Crypto.Tls` provides a low-level TLS 1.3 client API (connect/send/recv/close) that can be used independently of the HTTP layer. It supports AES-128-GCM-SHA256 and ChaCha20-Poly1305-SHA256 encryption with X25519 key exchange. When `verify_cert=1` (the default), it performs full TLS 1.3 authentication: certificate chain validation against the OS trust store, hostname verification against SubjectAltName/CommonName, and CertificateVerify signature verification. Documentation for this class is in `crypto.md`.
 

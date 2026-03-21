@@ -981,12 +981,21 @@ int tls_verify_chain(rt_tls_session_t *session)
 
     // Scan the PEM bundle for a CA cert whose Subject matches the end-entity Issuer
     char line[512];
-    char pem_b64[65536];
+    // Heap-allocate PEM and DER buffers to avoid ~80KB stack usage and to be
+    // thread-safe (the previous static ca_der was shared across threads).
+    char *pem_b64 = (char *)malloc(65536);
+    uint8_t *ca_der = (uint8_t *)malloc(16384);
+    if (!pem_b64 || !ca_der)
+    {
+        free(pem_b64);
+        free(ca_der);
+        fclose(f);
+        session->error = "TLS: memory allocation failed for chain validation";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
     size_t pem_pos = 0;
     int in_cert = 0;
     int found = 0;
-
-    static uint8_t ca_der[16384];
 
     while (!found && fgets(line, sizeof(line), f))
     {
@@ -1016,7 +1025,7 @@ int tls_verify_chain(rt_tls_session_t *session)
         else if (in_cert)
         {
             size_t ll = strlen(line);
-            if (pem_pos + ll < sizeof(pem_b64))
+            if (pem_pos + ll < 65536)
             {
                 memcpy(pem_b64 + pem_pos, line, ll);
                 pem_pos += ll;
@@ -1025,6 +1034,8 @@ int tls_verify_chain(rt_tls_session_t *session)
     }
 
     fclose(f);
+    free(pem_b64);
+    free(ca_der);
 
     if (!found)
     {

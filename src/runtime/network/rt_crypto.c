@@ -441,7 +441,9 @@ static void chacha20_crypt(const uint8_t key[32],
         in += use;
         out += use;
         len -= use;
-        state[12]++; // Increment counter
+        // Increment counter; abort if it wraps to prevent keystream reuse
+        if (++state[12] == 0)
+            break;
     }
 }
 
@@ -733,6 +735,9 @@ size_t rt_chacha20_poly1305_encrypt(const uint8_t key[32],
 
     poly1305_final(&poly, ciphertext + plaintext_len);
 
+    // Zero key material to prevent stack residue
+    rt_secure_zero(poly_key, sizeof(poly_key));
+
     return plaintext_len + 16;
 }
 
@@ -784,10 +789,352 @@ long rt_chacha20_poly1305_decrypt(const uint8_t key[32],
     for (int i = 0; i < 16; i++)
         diff |= computed_tag[i] ^ tag[i];
     if (diff != 0)
+    {
+        rt_secure_zero(poly_key, sizeof(poly_key));
         return -1;
+    }
 
     // Decrypt
     chacha20_crypt(key, nonce, 1, (const uint8_t *)ciphertext, plaintext, data_len);
+
+    // Zero key material to prevent stack residue
+    rt_secure_zero(poly_key, sizeof(poly_key));
+
+    return (long)data_len;
+}
+
+//=============================================================================
+// AES-128 Block Cipher (FIPS 197)
+//=============================================================================
+
+static const uint8_t aes_sbox[256] = {
+    0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,
+    0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0,
+    0xb7,0xfd,0x93,0x26,0x36,0x3f,0xf7,0xcc,0x34,0xa5,0xe5,0xf1,0x71,0xd8,0x31,0x15,
+    0x04,0xc7,0x23,0xc3,0x18,0x96,0x05,0x9a,0x07,0x12,0x80,0xe2,0xeb,0x27,0xb2,0x75,
+    0x09,0x83,0x2c,0x1a,0x1b,0x6e,0x5a,0xa0,0x52,0x3b,0xd6,0xb3,0x29,0xe3,0x2f,0x84,
+    0x53,0xd1,0x00,0xed,0x20,0xfc,0xb1,0x5b,0x6a,0xcb,0xbe,0x39,0x4a,0x4c,0x58,0xcf,
+    0xd0,0xef,0xaa,0xfb,0x43,0x4d,0x33,0x85,0x45,0xf9,0x02,0x7f,0x50,0x3c,0x9f,0xa8,
+    0x51,0xa3,0x40,0x8f,0x92,0x9d,0x38,0xf5,0xbc,0xb6,0xda,0x21,0x10,0xff,0xf3,0xd2,
+    0xcd,0x0c,0x13,0xec,0x5f,0x97,0x44,0x17,0xc4,0xa7,0x7e,0x3d,0x64,0x5d,0x19,0x73,
+    0x60,0x81,0x4f,0xdc,0x22,0x2a,0x90,0x88,0x46,0xee,0xb8,0x14,0xde,0x5e,0x0b,0xdb,
+    0xe0,0x32,0x3a,0x0a,0x49,0x06,0x24,0x5c,0xc2,0xd3,0xac,0x62,0x91,0x95,0xe4,0x79,
+    0xe7,0xc8,0x37,0x6d,0x8d,0xd5,0x4e,0xa9,0x6c,0x56,0xf4,0xea,0x65,0x7a,0xae,0x08,
+    0xba,0x78,0x25,0x2e,0x1c,0xa6,0xb4,0xc6,0xe8,0xdd,0x74,0x1f,0x4b,0xbd,0x8b,0x8a,
+    0x70,0x3e,0xb5,0x66,0x48,0x03,0xf6,0x0e,0x61,0x35,0x57,0xb9,0x86,0xc1,0x1d,0x9e,
+    0xe1,0xf8,0x98,0x11,0x69,0xd9,0x8e,0x94,0x9b,0x1e,0x87,0xe9,0xce,0x55,0x28,0xdf,
+    0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16
+};
+
+static const uint8_t aes_rcon[10] = {
+    0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36
+};
+
+/// @brief Expand AES-128 key (16 bytes) into 11 round keys (176 bytes).
+static void aes128_key_expand(const uint8_t key[16], uint8_t rk[176])
+{
+    memcpy(rk, key, 16);
+    for (int i = 4; i < 44; i++)
+    {
+        uint8_t tmp[4];
+        memcpy(tmp, rk + (i - 1) * 4, 4);
+        if (i % 4 == 0)
+        {
+            uint8_t t = tmp[0];
+            tmp[0] = aes_sbox[tmp[1]] ^ aes_rcon[i / 4 - 1];
+            tmp[1] = aes_sbox[tmp[2]];
+            tmp[2] = aes_sbox[tmp[3]];
+            tmp[3] = aes_sbox[t];
+        }
+        for (int j = 0; j < 4; j++)
+            rk[i * 4 + j] = rk[(i - 4) * 4 + j] ^ tmp[j];
+    }
+}
+
+/// @brief xtime: multiply by 2 in GF(2^8) with AES reducing polynomial.
+static uint8_t aes_xtime(uint8_t x)
+{
+    return (uint8_t)((x << 1) ^ ((x >> 7) * 0x1b));
+}
+
+/// @brief AES-128 encrypt one 16-byte block.
+static void aes128_encrypt_block(const uint8_t rk[176],
+                                  const uint8_t in[16], uint8_t out[16])
+{
+    uint8_t s[16];
+    memcpy(s, in, 16);
+
+    // AddRoundKey (round 0)
+    for (int i = 0; i < 16; i++)
+        s[i] ^= rk[i];
+
+    // Rounds 1-9: SubBytes, ShiftRows, MixColumns, AddRoundKey
+    for (int round = 1; round <= 9; round++)
+    {
+        uint8_t t[16];
+        // SubBytes
+        for (int i = 0; i < 16; i++)
+            t[i] = aes_sbox[s[i]];
+        // ShiftRows
+        s[0]  = t[0];  s[1]  = t[5];  s[2]  = t[10]; s[3]  = t[15];
+        s[4]  = t[4];  s[5]  = t[9];  s[6]  = t[14]; s[7]  = t[3];
+        s[8]  = t[8];  s[9]  = t[13]; s[10] = t[2];  s[11] = t[7];
+        s[12] = t[12]; s[13] = t[1];  s[14] = t[6];  s[15] = t[11];
+        // MixColumns
+        for (int c = 0; c < 4; c++)
+        {
+            int off = c * 4;
+            uint8_t a0 = s[off], a1 = s[off+1], a2 = s[off+2], a3 = s[off+3];
+            uint8_t x0 = aes_xtime(a0), x1 = aes_xtime(a1);
+            uint8_t x2 = aes_xtime(a2), x3 = aes_xtime(a3);
+            s[off]   = x0 ^ x1 ^ a1 ^ a2 ^ a3;
+            s[off+1] = a0 ^ x1 ^ x2 ^ a2 ^ a3;
+            s[off+2] = a0 ^ a1 ^ x2 ^ x3 ^ a3;
+            s[off+3] = x0 ^ a0 ^ a1 ^ a2 ^ x3;
+        }
+        // AddRoundKey
+        for (int i = 0; i < 16; i++)
+            s[i] ^= rk[round * 16 + i];
+    }
+
+    // Round 10: SubBytes, ShiftRows, AddRoundKey (no MixColumns)
+    {
+        uint8_t t[16];
+        for (int i = 0; i < 16; i++)
+            t[i] = aes_sbox[s[i]];
+        s[0]  = t[0];  s[1]  = t[5];  s[2]  = t[10]; s[3]  = t[15];
+        s[4]  = t[4];  s[5]  = t[9];  s[6]  = t[14]; s[7]  = t[3];
+        s[8]  = t[8];  s[9]  = t[13]; s[10] = t[2];  s[11] = t[7];
+        s[12] = t[12]; s[13] = t[1];  s[14] = t[6];  s[15] = t[11];
+        for (int i = 0; i < 16; i++)
+            s[i] ^= rk[160 + i];
+    }
+
+    memcpy(out, s, 16);
+}
+
+//=============================================================================
+// AES-128-GCM AEAD (NIST SP 800-38D)
+//=============================================================================
+
+/// @brief Increment the rightmost 32 bits of a 128-bit counter (big-endian).
+static void gcm_inc32(uint8_t counter[16])
+{
+    for (int i = 15; i >= 12; i--)
+    {
+        if (++counter[i] != 0)
+            break;
+    }
+}
+
+/// @brief GF(2^128) multiplication for GHASH.
+/// Reducing polynomial: x^128 + x^7 + x^2 + x + 1 (represented as 0xE1).
+static void ghash_mult(const uint8_t H[16], const uint8_t X[16], uint8_t out[16])
+{
+    uint8_t V[16], Z[16];
+    memcpy(V, H, 16);
+    memset(Z, 0, 16);
+
+    for (int i = 0; i < 128; i++)
+    {
+        if ((X[i / 8] >> (7 - (i & 7))) & 1)
+        {
+            for (int j = 0; j < 16; j++)
+                Z[j] ^= V[j];
+        }
+        // Right shift V by 1, apply reduction if LSB was set
+        uint8_t carry = V[15] & 1;
+        for (int j = 15; j > 0; j--)
+            V[j] = (V[j] >> 1) | (V[j - 1] << 7);
+        V[0] >>= 1;
+        if (carry)
+            V[0] ^= 0xE1; // reduction polynomial high byte
+    }
+
+    memcpy(out, Z, 16);
+}
+
+/// @brief GHASH over padded AAD + ciphertext + length block.
+static void ghash_compute(const uint8_t H[16],
+                           const uint8_t *aad, size_t aad_len,
+                           const uint8_t *ct, size_t ct_len,
+                           uint8_t tag[16])
+{
+    uint8_t X[16];
+    memset(X, 0, 16);
+    uint8_t block[16];
+
+    // Process AAD in 16-byte blocks
+    size_t i;
+    for (i = 0; i + 16 <= aad_len; i += 16)
+    {
+        for (int j = 0; j < 16; j++)
+            block[j] = X[j] ^ aad[i + j];
+        ghash_mult(H, block, X);
+    }
+    if (i < aad_len)
+    {
+        memset(block, 0, 16);
+        for (size_t j = 0; j < aad_len - i; j++)
+            block[j] = X[j] ^ aad[i + j];
+        for (size_t j = aad_len - i; j < 16; j++)
+            block[j] = X[j];
+        ghash_mult(H, block, X);
+    }
+
+    // Process ciphertext in 16-byte blocks
+    for (i = 0; i + 16 <= ct_len; i += 16)
+    {
+        for (int j = 0; j < 16; j++)
+            block[j] = X[j] ^ ct[i + j];
+        ghash_mult(H, block, X);
+    }
+    if (i < ct_len)
+    {
+        memset(block, 0, 16);
+        for (size_t j = 0; j < ct_len - i; j++)
+            block[j] = X[j] ^ ct[i + j];
+        for (size_t j = ct_len - i; j < 16; j++)
+            block[j] = X[j];
+        ghash_mult(H, block, X);
+    }
+
+    // Length block: aad_len_bits (64) || ct_len_bits (64), big-endian
+    uint64_t aad_bits = (uint64_t)aad_len * 8;
+    uint64_t ct_bits = (uint64_t)ct_len * 8;
+    memset(block, 0, 16);
+    for (int j = 0; j < 8; j++)
+    {
+        block[j] = (uint8_t)(aad_bits >> (56 - j * 8));
+        block[8 + j] = (uint8_t)(ct_bits >> (56 - j * 8));
+    }
+    for (int j = 0; j < 16; j++)
+        block[j] ^= X[j];
+    ghash_mult(H, block, tag);
+}
+
+size_t rt_aes128_gcm_encrypt(const uint8_t key[16],
+                              const uint8_t nonce[12],
+                              const void *aad,
+                              size_t aad_len,
+                              const void *plaintext,
+                              size_t plaintext_len,
+                              uint8_t *ciphertext)
+{
+    uint8_t rk[176];
+    aes128_key_expand(key, rk);
+
+    // H = AES(K, 0^128) — GHASH subkey
+    uint8_t H[16] = {0};
+    aes128_encrypt_block(rk, H, H);
+
+    // J0 = nonce || 0x00000001  (initial counter for GCM)
+    uint8_t J0[16];
+    memcpy(J0, nonce, 12);
+    J0[12] = 0; J0[13] = 0; J0[14] = 0; J0[15] = 1;
+
+    // Encrypt plaintext with AES-CTR starting at J0+1
+    uint8_t counter[16];
+    memcpy(counter, J0, 16);
+    gcm_inc32(counter); // counter starts at J0+1
+
+    const uint8_t *pt = (const uint8_t *)plaintext;
+    for (size_t i = 0; i < plaintext_len; i += 16)
+    {
+        uint8_t keystream[16];
+        aes128_encrypt_block(rk, counter, keystream);
+        size_t block_len = plaintext_len - i;
+        if (block_len > 16)
+            block_len = 16;
+        for (size_t j = 0; j < block_len; j++)
+            ciphertext[i + j] = pt[i + j] ^ keystream[j];
+        gcm_inc32(counter);
+    }
+
+    // Compute GHASH tag over AAD and ciphertext
+    uint8_t ghash_tag[16];
+    ghash_compute(H, (const uint8_t *)aad, aad_len, ciphertext, plaintext_len, ghash_tag);
+
+    // Final tag = GHASH XOR AES(K, J0)
+    uint8_t enc_j0[16];
+    aes128_encrypt_block(rk, J0, enc_j0);
+    for (int i = 0; i < 16; i++)
+        ciphertext[plaintext_len + i] = ghash_tag[i] ^ enc_j0[i];
+
+    rt_secure_zero(rk, sizeof(rk));
+    rt_secure_zero(H, sizeof(H));
+
+    return plaintext_len + 16;
+}
+
+long rt_aes128_gcm_decrypt(const uint8_t key[16],
+                            const uint8_t nonce[12],
+                            const void *aad,
+                            size_t aad_len,
+                            const void *ciphertext,
+                            size_t ciphertext_len,
+                            uint8_t *plaintext)
+{
+    if (ciphertext_len < 16)
+        return -1;
+
+    size_t data_len = ciphertext_len - 16;
+    const uint8_t *ct = (const uint8_t *)ciphertext;
+    const uint8_t *recv_tag = ct + data_len;
+
+    uint8_t rk[176];
+    aes128_key_expand(key, rk);
+
+    // H = AES(K, 0^128)
+    uint8_t H[16] = {0};
+    aes128_encrypt_block(rk, H, H);
+
+    // J0 = nonce || 0x00000001
+    uint8_t J0[16];
+    memcpy(J0, nonce, 12);
+    J0[12] = 0; J0[13] = 0; J0[14] = 0; J0[15] = 1;
+
+    // Recompute GHASH tag and verify (before decryption, per GCM spec)
+    uint8_t ghash_tag[16];
+    ghash_compute(H, (const uint8_t *)aad, aad_len, ct, data_len, ghash_tag);
+
+    uint8_t enc_j0[16];
+    aes128_encrypt_block(rk, J0, enc_j0);
+    uint8_t expected_tag[16];
+    for (int i = 0; i < 16; i++)
+        expected_tag[i] = ghash_tag[i] ^ enc_j0[i];
+
+    // Constant-time tag comparison
+    uint8_t diff = 0;
+    for (int i = 0; i < 16; i++)
+        diff |= expected_tag[i] ^ recv_tag[i];
+
+    if (diff != 0)
+    {
+        rt_secure_zero(rk, sizeof(rk));
+        rt_secure_zero(H, sizeof(H));
+        return -1;
+    }
+
+    // Decrypt with AES-CTR starting at J0+1
+    uint8_t counter[16];
+    memcpy(counter, J0, 16);
+    gcm_inc32(counter);
+
+    for (size_t i = 0; i < data_len; i += 16)
+    {
+        uint8_t keystream[16];
+        aes128_encrypt_block(rk, counter, keystream);
+        size_t block_len = data_len - i;
+        if (block_len > 16)
+            block_len = 16;
+        for (size_t j = 0; j < block_len; j++)
+            plaintext[i + j] = ct[i + j] ^ keystream[j];
+        gcm_inc32(counter);
+    }
+
+    rt_secure_zero(rk, sizeof(rk));
+    rt_secure_zero(H, sizeof(H));
 
     return (long)data_len;
 }
