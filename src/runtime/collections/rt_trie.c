@@ -13,8 +13,8 @@
 //   key enumeration.
 //
 // Key invariants:
-//   - Each node has a fixed 128-element children array; only ASCII input is
-//     supported (bytes >= 128 are rejected or treated as non-ASCII).
+//   - Each node has a fixed 256-element children array indexed by byte value,
+//     supporting the full byte range (0-255) including UTF-8 multi-byte sequences.
 //   - The root node is created lazily (on first insert) and freed recursively
 //     by the trie finalizer.
 //   - is_terminal marks nodes where a complete key ends. A node can be both

@@ -87,6 +87,8 @@ void *rt_compiled_pattern_new(rt_string pattern)
         (compiled_pattern_obj *)rt_obj_new_i64(0, (int64_t)sizeof(compiled_pattern_obj));
 
     obj->pattern = re_compile(pat_str);
+    if (!obj->pattern)
+        rt_trap("CompiledPattern: regex compilation failed");
     rt_obj_set_finalizer(obj, compiled_pattern_finalizer);
     return obj;
 }

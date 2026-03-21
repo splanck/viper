@@ -144,7 +144,8 @@ static int transcript_update(rt_tls_session_t *session, const uint8_t *data, siz
 
     memcpy(session->transcript_buffer + session->transcript_len, data, len);
     session->transcript_len += len;
-    // Compute running hash
+    // Compute running hash (O(n²) — re-hashes full transcript each update.
+    // An incremental SHA-256 context would reduce to O(n) total.)
     rt_sha256(session->transcript_buffer, session->transcript_len, session->transcript_hash);
     return 0;
 }
@@ -258,6 +259,8 @@ static int send_record(rt_tls_session_t *session,
                        const uint8_t *data,
                        size_t len)
 {
+    // ~32KB stack allocation (TLS_MAX_CIPHERTEXT). Consider heap allocation
+    // if stack depth is a concern in deeply nested call chains.
     uint8_t record[5 + TLS_MAX_CIPHERTEXT];
     size_t record_len;
 
@@ -989,7 +992,7 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
     // each other's lookup result.
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
+    hints.ai_family = AF_INET; // IPv4 only; IPv6 support is a future enhancement
     hints.ai_socktype = SOCK_STREAM;
 
     char port_str[8];
@@ -1371,6 +1374,8 @@ rt_string rt_viper_tls_recv_line(void *obj)
 
         if (len >= cap)
         {
+            if (cap > SIZE_MAX / 2)
+                break; // Capacity overflow — return what we have
             cap *= 2;
             char *new_line = (char *)realloc(line, cap);
             if (!new_line)

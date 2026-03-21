@@ -95,7 +95,8 @@ long long rt_rand_int(long long max)
     if (!ctx)
         ctx = rt_legacy_context();
     ctx->rng_state = ctx->rng_state * 6364136223846793005ULL + 1ULL;
-    // Use unsigned modulo to avoid bias issues with negative numbers
+    // Use unsigned modulo — has slight modulo bias (~2^-58 per call) which is
+    // negligible for non-cryptographic use. Rejection sampling would eliminate it.
     uint64_t umax = (uint64_t)max;
     return (long long)(ctx->rng_state % umax);
 }

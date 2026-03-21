@@ -105,6 +105,8 @@ static char *percent_encode(const char *str, bool encode_slash)
 
     size_t len = strlen(str);
     // Worst case: every char becomes %XX
+    if (len > SIZE_MAX / 3)
+        return NULL;
     char *result = (char *)malloc(len * 3 + 1);
     if (!result)
         return NULL;

@@ -274,6 +274,8 @@ static void *fbx_decompress_array(const uint8_t *data,
         return NULL;
 
     bytes_view *iv = (bytes_view *)inflated;
+    if (elem_size > 0 && count > SIZE_MAX / elem_size)
+        return NULL; /* overflow guard for 32-bit platforms */
     size_t expected = (size_t)count * elem_size;
     if ((size_t)iv->len < expected)
         return NULL;
@@ -380,6 +382,8 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop)
             }
             else
             {
+                if (elem_size > 0 && count > SIZE_MAX / elem_size)
+                    return -1; /* overflow guard for 32-bit platforms */
                 size_t expected = (size_t)count * elem_size;
                 if (comp_len < expected)
                     return -1;

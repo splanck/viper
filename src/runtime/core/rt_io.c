@@ -65,6 +65,7 @@
 // Thread-local trap recovery for safe threads
 // =============================================================================
 
+// _Thread_local requires C11; supported by GCC, Clang, and MSVC 19.0+
 static _Thread_local jmp_buf *rt_trap_recovery_ = NULL;
 static _Thread_local char rt_trap_error_[512] = "";
 static _Thread_local int rt_trap_net_code_ = 0;

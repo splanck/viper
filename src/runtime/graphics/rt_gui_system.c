@@ -88,6 +88,11 @@ typedef struct
     char *description;
     int enabled;
     int triggered; // Set to 1 when shortcut is triggered this frame
+    // Pre-parsed modifier/key values (cached at registration time)
+    int parsed_ctrl;
+    int parsed_shift;
+    int parsed_alt;
+    int parsed_key;
 } rt_shortcut_t;
 
 #define MAX_SHORTCUTS 256
@@ -149,7 +154,7 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
             int fnum = atoi(token + 1);
             if (fnum >= 1 && fnum <= 12)
             {
-                *key = 289 + fnum; // VGFX_KEY_F1 = 290 is approximated
+                *key = VG_KEY_F1 + (fnum - 1);
             }
         }
         token = rt_strtok_r(NULL, "+", &saveptr);
@@ -169,8 +174,13 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description)
     char *ckeys = rt_string_to_cstr(keys);
     char *cdesc = rt_string_to_cstr(description);
 
-    if (!cid)
+    if (!cid || !ckeys)
+    {
+        free(cid);
+        free(ckeys);
+        free(cdesc);
         return;
+    }
 
     // Check if already registered and update
     for (int i = 0; i < g_shortcut_count; i++)
@@ -181,17 +191,25 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description)
             free(g_shortcuts[i].description);
             g_shortcuts[i].keys = ckeys;
             g_shortcuts[i].description = cdesc;
+            // Re-parse cached modifier/key values for the new keys string
+            parse_shortcut_keys(ckeys, &g_shortcuts[i].parsed_ctrl, &g_shortcuts[i].parsed_shift,
+                                &g_shortcuts[i].parsed_alt, &g_shortcuts[i].parsed_key);
             free(cid);
             return;
         }
     }
 
     // Add new shortcut
-    g_shortcuts[g_shortcut_count].id = cid;
-    g_shortcuts[g_shortcut_count].keys = ckeys;
-    g_shortcuts[g_shortcut_count].description = cdesc;
-    g_shortcuts[g_shortcut_count].enabled = 1;
-    g_shortcuts[g_shortcut_count].triggered = 0;
+    rt_shortcut_t *sc = &g_shortcuts[g_shortcut_count];
+    sc->id = cid;
+    sc->keys = ckeys;
+    sc->description = cdesc;
+    sc->enabled = 1;
+    sc->triggered = 0;
+    // Pre-parse modifier/key values so rt_shortcuts_check_key doesn't
+    // need to re-parse the string on every keypress.
+    parse_shortcut_keys(ckeys, &sc->parsed_ctrl, &sc->parsed_shift, &sc->parsed_alt,
+                        &sc->parsed_key);
     g_shortcut_count++;
 }
 
@@ -292,15 +310,11 @@ int8_t rt_shortcuts_check_key(int key, int mods)
 
     for (int i = 0; i < g_shortcut_count; i++)
     {
-        if (!g_shortcuts[i].enabled || !g_shortcuts[i].keys)
+        if (!g_shortcuts[i].enabled || !g_shortcuts[i].parsed_key)
             continue;
 
-        int sc_ctrl = 0, sc_shift = 0, sc_alt = 0, sc_key = 0;
-        if (!parse_shortcut_keys(g_shortcuts[i].keys, &sc_ctrl, &sc_shift, &sc_alt, &sc_key))
-            continue;
-
-        if (sc_ctrl == has_ctrl && sc_shift == has_shift && sc_alt == has_alt &&
-            sc_key == upper_key)
+        if (g_shortcuts[i].parsed_ctrl == has_ctrl && g_shortcuts[i].parsed_shift == has_shift &&
+            g_shortcuts[i].parsed_alt == has_alt && g_shortcuts[i].parsed_key == upper_key)
         {
             g_shortcuts[i].triggered = 1;
             g_triggered_shortcut_id = g_shortcuts[i].id;
@@ -387,6 +401,9 @@ void rt_app_set_title(void *app, rt_string title)
     if (cstr)
     {
         vgfx_set_title(gui_app->window, cstr);
+        // Store a copy for rt_app_get_title (no vgfx_get_title API exists)
+        free(gui_app->title);
+        gui_app->title = strdup(cstr);
         free(cstr);
     }
 }
@@ -394,7 +411,11 @@ void rt_app_set_title(void *app, rt_string title)
 rt_string rt_app_get_title(void *app)
 {
     RT_ASSERT_MAIN_THREAD();
-    (void)app;
+    if (!app)
+        return rt_str_empty();
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (gui_app->title)
+        return rt_string_from_bytes(gui_app->title, strlen(gui_app->title));
     return rt_str_empty();
 }
 
@@ -404,11 +425,12 @@ void rt_app_set_size(void *app, int64_t width, int64_t height)
     if (!app)
         return;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
-    if (gui_app->root)
+    if (gui_app->window)
     {
-        vg_widget_set_fixed_size(gui_app->root, (float)width, (float)height);
-        gui_app->root->width = (float)width;
-        gui_app->root->height = (float)height;
+        vgfx_set_window_size(gui_app->window, (int32_t)width, (int32_t)height);
+        // Root sizing is handled by vg_widget_layout(root, phys_w, phys_h) in
+        // rt_gui_app_render — do not set root fixed size here, as that would
+        // prevent the layout engine from resizing the root on window resize.
     }
 }
 

@@ -61,6 +61,8 @@ typedef struct
 static int64_t get_timestamp_ns(void)
 {
 #if defined(_WIN32)
+    // Benign race: concurrent first calls may both query frequency, but QPC
+    // frequency is constant so duplicate init produces identical results.
     static LARGE_INTEGER freq = {0};
     if (freq.QuadPart == 0)
     {
@@ -69,6 +71,7 @@ static int64_t get_timestamp_ns(void)
 
     LARGE_INTEGER counter;
     QueryPerformanceCounter(&counter);
+    // Note: nanosecond multiply can overflow after ~29 years of uptime at 10 MHz QPC.
     return (int64_t)((counter.QuadPart * 1000000000LL) / freq.QuadPart);
 #else
     // Unix and ViperDOS: use clock_gettime.

@@ -212,7 +212,7 @@ static void bw_ensure(bit_writer_t *bw, size_t need)
 {
     if (bw->len + need > bw->capacity)
     {
-        size_t new_cap = bw->capacity * 2;
+        size_t new_cap = (bw->capacity <= SIZE_MAX / 2) ? bw->capacity * 2 : SIZE_MAX;
         if (new_cap < bw->len + need)
             new_cap = bw->len + need + 256;
         uint8_t *new_data = (uint8_t *)realloc(bw->data, new_cap);

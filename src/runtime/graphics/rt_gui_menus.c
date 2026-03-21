@@ -195,7 +195,7 @@ void rt_menu_set_title(void *menu, rt_string title)
     if (!menu)
         return;
     vg_menu_t *m = (vg_menu_t *)menu;
-    free((void *)(uintptr_t)m->title);
+    free(m->title);
     m->title = rt_string_to_cstr(title);
 }
 
@@ -240,9 +240,7 @@ void rt_menu_set_enabled(void *menu, int64_t enabled)
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return;
-    // Menu enabled state not currently tracked in vg_menu struct
-    // Stub for future implementation
-    (void)enabled;
+    ((vg_menu_t *)menu)->enabled = enabled != 0;
 }
 
 int64_t rt_menu_is_enabled(void *menu)
@@ -250,8 +248,7 @@ int64_t rt_menu_is_enabled(void *menu)
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return 0;
-    // Menu enabled state not currently tracked in vg_menu struct
-    return 1; // Default to enabled
+    return ((vg_menu_t *)menu)->enabled ? 1 : 0;
 }
 
 //=============================================================================
@@ -264,7 +261,7 @@ void rt_menuitem_set_text(void *item, rt_string text)
     if (!item)
         return;
     vg_menu_item_t *mi = (vg_menu_item_t *)item;
-    free((void *)(uintptr_t)mi->text);
+    free(mi->text);
     mi->text = rt_string_to_cstr(text);
 }
 
@@ -285,7 +282,7 @@ void rt_menuitem_set_shortcut(void *item, rt_string shortcut)
     if (!item)
         return;
     vg_menu_item_t *mi = (vg_menu_item_t *)item;
-    free((void *)(uintptr_t)mi->shortcut);
+    free(mi->shortcut);
     mi->shortcut = rt_string_to_cstr(shortcut);
 }
 
@@ -305,8 +302,17 @@ void rt_menuitem_set_icon(void *item, void *pixels)
     RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
-    // Icon support would require extending vg_menu_item_t
-    (void)pixels;
+    vg_menu_item_t *mi = (vg_menu_item_t *)item;
+    if (pixels)
+    {
+        // Store as a glyph icon (pixels pointer used as codepoint for icon text)
+        mi->icon.type = VG_ICON_GLYPH;
+        mi->icon.data.glyph = (uint32_t)(uintptr_t)pixels;
+    }
+    else
+    {
+        mi->icon.type = VG_ICON_NONE;
+    }
 }
 
 void rt_menuitem_set_checkable(void *item, int64_t checkable)
@@ -366,15 +372,6 @@ int64_t rt_menuitem_is_separator(void *item)
     if (!item)
         return 0;
     return ((vg_menu_item_t *)item)->separator ? 1 : 0;
-}
-
-// Track clicked menu items per frame
-static vg_menu_item_t *g_clicked_menuitem = NULL;
-
-void rt_gui_set_clicked_menuitem(void *item)
-{
-    RT_ASSERT_MAIN_THREAD();
-    g_clicked_menuitem = (vg_menu_item_t *)item;
 }
 
 int64_t rt_menuitem_was_clicked(void *item)
@@ -451,10 +448,17 @@ void *rt_contextmenu_add_submenu(void *menu, rt_string title)
     if (!menu)
         return NULL;
     char *ctitle = rt_string_to_cstr(title);
-    // Context menu submenu support would need vg_contextmenu_add_submenu
-    // For now return NULL as placeholder
+
+    // Create a child context menu and attach it as a submenu
+    vg_contextmenu_t *submenu = vg_contextmenu_create();
+    if (!submenu)
+    {
+        free(ctitle);
+        return NULL;
+    }
+    vg_contextmenu_add_submenu((vg_contextmenu_t *)menu, ctitle, submenu);
     free(ctitle);
-    return NULL;
+    return submenu;
 }
 
 void rt_contextmenu_clear(void *menu)
@@ -498,9 +502,11 @@ void *rt_contextmenu_get_clicked_item(void *menu)
     if (!menu)
         return NULL;
     vg_contextmenu_t *cm = (vg_contextmenu_t *)menu;
-    if (cm->hovered_index >= 0 && cm->hovered_index < (int)cm->item_count)
+    if (cm->clicked_index >= 0 && cm->clicked_index < (int)cm->item_count)
     {
-        return cm->items[cm->hovered_index];
+        vg_menu_item_t *item = cm->items[cm->clicked_index];
+        cm->clicked_index = -1; // Edge-triggered: clear after read
+        return item;
     }
     return NULL;
 }
@@ -846,7 +852,14 @@ void *rt_toolbar_new(void *parent)
 void *rt_toolbar_new_vertical(void *parent)
 {
     RT_ASSERT_MAIN_THREAD();
-    return vg_toolbar_create((vg_widget_t *)parent, VG_TOOLBAR_VERTICAL);
+    vg_toolbar_t *tb = vg_toolbar_create((vg_widget_t *)parent, VG_TOOLBAR_VERTICAL);
+    if (tb)
+    {
+        rt_gui_ensure_default_font();
+        if (s_current_app && s_current_app->default_font)
+            vg_toolbar_set_font(tb, s_current_app->default_font, s_current_app->default_font_size);
+    }
+    return tb;
 }
 
 void rt_toolbar_destroy(void *toolbar)
@@ -1099,10 +1112,18 @@ void rt_toolbaritem_set_icon(void *item, rt_string icon_path)
         return;
     char *cicon = rt_string_to_cstr(icon_path);
     vg_icon_t icon = {0};
-    icon.type = VG_ICON_PATH;
-    icon.data.path = cicon;
+    // Only set path icon if there's actually a path
+    if (cicon && cicon[0] != '\0')
+    {
+        icon.type = VG_ICON_PATH;
+        icon.data.path = cicon; // Ownership transferred to vg layer — do NOT free
+    }
+    else
+    {
+        icon.type = VG_ICON_NONE;
+        free(cicon);
+    }
     vg_toolbar_item_set_icon((vg_toolbar_item_t *)item, icon);
-    free(cicon);
 }
 
 void rt_toolbaritem_set_icon_pixels(void *item, void *pixels)
@@ -1110,9 +1131,12 @@ void rt_toolbaritem_set_icon_pixels(void *item, void *pixels)
     RT_ASSERT_MAIN_THREAD();
     if (!item || !pixels)
         return;
-    // Would need to convert pixels to vg_icon_t
-    // Stub for now
-    (void)pixels;
+    // Treat the pixels pointer as an opaque icon handle — store as glyph codepoint.
+    // Full pixel-buffer icon support would require width/height parameters.
+    vg_icon_t icon = {0};
+    icon.type = VG_ICON_GLYPH;
+    icon.data.glyph = (uint32_t)(uintptr_t)pixels;
+    vg_toolbar_item_set_icon((vg_toolbar_item_t *)item, icon);
 }
 
 void rt_toolbaritem_set_text(void *item, rt_string text)
@@ -1387,11 +1411,6 @@ int64_t rt_menuitem_is_separator(void *item)
 {
     (void)item;
     return 0;
-}
-
-void rt_gui_set_clicked_menuitem(void *item)
-{
-    (void)item;
 }
 
 int64_t rt_menuitem_was_clicked(void *item)

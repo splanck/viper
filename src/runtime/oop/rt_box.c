@@ -210,6 +210,7 @@ int64_t rt_box_eq_f64(void *box, double val)
     rt_box_t *b = (rt_box_t *)box;
     if (b->tag != RT_BOX_F64)
         return 0;
+    // IEEE 754: NaN != NaN, so Box(NaN).Eq(NaN) returns 0. This is intentional.
     return b->data.f64_val == val ? 1 : 0;
 }
 

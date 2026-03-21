@@ -73,6 +73,17 @@ typedef struct
     int width;             ///< Cached window width
     int height;            ///< Cached window height
     int close_requested;   ///< 1 if WM_DELETE_WINDOW received, 0 otherwise
+    // XDND (drag-and-drop) atoms
+    Atom xdnd_aware;       ///< XdndAware atom
+    Atom xdnd_enter;       ///< XdndEnter atom
+    Atom xdnd_position;    ///< XdndPosition atom
+    Atom xdnd_status;      ///< XdndStatus atom
+    Atom xdnd_drop;        ///< XdndDrop atom
+    Atom xdnd_finished;    ///< XdndFinished atom
+    Atom xdnd_selection;   ///< XdndSelection atom
+    Atom xdnd_type_list;   ///< XdndTypeList atom
+    Atom text_uri_list;    ///< text/uri-list MIME type atom
+    Window xdnd_source;    ///< Source window for current drag
 } vgfx_x11_data;
 
 //===----------------------------------------------------------------------===//
@@ -330,6 +341,24 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     /* Set up WM_DELETE_WINDOW protocol (intercept close button) */
     x11->wm_delete_window = XInternAtom(x11->display, "WM_DELETE_WINDOW", False);
     XSetWMProtocols(x11->display, x11->window, &x11->wm_delete_window, 1);
+
+    /* Set up XDND (drag-and-drop) protocol */
+    x11->xdnd_aware = XInternAtom(x11->display, "XdndAware", False);
+    x11->xdnd_enter = XInternAtom(x11->display, "XdndEnter", False);
+    x11->xdnd_position = XInternAtom(x11->display, "XdndPosition", False);
+    x11->xdnd_status = XInternAtom(x11->display, "XdndStatus", False);
+    x11->xdnd_drop = XInternAtom(x11->display, "XdndDrop", False);
+    x11->xdnd_finished = XInternAtom(x11->display, "XdndFinished", False);
+    x11->xdnd_selection = XInternAtom(x11->display, "XdndSelection", False);
+    x11->xdnd_type_list = XInternAtom(x11->display, "XdndTypeList", False);
+    x11->text_uri_list = XInternAtom(x11->display, "text/uri-list", False);
+    x11->xdnd_source = 0;
+    {
+        /* Advertise XDND version 5 support */
+        Atom xdnd_version = 5;
+        XChangeProperty(x11->display, x11->window, x11->xdnd_aware, XA_ATOM, 32,
+                        PropModeReplace, (unsigned char *)&xdnd_version, 1);
+    }
 
     /* Create graphics context */
     x11->gc = XCreateGC(x11->display, x11->window, 0, NULL);
@@ -662,6 +691,98 @@ int vgfx_platform_process_events(struct vgfx_window *win)
 
                     vgfx_event_t vgfx_event = {.type = VGFX_EVENT_CLOSE, .time_ms = timestamp};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
+                }
+                /* XDND: drag entered our window */
+                else if (event.xclient.message_type == x11->xdnd_enter)
+                {
+                    x11->xdnd_source = (Window)event.xclient.data.l[0];
+                }
+                /* XDND: drag positioned over our window — accept */
+                else if (event.xclient.message_type == x11->xdnd_position)
+                {
+                    XEvent reply = {0};
+                    reply.type = ClientMessage;
+                    reply.xclient.window = x11->xdnd_source;
+                    reply.xclient.message_type = x11->xdnd_status;
+                    reply.xclient.format = 32;
+                    reply.xclient.data.l[0] = (long)x11->window;
+                    reply.xclient.data.l[1] = 1; /* Accept drop */
+                    reply.xclient.data.l[4] =
+                        (long)XInternAtom(x11->display, "XdndActionCopy", False);
+                    XSendEvent(x11->display, x11->xdnd_source, False, NoEventMask, &reply);
+                    XFlush(x11->display);
+                }
+                /* XDND: drop completed — request selection data */
+                else if (event.xclient.message_type == x11->xdnd_drop)
+                {
+                    XConvertSelection(x11->display, x11->xdnd_selection, x11->text_uri_list,
+                                      x11->xdnd_selection, x11->window, CurrentTime);
+                }
+                break;
+            }
+
+            case SelectionNotify:
+            {
+                /* XDND: received selection data (file paths as text/uri-list) */
+                if (event.xselection.property == x11->xdnd_selection)
+                {
+                    Atom actual_type;
+                    int actual_format;
+                    unsigned long nitems, bytes_after;
+                    unsigned char *data = NULL;
+                    XGetWindowProperty(x11->display, x11->window, x11->xdnd_selection, 0, 65536,
+                                       True, AnyPropertyType, &actual_type, &actual_format, &nitems,
+                                       &bytes_after, &data);
+                    if (data && nitems > 0)
+                    {
+                        /* Parse text/uri-list: one URI per line, skip comments (#) */
+                        char *text = (char *)data;
+                        char *line = text;
+                        while (line && *line)
+                        {
+                            char *eol = strchr(line, '\n');
+                            if (eol)
+                                *eol = '\0';
+                            /* Remove trailing \r */
+                            size_t llen = strlen(line);
+                            if (llen > 0 && line[llen - 1] == '\r')
+                                line[llen - 1] = '\0';
+                            /* Skip comments and empty lines */
+                            if (line[0] != '#' && line[0] != '\0')
+                            {
+                                /* Strip file:// prefix */
+                                const char *path = line;
+                                if (strncmp(path, "file://", 7) == 0)
+                                    path += 7;
+                                vgfx_event_t vgfx_event = {0};
+                                vgfx_event.type = VGFX_EVENT_FILE_DROP;
+                                vgfx_event.time_ms = timestamp;
+                                size_t plen = strlen(path);
+                                if (plen >= sizeof(vgfx_event.data.file_drop.path))
+                                    plen = sizeof(vgfx_event.data.file_drop.path) - 1;
+                                memcpy(vgfx_event.data.file_drop.path, path, plen);
+                                vgfx_event.data.file_drop.path[plen] = '\0';
+                                vgfx_internal_enqueue_event(win, &vgfx_event);
+                            }
+                            line = eol ? eol + 1 : NULL;
+                        }
+                    }
+                    if (data)
+                        XFree(data);
+
+                    /* Send XdndFinished to complete the protocol */
+                    XEvent reply = {0};
+                    reply.type = ClientMessage;
+                    reply.xclient.window = x11->xdnd_source;
+                    reply.xclient.message_type = x11->xdnd_finished;
+                    reply.xclient.format = 32;
+                    reply.xclient.data.l[0] = (long)x11->window;
+                    reply.xclient.data.l[1] = 1; /* Accepted */
+                    reply.xclient.data.l[2] =
+                        (long)XInternAtom(x11->display, "XdndActionCopy", False);
+                    XSendEvent(x11->display, x11->xdnd_source, False, NoEventMask, &reply);
+                    XFlush(x11->display);
+                    x11->xdnd_source = 0;
                 }
                 break;
             }

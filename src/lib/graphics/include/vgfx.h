@@ -144,7 +144,8 @@ extern "C"
         VGFX_EVENT_CLOSE,        ///< Window close requested by user
         VGFX_EVENT_FOCUS_GAINED, ///< Window gained keyboard focus
         VGFX_EVENT_FOCUS_LOST,   ///< Window lost keyboard focus
-        VGFX_EVENT_SCROLL        ///< Scroll wheel or trackpad scroll
+        VGFX_EVENT_SCROLL,       ///< Scroll wheel or trackpad scroll
+        VGFX_EVENT_FILE_DROP     ///< File dropped onto window (one event per file)
     } vgfx_event_type_t;
 
     /// @brief Keyboard key codes.
@@ -280,6 +281,15 @@ extern "C"
                 int32_t x;     ///< Cursor X at time of scroll (physical pixels)
                 int32_t y;     ///< Cursor Y at time of scroll (physical pixels)
             } scroll;
+
+            /// @brief File drop event data (FILE_DROP).
+            /// @details One event is enqueued per dropped file. The path is
+            ///          NUL-terminated and copied into the event struct (not a
+            ///          pointer to external memory).
+            struct
+            {
+                char path[260]; ///< File path (NUL-terminated, max 259 chars)
+            } file_drop;
         } data;
     } vgfx_event_t;
 

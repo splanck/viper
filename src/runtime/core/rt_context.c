@@ -64,6 +64,7 @@
 #if defined(_MSC_VER)
 void rt_file_state_cleanup(RtContext *ctx);
 void rt_type_registry_cleanup(RtContext *ctx);
+void rt_type_registry_init(RtContext *ctx);
 #else
 __attribute__((weak)) void rt_file_state_cleanup(RtContext *ctx)
 {
@@ -71,6 +72,11 @@ __attribute__((weak)) void rt_file_state_cleanup(RtContext *ctx)
 }
 
 __attribute__((weak)) void rt_type_registry_cleanup(RtContext *ctx)
+{
+    (void)ctx;
+}
+
+__attribute__((weak)) void rt_type_registry_init(RtContext *ctx)
 {
     (void)ctx;
 }
@@ -303,6 +309,9 @@ void rt_context_init(RtContext *ctx)
     ctx->type_registry.bindings = NULL;
     ctx->type_registry.bindings_len = 0;
     ctx->type_registry.bindings_cap = 0;
+    ctx->type_registry.rw_lock = NULL;
+    ctx->type_registry.sealed = 0;
+    rt_type_registry_init(ctx);
 
     ctx->bind_count = 0;
 }
@@ -447,6 +456,8 @@ void rt_set_current_context(RtContext *ctx)
                 old->type_registry.bindings = NULL;
                 old->type_registry.bindings_len = 0;
                 old->type_registry.bindings_cap = 0;
+                old->type_registry.rw_lock = NULL;
+                old->type_registry.sealed = 0;
             }
 
             rt_spin_unlock(&g_legacy_handoff_lock);
@@ -494,6 +505,8 @@ void rt_set_current_context(RtContext *ctx)
                 g_legacy_ctx.type_registry.bindings = NULL;
                 g_legacy_ctx.type_registry.bindings_len = 0;
                 g_legacy_ctx.type_registry.bindings_cap = 0;
+                g_legacy_ctx.type_registry.rw_lock = NULL;
+                g_legacy_ctx.type_registry.sealed = 0;
             }
 
             rt_spin_unlock(&g_legacy_handoff_lock);

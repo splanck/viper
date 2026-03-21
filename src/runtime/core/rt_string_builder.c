@@ -144,6 +144,8 @@ static rt_sb_status_t rt_sb_grow(rt_string_builder *sb, size_t new_cap)
     if (new_cap <= sb->cap)
         return RT_SB_OK;
 
+    // Defensive: unreachable after the check above, but guards against
+    // unsigned overflow if new_cap wrapped to a value less than sb->cap.
     if (new_cap < sb->cap)
         return RT_SB_ERROR_OVERFLOW;
 

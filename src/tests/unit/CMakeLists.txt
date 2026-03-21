@@ -1121,6 +1121,11 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_type_registry_context_isolation PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_type_registry_context_isolation test_rt_type_registry_context_isolation)
 
+    viper_add_test(test_rt_type_registry_thread_safety
+            ${VIPER_TESTS_DIR}/runtime/RTTypeRegistryThreadSafetyTests.cpp)
+    target_link_libraries(test_rt_type_registry_thread_safety PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_type_registry_thread_safety test_rt_type_registry_thread_safety)
+
     viper_add_test(test_rt_array_i32 ${VIPER_TESTS_DIR}/runtime/RTArrayI32Tests.cpp)
     target_link_libraries(test_rt_array_i32 PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_test_common)
     viper_add_ctest(test_rt_array_i32 test_rt_array_i32)

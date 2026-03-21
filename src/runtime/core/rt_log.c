@@ -51,7 +51,8 @@ extern "C"
     /// Messages with a level less than this value are silently discarded.
     /// Default is INFO (1), meaning DEBUG messages are suppressed.
     /// Can be changed at runtime via rt_log_set_level().
-    static int64_t g_log_level = RT_LOG_INFO;
+    // Accessed across threads — use atomic operations for reads/writes
+    static volatile int64_t g_log_level = RT_LOG_INFO;
 
     /// @brief Formats the current time as an HH:MM:SS string for log timestamps.
     ///

@@ -76,7 +76,7 @@ static void ensure_capacity(rt_memstream_impl *ms, int64_t required)
     if (required <= ms->capacity)
         return;
 
-    int64_t new_cap = ms->capacity * 2;
+    int64_t new_cap = (ms->capacity <= INT64_MAX / 2) ? ms->capacity * 2 : INT64_MAX;
     if (new_cap < required)
         new_cap = required;
     if (new_cap < MEMSTREAM_INITIAL_CAPACITY)

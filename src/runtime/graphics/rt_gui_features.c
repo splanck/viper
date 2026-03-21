@@ -110,15 +110,27 @@ void rt_commandpalette_add_command(void *palette, rt_string id, rt_string label,
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
     char *cid = rt_string_to_cstr(id);
     char *clabel = rt_string_to_cstr(label);
-    // Note: category is not used by underlying widget - could prepend to label if needed
-    (void)category;
+    char *ccat = rt_string_to_cstr(category);
 
-    vg_commandpalette_add_command(data->palette, cid, clabel, NULL, NULL, NULL);
+    // Prepend category to label if non-empty (e.g. "[File] Open")
+    char *display = clabel;
+    if (ccat && ccat[0])
+    {
+        size_t len = strlen(ccat) + (clabel ? strlen(clabel) : 0) + 4;
+        display = (char *)malloc(len);
+        if (display)
+            snprintf(display, len, "[%s] %s", ccat, clabel ? clabel : "");
+        else
+            display = clabel;
+    }
 
-    if (cid)
-        free(cid);
-    if (clabel)
-        free(clabel);
+    vg_commandpalette_add_command(data->palette, cid, display, NULL, NULL, NULL);
+
+    if (display != clabel)
+        free(display);
+    free(ccat);
+    free(cid);
+    free(clabel);
 }
 
 void rt_commandpalette_add_command_with_shortcut(
@@ -131,17 +143,28 @@ void rt_commandpalette_add_command_with_shortcut(
     char *cid = rt_string_to_cstr(id);
     char *clabel = rt_string_to_cstr(label);
     char *cshort = rt_string_to_cstr(shortcut);
-    // Note: category is not used by underlying widget
-    (void)category;
+    char *ccat = rt_string_to_cstr(category);
 
-    vg_commandpalette_add_command(data->palette, cid, clabel, cshort, NULL, NULL);
+    // Prepend category to label if non-empty
+    char *display = clabel;
+    if (ccat && ccat[0])
+    {
+        size_t len = strlen(ccat) + (clabel ? strlen(clabel) : 0) + 4;
+        display = (char *)malloc(len);
+        if (display)
+            snprintf(display, len, "[%s] %s", ccat, clabel ? clabel : "");
+        else
+            display = clabel;
+    }
 
-    if (cid)
-        free(cid);
-    if (clabel)
-        free(clabel);
-    if (cshort)
-        free(cshort);
+    vg_commandpalette_add_command(data->palette, cid, display, cshort, NULL, NULL);
+
+    if (display != clabel)
+        free(display);
+    free(ccat);
+    free(cid);
+    free(clabel);
+    free(cshort);
 }
 
 void rt_commandpalette_remove_command(void *palette, rt_string id)
@@ -200,8 +223,9 @@ void rt_commandpalette_set_placeholder(void *palette, rt_string text)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
     char *ctext = rt_string_to_cstr(text);
-    // Would need placeholder support in vg_commandpalette - stub
-    (void)data;
+    // Set placeholder on the underlying search text input
+    if (data->palette && data->palette->search_input)
+        vg_textinput_set_placeholder((vg_textinput_t *)data->palette->search_input, ctext);
     if (ctext)
         free(ctext);
 }
@@ -210,13 +234,13 @@ rt_string rt_commandpalette_get_selected_command(void *palette)
 {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
     if (data->selected_command)
     {
         return rt_string_from_bytes(data->selected_command, strlen(data->selected_command));
     }
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 int64_t rt_commandpalette_was_command_selected(void *palette)
@@ -273,10 +297,18 @@ void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y)
 
     if (g_active_tooltip)
     {
-        // Combine title and body for now (rich tooltip would need more widget support)
-        char combined[1024];
-        snprintf(combined, sizeof(combined), "%s\n%s", ctitle ? ctitle : "", cbody ? cbody : "");
-        vg_tooltip_set_text(g_active_tooltip, combined);
+        // Combines title and body as plain text separated by newline.
+        // Rich formatting (bold, colors) would require vg_tooltip_t enhancements.
+        const char *t = ctitle ? ctitle : "";
+        const char *b = cbody ? cbody : "";
+        size_t needed = strlen(t) + strlen(b) + 2;
+        char *combined = (char *)malloc(needed);
+        if (combined)
+        {
+            snprintf(combined, needed, "%s\n%s", t, b);
+            vg_tooltip_set_text(g_active_tooltip, combined);
+            free(combined);
+        }
         vg_tooltip_show_at(g_active_tooltip, (int)x, (int)y);
     }
 
@@ -298,6 +330,8 @@ void rt_tooltip_hide(void)
 void rt_tooltip_set_delay(int64_t delay_ms)
 {
     RT_ASSERT_MAIN_THREAD();
+    if (delay_ms < 0)
+        delay_ms = 0;
     g_tooltip_delay_ms = (uint32_t)delay_ms;
     if (g_active_tooltip)
     {
@@ -321,13 +355,21 @@ void rt_widget_set_tooltip_rich(void *widget, rt_string title, rt_string body)
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return;
-    // Combine title and body for basic tooltip support
+    // Combines title and body as plain text. Rich formatting would require
+    // vg_tooltip_t enhancements.
     char *ctitle = rt_string_to_cstr(title);
     char *cbody = rt_string_to_cstr(body);
 
-    char combined[1024];
-    snprintf(combined, sizeof(combined), "%s\n%s", ctitle ? ctitle : "", cbody ? cbody : "");
-    vg_widget_set_tooltip_text((vg_widget_t *)widget, combined);
+    const char *t = ctitle ? ctitle : "";
+    const char *b = cbody ? cbody : "";
+    size_t needed = strlen(t) + strlen(b) + 2;
+    char *combined = (char *)malloc(needed);
+    if (combined)
+    {
+        snprintf(combined, needed, "%s\n%s", t, b);
+        vg_widget_set_tooltip_text((vg_widget_t *)widget, combined);
+        free(combined);
+    }
 
     if (ctitle)
         free(ctitle);
@@ -506,9 +548,37 @@ int64_t rt_toast_was_dismissed(void *toast)
     if (!toast)
         return 0;
     rt_toast_data_t *data = (rt_toast_data_t *)toast;
-    // Check with manager if notification is still active
-    // For now, return stored state
-    return data->was_dismissed;
+
+    // Return cached result if already known dismissed
+    if (data->was_dismissed)
+        return 1;
+
+    // Check with the notification manager for auto-timeout dismissal
+    vg_notification_manager_t *mgr = rt_get_notification_manager();
+    if (mgr)
+    {
+        bool found = false;
+        for (size_t i = 0; i < mgr->notification_count; i++)
+        {
+            if (mgr->notifications[i] && mgr->notifications[i]->id == data->id)
+            {
+                found = true;
+                if (mgr->notifications[i]->dismissed)
+                {
+                    data->was_dismissed = 1;
+                    return 1;
+                }
+                break;
+            }
+        }
+        // If notification is no longer tracked by the manager, it was dismissed
+        if (!found)
+        {
+            data->was_dismissed = 1;
+            return 1;
+        }
+    }
+    return 0;
 }
 
 void rt_toast_dismiss(void *toast)
@@ -538,6 +608,10 @@ void rt_toast_set_position(int64_t position)
 void rt_toast_set_max_visible(int64_t count)
 {
     RT_ASSERT_MAIN_THREAD();
+    if (count < 1)
+        count = 1;
+    if (count > 100)
+        count = 100;
     vg_notification_manager_t *mgr = rt_get_notification_manager();
     if (mgr)
     {
@@ -748,13 +822,13 @@ rt_string rt_breadcrumb_get_clicked_data(void *crumb)
 {
     RT_ASSERT_MAIN_THREAD();
     if (!crumb)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
     if (data->clicked_data)
     {
         return rt_string_from_bytes(data->clicked_data, strlen(data->clicked_data));
     }
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 void rt_breadcrumb_set_separator(void *crumb, rt_string sep)
@@ -956,9 +1030,7 @@ void rt_widget_set_draggable(void *widget, int64_t draggable)
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return;
-    // Note: Would need to extend vg_widget to support drag/drop
-    // For now, this is a stub that tracks state
-    (void)draggable;
+    ((vg_widget_t *)widget)->draggable = draggable != 0;
 }
 
 void rt_widget_set_drag_data(void *widget, rt_string type, rt_string data)
@@ -966,9 +1038,11 @@ void rt_widget_set_drag_data(void *widget, rt_string type, rt_string data)
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return;
-    // Note: Would need to extend vg_widget to support drag/drop
-    (void)type;
-    (void)data;
+    vg_widget_t *w = (vg_widget_t *)widget;
+    free(w->drag_type);
+    free(w->drag_data);
+    w->drag_type = rt_string_to_cstr(type);
+    w->drag_data = rt_string_to_cstr(data);
 }
 
 int64_t rt_widget_is_being_dragged(void *widget)
@@ -976,8 +1050,7 @@ int64_t rt_widget_is_being_dragged(void *widget)
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
-    // Note: Would need to extend vg_widget to support drag/drop
-    return 0;
+    return ((vg_widget_t *)widget)->_is_being_dragged ? 1 : 0;
 }
 
 void rt_widget_set_drop_target(void *widget, int64_t target)
@@ -985,8 +1058,7 @@ void rt_widget_set_drop_target(void *widget, int64_t target)
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return;
-    // Note: Would need to extend vg_widget to support drag/drop
-    (void)target;
+    ((vg_widget_t *)widget)->is_drop_target = target != 0;
 }
 
 void rt_widget_set_accepted_drop_types(void *widget, rt_string types)
@@ -994,8 +1066,9 @@ void rt_widget_set_accepted_drop_types(void *widget, rt_string types)
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return;
-    // Note: Would need to extend vg_widget to support drag/drop
-    (void)types;
+    vg_widget_t *w = (vg_widget_t *)widget;
+    free(w->accepted_drop_types);
+    w->accepted_drop_types = rt_string_to_cstr(types);
 }
 
 int64_t rt_widget_is_drag_over(void *widget)
@@ -1003,8 +1076,7 @@ int64_t rt_widget_is_drag_over(void *widget)
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
-    // Note: Would need to extend vg_widget to support drag/drop
-    return 0;
+    return ((vg_widget_t *)widget)->_is_drag_over ? 1 : 0;
 }
 
 int64_t rt_widget_was_dropped(void *widget)
@@ -1012,26 +1084,32 @@ int64_t rt_widget_was_dropped(void *widget)
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
-    // Note: Would need to extend vg_widget to support drag/drop
-    return 0;
+    vg_widget_t *w = (vg_widget_t *)widget;
+    int64_t result = w->_was_dropped ? 1 : 0;
+    w->_was_dropped = false; // Clear after read (edge-triggered)
+    return result;
 }
 
 rt_string rt_widget_get_drop_type(void *widget)
 {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
-        return rt_string_from_bytes("", 0);
-    // Note: Would need to extend vg_widget to support drag/drop
-    return rt_string_from_bytes("", 0);
+        return rt_str_empty();
+    vg_widget_t *w = (vg_widget_t *)widget;
+    if (w->_drop_received_type)
+        return rt_string_from_bytes(w->_drop_received_type, strlen(w->_drop_received_type));
+    return rt_str_empty();
 }
 
 rt_string rt_widget_get_drop_data(void *widget)
 {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
-        return rt_string_from_bytes("", 0);
-    // Note: Would need to extend vg_widget to support drag/drop
-    return rt_string_from_bytes("", 0);
+        return rt_str_empty();
+    vg_widget_t *w = (vg_widget_t *)widget;
+    if (w->_drop_received_data)
+        return rt_string_from_bytes(w->_drop_received_data, strlen(w->_drop_received_data));
+    return rt_str_empty();
 }
 
 // File drop state for app
@@ -1072,7 +1150,48 @@ rt_string rt_app_get_dropped_file(void *app, int64_t index)
             return rt_string_from_bytes(file, strlen(file));
         }
     }
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
+}
+
+void rt_gui_file_drop_add(const char *path)
+{
+    // Free old data on first file of a new batch
+    if (!g_file_drop.was_dropped)
+    {
+        for (int64_t i = 0; i < g_file_drop.file_count; i++)
+            free(g_file_drop.files[i]);
+        free(g_file_drop.files);
+        g_file_drop.files = NULL;
+        g_file_drop.file_count = 0;
+    }
+
+    // Grow array
+    char **new_files = (char **)realloc(g_file_drop.files,
+                                        (size_t)(g_file_drop.file_count + 1) * sizeof(char *));
+    if (!new_files)
+        return;
+    g_file_drop.files = new_files;
+    g_file_drop.files[g_file_drop.file_count++] = strdup(path);
+    g_file_drop.was_dropped = 1;
+}
+
+void rt_gui_features_cleanup(void)
+{
+    if (g_active_tooltip)
+    {
+        vg_tooltip_destroy(g_active_tooltip);
+        g_active_tooltip = NULL;
+    }
+    if (g_notification_manager)
+    {
+        vg_notification_manager_destroy(g_notification_manager);
+        g_notification_manager = NULL;
+    }
+    // Free file drop data
+    for (int64_t i = 0; i < g_file_drop.file_count; i++)
+        free(g_file_drop.files[i]);
+    free(g_file_drop.files);
+    g_file_drop = (rt_file_drop_data_t){0};
 }
 
 #else /* !VIPER_ENABLE_GRAPHICS */
@@ -1142,7 +1261,7 @@ void rt_commandpalette_set_placeholder(void *palette, rt_string text)
 rt_string rt_commandpalette_get_selected_command(void *palette)
 {
     (void)palette;
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 int64_t rt_commandpalette_was_command_selected(void *palette)
@@ -1305,7 +1424,7 @@ int64_t rt_breadcrumb_get_clicked_index(void *crumb)
 rt_string rt_breadcrumb_get_clicked_data(void *crumb)
 {
     (void)crumb;
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 void rt_breadcrumb_set_separator(void *crumb, rt_string sep)
@@ -1431,13 +1550,13 @@ int64_t rt_widget_was_dropped(void *widget)
 rt_string rt_widget_get_drop_type(void *widget)
 {
     (void)widget;
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 rt_string rt_widget_get_drop_data(void *widget)
 {
     (void)widget;
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 int64_t rt_app_was_file_dropped(void *app)
@@ -1456,7 +1575,11 @@ rt_string rt_app_get_dropped_file(void *app, int64_t index)
 {
     (void)app;
     (void)index;
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
+
+void rt_gui_file_drop_add(const char *path) { (void)path; }
+
+void rt_gui_features_cleanup(void) {}
 
 #endif /* VIPER_ENABLE_GRAPHICS */

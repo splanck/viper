@@ -104,7 +104,8 @@ int64_t rt_timer_ms(void)
     QueryPerformanceCounter(&counter);
 
     // Convert to milliseconds: (counter * 1000) / freq
-    // Use 128-bit arithmetic to avoid overflow on long uptimes
+    // Note: 64-bit multiply can overflow after ~29 years at 10 MHz QPC frequency.
+    // Acceptable for practical use; __int128 would be needed for true overflow safety.
     int64_t ms = (int64_t)((counter.QuadPart * 1000LL) / freq.QuadPart);
     return ms;
 }

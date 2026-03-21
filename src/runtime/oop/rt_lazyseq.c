@@ -332,6 +332,8 @@ void *rt_lazyseq_next(rt_lazyseq seq, int8_t *has_more)
             {
                 seq->data.range.value_storage = cur;
                 result = &seq->data.range.value_storage;
+                // Note: cur + step can overflow near INT64 boundaries. Caller should
+                // ensure range bounds don't cause wraparound.
                 seq->data.range.current = cur + step;
             }
             break;

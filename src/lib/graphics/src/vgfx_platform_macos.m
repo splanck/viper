@@ -168,6 +168,8 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
     if (self)
     {
         _vgfxWindow = NULL;
+        // Register as a file drop target
+        [self registerForDraggedTypes:@[ NSPasteboardTypeFileURL ]];
     }
     return self;
 }
@@ -280,6 +282,44 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
     CGImageRelease(image);
     CGDataProviderRelease(provider);
     CGColorSpaceRelease(colorSpace);
+}
+
+//===------------------------------------------------------------------===//
+// NSDraggingDestination — File Drop Support
+//===------------------------------------------------------------------===//
+
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender
+{
+    return NSDragOperationCopy;
+}
+
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender
+{
+    if (!_vgfxWindow)
+        return NO;
+
+    NSPasteboard *pb = [sender draggingPasteboard];
+    NSArray<NSURL *> *urls = [pb readObjectsForClasses:@[ [NSURL class] ]
+                                               options:@{NSPasteboardURLReadingFileURLsOnlyKey : @YES}];
+
+    int64_t timestamp = vgfx_platform_now_ms();
+    for (NSURL *url in urls)
+    {
+        const char *path = [[url path] UTF8String];
+        if (!path)
+            continue;
+
+        vgfx_event_t event = {0};
+        event.type = VGFX_EVENT_FILE_DROP;
+        event.time_ms = timestamp;
+        size_t len = strlen(path);
+        if (len >= sizeof(event.data.file_drop.path))
+            len = sizeof(event.data.file_drop.path) - 1;
+        memcpy(event.data.file_drop.path, path, len);
+        event.data.file_drop.path[len] = '\0';
+        vgfx_internal_enqueue_event(_vgfxWindow, &event);
+    }
+    return YES;
 }
 
 @end

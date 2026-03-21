@@ -537,8 +537,9 @@ extern "C"
         vg_listbox_item_t *first_item; ///< First item
         vg_listbox_item_t *last_item;  ///< Last item
         int item_count;                ///< Number of items
-        vg_listbox_item_t *selected;   ///< Currently selected item
-        vg_listbox_item_t *hovered;    ///< Currently hovered item
+        vg_listbox_item_t *selected;      ///< Currently selected item
+        vg_listbox_item_t *prev_selected; ///< Previous selection (for change detection)
+        vg_listbox_item_t *hovered;       ///< Currently hovered item
 
         vg_font_t *font;   ///< Font for rendering
         float font_size;   ///< Font size

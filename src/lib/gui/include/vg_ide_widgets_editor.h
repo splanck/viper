@@ -142,6 +142,18 @@ extern "C"
         vg_syntax_callback_t syntax_highlighter;
         void *syntax_data;
 
+        // Token colors (overridable per-editor; indices: 0=default, 1=keyword, 2=type,
+        // 3=string, 4=comment, 5=number). Zero means "use theme default".
+        uint32_t token_colors[6];
+
+        // Custom keywords (comma-separated list parsed into array; checked after
+        // language keywords in the syntax callback). Owned by the editor.
+        char **custom_keywords;
+        int custom_keyword_count;
+
+        // Auto fold detection
+        bool auto_fold_detection; ///< Detect fold regions from indentation
+
         // Editing options
         bool read_only;   ///< Read-only mode
         bool insert_mode; ///< Insert vs overwrite mode
@@ -185,7 +197,13 @@ extern "C"
         int gutter_icon_count; ///< Active icon count
         int gutter_icon_cap;   ///< Allocated capacity
 
-        // Fold regions
+        // Per-editor gutter click state (edge-triggered, cleared after read)
+        bool gutter_clicked;      ///< A gutter click occurred this frame
+        int gutter_clicked_line;  ///< Line that was clicked (-1 if none)
+        int gutter_clicked_slot;  ///< Slot that was clicked (-1 if none)
+
+        // Fold gutter & regions
+        bool show_fold_gutter; ///< Show fold indicators in gutter
         struct vg_fold_region
         {
             int start_line; ///< First line of the foldable block

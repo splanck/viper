@@ -453,11 +453,13 @@ int8_t rt_result_equals(void *a, void *b)
         case VALUE_I64:
             return ra->value.i64 == rb->value.i64 ? 1 : 0;
         case VALUE_F64:
+            // IEEE 754: NaN != NaN, so Result(NaN).Equals(Result(NaN)) returns 0.
             return ra->value.f64 == rb->value.f64 ? 1 : 0;
     }
     return 0;
 }
 
+/// @note to_string output is truncated to 256 characters for long string values.
 rt_string rt_result_to_string(void *obj)
 {
     if (!obj)

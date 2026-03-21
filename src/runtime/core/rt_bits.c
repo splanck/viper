@@ -273,6 +273,8 @@ int64_t rt_bits_shr(int64_t val, int64_t count)
         return val;
     if (count >= 64)
         return (val < 0) ? -1 : 0;
+    // Arithmetic right shift (sign-extending). Implementation-defined in C but
+    // guaranteed by GCC, Clang, and MSVC for signed integers.
     return val >> count;
 }
 

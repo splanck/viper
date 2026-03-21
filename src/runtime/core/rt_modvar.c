@@ -61,7 +61,7 @@ static void *mv_alloc(size_t size)
     void *p = rt_alloc((int64_t)size);
     if (!p)
         rt_trap("rt_modvar: alloc failed");
-    memset(p, 0, size);
+    memset(p, 0, size); // Defensive: ensure all fields zeroed regardless of rt_alloc behavior
     return p;
 }
 

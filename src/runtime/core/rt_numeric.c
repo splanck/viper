@@ -159,14 +159,16 @@ extern "C"
         if (!input || !out_value)
             return false;
 
-        _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
+        // Cache the C locale to avoid per-call allocation overhead
+        static _locale_t c_locale = NULL;
+        if (!c_locale)
+            c_locale = _create_locale(LC_NUMERIC, "C");
         if (!c_locale)
             return false;
 
         errno = 0;
         char *endptr = NULL;
         double value = _strtod_l(input, &endptr, c_locale);
-        _free_locale(c_locale);
 
         if (endptr == input)
             return false;

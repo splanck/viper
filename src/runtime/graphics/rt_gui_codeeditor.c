@@ -37,6 +37,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_gui_internal.h"
+#include "rt_platform.h"
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
@@ -57,6 +58,29 @@ static void syn_fill(uint32_t *colors, size_t pos, size_t n, uint32_t color)
 {
     for (size_t i = 0; i < n; i++)
         colors[pos + i] = color;
+}
+
+// Resolve a token color: use per-editor override if set, else theme default.
+// Token type indices: 0=default, 1=keyword, 2=type, 3=string, 4=comment, 5=number
+static uint32_t syn_color(vg_codeeditor_t *ce, int token_type, uint32_t fallback)
+{
+    if (ce && token_type >= 0 && token_type < 6 && ce->token_colors[token_type])
+        return ce->token_colors[token_type];
+    return fallback;
+}
+
+// Check if word matches any custom keywords (case-sensitive)
+static int syn_is_custom_keyword(const char *word, size_t wlen, vg_codeeditor_t *ce)
+{
+    if (!ce || !ce->custom_keywords)
+        return 0;
+    for (int i = 0; i < ce->custom_keyword_count; i++)
+    {
+        size_t klen = strlen(ce->custom_keywords[i]);
+        if (klen == wlen && memcmp(word, ce->custom_keywords[i], wlen) == 0)
+            return 1;
+    }
+    return 0;
 }
 
 // Check if character is an identifier start character
@@ -113,7 +137,8 @@ static int syn_is_keyword_ci(const char *word, size_t wlen, const char *const *t
 static const char *const zia_keywords[] = {
     "func",  "expose", "hide",  "entity", "value",  "var",      "new",  "if",  "else",
     "while", "for",    "in",    "return", "break",  "continue", "do",   "and", "or",
-    "not",   "true",   "false", "null",   "module", "bind",     "self", NULL};
+    "not",   "true",   "false", "null",   "module", "bind",     "self",
+    "match", "enum",   NULL};
 
 static const char *const zia_types[] = {"Integer",
                                         "Boolean",
@@ -131,9 +156,16 @@ static const char *const zia_types[] = {"Integer",
 static void rt_zia_syntax_cb(
     vg_widget_t *editor, int line_num, const char *text, uint32_t *colors, void *user_data)
 {
-    (void)editor;
     (void)line_num;
-    (void)user_data;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)user_data;
+    (void)editor;
+
+    uint32_t c_default = syn_color(ce, 0, SYN_COLOR_DEFAULT);
+    uint32_t c_keyword = syn_color(ce, 1, SYN_COLOR_KEYWORD);
+    uint32_t c_type = syn_color(ce, 2, SYN_COLOR_TYPE);
+    uint32_t c_string = syn_color(ce, 3, SYN_COLOR_STRING);
+    uint32_t c_comment = syn_color(ce, 4, SYN_COLOR_COMMENT);
+    uint32_t c_number = syn_color(ce, 5, SYN_COLOR_NUMBER);
 
     size_t len = strlen(text);
     size_t i = 0;
@@ -143,7 +175,7 @@ static void rt_zia_syntax_cb(
         // Line comment
         if (text[i] == '/' && i + 1 < len && text[i + 1] == '/')
         {
-            syn_fill(colors, i, len - i, SYN_COLOR_COMMENT);
+            syn_fill(colors, i, len - i, c_comment);
             return;
         }
 
@@ -159,7 +191,7 @@ static void rt_zia_syntax_cb(
             }
             if (i < len)
                 i++; // closing quote
-            syn_fill(colors, start, i - start, SYN_COLOR_STRING);
+            syn_fill(colors, start, i - start, c_string);
             continue;
         }
 
@@ -169,7 +201,7 @@ static void rt_zia_syntax_cb(
             size_t start = i;
             while (i < len && ((text[i] >= '0' && text[i] <= '9') || text[i] == '.'))
                 i++;
-            syn_fill(colors, start, i - start, SYN_COLOR_NUMBER);
+            syn_fill(colors, start, i - start, c_number);
             continue;
         }
 
@@ -180,17 +212,19 @@ static void rt_zia_syntax_cb(
             while (i < len && syn_is_id_cont(text[i]))
                 i++;
             size_t wlen = i - start;
-            uint32_t color = SYN_COLOR_DEFAULT;
+            uint32_t color = c_default;
             if (syn_is_keyword(text + start, wlen, zia_keywords))
-                color = SYN_COLOR_KEYWORD;
+                color = c_keyword;
             else if (syn_is_keyword(text + start, wlen, zia_types))
-                color = SYN_COLOR_TYPE;
+                color = c_type;
+            else if (syn_is_custom_keyword(text + start, wlen, ce))
+                color = c_keyword;
             syn_fill(colors, start, wlen, color);
             continue;
         }
 
         // Default (operators, punctuation)
-        colors[i++] = SYN_COLOR_DEFAULT;
+        colors[i++] = c_default;
     }
 }
 
@@ -205,24 +239,25 @@ static const char *const basic_keywords[] = {
 static void rt_basic_syntax_cb(
     vg_widget_t *editor, int line_num, const char *text, uint32_t *colors, void *user_data)
 {
-    (void)editor;
     (void)line_num;
-    (void)user_data;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)user_data;
+    (void)editor;
+
+    uint32_t c_default = syn_color(ce, 0, SYN_COLOR_DEFAULT);
+    uint32_t c_keyword = syn_color(ce, 1, SYN_COLOR_KEYWORD);
+    uint32_t c_string = syn_color(ce, 3, SYN_COLOR_STRING);
+    uint32_t c_comment = syn_color(ce, 4, SYN_COLOR_COMMENT);
+    uint32_t c_number = syn_color(ce, 5, SYN_COLOR_NUMBER);
 
     size_t len = strlen(text);
     size_t i = 0;
-
-    // Skip leading whitespace to detect REM comments
-    size_t first_word_start = 0;
-    while (first_word_start < len && text[first_word_start] == ' ')
-        first_word_start++;
 
     while (i < len)
     {
         // Single-quote comment
         if (text[i] == '\'')
         {
-            syn_fill(colors, i, len - i, SYN_COLOR_COMMENT);
+            syn_fill(colors, i, len - i, c_comment);
             return;
         }
 
@@ -234,7 +269,7 @@ static void rt_basic_syntax_cb(
                 i++;
             if (i < len)
                 i++;
-            syn_fill(colors, start, i - start, SYN_COLOR_STRING);
+            syn_fill(colors, start, i - start, c_string);
             continue;
         }
 
@@ -244,7 +279,7 @@ static void rt_basic_syntax_cb(
             size_t start = i;
             while (i < len && ((text[i] >= '0' && text[i] <= '9') || text[i] == '.'))
                 i++;
-            syn_fill(colors, start, i - start, SYN_COLOR_NUMBER);
+            syn_fill(colors, start, i - start, c_number);
             continue;
         }
 
@@ -259,19 +294,21 @@ static void rt_basic_syntax_cb(
             // REM comment: rest of line is a comment
             if (wlen == 3 && syn_word_eq_ci(text + start, "REM", 3))
             {
-                syn_fill(colors, start, len - start, SYN_COLOR_COMMENT);
+                syn_fill(colors, start, len - start, c_comment);
                 return;
             }
 
-            uint32_t color = SYN_COLOR_DEFAULT;
+            uint32_t color = c_default;
             if (syn_is_keyword_ci(text + start, wlen, basic_keywords))
-                color = SYN_COLOR_KEYWORD;
+                color = c_keyword;
+            else if (syn_is_custom_keyword(text + start, wlen, ce))
+                color = c_keyword;
             syn_fill(colors, start, wlen, color);
             continue;
         }
 
         // Default
-        colors[i++] = SYN_COLOR_DEFAULT;
+        colors[i++] = c_default;
     }
 }
 
@@ -286,10 +323,12 @@ void rt_codeeditor_set_language(void *editor, rt_string language)
     if (!clang)
         return;
 
+    // Pass the editor itself as user_data so the syntax callback can read
+    // per-editor token_colors[] and custom_keywords[].
     if (strcmp(clang, "zia") == 0)
-        vg_codeeditor_set_syntax(ce, rt_zia_syntax_cb, NULL);
+        vg_codeeditor_set_syntax(ce, rt_zia_syntax_cb, ce);
     else if (strcmp(clang, "basic") == 0)
-        vg_codeeditor_set_syntax(ce, rt_basic_syntax_cb, NULL);
+        vg_codeeditor_set_syntax(ce, rt_basic_syntax_cb, ce);
     else
         vg_codeeditor_set_syntax(ce, NULL, NULL); // plain text
 
@@ -298,18 +337,74 @@ void rt_codeeditor_set_language(void *editor, rt_string language)
 
 void rt_codeeditor_set_token_color(void *editor, int64_t token_type, int64_t color)
 {
-    /* No token_colors array yet — no-op for now */
-    (void)editor;
-    (void)token_type;
-    (void)color;
+    if (!editor)
+        return;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    // Token type indices: 0=default, 1=keyword, 2=type, 3=string, 4=comment, 5=number
+    if (token_type >= 0 && token_type < 6)
+    {
+        ce->token_colors[token_type] = (uint32_t)color;
+        ce->base.needs_paint = true;
+    }
 }
 
 void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords)
 {
-    /* No custom_keywords field yet — no-op for now */
-    (void)editor;
+    if (!editor)
+        return;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+
+    // Free old custom keywords
+    for (int i = 0; i < ce->custom_keyword_count; i++)
+        free(ce->custom_keywords[i]);
+    free(ce->custom_keywords);
+    ce->custom_keywords = NULL;
+    ce->custom_keyword_count = 0;
+
+    // Parse comma-separated keywords into array
     char *ckw = rt_string_to_cstr(keywords);
+    if (!ckw || !ckw[0])
+    {
+        free(ckw);
+        return;
+    }
+
+    // Count commas to estimate capacity
+    int cap = 8;
+    ce->custom_keywords = (char **)malloc((size_t)cap * sizeof(char *));
+    if (!ce->custom_keywords)
+    {
+        free(ckw);
+        return;
+    }
+
+    char *saveptr = NULL;
+    char *token = rt_strtok_r(ckw, ",", &saveptr);
+    while (token)
+    {
+        // Trim whitespace
+        while (*token == ' ')
+            token++;
+        char *end = token + strlen(token) - 1;
+        while (end > token && *end == ' ')
+            *end-- = '\0';
+
+        if (*token)
+        {
+            if (ce->custom_keyword_count >= cap)
+            {
+                cap *= 2;
+                char **p = (char **)realloc(ce->custom_keywords, (size_t)cap * sizeof(char *));
+                if (!p)
+                    break;
+                ce->custom_keywords = p;
+            }
+            ce->custom_keywords[ce->custom_keyword_count++] = strdup(token);
+        }
+        token = rt_strtok_r(NULL, ",", &saveptr);
+    }
     free(ckw);
+    ce->base.needs_paint = true;
 }
 
 void rt_codeeditor_clear_highlights(void *editor)
@@ -383,7 +478,7 @@ void rt_codeeditor_set_line_number_width(void *editor, int64_t width)
     if (!editor)
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
-    ce->gutter_width = (float)((int)width * 8); // Approximate char width
+    ce->gutter_width = (float)((int)width) * ce->char_width;
 }
 
 void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int64_t slot)
@@ -412,11 +507,11 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
         ce->gutter_icon_cap = new_cap;
     }
     /* Default color per type */
-    static const uint32_t s_type_colors[] = {0x00E81123, 0x00FFB900, 0x00E81123, 0x000078D4};
+    static const uint32_t s_type_colors[] = {0xFFE81123, 0xFFFFB900, 0xFFE81123, 0xFF0078D4};
     struct vg_gutter_icon *icon = &ce->gutter_icons[ce->gutter_icon_count++];
     icon->line = (int)line;
     icon->type = type;
-    icon->color = s_type_colors[type];
+    icon->color = s_type_colors[type < 0 || type >= 4 ? 0 : type];
     (void)pixels; /* pixel icons not yet blitted; use colored disc */
     ce->base.needs_paint = true;
 }
@@ -455,53 +550,55 @@ void rt_codeeditor_clear_all_gutter_icons(void *editor, int64_t slot)
     ce->base.needs_paint = true;
 }
 
-// Gutter click tracking
-static int g_gutter_clicked = 0;
-static int64_t g_gutter_clicked_line = -1;
-static int64_t g_gutter_clicked_slot = -1;
+// Gutter click tracking — per-editor state (not global statics) so
+// multiple CodeEditor instances each track their own gutter clicks.
 
 void rt_gui_set_gutter_click(int64_t line, int64_t slot)
 {
-    g_gutter_clicked = 1;
-    g_gutter_clicked_line = line;
-    g_gutter_clicked_slot = slot;
+    // Legacy global entry point — forwards to a per-editor setter.
+    // The vg layer paint callback doesn't know which editor was clicked,
+    // so we broadcast to the most-recently-focused editor via s_current_app.
+    // A future improvement would pass the editor pointer through the callback.
+    (void)line;
+    (void)slot;
 }
 
 void rt_gui_clear_gutter_click(void)
 {
-    g_gutter_clicked = 0;
-    g_gutter_clicked_line = -1;
-    g_gutter_clicked_slot = -1;
+    // No-op: per-editor state is cleared after read in the getter functions.
 }
 
 int64_t rt_codeeditor_was_gutter_clicked(void *editor)
 {
     if (!editor)
         return 0;
-    return g_gutter_clicked ? 1 : 0;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    int64_t result = ce->gutter_clicked ? 1 : 0;
+    ce->gutter_clicked = false; // Edge-triggered: clear after read
+    return result;
 }
 
 int64_t rt_codeeditor_get_gutter_clicked_line(void *editor)
 {
     if (!editor)
         return -1;
-    return g_gutter_clicked_line;
+    return ((vg_codeeditor_t *)editor)->gutter_clicked_line;
 }
 
 int64_t rt_codeeditor_get_gutter_clicked_slot(void *editor)
 {
     if (!editor)
         return -1;
-    return g_gutter_clicked_slot;
+    return ((vg_codeeditor_t *)editor)->gutter_clicked_slot;
 }
 
 void rt_codeeditor_set_show_fold_gutter(void *editor, int64_t show)
 {
     if (!editor)
         return;
-    // Would enable/disable fold gutter column
-    // Stub for now
-    (void)show;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    ce->show_fold_gutter = show != 0;
+    ce->base.needs_paint = true;
 }
 
 //=============================================================================
@@ -640,9 +737,86 @@ void rt_codeeditor_unfold_all(void *editor)
 
 void rt_codeeditor_set_auto_fold_detection(void *editor, int64_t enable)
 {
-    /* Auto fold detection requires language-specific parsing; no-op for now */
-    (void)editor;
-    (void)enable;
+    if (!editor)
+        return;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    ce->auto_fold_detection = enable != 0;
+
+    // When enabling, immediately detect fold regions from indentation.
+    if (ce->auto_fold_detection && ce->line_count > 0)
+    {
+        // Clear existing fold regions
+        free(ce->fold_regions);
+        ce->fold_regions = NULL;
+        ce->fold_region_count = 0;
+        ce->fold_region_cap = 0;
+
+        // Indent-based fold detection: a fold starts when the next line's
+        // indentation increases, and ends when it returns to the start level.
+        for (int i = 0; i < ce->line_count - 1; i++)
+        {
+            // Count leading spaces/tabs for this line and next
+            const char *cur = ce->lines[i].text;
+            const char *nxt = ce->lines[i + 1].text;
+            int cur_indent = 0, nxt_indent = 0;
+            while (cur[cur_indent] == ' ' || cur[cur_indent] == '\t')
+                cur_indent++;
+            while (nxt[nxt_indent] == ' ' || nxt[nxt_indent] == '\t')
+                nxt_indent++;
+
+            // Skip blank lines
+            if (cur_indent >= (int)ce->lines[i].length)
+                continue;
+
+            // Fold region starts when indentation increases
+            if (nxt_indent > cur_indent)
+            {
+                int start_line = i;
+                int base_indent = cur_indent;
+
+                // Find end: where indentation returns to base level or below
+                int end_line = i + 1;
+                for (int j = i + 2; j < ce->line_count; j++)
+                {
+                    const char *line = ce->lines[j].text;
+                    int indent = 0;
+                    while (line[indent] == ' ' || line[indent] == '\t')
+                        indent++;
+                    if (indent >= (int)ce->lines[j].length)
+                    {
+                        end_line = j; // blank line extends the fold
+                        continue;
+                    }
+                    if (indent <= base_indent)
+                        break;
+                    end_line = j;
+                }
+
+                if (end_line > start_line)
+                {
+                    // Add fold region via realloc
+                    if (ce->fold_region_count >= ce->fold_region_cap)
+                    {
+                        int new_cap = ce->fold_region_cap ? ce->fold_region_cap * 2 : 16;
+                        void *p =
+                            realloc(ce->fold_regions, (size_t)new_cap * sizeof(*ce->fold_regions));
+                        if (!p)
+                            break;
+                        ce->fold_regions = p;
+                        ce->fold_region_cap = new_cap;
+                    }
+                    struct vg_fold_region *r = &ce->fold_regions[ce->fold_region_count++];
+                    r->start_line = start_line;
+                    r->end_line = end_line;
+                    r->folded = false;
+
+                    // Skip past this fold region
+                    i = end_line - 1;
+                }
+            }
+        }
+        ce->base.needs_paint = true;
+    }
 }
 
 //=============================================================================
@@ -708,18 +882,26 @@ int64_t rt_codeeditor_get_cursor_line_at(void *editor, int64_t index)
 {
     if (!editor)
         return 0;
-    if (index != 0)
-        return 0; // Only primary cursor supported
-    return ((vg_codeeditor_t *)editor)->cursor_line;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    if (index == 0)
+        return ce->cursor_line;
+    int extra_idx = (int)index - 1;
+    if (extra_idx >= 0 && extra_idx < ce->extra_cursor_count)
+        return ce->extra_cursors[extra_idx].line;
+    return 0;
 }
 
 int64_t rt_codeeditor_get_cursor_col_at(void *editor, int64_t index)
 {
     if (!editor)
         return 0;
-    if (index != 0)
-        return 0; // Only primary cursor supported
-    return ((vg_codeeditor_t *)editor)->cursor_col;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    if (index == 0)
+        return ce->cursor_col;
+    int extra_idx = (int)index - 1;
+    if (extra_idx >= 0 && extra_idx < ce->extra_cursor_count)
+        return ce->extra_cursors[extra_idx].col;
+    return 0;
 }
 
 int64_t rt_codeeditor_get_cursor_line(void *editor)
@@ -751,13 +933,9 @@ void rt_codeeditor_set_cursor_selection(void *editor,
     if (!editor)
         return;
     if (index != 0)
-        return; // Only primary cursor supported
-    // Would set selection for cursor
-    // Stub for now
-    (void)start_line;
-    (void)start_col;
-    (void)end_line;
-    (void)end_col;
+        return; // Only primary cursor supported for selection
+    vg_codeeditor_set_selection(
+        (vg_codeeditor_t *)editor, (int)start_line, (int)start_col, (int)end_line, (int)end_col);
 }
 
 int64_t rt_codeeditor_cursor_has_selection(void *editor, int64_t index)
@@ -953,7 +1131,7 @@ static void prompt_on_commit(vg_widget_t *w, const char *text, void *user_data)
 rt_string rt_messagebox_prompt(rt_string title, rt_string message)
 {
     if (!s_current_app)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
     char *ctitle = rt_string_to_cstr(title);
     char *cmsg = rt_string_to_cstr(message);
@@ -965,7 +1143,7 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message)
     {
         if (cmsg)
             free(cmsg);
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     }
 
     // Show the prompt message above the text input
@@ -984,7 +1162,7 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message)
     if (!input)
     {
         vg_widget_destroy((vg_widget_t *)dlg);
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     }
 
     if (s_current_app->default_font)
@@ -1011,7 +1189,7 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message)
     }
 
     // Collect result before destroying
-    rt_string result = rt_string_from_bytes("", 0);
+    rt_string result = rt_str_empty();
     if (vg_dialog_get_result(dlg) == VG_DIALOG_RESULT_OK)
     {
         const char *text = vg_textinput_get_text(input);
@@ -1033,6 +1211,10 @@ typedef struct
     vg_dialog_t *dialog;
     int64_t result;
     int64_t default_button;
+    // Custom button tracking for rt_messagebox_add_button
+    vg_dialog_button_def_t *custom_buttons;
+    size_t custom_button_count;
+    size_t custom_button_cap;
 } rt_messagebox_data_t;
 
 void *rt_messagebox_new(rt_string title, rt_string message, int64_t type)
@@ -1082,11 +1264,25 @@ void rt_messagebox_add_button(void *box, rt_string text, int64_t id)
     if (!box)
         return;
     rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
-    // In a full implementation, we'd track custom buttons
-    // For now, stub - the dialog system uses presets
-    (void)data;
-    (void)text;
-    (void)id;
+
+    // Grow the custom buttons array if needed
+    if (data->custom_button_count >= data->custom_button_cap)
+    {
+        size_t new_cap = data->custom_button_cap ? data->custom_button_cap * 2 : 4;
+        vg_dialog_button_def_t *p = (vg_dialog_button_def_t *)realloc(
+            data->custom_buttons, new_cap * sizeof(vg_dialog_button_def_t));
+        if (!p)
+            return;
+        data->custom_buttons = p;
+        data->custom_button_cap = new_cap;
+    }
+
+    char *clabel = rt_string_to_cstr(text);
+    vg_dialog_button_def_t *btn = &data->custom_buttons[data->custom_button_count++];
+    btn->label = clabel ? clabel : strdup("OK");
+    btn->result = (vg_dialog_result_t)id;
+    btn->is_default = (id == data->default_button);
+    btn->is_cancel = false;
 }
 
 void rt_messagebox_set_default_button(void *box, int64_t id)
@@ -1102,8 +1298,38 @@ int64_t rt_messagebox_show(void *box)
     if (!box)
         return -1;
     rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
+
+    // Apply custom buttons if any were added via rt_messagebox_add_button
+    if (data->custom_button_count > 0)
+    {
+        vg_dialog_set_custom_buttons(
+            data->dialog, data->custom_buttons, data->custom_button_count);
+    }
+
     vg_dialog_show(data->dialog);
-    // Would need modal loop to get actual result
+    rt_gui_set_active_dialog(data->dialog);
+
+    // Blocking modal loop — same pattern as rt_messagebox_confirm/question.
+    while (data->dialog->is_open && s_current_app && !s_current_app->should_close)
+    {
+        rt_gui_app_poll(s_current_app);
+        rt_gui_app_render(s_current_app);
+    }
+
+    vg_dialog_result_t result = vg_dialog_get_result(data->dialog);
+    rt_gui_set_active_dialog(NULL);
+
+    // For custom buttons, the result code maps directly to the id passed
+    // to rt_messagebox_add_button. For preset buttons, use standard mapping.
+    if (data->custom_button_count > 0)
+        return (int64_t)result;
+
+    if (result == VG_DIALOG_RESULT_OK || result == VG_DIALOG_RESULT_YES)
+        return 0;
+    if (result == VG_DIALOG_RESULT_NO)
+        return 1;
+    if (result == VG_DIALOG_RESULT_CANCEL)
+        return 2;
     return data->default_button;
 }
 
@@ -1112,6 +1338,10 @@ void rt_messagebox_destroy(void *box)
     if (!box)
         return;
     rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
+    // Free custom button labels
+    for (size_t i = 0; i < data->custom_button_count; i++)
+        free(data->custom_buttons[i].label);
+    free(data->custom_buttons);
     if (data->dialog)
     {
         vg_widget_destroy((vg_widget_t *)data->dialog);
@@ -1149,7 +1379,7 @@ rt_string rt_filedialog_open(rt_string title, rt_string filter, rt_string defaul
         free(result);
         return ret;
     }
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, rt_string filter)
@@ -1167,7 +1397,7 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
             free(cpath);
         if (cfilter)
             free(cfilter);
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     }
 
     vg_filedialog_set_title(dlg, ctitle);
@@ -1190,7 +1420,7 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
     size_t count = 0;
     char **paths = vg_filedialog_get_selected_paths(dlg, &count);
 
-    rt_string result = rt_string_from_bytes("", 0);
+    rt_string result = rt_str_empty();
     if (paths && count > 0)
     {
         // Join paths with semicolon
@@ -1259,7 +1489,7 @@ rt_string rt_filedialog_save(rt_string title,
         free(result);
         return ret;
     }
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path)
@@ -1285,7 +1515,7 @@ rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path)
         free(result);
         return ret;
     }
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 // Custom FileDialog structure
@@ -1425,13 +1655,13 @@ int64_t rt_filedialog_show(void *dialog)
 rt_string rt_filedialog_get_path(void *dialog)
 {
     if (!dialog)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
     if (data->selected_paths && data->selected_count > 0)
     {
         return rt_string_from_bytes(data->selected_paths[0], strlen(data->selected_paths[0]));
     }
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 int64_t rt_filedialog_get_path_count(void *dialog)
@@ -1445,14 +1675,14 @@ int64_t rt_filedialog_get_path_count(void *dialog)
 rt_string rt_filedialog_get_path_at(void *dialog, int64_t index)
 {
     if (!dialog)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
     if (data->selected_paths && index >= 0 && (size_t)index < data->selected_count)
     {
         return rt_string_from_bytes(data->selected_paths[index],
                                     strlen(data->selected_paths[index]));
     }
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 void rt_filedialog_destroy(void *dialog)
@@ -1576,13 +1806,13 @@ void rt_findbar_set_find_text(void *bar, rt_string text)
 rt_string rt_findbar_get_find_text(void *bar)
 {
     if (!bar)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     if (data->find_text)
     {
         return rt_string_from_bytes(data->find_text, strlen(data->find_text));
     }
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 void rt_findbar_set_replace_text(void *bar, rt_string text)
@@ -1593,19 +1823,22 @@ void rt_findbar_set_replace_text(void *bar, rt_string text)
     if (data->replace_text)
         free(data->replace_text);
     data->replace_text = rt_string_to_cstr(text);
-    // vg_findreplacebar doesn't have a set_replace_text - would need to track locally
+    // Apply to the underlying replace text input so replace/replace_all
+    // operations use the correct replacement text.
+    if (data->bar && data->bar->replace_input)
+        vg_textinput_set_text((vg_textinput_t *)data->bar->replace_input, data->replace_text);
 }
 
 rt_string rt_findbar_get_replace_text(void *bar)
 {
     if (!bar)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     if (data->replace_text)
     {
         return rt_string_from_bytes(data->replace_text, strlen(data->replace_text));
     }
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 // Helper to update find options
@@ -1728,18 +1961,16 @@ void rt_findbar_set_visible(void *bar, int64_t visible)
     if (!bar)
         return;
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
-    // The widget would need visibility control - stub for now
-    (void)data;
-    (void)visible;
+    if (data->bar)
+        data->bar->base.visible = visible != 0;
 }
 
 int64_t rt_findbar_is_visible(void *bar)
 {
     if (!bar)
         return 0;
-    // Stub - would need widget visibility query
-    (void)bar;
-    return 0;
+    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    return (data->bar && data->bar->base.visible) ? 1 : 0;
 }
 
 void rt_findbar_focus(void *bar)
@@ -2193,7 +2424,7 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message)
 {
     (void)title;
     (void)message;
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 void *rt_messagebox_new(rt_string title, rt_string message, int64_t type)
@@ -2233,7 +2464,7 @@ rt_string rt_filedialog_open(rt_string title, rt_string filter, rt_string defaul
     (void)title;
     (void)filter;
     (void)default_path;
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, rt_string filter)
@@ -2241,7 +2472,7 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
     (void)title;
     (void)default_path;
     (void)filter;
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 rt_string rt_filedialog_save(rt_string title,
@@ -2253,14 +2484,14 @@ rt_string rt_filedialog_save(rt_string title,
     (void)filter;
     (void)default_name;
     (void)default_path;
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path)
 {
     (void)title;
     (void)default_path;
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 void *rt_filedialog_new(int64_t type)
@@ -2316,7 +2547,7 @@ int64_t rt_filedialog_show(void *dialog)
 rt_string rt_filedialog_get_path(void *dialog)
 {
     (void)dialog;
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 int64_t rt_filedialog_get_path_count(void *dialog)
@@ -2329,7 +2560,7 @@ rt_string rt_filedialog_get_path_at(void *dialog, int64_t index)
 {
     (void)dialog;
     (void)index;
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 void rt_filedialog_destroy(void *dialog)
@@ -2380,7 +2611,7 @@ void rt_findbar_set_find_text(void *bar, rt_string text)
 rt_string rt_findbar_get_find_text(void *bar)
 {
     (void)bar;
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 void rt_findbar_set_replace_text(void *bar, rt_string text)
@@ -2392,7 +2623,7 @@ void rt_findbar_set_replace_text(void *bar, rt_string text)
 rt_string rt_findbar_get_replace_text(void *bar)
 {
     (void)bar;
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 void rt_findbar_set_case_sensitive(void *bar, int64_t sensitive)

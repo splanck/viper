@@ -394,14 +394,18 @@ int64_t rt_machine_mem_free(void)
 
     if (host_page_size(mach_port, &page_size) != KERN_SUCCESS)
     {
+        mach_port_deallocate(mach_task_self(), mach_port);
         return 0;
     }
 
     if (host_statistics64(mach_port, HOST_VM_INFO64, (host_info64_t)&vm_stats, &count) !=
         KERN_SUCCESS)
     {
+        mach_port_deallocate(mach_task_self(), mach_port);
         return 0;
     }
+
+    mach_port_deallocate(mach_task_self(), mach_port);
 
     // Free memory = free pages + inactive pages (can be reclaimed)
     int64_t free_mem =

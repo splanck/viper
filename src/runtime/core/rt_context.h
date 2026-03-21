@@ -64,6 +64,8 @@ extern "C"
         size_t ifaces_len, ifaces_cap;
         void *bindings;
         size_t bindings_len, bindings_cap;
+        void *rw_lock; ///< Opaque platform rwlock (NULL on ViperDOS/single-threaded)
+        int sealed;    ///< 1 after init; enables lock-free reads via atomic check
     } RtTypeRegistryState;
 
     /// @brief Per-VM runtime context isolating global state.

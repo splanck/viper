@@ -39,6 +39,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_gui_internal.h"
+#include "rt_platform.h"
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
@@ -48,17 +49,21 @@
 
 void *rt_tabbar_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_tabbar_t *tabbar = vg_tabbar_create((vg_widget_t *)parent);
-    if (tabbar && s_current_app && s_current_app->default_font)
+    if (tabbar)
     {
         rt_gui_ensure_default_font();
-        vg_tabbar_set_font(tabbar, s_current_app->default_font, s_current_app->default_font_size);
+        if (s_current_app && s_current_app->default_font)
+            vg_tabbar_set_font(
+                tabbar, s_current_app->default_font, s_current_app->default_font_size);
     }
     return tabbar;
 }
 
 void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!tabbar)
         return NULL;
     char *ctitle = rt_string_to_cstr(title);
@@ -69,6 +74,7 @@ void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable)
 
 void rt_tabbar_remove_tab(void *tabbar, void *tab)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (tabbar && tab)
     {
         vg_tabbar_remove_tab((vg_tabbar_t *)tabbar, (vg_tab_t *)tab);
@@ -77,6 +83,7 @@ void rt_tabbar_remove_tab(void *tabbar, void *tab)
 
 void rt_tabbar_set_active(void *tabbar, void *tab)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (tabbar)
     {
         vg_tabbar_set_active((vg_tabbar_t *)tabbar, (vg_tab_t *)tab);
@@ -85,6 +92,7 @@ void rt_tabbar_set_active(void *tabbar, void *tab)
 
 void rt_tab_set_title(void *tab, rt_string title)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!tab)
         return;
     char *ctitle = rt_string_to_cstr(title);
@@ -94,6 +102,7 @@ void rt_tab_set_title(void *tab, rt_string title)
 
 void rt_tab_set_modified(void *tab, int64_t modified)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (tab)
     {
         vg_tab_set_modified((vg_tab_t *)tab, modified != 0);
@@ -102,11 +111,13 @@ void rt_tab_set_modified(void *tab, int64_t modified)
 
 void *rt_tabbar_get_active(void *tabbar)
 {
+    RT_ASSERT_MAIN_THREAD();
     return tabbar ? ((vg_tabbar_t *)tabbar)->active_tab : NULL;
 }
 
 int64_t rt_tabbar_get_active_index(void *tabbar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!tabbar)
         return -1;
     vg_tabbar_t *tb = (vg_tabbar_t *)tabbar;
@@ -115,6 +126,7 @@ int64_t rt_tabbar_get_active_index(void *tabbar)
 
 int64_t rt_tabbar_was_changed(void *tabbar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!tabbar)
         return 0;
     vg_tabbar_t *tb = (vg_tabbar_t *)tabbar;
@@ -128,11 +140,13 @@ int64_t rt_tabbar_was_changed(void *tabbar)
 
 int64_t rt_tabbar_get_tab_count(void *tabbar)
 {
+    RT_ASSERT_MAIN_THREAD();
     return tabbar ? ((vg_tabbar_t *)tabbar)->tab_count : 0;
 }
 
 int64_t rt_tabbar_was_close_clicked(void *tabbar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!tabbar)
         return 0;
     return ((vg_tabbar_t *)tabbar)->close_clicked_tab ? 1 : 0;
@@ -140,6 +154,7 @@ int64_t rt_tabbar_was_close_clicked(void *tabbar)
 
 int64_t rt_tabbar_get_close_clicked_index(void *tabbar)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!tabbar)
         return -1;
     vg_tabbar_t *tb = (vg_tabbar_t *)tabbar;
@@ -152,6 +167,7 @@ int64_t rt_tabbar_get_close_clicked_index(void *tabbar)
 
 void *rt_tabbar_get_tab_at(void *tabbar, int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!tabbar)
         return NULL;
     return vg_tabbar_get_tab_at((vg_tabbar_t *)tabbar, (int)index);
@@ -159,6 +175,7 @@ void *rt_tabbar_get_tab_at(void *tabbar, int64_t index)
 
 void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (tabbar)
     {
         ((vg_tabbar_t *)tabbar)->auto_close = auto_close != 0;
@@ -171,12 +188,14 @@ void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close)
 
 void *rt_splitpane_new(void *parent, int64_t horizontal)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_split_direction_t direction = horizontal ? VG_SPLIT_HORIZONTAL : VG_SPLIT_VERTICAL;
     return vg_splitpane_create((vg_widget_t *)parent, direction);
 }
 
 void rt_splitpane_set_position(void *split, double position)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (split)
     {
         vg_splitpane_set_position((vg_splitpane_t *)split, (float)position);
@@ -186,6 +205,7 @@ void rt_splitpane_set_position(void *split, double position)
 // BINDING-006: SplitPane position query
 double rt_splitpane_get_position(void *split)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!split)
         return 0.5;
     return (double)vg_splitpane_get_position((vg_splitpane_t *)split);
@@ -193,6 +213,7 @@ double rt_splitpane_get_position(void *split)
 
 void *rt_splitpane_get_first(void *split)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!split)
         return NULL;
     return vg_splitpane_get_first((vg_splitpane_t *)split);
@@ -200,6 +221,7 @@ void *rt_splitpane_get_first(void *split)
 
 void *rt_splitpane_get_second(void *split)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!split)
         return NULL;
     return vg_splitpane_get_second((vg_splitpane_t *)split);
@@ -211,12 +233,14 @@ void *rt_splitpane_get_second(void *split)
 
 void *rt_codeeditor_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_codeeditor_t *editor = vg_codeeditor_create((vg_widget_t *)parent);
     if (editor && s_current_app)
     {
         rt_gui_ensure_default_font();
         if (s_current_app->default_font)
         {
+    RT_ASSERT_MAIN_THREAD();
             vg_codeeditor_set_font(
                 editor, s_current_app->default_font, s_current_app->default_font_size);
         }
@@ -226,6 +250,7 @@ void *rt_codeeditor_new(void *parent)
 
 void rt_codeeditor_set_text(void *editor, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!editor)
         return;
     char *ctext = rt_string_to_cstr(text);
@@ -235,6 +260,7 @@ void rt_codeeditor_set_text(void *editor, rt_string text)
 
 rt_string rt_codeeditor_get_text(void *editor)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!editor)
         return rt_str_empty();
     char *text = vg_codeeditor_get_text((vg_codeeditor_t *)editor);
@@ -247,6 +273,7 @@ rt_string rt_codeeditor_get_text(void *editor)
 
 rt_string rt_codeeditor_get_selected_text(void *editor)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!editor)
         return rt_str_empty();
     char *text = vg_codeeditor_get_selection((vg_codeeditor_t *)editor);
@@ -259,6 +286,7 @@ rt_string rt_codeeditor_get_selected_text(void *editor)
 
 void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (editor)
     {
         vg_codeeditor_set_cursor((vg_codeeditor_t *)editor, (int)line, (int)col);
@@ -267,6 +295,7 @@ void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col)
 
 void rt_codeeditor_scroll_to_line(void *editor, int64_t line)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (editor)
     {
         vg_codeeditor_scroll_to_line((vg_codeeditor_t *)editor, (int)line);
@@ -275,6 +304,7 @@ void rt_codeeditor_scroll_to_line(void *editor, int64_t line)
 
 int64_t rt_codeeditor_get_line_count(void *editor)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!editor)
         return 0;
     return vg_codeeditor_get_line_count((vg_codeeditor_t *)editor);
@@ -282,6 +312,7 @@ int64_t rt_codeeditor_get_line_count(void *editor)
 
 int64_t rt_codeeditor_is_modified(void *editor)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!editor)
         return 0;
     return vg_codeeditor_is_modified((vg_codeeditor_t *)editor) ? 1 : 0;
@@ -289,6 +320,7 @@ int64_t rt_codeeditor_is_modified(void *editor)
 
 void rt_codeeditor_clear_modified(void *editor)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (editor)
     {
         vg_codeeditor_clear_modified((vg_codeeditor_t *)editor);
@@ -297,6 +329,7 @@ void rt_codeeditor_clear_modified(void *editor)
 
 void rt_codeeditor_set_font(void *editor, void *font, double size)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (editor)
     {
         vg_codeeditor_set_font((vg_codeeditor_t *)editor, (vg_font_t *)font, (float)size);
@@ -305,6 +338,7 @@ void rt_codeeditor_set_font(void *editor, void *font, double size)
 
 double rt_codeeditor_get_font_size(void *editor)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!editor)
         return 14.0;
     vg_codeeditor_t *ed = (vg_codeeditor_t *)editor;
@@ -319,6 +353,7 @@ double rt_codeeditor_get_font_size(void *editor)
 
 void rt_codeeditor_set_font_size(void *editor, double size)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!editor)
         return;
     vg_codeeditor_t *ed = (vg_codeeditor_t *)editor;
@@ -340,23 +375,24 @@ void rt_codeeditor_set_font_size(void *editor, double size)
 // Theme Functions
 //=============================================================================
 
-static int s_theme_is_dark = 1; ///< Tracks current theme; 1 = dark, 0 = light.
-
 void rt_theme_set_dark(void)
 {
-    s_theme_is_dark = 1;
+    RT_ASSERT_MAIN_THREAD();
     vg_theme_set_current(vg_theme_dark());
 }
 
 void rt_theme_set_light(void)
 {
-    s_theme_is_dark = 0;
+    RT_ASSERT_MAIN_THREAD();
     vg_theme_set_current(vg_theme_light());
 }
 
 rt_string rt_theme_get_name(void)
 {
-    const char *name = s_theme_is_dark ? "dark" : "light";
+    RT_ASSERT_MAIN_THREAD();
+    // Query the vg layer directly rather than maintaining a shadow variable.
+    vg_theme_t *current = vg_theme_get_current();
+    const char *name = (current == vg_theme_dark()) ? "dark" : "light";
     return rt_string_from_bytes(name, strlen(name));
 }
 
@@ -366,16 +402,19 @@ rt_string rt_theme_get_name(void)
 
 void *rt_vbox_new(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return vg_vbox_create(0.0f);
 }
 
 void *rt_hbox_new(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return vg_hbox_create(0.0f);
 }
 
 void rt_container_set_spacing(void *container, double spacing)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!container)
         return;
     // Both vg_vbox_layout_t and vg_hbox_layout_t have spacing as their first
@@ -386,6 +425,7 @@ void rt_container_set_spacing(void *container, double spacing)
 
 void rt_container_set_padding(void *container, double padding)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (container)
     {
         vg_widget_set_padding((vg_widget_t *)container, (float)padding);
@@ -398,6 +438,7 @@ void rt_container_set_padding(void *container, double padding)
 
 int64_t rt_widget_is_hovered(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
     return (((vg_widget_t *)widget)->state & VG_STATE_HOVERED) ? 1 : 0;
@@ -405,6 +446,7 @@ int64_t rt_widget_is_hovered(void *widget)
 
 int64_t rt_widget_is_pressed(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
     return (((vg_widget_t *)widget)->state & VG_STATE_PRESSED) ? 1 : 0;
@@ -412,6 +454,7 @@ int64_t rt_widget_is_pressed(void *widget)
 
 int64_t rt_widget_is_focused(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
     return (((vg_widget_t *)widget)->state & VG_STATE_FOCUSED) ? 1 : 0;
@@ -422,11 +465,13 @@ static vg_widget_t *g_last_clicked_widget = NULL;
 
 void rt_gui_set_last_clicked(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     g_last_clicked_widget = (vg_widget_t *)widget;
 }
 
 int64_t rt_widget_was_clicked(void *widget)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
     return (g_last_clicked_widget == widget) ? 1 : 0;
@@ -434,6 +479,7 @@ int64_t rt_widget_was_clicked(void *widget)
 
 void rt_widget_set_position(void *widget, int64_t x, int64_t y)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (widget)
     {
         vg_widget_t *w = (vg_widget_t *)widget;
@@ -448,11 +494,13 @@ void rt_widget_set_position(void *widget, int64_t x, int64_t y)
 
 void *rt_dropdown_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     return vg_dropdown_create((vg_widget_t *)parent);
 }
 
 int64_t rt_dropdown_add_item(void *dropdown, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!dropdown)
         return -1;
     char *ctext = rt_string_to_cstr(text);
@@ -463,6 +511,7 @@ int64_t rt_dropdown_add_item(void *dropdown, rt_string text)
 
 void rt_dropdown_remove_item(void *dropdown, int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (dropdown)
     {
         vg_dropdown_remove_item((vg_dropdown_t *)dropdown, (int)index);
@@ -471,6 +520,7 @@ void rt_dropdown_remove_item(void *dropdown, int64_t index)
 
 void rt_dropdown_clear(void *dropdown)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (dropdown)
     {
         vg_dropdown_clear((vg_dropdown_t *)dropdown);
@@ -479,6 +529,7 @@ void rt_dropdown_clear(void *dropdown)
 
 void rt_dropdown_set_selected(void *dropdown, int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (dropdown)
     {
         vg_dropdown_set_selected((vg_dropdown_t *)dropdown, (int)index);
@@ -487,6 +538,7 @@ void rt_dropdown_set_selected(void *dropdown, int64_t index)
 
 int64_t rt_dropdown_get_selected(void *dropdown)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!dropdown)
         return -1;
     return vg_dropdown_get_selected((vg_dropdown_t *)dropdown);
@@ -494,6 +546,7 @@ int64_t rt_dropdown_get_selected(void *dropdown)
 
 rt_string rt_dropdown_get_selected_text(void *dropdown)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!dropdown)
         return rt_str_empty();
     const char *text = vg_dropdown_get_selected_text((vg_dropdown_t *)dropdown);
@@ -504,6 +557,7 @@ rt_string rt_dropdown_get_selected_text(void *dropdown)
 
 void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!dropdown)
         return;
     char *ctext = rt_string_to_cstr(placeholder);
@@ -517,12 +571,14 @@ void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder)
 
 void *rt_slider_new(void *parent, int64_t horizontal)
 {
+    RT_ASSERT_MAIN_THREAD();
     vg_slider_orientation_t orient = horizontal ? VG_SLIDER_HORIZONTAL : VG_SLIDER_VERTICAL;
     return vg_slider_create((vg_widget_t *)parent, orient);
 }
 
 void rt_slider_set_value(void *slider, double value)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (slider)
     {
         vg_slider_set_value((vg_slider_t *)slider, (float)value);
@@ -531,6 +587,7 @@ void rt_slider_set_value(void *slider, double value)
 
 double rt_slider_get_value(void *slider)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!slider)
         return 0.0;
     return (double)vg_slider_get_value((vg_slider_t *)slider);
@@ -538,6 +595,7 @@ double rt_slider_get_value(void *slider)
 
 void rt_slider_set_range(void *slider, double min_val, double max_val)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (slider)
     {
         vg_slider_set_range((vg_slider_t *)slider, (float)min_val, (float)max_val);
@@ -546,6 +604,7 @@ void rt_slider_set_range(void *slider, double min_val, double max_val)
 
 void rt_slider_set_step(void *slider, double step)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (slider)
     {
         vg_slider_set_step((vg_slider_t *)slider, (float)step);
@@ -558,11 +617,13 @@ void rt_slider_set_step(void *slider, double step)
 
 void *rt_progressbar_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     return vg_progressbar_create((vg_widget_t *)parent);
 }
 
 void rt_progressbar_set_value(void *progress, double value)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (progress)
     {
         vg_progressbar_set_value((vg_progressbar_t *)progress, (float)value);
@@ -571,6 +632,7 @@ void rt_progressbar_set_value(void *progress, double value)
 
 double rt_progressbar_get_value(void *progress)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!progress)
         return 0.0;
     return (double)vg_progressbar_get_value((vg_progressbar_t *)progress);
@@ -582,11 +644,13 @@ double rt_progressbar_get_value(void *progress)
 
 void *rt_listbox_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     return vg_listbox_create((vg_widget_t *)parent);
 }
 
 void *rt_listbox_add_item(void *listbox, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!listbox)
         return NULL;
     char *ctext = rt_string_to_cstr(text);
@@ -597,6 +661,7 @@ void *rt_listbox_add_item(void *listbox, rt_string text)
 
 void rt_listbox_remove_item(void *listbox, void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (listbox && item)
     {
         vg_listbox_remove_item((vg_listbox_t *)listbox, (vg_listbox_item_t *)item);
@@ -605,6 +670,7 @@ void rt_listbox_remove_item(void *listbox, void *item)
 
 void rt_listbox_clear(void *listbox)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (listbox)
     {
         vg_listbox_clear((vg_listbox_t *)listbox);
@@ -613,6 +679,7 @@ void rt_listbox_clear(void *listbox)
 
 void rt_listbox_select(void *listbox, void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (listbox)
     {
         vg_listbox_select((vg_listbox_t *)listbox, (vg_listbox_item_t *)item);
@@ -621,6 +688,7 @@ void rt_listbox_select(void *listbox, void *item)
 
 void *rt_listbox_get_selected(void *listbox)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!listbox)
         return NULL;
     return vg_listbox_get_selected((vg_listbox_t *)listbox);
@@ -628,6 +696,7 @@ void *rt_listbox_get_selected(void *listbox)
 
 int64_t rt_listbox_get_count(void *listbox)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!listbox)
         return 0;
     vg_listbox_t *lb = (vg_listbox_t *)listbox;
@@ -636,6 +705,7 @@ int64_t rt_listbox_get_count(void *listbox)
 
 int64_t rt_listbox_get_selected_index(void *listbox)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!listbox)
         return -1;
     size_t idx = vg_listbox_get_selected_index((vg_listbox_t *)listbox);
@@ -646,6 +716,7 @@ int64_t rt_listbox_get_selected_index(void *listbox)
 
 void rt_listbox_select_index(void *listbox, int64_t index)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!listbox || index < 0)
         return;
     vg_listbox_select_index((vg_listbox_t *)listbox, (size_t)index);
@@ -653,28 +724,36 @@ void rt_listbox_select_index(void *listbox, int64_t index)
 
 int64_t rt_listbox_was_selection_changed(void *listbox)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!listbox)
         return 0;
     vg_listbox_t *lb = (vg_listbox_t *)listbox;
-    // Use a flag to track selection changes
-    // This requires checking if selection changed since last query
-    // For now, return 0 as a stub - would need tracking state
-    (void)lb;
+
+    // Per-instance selection tracking using prev_selected field
+    // (matches the pattern used by rt_tabbar_was_changed / prev_active_tab).
+    if (lb->selected != lb->prev_selected)
+    {
+    RT_ASSERT_MAIN_THREAD();
+        lb->prev_selected = lb->selected;
+        return 1;
+    }
     return 0;
 }
 
 rt_string rt_listbox_item_get_text(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
-        return rt_const_cstr("");
+        return rt_str_empty();
     vg_listbox_item_t *it = (vg_listbox_item_t *)item;
     if (it->text)
         return rt_string_from_bytes(it->text, strlen(it->text));
-    return rt_const_cstr("");
+    return rt_str_empty();
 }
 
 void rt_listbox_item_set_text(void *item, rt_string text)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     vg_listbox_item_t *it = (vg_listbox_item_t *)item;
@@ -686,6 +765,7 @@ void rt_listbox_item_set_text(void *item, rt_string text)
 
 void rt_listbox_item_set_data(void *item, rt_string data)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
     vg_listbox_item_t *it = (vg_listbox_item_t *)item;
@@ -697,17 +777,19 @@ void rt_listbox_item_set_data(void *item, rt_string data)
 
 rt_string rt_listbox_item_get_data(void *item)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!item)
-        return rt_const_cstr("");
+        return rt_str_empty();
     vg_listbox_item_t *it = (vg_listbox_item_t *)item;
     char *data = (char *)it->user_data;
     if (data)
         return rt_string_from_bytes(data, strlen(data));
-    return rt_const_cstr("");
+    return rt_str_empty();
 }
 
 void rt_listbox_set_font(void *listbox, void *font, double size)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (listbox)
     {
         vg_listbox_set_font((vg_listbox_t *)listbox, (vg_font_t *)font, (float)size);
@@ -720,11 +802,13 @@ void rt_listbox_set_font(void *listbox, void *font, double size)
 
 void *rt_radiogroup_new(void)
 {
+    RT_ASSERT_MAIN_THREAD();
     return vg_radiogroup_create();
 }
 
 void rt_radiogroup_destroy(void *group)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (group)
     {
         vg_radiogroup_destroy((vg_radiogroup_t *)group);
@@ -733,6 +817,7 @@ void rt_radiogroup_destroy(void *group)
 
 void *rt_radiobutton_new(void *parent, rt_string text, void *group)
 {
+    RT_ASSERT_MAIN_THREAD();
     char *ctext = rt_string_to_cstr(text);
     vg_radiobutton_t *radio =
         vg_radiobutton_create((vg_widget_t *)parent, ctext, (vg_radiogroup_t *)group);
@@ -742,6 +827,7 @@ void *rt_radiobutton_new(void *parent, rt_string text, void *group)
 
 int64_t rt_radiobutton_is_selected(void *radio)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!radio)
         return 0;
     return vg_radiobutton_is_selected((vg_radiobutton_t *)radio) ? 1 : 0;
@@ -749,6 +835,7 @@ int64_t rt_radiobutton_is_selected(void *radio)
 
 void rt_radiobutton_set_selected(void *radio, int64_t selected)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (radio)
     {
         vg_radiobutton_set_selected((vg_radiobutton_t *)radio, selected != 0);
@@ -761,11 +848,13 @@ void rt_radiobutton_set_selected(void *radio, int64_t selected)
 
 void *rt_spinner_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     return vg_spinner_create((vg_widget_t *)parent);
 }
 
 void rt_spinner_set_value(void *spinner, double value)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (spinner)
     {
         vg_spinner_set_value((vg_spinner_t *)spinner, value);
@@ -774,6 +863,7 @@ void rt_spinner_set_value(void *spinner, double value)
 
 double rt_spinner_get_value(void *spinner)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (!spinner)
         return 0.0;
     return vg_spinner_get_value((vg_spinner_t *)spinner);
@@ -781,6 +871,7 @@ double rt_spinner_get_value(void *spinner)
 
 void rt_spinner_set_range(void *spinner, double min_val, double max_val)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (spinner)
     {
         vg_spinner_set_range((vg_spinner_t *)spinner, min_val, max_val);
@@ -789,6 +880,7 @@ void rt_spinner_set_range(void *spinner, double min_val, double max_val)
 
 void rt_spinner_set_step(void *spinner, double step)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (spinner)
     {
         vg_spinner_set_step((vg_spinner_t *)spinner, step);
@@ -797,6 +889,7 @@ void rt_spinner_set_step(void *spinner, double step)
 
 void rt_spinner_set_decimals(void *spinner, int64_t decimals)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (spinner)
     {
         vg_spinner_set_decimals((vg_spinner_t *)spinner, (int)decimals);
@@ -809,11 +902,13 @@ void rt_spinner_set_decimals(void *spinner, int64_t decimals)
 
 void *rt_image_new(void *parent)
 {
+    RT_ASSERT_MAIN_THREAD();
     return vg_image_create((vg_widget_t *)parent);
 }
 
 void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t height)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (image && pixels)
     {
         vg_image_set_pixels((vg_image_t *)image, (const uint8_t *)pixels, (int)width, (int)height);
@@ -822,6 +917,7 @@ void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t heigh
 
 void rt_image_clear(void *image)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (image)
     {
         vg_image_clear((vg_image_t *)image);
@@ -830,6 +926,7 @@ void rt_image_clear(void *image)
 
 void rt_image_set_scale_mode(void *image, int64_t mode)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (image)
     {
         vg_image_set_scale_mode((vg_image_t *)image, (vg_image_scale_t)mode);
@@ -838,6 +935,7 @@ void rt_image_set_scale_mode(void *image, int64_t mode)
 
 void rt_image_set_opacity(void *image, double opacity)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (image)
     {
         vg_image_set_opacity((vg_image_t *)image, (float)opacity);
@@ -850,29 +948,34 @@ void rt_image_set_opacity(void *image, double opacity)
 
 void *rt_floatingpanel_new(void *root)
 {
+    RT_ASSERT_MAIN_THREAD();
     return vg_floatingpanel_create((vg_widget_t *)root);
 }
 
 void rt_floatingpanel_set_position(void *panel, double x, double y)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (panel)
         vg_floatingpanel_set_position((vg_floatingpanel_t *)panel, (float)x, (float)y);
 }
 
 void rt_floatingpanel_set_size(void *panel, double w, double h)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (panel)
         vg_floatingpanel_set_size((vg_floatingpanel_t *)panel, (float)w, (float)h);
 }
 
 void rt_floatingpanel_set_visible(void *panel, int64_t visible)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (panel)
         vg_floatingpanel_set_visible((vg_floatingpanel_t *)panel, (int)visible);
 }
 
 void rt_floatingpanel_add_child(void *panel, void *child)
 {
+    RT_ASSERT_MAIN_THREAD();
     if (panel && child)
         vg_floatingpanel_add_child((vg_floatingpanel_t *)panel, (vg_widget_t *)child);
 }
@@ -1298,7 +1401,7 @@ int64_t rt_listbox_was_selection_changed(void *listbox)
 rt_string rt_listbox_item_get_text(void *item)
 {
     (void)item;
-    return rt_const_cstr("");
+    return rt_str_empty();
 }
 
 void rt_listbox_item_set_text(void *item, rt_string text)
@@ -1316,7 +1419,7 @@ void rt_listbox_item_set_data(void *item, rt_string data)
 rt_string rt_listbox_item_get_data(void *item)
 {
     (void)item;
-    return rt_const_cstr("");
+    return rt_str_empty();
 }
 
 void rt_listbox_set_font(void *listbox, void *font, double size)

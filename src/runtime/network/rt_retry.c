@@ -96,7 +96,7 @@ int64_t rt_retry_next_delay(void *policy)
                 delay = data->max_delay_ms;
         }
 
-        // Add jitter to prevent thundering-herd on coordinated retries
+        // Add 0-25% additive jitter to prevent thundering-herd on coordinated retries
         // Uses thread-safe local xorshift PRNG instead of global rand()
         if (delay > 0)
         {

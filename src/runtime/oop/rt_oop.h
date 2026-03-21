@@ -229,6 +229,16 @@ extern "C"
     /// @return Interface method table, or NULL if no binding exists.
     void **rt_get_interface_impl(int64_t type_id, int64_t iface_id);
 
+    /// @brief Seal the type registry, enabling lock-free reads.
+    ///
+    /// Call after all type and interface registration is complete (typically
+    /// at the end of module initialization). Once sealed, read operations
+    /// bypass the registry's reader-writer lock entirely (zero overhead),
+    /// and any subsequent registration attempts will trap.
+    ///
+    /// @thread-safety Safe to call from any thread; uses atomic release store.
+    void rt_type_registry_seal(void);
+
 #ifdef __cplusplus
 }
 #endif

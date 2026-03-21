@@ -53,7 +53,7 @@
 
 #include "../text/rt_hash_util.h"
 
-/// @brief Hash a byte sequence using the shared SipHash-2-4 utility.
+/// @brief Hash a byte sequence using FNV-1a.
 static uint64_t hash_bytes(const char *data, size_t len)
 {
     return rt_fnv1a(data, len);

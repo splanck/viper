@@ -957,7 +957,8 @@ void *rt_archive_info(void *obj, rt_string name)
     int minute = (e->mod_time >> 5) & 0x3F;
     int second = (e->mod_time & 0x1F) * 2;
 
-    // Simple approximation of Unix timestamp (not accounting for leap years properly)
+    // Simple approximation of Unix timestamp (not accounting for leap years properly).
+    // DOS time has 2-second granularity (seconds/2 in bits 0-4); odd seconds are lost.
     int64_t timestamp = (int64_t)(year - 1970) * 365 * 24 * 3600;
     timestamp += (int64_t)(month - 1) * 30 * 24 * 3600;
     timestamp += (int64_t)(day - 1) * 24 * 3600;

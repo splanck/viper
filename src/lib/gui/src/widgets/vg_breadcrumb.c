@@ -37,6 +37,7 @@ static void free_breadcrumb_item(vg_breadcrumb_item_t *item)
 
     free(item->label);
     free(item->tooltip);
+    free(item->user_data);
 
     for (size_t i = 0; i < item->dropdown_count; i++)
     {

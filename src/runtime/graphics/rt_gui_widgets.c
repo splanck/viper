@@ -205,7 +205,7 @@ void *rt_label_new(void *parent, rt_string text)
 {
     RT_ASSERT_MAIN_THREAD();
     char *ctext = rt_string_to_cstr(text);
-    vg_label_t *label = vg_label_create((vg_widget_t *)parent, ctext);
+    vg_label_t *label = vg_label_create((vg_widget_t *)parent, ctext ? ctext : "");
     free(ctext);
     return label;
 }
@@ -527,10 +527,6 @@ void *rt_treeview_get_selected(void *tree)
     return tv->selected;
 }
 
-// Track selection changes for polling pattern
-static vg_tree_node_t *g_last_treeview_selected = NULL;
-static vg_treeview_t *g_last_treeview_checked = NULL;
-
 int64_t rt_treeview_was_selection_changed(void *tree)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -538,17 +534,11 @@ int64_t rt_treeview_was_selection_changed(void *tree)
         return 0;
     vg_treeview_t *tv = (vg_treeview_t *)tree;
 
-    // Reset tracking if checking a different tree
-    if (g_last_treeview_checked != tv)
+    // Per-instance selection tracking using prev_selected field
+    // (matches the pattern used by rt_tabbar_was_changed / prev_active_tab).
+    if (tv->selected != tv->prev_selected)
     {
-        g_last_treeview_checked = tv;
-        g_last_treeview_selected = tv->selected;
-        return 0;
-    }
-
-    if (tv->selected != g_last_treeview_selected)
-    {
-        g_last_treeview_selected = tv->selected;
+        tv->prev_selected = tv->selected;
         return 1;
     }
     return 0;

@@ -78,6 +78,8 @@ void *rt_unionfind_new(int64_t n)
 {
     if (n < 1)
         n = 1;
+    if ((uint64_t)n > SIZE_MAX / sizeof(int64_t))
+        return NULL;
 
     rt_unionfind_impl *uf = (rt_unionfind_impl *)rt_obj_new_i64(0, sizeof(rt_unionfind_impl));
     uf->parent = (int64_t *)malloc((size_t)n * sizeof(int64_t));

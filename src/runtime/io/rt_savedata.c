@@ -225,7 +225,9 @@ static void ensure_parent_dir(const char *file_path)
     free(dir);
 }
 
-/* Escape a string for JSON output (handles \, ", \n, \t, \r) */
+/* Escape a string for JSON output (handles \, ", \n, \t, \r).
+   NOTE: Other ASCII control characters (0x00-0x1F) are passed through unescaped.
+   Full JSON compliance would require \uXXXX encoding for those. */
 static void json_escape_append(rt_string_builder *sb, const char *str, size_t len)
 {
     for (size_t i = 0; i < len; i++)

@@ -51,9 +51,9 @@ static void free_menu_item(vg_menu_item_t *item)
         return;
 
     if (item->text)
-        free((void *)item->text);
+        free(item->text);
     if (item->shortcut)
-        free((void *)item->shortcut);
+        free(item->shortcut);
 
     // Recursively free submenu
     if (item->submenu)
@@ -66,7 +66,7 @@ static void free_menu_item(vg_menu_item_t *item)
             sub = next;
         }
         if (item->submenu->title)
-            free((void *)item->submenu->title);
+            free(item->submenu->title);
         free(item->submenu);
     }
 
@@ -87,7 +87,7 @@ static void free_menu(vg_menu_t *menu)
     }
 
     if (menu->title)
-        free((void *)menu->title);
+        free(menu->title);
     free(menu);
 }
 
@@ -682,6 +682,7 @@ vg_menu_t *vg_menubar_add_menu(vg_menubar_t *menubar, const char *title)
     menu->last_item = NULL;
     menu->item_count = 0;
     menu->open = false;
+    menu->enabled = true;
 
     // Add to end of list
     if (menubar->last_menu)

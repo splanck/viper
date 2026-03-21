@@ -69,6 +69,8 @@ struct rt_tween_impl
 double rt_tween_ease(double t, int64_t ease_type);
 
 // Forward declaration of internal easing functions
+// NOTE: These duplicate rt_easing.c implementations. A future refactor could
+// have rt_tween call the public rt_ease_* API instead.
 static double ease_linear(double t);
 static double ease_in_quad(double t);
 static double ease_out_quad(double t);

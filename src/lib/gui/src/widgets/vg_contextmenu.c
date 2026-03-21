@@ -187,6 +187,7 @@ vg_contextmenu_t *vg_contextmenu_create(void)
 
     menu->is_visible = false;
     menu->hovered_index = -1;
+    menu->clicked_index = -1;
     menu->active_submenu = NULL;
     menu->parent_menu = NULL;
 
@@ -439,6 +440,9 @@ static bool contextmenu_handle_event(vg_widget_t *widget, vg_event_t *event)
 
                     if (!item->separator && item->enabled && !item->submenu)
                     {
+                        // Record clicked index for rt_contextmenu_get_clicked_item
+                        menu->clicked_index = clicked;
+
                         // Invoke action
                         if (item->action)
                         {
@@ -728,6 +732,7 @@ void vg_contextmenu_show_at(vg_contextmenu_t *menu, int x, int y)
     menu->anchor_y = y;
     menu->is_visible = true;
     menu->hovered_index = -1;
+    menu->clicked_index = -1;
 
     // Calculate size
     contextmenu_measure(&menu->base, 0, 0);

@@ -47,6 +47,7 @@ extern "C"
         // State
         bool is_visible;                       ///< Is menu visible
         int hovered_index;                     ///< Hovered item index (-1 if none)
+        int clicked_index;                     ///< Last clicked item index (-1 if none, edge-triggered)
         struct vg_contextmenu *active_submenu; ///< Open submenu
         struct vg_contextmenu *parent_menu;    ///< Parent menu (for submenus)
 
@@ -211,8 +212,9 @@ extern "C"
         vg_widget_t base;
 
         vg_tree_node_t *root;     ///< Root node (hidden, children are top-level)
-        vg_tree_node_t *selected; ///< Currently selected node
-        vg_font_t *font;          ///< Font for rendering
+        vg_tree_node_t *selected;      ///< Currently selected node
+        vg_tree_node_t *prev_selected; ///< Previous selection (for change detection)
+        vg_font_t *font;               ///< Font for rendering
         float font_size;          ///< Font size
 
         // Appearance
@@ -360,8 +362,8 @@ extern "C"
     /// @brief Menu item structure (forward declared in vg_ide_widgets_common.h)
     struct vg_menu_item
     {
-        const char *text;           ///< Item text (owned)
-        const char *shortcut;       ///< Keyboard shortcut text (owned)
+        char *text;                 ///< Item text (owned, heap-allocated)
+        char *shortcut;             ///< Keyboard shortcut text (owned, heap-allocated)
         vg_accelerator_t accel;     ///< Parsed accelerator
         void (*action)(void *data); ///< Action callback
         void *action_data;          ///< Action data
@@ -369,6 +371,7 @@ extern "C"
         bool checked;               ///< Is item checked (for toggles)
         bool separator;             ///< Is this a separator
         bool was_clicked;           ///< Set true when item is clicked (cleared on read)
+        vg_icon_t icon;             ///< Optional icon (VG_ICON_NONE = no icon)
         struct vg_menu *submenu;    ///< Submenu (if any)
         struct vg_menu_item *next;
         struct vg_menu_item *prev;
@@ -377,13 +380,14 @@ extern "C"
     /// @brief Menu structure (forward declared in vg_ide_widgets_common.h)
     struct vg_menu
     {
-        const char *title; ///< Menu title (owned)
+        char *title; ///< Menu title (owned, heap-allocated)
         vg_menu_item_t *first_item;
         vg_menu_item_t *last_item;
         int item_count;
         struct vg_menu *next;
         struct vg_menu *prev;
-        bool open; ///< Is menu currently open
+        bool open;    ///< Is menu currently open
+        bool enabled; ///< Is menu enabled (default true)
     };
 
     /// @brief Accelerator table entry

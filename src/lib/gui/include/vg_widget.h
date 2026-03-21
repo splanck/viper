@@ -293,6 +293,18 @@ extern "C"
                        ///< ascending order before those with tab_index == -1 (natural order).
                        ///< Defaults to -1 (use tree traversal order).
 
+        // Drag and drop
+        bool draggable;              ///< Whether this widget can be dragged.
+        char *drag_type;             ///< MIME-style type string for drag data (owned).
+        char *drag_data;             ///< Drag payload string (owned).
+        bool is_drop_target;         ///< Whether this widget accepts drops.
+        char *accepted_drop_types;   ///< Comma-separated accepted types (owned).
+        bool _is_being_dragged;      ///< Runtime: currently being dragged (per-frame).
+        bool _is_drag_over;          ///< Runtime: a drag is hovering over this widget.
+        bool _was_dropped;           ///< Runtime: a drop occurred on this widget this frame.
+        char *_drop_received_type;   ///< Runtime: type of the last drop (owned).
+        char *_drop_received_data;   ///< Runtime: data of the last drop (owned).
+
         // User data
         void *user_data; ///< Application-supplied opaque pointer (not touched by the framework).
 

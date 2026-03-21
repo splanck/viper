@@ -417,6 +417,23 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             return 0;
         }
 
+        case WM_DROPFILES:
+        {
+            HDROP hDrop = (HDROP)wparam;
+            UINT count = DragQueryFileA(hDrop, 0xFFFFFFFF, NULL, 0);
+            for (UINT i = 0; i < count; i++)
+            {
+                vgfx_event_t event = {0};
+                event.type = VGFX_EVENT_FILE_DROP;
+                event.time_ms = timestamp;
+                DragQueryFileA(hDrop, i, event.data.file_drop.path,
+                               sizeof(event.data.file_drop.path));
+                vgfx_internal_enqueue_event(win, &event);
+            }
+            DragFinish(hDrop);
+            return 0;
+        }
+
         default:
             /* Use default window procedure for unhandled messages */
             return DefWindowProcW(hwnd, msg, wparam, lparam);
@@ -584,6 +601,9 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 
     /* Store vgfx_window pointer in window user data for WndProc access */
     SetWindowLongPtrW(w32->hwnd, GWLP_USERDATA, (LONG_PTR)win);
+
+    /* Accept file drops */
+    DragAcceptFiles(w32->hwnd, TRUE);
 
     /* Get device context for window */
     w32->hdc = GetDC(w32->hwnd);

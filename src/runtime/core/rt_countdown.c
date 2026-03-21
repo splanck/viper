@@ -37,6 +37,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -62,6 +63,7 @@ typedef struct
 static int64_t get_timestamp_ms(void)
 {
 #if defined(_WIN32)
+    // Benign race: QPC frequency is constant; duplicate init is harmless.
     static LARGE_INTEGER freq = {0};
     if (freq.QuadPart == 0)
     {
@@ -124,7 +126,9 @@ static void sleep_ms(int64_t ms)
     struct timespec ts;
     ts.tv_sec = ms / 1000;
     ts.tv_nsec = (ms % 1000) * 1000000L;
-    nanosleep(&ts, NULL);
+    // Retry on EINTR to handle signal interrupts correctly
+    while (nanosleep(&ts, &ts) == -1 && errno == EINTR)
+        ;
 #endif
 }
 

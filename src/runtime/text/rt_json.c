@@ -242,6 +242,60 @@ static rt_string parse_string(json_parser *p)
                         codepoint = (codepoint << 4) | digit;
                     }
 
+                    // Handle UTF-16 surrogate pairs for codepoints above U+FFFF.
+                    // High surrogate (D800-DBFF) must be followed by \uDC00-\uDFFF.
+                    if (codepoint >= 0xD800 && codepoint <= 0xDBFF)
+                    {
+                        // Expect \u followed by low surrogate
+                        if (p->pos + 6 > p->len || parser_peek(p) != '\\' ||
+                            p->input[p->pos + 1] != 'u')
+                        {
+                            free(buf);
+                            parser_error(p, "missing low surrogate in unicode escape");
+                            return rt_string_from_bytes("", 0);
+                        }
+                        parser_consume(p); // consume '\'
+                        parser_consume(p); // consume 'u'
+
+                        unsigned int low = 0;
+                        for (int i = 0; i < 4; i++)
+                        {
+                            char hex = parser_consume(p);
+                            unsigned int digit;
+                            if (hex >= '0' && hex <= '9')
+                                digit = hex - '0';
+                            else if (hex >= 'a' && hex <= 'f')
+                                digit = 10 + hex - 'a';
+                            else if (hex >= 'A' && hex <= 'F')
+                                digit = 10 + hex - 'A';
+                            else
+                            {
+                                free(buf);
+                                parser_error(p, "invalid unicode escape");
+                                return rt_string_from_bytes("", 0);
+                            }
+                            low = (low << 4) | digit;
+                        }
+
+                        if (low < 0xDC00 || low > 0xDFFF)
+                        {
+                            free(buf);
+                            parser_error(p, "invalid low surrogate in unicode escape");
+                            return rt_string_from_bytes("", 0);
+                        }
+
+                        // Combine surrogates: U+10000 + (hi - D800) * 400 + (lo - DC00)
+                        codepoint =
+                            0x10000 + ((codepoint - 0xD800) << 10) + (low - 0xDC00);
+                    }
+                    else if (codepoint >= 0xDC00 && codepoint <= 0xDFFF)
+                    {
+                        // Lone low surrogate is invalid
+                        free(buf);
+                        parser_error(p, "unexpected low surrogate in unicode escape");
+                        return rt_string_from_bytes("", 0);
+                    }
+
                     // Encode codepoint as UTF-8
                     if (codepoint < 0x80)
                     {
@@ -274,7 +328,7 @@ static rt_string parse_string(json_parser *p)
                         buf[len++] = (char)(0xC0 | (codepoint >> 6));
                         buf[len++] = (char)(0x80 | (codepoint & 0x3F));
                     }
-                    else
+                    else if (codepoint < 0x10000)
                     {
                         if (len + 3 >= cap)
                         {
@@ -288,6 +342,25 @@ static rt_string parse_string(json_parser *p)
                             buf = tmp;
                         }
                         buf[len++] = (char)(0xE0 | (codepoint >> 12));
+                        buf[len++] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
+                        buf[len++] = (char)(0x80 | (codepoint & 0x3F));
+                    }
+                    else
+                    {
+                        // 4-byte UTF-8 for supplementary plane (U+10000 to U+10FFFF)
+                        if (len + 4 >= cap)
+                        {
+                            cap *= 2;
+                            char *tmp = (char *)realloc(buf, cap);
+                            if (!tmp)
+                            {
+                                free(buf);
+                                rt_trap("Json.Parse: memory allocation failed");
+                            }
+                            buf = tmp;
+                        }
+                        buf[len++] = (char)(0xF0 | (codepoint >> 18));
+                        buf[len++] = (char)(0x80 | ((codepoint >> 12) & 0x3F));
                         buf[len++] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
                         buf[len++] = (char)(0x80 | (codepoint & 0x3F));
                     }

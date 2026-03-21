@@ -89,6 +89,8 @@ static bigint_t *bigint_alloc(int64_t capacity)
 
 static void bigint_finalizer(void *obj)
 {
+    if (!obj)
+        return;
     bigint_t *bi = (bigint_t *)obj;
     if (bi->digits)
     {
@@ -102,9 +104,13 @@ static void bigint_ensure_capacity(bigint_t *bi, int64_t cap)
     if (cap <= bi->cap)
         return;
 
+    if (bi->cap > INT64_MAX / 2)
+        return; // Capacity overflow — cannot grow
     int64_t new_cap = bi->cap * 2;
     if (new_cap < cap)
         new_cap = cap;
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(uint32_t))
+        return; // Allocation size overflow
 
     uint32_t *new_digits = realloc(bi->digits, (size_t)new_cap * sizeof(uint32_t));
     if (!new_digits)

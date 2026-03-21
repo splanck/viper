@@ -67,6 +67,7 @@ typedef struct
     vg_widget_t *last_clicked; ///< Widget clicked during the current frame.
     int32_t mouse_x;           ///< Current mouse X coordinate in window space.
     int32_t mouse_y;           ///< Current mouse Y coordinate in window space.
+    char *title;               ///< Window title (owned, heap-allocated).
 } rt_gui_app_t;
 
 /// @brief Global pointer to the current app for widget constructors to access the default font.
@@ -113,6 +114,15 @@ void rt_gui_set_last_clicked(void *widget);
 ///          widgets. Set to NULL to dismiss. Defined in rt_gui_app.c.
 /// @param dlg Dialog handle (vg_dialog_t*), or NULL to clear.
 void rt_gui_set_active_dialog(void *dlg);
+
+/// @brief Free global resources owned by rt_gui_features.c (tooltip, notification manager, file drop).
+/// @details Called from rt_gui_app_destroy. Defined in rt_gui_features.c.
+void rt_gui_features_cleanup(void);
+
+/// @brief Record a dropped file path (called from rt_gui_app_poll on FILE_DROP events).
+/// @details Adds the path to the g_file_drop array. The first call after
+///          was_dropped is consumed clears old entries. Defined in rt_gui_features.c.
+void rt_gui_file_drop_add(const char *path);
 
 /// @brief Clear all triggered shortcut flags for the current frame.
 /// @details Called at the start of each poll cycle to reset shortcut state.

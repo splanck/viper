@@ -18,7 +18,8 @@
 #include <string.h>
 
 /// @brief Secure memory zeroing that the compiler cannot optimize away.
-/// @details Uses a volatile function pointer to prevent dead-store elimination.
+/// @details Uses volatile pointer writes to prevent dead-store elimination.
+///          Each byte write is guaranteed to occur even if the buffer is not read afterward.
 static void rt_secure_zero(void *ptr, size_t len)
 {
     volatile unsigned char *p = (volatile unsigned char *)ptr;

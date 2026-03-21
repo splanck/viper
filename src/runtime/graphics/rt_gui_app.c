@@ -78,8 +78,8 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
 
     // Create window
     vgfx_window_params_t params = vgfx_window_params_default();
-    params.width = (int32_t)width;
-    params.height = (int32_t)height;
+    params.width = (int32_t)(width < 1 ? 1 : width > INT32_MAX ? INT32_MAX : width);
+    params.height = (int32_t)(height < 1 ? 1 : height > INT32_MAX ? INT32_MAX : height);
     char *ctitle = rt_string_to_cstr(title);
     if (ctitle)
     {
@@ -92,6 +92,9 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
 
     if (!app->window)
     {
+        // app is GC-allocated (rt_obj_new_i64) so it will be reclaimed by the
+        // collector. Zero the struct so the GC finalizer (if any) sees clean state.
+        memset(app, 0, sizeof(rt_gui_app_t));
         return NULL;
     }
 
@@ -112,6 +115,8 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
     vg_theme_set_current(vg_theme_dark());
     {
         float _s = app->window ? vgfx_window_get_scale(app->window) : 1.0f;
+        if (_s <= 0.0f)
+            _s = 1.0f;
         vg_theme_t *_t = vg_theme_get_current();
         _t->ui_scale = _s;
         // Scale typography so theme-derived font sizes render at the correct
@@ -162,6 +167,8 @@ void rt_gui_ensure_default_font(void)
                                 "/System/Library/Fonts/Monaco.dfont",
                                 "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
                                 "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+                                "C:\\Windows\\Fonts\\consola.ttf",
+                                "C:\\Windows\\Fonts\\cour.ttf",
                                 NULL};
     for (int i = 0; font_paths[i]; i++)
     {
@@ -183,10 +190,25 @@ void rt_gui_app_destroy(void *app_ptr)
         return;
     rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;
 
+    // Clear modal dialog pointer to prevent dangling reference after widget
+    // tree destruction (the dialog lives inside the widget tree).
+    rt_gui_set_active_dialog(NULL);
+
+    // Free global resources owned by the features module (tooltip, notification
+    // manager, file drop data).
+    rt_gui_features_cleanup();
+
     // Clear global pointer before freeing to prevent use-after-free
     if (s_current_app == app)
         s_current_app = NULL;
 
+    free(app->title);
+    app->title = NULL;
+    if (app->default_font)
+    {
+        vg_font_destroy(app->default_font);
+        app->default_font = NULL;
+    }
     if (app->root)
     {
         vg_widget_destroy(app->root);
@@ -209,14 +231,8 @@ int64_t rt_gui_app_should_close(void *app_ptr)
 // Forward declarations
 static void render_widget_tree(vgfx_window_t window,
                                vg_widget_t *widget,
-                               vg_font_t *font,
-                               float font_size,
                                float parent_abs_x,
                                float parent_abs_y);
-void rt_gui_set_last_clicked(void *widget);
-
-// Declared in rt_gui_internal.h, defined in rt_gui_system.c
-
 
 void rt_gui_app_poll(void *app_ptr)
 {
@@ -230,6 +246,17 @@ void rt_gui_app_poll(void *app_ptr)
     // Clear last clicked
     app->last_clicked = NULL;
     rt_gui_set_last_clicked(NULL);
+
+    // Clear per-frame drag-and-drop state on all widgets
+    // (drag_over and was_dropped are edge-triggered per frame)
+    static vg_widget_t *s_drag_source = NULL;
+    static vg_widget_t *s_drag_over_widget = NULL;
+
+    if (s_drag_over_widget)
+    {
+        s_drag_over_widget->_is_drag_over = false;
+        s_drag_over_widget = NULL;
+    }
 
     // Clear shortcut triggered flags from previous frame
     rt_shortcuts_clear_triggered();
@@ -247,6 +274,13 @@ void rt_gui_app_poll(void *app_ptr)
             continue;
         }
 
+        // File drop events — collect into g_file_drop via helper
+        if (event.type == VGFX_EVENT_FILE_DROP)
+        {
+            rt_gui_file_drop_add(event.data.file_drop.path);
+            continue;
+        }
+
         // Convert platform event to GUI event and dispatch to widget tree
         if (app->root)
         {
@@ -257,9 +291,41 @@ void rt_gui_app_poll(void *app_ptr)
             {
                 app->mouse_x = event.data.mouse_move.x;
                 app->mouse_y = event.data.mouse_move.y;
+
+                // Drag-and-drop: update drag-over state during drag
+                if (s_drag_source)
+                {
+                    vg_widget_t *hit = vg_widget_hit_test(
+                        app->root, (float)app->mouse_x, (float)app->mouse_y);
+                    // Clear previous drag-over
+                    if (s_drag_over_widget && s_drag_over_widget != hit)
+                        s_drag_over_widget->_is_drag_over = false;
+                    // Set new drag-over if target accepts drops
+                    if (hit && hit->is_drop_target && hit != s_drag_source)
+                    {
+                        hit->_is_drag_over = true;
+                        s_drag_over_widget = hit;
+                    }
+                    else
+                    {
+                        s_drag_over_widget = NULL;
+                    }
+                }
             }
 
-            // Track clicked widget for Button.WasClicked()
+            // Drag-and-drop: start drag on mouse-down over draggable widget
+            if (event.type == VGFX_EVENT_MOUSE_DOWN && !s_drag_source)
+            {
+                vg_widget_t *hit =
+                    vg_widget_hit_test(app->root, (float)app->mouse_x, (float)app->mouse_y);
+                if (hit && hit->draggable)
+                {
+                    s_drag_source = hit;
+                    hit->_is_being_dragged = true;
+                }
+            }
+
+            // Track clicked widget for Button.WasClicked() + complete drag-and-drop
             if (event.type == VGFX_EVENT_MOUSE_UP)
             {
                 vg_widget_t *hit =
@@ -269,6 +335,26 @@ void rt_gui_app_poll(void *app_ptr)
                     app->last_clicked = hit;
                     // Also set global for rt_widget_was_clicked
                     rt_gui_set_last_clicked(hit);
+                }
+
+                // Drag-and-drop: complete drop on mouse-up
+                if (s_drag_source)
+                {
+                    s_drag_source->_is_being_dragged = false;
+                    if (hit && hit->is_drop_target && hit != s_drag_source)
+                    {
+                        // Transfer drag data to drop target
+                        free(hit->_drop_received_type);
+                        free(hit->_drop_received_data);
+                        hit->_drop_received_type =
+                            s_drag_source->drag_type ? strdup(s_drag_source->drag_type) : NULL;
+                        hit->_drop_received_data =
+                            s_drag_source->drag_data ? strdup(s_drag_source->drag_data) : NULL;
+                        hit->_was_dropped = true;
+                        hit->_is_drag_over = false;
+                    }
+                    s_drag_source = NULL;
+                    s_drag_over_widget = NULL;
                 }
             }
 
@@ -419,45 +505,17 @@ void rt_gui_app_render(void *app_ptr)
     if (!app->window)
         return;
 
-    // Try to load a default font if none is set
-    if (!app->default_font)
-    {
-        // Try the embedded JetBrains Mono Regular first (always available).
-        app->default_font = vg_font_load(vg_embedded_font_data, (size_t)vg_embedded_font_size);
-        if (app->default_font)
-        {
-            float _s = vgfx_window_get_scale(app->window);
-            app->default_font_size = 14.0f * (_s > 0.0f ? _s : 1.0f);
-        }
-        else
-        {
-            // Fall back to system fonts if the embedded data somehow fails.
-            const char *font_paths[] = {"/System/Library/Fonts/Menlo.ttc",
-                                        "/System/Library/Fonts/SFNSMono.ttf",
-                                        "/System/Library/Fonts/Monaco.dfont",
-                                        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-                                        "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
-                                        NULL};
-            for (int i = 0; font_paths[i]; i++)
-            {
-                app->default_font = vg_font_load_file(font_paths[i]);
-                if (app->default_font)
-                {
-                    float _s = vgfx_window_get_scale(app->window);
-                    app->default_font_size = 14.0f * (_s > 0.0f ? _s : 1.0f);
-                    break;
-                }
-            }
-        }
-    }
+    // Ensure a default font is available for widget rendering.
+    rt_gui_ensure_default_font();
+
+    // Cache window dimensions once — reused for layout and dialog centering.
+    int32_t win_w = 0, win_h = 0;
+    vgfx_get_size(app->window, &win_w, &win_h);
 
     // Perform layout using the GUI library's proper layout system.
     // This handles VBox/HBox flex, padding, spacing, and widget constraints.
-    // Use the actual window dimensions, not root->width/height (which start at 0).
     if (app->root)
     {
-        int32_t win_w = 0, win_h = 0;
-        vgfx_get_size(app->window, &win_w, &win_h);
         vg_widget_layout(app->root, (float)win_w, (float)win_h);
     }
 
@@ -472,8 +530,7 @@ void rt_gui_app_render(void *app_ptr)
     // double-count parent offsets and fail.
     if (app->root)
     {
-        render_widget_tree(
-            app->window, app->root, app->default_font, app->default_font_size, 0.0f, 0.0f);
+        render_widget_tree(app->window, app->root, 0.0f, 0.0f);
     }
 
     // Paint overlays (popups, dropdowns) on top of all other widgets.
@@ -503,20 +560,17 @@ void rt_gui_app_render(void *app_ptr)
     {
         if (g_active_dialog->is_open)
         {
-            int32_t dlg_win_w = 0, dlg_win_h = 0;
-            vgfx_get_size(app->window, &dlg_win_w, &dlg_win_h);
-
             // Measure on first render so we know the dialog size.
             // Always read measured_width/height (set by measure), not width/height
             // (set by arrange). Reading width before the first arrange would return 0.
             if (g_active_dialog->base.measured_width < 1.0f)
             {
-                vg_widget_measure(&g_active_dialog->base, (float)dlg_win_w, (float)dlg_win_h);
+                vg_widget_measure(&g_active_dialog->base, (float)win_w, (float)win_h);
             }
             float dw = g_active_dialog->base.measured_width;
             float dh = g_active_dialog->base.measured_height;
             vg_widget_arrange(
-                &g_active_dialog->base, (dlg_win_w - dw) / 2.0f, (dlg_win_h - dh) / 2.0f, dw, dh);
+                &g_active_dialog->base, (win_w - dw) / 2.0f, (win_h - dh) / 2.0f, dw, dh);
 
             // Paint the dialog
             if (g_active_dialog->base.vtable && g_active_dialog->base.vtable->paint)
@@ -561,17 +615,11 @@ void rt_gui_app_set_font(void *app_ptr, void *font, double size)
 // (which walks the parent chain) works correctly during event dispatch.
 static void render_widget_tree(vgfx_window_t window,
                                vg_widget_t *widget,
-                               vg_font_t *font,
-                               float font_size,
                                float parent_abs_x,
                                float parent_abs_y)
 {
     if (!widget || !widget->visible)
         return;
-
-    // Use default font size if not specified
-    if (font_size <= 0)
-        font_size = 14.0f;
 
     // Compute absolute position from relative + parent offset
     float abs_x = widget->x + parent_abs_x;
@@ -599,7 +647,7 @@ static void render_widget_tree(vgfx_window_t window,
     vg_widget_t *child = widget->first_child;
     while (child)
     {
-        render_widget_tree(window, child, font, font_size, abs_x, abs_y);
+        render_widget_tree(window, child, abs_x, abs_y);
         child = child->next_sibling;
     }
 }

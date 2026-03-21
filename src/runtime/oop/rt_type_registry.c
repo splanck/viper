@@ -18,7 +18,10 @@
 //   - Type IDs are unique non-negative integers assigned at registration time.
 //   - Interface binding associates an itable (function pointer array) with a
 //     class-interface pair; dispatch uses this for interface method calls.
-//   - The registry is a process-global singleton; all threads share it.
+//   - The registry is per-VM-context; each context has its own isolated copy.
+//   - A reader-writer lock protects concurrent access. After initialization,
+//     the registry is sealed (immutable), and reads bypass the lock entirely
+//     via an atomic-checked fast path for zero overhead.
 //
 // Ownership/Lifetime:
 //   - Registered class_info and interface metadata are globally allocated and
@@ -35,8 +38,107 @@
 #include "rt_context.h"
 #include "rt_internal.h"
 #include "rt_oop.h"
+
+#include "rt_atomic_compat.h"
+
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#elif !defined(__viperdos__)
+#include <pthread.h>
+#endif
+
+// ============================================================================
+// Reader-Writer Lock Helpers
+// ============================================================================
+
+/// @brief Initialize the per-registry reader-writer lock.
+static void tr_rwlock_init(RtTypeRegistryState *st)
+{
+    st->sealed = 0;
+#ifdef _WIN32
+    SRWLOCK *lock = (SRWLOCK *)malloc(sizeof(SRWLOCK));
+    if (lock)
+        InitializeSRWLock(lock);
+    st->rw_lock = lock;
+#elif !defined(__viperdos__)
+    pthread_rwlock_t *lock = (pthread_rwlock_t *)malloc(sizeof(pthread_rwlock_t));
+    if (lock)
+        pthread_rwlock_init(lock, NULL);
+    st->rw_lock = lock;
+#else
+    st->rw_lock = NULL;
+#endif
+}
+
+/// @brief Destroy and free the per-registry reader-writer lock.
+static void tr_rwlock_destroy(RtTypeRegistryState *st)
+{
+    if (!st->rw_lock)
+        return;
+#if !defined(_WIN32) && !defined(__viperdos__)
+    pthread_rwlock_destroy((pthread_rwlock_t *)st->rw_lock);
+#endif
+    free(st->rw_lock);
+    st->rw_lock = NULL;
+}
+
+/// @brief Acquire shared (read) lock. No-op if registry is sealed or no lock.
+static void tr_rdlock(RtTypeRegistryState *st)
+{
+    if (__atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE))
+        return;
+    if (!st->rw_lock)
+        return;
+#ifdef _WIN32
+    AcquireSRWLockShared((SRWLOCK *)st->rw_lock);
+#elif !defined(__viperdos__)
+    pthread_rwlock_rdlock((pthread_rwlock_t *)st->rw_lock);
+#endif
+}
+
+/// @brief Release shared (read) lock. No-op if registry is sealed or no lock.
+static void tr_rdunlock(RtTypeRegistryState *st)
+{
+    if (__atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE))
+        return;
+    if (!st->rw_lock)
+        return;
+#ifdef _WIN32
+    ReleaseSRWLockShared((SRWLOCK *)st->rw_lock);
+#elif !defined(__viperdos__)
+    pthread_rwlock_unlock((pthread_rwlock_t *)st->rw_lock);
+#endif
+}
+
+/// @brief Acquire exclusive (write) lock. No-op if no lock.
+static void tr_wrlock(RtTypeRegistryState *st)
+{
+    if (!st->rw_lock)
+        return;
+#ifdef _WIN32
+    AcquireSRWLockExclusive((SRWLOCK *)st->rw_lock);
+#elif !defined(__viperdos__)
+    pthread_rwlock_wrlock((pthread_rwlock_t *)st->rw_lock);
+#endif
+}
+
+/// @brief Release exclusive (write) lock. No-op if no lock.
+static void tr_wrunlock(RtTypeRegistryState *st)
+{
+    if (!st->rw_lock)
+        return;
+#ifdef _WIN32
+    ReleaseSRWLockExclusive((SRWLOCK *)st->rw_lock);
+#elif !defined(__viperdos__)
+    pthread_rwlock_unlock((pthread_rwlock_t *)st->rw_lock);
+#endif
+}
 
 // ============================================================================
 // Internal Data Structures
@@ -270,7 +372,17 @@ static void rt_register_class_entry(const rt_class_info *ci, int owned_ci)
 /// @param ci Pointer to a constant @ref rt_class_info describing the class.
 void rt_register_class(const rt_class_info *ci)
 {
+    RtTypeRegistryState *st = rt_tr_state();
+    if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE))
+    {
+        rt_trap("rt_type_registry: cannot register after registry is sealed");
+        return;
+    }
+    if (st)
+        tr_wrlock(st);
     rt_register_class_entry(ci, 0);
+    if (st)
+        tr_wrunlock(st);
 }
 
 /// @brief Register an interface descriptor with the active VM registry.
@@ -279,16 +391,30 @@ void rt_register_interface(const rt_iface_reg *iface)
 {
     if (!iface)
         return;
+    RtTypeRegistryState *st = rt_tr_state();
+    if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE))
+    {
+        rt_trap("rt_type_registry: cannot register after registry is sealed");
+        return;
+    }
+    if (st)
+        tr_wrlock(st);
     size_t *plen = NULL, *pcap = NULL;
     iface_entry *arr = get_ifaces(&plen, &pcap);
     if (!arr && (!plen || !pcap))
+    {
+        if (st)
+            tr_wrunlock(st);
         return;
+    }
     if (*plen == *pcap)
     {
         ensure_cap((void **)&arr, pcap, sizeof(iface_entry));
         set_ifaces(arr);
     }
     arr[(*plen)++] = (iface_entry){iface->iface_id, *iface};
+    if (st)
+        tr_wrunlock(st);
 }
 
 /// @brief Bind an interface method table to a class type id.
@@ -302,17 +428,31 @@ void rt_bind_interface(int type_id, int iface_id, void **itable_slots)
 {
     if (!itable_slots)
         return;
+    RtTypeRegistryState *st = rt_tr_state();
+    if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE))
+    {
+        rt_trap("rt_type_registry: cannot register after registry is sealed");
+        return;
+    }
+    if (st)
+        tr_wrlock(st);
     (void)find_iface; // suppress unused if not queried
     size_t *plen = NULL, *pcap = NULL;
     binding_entry *arr = get_bindings(&plen, &pcap);
     if (!arr && (!plen || !pcap))
+    {
+        if (st)
+            tr_wrunlock(st);
         return;
+    }
     if (*plen == *pcap)
     {
         ensure_cap((void **)&arr, pcap, sizeof(binding_entry));
         set_bindings(arr);
     }
     arr[(*plen)++] = (binding_entry){type_id, iface_id, itable_slots};
+    if (st)
+        tr_wrunlock(st);
 }
 
 /// @brief Return the runtime type id for an object instance.
@@ -325,8 +465,14 @@ int rt_typeid_of(void *obj)
     rt_object *o = (rt_object *)obj;
     if (!o->vptr)
         return -1;
+    RtTypeRegistryState *st = rt_tr_state();
+    if (st)
+        tr_rdlock(st);
     const class_entry *ce = find_class_by_vptr(o->vptr);
-    return ce ? ce->type_id : -1;
+    int result = ce ? ce->type_id : -1;
+    if (st)
+        tr_rdunlock(st);
+    return result;
 }
 
 /// @brief Check class inheritance (is-a) by type id.
@@ -335,34 +481,58 @@ int8_t rt_type_is_a(int type_id, int test_type_id)
 {
     if (type_id == test_type_id)
         return 1;
+    RtTypeRegistryState *st = rt_tr_state();
+    if (st)
+        tr_rdlock(st);
     const class_entry *ce = find_class_by_type(type_id);
+    int8_t result = 0;
     while (ce && ce->base_type_id >= 0)
     {
         if (ce->base_type_id == test_type_id)
-            return 1;
+        {
+            result = 1;
+            break;
+        }
         ce = find_class_by_type(ce->base_type_id);
     }
-    return 0;
+    if (st)
+        tr_rdunlock(st);
+    return result;
 }
 
 /// @brief Check whether a class implements an interface by id.
 /// @return 1 if implemented by the class or any ancestor; 0 otherwise.
 int8_t rt_type_implements(int type_id, int iface_id)
 {
+    RtTypeRegistryState *st = rt_tr_state();
+    if (st)
+        tr_rdlock(st);
+
+    int8_t result = 0;
+
     // Check the exact type first.
     if (find_binding(type_id, iface_id) != NULL)
-        return 1;
-
-    // Walk the base class chain to see if any ancestor implements the interface.
-    // This ensures that derived classes inherit interface bindings.
-    const class_entry *ce = find_class_by_type(type_id);
-    while (ce && ce->base_type_id >= 0)
     {
-        if (find_binding(ce->base_type_id, iface_id) != NULL)
-            return 1;
-        ce = find_class_by_type(ce->base_type_id);
+        result = 1;
     }
-    return 0;
+    else
+    {
+        // Walk the base class chain to see if any ancestor implements the interface.
+        const class_entry *ce = find_class_by_type(type_id);
+        while (ce && ce->base_type_id >= 0)
+        {
+            if (find_binding(ce->base_type_id, iface_id) != NULL)
+            {
+                result = 1;
+                break;
+            }
+            ce = find_class_by_type(ce->base_type_id);
+        }
+    }
+
+    if (st)
+        tr_rdunlock(st);
+    return result;
 }
 
 /// @brief Safe-cast an object to an interface by id.
@@ -371,10 +541,41 @@ void *rt_cast_as_iface(void *obj, int iface_id)
 {
     if (!obj)
         return NULL;
-    int tid = rt_typeid_of(obj);
-    if (tid < 0)
+    rt_object *o = (rt_object *)obj;
+    if (!o->vptr)
         return NULL;
-    return rt_type_implements(tid, iface_id) ? obj : NULL;
+
+    RtTypeRegistryState *st = rt_tr_state();
+    if (st)
+        tr_rdlock(st);
+
+    void *result = NULL;
+    const class_entry *ce = find_class_by_vptr(o->vptr);
+    if (ce)
+    {
+        int tid = ce->type_id;
+        if (find_binding(tid, iface_id) != NULL)
+        {
+            result = obj;
+        }
+        else
+        {
+            const class_entry *base = find_class_by_type(tid);
+            while (base && base->base_type_id >= 0)
+            {
+                if (find_binding(base->base_type_id, iface_id) != NULL)
+                {
+                    result = obj;
+                    break;
+                }
+                base = find_class_by_type(base->base_type_id);
+            }
+        }
+    }
+
+    if (st)
+        tr_rdunlock(st);
+    return result;
 }
 
 /// @brief Safe-cast an object to a target class by id.
@@ -383,10 +584,41 @@ void *rt_cast_as(void *obj, int target_type_id)
 {
     if (!obj)
         return NULL;
-    int tid = rt_typeid_of(obj);
-    if (tid < 0)
+    rt_object *o = (rt_object *)obj;
+    if (!o->vptr)
         return NULL;
-    return rt_type_is_a(tid, target_type_id) ? obj : NULL;
+
+    RtTypeRegistryState *st = rt_tr_state();
+    if (st)
+        tr_rdlock(st);
+
+    void *result = NULL;
+    const class_entry *ce = find_class_by_vptr(o->vptr);
+    if (ce)
+    {
+        int tid = ce->type_id;
+        if (tid == target_type_id)
+        {
+            result = obj;
+        }
+        else
+        {
+            const class_entry *cur = find_class_by_type(tid);
+            while (cur && cur->base_type_id >= 0)
+            {
+                if (cur->base_type_id == target_type_id)
+                {
+                    result = obj;
+                    break;
+                }
+                cur = find_class_by_type(cur->base_type_id);
+            }
+        }
+    }
+
+    if (st)
+        tr_rdunlock(st);
+    return result;
 }
 
 /// @brief Lookup the active interface method table for an object instance.
@@ -397,25 +629,36 @@ void **rt_itable_lookup(void *obj, int iface_id)
 {
     if (!obj)
         return NULL;
-    int tid = rt_typeid_of(obj);
-    if (tid < 0)
+    rt_object *o = (rt_object *)obj;
+    if (!o->vptr)
         return NULL;
 
-    // Check the exact type first.
-    void **itable = find_binding(tid, iface_id);
-    if (itable)
-        return itable;
+    RtTypeRegistryState *st = rt_tr_state();
+    if (st)
+        tr_rdlock(st);
 
-    // Walk the base class chain to find the interface binding.
-    const class_entry *ce = find_class_by_type(tid);
-    while (ce && ce->base_type_id >= 0)
+    void **result = NULL;
+    const class_entry *ce = find_class_by_vptr(o->vptr);
+    if (ce)
     {
-        itable = find_binding(ce->base_type_id, iface_id);
-        if (itable)
-            return itable;
-        ce = find_class_by_type(ce->base_type_id);
+        int tid = ce->type_id;
+        result = find_binding(tid, iface_id);
+        if (!result)
+        {
+            const class_entry *cur = find_class_by_type(tid);
+            while (cur && cur->base_type_id >= 0)
+            {
+                result = find_binding(cur->base_type_id, iface_id);
+                if (result)
+                    break;
+                cur = find_class_by_type(cur->base_type_id);
+            }
+        }
     }
-    return NULL;
+
+    if (st)
+        tr_rdunlock(st);
+    return result;
 }
 
 /// @brief Convenience wrapper to register an interface using C strings.
@@ -440,8 +683,14 @@ const rt_class_info *rt_get_class_info_from_vptr(void **vptr)
 {
     if (!vptr)
         return NULL;
+    RtTypeRegistryState *st = rt_tr_state();
+    if (st)
+        tr_rdlock(st);
     const class_entry *ce = find_class_by_vptr(vptr);
-    return ce ? ce->ci : NULL;
+    const rt_class_info *result = ce ? ce->ci : NULL;
+    if (st)
+        tr_rdunlock(st);
+    return result;
 }
 
 /// @brief Register a class descriptor built from parts, with base by id.
@@ -455,6 +704,12 @@ void rt_register_class_with_base(
 {
     if (!vtable)
         return;
+    RtTypeRegistryState *st = rt_tr_state();
+    if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE))
+    {
+        rt_trap("rt_type_registry: cannot register after registry is sealed");
+        return;
+    }
     rt_class_info *ci = (rt_class_info *)malloc(sizeof(rt_class_info));
     if (!ci)
     {
@@ -465,6 +720,9 @@ void rt_register_class_with_base(
     ci->qname = qname;
     ci->vtable = vtable;
     ci->vtable_len = (uint32_t)(vslot_count < 0 ? 0 : vslot_count);
+
+    if (st)
+        tr_wrlock(st);
 
     // Wire base class pointer by looking up base_type_id in the registry.
     // The base class must be registered before derived classes for this to work.
@@ -477,6 +735,9 @@ void rt_register_class_with_base(
     }
 
     rt_register_class_entry(ci, 1);
+
+    if (st)
+        tr_wrunlock(st);
 }
 
 /// @brief Convenience wrapper to register a root class (no base).
@@ -490,10 +751,14 @@ void rt_register_class_direct(int type_id, void **vtable, const char *qname, int
 /// @return Vtable pointer array or NULL when unknown.
 void **rt_get_class_vtable(int type_id)
 {
+    RtTypeRegistryState *st = rt_tr_state();
+    if (st)
+        tr_rdlock(st);
     const class_entry *ce = find_class_by_type(type_id);
-    if (!ce || !ce->ci)
-        return NULL;
-    return ce->ci->vtable;
+    void **result = (ce && ce->ci) ? ce->ci->vtable : NULL;
+    if (st)
+        tr_rdunlock(st);
+    return result;
 }
 
 // Runtime bridge wrapper: accept runtime string for qname
@@ -533,21 +798,60 @@ void **rt_get_interface_impl(int64_t type_id, int64_t iface_id)
     int tid = (int)type_id;
     int iid = (int)iface_id;
 
-    // Check the exact type first.
-    void **itable = find_binding(tid, iid);
-    if (itable)
-        return itable;
+    RtTypeRegistryState *st = rt_tr_state();
+    if (st)
+        tr_rdlock(st);
 
-    // Walk the base class chain to find the interface binding.
-    const class_entry *ce = find_class_by_type(tid);
-    while (ce && ce->base_type_id >= 0)
+    void **result = find_binding(tid, iid);
+    if (!result)
     {
-        itable = find_binding(ce->base_type_id, iid);
-        if (itable)
-            return itable;
-        ce = find_class_by_type(ce->base_type_id);
+        const class_entry *ce = find_class_by_type(tid);
+        while (ce && ce->base_type_id >= 0)
+        {
+            result = find_binding(ce->base_type_id, iid);
+            if (result)
+                break;
+            ce = find_class_by_type(ce->base_type_id);
+        }
     }
-    return NULL;
+
+    if (st)
+        tr_rdunlock(st);
+    return result;
+}
+
+// ============================================================================
+// Registry Lifecycle
+// ============================================================================
+
+/// @brief Initialize the type registry's reader-writer lock for a context.
+///
+/// Called during context creation to set up the rwlock that protects
+/// concurrent access to the registry arrays. Must be called before any
+/// registration or lookup operations.
+///
+/// @param ctx Context whose type registry should be initialized.
+void rt_type_registry_init(RtContext *ctx)
+{
+    if (!ctx)
+        return;
+    tr_rwlock_init(&ctx->type_registry);
+}
+
+/// @brief Seal the type registry, enabling lock-free reads.
+///
+/// After all type registration is complete (typically at the end of module
+/// initialization), call this to mark the registry as immutable. Once sealed:
+/// - Read operations bypass the rwlock entirely (zero overhead).
+/// - Write operations (registration) will trap with an error.
+///
+/// @thread-safety Safe to call from any thread; uses atomic release store.
+void rt_type_registry_seal(void)
+{
+    RtTypeRegistryState *st = rt_tr_state();
+    if (!st)
+        return;
+    __atomic_store_n(&st->sealed, 1, __ATOMIC_RELEASE);
 }
 
 /// @brief Clean up type registry resources for a context.
@@ -556,6 +860,7 @@ void **rt_get_interface_impl(int64_t type_id, int64_t iface_id)
 /// - Class entries and their owned rt_class_info structures
 /// - Interface entries
 /// - Interface binding entries
+/// - The reader-writer lock
 ///
 /// After cleanup, the registry is empty and ready for reinitialization
 /// if needed.
@@ -568,6 +873,8 @@ void rt_type_registry_cleanup(RtContext *ctx)
 {
     if (!ctx)
         return;
+
+    tr_rwlock_destroy(&ctx->type_registry);
 
     class_entry *classes = (class_entry *)ctx->type_registry.classes;
     size_t len = ctx->type_registry.classes_len;
@@ -597,4 +904,6 @@ void rt_type_registry_cleanup(RtContext *ctx)
     ctx->type_registry.bindings = NULL;
     ctx->type_registry.bindings_len = 0;
     ctx->type_registry.bindings_cap = 0;
+    ctx->type_registry.rw_lock = NULL;
+    ctx->type_registry.sealed = 0;
 }

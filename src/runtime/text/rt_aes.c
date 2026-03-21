@@ -920,7 +920,7 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password)
     size_t total_len = 16 + cipher_len;
     void *result = rt_bytes_new((int64_t)total_len);
 
-    // Write IV
+    // Write IV (per-byte via rt_bytes_set; could use memcpy with raw pointer for perf)
     for (int i = 0; i < 16; i++)
         rt_bytes_set(result, i, iv[i]);
 

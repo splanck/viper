@@ -1170,7 +1170,7 @@ rt_string rt_hash_hmac_sha256_bytes(void *key, void *data)
 
 #include "rt_hash_util.h"
 
-/// @brief Compute fast hash of a string (SipHash-2-4).
+/// @brief Compute fast hash of a string (FNV-1a).
 /// @param str Input string.
 /// @return 64-bit hash value.
 int64_t rt_hash_fast(rt_string str)
@@ -1181,7 +1181,7 @@ int64_t rt_hash_fast(rt_string str)
     return (int64_t)rt_fnv1a(cstr, strlen(cstr));
 }
 
-/// @brief Compute fast hash of a Bytes object (SipHash-2-4).
+/// @brief Compute fast hash of a Bytes object (FNV-1a).
 /// @param bytes Input Bytes object.
 /// @return 64-bit hash value.
 int64_t rt_hash_fast_bytes(void *bytes)

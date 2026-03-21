@@ -306,7 +306,7 @@ extern "C"
     /// @details Provides a user-friendly, title-cased representation for
     ///          boolean values in UI-facing contexts.
     /// @param value Boolean value to format.
-    /// @return Newly allocated runtime string with "Yes" or "No".
+    /// @return Newly allocated runtime string with "yes" or "no".
     rt_string rt_fmt_bool_yn(bool value)
     {
         return value ? rt_string_from_bytes("yes", 3) : rt_string_from_bytes("no", 2);

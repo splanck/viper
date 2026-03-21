@@ -15,8 +15,8 @@
 //   - Open-addressing hash table with 64-bit mix hash on the integer key to
 //     avoid clustering from sequential indices.
 //   - Initial capacity is configurable; probing is linear (index + i) % cap.
-//   - Load factor kept below 2/3 via resize; capacity always power-of-two is
-//     not required but capacity is doubled on resize.
+//   - Load factor kept below 2/3 via resize. Capacity is always a power of two
+//     (required for bitmask indexing: slot = hash & (capacity - 1)).
 //   - `occupied` flag distinguishes empty slots from slots holding a NULL value.
 //   - Get returns NULL for missing indices; no error is raised.
 //   - Set with NULL value removes the entry (slot becomes unoccupied).

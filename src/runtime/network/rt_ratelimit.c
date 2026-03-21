@@ -66,6 +66,7 @@ extern void rt_trap(const char *msg);
 static double current_time_sec(void)
 {
 #if defined(_WIN32)
+    // Benign race: QPC frequency is constant; duplicate init is harmless.
     static LARGE_INTEGER freq = {0};
     LARGE_INTEGER counter;
     if (freq.QuadPart == 0)

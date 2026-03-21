@@ -432,7 +432,7 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
     // Resolve hostname
     struct addrinfo hints, *res;
     memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
+    hints.ai_family = AF_INET; // IPv4 only; IPv6 support is a future enhancement
     hints.ai_socktype = SOCK_STREAM;
 
     char port_str[16];
