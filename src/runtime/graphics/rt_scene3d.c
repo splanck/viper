@@ -207,6 +207,20 @@ static int32_t count_subtree(const rt_scene_node3d *node)
     return n;
 }
 
+static int node_contains(const rt_scene_node3d *root, const rt_scene_node3d *target)
+{
+    if (!root)
+        return 0;
+    if (root == target)
+        return 1;
+    for (int32_t i = 0; i < root->child_count; i++)
+    {
+        if (node_contains(root->children[i], target))
+            return 1;
+    }
+    return 0;
+}
+
 /// @brief Recursive depth-first search by name.
 extern const char *rt_string_cstr(rt_string s);
 
@@ -260,22 +274,6 @@ static void draw_node(rt_scene_node3d *node,
     if (draw_self && node->mesh && node->material)
     {
         const double *m = node->world_matrix;
-        void *mat4 = rt_mat4_new(m[0],
-                                 m[1],
-                                 m[2],
-                                 m[3],
-                                 m[4],
-                                 m[5],
-                                 m[6],
-                                 m[7],
-                                 m[8],
-                                 m[9],
-                                 m[10],
-                                 m[11],
-                                 m[12],
-                                 m[13],
-                                 m[14],
-                                 m[15]);
         /* LOD selection: pick mesh by distance from camera */
         void *draw_mesh = node->mesh;
         if (node->lod_count > 0 && cam_pos)
@@ -293,7 +291,7 @@ static void draw_node(rt_scene_node3d *node,
                 }
             }
         }
-        rt_canvas3d_draw_mesh(canvas3d, draw_mesh, mat4, node->material);
+        rt_canvas3d_draw_mesh_matrix(canvas3d, draw_mesh, m, node->material);
     }
 
     for (int32_t i = 0; i < node->child_count; i++)
@@ -454,6 +452,10 @@ void rt_scene_node3d_add_child(void *obj, void *child_obj)
         return;
     rt_scene_node3d *parent = (rt_scene_node3d *)obj;
     rt_scene_node3d *child = (rt_scene_node3d *)child_obj;
+
+    /* Reject cycle formation: parent may not already be inside child's subtree. */
+    if (node_contains(child, parent))
+        return;
 
     /* Detach from previous parent if any */
     if (child->parent)

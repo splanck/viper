@@ -59,6 +59,11 @@ static inline uint8_t *bytes_data(void *obj)
     return ((bytes_impl *)obj)->data;
 }
 
+static bool host_needs_brackets(const char *host)
+{
+    return host && strchr(host, ':') != NULL && host[0] != '[';
+}
+
 // Forward declaration for Windows WSA init
 void rt_net_init_wsa(void);
 
@@ -129,20 +134,23 @@ static void http_conn_init_tls(http_conn_t *conn, rt_tls_session_t *tls)
 /// @brief Send all data over HTTP connection.
 static int http_conn_send(http_conn_t *conn, const uint8_t *data, size_t len)
 {
+    size_t total_sent = 0;
+
     if (conn->use_tls)
     {
-        long sent = rt_tls_send(conn->tls, data, len);
-        return sent >= 0 ? 0 : -1;
+        while (total_sent < len)
+        {
+            long sent = rt_tls_send(conn->tls, data + total_sent, len - total_sent);
+            if (sent <= 0)
+                return -1;
+            total_sent += (size_t)sent;
+        }
     }
     else
     {
-        void *bytes = rt_bytes_new((int64_t)len);
-        memcpy(bytes_data(bytes), data, len);
-        rt_tcp_send_all(conn->tcp, bytes);
-        if (rt_obj_release_check0(bytes))
-            rt_obj_free(bytes);
-        return 0;
+        rt_tcp_send_all_raw(conn->tcp, data, (int64_t)len);
     }
+    return 0;
 }
 
 /// @brief Receive data from HTTP connection (buffered).
@@ -307,22 +315,45 @@ static int parse_url(const char *url_str, parsed_url_t *result)
         return -1;
     }
 
-    // Find end of host (either ':', '/', or end of string)
-    const char *host_end = url_str;
-    while (*host_end && *host_end != ':' && *host_end != '/')
-        host_end++;
+    const char *p = url_str;
+    if (*p == '[')
+    {
+        const char *bracket_end = strchr(p + 1, ']');
+        if (!bracket_end)
+            return -1;
+        size_t host_len = (size_t)(bracket_end - (p + 1));
+        if (host_len == 0)
+            return -1;
+        result->host = (char *)malloc(host_len + 1);
+        if (!result->host)
+            return -1;
+        memcpy(result->host, p + 1, host_len);
+        result->host[host_len] = '\0';
+        p = bracket_end + 1;
+    }
+    else
+    {
+        const char *host_end = p;
+        while (*host_end && *host_end != ':' && *host_end != '/')
+            host_end++;
 
-    size_t host_len = host_end - url_str;
-    if (host_len == 0)
+        size_t host_len = (size_t)(host_end - p);
+        if (host_len == 0)
+            return -1;
+
+        result->host = (char *)malloc(host_len + 1);
+        if (!result->host)
+            return -1;
+        memcpy(result->host, p, host_len);
+        result->host[host_len] = '\0';
+        p = host_end;
+    }
+
+    if (*p != '\0' && *p != ':' && *p != '/')
+    {
+        free_parsed_url(result);
         return -1;
-
-    result->host = (char *)malloc(host_len + 1);
-    if (!result->host)
-        return -1;
-    memcpy(result->host, url_str, host_len);
-    result->host[host_len] = '\0';
-
-    const char *p = host_end;
+    }
 
     // Parse port if present
     if (*p == ':')
@@ -473,9 +504,16 @@ static char *build_request(rt_http_req_t *req)
     // Host header
     char host_header[300];
     if (req->url.port != 80 && req->url.port != 443)
-        snprintf(host_header, sizeof(host_header), "Host: %s:%d\r\n", req->url.host, req->url.port);
+        snprintf(host_header,
+                 sizeof(host_header),
+                 host_needs_brackets(req->url.host) ? "Host: [%s]:%d\r\n" : "Host: %s:%d\r\n",
+                 req->url.host,
+                 req->url.port);
     else
-        snprintf(host_header, sizeof(host_header), "Host: %s\r\n", req->url.host);
+        snprintf(host_header,
+                 sizeof(host_header),
+                 host_needs_brackets(req->url.host) ? "Host: [%s]\r\n" : "Host: %s\r\n",
+                 req->url.host);
     size += strlen(host_header);
 
     // Content-Length if body
@@ -561,6 +599,26 @@ static char *build_request(rt_http_req_t *req)
     }
     *p = '\0';
     return request;
+}
+
+int rt_http_parse_url_for_test(
+    const char *url_str, char **host_out, int *port_out, char **path_out, int *use_tls_out)
+{
+    parsed_url_t parsed;
+    if (parse_url(url_str, &parsed) != 0)
+        return 0;
+
+    if (host_out)
+        *host_out = parsed.host ? strdup(parsed.host) : NULL;
+    if (port_out)
+        *port_out = parsed.port;
+    if (path_out)
+        *path_out = parsed.path ? strdup(parsed.path) : NULL;
+    if (use_tls_out)
+        *use_tls_out = parsed.use_tls;
+
+    free_parsed_url(&parsed);
+    return 1;
 }
 
 /// @brief Read a line from connection (up to CRLF).

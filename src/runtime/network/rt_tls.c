@@ -131,6 +131,13 @@ static uint32_t read_u24(const uint8_t *p)
 // Update transcript hash.
 // Returns 0 on success, -1 if the buffer overflows (H-10 fix: abort instead of
 // silently hashing a truncated transcript which corrupts all key derivation).
+static void transcript_init(rt_tls_session_t *session)
+{
+    session->transcript_len = 0;
+    rt_sha256_init(&session->transcript_ctx);
+    rt_sha256(NULL, 0, session->transcript_hash);
+}
+
 static int transcript_update(rt_tls_session_t *session, const uint8_t *data, size_t len)
 {
     if (session->error)
@@ -145,9 +152,9 @@ static int transcript_update(rt_tls_session_t *session, const uint8_t *data, siz
 
     memcpy(session->transcript_buffer + session->transcript_len, data, len);
     session->transcript_len += len;
-    // Compute running hash (O(n²) — re-hashes full transcript each update.
-    // An incremental SHA-256 context would reduce to O(n) total.)
-    rt_sha256(session->transcript_buffer, session->transcript_len, session->transcript_hash);
+    rt_sha256_update(&session->transcript_ctx, data, len);
+    rt_sha256_ctx hash_snapshot = session->transcript_ctx;
+    rt_sha256_final(&hash_snapshot, session->transcript_hash);
     return 0;
 }
 
@@ -728,6 +735,7 @@ rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config)
     session->socket_fd = socket_fd;
     session->state = TLS_STATE_INITIAL;
     session->verify_cert = config ? config->verify_cert : 1;
+    transcript_init(session);
 
     if (config && config->hostname)
     {

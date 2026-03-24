@@ -297,12 +297,20 @@ void rt_pixels_copy(
     if (w <= 0 || h <= 0)
         return;
 
-    // Copy row by row
-    for (int64_t row = 0; row < h; row++)
+    int same_buffer = (d == s);
+    int overlap = same_buffer && !(dx + w <= sx || sx + w <= dx || dy + h <= sy || sy + h <= dy);
+    int copy_backwards = overlap && dy > sy;
+
+    // Copy row by row. memmove is required for overlapping self-copies.
+    for (int64_t row_idx = 0; row_idx < h; row_idx++)
     {
+        int64_t row = copy_backwards ? (h - 1 - row_idx) : row_idx;
         int64_t src_idx = (sy + row) * s->width + sx;
         int64_t dst_idx = (dy + row) * d->width + dx;
-        memcpy(&d->data[dst_idx], &s->data[src_idx], (size_t)w * sizeof(uint32_t));
+        if (overlap)
+            memmove(&d->data[dst_idx], &s->data[src_idx], (size_t)w * sizeof(uint32_t));
+        else
+            memcpy(&d->data[dst_idx], &s->data[src_idx], (size_t)w * sizeof(uint32_t));
     }
 }
 

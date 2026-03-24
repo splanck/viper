@@ -256,6 +256,22 @@ static void test_reparenting()
     EXPECT_TRUE(rt_scene_node3d_child_count(b) == 1, "B has 1 child after reparent");
 }
 
+static void test_prevent_cycle()
+{
+    void *a = rt_scene_node3d_new();
+    void *b = rt_scene_node3d_new();
+    void *c = rt_scene_node3d_new();
+
+    rt_scene_node3d_add_child(a, b);
+    rt_scene_node3d_add_child(b, c);
+    rt_scene_node3d_add_child(c, a);
+
+    EXPECT_TRUE(rt_scene_node3d_get_parent(a) == nullptr, "Cycle insertion leaves ancestor parent unchanged");
+    EXPECT_TRUE(rt_scene_node3d_get_parent(b) == a, "Existing parent link is preserved after cycle attempt");
+    EXPECT_TRUE(rt_scene_node3d_get_parent(c) == b, "Descendant parent link is preserved after cycle attempt");
+    EXPECT_TRUE(rt_scene_node3d_child_count(c) == 0, "Cycle insertion does not add a child");
+}
+
 static void test_visibility()
 {
     void *node = rt_scene_node3d_new();
@@ -399,6 +415,7 @@ int main()
     test_dirty_flag();
     test_find_by_name();
     test_reparenting();
+    test_prevent_cycle();
     test_visibility();
     test_clear();
     test_get_child();

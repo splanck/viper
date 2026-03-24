@@ -110,6 +110,11 @@ typedef struct rt_ws_impl
     size_t recv_buffer_len;  ///< Bytes currently in buffer.
 } rt_ws_impl;
 
+static int host_needs_brackets(const char *host)
+{
+    return host && strchr(host, ':') != NULL && host[0] != '[';
+}
+
 /// @brief Minimal SHA-1 (RFC 3174) for Sec-WebSocket-Accept validation (RFC 6455 §4.1).
 /// SHA-1 is acceptable here: it is used as a protocol-mandated HMAC-like check,
 /// not for general cryptographic security.
@@ -281,17 +286,41 @@ static int parse_ws_url(const char *url, int *is_secure, char **host, int *port,
         return 0; // Invalid scheme
     }
 
-    // Find host end
     const char *host_end = url;
-    while (*host_end && *host_end != ':' && *host_end != '/')
-        host_end++;
+    if (*url == '[')
+    {
+        const char *bracket_end = strchr(url + 1, ']');
+        if (!bracket_end)
+            return 0;
+        size_t host_len = (size_t)(bracket_end - (url + 1));
+        if (host_len == 0)
+            return 0;
+        *host = malloc(host_len + 1);
+        if (!*host)
+            return 0;
+        memcpy(*host, url + 1, host_len);
+        (*host)[host_len] = '\0';
+        host_end = bracket_end + 1;
+    }
+    else
+    {
+        while (*host_end && *host_end != ':' && *host_end != '/')
+            host_end++;
 
-    size_t host_len = host_end - url;
-    *host = malloc(host_len + 1);
-    if (!*host)
+        size_t host_len = (size_t)(host_end - url);
+        *host = malloc(host_len + 1);
+        if (!*host)
+            return 0;
+        memcpy(*host, url, host_len);
+        (*host)[host_len] = '\0';
+    }
+
+    if (*host_end && *host_end != ':' && *host_end != '/')
+    {
+        free(*host);
+        *host = NULL;
         return 0;
-    memcpy(*host, url, host_len);
-    (*host)[host_len] = '\0';
+    }
 
     // Check for port
     if (*host_end == ':')
@@ -330,8 +359,13 @@ static int parse_ws_url(const char *url, int *is_secure, char **host, int *port,
     return 1;
 }
 
+int rt_ws_parse_url_for_test(const char *url, int *is_secure, char **host, int *port, char **path)
+{
+    return parse_ws_url(url, is_secure, host, port, path);
+}
+
 /// @brief Send data over connection (handles TLS vs plain TCP).
-static long ws_send(rt_ws_impl *ws, const void *data, size_t len)
+static long ws_send_partial(rt_ws_impl *ws, const void *data, size_t len)
 {
     if (ws->tls)
     {
@@ -341,6 +375,20 @@ static long ws_send(rt_ws_impl *ws, const void *data, size_t len)
     {
         return send(ws->socket_fd, data, (int)len, SEND_FLAGS);
     }
+}
+
+static int ws_send_all(rt_ws_impl *ws, const void *data, size_t len)
+{
+    const uint8_t *ptr = (const uint8_t *)data;
+    size_t total = 0;
+    while (total < len)
+    {
+        long sent = ws_send_partial(ws, ptr + total, len - total);
+        if (sent <= 0)
+            return 0;
+        total += (size_t)sent;
+    }
+    return 1;
 }
 
 /// @brief Receive data from connection (handles TLS vs plain TCP).
@@ -415,6 +463,125 @@ static void ws_set_socket_timeout(int fd, int timeout_ms, int is_recv)
 static void ws_clear_socket_timeout(int fd, int is_recv)
 {
     ws_set_socket_timeout(fd, 0, is_recv);
+}
+
+static int ws_ascii_ieq_n(const char *a, const char *b, size_t len)
+{
+    for (size_t i = 0; i < len; i++)
+    {
+        unsigned char ca = (unsigned char)a[i];
+        unsigned char cb = (unsigned char)b[i];
+        if (ca >= 'A' && ca <= 'Z')
+            ca = (unsigned char)(ca + ('a' - 'A'));
+        if (cb >= 'A' && cb <= 'Z')
+            cb = (unsigned char)(cb + ('a' - 'A'));
+        if (ca != cb)
+            return 0;
+    }
+    return 1;
+}
+
+static int ws_header_has_token(const char *value, size_t len, const char *token)
+{
+    size_t token_len = strlen(token);
+    size_t i = 0;
+    while (i < len)
+    {
+        while (i < len && (value[i] == ' ' || value[i] == '\t' || value[i] == ','))
+            i++;
+        size_t start = i;
+        while (i < len && value[i] != ',')
+            i++;
+        size_t end = i;
+        while (end > start && (value[end - 1] == ' ' || value[end - 1] == '\t'))
+            end--;
+        if (end - start == token_len && ws_ascii_ieq_n(value + start, token, token_len))
+            return 1;
+    }
+    return 0;
+}
+
+int rt_ws_validate_handshake_response_for_test(const char *response, const char *key_copy)
+{
+    if (!response || !key_copy)
+        return 0;
+
+    const char *line_end = strstr(response, "\r\n");
+    if (!line_end)
+        return 0;
+    if ((size_t)(line_end - response) < strlen("HTTP/1.1 101") ||
+        strncmp(response, "HTTP/1.1 101", strlen("HTTP/1.1 101")) != 0)
+        return 0;
+
+    int upgrade_ok = 0;
+    int connection_ok = 0;
+    const char *accept_hdr = NULL;
+    const char *p = line_end + 2;
+    while (*p)
+    {
+        const char *next = strstr(p, "\r\n");
+        if (!next)
+            return 0;
+        if (next == p)
+            break;
+
+        const char *colon = strchr(p, ':');
+        if (colon && colon < next)
+        {
+            const char *value = colon + 1;
+            while (value < next && (*value == ' ' || *value == '\t'))
+                value++;
+            size_t name_len = (size_t)(colon - p);
+            size_t value_len = (size_t)(next - value);
+            if (name_len == strlen("Upgrade") && ws_ascii_ieq_n(p, "Upgrade", name_len))
+                upgrade_ok = (value_len == strlen("websocket") &&
+                              ws_ascii_ieq_n(value, "websocket", value_len));
+            else if (name_len == strlen("Connection") && ws_ascii_ieq_n(p, "Connection", name_len))
+                connection_ok = ws_header_has_token(value, value_len, "Upgrade");
+            else if (name_len == strlen("Sec-WebSocket-Accept") &&
+                     ws_ascii_ieq_n(p, "Sec-WebSocket-Accept", name_len))
+                accept_hdr = value;
+        }
+
+        p = next + 2;
+    }
+
+    if (!upgrade_ok || !connection_ok || !accept_hdr)
+        return 0;
+
+    static const char WS_MAGIC[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+    size_t key_len = strlen(key_copy);
+    size_t magic_len = sizeof(WS_MAGIC) - 1;
+    char *concat = (char *)malloc(key_len + magic_len + 1);
+    if (!concat)
+        return 0;
+    memcpy(concat, key_copy, key_len);
+    memcpy(concat + key_len, WS_MAGIC, magic_len);
+    concat[key_len + magic_len] = '\0';
+
+    uint8_t sha1_digest[20];
+    ws_sha1((const uint8_t *)concat, key_len + magic_len, sha1_digest);
+    free(concat);
+
+    void *digest_bytes = rt_bytes_new(20);
+    for (int i = 0; i < 20; i++)
+        rt_bytes_set(digest_bytes, i, sha1_digest[i]);
+    rt_string expected_str = rt_bytes_to_base64(digest_bytes);
+    if (rt_obj_release_check0(digest_bytes))
+        rt_obj_free(digest_bytes);
+    if (!expected_str)
+        return 0;
+
+    const char *expected_cstr = rt_string_cstr(expected_str);
+    size_t expected_len = expected_cstr ? strlen(expected_cstr) : 0;
+    int accept_ok = 0;
+    if (expected_cstr && strncmp(accept_hdr, expected_cstr, expected_len) == 0 &&
+        (accept_hdr[expected_len] == '\r' || accept_hdr[expected_len] == '\n' ||
+         accept_hdr[expected_len] == '\0'))
+        accept_ok = 1;
+
+    rt_string_unref(expected_str);
+    return accept_ok;
 }
 
 /// @brief Create TCP connection to host:port with optional timeout.
@@ -510,21 +677,25 @@ static int ws_handshake(rt_ws_impl *ws, const char *host, int port, const char *
     int req_len = snprintf(request,
                            sizeof(request),
                            "GET %s HTTP/1.1\r\n"
-                           "Host: %s:%d\r\n"
+                           "Host: %s%s%s:%d\r\n"
                            "Upgrade: websocket\r\n"
                            "Connection: Upgrade\r\n"
                            "Sec-WebSocket-Key: %s\r\n"
                            "Sec-WebSocket-Version: 13\r\n"
                            "\r\n",
                            path,
+                           host_needs_brackets(host) ? "[" : "",
                            host,
+                           host_needs_brackets(host) ? "]" : "",
                            port,
                            key_cstr);
 
     rt_string_unref(ws_key);
 
     // Send request
-    if (ws_send(ws, request, req_len) != req_len)
+    if (req_len <= 0 || (size_t)req_len >= sizeof(request))
+        return 0;
+    if (!ws_send_all(ws, request, (size_t)req_len))
         return 0;
 
     // Receive response headers
@@ -543,69 +714,9 @@ static int ws_handshake(rt_ws_impl *ws, const char *host, int port, const char *
     }
     response[total] = '\0';
 
-    // Check for 101 Switching Protocols
-    if (strstr(response, "101") == NULL)
+    if (!rt_ws_validate_handshake_response_for_test(response, key_copy))
         return 0;
-
-    // Check for Upgrade: websocket (case-insensitive on value)
-    if (strstr(response, "Upgrade: websocket") == NULL &&
-        strstr(response, "upgrade: websocket") == NULL)
-        return 0;
-
-    // Validate Sec-WebSocket-Accept (RFC 6455 §4.1)
-    // Expected = Base64(SHA1(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
-    static const char WS_MAGIC[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-    size_t key_len = strlen(key_copy);
-    size_t magic_len = sizeof(WS_MAGIC) - 1;
-    char *concat = (char *)malloc(key_len + magic_len + 1);
-    if (!concat)
-        return 0;
-    memcpy(concat, key_copy, key_len);
-    memcpy(concat + key_len, WS_MAGIC, magic_len);
-    concat[key_len + magic_len] = '\0';
-
-    uint8_t sha1_digest[20];
-    ws_sha1((const uint8_t *)concat, key_len + magic_len, sha1_digest);
-    free(concat);
-
-    // Base64-encode the SHA-1 digest
-    void *digest_bytes = rt_bytes_new(20);
-    for (int i = 0; i < 20; i++)
-        rt_bytes_set(digest_bytes, i, sha1_digest[i]);
-    rt_string expected_str = rt_bytes_to_base64(digest_bytes);
-    if (rt_obj_release_check0(digest_bytes))
-        rt_obj_free(digest_bytes);
-
-    // Find Sec-WebSocket-Accept header in the response (case-insensitive search
-    // via two common capitalizations; RFC 7230 says headers are case-insensitive)
-    const char *accept_hdr = NULL;
-    const char *found = strstr(response, "Sec-WebSocket-Accept:");
-    if (!found)
-        found = strstr(response, "sec-websocket-accept:");
-    if (found)
-    {
-        accept_hdr = found + 21; // skip "Sec-WebSocket-Accept:"
-        while (*accept_hdr == ' ')
-            accept_hdr++;
-    }
-
-    int accept_ok = 0;
-    if (accept_hdr && expected_str)
-    {
-        const char *expected_cstr = rt_string_cstr(expected_str);
-        if (expected_cstr)
-        {
-            size_t elen = strlen(expected_cstr);
-            accept_ok = (strncmp(accept_hdr, expected_cstr, elen) == 0 &&
-                         (accept_hdr[elen] == '\r' || accept_hdr[elen] == '\n' ||
-                          accept_hdr[elen] == '\0'));
-        }
-    }
-
-    if (expected_str)
-        rt_string_unref(expected_str);
-
-    return accept_ok;
+    return 1;
 }
 
 /// @brief Send a WebSocket frame.
@@ -650,22 +761,26 @@ static int ws_send_frame(rt_ws_impl *ws, uint8_t opcode, const void *data, size_
     header_len += 4;
 
     // Send header
-    if (ws_send(ws, header, header_len) != (long)header_len)
+    if (!ws_send_all(ws, header, header_len))
         return 0;
 
     // Mask and send data
     if (len > 0)
     {
-        uint8_t *masked = malloc(len);
-        if (!masked)
-            return 0;
-        const uint8_t *src = data;
-        for (size_t i = 0; i < len; i++)
-            masked[i] = src[i] ^ mask[i % 4];
-        long sent = ws_send(ws, masked, len);
-        free(masked);
-        if (sent != (long)len)
-            return 0;
+        const uint8_t *src = (const uint8_t *)data;
+        uint8_t chunk[4096];
+        size_t offset = 0;
+        while (offset < len)
+        {
+            size_t part = len - offset;
+            if (part > sizeof(chunk))
+                part = sizeof(chunk);
+            for (size_t i = 0; i < part; i++)
+                chunk[i] = src[offset + i] ^ mask[(offset + i) & 3];
+            if (!ws_send_all(ws, chunk, part))
+                return 0;
+            offset += part;
+        }
     }
 
     return 1;

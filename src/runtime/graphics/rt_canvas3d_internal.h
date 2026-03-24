@@ -176,6 +176,8 @@ typedef struct
     void *draw_cmds; /* dynamic array of deferred_draw_t */
     int32_t draw_count;
     int32_t draw_capacity;
+    void *trans_cmds; /* reusable transparent draw scratch buffer */
+    int32_t trans_capacity;
 
     /* Render target (NULL = render to window) */
     vgfx3d_rendertarget_t *render_target;
@@ -194,6 +196,12 @@ typedef struct
     void **temp_buffers;
     int32_t temp_buf_count;
     int32_t temp_buf_capacity;
+
+    /* Reusable text rendering scratch buffers */
+    vgfx3d_vertex_t *text_vertices;
+    int32_t text_vertex_capacity;
+    uint32_t *text_indices;
+    int32_t text_index_capacity;
 
     /* Distance fog */
     int8_t fog_enabled;
@@ -228,5 +236,10 @@ typedef struct
 {
     double m[16]; /* row-major: m[r*4+c] */
 } mat4_impl;
+
+void rt_canvas3d_draw_mesh_matrix(void *obj,
+                                  void *mesh_obj,
+                                  const double *model_matrix,
+                                  void *material_obj);
 
 #endif /* VIPER_ENABLE_GRAPHICS */

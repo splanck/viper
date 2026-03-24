@@ -71,6 +71,74 @@ typedef struct
     float sort_key; /* squared distance from camera (for transparent sorting) */
 } deferred_draw_t;
 
+static int ensure_deferred_capacity(void **buf, int32_t *capacity, int32_t needed)
+{
+    if (!buf || !capacity || needed <= 0)
+        return 0;
+    if (*capacity >= needed)
+        return 1;
+
+    int32_t new_cap = *capacity > 0 ? *capacity : 32;
+    while (new_cap < needed)
+    {
+        if (new_cap > INT32_MAX / 2)
+            new_cap = needed;
+        else
+            new_cap *= 2;
+    }
+
+    deferred_draw_t *new_buf = (deferred_draw_t *)realloc(*buf, (size_t)new_cap * sizeof(deferred_draw_t));
+    if (!new_buf)
+        return 0;
+    *buf = new_buf;
+    *capacity = new_cap;
+    return 1;
+}
+
+static int ensure_text_capacity(rt_canvas3d *c, int32_t vertex_count, int32_t index_count)
+{
+    if (!c || vertex_count < 0 || index_count < 0)
+        return 0;
+
+    if (vertex_count > c->text_vertex_capacity)
+    {
+        int32_t new_cap = c->text_vertex_capacity > 0 ? c->text_vertex_capacity : 256;
+        while (new_cap < vertex_count)
+        {
+            if (new_cap > INT32_MAX / 2)
+                new_cap = vertex_count;
+            else
+                new_cap *= 2;
+        }
+        vgfx3d_vertex_t *new_verts =
+            (vgfx3d_vertex_t *)realloc(c->text_vertices, (size_t)new_cap * sizeof(vgfx3d_vertex_t));
+        if (!new_verts)
+            return 0;
+        c->text_vertices = new_verts;
+        c->text_vertex_capacity = new_cap;
+    }
+
+    if (index_count > c->text_index_capacity)
+    {
+        int32_t new_cap = c->text_index_capacity > 0 ? c->text_index_capacity : 384;
+        while (new_cap < index_count)
+        {
+            if (new_cap > INT32_MAX / 2)
+                new_cap = index_count;
+            else
+                new_cap *= 2;
+        }
+        uint32_t *new_indices =
+            (uint32_t *)realloc(c->text_indices, (size_t)new_cap * sizeof(uint32_t));
+        if (!new_indices)
+            return 0;
+        c->text_indices = new_indices;
+        c->text_index_capacity = new_cap;
+    }
+
+    return 1;
+}
+
 /* Comparison for qsort: back-to-front (descending sort_key) */
 static int cmp_back_to_front(const void *a, const void *b)
 {
@@ -136,12 +204,21 @@ static void rt_canvas3d_finalize(void *obj)
     free(c->draw_cmds);
     c->draw_cmds = NULL;
     c->draw_count = c->draw_capacity = 0;
+    free(c->trans_cmds);
+    c->trans_cmds = NULL;
+    c->trans_capacity = 0;
     /* Free any leftover temp buffers (e.g., from skinned draws) */
     for (int32_t i = 0; i < c->temp_buf_count; i++)
         free(c->temp_buffers[i]);
     free(c->temp_buffers);
     c->temp_buffers = NULL;
     c->temp_buf_count = c->temp_buf_capacity = 0;
+    free(c->text_vertices);
+    c->text_vertices = NULL;
+    c->text_vertex_capacity = 0;
+    free(c->text_indices);
+    c->text_indices = NULL;
+    c->text_index_capacity = 0;
 
     /* Free shadow render target if allocated */
     if (c->shadow_rt)
@@ -436,20 +513,31 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
         {0x00,0x00,0x0D,0x12,0x00,0x00,0x00},
     };
 
-    /* Count "on" pixels to allocate mesh */
-    int32_t len = 0;
-    for (const char *p = str; *p; p++) len++;
-
-    /* Build a single mesh with all character quads. Each "on" pixel = 1 quad (4 verts, 6 indices).
-     * Max pixels per char = 5*7 = 35. Allocate conservatively. */
-    int32_t max_quads = len * 35;
-    vgfx3d_vertex_t *verts = (vgfx3d_vertex_t *)malloc((size_t)(max_quads * 4) * sizeof(vgfx3d_vertex_t));
-    uint32_t *indices = (uint32_t *)malloc((size_t)(max_quads * 6) * sizeof(uint32_t));
-    if (!verts || !indices) { free(verts); free(indices); return; }
-
+    /* Count "on" pixels to size the reusable scratch mesh exactly. */
     int32_t quad_count = 0;
+    for (const char *p = str; *p; p++)
+    {
+        int ch = *p;
+        if (ch < 32 || ch > 126)
+            ch = 32;
+        const uint8_t *glyph = font5x7[ch - 32];
+        for (int row = 0; row < 7; row++)
+            for (int col = 0; col < 5; col++)
+                if (glyph[row] & (1 << (4 - col)))
+                    quad_count++;
+    }
+
+    if (quad_count <= 0)
+        return;
+
+    int32_t vertex_count = quad_count * 4;
+    int32_t index_count = quad_count * 6;
+    if (!ensure_text_capacity(c, vertex_count, index_count))
+        return;
+
     float scale = 2.0f; /* pixel size for each font dot */
     float cx = (float)x;
+    int32_t quad_idx = 0;
 
     for (const char *p = str; *p; p++)
     {
@@ -465,51 +553,49 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
                 {
                     float px = cx + col * scale;
                     float py = (float)y + row * scale;
-                    int32_t vi = quad_count * 4;
-                    int32_t ii = quad_count * 6;
+                    int32_t vi = quad_idx * 4;
+                    int32_t ii = quad_idx * 6;
 
                     /* 4 vertices for this pixel quad */
                     for (int v = 0; v < 4; v++) {
-                        memset(&verts[vi + v], 0, sizeof(vgfx3d_vertex_t));
-                        verts[vi + v].normal[2] = 1.0f;
-                        verts[vi + v].color[0] = r;
-                        verts[vi + v].color[1] = g;
-                        verts[vi + v].color[2] = b;
-                        verts[vi + v].color[3] = 1.0f;
+                        memset(&c->text_vertices[vi + v], 0, sizeof(vgfx3d_vertex_t));
+                        c->text_vertices[vi + v].normal[2] = 1.0f;
+                        c->text_vertices[vi + v].color[0] = r;
+                        c->text_vertices[vi + v].color[1] = g;
+                        c->text_vertices[vi + v].color[2] = b;
+                        c->text_vertices[vi + v].color[3] = 1.0f;
                     }
-                    verts[vi + 0].pos[0] = px;           verts[vi + 0].pos[1] = py;
-                    verts[vi + 1].pos[0] = px + scale;   verts[vi + 1].pos[1] = py;
-                    verts[vi + 2].pos[0] = px + scale;   verts[vi + 2].pos[1] = py + scale;
-                    verts[vi + 3].pos[0] = px;           verts[vi + 3].pos[1] = py + scale;
+                    c->text_vertices[vi + 0].pos[0] = px;           c->text_vertices[vi + 0].pos[1] = py;
+                    c->text_vertices[vi + 1].pos[0] = px + scale;   c->text_vertices[vi + 1].pos[1] = py;
+                    c->text_vertices[vi + 2].pos[0] = px + scale;   c->text_vertices[vi + 2].pos[1] = py + scale;
+                    c->text_vertices[vi + 3].pos[0] = px;           c->text_vertices[vi + 3].pos[1] = py + scale;
 
-                    indices[ii + 0] = vi;     indices[ii + 1] = vi + 1; indices[ii + 2] = vi + 2;
-                    indices[ii + 3] = vi;     indices[ii + 4] = vi + 2; indices[ii + 5] = vi + 3;
-                    quad_count++;
+                    c->text_indices[ii + 0] = (uint32_t)vi;
+                    c->text_indices[ii + 1] = (uint32_t)(vi + 1);
+                    c->text_indices[ii + 2] = (uint32_t)(vi + 2);
+                    c->text_indices[ii + 3] = (uint32_t)vi;
+                    c->text_indices[ii + 4] = (uint32_t)(vi + 2);
+                    c->text_indices[ii + 5] = (uint32_t)(vi + 3);
+                    quad_idx++;
                 }
             }
         }
         cx += 6.0f * scale; /* char width + 1px spacing */
     }
 
-    if (quad_count > 0)
-    {
-        vgfx3d_draw_cmd_t cmd;
-        memset(&cmd, 0, sizeof(cmd));
-        cmd.vertices = verts;
-        cmd.vertex_count = (uint32_t)(quad_count * 4);
-        cmd.indices = indices;
-        cmd.index_count = (uint32_t)(quad_count * 6);
-        cmd.model_matrix[0] = cmd.model_matrix[5] = cmd.model_matrix[10] = cmd.model_matrix[15] = 1.0f;
-        cmd.diffuse_color[0] = r; cmd.diffuse_color[1] = g;
-        cmd.diffuse_color[2] = b; cmd.diffuse_color[3] = 1.0f;
-        cmd.alpha = 1.0f;
-        cmd.unlit = 1;
-        c->backend->submit_draw(c->backend_ctx, c->gfx_win, &cmd,
-                                 NULL, 0, c->ambient, 0, 0);
-    }
-
-    free(verts);
-    free(indices);
+    vgfx3d_draw_cmd_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.vertices = c->text_vertices;
+    cmd.vertex_count = (uint32_t)vertex_count;
+    cmd.indices = c->text_indices;
+    cmd.index_count = (uint32_t)index_count;
+    cmd.model_matrix[0] = cmd.model_matrix[5] = cmd.model_matrix[10] = cmd.model_matrix[15] = 1.0f;
+    cmd.diffuse_color[0] = r; cmd.diffuse_color[1] = g;
+    cmd.diffuse_color[2] = b; cmd.diffuse_color[3] = 1.0f;
+    cmd.alpha = 1.0f;
+    cmd.unlit = 1;
+    c->backend->submit_draw(c->backend_ctx, c->gfx_win, &cmd,
+                             NULL, 0, c->ambient, 0, 0);
 }
 
 void rt_canvas3d_begin(void *obj, void *camera)
@@ -563,32 +649,24 @@ void rt_canvas3d_begin(void *obj, void *camera)
     c->in_frame = 1;
 }
 
-void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void *material_obj)
+void rt_canvas3d_draw_mesh_matrix(
+    void *obj, void *mesh_obj, const double *model_matrix, void *material_obj)
 {
-    if (!obj || !mesh_obj || !transform_obj || !material_obj)
+    if (!obj || !mesh_obj || !model_matrix || !material_obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->in_frame || !c->gfx_win || !c->backend)
         return;
 
     rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
-    mat4_impl *model_d = (mat4_impl *)transform_obj;
     rt_material3d *mat = (rt_material3d *)material_obj;
 
     if (mesh->vertex_count == 0 || mesh->index_count == 0)
         return;
 
     /* Ensure draw command buffer has space */
-    if (c->draw_count >= c->draw_capacity)
-    {
-        int32_t new_cap = c->draw_capacity == 0 ? 32 : c->draw_capacity * 2;
-        deferred_draw_t *new_buf =
-            (deferred_draw_t *)realloc(c->draw_cmds, (size_t)new_cap * sizeof(deferred_draw_t));
-        if (!new_buf)
-            return;
-        c->draw_cmds = new_buf;
-        c->draw_capacity = new_cap;
-    }
+    if (!ensure_deferred_capacity(&c->draw_cmds, &c->draw_capacity, c->draw_count + 1))
+        return;
 
     deferred_draw_t *dd = &((deferred_draw_t *)c->draw_cmds)[c->draw_count++];
 
@@ -597,7 +675,7 @@ void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void 
     dd->cmd.vertex_count = mesh->vertex_count;
     dd->cmd.indices = mesh->indices;
     dd->cmd.index_count = mesh->index_count;
-    mat4_d2f(model_d->m, dd->cmd.model_matrix);
+    mat4_d2f(model_matrix, dd->cmd.model_matrix);
     dd->cmd.diffuse_color[0] = (float)mat->diffuse[0];
     dd->cmd.diffuse_color[1] = (float)mat->diffuse[1];
     dd->cmd.diffuse_color[2] = (float)mat->diffuse[2];
@@ -634,6 +712,13 @@ void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void 
         float dz = cz - c->cached_cam_pos[2];
         dd->sort_key = dx * dx + dy * dy + dz * dz;
     }
+}
+
+void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void *material_obj)
+{
+    if (!transform_obj)
+        return;
+    rt_canvas3d_draw_mesh_matrix(obj, mesh_obj, ((mat4_impl *)transform_obj)->m, material_obj);
 }
 
 void rt_canvas3d_end(void *obj)
@@ -751,11 +836,9 @@ void rt_canvas3d_end(void *obj)
 
         if (trans_count > 0)
         {
-            /* Build index array of transparent draws */
-            deferred_draw_t *trans =
-                (deferred_draw_t *)malloc((size_t)trans_count * sizeof(deferred_draw_t));
-            if (trans)
+            if (ensure_deferred_capacity(&c->trans_cmds, &c->trans_capacity, trans_count))
             {
+                deferred_draw_t *trans = (deferred_draw_t *)c->trans_cmds;
                 int32_t ti = 0;
                 for (int32_t i = 0; i < c->draw_count; i++)
                     if (cmds[i].cmd.alpha < 1.0f)
@@ -776,8 +859,6 @@ void rt_canvas3d_end(void *obj)
                                             trans[i].wireframe,
                                             trans[i].backface_cull);
                 }
-
-                free(trans);
             }
         }
     }

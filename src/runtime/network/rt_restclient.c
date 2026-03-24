@@ -19,6 +19,7 @@
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_string_builder.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -84,19 +85,25 @@ static rt_string join_url(rt_string base, rt_string path)
         path_len--;
     }
 
-    // Allocate combined string
     size_t total = base_len + 1 + path_len;
-    char *result = (char *)malloc(total + 1);
-    if (!result)
+    rt_string_builder sb;
+    rt_sb_init(&sb);
+
+    rt_sb_status_t status = rt_sb_reserve(&sb, total + 1);
+    if (status == RT_SB_OK)
+        status = rt_sb_append_bytes(&sb, base_str, base_len);
+    if (status == RT_SB_OK)
+        status = rt_sb_append_bytes(&sb, "/", 1);
+    if (status == RT_SB_OK)
+        status = rt_sb_append_bytes(&sb, path_str, path_len);
+    if (status != RT_SB_OK)
+    {
+        rt_sb_free(&sb);
         rt_trap("RestClient: memory allocation failed");
+    }
 
-    memcpy(result, base_str, base_len);
-    result[base_len] = '/';
-    memcpy(result + base_len + 1, path_str, path_len);
-    result[total] = '\0';
-
-    rt_string out = rt_string_from_bytes(result, total);
-    free(result);
+    rt_string out = rt_string_from_bytes(sb.data, sb.len);
+    rt_sb_free(&sb);
     return out;
 }
 
@@ -198,19 +205,22 @@ void rt_restclient_set_auth_bearer(void *obj, rt_string token)
         tok_str = "";
 
     size_t tok_len = strlen(tok_str);
-    size_t total = 7 + tok_len; // "Bearer " + token
-    char *auth = (char *)malloc(total + 1);
-    if (!auth)
+    rt_string_builder sb;
+    rt_sb_init(&sb);
+
+    rt_sb_status_t status = rt_sb_append_cstr(&sb, "Bearer ");
+    if (status == RT_SB_OK)
+        status = rt_sb_append_bytes(&sb, tok_str, tok_len);
+    if (status != RT_SB_OK)
+    {
+        rt_sb_free(&sb);
         rt_trap("RestClient: memory allocation failed");
+    }
 
-    memcpy(auth, "Bearer ", 7);
-    memcpy(auth + 7, tok_str, tok_len);
-    auth[total] = '\0';
-
-    rt_string auth_str = rt_string_from_bytes(auth, total);
-    free(auth);
-
+    rt_string auth_str = rt_string_from_bytes(sb.data, sb.len);
+    rt_sb_free(&sb);
     rt_restclient_set_header(obj, rt_const_cstr("Authorization"), auth_str);
+    rt_string_unref(auth_str);
 }
 
 void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string password)
@@ -225,42 +235,47 @@ void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string passw
     if (!pass_str)
         pass_str = "";
 
-    // Create "username:password"
     size_t user_len = strlen(user_str);
     size_t pass_len = strlen(pass_str);
-    size_t cred_len = user_len + 1 + pass_len;
+    rt_string_builder cred_sb;
+    rt_sb_init(&cred_sb);
 
-    char *cred = (char *)malloc(cred_len + 1);
-    if (!cred)
+    rt_sb_status_t status = rt_sb_append_bytes(&cred_sb, user_str, user_len);
+    if (status == RT_SB_OK)
+        status = rt_sb_append_bytes(&cred_sb, ":", 1);
+    if (status == RT_SB_OK)
+        status = rt_sb_append_bytes(&cred_sb, pass_str, pass_len);
+    if (status != RT_SB_OK)
+    {
+        rt_sb_free(&cred_sb);
         rt_trap("RestClient: memory allocation failed");
+    }
 
-    memcpy(cred, user_str, user_len);
-    cred[user_len] = ':';
-    memcpy(cred + user_len + 1, pass_str, pass_len);
-    cred[cred_len] = '\0';
-
-    // Base64 encode
-    rt_string cred_str = rt_string_from_bytes(cred, cred_len);
-    free(cred);
+    rt_string cred_str = rt_string_from_bytes(cred_sb.data, cred_sb.len);
+    rt_sb_free(&cred_sb);
     rt_string encoded = rt_codec_base64_enc(cred_str);
+    rt_string_unref(cred_str);
 
-    // Create "Basic <encoded>"
     const char *enc_str = rt_string_cstr(encoded);
     size_t enc_len = strlen(enc_str);
-    size_t total = 6 + enc_len; // "Basic " + encoded
+    rt_string_builder auth_sb;
+    rt_sb_init(&auth_sb);
 
-    char *auth = (char *)malloc(total + 1);
-    if (!auth)
+    status = rt_sb_append_cstr(&auth_sb, "Basic ");
+    if (status == RT_SB_OK)
+        status = rt_sb_append_bytes(&auth_sb, enc_str, enc_len);
+    if (status != RT_SB_OK)
+    {
+        rt_sb_free(&auth_sb);
+        rt_string_unref(encoded);
         rt_trap("RestClient: memory allocation failed");
+    }
 
-    memcpy(auth, "Basic ", 6);
-    memcpy(auth + 6, enc_str, enc_len);
-    auth[total] = '\0';
-
-    rt_string auth_str = rt_string_from_bytes(auth, total);
-    free(auth);
-
+    rt_string auth_str = rt_string_from_bytes(auth_sb.data, auth_sb.len);
+    rt_sb_free(&auth_sb);
+    rt_string_unref(encoded);
     rt_restclient_set_header(obj, rt_const_cstr("Authorization"), auth_str);
+    rt_string_unref(auth_str);
 }
 
 void rt_restclient_clear_auth(void *obj)

@@ -50,6 +50,27 @@ typedef struct
     float fog_color[3];
 } sw_context_t;
 
+static int sw_ensure_zbuf_capacity(sw_context_t *ctx, int32_t width, int32_t height)
+{
+    if (!ctx || width <= 0 || height <= 0)
+        return 0;
+    if (ctx->zbuf && ctx->width == width && ctx->height == height)
+        return 1;
+
+    size_t pixel_count = (size_t)width * (size_t)height;
+    if (pixel_count > SIZE_MAX / sizeof(float))
+        return 0;
+
+    float *new_zbuf = (float *)realloc(ctx->zbuf, pixel_count * sizeof(float));
+    if (!new_zbuf)
+        return 0;
+
+    ctx->zbuf = new_zbuf;
+    ctx->width = width;
+    ctx->height = height;
+    return 1;
+}
+
 /*==========================================================================
  * Matrix helpers
  *=========================================================================*/
@@ -598,8 +619,7 @@ static void *sw_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
         ctx->height = h;
     }
 
-    ctx->zbuf = (float *)malloc((size_t)ctx->width * (size_t)ctx->height * sizeof(float));
-    if (!ctx->zbuf)
+    if (!sw_ensure_zbuf_capacity(ctx, ctx->width, ctx->height))
     {
         free(ctx);
         return NULL;
@@ -647,6 +667,8 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
         vgfx_framebuffer_t fb;
         if (vgfx_get_framebuffer(win, &fb))
         {
+            if (!sw_ensure_zbuf_capacity(ctx, fb.width, fb.height))
+                return;
             for (int32_t y = 0; y < fb.height; y++)
                 for (int32_t x = 0; x < fb.width; x++)
                 {
@@ -712,6 +734,8 @@ static void sw_submit_draw(void *ctx_ptr,
     {
         vgfx_framebuffer_t fb;
         if (!vgfx_get_framebuffer(win, &fb))
+            return;
+        if (!sw_ensure_zbuf_capacity(ctx, fb.width, fb.height))
             return;
         out_pixels = fb.pixels;
         out_zbuf = ctx->zbuf;

@@ -112,6 +112,21 @@ static void test_mesh_add_vertex_triangle()
     PASS();
 }
 
+static void test_mesh_reject_invalid_triangle_indices()
+{
+    TEST("Mesh3D.AddTriangle rejects invalid indices");
+    void *m = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 1, 0, 0, 1);
+    rt_mesh3d_add_triangle(m, -1, 1, 2);
+    rt_mesh3d_add_triangle(m, 0, 1, 9);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 0);
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 1);
+    PASS();
+}
+
 static void test_mesh_box()
 {
     TEST("Mesh3D.NewBox — 24 verts, 12 tris");
@@ -753,6 +768,7 @@ int main()
     /* Mesh3D — basic */
     test_mesh_empty();
     test_mesh_add_vertex_triangle();
+    test_mesh_reject_invalid_triangle_indices();
     test_mesh_box();
     test_mesh_sphere();
     test_mesh_plane();

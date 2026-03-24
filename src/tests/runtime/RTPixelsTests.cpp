@@ -260,6 +260,40 @@ static void test_copy_negative_dest()
     printf("test_copy_negative_dest: PASSED\n");
 }
 
+static void test_copy_overlap_forward()
+{
+    void *p = rt_pixels_new(4, 4);
+
+    for (int64_t y = 0; y < 4; y++)
+        for (int64_t x = 0; x < 4; x++)
+            rt_pixels_set(p, x, y, (int64_t)(y * 10 + x));
+
+    rt_pixels_copy(p, 1, 1, p, 0, 0, 3, 3);
+
+    for (int64_t y = 0; y < 3; y++)
+        for (int64_t x = 0; x < 3; x++)
+            assert(rt_pixels_get(p, x + 1, y + 1) == (int64_t)(y * 10 + x));
+
+    printf("test_copy_overlap_forward: PASSED\n");
+}
+
+static void test_copy_overlap_backward()
+{
+    void *p = rt_pixels_new(4, 4);
+
+    for (int64_t y = 0; y < 4; y++)
+        for (int64_t x = 0; x < 4; x++)
+            rt_pixels_set(p, x, y, (int64_t)(y * 10 + x));
+
+    rt_pixels_copy(p, 0, 0, p, 1, 1, 3, 3);
+
+    for (int64_t y = 0; y < 3; y++)
+        for (int64_t x = 0; x < 3; x++)
+            assert(rt_pixels_get(p, x, y) == (int64_t)((y + 1) * 10 + (x + 1)));
+
+    printf("test_copy_overlap_backward: PASSED\n");
+}
+
 static void test_clone()
 {
     void *p = rt_pixels_new(5, 5);
@@ -905,6 +939,8 @@ int main()
     test_copy_basic();
     test_copy_clipping();
     test_copy_negative_dest();
+    test_copy_overlap_forward();
+    test_copy_overlap_backward();
     test_clone();
 
     // Byte conversion

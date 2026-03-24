@@ -39,6 +39,8 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 extern void rt_trap(const char *msg);
 extern const char *rt_string_cstr(rt_string s);
 
@@ -69,6 +71,17 @@ void *rt_mesh3d_new(void)
     m->indices = (uint32_t *)calloc(MESH_INIT_IDXS, sizeof(uint32_t));
     m->index_count = 0;
     m->index_capacity = MESH_INIT_IDXS;
+    if (!m->vertices || !m->indices)
+    {
+        free(m->vertices);
+        free(m->indices);
+        m->vertices = NULL;
+        m->indices = NULL;
+        if (rt_obj_release_check0(m))
+            rt_obj_free(m);
+        rt_trap("Mesh3D.New: memory allocation failed");
+        return NULL;
+    }
     rt_obj_set_finalizer(m, rt_mesh3d_finalize);
     return m;
 }
@@ -112,6 +125,12 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2)
     if (!obj)
         return;
     rt_mesh3d *m = (rt_mesh3d *)obj;
+
+    if (v0 < 0 || v1 < 0 || v2 < 0)
+        return;
+    if ((uint64_t)v0 >= m->vertex_count || (uint64_t)v1 >= m->vertex_count ||
+        (uint64_t)v2 >= m->vertex_count)
+        return;
 
     if (m->index_count + 3 > m->index_capacity)
     {

@@ -1497,6 +1497,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_optimization_fixes PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_optimization_fixes test_rt_optimization_fixes)
 
+    viper_add_test(test_rt_network_runtime ${VIPER_TESTS_DIR}/runtime/RTNetworkRuntimeTests.c)
+    target_link_libraries(test_rt_network_runtime PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_network_runtime test_rt_network_runtime)
+
     # P2 optimisation tests
     viper_add_test(test_rt_vec2_pool ${VIPER_TESTS_DIR}/runtime/RTVec2PoolTests.cpp)
     target_link_libraries(test_rt_vec2_pool PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

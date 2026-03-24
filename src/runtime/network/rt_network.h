@@ -99,6 +99,13 @@ extern "C"
     /// @note Traps if connection is closed or send fails.
     void rt_tcp_send_all(void *obj, void *data);
 
+    /// @brief Send a raw memory buffer, blocking until complete.
+    /// @param obj Tcp connection object.
+    /// @param data Raw byte buffer.
+    /// @param len Byte count.
+    /// @note Internal runtime helper used to avoid transient Bytes allocations.
+    void rt_tcp_send_all_raw(void *obj, const void *data, int64_t len);
+
     //=========================================================================
     // Tcp Client - Receive Methods
     //=========================================================================

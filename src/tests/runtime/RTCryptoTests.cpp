@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_bytes.h"
+#include "rt_crypto.h"
 #include "rt_hash.h"
 #include "rt_keyderive.h"
 #include "rt_rand.h"
@@ -226,6 +227,28 @@ static void test_hmac_sha256()
     printf("\n");
 }
 
+static void test_sha256_incremental_matches_one_shot()
+{
+    printf("Testing SHA-256 incremental API:\n");
+
+    static const char payload[] =
+        "The quick brown fox jumps over the lazy dog while the TLS transcript grows.";
+    uint8_t one_shot[32];
+    uint8_t incremental[32];
+
+    rt_sha256(payload, sizeof(payload) - 1, one_shot);
+
+    rt_sha256_ctx ctx;
+    rt_sha256_init(&ctx);
+    rt_sha256_update(&ctx, payload, 13);
+    rt_sha256_update(&ctx, payload + 13, 21);
+    rt_sha256_update(&ctx, payload + 34, sizeof(payload) - 1 - 34);
+    rt_sha256_final(&ctx, incremental);
+
+    test_result("SHA-256 incremental matches one-shot", memcmp(one_shot, incremental, 32) == 0);
+    printf("\n");
+}
+
 //=============================================================================
 // PBKDF2-SHA256 Tests (RFC 6070 extended)
 //=============================================================================
@@ -383,6 +406,7 @@ int main()
     test_hmac_md5();
     test_hmac_sha1();
     test_hmac_sha256();
+    test_sha256_incremental_matches_one_shot();
     test_pbkdf2_sha256();
     test_crypto_rand();
 

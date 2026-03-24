@@ -18,6 +18,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "rt_crypto.h"
 #include "rt_tls.h"
 #include <stddef.h>
 #include <stdint.h>
@@ -93,6 +94,7 @@ extern "C"
 
         // Transcript hash
         uint8_t transcript_hash[32];
+        rt_sha256_ctx transcript_ctx;
         uint8_t transcript_buffer[32768];
         size_t transcript_len;
 

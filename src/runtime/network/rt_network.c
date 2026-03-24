@@ -718,6 +718,41 @@ void rt_tcp_send_all(void *obj, void *data)
     }
 }
 
+void rt_tcp_send_all_raw(void *obj, const void *data, int64_t len)
+{
+    if (!obj)
+        rt_trap("Network: NULL connection");
+    if (!data && len > 0)
+        rt_trap("Network: NULL data");
+
+    rt_tcp_t *tcp = (rt_tcp_t *)obj;
+    if (!tcp->is_open)
+        rt_trap_net("Network: connection closed", Err_ConnectionClosed);
+
+    if (len <= 0)
+        return;
+
+    const uint8_t *buf = (const uint8_t *)data;
+    int64_t total_sent = 0;
+    while (total_sent < len)
+    {
+        int64_t remaining = len - total_sent;
+        int chunk = (int)(remaining > INT_MAX ? INT_MAX : remaining);
+        int sent = send(tcp->sock, (const char *)(buf + total_sent), chunk, SEND_FLAGS);
+        if (sent == SOCK_ERROR)
+        {
+            tcp->is_open = false;
+            rt_trap_net("Network: send failed", net_classify_errno());
+        }
+        if (sent == 0)
+        {
+            tcp->is_open = false;
+            rt_trap_net("Network: connection closed by peer", Err_ConnectionClosed);
+        }
+        total_sent += sent;
+    }
+}
+
 //=============================================================================
 // Tcp Client - Receive Methods
 //=============================================================================

@@ -37,6 +37,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #define strcasecmp _stricmp
+#define strncasecmp _strnicmp
 #else
 #include <pthread.h>
 #include <strings.h>
@@ -106,6 +107,25 @@ typedef struct
     bool thread_started;
 } rt_ws_server_impl;
 
+static int ws_header_has_upgrade_token(const char *value)
+{
+    const char *p = value;
+    while (*p)
+    {
+        while (*p == ' ' || *p == '\t' || *p == ',')
+            p++;
+        const char *start = p;
+        while (*p && *p != ',')
+            p++;
+        const char *end = p;
+        while (end > start && (end[-1] == ' ' || end[-1] == '\t'))
+            end--;
+        if ((size_t)(end - start) == strlen("Upgrade") && strncasecmp(start, "Upgrade", 7) == 0)
+            return 1;
+    }
+    return 0;
+}
+
 //=============================================================================
 // WebSocket Framing Helpers
 //=============================================================================
@@ -142,22 +162,11 @@ static int ws_server_send_frame(void *tcp, uint8_t opcode, const void *data, siz
     }
 
     // Send header
-    void *hdr_bytes = rt_bytes_new((int64_t)header_len);
-    typedef struct { int64_t l; uint8_t *d; } bi;
-    memcpy(((bi *)hdr_bytes)->d, header, header_len);
-    rt_tcp_send_all(tcp, hdr_bytes);
-    if (rt_obj_release_check0(hdr_bytes))
-        rt_obj_free(hdr_bytes);
+    rt_tcp_send_all_raw(tcp, header, (int64_t)header_len);
 
     // Send data
     if (len > 0 && data)
-    {
-        void *payload = rt_bytes_new((int64_t)len);
-        memcpy(((bi *)payload)->d, data, len);
-        rt_tcp_send_all(tcp, payload);
-        if (rt_obj_release_check0(payload))
-            rt_obj_free(payload);
-    }
+        rt_tcp_send_all_raw(tcp, data, (int64_t)len);
 
     return 1;
 }
@@ -243,10 +252,18 @@ static int ws_server_handshake(void *tcp)
     // Read HTTP upgrade request
     rt_string line = rt_tcp_recv_line(tcp);
     if (!line) return 0;
-    // We don't validate the request line strictly — just need the key
+    const char *request_line = rt_string_cstr(line);
+    if (!request_line || strncmp(request_line, "GET ", 4) != 0)
+    {
+        rt_string_unref(line);
+        return 0;
+    }
     rt_string_unref(line);
 
     char ws_key[128] = {0};
+    int saw_upgrade = 0;
+    int saw_connection = 0;
+    int saw_version = 0;
 
     // Read headers
     while (1)
@@ -266,10 +283,28 @@ static int ws_server_handshake(void *tcp)
             while (*val == ' ') val++;
             strncpy(ws_key, val, sizeof(ws_key) - 1);
         }
+        else if (strncasecmp(h, "Upgrade:", 8) == 0)
+        {
+            const char *val = h + 8;
+            while (*val == ' ') val++;
+            saw_upgrade = strcasecmp(val, "websocket") == 0;
+        }
+        else if (strncasecmp(h, "Connection:", 11) == 0)
+        {
+            const char *val = h + 11;
+            while (*val == ' ') val++;
+            saw_connection = ws_header_has_upgrade_token(val);
+        }
+        else if (strncasecmp(h, "Sec-WebSocket-Version:", 22) == 0)
+        {
+            const char *val = h + 22;
+            while (*val == ' ') val++;
+            saw_version = strcmp(val, "13") == 0;
+        }
         rt_string_unref(hdr);
     }
 
-    if (ws_key[0] == '\0')
+    if (ws_key[0] == '\0' || !saw_upgrade || !saw_connection || !saw_version)
         return 0;
 
     // Compute accept key

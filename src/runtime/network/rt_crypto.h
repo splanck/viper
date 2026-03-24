@@ -31,6 +31,34 @@ extern "C"
     // SHA-256
     //=========================================================================
 
+    /// @brief Incremental SHA-256 state.
+    /// @details Exposed so callers with streaming inputs can avoid re-hashing
+    ///          prior bytes. The layout is part of the runtime ABI for internal
+    ///          consumers such as TLS transcript hashing.
+    typedef struct rt_sha256_ctx
+    {
+        uint32_t state[8];
+        uint64_t count;
+        uint8_t buffer[64];
+    } rt_sha256_ctx;
+
+    /// @brief Initialize a SHA-256 context for incremental hashing.
+    /// @param ctx Context to initialize.
+    void rt_sha256_init(rt_sha256_ctx *ctx);
+
+    /// @brief Append bytes to an incremental SHA-256 hash.
+    /// @param ctx Context to update.
+    /// @param data Bytes to append (may be NULL when @p len is zero).
+    /// @param len Number of bytes to append.
+    void rt_sha256_update(rt_sha256_ctx *ctx, const void *data, size_t len);
+
+    /// @brief Finalize an incremental SHA-256 hash.
+    /// @details Finalization mutates the context state. Copy the context first
+    ///          when a snapshot digest is needed without consuming the running hash.
+    /// @param ctx Context to finalize.
+    /// @param digest Output buffer for the 32-byte (256-bit) hash digest.
+    void rt_sha256_final(rt_sha256_ctx *ctx, uint8_t digest[32]);
+
     /// @brief Compute SHA-256 hash.
     /// @param data Pointer to the input data to hash.
     /// @param len Length of @p data in bytes.

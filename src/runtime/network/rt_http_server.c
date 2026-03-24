@@ -31,6 +31,8 @@
 #include "rt_string.h"
 
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,6 +41,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #define strcasecmp _stricmp
+#define strncasecmp _strnicmp
 #else
 #include <pthread.h>
 #include <strings.h>
@@ -98,6 +101,8 @@ typedef struct
     bool thread_started;
 } rt_http_server_impl;
 
+static void free_server_req(server_req_t *req);
+
 //=============================================================================
 // Finalizer
 //=============================================================================
@@ -122,19 +127,129 @@ static void rt_http_server_finalize(void *obj)
 // HTTP Request Parsing
 //=============================================================================
 
+static const char *find_crlf(const char *buf, size_t len)
+{
+    if (len < 2)
+        return NULL;
+    for (size_t i = 0; i + 1 < len; i++)
+    {
+        if (buf[i] == '\r' && buf[i + 1] == '\n')
+            return buf + i;
+    }
+    return NULL;
+}
+
+static const char *find_header_end(const char *buf, size_t len)
+{
+    if (len < 4)
+        return NULL;
+    for (size_t i = 3; i < len; i++)
+    {
+        if (buf[i - 3] == '\r' && buf[i - 2] == '\n' && buf[i - 1] == '\r' && buf[i] == '\n')
+            return buf + i + 1;
+    }
+    return NULL;
+}
+
+static const char *find_char_bounded(const char *buf, size_t len, char needle)
+{
+    for (size_t i = 0; i < len; i++)
+    {
+        if (buf[i] == needle)
+            return buf + i;
+    }
+    return NULL;
+}
+
+static bool parse_size_decimal(const char *text, size_t len, size_t *out)
+{
+    size_t value = 0;
+    size_t i = 0;
+
+    while (i < len && (text[i] == ' ' || text[i] == '\t'))
+        i++;
+    if (i == len)
+        return false;
+
+    for (; i < len; i++)
+    {
+        unsigned char c = (unsigned char)text[i];
+        if (c >= '0' && c <= '9')
+        {
+            size_t digit = (size_t)(c - '0');
+            if (value > (SIZE_MAX - digit) / 10)
+                return false;
+            value = value * 10 + digit;
+            continue;
+        }
+        if (c == ' ' || c == '\t')
+        {
+            while (i < len && (text[i] == ' ' || text[i] == '\t'))
+                i++;
+            if (i != len)
+                return false;
+            *out = value;
+            return true;
+        }
+        return false;
+    }
+
+    *out = value;
+    return true;
+}
+
+static bool parse_content_length_header_block(
+    const char *headers, size_t headers_len, size_t *content_length_out)
+{
+    const char *p = headers;
+    const char *end = headers + headers_len;
+    size_t content_length = 0;
+    bool saw_content_length = false;
+
+    while (p < end)
+    {
+        const char *line_end = find_crlf(p, (size_t)(end - p));
+        if (!line_end)
+            return false;
+        if (line_end == p)
+            break;
+
+        const char *colon = find_char_bounded(p, (size_t)(line_end - p), ':');
+        if (colon)
+        {
+            size_t name_len = (size_t)(colon - p);
+            if (name_len == strlen("Content-Length") &&
+                strncasecmp(p, "Content-Length", name_len) == 0)
+            {
+                const char *value = colon + 1;
+                while (value < line_end && (*value == ' ' || *value == '\t'))
+                    value++;
+                if (!parse_size_decimal(value, (size_t)(line_end - value), &content_length))
+                    return false;
+                saw_content_length = true;
+            }
+        }
+
+        p = line_end + 2;
+    }
+
+    *content_length_out = saw_content_length ? content_length : 0;
+    return true;
+}
+
 /// @brief Parse an HTTP request from raw text.
 static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *req)
 {
     memset(req, 0, sizeof(*req));
 
     // Find end of request line
-    const char *line_end = strstr(raw, "\r\n");
+    const char *line_end = find_crlf(raw, raw_len);
     if (!line_end)
         return false;
 
     // Parse method
     const char *p = raw;
-    const char *space = strchr(p, ' ');
+    const char *space = find_char_bounded(p, (size_t)(line_end - p), ' ');
     if (!space || space > line_end)
         return false;
 
@@ -147,20 +262,14 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
 
     // Parse path (and query string)
     p = space + 1;
-    space = strchr(p, ' ');
+    space = find_char_bounded(p, (size_t)(line_end - p), ' ');
     if (!space || space > line_end)
-    {
-        free(req->method);
-        return false;
-    }
+        goto fail;
 
     size_t uri_len = (size_t)(space - p);
     char *uri = (char *)malloc(uri_len + 1);
     if (!uri)
-    {
-        free(req->method);
-        return false;
-    }
+        goto fail;
     memcpy(uri, p, uri_len);
     uri[uri_len] = '\0';
 
@@ -170,23 +279,38 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
     {
         *qmark = '\0';
         req->query = strdup(qmark + 1);
+        if (!req->query)
+        {
+            free(uri);
+            goto fail;
+        }
     }
     req->path = strdup(uri);
     free(uri);
+    if (!req->path)
+        goto fail;
 
     // Parse headers
     req->headers = rt_map_new();
+    if (!req->headers)
+        goto fail;
     p = line_end + 2;
     size_t content_length = 0;
+    const char *body_start = NULL;
 
     int header_count = 0;
     while (p < raw + raw_len && header_count < HTTP_REQ_MAX_HEADERS)
     {
-        const char *next_end = strstr(p, "\r\n");
-        if (!next_end || next_end == p)
+        const char *next_end = find_crlf(p, (size_t)(raw + raw_len - p));
+        if (!next_end)
+            goto fail;
+        if (next_end == p)
+        {
+            body_start = next_end + 2;
             break; // Empty line = end of headers
+        }
 
-        const char *colon = strchr(p, ':');
+        const char *colon = find_char_bounded(p, (size_t)(next_end - p), ':');
         if (colon && colon < next_end)
         {
             size_t name_len = (size_t)(colon - p);
@@ -201,7 +325,7 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
                         *c += 32;
 
                 const char *val = colon + 1;
-                while (*val == ' ')
+                while (val < next_end && (*val == ' ' || *val == '\t'))
                     val++;
                 size_t val_len = (size_t)(next_end - val);
 
@@ -210,9 +334,17 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
                 rt_map_set(req->headers, key, (void *)value);
 
                 if (strcmp(name, "content-length") == 0)
-                    content_length = (size_t)atol(val);
+                {
+                    if (!parse_size_decimal(val, val_len, &content_length))
+                    {
+                        rt_string_unref(key);
+                        free(name);
+                        goto fail;
+                    }
+                }
 
                 rt_string_unref(key);
+                rt_string_unref(value);
                 free(name);
             }
         }
@@ -220,29 +352,38 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
         p = next_end + 2;
         header_count++;
     }
-
-    // Skip past the empty line
-    const char *body_start = strstr(p, "\r\n");
-    if (body_start)
-        body_start += 2;
-    else
+    if (!body_start && header_count >= HTTP_REQ_MAX_HEADERS)
+        goto fail;
+    if (!body_start)
         body_start = p;
 
     // Parse body
-    if (content_length > 0 && content_length <= HTTP_REQ_MAX_BODY)
+    if (content_length > HTTP_REQ_MAX_BODY)
+        goto fail;
+    if (content_length > 0)
     {
         size_t available = (size_t)(raw + raw_len - body_start);
-        size_t copy = content_length < available ? content_length : available;
-        req->body = (char *)malloc(copy + 1);
+        if (available < content_length)
+            goto fail;
+        req->body = (char *)malloc(content_length + 1);
         if (req->body)
         {
-            memcpy(req->body, body_start, copy);
-            req->body[copy] = '\0';
-            req->body_len = copy;
+            memcpy(req->body, body_start, content_length);
+            req->body[content_length] = '\0';
+            req->body_len = content_length;
+        }
+        else
+        {
+            goto fail;
         }
     }
 
     return true;
+
+fail:
+    free_server_req(req);
+    memset(req, 0, sizeof(*req));
+    return false;
 }
 
 static void free_server_req(server_req_t *req)
@@ -255,6 +396,27 @@ static void free_server_req(server_req_t *req)
         rt_obj_free(req->headers);
     if (req->params && rt_obj_release_check0(req->params))
         rt_obj_free(req->params);
+}
+
+int rt_http_server_test_parse_request(
+    const char *raw, size_t raw_len, char **method_out, char **path_out, char **body_out,
+    size_t *body_len_out)
+{
+    server_req_t req;
+    if (!parse_http_request(raw, raw_len, &req))
+        return 0;
+
+    if (method_out)
+        *method_out = req.method ? strdup(req.method) : NULL;
+    if (path_out)
+        *path_out = req.path ? strdup(req.path) : NULL;
+    if (body_out)
+        *body_out = req.body ? strdup(req.body) : NULL;
+    if (body_len_out)
+        *body_len_out = req.body_len;
+
+    free_server_req(&req);
+    return 1;
 }
 
 //=============================================================================
@@ -284,19 +446,11 @@ static const char *status_text_for_code(int code)
 static char *build_response(server_res_t *res, size_t *out_len)
 {
     size_t body_len = res->body_len;
-    size_t cap = 512 + body_len;
-    char *buf = (char *)malloc(cap);
-    if (!buf)
-        return NULL;
+    size_t cap = (size_t)snprintf(
+        NULL, 0, "HTTP/1.1 %d %s\r\n", res->status_code, status_text_for_code(res->status_code));
+    cap += (size_t)snprintf(NULL, 0, "Content-Length: %zu\r\n", body_len);
+    cap += strlen("Connection: close\r\n");
 
-    int pos = snprintf(buf, cap, "HTTP/1.1 %d %s\r\n",
-                       res->status_code, status_text_for_code(res->status_code));
-
-    // Default headers
-    pos += snprintf(buf + pos, cap - (size_t)pos, "Content-Length: %zu\r\n", body_len);
-    pos += snprintf(buf + pos, cap - (size_t)pos, "Connection: close\r\n");
-
-    // User headers
     if (res->headers)
     {
         void *keys = rt_map_keys(res->headers);
@@ -310,24 +464,138 @@ static char *build_response(server_res_t *res, size_t *out_len)
                 const char *k = rt_string_cstr(key);
                 const char *v = rt_string_cstr((rt_string)val);
                 if (k && v)
-                    pos += snprintf(buf + pos, cap - (size_t)pos, "%s: %s\r\n", k, v);
+                {
+                    size_t k_len = strlen(k);
+                    size_t v_len = strlen(v);
+                    if (cap > SIZE_MAX - (k_len + v_len + 4))
+                    {
+                        if (rt_obj_release_check0(keys))
+                            rt_obj_free(keys);
+                        return NULL;
+                    }
+                    cap += k_len + v_len + 4;
+                }
+            }
+        }
+        if (rt_obj_release_check0(keys))
+            rt_obj_free(keys);
+    }
+    if (cap > SIZE_MAX - (body_len + 3))
+        return NULL;
+    cap += body_len + 2 + 1;
+
+    char *buf = (char *)malloc(cap);
+    if (!buf)
+        return NULL;
+
+    char *cursor = buf;
+    size_t remaining = cap;
+#define APPEND_FORMAT(...)                                                                         \
+    do                                                                                             \
+    {                                                                                              \
+        int written = snprintf(cursor, remaining, __VA_ARGS__);                                   \
+        if (written < 0 || (size_t)written >= remaining)                                           \
+        {                                                                                          \
+            free(buf);                                                                             \
+            return NULL;                                                                           \
+        }                                                                                          \
+        cursor += written;                                                                         \
+        remaining -= (size_t)written;                                                              \
+    } while (0)
+
+    APPEND_FORMAT("HTTP/1.1 %d %s\r\n", res->status_code, status_text_for_code(res->status_code));
+    APPEND_FORMAT("Content-Length: %zu\r\n", body_len);
+    APPEND_FORMAT("%s", "Connection: close\r\n");
+
+    if (res->headers)
+    {
+        void *keys = rt_map_keys(res->headers);
+        int64_t count = rt_seq_len(keys);
+        for (int64_t i = 0; i < count; i++)
+        {
+            rt_string key = (rt_string)rt_seq_get(keys, i);
+            void *val = rt_map_get(res->headers, key);
+            if (val)
+            {
+                const char *k = rt_string_cstr(key);
+                const char *v = rt_string_cstr((rt_string)val);
+                if (k && v)
+                {
+                    int written = snprintf(cursor, remaining, "%s: %s\r\n", k, v);
+                    if (written < 0 || (size_t)written >= remaining)
+                    {
+                        if (rt_obj_release_check0(keys))
+                            rt_obj_free(keys);
+                        free(buf);
+                        return NULL;
+                    }
+                    cursor += written;
+                    remaining -= (size_t)written;
+                }
             }
         }
         if (rt_obj_release_check0(keys))
             rt_obj_free(keys);
     }
 
-    pos += snprintf(buf + pos, cap - (size_t)pos, "\r\n");
+    APPEND_FORMAT("%s", "\r\n");
 
     // Body
-    if (res->body && body_len > 0 && (size_t)pos + body_len <= cap)
+    if (res->body && body_len > 0)
     {
-        memcpy(buf + pos, res->body, body_len);
-        pos += (int)body_len;
+        if (body_len > remaining)
+        {
+            free(buf);
+            return NULL;
+        }
+        memcpy(cursor, res->body, body_len);
+        cursor += body_len;
+        remaining -= body_len;
     }
 
-    *out_len = (size_t)pos;
+    *out_len = (size_t)(cursor - buf);
+#undef APPEND_FORMAT
     return buf;
+}
+
+char *rt_http_server_test_build_response(
+    int status_code, const char *body, size_t body_len, const char **header_names,
+    const char **header_values, size_t header_count, size_t *out_len)
+{
+    char *body_copy = NULL;
+    server_res_t res;
+    memset(&res, 0, sizeof(res));
+    res.status_code = status_code;
+    if (body && body_len > 0)
+    {
+        body_copy = (char *)malloc(body_len);
+        if (!body_copy)
+            return NULL;
+        memcpy(body_copy, body, body_len);
+    }
+    res.body = body_copy;
+    res.body_len = body_copy ? body_len : 0;
+    res.headers = rt_map_new();
+    if (!res.headers)
+    {
+        free(body_copy);
+        return NULL;
+    }
+
+    for (size_t i = 0; i < header_count; i++)
+    {
+        rt_string key = rt_string_from_bytes(header_names[i], strlen(header_names[i]));
+        rt_string value = rt_string_from_bytes(header_values[i], strlen(header_values[i]));
+        rt_map_set(res.headers, key, (void *)value);
+        rt_string_unref(key);
+        rt_string_unref(value);
+    }
+
+    char *resp = build_response(&res, out_len);
+    if (res.headers && rt_obj_release_check0(res.headers))
+        rt_obj_free(res.headers);
+    free(body_copy);
+    return resp;
 }
 
 //=============================================================================
@@ -349,6 +617,7 @@ static void handle_connection(rt_http_server_impl *server, void *tcp)
     bool headers_done = false;
     size_t content_length = 0;
     size_t header_end_pos = 0;
+    bool bad_request = false;
 
     // Set a 30-second timeout for reading
     rt_tcp_set_recv_timeout(tcp, 30000);
@@ -374,29 +643,29 @@ static void handle_connection(rt_http_server_impl *server, void *tcp)
         // Check if headers are complete
         if (!headers_done)
         {
-            for (size_t i = 3; i < buf_len; i++)
+            const char *header_end = find_header_end(buf, buf_len);
+            if (header_end)
             {
-                if (buf[i-3] == '\r' && buf[i-2] == '\n' && buf[i-1] == '\r' && buf[i] == '\n')
+                headers_done = true;
+                header_end_pos = (size_t)(header_end - buf);
+                if (!parse_content_length_header_block(buf, header_end_pos, &content_length) ||
+                    content_length > HTTP_REQ_MAX_BODY)
                 {
-                    headers_done = true;
-                    header_end_pos = i + 1;
-                    // Parse Content-Length from headers
-                    char *cl = strstr(buf, "Content-Length:");
-                    if (!cl) cl = strstr(buf, "content-length:");
-                    if (cl)
-                        content_length = (size_t)atol(cl + 15);
+                    bad_request = true;
                     break;
                 }
             }
         }
 
         // Check if we have the full body
+        if (bad_request)
+            break;
         if (headers_done)
         {
             if (content_length == 0 || buf_len >= header_end_pos + content_length)
                 break;
             // Grow buffer for large bodies
-            if (header_end_pos + content_length > buf_cap && content_length <= HTTP_REQ_MAX_BODY)
+            if (header_end_pos + content_length > buf_cap)
             {
                 buf_cap = header_end_pos + content_length + 1;
                 char *new_buf = (char *)realloc(buf, buf_cap);
@@ -414,11 +683,14 @@ static void handle_connection(rt_http_server_impl *server, void *tcp)
         return;
     }
 
-    buf[buf_len < buf_cap ? buf_len : buf_cap - 1] = '\0';
+    if (buf_len < buf_cap)
+        buf[buf_len] = '\0';
+    else
+        buf[buf_cap - 1] = '\0';
 
     // Parse request
     server_req_t req;
-    if (!parse_http_request(buf, buf_len, &req))
+    if (bad_request || !parse_http_request(buf, buf_len, &req))
     {
         // Send 400 Bad Request
         const char *bad = "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
@@ -486,21 +758,7 @@ static void handle_connection(rt_http_server_impl *server, void *tcp)
     char *resp = build_response(&res, &resp_len);
     if (resp)
     {
-        // Send all bytes
-        size_t sent = 0;
-        while (sent < resp_len && rt_tcp_is_open(tcp))
-        {
-            size_t chunk = resp_len - sent;
-            if (chunk > 32768)
-                chunk = 32768;
-            void *bytes = rt_bytes_new((int64_t)chunk);
-            typedef struct { int64_t len; uint8_t *d; } bi2;
-            memcpy(((bi2 *)bytes)->d, resp + sent, chunk);
-            rt_tcp_send_all(tcp, bytes);
-            if (rt_obj_release_check0(bytes))
-                rt_obj_free(bytes);
-            sent += chunk;
-        }
+        rt_tcp_send_all_raw(tcp, resp, (int64_t)resp_len);
         free(resp);
     }
 

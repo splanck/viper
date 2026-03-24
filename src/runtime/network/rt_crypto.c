@@ -49,14 +49,7 @@ static const uint32_t sha256_k[64] = {
 #define SIG0(x) (ROTR32(x, 7) ^ ROTR32(x, 18) ^ ((x) >> 3))
 #define SIG1(x) (ROTR32(x, 17) ^ ROTR32(x, 19) ^ ((x) >> 10))
 
-typedef struct
-{
-    uint32_t state[8];
-    uint64_t count;
-    uint8_t buffer[64];
-} sha256_ctx;
-
-static void sha256_transform(sha256_ctx *ctx, const uint8_t data[64])
+static void sha256_transform(rt_sha256_ctx *ctx, const uint8_t data[64])
 {
     uint32_t a, b, c, d, e, f, g, h, t1, t2, w[64];
 
@@ -103,7 +96,7 @@ static void sha256_transform(sha256_ctx *ctx, const uint8_t data[64])
     ctx->state[7] += h;
 }
 
-static void sha256_init(sha256_ctx *ctx)
+void rt_sha256_init(rt_sha256_ctx *ctx)
 {
     ctx->state[0] = 0x6a09e667;
     ctx->state[1] = 0xbb67ae85;
@@ -116,7 +109,7 @@ static void sha256_init(sha256_ctx *ctx)
     ctx->count = 0;
 }
 
-static void sha256_update(sha256_ctx *ctx, const void *data, size_t len)
+void rt_sha256_update(rt_sha256_ctx *ctx, const void *data, size_t len)
 {
     const uint8_t *ptr = (const uint8_t *)data;
     size_t idx = (ctx->count / 8) % 64;
@@ -141,7 +134,7 @@ static void sha256_update(sha256_ctx *ctx, const void *data, size_t len)
     }
 }
 
-static void sha256_final(sha256_ctx *ctx, uint8_t digest[32])
+void rt_sha256_final(rt_sha256_ctx *ctx, uint8_t digest[32])
 {
     uint64_t bits = ctx->count;
     uint8_t pad[64];
@@ -150,7 +143,7 @@ static void sha256_final(sha256_ctx *ctx, uint8_t digest[32])
 
     memset(pad, 0, sizeof(pad));
     pad[0] = 0x80;
-    sha256_update(ctx, pad, padlen);
+    rt_sha256_update(ctx, pad, padlen);
 
     pad[0] = (bits >> 56) & 0xFF;
     pad[1] = (bits >> 48) & 0xFF;
@@ -160,7 +153,7 @@ static void sha256_final(sha256_ctx *ctx, uint8_t digest[32])
     pad[5] = (bits >> 16) & 0xFF;
     pad[6] = (bits >> 8) & 0xFF;
     pad[7] = bits & 0xFF;
-    sha256_update(ctx, pad, 8);
+    rt_sha256_update(ctx, pad, 8);
 
     for (int i = 0; i < 8; i++)
     {
@@ -173,10 +166,10 @@ static void sha256_final(sha256_ctx *ctx, uint8_t digest[32])
 
 void rt_sha256(const void *data, size_t len, uint8_t digest[32])
 {
-    sha256_ctx ctx;
-    sha256_init(&ctx);
-    sha256_update(&ctx, data, len);
-    sha256_final(&ctx, digest);
+    rt_sha256_ctx ctx;
+    rt_sha256_init(&ctx);
+    rt_sha256_update(&ctx, data, len);
+    rt_sha256_final(&ctx, digest);
 }
 
 //=============================================================================
@@ -205,16 +198,16 @@ void rt_hmac_sha256(
         opad[i] = k[i] ^ 0x5c;
     }
 
-    sha256_ctx ctx;
-    sha256_init(&ctx);
-    sha256_update(&ctx, ipad, 64);
-    sha256_update(&ctx, data, data_len);
-    sha256_final(&ctx, mac);
+    rt_sha256_ctx ctx;
+    rt_sha256_init(&ctx);
+    rt_sha256_update(&ctx, ipad, 64);
+    rt_sha256_update(&ctx, data, data_len);
+    rt_sha256_final(&ctx, mac);
 
-    sha256_init(&ctx);
-    sha256_update(&ctx, opad, 64);
-    sha256_update(&ctx, mac, 32);
-    sha256_final(&ctx, mac);
+    rt_sha256_init(&ctx);
+    rt_sha256_update(&ctx, opad, 64);
+    rt_sha256_update(&ctx, mac, 32);
+    rt_sha256_final(&ctx, mac);
 
     rt_secure_zero(k, sizeof(k));
     rt_secure_zero(ipad, sizeof(ipad));
@@ -250,7 +243,7 @@ void rt_hkdf_expand(
 
     while (pos < okm_len)
     {
-        sha256_ctx ctx;
+        rt_sha256_ctx ctx;
         uint8_t temp[32];
 
         // HMAC(PRK, T(n-1) || info || counter)
@@ -264,19 +257,19 @@ void rt_hkdf_expand(
             opad[i] = k[i] ^ 0x5c;
         }
 
-        sha256_init(&ctx);
-        sha256_update(&ctx, ipad, 64);
+        rt_sha256_init(&ctx);
+        rt_sha256_update(&ctx, ipad, 64);
         if (t_len > 0)
-            sha256_update(&ctx, t, t_len);
+            rt_sha256_update(&ctx, t, t_len);
         if (info_len > 0)
-            sha256_update(&ctx, info, info_len);
-        sha256_update(&ctx, &counter, 1);
-        sha256_final(&ctx, temp);
+            rt_sha256_update(&ctx, info, info_len);
+        rt_sha256_update(&ctx, &counter, 1);
+        rt_sha256_final(&ctx, temp);
 
-        sha256_init(&ctx);
-        sha256_update(&ctx, opad, 64);
-        sha256_update(&ctx, temp, 32);
-        sha256_final(&ctx, t);
+        rt_sha256_init(&ctx);
+        rt_sha256_update(&ctx, opad, 64);
+        rt_sha256_update(&ctx, temp, 32);
+        rt_sha256_final(&ctx, t);
         t_len = 32;
 
         size_t copy = okm_len - pos;
