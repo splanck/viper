@@ -47,6 +47,11 @@ entity PencilTool {
     }
 
     expose func onMouseUp(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+        if drawing == 1 {
+            canvas.drawLine(lastX, lastY, x, y, colors.foreground);
+            lastX = x;
+            lastY = y;
+        }
         drawing = 0;
     }
 

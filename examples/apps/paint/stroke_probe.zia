@@ -1,0 +1,52 @@
+module stroke_probe;
+
+bind Viper.Terminal;
+bind "./canvas";
+bind "./colors";
+bind "./brush";
+bind "./tools/pencil";
+bind "./tools/brush";
+
+func countInk(dc: DrawingCanvas) -> Integer {
+    var count = 0;
+    var y = 0;
+    while y < dc.height {
+        var x = 0;
+        while x < dc.width {
+            if dc.getPixel(x, y) != 0xFFFFFF {
+                count = count + 1;
+            }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    return count;
+}
+
+func main() {
+    var dc = new DrawingCanvas();
+    dc.initWithSize(32, 32);
+
+    var cm = new ColorManager();
+
+    var pencilTool = new PencilTool();
+    pencilTool.onMouseDown(2, 2, dc, cm);
+    pencilTool.onMouseMove(10, 2, dc, cm);
+    pencilTool.onMouseUp(10, 2, dc, cm);
+    SayInt(countInk(dc));
+
+    dc.clear();
+
+    var bs = new BrushSettings();
+    bs.setSize(4);
+
+    var brushTool = new BrushTool();
+    SayInt(101);
+    brushTool.onMouseDown(2, 10, dc, cm, bs);
+    SayInt(102);
+    brushTool.onMouseMove(10, 10, dc, cm, bs);
+    SayInt(103);
+    brushTool.onMouseUp(10, 10, dc, cm, bs);
+    SayInt(104);
+    SayInt(countInk(dc));
+}

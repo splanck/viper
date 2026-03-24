@@ -361,21 +361,20 @@ int emitAndMaybeLink(const Options &opts)
     }
 
     // Run IL optimizations before lowering to MIR.
-    // The codegen pipelines match the canonical O1/O2 pipelines from
-    // PassManager.cpp so native output benefits from the full optimization
-    // stack (loop opts, LICM, check-opt, sibling-recursion, etc.).
+    // The codegen pipelines track the canonical O1/O2 pipelines from
+    // PassManager.cpp, minus any passes still disabled for correctness.
     if (opts.optimize >= 1)
     {
         il::transform::PassManager ilpm;
         if (opts.optimize >= 2)
         {
+            // Keep codegen-O2 aligned with canonical O2 while excluding the
+            // same still-unsafe passes: mem2reg, LICM, and IL peephole.
             ilpm.registerPipeline("codegen-O2",
                                   {"loop-simplify",
                                    "loop-rotate",
                                    "indvars",
                                    "loop-unroll",
-                                   "simplify-cfg",
-                                   "mem2reg",
                                    "simplify-cfg",
                                    "sccp",
                                    "check-opt",
@@ -389,13 +388,10 @@ int emitAndMaybeLink(const Options &opts)
                                    "constfold",
                                    "dce",
                                    "simplify-cfg",
-                                   "licm",
-                                   "simplify-cfg",
                                    "gvn",
                                    "reassociate",
                                    "earlycse",
                                    "dse",
-                                   "peephole",
                                    "dce",
                                    "late-cleanup"});
             ilpm.runPipeline(mod, "codegen-O2");

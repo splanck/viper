@@ -231,6 +231,35 @@ TEST(IL, testCBrSameTarget)
     ASSERT_TRUE(verifyResult && "Module should verify after DCE");
 }
 
+TEST(IL, testEntryParamPrefixPreservedWhenIdsDiffer)
+{
+    Module module;
+    il::build::IRBuilder builder(module);
+
+    Function &fn = builder.startFunction(
+        "test_entry_prefix", Type(Type::Kind::I64), {Param{"self", Type(Type::Kind::Ptr), 0}});
+    builder.createBlock(fn, "entry", fn.params);
+
+    BasicBlock &entry = fn.blocks[0];
+    ASSERT_EQ(fn.params.size(), 1u);
+    ASSERT_EQ(entry.params.size(), 1u);
+    ASSERT_NE(fn.params[0].id, entry.params[0].id);
+
+    builder.setInsertPoint(entry);
+    builder.emitRet(Value::constInt(0), {});
+
+    auto verifyResult = il::verify::Verifier::verify(module);
+    ASSERT_TRUE(verifyResult && "Module should verify before DCE");
+
+    il::transform::dce(module);
+
+    ASSERT_EQ(entry.params.size(), 1u);
+    ASSERT_EQ(entry.params[0].name, "self");
+
+    verifyResult = il::verify::Verifier::verify(module);
+    ASSERT_TRUE(verifyResult && "Module should verify after DCE");
+}
+
 TEST(IL, testManyParamsAndPreds)
 {
     Module module;

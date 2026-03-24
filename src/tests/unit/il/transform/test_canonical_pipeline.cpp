@@ -157,6 +157,29 @@ TEST(CanonicalPipeline, O2PipelineContainsKeyPasses)
     EXPECT_TRUE(hasCheckOpt);
 }
 
+TEST(CanonicalPipeline, O2PipelineExcludesUnsafePasses)
+{
+    PassManager pm;
+    const PassManager::Pipeline *pipeline = pm.getPipeline("O2");
+    ASSERT_NE(pipeline, nullptr);
+
+    bool hasMem2Reg = false;
+    bool hasLICM = false;
+    bool hasPeephole = false;
+    for (const auto &id : *pipeline)
+    {
+        if (id == "mem2reg")
+            hasMem2Reg = true;
+        if (id == "licm")
+            hasLICM = true;
+        if (id == "peephole")
+            hasPeephole = true;
+    }
+    EXPECT_FALSE(hasMem2Reg);
+    EXPECT_FALSE(hasLICM);
+    EXPECT_FALSE(hasPeephole);
+}
+
 // runPipeline returns true for all registered canonical pipeline IDs.
 TEST(CanonicalPipeline, RunPipelineSucceedsForRegisteredIds)
 {

@@ -49,8 +49,10 @@ int compileToNative(const std::string &ilPath, const std::string &outputPath, Ta
 {
     if (arch == TargetArch::ARM64)
     {
-        // Build argv for cmd_codegen_arm64: [file.il, -o, output, -O1]
-        std::vector<std::string> storage = {ilPath, "-o", outputPath, "-O1"};
+        // The frontend already emitted the final IL. Do not re-run an IL
+        // optimization pipeline here; that can double-optimize build output
+        // and introduce correctness regressions.
+        std::vector<std::string> storage = {ilPath, "-o", outputPath, "-O0"};
         std::vector<char *> argv;
         argv.reserve(storage.size());
         for (auto &s : storage)
@@ -62,7 +64,7 @@ int compileToNative(const std::string &ilPath, const std::string &outputPath, Ta
     viper::codegen::x64::CodegenPipeline::Options opts;
     opts.input_il_path = ilPath;
     opts.output_obj_path = outputPath;
-    opts.optimize = 1;
+    opts.optimize = 0;
 
     viper::codegen::x64::CodegenPipeline pipeline(opts);
     PipelineResult result = pipeline.run();

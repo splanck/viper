@@ -1,0 +1,35 @@
+module palette_canvas_probe;
+
+bind Viper.Graphics;
+bind Viper.Terminal;
+bind "./colors";
+
+func main() {
+    var gfx = new Canvas("Palette Probe", 220, 220);
+    var cm = new ColorManager();
+    var paletteX = 10;
+    var paletteY = 10;
+    var cellSize = 20;
+    var cols = 4;
+    var i = 0;
+
+    gfx.Clear(0x202020);
+
+    while i < 64 {
+        var row = i / cols;
+        var col = i % cols;
+        var cx = paletteX + col * (cellSize + 2);
+        var cy = paletteY + row * (cellSize + 2);
+        var color = cm.getPaletteColor(i);
+        gfx.Box(cx, cy, cellSize, cellSize, color);
+        i = i + 1;
+    }
+
+    var snap = gfx.Screenshot();
+    SayInt(snap.SaveBmp("/tmp/palette_canvas_probe.bmp"));
+
+    SayInt(gfx.GetPixel(20, 20)); // index 0 center
+    SayInt(gfx.GetPixel(42, 20)); // index 1 center
+    SayInt(gfx.GetPixel(20, 42)); // index 4 center
+    SayInt(gfx.GetPixel(86, 174)); // lower palette sample
+}

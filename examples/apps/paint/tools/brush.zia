@@ -48,6 +48,11 @@ entity BrushTool {
     }
 
     expose func onMouseUp(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager, brushSettings: BrushSettings) {
+        if drawing == 1 {
+            drawBrushLine(lastX, lastY, x, y, canvas, colors, brushSettings);
+            lastX = x;
+            lastY = y;
+        }
         drawing = 0;
     }
 

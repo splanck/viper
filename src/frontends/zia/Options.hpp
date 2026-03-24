@@ -37,8 +37,8 @@ namespace il::frontends::zia
 enum class OptLevel
 {
     O0 = 0, ///< Minimal optimization (simplify-cfg, dce only).
-    O1 = 1, ///< Standard optimization (mem2reg, sccp, licm, peephole).
-    O2 = 2  ///< Aggressive optimization (includes inlining, gvn, dse).
+    O1 = 1, ///< Standard optimization (scalar cleanup plus conservative inline).
+    O2 = 2  ///< Aggressive optimization (loop opts, inline, gvn, dse).
 };
 
 /// @brief Options controlling Zia compilation behavior.

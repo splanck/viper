@@ -1,0 +1,27 @@
+module palette_probe;
+
+bind Viper.Terminal;
+bind "./colors";
+
+func main() {
+    var cm = new ColorManager();
+    var i = 0;
+    var nonzero = 0;
+    var checksum = 0;
+
+    while i < 64 {
+        var color = cm.getPaletteColor(i);
+        if color != 0 {
+            nonzero = nonzero + 1;
+        }
+        checksum = checksum + color;
+        i = i + 1;
+    }
+
+    SayInt(cm.paletteCount);
+    SayInt(nonzero);
+    SayInt(cm.getPaletteColor(0));
+    SayInt(cm.getPaletteColor(1));
+    SayInt(cm.getPaletteColor(63));
+    SayInt(checksum);
+}

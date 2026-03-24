@@ -631,17 +631,18 @@ entity PaintApp {
         // Swap indicator
         gfx.Text( swatchX + swatchSize + 16, swatchY + 8, "X", config.UI_TEXT_DIM);
 
-        // Draw color palette (4 columns x 16 rows = 64 colors)
+        // Draw color palette.
         var paletteX = panelX + 6;
         var paletteY = swatchY + swatchSize + 20;
-        var cellSize = 20;
-        var cols = 4;
+        var cellSize = config.PALETTE_CELL_SIZE;
+        var cols = config.PALETTE_COLS;
+        var gap = config.PALETTE_MARGIN;
         var i = 0;
-        while i < 64 {
+        while i < colors.paletteCount {
             var row = i / cols;
             var col = i % cols;
-            var cx = paletteX + col * (cellSize + 2);
-            var cy = paletteY + row * (cellSize + 2);
+            var cx = paletteX + col * (cellSize + gap);
+            var cy = paletteY + row * (cellSize + gap);
             var color = colors.getPaletteColor(i);
 
             gfx.Box( cx, cy, cellSize, cellSize, color);
@@ -652,11 +653,11 @@ entity PaintApp {
         // Handle palette left-click (set foreground) and right-click (set background)
         if mouseDown == 1 and lastMouseDown == 0 {
             i = 0;
-            while i < 64 {
+            while i < colors.paletteCount {
                 var row = i / cols;
                 var col = i % cols;
-                var cx = paletteX + col * (cellSize + 2);
-                var cy = paletteY + row * (cellSize + 2);
+                var cx = paletteX + col * (cellSize + gap);
+                var cy = paletteY + row * (cellSize + gap);
                 if mouseX >= cx and mouseX < cx + cellSize and mouseY >= cy and mouseY < cy + cellSize {
                     colors.setForeground(colors.getPaletteColor(i));
                 }
@@ -665,11 +666,11 @@ entity PaintApp {
         }
         if mouseRight == 1 and lastMouseRight == 0 {
             i = 0;
-            while i < 64 {
+            while i < colors.paletteCount {
                 var row = i / cols;
                 var col = i % cols;
-                var cx = paletteX + col * (cellSize + 2);
-                var cy = paletteY + row * (cellSize + 2);
+                var cx = paletteX + col * (cellSize + gap);
+                var cy = paletteY + row * (cellSize + gap);
                 if mouseX >= cx and mouseX < cx + cellSize and mouseY >= cy and mouseY < cy + cellSize {
                     colors.setBackground(colors.getPaletteColor(i));
                     statusMessage = "Background color set";

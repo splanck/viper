@@ -426,15 +426,19 @@ void dce(Module &M)
             if (!B.instructions.empty() && B.instructions.front().op == il::core::Opcode::EhEntry)
                 continue;
 
-            // For the entry block, build a set of function-argument param IDs
-            // that must never be removed (external callers pass a fixed number
-            // of arguments matching the function signature).  Params added by
-            // mem2reg or other passes ARE removable if unused.
+            // For the entry block, preserve the ABI-visible function-argument
+            // prefix. Frontend-built modules may use distinct temp IDs for the
+            // function params and the entry-block shadow params until the IL is
+            // serialized and parsed again. The calling convention is positional,
+            // so DCE must keep the leading entry params even when their IDs do
+            // not match F.params.
             std::unordered_set<unsigned> funcParamIds;
+            size_t entryAbiParamCount = 0;
             if (&B == &F.blocks.front())
             {
                 for (const auto &fp : F.params)
                     funcParamIds.insert(fp.id);
+                entryAbiParamCount = F.params.size();
             }
 
             // Identify which param indices to keep.
@@ -443,8 +447,10 @@ void dce(Module &M)
             for (size_t i = 0; i < numParams; ++i)
             {
                 const unsigned id = B.params[i].id;
-                // Always keep function-argument params in the entry block.
-                if (funcParamIds.count(id))
+                // Always keep the entry-block prefix that corresponds to the
+                // function signature. Preserve ID matches too so serialized IL
+                // and hand-written modules keep the old fast path.
+                if (i < entryAbiParamCount || funcParamIds.count(id))
                 {
                     keepIndices.push_back(i);
                     continue;

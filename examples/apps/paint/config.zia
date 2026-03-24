@@ -24,9 +24,9 @@ final BRUSH_PANEL_HEIGHT = 80;
 final TOOL_BUTTON_SIZE = 36;
 final TOOL_BUTTON_MARGIN = 4;
 
-// Color palette (4 cols x 8 rows = 32 colors)
-final PALETTE_CELL_SIZE = 20;
-final PALETTE_COLS = 4;
+// Color palette (8 cols x 8 rows = 64 colors)
+final PALETTE_CELL_SIZE = 10;
+final PALETTE_COLS = 8;
 final PALETTE_MARGIN = 2;
 
 // Brush limits

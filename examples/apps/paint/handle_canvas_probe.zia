@@ -1,0 +1,141 @@
+module handle_canvas_probe;
+
+bind Viper.Terminal;
+bind "./config";
+bind "./canvas";
+bind "./colors";
+bind "./brush";
+bind "./tools/pencil";
+bind "./tools/brush";
+
+func countInk(dc: DrawingCanvas) -> Integer {
+    var count = 0;
+    var y = 0;
+    while y < dc.height {
+        var x = 0;
+        while x < dc.width {
+            if dc.getPixel(x, y) != 0xFFFFFF {
+                count = count + 1;
+            }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    return count;
+}
+
+entity ProbeApp {
+    hide DrawingCanvas canvas;
+    hide ColorManager colors;
+    hide BrushSettings brushSettings;
+    hide PencilTool pencilTool;
+    hide BrushTool brushTool;
+
+    hide Integer currentTool;
+    hide Integer mouseDown;
+    hide Integer lastMouseDown;
+    hide Integer mouseX;
+    hide Integer mouseY;
+    hide Integer canvasOffsetX;
+    hide Integer canvasOffsetY;
+
+    expose func init() {
+        canvas = new DrawingCanvas();
+        canvas.initWithSize(32, 32);
+        colors = new ColorManager();
+        brushSettings = new BrushSettings();
+        brushSettings.setSize(4);
+        pencilTool = new PencilTool();
+        brushTool = new BrushTool();
+        currentTool = config.TOOL_BRUSH;
+        mouseDown = 0;
+        lastMouseDown = 0;
+        mouseX = 0;
+        mouseY = 0;
+        canvasOffsetX = 0;
+        canvasOffsetY = 0;
+    }
+
+    expose func step(nextMouseDown: Integer, nextX: Integer, nextY: Integer) {
+        lastMouseDown = mouseDown;
+        mouseDown = nextMouseDown;
+        mouseX = nextX;
+        mouseY = nextY;
+        handleCanvasInput();
+    }
+
+    expose func clearAndSelect(toolId: Integer) {
+        canvas.clear();
+        currentTool = toolId;
+        mouseDown = 0;
+        lastMouseDown = 0;
+        mouseX = 0;
+        mouseY = 0;
+    }
+
+    expose func ink() -> Integer {
+        return countInk(canvas);
+    }
+
+    hide func handleCanvasInput() {
+        var cx = mouseX - canvasOffsetX;
+        var cy = mouseY - canvasOffsetY;
+        var inCanvas = 0;
+        if cx >= 0 and cx < canvas.width and cy >= 0 and cy < canvas.height {
+            inCanvas = 1;
+        }
+
+        if inCanvas == 0 {
+            return;
+        }
+
+        if mouseDown == 1 and lastMouseDown == 0 {
+            onCanvasMouseDown(cx, cy);
+        } else if mouseDown == 1 and lastMouseDown == 1 {
+            onCanvasMouseMove(cx, cy);
+        } else if mouseDown == 0 and lastMouseDown == 1 {
+            onCanvasMouseUp(cx, cy);
+        }
+    }
+
+    hide func onCanvasMouseDown(x: Integer, y: Integer) {
+        if currentTool == config.TOOL_PENCIL {
+            pencilTool.onMouseDown(x, y, canvas, colors);
+        } else if currentTool == config.TOOL_BRUSH {
+            brushTool.onMouseDown(x, y, canvas, colors, brushSettings);
+        }
+    }
+
+    hide func onCanvasMouseMove(x: Integer, y: Integer) {
+        if currentTool == config.TOOL_PENCIL {
+            pencilTool.onMouseMove(x, y, canvas, colors);
+        } else if currentTool == config.TOOL_BRUSH {
+            brushTool.onMouseMove(x, y, canvas, colors, brushSettings);
+        }
+    }
+
+    hide func onCanvasMouseUp(x: Integer, y: Integer) {
+        if currentTool == config.TOOL_PENCIL {
+            pencilTool.onMouseUp(x, y, canvas, colors);
+        } else if currentTool == config.TOOL_BRUSH {
+            brushTool.onMouseUp(x, y, canvas, colors, brushSettings);
+        }
+    }
+}
+
+func main() {
+    var app = new ProbeApp();
+    app.init();
+
+    app.clearAndSelect(config.TOOL_PENCIL);
+    app.step(1, 2, 2);
+    app.step(1, 10, 2);
+    app.step(0, 10, 2);
+    SayInt(app.ink());
+
+    app.clearAndSelect(config.TOOL_BRUSH);
+    app.step(1, 2, 10);
+    app.step(1, 10, 10);
+    app.step(0, 10, 10);
+    SayInt(app.ink());
+}

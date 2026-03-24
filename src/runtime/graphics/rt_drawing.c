@@ -25,8 +25,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_graphics_internal.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 #ifdef VIPER_ENABLE_GRAPHICS
+
+static int rt_trace_canvas_box_enabled(void)
+{
+    static int cached = -1;
+    if (cached == -1)
+        cached = getenv("VIPER_TRACE_CANVAS_BOX") ? 1 : 0;
+    return cached;
+}
 
 void rt_canvas_line(void *canvas_ptr, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t color)
 {
@@ -45,8 +55,22 @@ void rt_canvas_line(void *canvas_ptr, int64_t x1, int64_t y1, int64_t x2, int64_
 
 void rt_canvas_box(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color)
 {
+    static int trace_count = 0;
     if (!canvas_ptr)
         return;
+
+    if (rt_trace_canvas_box_enabled() && trace_count < 32)
+    {
+        fprintf(stderr,
+                "[rt_canvas_box] #%d x=%lld y=%lld w=%lld h=%lld color=%#llx\n",
+                trace_count,
+                (long long)x,
+                (long long)y,
+                (long long)w,
+                (long long)h,
+                (unsigned long long)color);
+        ++trace_count;
+    }
 
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (canvas->gfx_win)
@@ -752,7 +776,7 @@ int64_t rt_canvas_get_pixel(void *canvas_ptr, int64_t x, int64_t y)
         return 0;
 
     vgfx_color_t color;
-    if (vgfx_point(canvas->gfx_win, (int32_t)x, (int32_t)y, &color) == 0)
+    if (vgfx_point(canvas->gfx_win, (int32_t)x, (int32_t)y, &color) != 0)
     {
         return (int64_t)color;
     }
@@ -827,7 +851,7 @@ int64_t rt_canvas_save_bmp(void *canvas_ptr, rt_string path)
         return 0;
 
     int32_t w, h;
-    if (vgfx_get_size(canvas->gfx_win, &w, &h) != 0)
+    if (vgfx_get_size(canvas->gfx_win, &w, &h) == 0)
         return 0;
 
     // Create a temporary Pixels buffer with canvas contents
@@ -853,7 +877,7 @@ int64_t rt_canvas_save_png(void *canvas_ptr, rt_string path)
         return 0;
 
     int32_t w, h;
-    if (vgfx_get_size(canvas->gfx_win, &w, &h) != 0)
+    if (vgfx_get_size(canvas->gfx_win, &w, &h) == 0)
         return 0;
 
     void *pixels = rt_canvas_copy_rect(canvas_ptr, 0, 0, w, h);

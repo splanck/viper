@@ -349,7 +349,7 @@ void *rt_canvas_screenshot(void *canvas_ptr)
         return NULL;
 
     int32_t w, h;
-    if (vgfx_get_size(canvas->gfx_win, &w, &h) != 0)
+    if (vgfx_get_size(canvas->gfx_win, &w, &h) == 0)
         return NULL;
 
     return rt_canvas_copy_rect(canvas_ptr, 0, 0, w, h);
