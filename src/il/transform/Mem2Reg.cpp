@@ -31,6 +31,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <iostream>
 
 using namespace il::core;
 
@@ -458,6 +459,14 @@ static void promoteVariables(Function &F,
         return;
 
     unsigned nextId = viper::il::nextTempId(F);
+
+    if (std::getenv("VIPER_MEM2REG_TRACE"))
+    {
+        std::cerr << "[mem2reg] " << F.name << ": promoting " << vars.size()
+                  << " vars, nextId=" << nextId << "\n";
+        for (auto &[id, vs] : vars)
+            std::cerr << "[mem2reg]   var %" << id << " type=" << vs.type.toString() << "\n";
+    }
 
     BlockMap blocks;
     blocks.reserve(F.blocks.size());

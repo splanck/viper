@@ -355,12 +355,25 @@ bool canonicalizeParamsAndArgs(SimplifyCFG::SimplifyCFGPassContext &ctx)
         }
     }
 
+    // Build a set of function-argument param IDs for entry block protection.
+    std::unordered_set<unsigned> funcParamIds;
+    for (const auto &fp : F.params)
+        funcParamIds.insert(fp.id);
+
     for (auto &block : F.blocks)
     {
         if (ctx.isEHSensitive(block))
             continue;
 
         if (block.params.empty())
+            continue;
+
+        // For the entry block, only remove params that are NOT function arguments
+        // and are genuinely unused. Function-argument params must be preserved
+        // because external callers pass a fixed number of arguments.
+        // Skip shrink/drop entirely for entry block to be safe — let DCE handle it
+        // with its own funcParamId protection.
+        if (&block == &F.blocks.front())
             continue;
 
         const size_t beforeShrink = block.params.size();

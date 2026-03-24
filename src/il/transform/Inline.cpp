@@ -379,7 +379,8 @@ bool inlineCallSite(Function &caller,
                     const Function &callee,
                     unsigned callDepth,
                     unsigned maxDepth,
-                    BlockDepthMap &depths)
+                    BlockDepthMap &depths,
+                    const std::unordered_map<std::string, const Function *> &functionLookup)
 {
     if (callDepth >= maxDepth)
         return false;
@@ -518,10 +519,28 @@ bool inlineCallSite(Function &caller,
         }
     }
 
+    // Build set of alloca result IDs — allocas are function-scoped resources
+    // that persist after call-block truncation.  They must NOT be threaded
+    // through continuation block parameters because:
+    //   1. The alloca definition survives in the truncated call block.
+    //   2. Escaping an alloca creates a bridge reference (Value::temp(origId))
+    //      that DCE can orphan when it removes write-only allocas.
+    //   3. The continuation can reference the alloca directly.
+    std::unordered_set<unsigned> allocaIds;
+    for (const auto &bb : caller.blocks)
+    {
+        for (const auto &instr : bb.instructions)
+        {
+            if (instr.op == Opcode::Alloca && instr.result)
+                allocaIds.insert(*instr.result);
+        }
+    }
+
     std::vector<unsigned> escapedIds;
     for (unsigned id : contUsed)
     {
-        if (contDefined.find(id) == contDefined.end())
+        if (contDefined.find(id) == contDefined.end() &&
+            allocaIds.find(id) == allocaIds.end())
             escapedIds.push_back(id);
     }
     std::sort(escapedIds.begin(), escapedIds.end());
@@ -571,7 +590,21 @@ bool inlineCallSite(Function &caller,
             {
                 if (ins.result && *ins.result == origId)
                 {
-                    p.type = ins.type;
+                    // Call instruction types are canonically Void for non-F64
+                    // returns (only F64 is recorded for register-class selection).
+                    // Resolve the actual return type from the module's function
+                    // lookup to avoid typing escaped Call results as Void.
+                    if (ins.op == Opcode::Call && ins.type.kind == Type::Kind::Void)
+                    {
+                        auto calleeFnIt = functionLookup.find(ins.callee);
+                        if (calleeFnIt != functionLookup.end())
+                            p.type = calleeFnIt->second->retType;
+                        // else: external/unresolved call — keep I64 fallback
+                    }
+                    else
+                    {
+                        p.type = ins.type;
+                    }
                     info.typeFound = true;
                 }
             }
@@ -674,14 +707,21 @@ bool inlineCallSite(Function &caller,
         clone.label = labelMap.at(srcBlock.label);
 
         // Clone block parameters with fresh IDs.
+        // Use unique names to avoid collision with caller-scope temps that have
+        // the same numeric names but different types (e.g., caller has %t8:ptr,
+        // callee has %t8:i64). Without uniquification, the IL verifier may
+        // resolve a branch argument to the wrong definition in scope.
         clone.params.reserve(srcBlock.params.size());
         for (const auto &param : srcBlock.params)
         {
             Param p = param;
             p.id = nextId++;
-            clone.params.push_back(p);
             valueMap[param.id] = Value::temp(p.id);
-            ensureValueName(caller, p.id, lookupValueName(callee, param.id, param.name));
+            std::string origName = lookupValueName(callee, param.id, param.name);
+            std::string uniqueName = origName + "_il" + std::to_string(p.id);
+            p.name = uniqueName; // Update the Param's own name to avoid collision
+            clone.params.push_back(p);
+            ensureValueName(caller, p.id, uniqueName);
         }
 
         for (size_t idx = 0; idx < srcBlock.instructions.size(); ++idx)
@@ -747,7 +787,11 @@ bool inlineCallSite(Function &caller,
             {
                 cloned.result = nextId;
                 valueMap[*CI.result] = Value::temp(nextId);
-                ensureValueName(caller, nextId, lookupValueName(callee, *CI.result, ""));
+                std::string origName = lookupValueName(callee, *CI.result, "");
+                std::string uniqueName = origName.empty()
+                                             ? ("t" + std::to_string(nextId))
+                                             : (origName + "_il" + std::to_string(nextId));
+                ensureValueName(caller, nextId, uniqueName);
                 ++nextId;
             }
 
@@ -778,13 +822,21 @@ bool inlineCallSite(Function &caller,
         args.reserve(origEntryParams.size());
         for (const auto &ep : origEntryParams)
         {
+            bool found = false;
             for (size_t k = 0; k < callee.params.size(); ++k)
             {
                 if (callee.params[k].id == ep.id && k < callInstr.operands.size())
                 {
                     args.push_back(callInstr.operands[k]);
+                    found = true;
                     break;
                 }
+            }
+            if (!found)
+            {
+                // Entry block param has no matching function param — bail out.
+                // This can happen after SimplifyCFG/mem2reg rewrites params.
+                return false;
             }
         }
         jump.brArgs.push_back(std::move(args));
@@ -841,6 +893,7 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
     for (size_t fnIdx = 0; fnIdx < module.functions.size(); ++fnIdx)
     {
         Function &caller = module.functions[fnIdx];
+
         // Snapshot block count: only iterate ORIGINAL blocks, not ones added
         // by inlining. Newly inlined blocks will be handled on the next pass
         // invocation. This prevents unbounded growth when inlined code contains
@@ -899,7 +952,8 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
 
                 unsigned depth = getBlockDepth(depths, caller.name, block.label);
                 if (!inlineCallSite(
-                        caller, blockIdx, instIdx, *callee, depth, config_.maxInlineDepth, depths))
+                        caller, blockIdx, instIdx, *callee, depth, config_.maxInlineDepth, depths,
+                        functionLookup))
                 {
                     ++instIdx;
                     continue;

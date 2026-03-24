@@ -407,14 +407,15 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
                     continue;
                 }
 
-                // Readonly calls need the same alias-safety check as loads:
-                // if a loop store may alias memory the call reads, the call
-                // cannot be hoisted (it would observe a stale value).
-                if (callHoist == CallHoistKind::ReadOnly && !loopStores.empty())
+                // Readonly calls need the same memory-safety guard as loads:
+                // mutating calls inside the loop can also change the memory the
+                // readonly call observes, even when there are no explicit Store
+                // instructions in the loop body.
+                if (callHoist == CallHoistKind::ReadOnly && (loopHasMod || !loopStores.empty()))
                 {
                     // Conservative: readonly calls may read any memory, and we
-                    // cannot know the precise address set.  Only hoist when the
-                    // loop has no stores at all.
+                    // cannot know the precise address set. Only hoist when the
+                    // loop has no mutating memory operations at all.
                     ++idx;
                     continue;
                 }

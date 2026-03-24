@@ -153,7 +153,7 @@ TEST(InlinerThreshold, DefaultThresholdsAreUpdated)
 {
     il::transform::InlineCostConfig cfg;
     EXPECT_EQ(cfg.instrThreshold, 80u);
-    EXPECT_EQ(cfg.blockBudget, 8u);
+    EXPECT_EQ(cfg.blockBudget, 1u);
     EXPECT_EQ(cfg.maxInlineDepth, 3u);
 }
 

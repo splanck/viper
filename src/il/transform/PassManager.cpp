@@ -121,22 +121,22 @@ PassManager::PassManager()
 
     // Pre-register common pipelines
     registerPipeline("O0", {"simplify-cfg", "dce"});
+    // mem2reg and IL peephole are disabled due to correctness bugs:
+    // - mem2reg: incorrect SSA promotion corrupts loop counters
+    // - IL peephole: global replaceAll + DCE param compaction breaks values
+    // inline is intentionally excluded from O1: it still miscompiles
+    // sqldb-scale IL after the early scalar cleanup passes, producing invalid
+    // loads in SqlValue.compare and corrupting native O1 demo builds.
     registerPipeline("O1",
                      {"simplify-cfg",
-                      "mem2reg",
-                      "simplify-cfg",
                       "sccp",
                       "constfold",
                       "dce",
                       "simplify-cfg",
-                      "inline",
-                      "simplify-cfg",
                       "sccp",
                       "dce",
                       "licm",
-                      "simplify-cfg",
-                      "peephole",
-                      "dce"});
+                      "simplify-cfg"});
     // O2 pipeline with interprocedural constant propagation:
     // Run SCCP both before (to simplify callees) and after inline
     // (to propagate constants through inlined code from call sites).

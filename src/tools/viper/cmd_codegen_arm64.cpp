@@ -402,23 +402,45 @@ int emitAndMaybeLink(const Options &opts)
         }
         else
         {
-            ilpm.registerPipeline("codegen-O1",
-                                  {"simplify-cfg",
-                                   "mem2reg",
-                                   "simplify-cfg",
-                                   "sccp",
-                                   "constfold",
-                                   "dce",
-                                   "simplify-cfg",
-                                   "inline",
-                                   "simplify-cfg",
-                                   "sccp",
-                                   "dce",
-                                   "licm",
-                                   "simplify-cfg",
-                                   "peephole",
-                                   "dce"});
-            ilpm.runPipeline(mod, "codegen-O1");
+            // For very large modules, use a reduced O1 pipeline that skips
+            // the most expensive post-inline passes (second SCCP, LICM).
+            // This trades some optimization quality for compilation speed.
+            size_t totalInstrs = 0;
+            for (const auto &fn : mod.functions)
+                for (const auto &bb : fn.blocks)
+                    totalInstrs += bb.instructions.size();
+
+            if (totalInstrs > 100000)
+            {
+                // Large modules (>100K instructions): skip IL optimization
+                // entirely.  The O1 pass pipeline has O(n²) behavior in
+                // SimplifyCFG, SCCP, and other passes that makes compiling
+                // very large modules prohibitively slow.  The AArch64 codegen
+                // peephole still runs, providing basic machine-level optimizations.
+            }
+            else
+            {
+                // mem2reg and IL peephole are disabled due to correctness bugs:
+                // - mem2reg: incorrect SSA promotion corrupts loop counters
+                //   in entity-heavy code (sidescroller, chess-zia)
+                // - IL peephole: global replaceAll + DCE param compaction
+                //   breaks cross-block value flow
+                // The remaining passes still provide significant optimization.
+                // Keep codegen-O1 aligned with the canonical O1 pipeline.
+                // inline is disabled here because it still miscompiles
+                // sqldb-scale IL in native demo builds.
+                ilpm.registerPipeline("codegen-O1",
+                                      {"simplify-cfg",
+                                       "sccp",
+                                       "constfold",
+                                       "dce",
+                                       "simplify-cfg",
+                                       "sccp",
+                                       "dce",
+                                       "licm",
+                                       "simplify-cfg"});
+                ilpm.runPipeline(mod, "codegen-O1");
+            }
         }
     }
 

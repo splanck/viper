@@ -95,7 +95,7 @@ build_demo() {
 
     # Step 2: Native codegen — binary encoder + native linker.
     echo -n "  Codegen (native asm+link)... "
-    if ! "$VIPER" codegen arm64 "$il_file" --native-asm --native-link -o "$exe_file" 2>/tmp/viper_nativebuild_err_$$; then
+    if ! "$VIPER" codegen arm64 "$il_file" --native-asm --native-link -O1 -o "$exe_file" 2>/tmp/viper_nativebuild_err_$$; then
         echo -e "${RED}FAILED${NC}"
         head -20 /tmp/viper_nativebuild_err_$$
         rm -f /tmp/viper_nativebuild_err_$$ "$il_file"

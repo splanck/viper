@@ -211,7 +211,13 @@ void dce(Module &M)
         // Gather allocas and track if they are "observed" (loaded from or used by GEP).
         // An alloca is dead only if it has no uses at all, OR if it's only used by
         // stores (no loads or GEPs that might lead to loads).
+        //
+        // Two-pass approach: first collect all alloca IDs, then mark observations.
+        // This prevents an alloca defined late in block order (e.g., after inlining)
+        // from overwriting observation marks set by earlier loads/GEPs.
         std::unordered_map<unsigned, bool> allocaObserved;
+
+        // Pass 1: Collect all alloca result IDs.
         for (auto &B : F.blocks)
             for (auto &I : B.instructions)
             {
@@ -222,9 +228,16 @@ void dce(Module &M)
                         std::cerr << "[dce] tracking alloca %" << *I.result << " in " << F.name
                                   << "\n";
                 }
+            }
+
+        // Pass 2: Mark allocas as observed based on their uses.
+        for (auto &B : F.blocks)
+            for (auto &I : B.instructions)
+            {
                 // Mark as observed if loaded from directly
                 if (I.op == Opcode::Load && !I.operands.empty() &&
-                    I.operands[0].kind == Value::Kind::Temp)
+                    I.operands[0].kind == Value::Kind::Temp &&
+                    allocaObserved.count(I.operands[0].id))
                 {
                     allocaObserved[I.operands[0].id] = true;
                     if (traceEnabled())
@@ -233,7 +246,8 @@ void dce(Module &M)
                 }
                 // Mark as observed if used by GEP (GEP computes derived pointer)
                 if (I.op == Opcode::GEP && !I.operands.empty() &&
-                    I.operands[0].kind == Value::Kind::Temp)
+                    I.operands[0].kind == Value::Kind::Temp &&
+                    allocaObserved.count(I.operands[0].id))
                 {
                     allocaObserved[I.operands[0].id] = true;
                     if (traceEnabled())
@@ -245,12 +259,48 @@ void dce(Module &M)
                 {
                     for (auto &op : I.operands)
                     {
-                        if (op.kind == Value::Kind::Temp)
+                        if (op.kind == Value::Kind::Temp && allocaObserved.count(op.id))
                         {
                             allocaObserved[op.id] = true;
                             if (traceEnabled())
                                 std::cerr << "[dce] marking %" << op.id
                                           << " as observed (call arg) in " << F.name << "\n";
+                        }
+                    }
+                }
+                // Mark as observed if used as a store VALUE operand (operands[1]).
+                // After inlining, an alloca pointer may be stored into another
+                // alloca rather than passed directly to a call or GEP.
+                if (I.op == Opcode::Store && I.operands.size() > 1 &&
+                    I.operands[1].kind == Value::Kind::Temp &&
+                    allocaObserved.count(I.operands[1].id))
+                {
+                    allocaObserved[I.operands[1].id] = true;
+                    if (traceEnabled())
+                        std::cerr << "[dce] marking %" << I.operands[1].id
+                                  << " as observed (store value) in " << F.name << "\n";
+                }
+                // Mark as observed if returned — a returned alloca escapes the function.
+                if (I.op == Opcode::Ret && !I.operands.empty() &&
+                    I.operands[0].kind == Value::Kind::Temp &&
+                    allocaObserved.count(I.operands[0].id))
+                {
+                    allocaObserved[I.operands[0].id] = true;
+                    if (traceEnabled())
+                        std::cerr << "[dce] marking %" << I.operands[0].id
+                                  << " as observed (ret) in " << F.name << "\n";
+                }
+                // Mark as observed if used as a branch argument.
+                for (const auto &argList : I.brArgs)
+                {
+                    for (const auto &v : argList)
+                    {
+                        if (v.kind == Value::Kind::Temp && allocaObserved.count(v.id))
+                        {
+                            allocaObserved[v.id] = true;
+                            if (traceEnabled())
+                                std::cerr << "[dce] marking %" << v.id
+                                          << " as observed (branch arg) in " << F.name << "\n";
                         }
                     }
                 }
@@ -376,12 +426,29 @@ void dce(Module &M)
             if (!B.instructions.empty() && B.instructions.front().op == il::core::Opcode::EhEntry)
                 continue;
 
-            // Identify which param indices to keep (those with non-zero use counts).
+            // For the entry block, build a set of function-argument param IDs
+            // that must never be removed (external callers pass a fixed number
+            // of arguments matching the function signature).  Params added by
+            // mem2reg or other passes ARE removable if unused.
+            std::unordered_set<unsigned> funcParamIds;
+            if (&B == &F.blocks.front())
+            {
+                for (const auto &fp : F.params)
+                    funcParamIds.insert(fp.id);
+            }
+
+            // Identify which param indices to keep.
             std::vector<size_t> keepIndices;
             keepIndices.reserve(numParams);
             for (size_t i = 0; i < numParams; ++i)
             {
                 const unsigned id = B.params[i].id;
+                // Always keep function-argument params in the entry block.
+                if (funcParamIds.count(id))
+                {
+                    keepIndices.push_back(i);
+                    continue;
+                }
                 if (id < uses.size() && uses[id] == 0)
                 {
                     if (traceEnabled())

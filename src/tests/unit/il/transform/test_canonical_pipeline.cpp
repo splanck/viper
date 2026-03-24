@@ -99,6 +99,22 @@ TEST(CanonicalPipeline, O1PipelineContainsSCCP)
     EXPECT_TRUE(found);
 }
 
+TEST(CanonicalPipeline, O1PipelineExcludesInline)
+{
+    PassManager pm;
+    const PassManager::Pipeline *pipeline = pm.getPipeline("O1");
+    ASSERT_NE(pipeline, nullptr);
+
+    bool found = false;
+    for (const auto &id : *pipeline)
+        if (id == "inline")
+        {
+            found = true;
+            break;
+        }
+    EXPECT_FALSE(found);
+}
+
 // The canonical O2 pipeline must include SCCP, inline, loop-unroll, check-opt.
 // The old Zia frontend O2 pipeline excluded all of these.
 TEST(CanonicalPipeline, O2PipelineContainsKeyPasses)

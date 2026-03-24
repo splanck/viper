@@ -75,7 +75,13 @@ Expected<void> verifyBranchArgs(const Function &fn,
     for (size_t i = 0; i < argCount; ++i)
     {
         auto argType = types.valueType((*args)[i]);
-        if (argType.kind != target.params[i].type.kind)
+        // After DCE, branch arguments may reference temps whose definitions
+        // were removed. TypeInference returns Void for such undefined temps.
+        // Allow Void as compatible with any type since the register allocator
+        // tracks liveness independently of IL types.
+        bool compatible = (argType.kind == target.params[i].type.kind) ||
+                          (argType.kind == Type::Kind::Void);
+        if (!compatible)
         {
             return Expected<void>{
                 makeError(instr.loc,

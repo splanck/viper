@@ -187,6 +187,46 @@ std::size_t hoistLoopConstants(MFunction &fn)
     {
         if (loop.header == 0)
             continue;
+
+        // Skip "loops" whose header block contains a Ret instruction.
+        // A block with Ret is a function exit, not a real loop header.
+        // Back-edges to such blocks are exit paths, not iteration edges.
+        {
+            bool headerHasRet = false;
+            if (loop.header < fn.blocks.size())
+            {
+                for (const auto &mi : fn.blocks[loop.header].instrs)
+                {
+                    if (mi.opc == MOpcode::Ret)
+                    {
+                        headerHasRet = true;
+                        break;
+                    }
+                }
+            }
+            if (headerHasRet)
+                continue;
+        }
+
+        // Skip "loops" whose header has multiple predecessors from outside the loop.
+        // These are typically if/else merge points misidentified as loop headers.
+        // A true loop header has exactly one entry edge from outside the loop (the
+        // preheader) plus one back-edge from within the loop (the latch).
+        {
+            auto pit = preds.find(loop.header);
+            if (pit != preds.end())
+            {
+                int outsidePreds = 0;
+                for (std::size_t p : pit->second)
+                {
+                    if (!loop.body.count(p))
+                        ++outsidePreds;
+                }
+                if (outsidePreds > 1)
+                    continue; // merge point, not a proper loop header
+            }
+        }
+
         const std::size_t preIdx = loop.header - 1;
 
         bool preInLoop = false;
@@ -239,6 +279,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
         {
             std::size_t movriCount{0};
             std::size_t otherDefCount{0};
+            std::size_t useWithoutDefBlocks{0}; // blocks that USE but don't DEFINE
             int64_t immValue{0};
         };
 
@@ -249,6 +290,32 @@ std::size_t hoistLoopConstants(MFunction &fn)
             if (bi >= fn.blocks.size())
                 continue;
             const auto &instrs = fn.blocks[bi].instrs;
+
+            // Per-block: track which callee-saved GPRs are defined vs used
+            std::unordered_set<uint32_t> definedInBlock;
+            std::unordered_set<uint32_t> usedInBlock;
+            for (const auto &mi : instrs)
+            {
+                if (mi.opc == MOpcode::MovRI && mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
+                    mi.ops[0].reg.cls == RegClass::GPR && isCalleeSavedGPR(mi.ops[0].reg.idOrPhys))
+                    definedInBlock.insert(mi.ops[0].reg.idOrPhys);
+                // Check uses (non-def operands)
+                std::size_t startOp = isNonDefOpc(mi.opc) ? 0 : 1;
+                for (std::size_t oi = startOp; oi < mi.ops.size(); ++oi)
+                {
+                    if (mi.ops[oi].kind == MOperand::Kind::Reg && mi.ops[oi].reg.isPhys &&
+                        mi.ops[oi].reg.cls == RegClass::GPR &&
+                        isCalleeSavedGPR(mi.ops[oi].reg.idOrPhys))
+                        usedInBlock.insert(mi.ops[oi].reg.idOrPhys);
+                }
+            }
+            // Count blocks that USE a register without defining it in the same block
+            for (uint32_t r : usedInBlock)
+            {
+                if (!definedInBlock.count(r))
+                    regDefs[r].useWithoutDefBlocks++;
+            }
+
             for (std::size_t ii = 0; ii < instrs.size(); ++ii)
             {
                 const auto &mi = instrs[ii];
@@ -298,6 +365,12 @@ std::size_t hoistLoopConstants(MFunction &fn)
             if (info.movriCount == 0 || info.otherDefCount > 0)
                 continue;
             if (!isCalleeSavedGPR(phys))
+                continue;
+            // If any loop body block uses this register without a local MovRI
+            // definition, the hoisted value from the preheader might not reach
+            // that block (e.g., mutually exclusive if/else branches where only
+            // one side has the MovRI). Refuse to hoist in this case.
+            if (info.useWithoutDefBlocks > 0)
                 continue;
 
             auto git = globallyHoisted.find(phys);
@@ -351,7 +424,31 @@ std::size_t hoistLoopConstants(MFunction &fn)
             {
                 if (bi >= fn.blocks.size())
                     continue;
+
+                // Don't remove MovRI from blocks that have predecessors outside
+                // the loop body. Such blocks are reachable from paths where the
+                // preheader's hoisted MovRI hasn't executed, so removing the
+                // local MovRI would leave the register undefined on those paths.
+                {
+                    auto pit = preds.find(bi);
+                    if (pit != preds.end())
+                    {
+                        bool hasOutsidePred = false;
+                        for (std::size_t p : pit->second)
+                        {
+                            if (!loop.body.count(p) && p != preIdx)
+                            {
+                                hasOutsidePred = true;
+                                break;
+                            }
+                        }
+                        if (hasOutsidePred)
+                            continue; // preserve MovRI in this block
+                    }
+                }
+
                 auto &instrs = fn.blocks[bi].instrs;
+                auto beforeSize = instrs.size();
                 instrs.erase(std::remove_if(instrs.begin(),
                                             instrs.end(),
                                             [phys, &info](const MInstr &mi)
@@ -364,6 +461,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
                                                        mi.ops[1].imm == info.immValue;
                                             }),
                              instrs.end());
+                (void)beforeSize;
             }
 
             // Re-validate insertIdx after erase (defensive: if preIdx were

@@ -58,7 +58,12 @@ PeepholeStats runPeephole(MFunction &fn)
     stats.blocksReordered = static_cast<int>(ph::reorderBlocks(fn));
 
     // Pass 0.5: Hoist loop-invariant MovRI out of loop bodies
-    stats.loopConstsHoisted = static_cast<int>(ph::hoistLoopConstants(fn));
+    // DISABLED: hoistLoopConstants lacks dominator analysis and incorrectly
+    // identifies non-loop control flow (if/else merges, function exits) as loops,
+    // removing MovRI instructions from blocks on mutually exclusive paths.
+    // This caused black ghosts in pacman and crashes in paint at -O1.
+    // Re-enable once the pass has proper dominator-based safety checks.
+    // stats.loopConstsHoisted = static_cast<int>(ph::hoistLoopConstants(fn));
 
     // (Pass 0.6 - loop phi spill elimination - runs after Pass 4.8 below)
 

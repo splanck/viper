@@ -35,8 +35,9 @@ struct InlineCostConfig
     unsigned instrThreshold = 80;
 
     /// Maximum number of blocks in callee.
-    /// Raised from 4 to 8 to allow inlining functions with conditional branches.
-    unsigned blockBudget = 8;
+    /// Limited to single-block callees until multi-block inlining value-flow
+    /// issues are resolved (viperide, chess-zia crash at O1 with blockBudget>1).
+    unsigned blockBudget = 1;
 
     /// Maximum inline depth for nested inlining.
     /// Raised from 2 to 3 to allow deeper utility-function chains to collapse.

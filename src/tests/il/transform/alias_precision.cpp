@@ -277,6 +277,148 @@ TEST(IL, testLICMLoadHoistWithDisjointStore)
     ASSERT_TRUE(loadInPre && !loadInHeader && "load should be hoisted to preheader");
 }
 
+TEST(IL, testLICMReadonlyCallNotHoistedAcrossModCall)
+{
+    Module m;
+    il::build::IRBuilder b(m);
+
+    Function &readFn = b.startFunction("read_state", Type(Type::Kind::I64), {});
+    b.createBlock(readFn, "entry");
+    BasicBlock &readEntry = readFn.blocks.front();
+    {
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands.push_back(Value::constInt(0));
+        readEntry.instructions.push_back(std::move(ret));
+        readEntry.terminated = true;
+    }
+    readFn.attrs().readonly = true;
+    readFn.attrs().nothrow = true;
+
+    Function &advanceFn = b.startFunction("advance_state", Type(Type::Kind::Void), {});
+    b.createBlock(advanceFn, "entry");
+    BasicBlock &advanceEntry = advanceFn.blocks.front();
+    {
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        advanceEntry.instructions.push_back(std::move(ret));
+        advanceEntry.terminated = true;
+    }
+    advanceFn.attrs().nothrow = true;
+
+    Function &fn = b.startFunction("licm_readonly_call", Type(Type::Kind::Void), {});
+    const unsigned loopValueId = b.reserveTempId();
+    const unsigned callResultId = b.reserveTempId();
+    const unsigned sumResultId = b.reserveTempId();
+
+    b.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks.back();
+    b.setInsertPoint(entry);
+    Instr entryBr;
+    entryBr.op = Opcode::Br;
+    entryBr.type = Type(Type::Kind::Void);
+    entryBr.labels = {"loop"};
+    entryBr.brArgs.emplace_back(std::vector<Value>{Value::constInt(1)});
+    entry.instructions.push_back(std::move(entryBr));
+    entry.terminated = true;
+
+    b.createBlock(fn, "loop");
+    BasicBlock &loop = fn.blocks.back();
+    loop.params.push_back({"acc", Type(Type::Kind::I64), loopValueId});
+
+    Instr readonlyCall;
+    readonlyCall.op = Opcode::Call;
+    readonlyCall.type = Type(Type::Kind::I64);
+    readonlyCall.result = callResultId;
+    readonlyCall.callee = "read_state";
+    readonlyCall.CallAttr.readonly = true;
+    readonlyCall.CallAttr.nothrow = true;
+    loop.instructions.push_back(std::move(readonlyCall));
+
+    Instr combine;
+    combine.op = Opcode::IAddOvf;
+    combine.type = Type(Type::Kind::I64);
+    combine.result = sumResultId;
+    combine.operands = {Value::temp(callResultId), Value::temp(loopValueId)};
+    loop.instructions.push_back(std::move(combine));
+
+    Instr mutatingCall;
+    mutatingCall.op = Opcode::Call;
+    mutatingCall.type = Type(Type::Kind::Void);
+    mutatingCall.callee = "advance_state";
+    mutatingCall.CallAttr.nothrow = true;
+    loop.instructions.push_back(std::move(mutatingCall));
+
+    Instr loopBr;
+    loopBr.op = Opcode::Br;
+    loopBr.type = Type(Type::Kind::Void);
+    loopBr.labels = {"latch"};
+    loopBr.brArgs.emplace_back(std::vector<Value>{Value::temp(sumResultId)});
+    loop.instructions.push_back(std::move(loopBr));
+    loop.terminated = true;
+
+    b.createBlock(fn, "latch");
+    BasicBlock &latch = fn.blocks.back();
+    latch.params.push_back({"next", Type(Type::Kind::I64), b.reserveTempId()});
+    Instr back;
+    back.op = Opcode::Br;
+    back.type = Type(Type::Kind::Void);
+    back.labels = {"loop"};
+    back.brArgs.emplace_back(std::vector<Value>{Value::temp(latch.params.front().id)});
+    latch.instructions.push_back(std::move(back));
+    latch.terminated = true;
+
+    b.createBlock(fn, "exit");
+    BasicBlock &exit = fn.blocks.back();
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    exit.instructions.push_back(std::move(ret));
+    exit.terminated = true;
+
+    verifyOrDie(m);
+
+    AnalysisSetup setup;
+    il::transform::AnalysisManager am(m, setup.registry);
+    il::transform::LoopSimplify simplify;
+    auto simplifyPreserved = simplify.run(fn, am);
+    am.invalidateAfterFunctionPass(simplifyPreserved, fn);
+
+    il::transform::LICM licm;
+    auto licmPreserved = licm.run(fn, am);
+    am.invalidateAfterFunctionPass(licmPreserved, fn);
+
+    BasicBlock *preheader = nullptr;
+    BasicBlock *entryBlock = nullptr;
+    BasicBlock *loopHeader = nullptr;
+    for (auto &block : fn.blocks)
+    {
+        if (block.label == "entry")
+            entryBlock = &block;
+        else if (block.label == "loop.preheader")
+            preheader = &block;
+        else if (block.label == "loop")
+            loopHeader = &block;
+    }
+    if (!preheader)
+        preheader = entryBlock;
+    ASSERT_TRUE(preheader != nullptr);
+    ASSERT_TRUE(loopHeader != nullptr);
+
+    bool callInPreheader = false;
+    for (const auto &ins : preheader->instructions)
+        callInPreheader |= ins.op == Opcode::Call && ins.callee == "read_state";
+
+    bool callInLoop = false;
+    for (const auto &ins : loopHeader->instructions)
+        callInLoop |= ins.op == Opcode::Call && ins.callee == "read_state";
+
+    ASSERT_FALSE(callInPreheader);
+    ASSERT_TRUE(callInLoop);
+}
+
 TEST(IL, testGVNRedundantLoadSameField)
 {
     Module m;

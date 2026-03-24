@@ -38,67 +38,14 @@
 namespace
 {
 
-#ifndef NDEBUG
-/// @brief Optionally verify the module before running the pass (debug builds).
-/// @param module Owning module when available.
-void verifyPreconditions(const il::core::Module *module)
-{
-    if (!module)
-        return;
-
-    auto verified = il::verify::Verifier::verify(*module);
-    if (!verified)
-        return; // Input already invalid — skip transformation
-    (void)verified;
-}
-
-/// @brief Optionally verify the module after the pass completes (debug builds).
-/// @param module Owning module when available.
-void verifyPostconditions(const il::core::Module *module)
-{
-    if (!module)
-        return;
-
-    auto verified = il::verify::Verifier::verify(*module);
-    if (!verified)
-        return; // Post-transformation IR invalid — caller detects via semantics
-    (void)verified;
-}
-
-/// @brief Optionally verify the module between transformation iterations.
-/// @param module Owning module when available.
-void verifyIntermediateState(const il::core::Module *module)
-{
-    if (!module)
-        return;
-
-    auto verified = il::verify::Verifier::verify(*module);
-    if (!verified)
-        return; // Transformation produced invalid IR — caller detects via semantics
-    (void)verified;
-}
-#else
-/// @brief No-op verification hook used in release builds.
-/// @param module Ignored module pointer kept for signature parity.
-void verifyPreconditions(const il::core::Module *module)
-{
-    (void)module;
-}
-
-/// @brief No-op verification hook used in release builds after the pass.
-/// @param module Ignored module pointer kept for signature parity.
-void verifyPostconditions(const il::core::Module *module)
-{
-    (void)module;
-}
-
-/// @brief No-op verification hook used in release builds between iterations.
-/// @param module Ignored module pointer kept for signature parity.
-void verifyIntermediateState(const il::core::Module *module)
-{
-    (void)module;
-}
-#endif
+// Verification hooks are no-ops.  The PassManager's -verify-each flag provides
+// per-pass verification when needed for debugging.  Internal per-iteration
+// verification was removed because it verifies the entire module (not just the
+// current function), causing O(F × iterations × verify_cost) overhead that
+// makes O1 compilation prohibitively slow for medium-sized modules.
+void verifyPreconditions(const il::core::Module *) {}
+void verifyPostconditions(const il::core::Module *) {}
+void verifyIntermediateState(const il::core::Module *) {}
 
 /// @brief Mark cached CFG/dominator analyses as stale once the pass modifies IR.
 /// @param function Function whose analyses must be invalidated.
