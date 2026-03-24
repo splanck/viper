@@ -124,9 +124,11 @@ PassManager::PassManager()
     // mem2reg and IL peephole are disabled due to correctness bugs:
     // - mem2reg: incorrect SSA promotion corrupts loop counters
     // - IL peephole: global replaceAll + DCE param compaction breaks values
-    // inline is intentionally excluded from O1: it still miscompiles
-    // sqldb-scale IL after the early scalar cleanup passes, producing invalid
-    // loads in SqlValue.compare and corrupting native O1 demo builds.
+    // inline is re-enabled in O1 with conservative eligibility checks:
+    // block insertion now preserves textual def-before-use ordering, and
+    // callees with allocas / non-scalar signatures remain non-inlineable.
+    // licm is also excluded from O1 for now: even after the current loop-load
+    // fixes it still corrupts sqldb persistence stress under native O1.
     registerPipeline("O1",
                      {"simplify-cfg",
                       "sccp",
@@ -134,8 +136,8 @@ PassManager::PassManager()
                       "dce",
                       "simplify-cfg",
                       "sccp",
+                      "inline",
                       "dce",
-                      "licm",
                       "simplify-cfg"});
     // O2 pipeline with interprocedural constant propagation:
     // Run SCCP both before (to simplify callees) and after inline

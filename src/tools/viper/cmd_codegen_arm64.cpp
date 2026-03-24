@@ -427,8 +427,12 @@ int emitAndMaybeLink(const Options &opts)
                 //   breaks cross-block value flow
                 // The remaining passes still provide significant optimization.
                 // Keep codegen-O1 aligned with the canonical O1 pipeline.
-                // inline is disabled here because it still miscompiles
-                // sqldb-scale IL in native demo builds.
+                // inline is re-enabled here with the same conservative
+                // eligibility checks as canonical O1. Keep codegen-O1 aligned
+                // with the canonical pipeline while LICM remains disabled.
+                // licm remains disabled here too: the current fixes are enough
+                // for GUI demos, but sqldb native stress still regresses under
+                // codegen-O1 when LICM is re-enabled.
                 ilpm.registerPipeline("codegen-O1",
                                       {"simplify-cfg",
                                        "sccp",
@@ -436,8 +440,8 @@ int emitAndMaybeLink(const Options &opts)
                                        "dce",
                                        "simplify-cfg",
                                        "sccp",
+                                       "inline",
                                        "dce",
-                                       "licm",
                                        "simplify-cfg"});
                 ilpm.runPipeline(mod, "codegen-O1");
             }

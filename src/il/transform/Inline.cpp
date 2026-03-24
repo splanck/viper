@@ -55,13 +55,16 @@ struct InlineCost
     unsigned returnCount = 0; // Number of return statements
     bool recursive = false;
     bool hasEH = false;
+    bool hasAlloca = false;
+    bool hasNonScalarSignature = false;
     bool unsupportedCFG = false;
     bool hasReturn = false;
 
     /// @brief Check if within basic structural constraints.
     bool isInlinable() const
     {
-        return !recursive && !hasEH && !unsupportedCFG && hasReturn;
+        return !recursive && !hasEH && !hasAlloca && !hasNonScalarSignature &&
+               !unsupportedCFG && hasReturn;
     }
 
     /// @brief Compute adjusted cost considering bonuses.
@@ -211,6 +214,56 @@ std::string lookupValueName(const Function &F, unsigned id, const std::string &f
     return fallback;
 }
 
+/// @brief Collect every explicit temp/param name already used in a function.
+/// @details The textual IL parser resolves temps by printed name, so any new
+///          names introduced by the inliner must be unique within the whole
+///          function, not just within the inlined region.
+std::unordered_set<std::string> collectUsedValueNames(const Function &F)
+{
+    std::unordered_set<std::string> names;
+    names.reserve(F.params.size() + F.blocks.size() * 4 + F.valueNames.size());
+
+    for (const auto &param : F.params)
+        if (!param.name.empty())
+            names.insert(param.name);
+
+    for (const auto &block : F.blocks)
+        for (const auto &param : block.params)
+            if (!param.name.empty())
+                names.insert(param.name);
+
+    for (const auto &name : F.valueNames)
+        if (!name.empty())
+            names.insert(name);
+
+    return names;
+}
+
+/// @brief Make a temp/param name unique within a function namespace.
+/// @param usedNames Set of names already reserved in the function. Updated in place.
+/// @param base Desired name.
+/// @return A unique name derived from @p base.
+std::string reserveUniqueValueName(std::unordered_set<std::string> &usedNames, std::string base)
+{
+    if (base.empty())
+        base = "tmp";
+    if (!usedNames.contains(base))
+    {
+        usedNames.insert(base);
+        return base;
+    }
+
+    std::string candidate = base;
+    unsigned suffix = 0;
+    do
+    {
+        candidate = base + "_" + std::to_string(++suffix);
+    } while (usedNames.contains(candidate));
+
+    usedNames.insert(candidate);
+    return candidate;
+}
+
 /// @brief Record a debug name for an SSA value, growing the table if needed.
 /// @param F Function whose valueNames table is modified.
 /// @param id SSA value identifier.
@@ -229,6 +282,17 @@ InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGra
     InlineCost cost;
     cost.instrCount = countInstructions(fn);
     cost.blockCount = static_cast<unsigned>(fn.blocks.size());
+
+    auto isScalarType = [](const Type &type)
+    {
+        return type.kind == Type::Kind::I64 || type.kind == Type::Kind::I1 ||
+               type.kind == Type::Kind::F64 || type.kind == Type::Kind::Void;
+    };
+    if (!isScalarType(fn.retType))
+        cost.hasNonScalarSignature = true;
+    for (const auto &param : fn.params)
+        if (!isScalarType(param.type))
+            cost.hasNonScalarSignature = true;
 
     auto callIt = cg.callCounts.find(fn.name);
     if (callIt != cg.callCounts.end())
@@ -282,6 +346,9 @@ InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGra
         {
             if (isEHSensitive(I))
                 cost.hasEH = true;
+
+            if (I.op == Opcode::Alloca)
+                cost.hasAlloca = true;
 
             // Count nested calls
             if (I.op == Opcode::Call || I.op == Opcode::CallIndirect)
@@ -474,12 +541,15 @@ bool inlineCallSite(Function &caller,
     continuation.terminated = callBlock.terminated;
 
     // Compute return param info (but don't add to continuation yet).
+    std::unordered_set<std::string> usedValueNames = collectUsedValueNames(caller);
+
     Param retParam;
     bool hasRetParam = returnsValue && callInstr.result;
     if (hasRetParam)
     {
-        retParam.name =
-            lookupValueName(caller, *callInstr.result, "ret" + std::to_string(*callInstr.result));
+        retParam.name = reserveUniqueValueName(
+            usedValueNames,
+            lookupValueName(caller, *callInstr.result, "ret" + std::to_string(*callInstr.result)));
         retParam.id = nextId++;
         retParam.type = callee.retType;
     }
@@ -557,21 +627,12 @@ bool inlineCallSite(Function &caller,
     std::vector<EscapedParamInfo> escapedParamInfos;
     escapedParamInfos.reserve(escapedIds.size());
 
-    std::unordered_set<std::string> usedParamNames;
-    if (hasRetParam)
-        usedParamNames.insert(retParam.name);
-
     for (unsigned origId : escapedIds)
     {
         EscapedParamInfo info;
         Param &p = info.param;
-        std::string name = lookupValueName(caller, origId, "ext" + std::to_string(origId));
-        if (usedParamNames.count(name))
-            name += "_" + std::to_string(origId);
-        while (usedParamNames.count(name))
-            name += "_";
-        usedParamNames.insert(name);
-        p.name = name;
+        p.name = reserveUniqueValueName(
+            usedValueNames, lookupValueName(caller, origId, "ext" + std::to_string(origId)));
         p.id = nextId++;
         p.type = Type(Type::Kind::I64); // fallback default
 
@@ -845,15 +906,20 @@ bool inlineCallSite(Function &caller,
     callBlock.instructions.push_back(std::move(jump));
     callBlock.terminated = true;
 
-    // Record depths for new blocks.
-    for (auto &B : clonedBlocks)
-    {
-        setBlockDepth(depths, caller.name, B.label, callDepth + 1);
-        caller.blocks.push_back(std::move(B));
-    }
-
+    // Insert the inlined region immediately after the call block. The textual
+    // IL parser expects value definitions to appear before uses, so appending
+    // the continuation block at function end can leave its allocas/results
+    // referenced by original successor blocks that are serialized earlier.
     setBlockDepth(depths, caller.name, continuation.label, callDepth);
-    caller.blocks.push_back(std::move(continuation));
+    for (auto &B : clonedBlocks)
+        setBlockDepth(depths, caller.name, B.label, callDepth + 1);
+
+    auto insertPos = caller.blocks.begin() + static_cast<std::ptrdiff_t>(callBlockIdx + 1);
+    insertPos = caller.blocks.insert(insertPos,
+                                     std::make_move_iterator(clonedBlocks.begin()),
+                                     std::make_move_iterator(clonedBlocks.end()));
+    caller.blocks.insert(insertPos + static_cast<std::ptrdiff_t>(callee.blocks.size()),
+                         std::move(continuation));
 
     return true;
 }

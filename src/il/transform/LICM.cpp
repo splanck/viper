@@ -347,7 +347,6 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
                         mr == viper::analysis::ModRefResult::ModRef)
                     {
                         loopHasMod = true;
-                        break;
                     }
                 }
                 auto me = memoryEffects(ins.op);
@@ -355,11 +354,8 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
                     me == MemoryEffects::Unknown)
                 {
                     loopHasMod = true;
-                    break;
                 }
             }
-            if (loopHasMod)
-                break;
         }
 
         std::vector<BasicBlock *> blockOrder;

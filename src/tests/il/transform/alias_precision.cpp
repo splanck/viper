@@ -419,6 +419,137 @@ TEST(IL, testLICMReadonlyCallNotHoistedAcrossModCall)
     ASSERT_TRUE(callInLoop);
 }
 
+TEST(IL, testLICMLoadNotHoistedPastLaterStoreAfterModCall)
+{
+    Module m;
+    il::build::IRBuilder b(m);
+
+    Function &mutateFn = b.startFunction("mutate_state", Type(Type::Kind::Void), {});
+    b.createBlock(mutateFn, "entry");
+    BasicBlock &mutateEntry = mutateFn.blocks.front();
+    {
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        mutateEntry.instructions.push_back(std::move(ret));
+        mutateEntry.terminated = true;
+    }
+    mutateFn.attrs().nothrow = true;
+
+    Function &fn = b.startFunction("licm_store_after_call", Type(Type::Kind::Void), {});
+
+    b.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks.back();
+    const unsigned slotId = b.reserveTempId();
+    {
+        Instr alloca;
+        alloca.op = Opcode::Alloca;
+        alloca.type = Type(Type::Kind::Ptr);
+        alloca.result = slotId;
+        alloca.operands.push_back(Value::constInt(8));
+        entry.instructions.push_back(std::move(alloca));
+    }
+    {
+        Instr initStore;
+        initStore.op = Opcode::Store;
+        initStore.type = Type(Type::Kind::I64);
+        initStore.operands = {Value::temp(slotId), Value::constInt(0)};
+        entry.instructions.push_back(std::move(initStore));
+    }
+    {
+        Instr toLoop;
+        toLoop.op = Opcode::Br;
+        toLoop.type = Type(Type::Kind::Void);
+        toLoop.labels = {"loop"};
+        toLoop.brArgs.emplace_back();
+        entry.instructions.push_back(std::move(toLoop));
+        entry.terminated = true;
+    }
+
+    b.createBlock(fn, "loop");
+    BasicBlock &loop = fn.blocks.back();
+    const unsigned loadId = b.reserveTempId();
+    {
+        Instr load;
+        load.op = Opcode::Load;
+        load.type = Type(Type::Kind::I64);
+        load.result = loadId;
+        load.operands = {Value::temp(slotId)};
+        loop.instructions.push_back(std::move(load));
+    }
+    {
+        Instr mutateCall;
+        mutateCall.op = Opcode::Call;
+        mutateCall.type = Type(Type::Kind::Void);
+        mutateCall.callee = "mutate_state";
+        mutateCall.CallAttr.nothrow = true;
+        loop.instructions.push_back(std::move(mutateCall));
+    }
+    {
+        Instr store;
+        store.op = Opcode::Store;
+        store.type = Type(Type::Kind::I64);
+        store.operands = {Value::temp(slotId), Value::temp(loadId)};
+        loop.instructions.push_back(std::move(store));
+    }
+    {
+        Instr back;
+        back.op = Opcode::Br;
+        back.type = Type(Type::Kind::Void);
+        back.labels = {"loop"};
+        back.brArgs.emplace_back();
+        loop.instructions.push_back(std::move(back));
+        loop.terminated = true;
+    }
+
+    b.createBlock(fn, "exit");
+    BasicBlock &exit = fn.blocks.back();
+    {
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        exit.instructions.push_back(std::move(ret));
+        exit.terminated = true;
+    }
+
+    verifyOrDie(m);
+
+    AnalysisSetup setup;
+    il::transform::AnalysisManager am(m, setup.registry);
+    il::transform::LoopSimplify simplify;
+    auto simplifyPreserved = simplify.run(fn, am);
+    am.invalidateAfterFunctionPass(simplifyPreserved, fn);
+
+    il::transform::LICM licm;
+    auto licmPreserved = licm.run(fn, am);
+    am.invalidateAfterFunctionPass(licmPreserved, fn);
+
+    BasicBlock *preheader = nullptr;
+    BasicBlock *loopHeader = nullptr;
+    for (auto &block : fn.blocks)
+    {
+        if (block.label == "entry")
+            preheader = &block;
+        else if (block.label == "loop.preheader")
+            preheader = &block;
+        else if (block.label == "loop")
+            loopHeader = &block;
+    }
+    ASSERT_TRUE(preheader != nullptr);
+    ASSERT_TRUE(loopHeader != nullptr);
+
+    bool loadInPreheader = false;
+    for (const auto &ins : preheader->instructions)
+        loadInPreheader |= ins.op == Opcode::Load && ins.result && *ins.result == loadId;
+
+    bool loadInLoop = false;
+    for (const auto &ins : loopHeader->instructions)
+        loadInLoop |= ins.op == Opcode::Load && ins.result && *ins.result == loadId;
+
+    ASSERT_FALSE(loadInPreheader);
+    ASSERT_TRUE(loadInLoop);
+}
+
 TEST(IL, testGVNRedundantLoadSameField)
 {
     Module m;

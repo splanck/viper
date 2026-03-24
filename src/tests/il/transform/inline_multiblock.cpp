@@ -24,9 +24,12 @@
 #include "il/core/Param.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
+#include "il/io/Parser.hpp"
+#include "il/io/Serializer.hpp"
 
 #include "tests/TestHarness.hpp"
 #include <optional>
+#include <sstream>
 
 using namespace il::core;
 
@@ -255,6 +258,107 @@ Function makeRecursiveHelper()
     return f;
 }
 
+Function makeInlineTailHelper()
+{
+    Function f;
+    f.name = "tail_helper";
+    f.retType = Type(Type::Kind::I64);
+
+    Param x{"x", Type(Type::Kind::I64), 0};
+    f.params.push_back(x);
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(x.id));
+    entry.instructions.push_back(ret);
+    entry.terminated = true;
+
+    f.blocks.push_back(std::move(entry));
+    f.valueNames.resize(1);
+    f.valueNames[x.id] = "x";
+    return f;
+}
+
+Function makeInlineTailCaller()
+{
+    Function f;
+    f.name = "tail_caller";
+    f.retType = Type(Type::Kind::I64);
+
+    unsigned nextId = 0;
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr toCall;
+    toCall.op = Opcode::Br;
+    toCall.type = Type(Type::Kind::Void);
+    toCall.labels.push_back("callsite");
+    toCall.brArgs.emplace_back();
+    entry.instructions.push_back(toCall);
+    entry.terminated = true;
+
+    BasicBlock callsite;
+    callsite.label = "callsite";
+
+    Instr call;
+    call.result = nextId++;
+    call.op = Opcode::Call;
+    call.type = Type(Type::Kind::I64);
+    call.callee = "tail_helper";
+    call.operands.push_back(Value::constInt(7));
+    callsite.instructions.push_back(call);
+
+    const unsigned slotId = nextId++;
+    Instr alloca;
+    alloca.result = slotId;
+    alloca.op = Opcode::Alloca;
+    alloca.type = Type(Type::Kind::Ptr);
+    alloca.operands.push_back(Value::constInt(8));
+    callsite.instructions.push_back(alloca);
+
+    Instr store;
+    store.op = Opcode::Store;
+    store.type = Type(Type::Kind::I64);
+    store.operands = {Value::temp(slotId), Value::temp(*call.result)};
+    callsite.instructions.push_back(store);
+
+    Instr toTail;
+    toTail.op = Opcode::Br;
+    toTail.type = Type(Type::Kind::Void);
+    toTail.labels.push_back("tail");
+    toTail.brArgs.emplace_back();
+    callsite.instructions.push_back(toTail);
+    callsite.terminated = true;
+
+    BasicBlock tail;
+    tail.label = "tail";
+
+    const unsigned loadId = nextId++;
+    Instr load;
+    load.result = loadId;
+    load.op = Opcode::Load;
+    load.type = Type(Type::Kind::I64);
+    load.operands.push_back(Value::temp(slotId));
+    tail.instructions.push_back(load);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(loadId));
+    tail.instructions.push_back(ret);
+    tail.terminated = true;
+
+    f.blocks.push_back(std::move(entry));
+    f.blocks.push_back(std::move(callsite));
+    f.blocks.push_back(std::move(tail));
+    f.valueNames.resize(nextId);
+    return f;
+}
+
 bool hasCall(const Function &fn)
 {
     for (const auto &B : fn.blocks)
@@ -310,6 +414,25 @@ TEST(IL, test_no_inline_recursive)
 
     const Function &self = M.functions.front();
     ASSERT_TRUE(hasCall(self));
+}
+
+TEST(IL, test_inline_roundtrip_preserves_continuation_defs_before_uses)
+{
+    Module M;
+    M.functions.push_back(makeInlineTailHelper());
+    M.functions.push_back(makeInlineTailCaller());
+
+    il::transform::Inliner inl;
+    il::transform::AnalysisRegistry reg;
+    il::transform::AnalysisManager AM(M, reg);
+    (void)inl.run(M, AM);
+
+    std::string text = il::io::Serializer::toString(M, il::io::Serializer::Mode::Pretty);
+
+    std::istringstream iss(text);
+    Module roundTripped;
+    auto parsed = il::io::Parser::parse(iss, roundTripped);
+    ASSERT_TRUE(parsed && "round-trip parse should succeed");
 }
 
 TEST(IL, test_o2_pipeline_runs)

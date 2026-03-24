@@ -99,7 +99,7 @@ TEST(CanonicalPipeline, O1PipelineContainsSCCP)
     EXPECT_TRUE(found);
 }
 
-TEST(CanonicalPipeline, O1PipelineExcludesInline)
+TEST(CanonicalPipeline, O1PipelineContainsInline)
 {
     PassManager pm;
     const PassManager::Pipeline *pipeline = pm.getPipeline("O1");
@@ -108,6 +108,22 @@ TEST(CanonicalPipeline, O1PipelineExcludesInline)
     bool found = false;
     for (const auto &id : *pipeline)
         if (id == "inline")
+        {
+            found = true;
+            break;
+        }
+    EXPECT_TRUE(found);
+}
+
+TEST(CanonicalPipeline, O1PipelineExcludesLICM)
+{
+    PassManager pm;
+    const PassManager::Pipeline *pipeline = pm.getPipeline("O1");
+    ASSERT_NE(pipeline, nullptr);
+
+    bool found = false;
+    for (const auto &id : *pipeline)
+        if (id == "licm")
         {
             found = true;
             break;
