@@ -1302,6 +1302,6 @@ Remaining v0.2.x focus areas:
 
 ---
 
-*Viper Compiler Platform v0.2.3 (Pre-Alpha) — DRAFT*
-*Target: March 2026*
+*Viper Compiler Platform v0.2.3 (Pre-Alpha)
+*Target: March 2026
 *Note: This is an early development release. Future milestones will define supported releases when appropriate.*
