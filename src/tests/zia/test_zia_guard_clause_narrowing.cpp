@@ -35,6 +35,10 @@ module Test;
 
 entity Person {
     expose String name;
+
+    expose func init(n: String) {
+        name = n;
+    }
 }
 
 func greet(p: Person?) {
@@ -77,10 +81,18 @@ module Test;
 
 entity Person {
     expose String name;
+
+    expose func init(n: String) {
+        name = n;
+    }
 }
 
 entity Item {
     expose String label;
+
+    expose func init(l: String) {
+        label = l;
+    }
 }
 
 func process(p: Person?, item: Item?) {

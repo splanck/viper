@@ -199,8 +199,22 @@ TypeRef Sema::analyzeUnitLiteral(UnitLiteralExpr * /*expr*/)
 TypeRef Sema::analyzeIdent(IdentExpr *expr)
 {
     Symbol *sym = lookupSymbol(expr->name);
+    if (sym && sym->kind == Symbol::Kind::Function && hasOverloadedFunctionName(expr->name))
+    {
+        error(expr->loc,
+              "Function '" + expr->name +
+                  "' is overloaded and must be used in a call expression to resolve a specific overload");
+        return types::unknown();
+    }
     if (!sym)
     {
+        if (hasOverloadedFunctionName(expr->name))
+        {
+            error(expr->loc,
+                  "Function '" + expr->name +
+                      "' is overloaded and must be used in a call expression to resolve a specific overload");
+            return types::unknown();
+        }
         // Check if this is an imported symbol from a bound namespace
         auto importIt = importedSymbols_.find(expr->name);
         if (importIt != importedSymbols_.end())

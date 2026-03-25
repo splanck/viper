@@ -25,7 +25,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Sema.hpp"
+#include "frontends/zia/Types.hpp"
+#include <cctype>
 #include <cassert>
+#include <limits>
 #include <sstream>
 
 namespace il::frontends::zia
@@ -43,6 +46,78 @@ int compareLoc(const SourceLoc &a, const SourceLoc &b)
     if (a.column != b.column)
         return (a.column < b.column) ? -1 : 1;
     return 0;
+}
+
+std::string sanitizeForSymbol(std::string_view input)
+{
+    std::string out;
+    out.reserve(input.size());
+    for (char ch : input)
+    {
+        unsigned char uch = static_cast<unsigned char>(ch);
+        if (std::isalnum(uch) || ch == '_' || ch == '.')
+            out.push_back(ch);
+        else
+            out.push_back('_');
+    }
+    return out;
+}
+
+std::string joinTypeKeys(const std::vector<TypeRef> &types)
+{
+    std::string result;
+    bool first = true;
+    for (const auto &type : types)
+    {
+        if (!first)
+            result += "__";
+        first = false;
+        result += sanitizeForSymbol(type ? type->toString() : "?");
+    }
+    if (result.empty())
+        result = "void";
+    return result;
+}
+
+size_t requiredParamCount(const std::vector<Param> &params)
+{
+    size_t required = 0;
+    for (const auto &param : params)
+    {
+        if (param.defaultValue)
+            break;
+        ++required;
+    }
+    return required;
+}
+
+int conversionCost(TypeRef paramType, TypeRef argType)
+{
+    if (!paramType || !argType)
+        return 1000;
+    if (paramType->equals(*argType))
+        return 0;
+    if (paramType->kind == TypeKindSem::Optional)
+    {
+        if (argType->kind == TypeKindSem::Unit)
+            return 1;
+        if (argType->kind == TypeKindSem::Optional)
+            return paramType->innerType() && argType->innerType() &&
+                           paramType->innerType()->equals(*argType->innerType())
+                       ? 1
+                       : (paramType->isAssignableFrom(*argType) ? 3 : 1000);
+        if (paramType->isAssignableFrom(*argType))
+            return 2;
+    }
+    if (paramType->kind == TypeKindSem::Number && argType->kind == TypeKindSem::Integer)
+        return 2;
+    if (paramType->kind == TypeKindSem::Integer && argType->kind == TypeKindSem::Byte)
+        return 2;
+    if (paramType->kind == TypeKindSem::Number && argType->kind == TypeKindSem::Byte)
+        return 3;
+    if (paramType->isAssignableFrom(*argType))
+        return 4;
+    return 1000;
 }
 
 } // namespace
@@ -93,6 +168,400 @@ Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag)
     nextScopeId_++;
     types::clearInterfaceImplementations();
     registerBuiltins();
+}
+
+TypeRef Sema::functionTypeForDecl(const FunctionDecl &decl) const
+{
+    TypeRef returnType = decl.returnType ? resolveType(decl.returnType.get()) : types::voidType();
+    std::vector<TypeRef> paramTypes;
+    paramTypes.reserve(decl.params.size());
+    for (const auto &param : decl.params)
+        paramTypes.push_back(param.type ? resolveType(param.type.get()) : types::unknown());
+    return types::function(paramTypes, returnType);
+}
+
+TypeRef Sema::methodTypeForDecl(const MethodDecl &decl) const
+{
+    TypeRef returnType = decl.returnType ? resolveType(decl.returnType.get()) : types::voidType();
+    std::vector<TypeRef> paramTypes;
+    paramTypes.reserve(decl.params.size());
+    for (const auto &param : decl.params)
+        paramTypes.push_back(param.type ? resolveType(param.type.get()) : types::unknown());
+    return types::function(paramTypes, returnType);
+}
+
+std::string Sema::functionSignatureKey(const FunctionDecl &decl) const
+{
+    TypeRef funcType = functionTypeForDecl(decl);
+    return decl.name + "#" + joinTypeKeys(funcType->paramTypes());
+}
+
+std::string Sema::methodSignatureKey(const MethodDecl &decl) const
+{
+    TypeRef methodType = methodTypeForDecl(decl);
+    return methodSignatureKey(decl, methodType);
+}
+
+std::string Sema::methodSignatureKey(const MethodDecl &decl, TypeRef methodType) const
+{
+    const auto paramTypes =
+        methodType && methodType->kind == TypeKindSem::Function ? methodType->paramTypes()
+                                                                : std::vector<TypeRef>{};
+    return decl.name + "#" + (decl.isStatic ? "static#" : "inst#") + joinTypeKeys(paramTypes);
+}
+
+std::string Sema::methodDispatchKey(const MethodDecl &decl) const
+{
+    TypeRef methodType = methodTypeForDecl(decl);
+    return methodDispatchKey(decl, methodType);
+}
+
+std::string Sema::methodDispatchKey(const MethodDecl &decl, TypeRef methodType) const
+{
+    return methodSignatureKey(decl, methodType);
+}
+
+bool Sema::registerFunctionOverload(const std::string &name,
+                                    FunctionDecl *decl,
+                                    TypeRef funcType,
+                                    SourceLoc loc)
+{
+    auto &family = functionOverloads_[name];
+    const std::string sigKey = functionSignatureKey(*decl);
+    for (auto *existing : family)
+    {
+        if (functionSignatureKey(*existing) == sigKey)
+        {
+            error(loc, "Duplicate definition of '" + name + "' with the same signature");
+            return false;
+        }
+    }
+
+    family.push_back(decl);
+    functionDeclTypes_[decl] = funcType;
+
+    const bool overloaded = family.size() > 1;
+    if (name == "start")
+    {
+        loweredFunctionNames_[decl] = "main";
+    }
+    else if (overloaded)
+    {
+        loweredFunctionNames_[decl] =
+            name + "__ov__" + std::to_string(funcType->paramTypes().size()) + "__" +
+            joinTypeKeys(funcType->paramTypes());
+    }
+    else
+    {
+        loweredFunctionNames_[decl] = name;
+    }
+    functionDecls_[loweredFunctionNames_[decl]] = decl;
+    if (family.size() == 1)
+        functionDecls_[name] = decl;
+    return true;
+}
+
+bool Sema::registerMethodOverload(const std::string &ownerType,
+                                  MethodDecl *decl,
+                                  TypeRef methodType,
+                                  SourceLoc loc)
+{
+    const std::string familyKey = ownerType + "." + decl->name;
+    auto &family = methodOverloads_[familyKey];
+    const MethodInstanceKey instanceKey{ownerType, decl};
+    const std::string sigKey = methodSignatureKey(*decl, methodType);
+    for (auto *existing : family)
+    {
+        if (methodSignatureKey(ownerType, existing) == sigKey)
+        {
+            error(loc,
+                  "Duplicate definition of '" + decl->name + "' in type '" + ownerType +
+                      "' with the same signature");
+            return false;
+        }
+    }
+
+    family.push_back(decl);
+    ownerMethodTypes_[instanceKey] = methodType;
+    ownerMethodSignatureKeys_[instanceKey] = sigKey;
+    ownerMethodDispatchKeys_[instanceKey] = methodDispatchKey(*decl, methodType);
+    if (!methodDeclTypes_.count(decl))
+        methodDeclTypes_[decl] = methodType;
+    methodSignatureKeys_.try_emplace(decl, sigKey);
+    methodDispatchKeys_.try_emplace(decl, methodDispatchKey(*decl, methodType));
+
+    if (family.size() > 1)
+    {
+        ownerLoweredMethodNames_[instanceKey] =
+            ownerType + "." + decl->name + "__ov__" +
+            std::to_string(methodType->paramTypes().size()) + "__" + joinTypeKeys(methodType->paramTypes());
+    }
+    else
+    {
+        ownerLoweredMethodNames_[instanceKey] = ownerType + "." + decl->name;
+    }
+    loweredMethodNames_.try_emplace(decl, ownerLoweredMethodNames_[instanceKey]);
+    return true;
+}
+
+std::vector<MethodDecl *> Sema::collectMethodOverloads(const std::string &typeName,
+                                                       const std::string &methodName,
+                                                       bool includeInherited) const
+{
+    std::vector<MethodDecl *> result;
+    std::unordered_set<std::string> seenSignatures;
+
+    auto addFamily = [&](const std::string &owner) {
+        auto it = methodOverloads_.find(owner + "." + methodName);
+        if (it == methodOverloads_.end())
+            return;
+        for (auto *method : it->second)
+        {
+            std::string sigKey = methodSignatureKey(owner, method);
+            if (sigKey.empty())
+                sigKey = methodSignatureKey(*method);
+            if (seenSignatures.insert(sigKey).second)
+                result.push_back(method);
+        }
+    };
+
+    addFamily(typeName);
+    if (!includeInherited)
+        return result;
+
+    auto entityIt = lookupEntityDeclForType(typeName);
+    while (entityIt && !entityIt->baseClass.empty())
+    {
+        const std::string &parentName = entityIt->baseClass;
+        addFamily(parentName);
+        entityIt = lookupEntityDeclForType(parentName);
+    }
+
+    return result;
+}
+
+FunctionDecl *Sema::resolveFunctionOverload(const std::string &name,
+                                            const std::vector<TypeRef> &argTypes,
+                                            SourceLoc loc,
+                                            std::string *loweredName)
+{
+    auto it = functionOverloads_.find(name);
+    if (it == functionOverloads_.end())
+        return nullptr;
+
+    FunctionDecl *best = nullptr;
+    int bestScore = std::numeric_limits<int>::max();
+    bool ambiguous = false;
+    std::vector<std::string> candidateSigs;
+
+    for (auto *decl : it->second)
+    {
+        TypeRef funcType = functionDeclTypes_[decl];
+        const auto &params = decl->params;
+        const size_t required = requiredParamCount(params);
+        const size_t total = params.size();
+        if (argTypes.size() < required || argTypes.size() > total)
+            continue;
+
+        int score = 0;
+        bool viable = true;
+        for (size_t i = 0; i < argTypes.size(); ++i)
+        {
+            int cost = conversionCost(funcType->paramTypes()[i], argTypes[i]);
+            if (cost >= 1000)
+            {
+                viable = false;
+                break;
+            }
+            score += cost;
+        }
+        if (!viable)
+            continue;
+        score += static_cast<int>(total - argTypes.size()) * 3;
+        candidateSigs.push_back(loweredFunctionNames_[decl]);
+
+        if (score < bestScore)
+        {
+            best = decl;
+            bestScore = score;
+            ambiguous = false;
+        }
+        else if (score == bestScore)
+        {
+            ambiguous = true;
+        }
+    }
+
+    if (!best)
+        return nullptr;
+    if (ambiguous)
+    {
+        error(loc, "Ambiguous call to '" + name + "': " + formatOverloadCandidates(candidateSigs));
+        return nullptr;
+    }
+    if (loweredName)
+        *loweredName = loweredFunctionNames_[best];
+    return best;
+}
+
+MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
+                                        const std::string &methodName,
+                                        const std::vector<TypeRef> &argTypes,
+                                        SourceLoc loc,
+                                        std::string *resolvedOwnerType,
+                                        bool includeInherited)
+{
+    MethodDecl *best = nullptr;
+    std::string bestOwner;
+    int bestScore = std::numeric_limits<int>::max();
+    bool ambiguous = false;
+    std::vector<std::string> candidates;
+    std::unordered_set<std::string> seenSignatures;
+
+    auto considerOwner = [&](const std::string &candidateOwner) {
+        auto it = methodOverloads_.find(candidateOwner + "." + methodName);
+        if (it == methodOverloads_.end())
+            return;
+        for (auto *decl : it->second)
+        {
+            std::string sigKey = methodSignatureKey(candidateOwner, decl);
+            if (sigKey.empty())
+                sigKey = methodSignatureKey(*decl);
+            if (!seenSignatures.insert(sigKey).second)
+                continue;
+            TypeRef methodType = getMethodType(candidateOwner, decl);
+            if (!methodType)
+                continue;
+            const auto &params = decl->params;
+            const size_t required = requiredParamCount(params);
+            const size_t total = params.size();
+            if (argTypes.size() < required || argTypes.size() > total)
+                continue;
+            int score = 0;
+            bool viable = true;
+            for (size_t i = 0; i < argTypes.size(); ++i)
+            {
+                int cost = conversionCost(methodType->paramTypes()[i], argTypes[i]);
+                if (cost >= 1000)
+                {
+                    viable = false;
+                    break;
+                }
+                score += cost;
+            }
+            if (!viable)
+                continue;
+            score += static_cast<int>(total - argTypes.size()) * 3;
+            std::string lowered = loweredMethodName(candidateOwner, decl);
+            candidates.push_back(lowered.empty() ? (candidateOwner + "." + decl->name) : lowered);
+            if (score < bestScore)
+            {
+                best = decl;
+                bestOwner = candidateOwner;
+                bestScore = score;
+                ambiguous = false;
+            }
+            else if (score == bestScore)
+            {
+                ambiguous = true;
+            }
+        }
+    };
+
+    considerOwner(ownerType);
+    if (includeInherited)
+    {
+        auto entityIt = lookupEntityDeclForType(ownerType);
+        while (entityIt && !entityIt->baseClass.empty())
+        {
+            considerOwner(entityIt->baseClass);
+            entityIt = lookupEntityDeclForType(entityIt->baseClass);
+        }
+    }
+
+    if (!best)
+        return nullptr;
+    if (ambiguous)
+    {
+        error(loc, "Ambiguous call to method '" + methodName + "': " + formatOverloadCandidates(candidates));
+        return nullptr;
+    }
+    if (resolvedOwnerType)
+        *resolvedOwnerType = bestOwner;
+    return best;
+}
+
+MethodDecl *Sema::findInheritedExactMethod(const std::string &ownerType, const MethodDecl &decl) const
+{
+    auto entityIt = lookupEntityDeclForType(ownerType);
+    if (!entityIt)
+        return nullptr;
+    const std::string wanted = methodSignatureKey(ownerType, &decl);
+    std::string parentName = entityIt->baseClass;
+    while (!parentName.empty())
+    {
+        auto famIt = methodOverloads_.find(parentName + "." + decl.name);
+        if (famIt != methodOverloads_.end())
+        {
+            for (auto *candidate : famIt->second)
+            {
+                std::string candidateKey = methodSignatureKey(parentName, candidate);
+                if (candidateKey.empty())
+                    candidateKey = methodSignatureKey(*candidate);
+                if (candidateKey == wanted)
+                    return candidate;
+            }
+        }
+        EntityDecl *nextIt = lookupEntityDeclForType(parentName);
+        if (!nextIt)
+            break;
+        parentName = nextIt->baseClass;
+    }
+    return nullptr;
+}
+
+EntityDecl *Sema::lookupEntityDeclForType(const std::string &typeName) const
+{
+    auto it = entityDecls_.find(typeName);
+    if (it != entityDecls_.end())
+        return it->second;
+    if (Decl *genericDecl = getGenericDeclForInstantiation(typeName))
+    {
+        if (genericDecl->kind == DeclKind::Entity)
+            return static_cast<EntityDecl *>(genericDecl);
+    }
+    return nullptr;
+}
+
+ValueDecl *Sema::lookupValueDeclForType(const std::string &typeName) const
+{
+    auto it = valueDecls_.find(typeName);
+    if (it != valueDecls_.end())
+        return it->second;
+    if (Decl *genericDecl = getGenericDeclForInstantiation(typeName))
+    {
+        if (genericDecl->kind == DeclKind::Value)
+            return static_cast<ValueDecl *>(genericDecl);
+    }
+    return nullptr;
+}
+
+bool Sema::hasOverloadedFunctionName(const std::string &name) const
+{
+    auto it = functionOverloads_.find(name);
+    return it != functionOverloads_.end() && it->second.size() > 1;
+}
+
+std::string Sema::formatOverloadCandidates(const std::vector<std::string> &candidates) const
+{
+    std::string result;
+    for (size_t i = 0; i < candidates.size(); ++i)
+    {
+        if (i != 0)
+            result += ", ";
+        result += candidates[i];
+    }
+    return result;
 }
 
 void Sema::initWarnings(const WarningPolicy &policy)
@@ -150,28 +619,28 @@ bool Sema::analyze(ModuleDecl &module)
                     sym.name = func->name;
                     sym.type = placeholderType;
                     sym.decl = func;
-                    defineSymbol(func->name, sym);
+                    if (!currentScope_->lookupLocal(func->name))
+                        defineSymbol(func->name, sym);
                 }
                 else
                 {
-                    // Non-generic function: resolve types normally
-                    TypeRef returnType = func->returnType ? resolveTypeNode(func->returnType.get())
-                                                          : types::voidType();
-
-                    std::vector<TypeRef> paramTypes;
-                    for (const auto &param : func->params)
-                    {
-                        paramTypes.push_back(param.type ? resolveTypeNode(param.type.get())
-                                                        : types::unknown());
-                    }
-                    auto funcType = types::function(paramTypes, returnType);
+                    auto funcType = functionTypeForDecl(*func);
 
                     Symbol sym;
                     sym.kind = Symbol::Kind::Function;
                     sym.name = func->name;
                     sym.type = funcType;
                     sym.decl = func;
-                    defineSymbol(func->name, sym);
+                    Symbol *existing = currentScope_->lookupLocal(func->name);
+                    if (!existing)
+                    {
+                        defineSymbol(func->name, sym);
+                    }
+                    else if (existing->kind != Symbol::Kind::Function)
+                    {
+                        reportDuplicateDefinition(func->name, func->loc);
+                    }
+                    registerFunctionOverload(func->name, func, funcType, func->loc);
                 }
                 break;
             }
@@ -1005,24 +1474,23 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl)
             {
                 auto *func = static_cast<FunctionDecl *>(innerDecl.get());
                 std::string qualifiedName = qualifyName(func->name);
-
-                TypeRef returnType =
-                    func->returnType ? resolveTypeNode(func->returnType.get()) : types::voidType();
-
-                std::vector<TypeRef> paramTypes;
-                for (const auto &param : func->params)
-                {
-                    paramTypes.push_back(param.type ? resolveTypeNode(param.type.get())
-                                                    : types::unknown());
-                }
-                auto funcType = types::function(paramTypes, returnType);
+                auto funcType = functionTypeForDecl(*func);
 
                 Symbol sym;
                 sym.kind = Symbol::Kind::Function;
                 sym.name = qualifiedName;
                 sym.type = funcType;
                 sym.decl = func;
-                defineSymbol(qualifiedName, sym);
+                Symbol *existing = currentScope_->lookupLocal(qualifiedName);
+                if (!existing)
+                {
+                    defineSymbol(qualifiedName, sym);
+                }
+                else if (existing->kind != Symbol::Kind::Function)
+                {
+                    reportDuplicateDefinition(qualifiedName, func->loc);
+                }
+                registerFunctionOverload(qualifiedName, func, funcType, func->loc);
                 break;
             }
             case DeclKind::Value:

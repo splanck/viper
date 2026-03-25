@@ -451,12 +451,14 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
                              Value::constInt(static_cast<int64_t>(entityInfo.totalSize))});
 
     // Check if the entity has an explicit init method
+    MethodDecl *resolvedInit = sema_.resolvedInitDecl(expr);
     auto initIt = entityInfo.methodMap.find("init");
-    if (initIt != entityInfo.methodMap.end())
+    if (resolvedInit || initIt != entityInfo.methodMap.end())
     {
-        // BUG-VL-008 fix: Call the explicit init method
-        // This ensures fields are assigned in the order specified by init()
-        std::string initName = typeName + ".init";
+        MethodDecl *initDecl = resolvedInit ? resolvedInit : initIt->second;
+        std::string initName = sema_.loweredMethodName(typeName, initDecl);
+        if (initName.empty())
+            initName = typeName + ".init";
         std::vector<Value> initArgs;
         initArgs.push_back(ptr); // self is first argument
         for (const auto &argVal : argValues)

@@ -1,0 +1,84 @@
+module RuntimeTest32;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+func greet() -> String {
+    return "hi";
+}
+
+func greet(n: Integer) -> String {
+    return "hi " + toString(n);
+}
+
+entity Animal {
+    expose func speak() -> String {
+        return "animal";
+    }
+
+    expose func speak(times: Integer) -> String {
+        return "animal " + toString(times);
+    }
+}
+
+entity Dog extends Animal {
+    override expose func speak() -> String {
+        return "dog";
+    }
+
+    expose func speak(name: String) -> String {
+        return "dog " + name;
+    }
+}
+
+entity Husky extends Dog {
+    override expose func speak() -> String {
+        return "husky";
+    }
+
+    expose func speak(temp: Number) -> String {
+        return "cold " + toString(temp);
+    }
+}
+
+interface Formatter {
+    func fmt() -> String;
+    func fmt(n: Integer) -> String;
+}
+
+entity Message implements Formatter {
+    expose func fmt() -> String {
+        return "msg";
+    }
+
+    expose func fmt(n: Integer) -> String {
+        return "msg " + toString(n);
+    }
+}
+
+func start() {
+    assertEqStr(greet(), "hi", "fn_overload_0");
+    assertEqStr(greet(7), "hi 7", "fn_overload_1");
+
+    var dog = new Dog();
+    assertEqStr(dog.speak(), "dog", "dog_override");
+    assertEqStr(dog.speak("Rex"), "dog Rex", "dog_new_overload");
+    assertEqStr(dog.speak(2), "animal 2", "dog_inherited_overload");
+
+    var husky = new Husky();
+    assertEqStr(husky.speak(), "husky", "husky_override");
+    assertEqStr(husky.speak("Blue"), "dog Blue", "husky_parent_overload");
+    assertEqStr(husky.speak(2), "animal 2", "husky_grandparent_overload");
+    assertEqStr(husky.speak(1.5), "cold 1.5", "husky_own_number_overload");
+
+    var animal: Animal = husky;
+    assertEqStr(animal.speak(), "husky", "virtual_zero_arg");
+    assertEqStr(animal.speak(3), "animal 3", "virtual_inherited_integer");
+
+    var formatter: Formatter = new Message();
+    assertEqStr(formatter.fmt(), "msg", "iface_overload_0");
+    assertEqStr(formatter.fmt(4), "msg 4", "iface_overload_1");
+
+    report();
+}

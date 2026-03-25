@@ -393,14 +393,22 @@ void Sema::validateInterfaceImplementations(const std::string &typeName,
                 continue;
 
             auto *ifaceMethod = static_cast<MethodDecl *>(member.get());
-            std::string ifaceKey = ifaceName + "." + ifaceMethod->name;
-            auto ifaceTypeIt = methodTypes_.find(ifaceKey);
-            if (ifaceTypeIt == methodTypes_.end())
+            TypeRef ifaceType = getMethodType(ifaceMethod);
+            if (!ifaceType)
                 continue;
 
-            std::string implKey = typeName + "." + ifaceMethod->name;
-            auto implIt = methodTypes_.find(implKey);
-            if (implIt == methodTypes_.end())
+            MethodDecl *implMethod = nullptr;
+            for (auto *candidate : collectMethodOverloads(typeName, ifaceMethod->name, true))
+            {
+                TypeRef candidateType = getMethodType(candidate);
+                if (candidateType && candidateType->equals(*ifaceType))
+                {
+                    implMethod = candidate;
+                    break;
+                }
+            }
+
+            if (!implMethod)
             {
                 error(loc,
                       "Type '" + typeName + "' does not implement interface method '" + ifaceName +
@@ -409,20 +417,10 @@ void Sema::validateInterfaceImplementations(const std::string &typeName,
                 continue;
             }
 
-            if (!implIt->second->equals(*ifaceTypeIt->second))
+            if (implMethod->visibility != Visibility::Public)
             {
                 error(loc,
-                      "Method '" + typeName + "." + ifaceMethod->name +
-                          "' does not match interface '" + ifaceName + "." + ifaceMethod->name +
-                          "' signature");
-                ok = false;
-            }
-
-            auto visIt = memberVisibility_.find(implKey);
-            if (visIt != memberVisibility_.end() && visIt->second != Visibility::Public)
-            {
-                error(loc,
-                      "Method '" + typeName + "." + ifaceMethod->name +
+                      "Method '" + typeName + "." + implMethod->name +
                           "' must be public to satisfy interface '" + ifaceName + "'");
                 ok = false;
             }
@@ -505,29 +503,18 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
     }
 
     // Register method types (signatures only, not bodies)
-    std::unordered_set<std::string> seenMethods;
     for (auto &member : decl.members)
     {
         if (member->kind == DeclKind::Method)
         {
             auto *method = static_cast<MethodDecl *>(member.get());
-            if (!seenMethods.insert(method->name).second)
-            {
-                error(method->loc,
-                      "Duplicate definition of '" + method->name + "' in type '" + decl.name + "'");
+            TypeRef methodType = methodTypeForDecl(*method);
+            if (!registerMethodOverload(decl.name, method, methodType, method->loc))
                 continue;
-            }
-            TypeRef returnType =
-                method->returnType ? resolveTypeNode(method->returnType.get()) : types::voidType();
-            std::vector<TypeRef> paramTypes;
-            for (const auto &param : method->params)
-            {
-                TypeRef paramType =
-                    param.type ? resolveTypeNode(param.type.get()) : types::unknown();
-                paramTypes.push_back(paramType);
-            }
+
             std::string methodKey = decl.name + "." + method->name;
-            methodTypes_[methodKey] = types::function(paramTypes, returnType);
+            if (methodTypes_.find(methodKey) == methodTypes_.end())
+                methodTypes_[methodKey] = methodType;
             memberVisibility_[methodKey] = method->visibility;
         }
     }
@@ -581,7 +568,7 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
     pushScope(decl.loc);
 
     std::unordered_set<std::string> declaredFieldNames;
-    std::unordered_map<std::string, MethodDecl *> declaredMethods;
+    std::vector<MethodDecl *> declaredMethods;
     for (auto &member : decl.members)
     {
         if (member->kind == DeclKind::Field)
@@ -592,7 +579,7 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
         else if (member->kind == DeclKind::Method)
         {
             auto *method = static_cast<MethodDecl *>(member.get());
-            declaredMethods[method->name] = method;
+            declaredMethods.push_back(method);
         }
     }
 
@@ -639,31 +626,6 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
                 fieldTypes_[decl.name + "." + fieldName] = fieldType;
             }
 
-            // Add ALL parent's methods to this entity's scope (including inherited methods)
-            std::string methodPrefix = parent->name + ".";
-            std::vector<std::pair<std::string, TypeRef>> inheritedMethods;
-            for (const auto &entry : methodTypes_)
-            {
-                if (entry.first.rfind(methodPrefix, 0) == 0)
-                {
-                    std::string methodName = entry.first.substr(methodPrefix.size());
-                    if (methodName != "init" && !declaredMethods.contains(methodName) &&
-                        !currentScope_->lookupLocal(methodName))
-                    {
-                        inheritedMethods.emplace_back(methodName, entry.second);
-                    }
-                }
-            }
-            for (const auto &[methodName, methodType] : inheritedMethods)
-            {
-                Symbol sym;
-                sym.kind = Symbol::Kind::Method;
-                sym.name = methodName;
-                sym.type = methodType;
-                sym.isFinal = true;
-                defineSymbol(methodName, sym);
-                methodTypes_[decl.name + "." + methodName] = methodType;
-            }
         }
     }
 
@@ -672,34 +634,35 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
         auto parentIt = entityDecls_.find(decl.baseClass);
         if (parentIt != entityDecls_.end())
         {
-            for (const auto &[methodName, method] : declaredMethods)
+            for (auto *method : declaredMethods)
             {
-                bool parentHasMethod = false;
-                EntityDecl *cursor = parentIt->second;
-                while (cursor && !parentHasMethod)
-                {
-                    for (const auto &member : cursor->members)
-                    {
-                        if (member->kind != DeclKind::Method)
-                            continue;
-                        auto *parentMethod = static_cast<MethodDecl *>(member.get());
-                        if (parentMethod->name == methodName)
-                        {
-                            parentHasMethod = true;
-                            break;
-                        }
-                    }
-
-                    if (parentHasMethod || cursor->baseClass.empty())
-                        break;
-                    auto nextIt = entityDecls_.find(cursor->baseClass);
-                    cursor = nextIt == entityDecls_.end() ? nullptr : nextIt->second;
-                }
-
-                if (method->isOverride && !parentHasMethod)
+                MethodDecl *parentMethod = findInheritedExactMethod(decl.name, *method);
+                if (method->isOverride && !parentMethod)
                 {
                     error(method->loc,
-                          "Method '" + methodName + "' is marked override but no parent method exists");
+                          "Method '" + method->name +
+                              "' is marked override but no parent method with the same signature exists");
+                    continue;
+                }
+
+                if (parentMethod && !method->isOverride)
+                {
+                    error(method->loc,
+                          "Method '" + method->name +
+                              "' must be marked override to replace an inherited overload");
+                    continue;
+                }
+
+                if (parentMethod)
+                {
+                    TypeRef parentType = getMethodType(decl.baseClass, parentMethod);
+                    TypeRef childType = getMethodType(decl.name, method);
+                    if (parentType && childType && !parentType->equals(*childType))
+                    {
+                        error(method->loc,
+                              "Method '" + method->name +
+                                  "' must preserve the inherited return type for an override");
+                    }
                 }
             }
         }
@@ -721,22 +684,15 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
         if (member->kind == DeclKind::Method)
         {
             auto *method = static_cast<MethodDecl *>(member.get());
-            TypeRef returnType =
-                method->returnType ? resolveTypeNode(method->returnType.get()) : types::voidType();
-            std::vector<TypeRef> paramTypes;
-            for (const auto &param : method->params)
-            {
-                TypeRef paramType =
-                    param.type ? resolveTypeNode(param.type.get()) : types::unknown();
-                paramTypes.push_back(paramType);
-            }
+            TypeRef methodType = getMethodType(decl.name, method);
             Symbol sym;
             sym.kind = Symbol::Kind::Method;
             sym.name = method->name;
-            sym.type = types::function(paramTypes, returnType);
+            sym.type = methodType ? methodType : methodTypeForDecl(*method);
             sym.isFinal = true;
             sym.decl = method;
-            defineSymbol(method->name, sym);
+            if (!currentScope_->lookupLocal(method->name))
+                defineSymbol(method->name, sym);
         }
     }
 
@@ -774,23 +730,17 @@ void Sema::analyzeInterfaceDecl(InterfaceDecl &decl)
         if (member->kind == DeclKind::Method)
         {
             auto *method = static_cast<MethodDecl *>(member.get());
-            // Just register the method signature, no body analysis
-            TypeRef returnType =
-                method->returnType ? resolveTypeNode(method->returnType.get()) : types::voidType();
-            std::vector<TypeRef> paramTypes;
-            for (const auto &param : method->params)
-            {
-                paramTypes.push_back(param.type ? resolveTypeNode(param.type.get())
-                                                : types::unknown());
-            }
-            auto methodType = types::function(paramTypes, returnType);
+            TypeRef methodType = getMethodType(decl.name, method);
+            if (!methodType)
+                methodType = methodTypeForDecl(*method);
 
             Symbol sym;
             sym.kind = Symbol::Kind::Method;
             sym.name = method->name;
             sym.type = methodType;
             sym.decl = method;
-            defineSymbol(method->name, sym);
+            if (!currentScope_->lookupLocal(method->name))
+                defineSymbol(method->name, sym);
         }
     }
 
@@ -846,12 +796,10 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl)
     if (!decl.genericParams.empty())
         return;
 
-    // Register the function declaration for default parameter lookup
-    functionDecls_[decl.name] = &decl;
-
     currentFunction_ = &decl;
-    expectedReturnType_ =
-        decl.returnType ? resolveTypeNode(decl.returnType.get()) : types::voidType();
+    TypeRef funcType = functionDeclTypes_.count(&decl) ? functionDeclTypes_[&decl] : functionTypeForDecl(decl);
+    expectedReturnType_ = funcType && funcType->kind == TypeKindSem::Function ? funcType->returnType()
+                                                                               : types::voidType();
 
     pushScope(decl.loc);
 
@@ -935,23 +883,17 @@ void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType)
 void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
 {
     currentSelfType_ = ownerType;
+    TypeRef methodType = methodDeclTypes_.count(&decl) ? methodDeclTypes_[&decl] : methodTypeForDecl(decl);
     TypeRef returnType =
-        decl.returnType ? resolveTypeNode(decl.returnType.get()) : types::voidType();
+        methodType && methodType->kind == TypeKindSem::Function ? methodType->returnType()
+                                                                : types::voidType();
     expectedReturnType_ = returnType;
-
-    // Build parameter types
-    std::vector<TypeRef> paramTypes;
-    for (const auto &param : decl.params)
-    {
-        TypeRef paramType = param.type ? resolveTypeNode(param.type.get()) : types::unknown();
-        paramTypes.push_back(paramType);
-    }
 
     // Register method type: "TypeName.methodName" -> function type
     std::string methodKey = ownerType->name + "." + decl.name;
     if (methodTypes_.find(methodKey) == methodTypes_.end())
     {
-        methodTypes_[methodKey] = types::function(paramTypes, returnType);
+        methodTypes_[methodKey] = methodType;
         memberVisibility_[methodKey] = decl.visibility;
     }
 
@@ -967,9 +909,20 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
     markInitialized("self");
 
     // Define explicit parameters
-    for (const auto &param : decl.params)
+    for (size_t i = 0; i < decl.params.size(); ++i)
     {
-        TypeRef paramType = param.type ? resolveTypeNode(param.type.get()) : types::unknown();
+        const auto &param = decl.params[i];
+        TypeRef paramType = types::unknown();
+        if (methodType && methodType->kind == TypeKindSem::Function)
+        {
+            const auto &paramTypes = methodType->paramTypes();
+            if (i < paramTypes.size())
+                paramType = paramTypes[i];
+        }
+        else if (param.type)
+        {
+            paramType = resolveTypeNode(param.type.get());
+        }
 
         Symbol sym;
         sym.kind = Symbol::Kind::Parameter;

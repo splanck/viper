@@ -107,6 +107,27 @@ namespace il::frontends::zia
 // Symbol, ScopedSymbol, and Scope types are defined in
 // frontends/zia/sema/SemaTypes.hpp, included above.
 
+struct MethodInstanceKey
+{
+    std::string ownerType;
+    const MethodDecl *decl = nullptr;
+
+    bool operator==(const MethodInstanceKey &other) const
+    {
+        return ownerType == other.ownerType && decl == other.decl;
+    }
+};
+
+struct MethodInstanceKeyHash
+{
+    size_t operator()(const MethodInstanceKey &key) const
+    {
+        size_t h1 = std::hash<std::string>{}(key.ownerType);
+        size_t h2 = std::hash<const MethodDecl *>{}(key.decl);
+        return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6U) + (h1 >> 2U));
+    }
+};
+
 //===----------------------------------------------------------------------===//
 /// @name Semantic Analyzer
 /// @{
@@ -279,6 +300,90 @@ class Sema
         return it != runtimeFieldGetters_.end() ? it->second : "";
     }
 
+    /// @brief Get the resolved direct-call target for a user-defined function call.
+    std::string resolvedFunctionCallee(const CallExpr *expr) const
+    {
+        auto it = resolvedFunctionCallees_.find(expr);
+        return it != resolvedFunctionCallees_.end() ? it->second : "";
+    }
+
+    /// @brief Get the resolved method declaration for a call site.
+    MethodDecl *resolvedMethodDecl(const CallExpr *expr) const
+    {
+        auto it = resolvedMethodDecls_.find(expr);
+        return it != resolvedMethodDecls_.end() ? it->second : nullptr;
+    }
+
+    /// @brief Get the owner type of a resolved method call.
+    std::string resolvedMethodOwnerType(const CallExpr *expr) const
+    {
+        auto it = resolvedMethodOwnerTypes_.find(expr);
+        return it != resolvedMethodOwnerTypes_.end() ? it->second : "";
+    }
+
+    /// @brief Get the dispatch slot key of a resolved method call.
+    std::string resolvedMethodSlotKey(const CallExpr *expr) const
+    {
+        auto it = resolvedMethodSlotKeys_.find(expr);
+        return it != resolvedMethodSlotKeys_.end() ? it->second : "";
+    }
+
+    /// @brief Get the lowered symbol name for a method declaration.
+    std::string loweredMethodName(const MethodDecl *decl) const
+    {
+        auto it = loweredMethodNames_.find(decl);
+        return it != loweredMethodNames_.end() ? it->second : "";
+    }
+
+    /// @brief Get the lowered symbol name for a method declaration in a specific owner type.
+    std::string loweredMethodName(const std::string &ownerType, const MethodDecl *decl) const
+    {
+        auto it = ownerLoweredMethodNames_.find(MethodInstanceKey{ownerType, decl});
+        if (it != ownerLoweredMethodNames_.end())
+            return it->second;
+        return loweredMethodName(decl);
+    }
+
+    /// @brief Get the dispatch slot key for a method declaration.
+    std::string methodSlotKey(const MethodDecl *decl) const
+    {
+        auto it = methodDispatchKeys_.find(decl);
+        return it != methodDispatchKeys_.end() ? it->second : "";
+    }
+
+    /// @brief Get the dispatch slot key for a method declaration in a specific owner type.
+    std::string methodSlotKey(const std::string &ownerType, const MethodDecl *decl) const
+    {
+        auto it = ownerMethodDispatchKeys_.find(MethodInstanceKey{ownerType, decl});
+        if (it != ownerMethodDispatchKeys_.end())
+            return it->second;
+        return methodSlotKey(decl);
+    }
+
+    /// @brief Get the exact signature key for a method declaration in a specific owner type.
+    std::string methodSignatureKey(const std::string &ownerType, const MethodDecl *decl) const
+    {
+        auto it = ownerMethodSignatureKeys_.find(MethodInstanceKey{ownerType, decl});
+        if (it != ownerMethodSignatureKeys_.end())
+            return it->second;
+        auto fallback = methodSignatureKeys_.find(decl);
+        return fallback != methodSignatureKeys_.end() ? fallback->second : "";
+    }
+
+    /// @brief Get the lowered symbol name for a function declaration.
+    std::string loweredFunctionName(const FunctionDecl *decl) const
+    {
+        auto it = loweredFunctionNames_.find(decl);
+        return it != loweredFunctionNames_.end() ? it->second : "";
+    }
+
+    /// @brief Get the resolved init overload for a new-expression.
+    MethodDecl *resolvedInitDecl(const NewExpr *expr) const
+    {
+        auto it = resolvedInitDecls_.find(expr);
+        return it != resolvedInitDecls_.end() ? it->second : nullptr;
+    }
+
     /// @brief Look up the return type of a function by name.
     /// @param name The function name (e.g., "Viper.Random.NextInt" or "MyLib.helper").
     /// @return The return type, or nullptr if not found.
@@ -334,6 +439,29 @@ class Sema
         std::string key = typeName + "." + methodName;
         auto it = methodTypes_.find(key);
         return it != methodTypes_.end() ? it->second : nullptr;
+    }
+
+    /// @brief Look up a method type by declaration.
+    TypeRef getMethodType(const MethodDecl *decl) const
+    {
+        auto it = methodDeclTypes_.find(decl);
+        return it != methodDeclTypes_.end() ? it->second : nullptr;
+    }
+
+    /// @brief Look up a method type for a specific owner type and declaration.
+    TypeRef getMethodType(const std::string &ownerType, const MethodDecl *decl) const
+    {
+        auto it = ownerMethodTypes_.find(MethodInstanceKey{ownerType, decl});
+        if (it != ownerMethodTypes_.end())
+            return it->second;
+        return getMethodType(decl);
+    }
+
+    /// @brief Look up a function type by declaration.
+    TypeRef getFunctionType(const FunctionDecl *decl) const
+    {
+        auto it = functionDeclTypes_.find(decl);
+        return it != functionDeclTypes_.end() ? it->second : nullptr;
     }
 
     /// @brief Get the original generic declaration for an instantiated type.
@@ -517,6 +645,67 @@ class Sema
     /// @param decl The method declaration.
     /// @param ownerType The type containing this method.
     void analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType);
+
+    /// @brief Build a semantic function type for a function declaration.
+    TypeRef functionTypeForDecl(const FunctionDecl &decl) const;
+
+    /// @brief Build a semantic function type for a method declaration.
+    TypeRef methodTypeForDecl(const MethodDecl &decl) const;
+
+    /// @brief Build the exact overload signature key for a function declaration.
+    std::string functionSignatureKey(const FunctionDecl &decl) const;
+
+    /// @brief Build the exact overload signature key for a method declaration.
+    std::string methodSignatureKey(const MethodDecl &decl) const;
+
+    /// @brief Build the exact overload signature key for a resolved method type.
+    std::string methodSignatureKey(const MethodDecl &decl, TypeRef methodType) const;
+
+    /// @brief Build the dispatch slot key for a method declaration.
+    std::string methodDispatchKey(const MethodDecl &decl) const;
+
+    /// @brief Build the dispatch slot key for a resolved method type.
+    std::string methodDispatchKey(const MethodDecl &decl, TypeRef methodType) const;
+
+    /// @brief Register a function overload and assign its lowered symbol name.
+    bool registerFunctionOverload(const std::string &name,
+                                  FunctionDecl *decl,
+                                  TypeRef funcType,
+                                  SourceLoc loc);
+
+    /// @brief Register a method overload and assign its lowered symbol name.
+    bool registerMethodOverload(const std::string &ownerType,
+                                MethodDecl *decl,
+                                TypeRef methodType,
+                                SourceLoc loc);
+
+    /// @brief Collect method overloads visible on a type.
+    std::vector<MethodDecl *> collectMethodOverloads(const std::string &typeName,
+                                                     const std::string &methodName,
+                                                     bool includeInherited = true) const;
+
+    /// @brief Resolve a function overload for a call site.
+    FunctionDecl *resolveFunctionOverload(const std::string &name,
+                                          const std::vector<TypeRef> &argTypes,
+                                          SourceLoc loc,
+                                          std::string *loweredName = nullptr);
+
+    /// @brief Resolve a method overload for a call site.
+    MethodDecl *resolveMethodOverload(const std::string &ownerType,
+                                      const std::string &methodName,
+                                      const std::vector<TypeRef> &argTypes,
+                                      SourceLoc loc,
+                                      std::string *resolvedOwnerType = nullptr,
+                                      bool includeInherited = true);
+
+    /// @brief Find an inherited exact-signature method for override validation.
+    MethodDecl *findInheritedExactMethod(const std::string &ownerType, const MethodDecl &decl) const;
+
+    /// @brief Check whether a name has multiple user-defined overloads.
+    bool hasOverloadedFunctionName(const std::string &name) const;
+
+    EntityDecl *lookupEntityDeclForType(const std::string &typeName) const;
+    ValueDecl *lookupValueDeclForType(const std::string &typeName) const;
 
     /// @brief Initialize all runtime function type mappings.
     /// @details Registers all Viper.* namespace functions as extern symbols
@@ -941,6 +1130,9 @@ class Sema
     /// @return Pointer to the function declaration, or nullptr if not found.
     FunctionDecl *getFunctionDecl(const std::string &name) const;
 
+    /// @brief Get all user-defined function overloads for a name.
+    std::vector<FunctionDecl *> getFunctionOverloads(const std::string &name) const;
+
     /// @brief Instantiate a generic function with concrete type arguments.
     /// @param name The function name (e.g., "identity").
     /// @param args The concrete type arguments (e.g., [Integer]).
@@ -1061,6 +1253,9 @@ class Sema
     /// @param loc Source location of the new definition.
     /// @return false when a duplicate exists and the definition should be skipped.
     bool reportDuplicateDefinition(const std::string &name, SourceLoc loc);
+
+    /// @brief Format overload candidates for ambiguity diagnostics.
+    std::string formatOverloadCandidates(const std::vector<std::string> &candidates) const;
 
     /// @brief Report an undefined name error.
     /// @param loc Source location.
@@ -1211,6 +1406,45 @@ class Sema
     /// Used for method call resolution.
     std::unordered_map<std::string, TypeRef> methodTypes_;
 
+    /// @brief Exact method function types keyed by declaration pointer.
+    std::unordered_map<const MethodDecl *, TypeRef> methodDeclTypes_;
+
+    /// @brief Exact method function types keyed by owner type and declaration.
+    std::unordered_map<MethodInstanceKey, TypeRef, MethodInstanceKeyHash> ownerMethodTypes_;
+
+    /// @brief Exact function types keyed by declaration pointer.
+    std::unordered_map<const FunctionDecl *, TypeRef> functionDeclTypes_;
+
+    /// @brief Top-level function overload families keyed by qualified name.
+    std::unordered_map<std::string, std::vector<FunctionDecl *>> functionOverloads_;
+
+    /// @brief Method overload families keyed by "TypeName.methodName".
+    std::unordered_map<std::string, std::vector<MethodDecl *>> methodOverloads_;
+
+    /// @brief Lowered symbol names for function declarations.
+    std::unordered_map<const FunctionDecl *, std::string> loweredFunctionNames_;
+
+    /// @brief Lowered symbol names for method declarations.
+    std::unordered_map<const MethodDecl *, std::string> loweredMethodNames_;
+
+    /// @brief Lowered symbol names keyed by owner type and declaration.
+    std::unordered_map<MethodInstanceKey, std::string, MethodInstanceKeyHash>
+        ownerLoweredMethodNames_;
+
+    /// @brief Exact signature keys for method declarations.
+    std::unordered_map<const MethodDecl *, std::string> methodSignatureKeys_;
+
+    /// @brief Exact signature keys keyed by owner type and declaration.
+    std::unordered_map<MethodInstanceKey, std::string, MethodInstanceKeyHash>
+        ownerMethodSignatureKeys_;
+
+    /// @brief Dispatch slot keys for method declarations.
+    std::unordered_map<const MethodDecl *, std::string> methodDispatchKeys_;
+
+    /// @brief Dispatch slot keys keyed by owner type and declaration.
+    std::unordered_map<MethodInstanceKey, std::string, MethodInstanceKeyHash>
+        ownerMethodDispatchKeys_;
+
     /// @brief Map from field signatures to field types.
     /// @details Key format: "TypeName.fieldName"
     std::unordered_map<std::string, TypeRef> fieldTypes_;
@@ -1233,6 +1467,21 @@ class Sema
     /// @details Key: CallExpr pointer, Value: Mangled function name (e.g., "identity$Integer").
     /// Used by the lowerer to determine which instantiated function to call.
     std::unordered_map<const CallExpr *, std::string> genericFunctionCallees_;
+
+    /// @brief Resolved direct-call targets for user-defined functions.
+    std::unordered_map<const CallExpr *, std::string> resolvedFunctionCallees_;
+
+    /// @brief Resolved method declarations for call sites.
+    std::unordered_map<const CallExpr *, MethodDecl *> resolvedMethodDecls_;
+
+    /// @brief Owning type name for resolved method call sites.
+    std::unordered_map<const CallExpr *, std::string> resolvedMethodOwnerTypes_;
+
+    /// @brief Dispatch slot key for resolved method call sites.
+    std::unordered_map<const CallExpr *, std::string> resolvedMethodSlotKeys_;
+
+    /// @brief Resolved init declarations for new-expressions.
+    std::unordered_map<const NewExpr *, MethodDecl *> resolvedInitDecls_;
 
     /// @brief Map from field expressions to their resolved runtime getter names.
     /// @details For namespace-style property access like Viper.Math.Pi, this maps

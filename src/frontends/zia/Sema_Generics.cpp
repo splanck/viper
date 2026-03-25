@@ -162,6 +162,7 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
 
             // Register the instantiated type first so self-references work
             typeRegistry_[mangledName] = instantiated;
+            valueDecls_[mangledName] = valueDecl;
 
             // Analyze members with substitutions active
             for (const auto &member : valueDecl->members)
@@ -172,6 +173,7 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
                     TypeRef fieldType = resolveTypeNode(field->type.get());
                     std::string key = mangledName + "." + field->name;
                     fieldTypes_[key] = fieldType;
+                    memberVisibility_[key] = field->visibility;
                 }
                 else if (member->kind == DeclKind::Method)
                 {
@@ -184,8 +186,13 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
                     TypeRef returnType = method->returnType
                                              ? resolveTypeNode(method->returnType.get())
                                              : types::voidType();
+                    TypeRef methodType = types::function(paramTypes, returnType);
+                    if (!registerMethodOverload(mangledName, method, methodType, method->loc))
+                        continue;
                     std::string key = mangledName + "." + method->name;
-                    methodTypes_[key] = types::function(paramTypes, returnType);
+                    if (methodTypes_.find(key) == methodTypes_.end())
+                        methodTypes_[key] = methodType;
+                    memberVisibility_[key] = method->visibility;
                 }
             }
 
@@ -197,6 +204,11 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
             auto instantiated = std::make_shared<ViperType>(TypeKindSem::Entity, mangledName);
 
             typeRegistry_[mangledName] = instantiated;
+            entityDecls_[mangledName] = entityDecl;
+            for (const auto &iface : entityDecl->interfaces)
+                types::registerInterfaceImplementation(mangledName, iface);
+            if (!entityDecl->baseClass.empty())
+                types::registerEntityInheritance(mangledName, entityDecl->baseClass);
 
             for (const auto &member : entityDecl->members)
             {
@@ -206,6 +218,7 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
                     TypeRef fieldType = resolveTypeNode(field->type.get());
                     std::string key = mangledName + "." + field->name;
                     fieldTypes_[key] = fieldType;
+                    memberVisibility_[key] = field->visibility;
                 }
                 else if (member->kind == DeclKind::Method)
                 {
@@ -218,8 +231,13 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
                     TypeRef returnType = method->returnType
                                              ? resolveTypeNode(method->returnType.get())
                                              : types::voidType();
+                    TypeRef methodType = types::function(paramTypes, returnType);
+                    if (!registerMethodOverload(mangledName, method, methodType, method->loc))
+                        continue;
                     std::string key = mangledName + "." + method->name;
-                    methodTypes_[key] = types::function(paramTypes, returnType);
+                    if (methodTypes_.find(key) == methodTypes_.end())
+                        methodTypes_[key] = methodType;
+                    memberVisibility_[key] = method->visibility;
                 }
             }
 
@@ -300,6 +318,14 @@ FunctionDecl *Sema::getFunctionDecl(const std::string &name) const
     return it != functionDecls_.end() ? it->second : nullptr;
 }
 
+std::vector<FunctionDecl *> Sema::getFunctionOverloads(const std::string &name) const
+{
+    auto it = functionOverloads_.find(name);
+    if (it == functionOverloads_.end())
+        return {};
+    return it->second;
+}
+
 bool Sema::typeImplementsInterface(TypeRef type, const std::string &interfaceName) const
 {
     if (!type)
@@ -308,10 +334,9 @@ bool Sema::typeImplementsInterface(TypeRef type, const std::string &interfaceNam
     // Check if the type is an entity type
     if (type->kind == TypeKindSem::Entity)
     {
-        auto entityIt = entityDecls_.find(type->name);
-        if (entityIt != entityDecls_.end())
+        if (auto *entityDecl = lookupEntityDeclForType(type->name))
         {
-            for (const auto &iface : entityIt->second->interfaces)
+            for (const auto &iface : entityDecl->interfaces)
             {
                 if (iface == interfaceName)
                     return true;
@@ -321,10 +346,9 @@ bool Sema::typeImplementsInterface(TypeRef type, const std::string &interfaceNam
     // Check if the type is a value type
     else if (type->kind == TypeKindSem::Value)
     {
-        auto valueIt = valueDecls_.find(type->name);
-        if (valueIt != valueDecls_.end())
+        if (auto *valueDecl = lookupValueDeclForType(type->name))
         {
-            for (const auto &iface : valueIt->second->interfaces)
+            for (const auto &iface : valueDecl->interfaces)
             {
                 if (iface == interfaceName)
                     return true;
@@ -426,6 +450,7 @@ TypeRef Sema::instantiateGenericFunction(const std::string &name,
     sym.type = instantiatedType;
     sym.decl = funcDecl;
     defineSymbol(mangledName, sym);
+    functionDeclTypes_[funcDecl] = instantiatedType;
 
     return instantiatedType;
 }

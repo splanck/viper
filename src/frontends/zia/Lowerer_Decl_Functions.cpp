@@ -172,23 +172,45 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     if (!decl.genericParams.empty())
         return;
 
-    // Determine return type
+    // Determine return type from sema's resolved declaration signature.
+    TypeRef funcType = sema_.getFunctionType(&decl);
+    if (!funcType)
+    {
+        std::vector<TypeRef> fallbackParamTypes;
+        fallbackParamTypes.reserve(decl.params.size());
+        for (const auto &param : decl.params)
+            fallbackParamTypes.push_back(param.type ? sema_.resolveType(param.type.get())
+                                                    : types::unknown());
+        TypeRef fallbackReturnType =
+            decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
+        funcType = types::function(fallbackParamTypes, fallbackReturnType);
+    }
     TypeRef returnType =
-        decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
+        funcType && funcType->kind == TypeKindSem::Function ? funcType->returnType()
+                                                            : types::voidType();
     Type ilReturnType = mapType(returnType);
 
     // Build parameter list
     std::vector<il::core::Param> params;
     params.reserve(decl.params.size());
-    for (const auto &param : decl.params)
+    const auto cachedParamTypes = funcType && funcType->kind == TypeKindSem::Function
+                                      ? funcType->paramTypes()
+                                      : std::vector<TypeRef>{};
+    for (size_t i = 0; i < decl.params.size(); ++i)
     {
-        TypeRef paramType = param.type ? sema_.resolveType(param.type.get()) : types::unknown();
-        params.push_back({param.name, mapType(paramType)});
+        TypeRef paramType =
+            i < cachedParamTypes.size()
+                ? cachedParamTypes[i]
+                : (decl.params[i].type ? sema_.resolveType(decl.params[i].type.get())
+                                       : types::unknown());
+        params.push_back({decl.params[i].name, mapType(paramType)});
     }
 
     // Use qualified name for functions inside namespaces
     std::string qualifiedName = qualifyName(decl.name);
-    std::string mangledName = mangleFunctionName(qualifiedName);
+    std::string mangledName = sema_.loweredFunctionName(&decl);
+    if (mangledName.empty())
+        mangledName = mangleFunctionName(qualifiedName);
 
     // Track this function as defined in this module
     definedFunctions_.insert(mangledName);
@@ -229,7 +251,10 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     for (size_t i = 0; i < decl.params.size() && i < blockParams.size(); ++i)
     {
         TypeRef paramType =
-            decl.params[i].type ? sema_.resolveType(decl.params[i].type.get()) : types::unknown();
+            i < cachedParamTypes.size()
+                ? cachedParamTypes[i]
+                : (decl.params[i].type ? sema_.resolveType(decl.params[i].type.get())
+                                       : types::unknown());
         Type ilParamType = mapType(paramType);
 
         // Create slot and store the parameter value
@@ -558,7 +583,7 @@ void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl)
             auto *method = static_cast<MethodDecl *>(member.get());
             info.methodMap[method->name] = method;
             info.methods.push_back(method);
-            info.slotIndex[method->name] = slotIdx++;
+            info.slotIndex[sema_.methodSlotKey(qualifiedName, method)] = slotIdx++;
         }
     }
 
@@ -595,7 +620,9 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
     }
 
     // Look up cached method type - this has already-substituted types for generics
-    TypeRef methodType = sema_.getMethodType(typeName, decl.name);
+    TypeRef methodType = sema_.getMethodType(typeName, &decl);
+    if (!methodType)
+        methodType = sema_.getMethodType(typeName, decl.name);
     std::vector<TypeRef> cachedParamTypes;
     TypeRef returnType = types::voidType();
     if (methodType && methodType->kind == TypeKindSem::Function)
@@ -631,7 +658,9 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
     }
 
     // Mangle method name: TypeName.methodName
-    std::string mangledName = typeName + "." + decl.name;
+    std::string mangledName = sema_.loweredMethodName(typeName, &decl);
+    if (mangledName.empty())
+        mangledName = typeName + "." + decl.name;
 
     // Create function
     currentFunc_ = &builder_->startFunction(mangledName, ilReturnType, params);

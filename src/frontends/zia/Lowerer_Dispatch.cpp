@@ -27,27 +27,16 @@ using DispatchEntry = std::pair<int, std::string>;
 //=============================================================================
 
 LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
-                                            const std::string &methodName,
-                                            size_t /*vtableSlot*/,
+                                            const std::string &slotKey,
+                                            const std::string &ownerType,
+                                            MethodDecl *method,
                                             Value selfValue,
                                             CallExpr *expr)
 {
-    // Get return type from cached method type - search up inheritance chain if needed
-    TypeRef returnType = types::voidType();
-    std::string searchType = entityInfo.name;
-    while (!searchType.empty())
-    {
-        TypeRef methodType = sema_.getMethodType(searchType, methodName);
-        if (methodType && methodType->kind == TypeKindSem::Function)
-        {
-            returnType = methodType->returnType();
-            break;
-        }
-        auto it = entityTypes_.find(searchType);
-        if (it == entityTypes_.end())
-            break;
-        searchType = it->second.baseClass;
-    }
+    TypeRef methodType = sema_.getMethodType(ownerType, method);
+    TypeRef returnType = methodType && methodType->kind == TypeKindSem::Function
+                             ? methodType->returnType()
+                             : types::voidType();
     Type ilReturnType = mapType(returnType);
 
     // Build argument list: self + call args
@@ -61,7 +50,7 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
     std::vector<DispatchEntry> dispatchTable;
     auto addEntry = [&](const EntityTypeInfo &info)
     {
-        auto vtIt = info.vtableIndex.find(methodName);
+        auto vtIt = info.vtableIndex.find(slotKey);
         if (vtIt != info.vtableIndex.end())
             dispatchTable.emplace_back(info.classId, info.vtable[vtIt->second]);
     };
@@ -93,7 +82,7 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
     if (dispatchTable.size() <= 1)
     {
         std::string target =
-            dispatchTable.empty() ? entityInfo.name + "." + methodName : dispatchTable[0].second;
+            dispatchTable.empty() ? sema_.loweredMethodName(ownerType, method) : dispatchTable[0].second;
         // Handle void return types correctly
         if (ilReturnType.kind == Type::Kind::Void)
         {
@@ -180,16 +169,16 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
 //=============================================================================
 
 LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo,
-                                              const std::string &methodName,
-                                              MethodDecl * /*method*/,
+                                              const std::string &slotKey,
+                                              const std::string &ownerType,
+                                              MethodDecl *method,
                                               Value selfValue,
                                               CallExpr *expr)
 {
-    // Get return type from cached interface method type
-    TypeRef returnType = types::voidType();
-    TypeRef methodType = sema_.getMethodType(ifaceInfo.name, methodName);
-    if (methodType && methodType->kind == TypeKindSem::Function)
-        returnType = methodType->returnType();
+    TypeRef methodType = sema_.getMethodType(ownerType, method);
+    TypeRef returnType =
+        methodType && methodType->kind == TypeKindSem::Function ? methodType->returnType()
+                                                                : types::voidType();
     Type ilReturnType = mapType(returnType);
 
     // Build argument list: self + call args
@@ -200,7 +189,7 @@ LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo
         args.push_back(lowerExpr(arg.value.get()).value);
 
     // Look up the method's slot index in the interface
-    size_t slotIdx = ifaceInfo.findSlot(methodName);
+    size_t slotIdx = ifaceInfo.findSlot(slotKey);
     if (slotIdx == SIZE_MAX)
     {
         // Fallback: method not in interface slot map (shouldn't happen)

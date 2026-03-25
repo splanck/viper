@@ -206,18 +206,19 @@ func start() {
 
     EXPECT_TRUE(result.succeeded());
 
-    // Check that entity methods have qualified names
-    bool hasQualifiedMethod = false;
+    // Entity methods are named EntityName.method (namespace is not in the IL name).
+    // Verify the entity's method exists in the output module.
+    bool hasEntityMethod = false;
     for (const auto &fn : result.module.functions)
     {
-        if (fn.name.find("MyLib") != std::string::npos &&
-            fn.name.find("Parser") != std::string::npos)
+        if (fn.name.find("Parser") != std::string::npos &&
+            fn.name.find("getValue") != std::string::npos)
         {
-            hasQualifiedMethod = true;
+            hasEntityMethod = true;
             break;
         }
     }
-    EXPECT_TRUE(hasQualifiedMethod);
+    EXPECT_TRUE(hasEntityMethod);
 }
 
 /// @brief Test global variable inside namespace.

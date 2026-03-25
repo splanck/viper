@@ -630,6 +630,7 @@ set(ZIA_LANG_TESTS
         29_control_flow_advanced
         30_value_types
         31_typed_catch_list_shorthand
+        32_overloading_inheritance
 )
 
 foreach (test_name IN LISTS ZIA_LANG_TESTS)

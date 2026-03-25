@@ -512,7 +512,9 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
                                      CallExpr *expr)
 {
     // Look up the cached method type - this has already-substituted types for generics
-    TypeRef methodType = sema_.getMethodType(typeName, method->name);
+    TypeRef methodType = sema_.getMethodType(typeName, method);
+    if (!methodType)
+        methodType = sema_.getMethodType(typeName, method->name);
     std::vector<TypeRef> paramTypes;
     TypeRef returnType = types::voidType();
     if (methodType && methodType->kind == TypeKindSem::Function)
@@ -559,7 +561,9 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
 
     Type ilReturnType = mapType(returnType);
 
-    std::string methodName = typeName + "." + method->name;
+    std::string methodName = sema_.loweredMethodName(typeName, method);
+    if (methodName.empty())
+        methodName = typeName + "." + method->name;
 
     // Handle void return types correctly - don't try to store void results
     if (ilReturnType.kind == Type::Kind::Void)
@@ -611,7 +615,9 @@ std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string
     if (initIt != info.methodMap.end())
     {
         // Call the explicit init method (like entity types do)
-        std::string initName = typeName + ".init";
+        std::string initName = sema_.loweredMethodName(typeName, initIt->second);
+        if (initName.empty())
+            initName = typeName + ".init";
         std::vector<Value> initArgs;
         initArgs.push_back(ptr); // self is first argument
         for (const auto &argVal : argValues)
@@ -683,7 +689,9 @@ std::optional<LowerResult> Lowerer::lowerEntityTypeConstruction(const std::strin
     if (initIt != info.methodMap.end())
     {
         // Call the explicit init method
-        std::string initName = typeName + ".init";
+        std::string initName = sema_.loweredMethodName(typeName, initIt->second);
+        if (initName.empty())
+            initName = typeName + ".init";
         std::vector<Value> initArgs;
         initArgs.push_back(ptr); // self is first argument
         for (const auto &argVal : argValues)
@@ -798,7 +806,9 @@ LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr)
     auto initIt = info.methodMap.find("init");
     if (initIt != info.methodMap.end())
     {
-        std::string initName = typeName + ".init";
+        std::string initName = sema_.loweredMethodName(typeName, initIt->second);
+        if (initName.empty())
+            initName = typeName + ".init";
         std::vector<Value> initArgs;
         initArgs.push_back(ptr); // self is first argument
         for (const auto &argVal : argValues)

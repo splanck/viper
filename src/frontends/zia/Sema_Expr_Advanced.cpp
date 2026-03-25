@@ -263,10 +263,28 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
         }
 
         // Check if it's a method
-        auto methodIt = methodTypes_.find(memberKey);
-        if (methodIt != methodTypes_.end())
+        auto overloads = collectMethodOverloads(baseType->name, expr->field, true);
+        if (!overloads.empty())
         {
-            return methodIt->second;
+            if (overloads.size() > 1)
+            {
+                error(expr->loc,
+                      "Member '" + expr->field +
+                          "' is overloaded and must be called with arguments to resolve it");
+                return types::unknown();
+            }
+
+            MethodDecl *method = overloads.front();
+            if (method->visibility == Visibility::Private && !isInsideType)
+            {
+                error(expr->loc,
+                      "Cannot access private member '" + expr->field + "' of type '" +
+                          baseType->name + "'");
+                return types::unknown();
+            }
+            TypeRef methodType = getMethodType(baseType->name, method);
+            if (methodType)
+                return methodType;
         }
 
         // Check if it's a field
@@ -973,42 +991,29 @@ TypeRef Sema::analyzeNew(NewExpr *expr)
         error(expr->loc, "'new' can only be used with value, entity, or collection types");
     }
 
+    std::vector<TypeRef> argTypes;
+    argTypes.reserve(expr->args.size());
+
     // Analyze constructor arguments
     for (auto &arg : expr->args)
     {
-        analyzeExpr(arg.value.get());
+        argTypes.push_back(analyzeExpr(arg.value.get()));
     }
 
-    // For entity types, validate that arguments match init method
+    // For entity types, validate that arguments match an explicit init overload on the entity.
     if (type->kind == TypeKindSem::Entity)
     {
-        auto entityIt = entityDecls_.find(type->name);
-        MethodDecl *initDecl = nullptr;
-        if (entityIt != entityDecls_.end())
-        {
-            for (const auto &member : entityIt->second->members)
-            {
-                if (member->kind != DeclKind::Method)
-                    continue;
-                auto *method = static_cast<MethodDecl *>(member.get());
-                if (method->name == "init")
-                {
-                    initDecl = method;
-                    break;
-                }
-            }
-        }
+        MethodDecl *initDecl = resolveMethodOverload(
+            type->name, "init", argTypes, expr->loc, nullptr, /*includeInherited=*/true);
 
         if (initDecl)
         {
-            size_t expectedArgs = initDecl->params.size();
-            size_t providedArgs = expr->args.size();
-            if (providedArgs != expectedArgs)
-            {
-                error(expr->loc,
-                      "Entity '" + type->name + "' init() expects " + std::to_string(expectedArgs) +
-                          " argument(s) but got " + std::to_string(providedArgs));
-            }
+            resolvedInitDecls_[expr] = initDecl;
+        }
+        else if (!expr->args.empty())
+        {
+            error(expr->loc,
+                  "Entity '" + type->name + "' has no init overload matching the provided arguments");
         }
     }
 

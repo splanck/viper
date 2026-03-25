@@ -162,15 +162,18 @@ void Lowerer::buildEntityVtable(EntityDecl &decl,
             // Build vtable (static methods don't go in vtable)
             if (!method->isStatic)
             {
-                std::string methodQualName = qualifiedName + "." + method->name;
-                auto vtableIt = info.vtableIndex.find(method->name);
+                std::string slotKey = sema_.methodSlotKey(qualifiedName, method);
+                std::string methodQualName = sema_.loweredMethodName(qualifiedName, method);
+                if (methodQualName.empty())
+                    methodQualName = qualifiedName + "." + method->name;
+                auto vtableIt = info.vtableIndex.find(slotKey);
                 if (vtableIt != info.vtableIndex.end())
                 {
                     info.vtable[vtableIt->second] = methodQualName;
                 }
                 else
                 {
-                    info.vtableIndex[method->name] = info.vtable.size();
+                    info.vtableIndex[slotKey] = info.vtable.size();
                     info.vtable.push_back(methodQualName);
                 }
             }
@@ -338,6 +341,7 @@ void Lowerer::emitItableInit()
             for (size_t s = 0; s < slotCount; ++s)
             {
                 const std::string &methodName = ifaceInfo.methods[s]->name;
+                const std::string slotKey = sema_.methodSlotKey(ifaceInfo.name, ifaceInfo.methods[s]);
                 int64_t offset = static_cast<int64_t>(s * 8ULL);
                 Value slotPtr = emitBinary(
                     Opcode::GEP, Type(Type::Kind::Ptr), itablePtr, Value::constInt(offset));
@@ -350,7 +354,7 @@ void Lowerer::emitItableInit()
                     auto entIt = entityTypes_.find(searchEntity);
                     if (entIt == entityTypes_.end())
                         break;
-                    auto vtIt = entIt->second.vtableIndex.find(methodName);
+                    auto vtIt = entIt->second.vtableIndex.find(slotKey);
                     if (vtIt != entIt->second.vtableIndex.end())
                     {
                         implName = entIt->second.vtable[vtIt->second];
@@ -569,15 +573,18 @@ const EntityTypeInfo *Lowerer::getOrCreateEntityTypeInfo(const std::string &type
             info.methods.push_back(method);
 
             // Build vtable
-            std::string methodQualName = typeName + "." + method->name;
-            auto vtableIt = info.vtableIndex.find(method->name);
+            std::string slotKey = sema_.methodSlotKey(typeName, method);
+            std::string methodQualName = sema_.loweredMethodName(typeName, method);
+            if (methodQualName.empty())
+                methodQualName = typeName + "." + method->name;
+            auto vtableIt = info.vtableIndex.find(slotKey);
             if (vtableIt != info.vtableIndex.end())
             {
                 info.vtable[vtableIt->second] = methodQualName;
             }
             else
             {
-                info.vtableIndex[method->name] = info.vtable.size();
+                info.vtableIndex[slotKey] = info.vtable.size();
                 info.vtable.push_back(methodQualName);
             }
         }

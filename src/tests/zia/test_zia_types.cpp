@@ -65,6 +65,11 @@ entity Person {
     expose Integer age;
     expose Integer score;
 
+    expose func init(a: Integer, s: Integer) {
+        age = a;
+        score = s;
+    }
+
     expose func getAge() -> Integer {
         return age;
     }

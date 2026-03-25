@@ -30,6 +30,10 @@ module Test;
 
 entity Person {
     expose Integer age;
+
+    expose func init(a: Integer) {
+        age = a;
+    }
 }
 
 func start() {
@@ -90,6 +94,10 @@ module Test;
 
 entity Person {
     expose Integer age;
+
+    expose func init(a: Integer) {
+        age = a;
+    }
 }
 
 func maybeAge(Boolean flag) -> Integer? {

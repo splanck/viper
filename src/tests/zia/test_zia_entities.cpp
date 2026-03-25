@@ -590,6 +590,83 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+TEST(ZiaEntities, CrossInheritanceOverloadFamiliesCompile)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func greet() -> String {
+    return "hi";
+}
+
+func greet(n: Integer) -> String {
+    return "hi " + toString(n);
+}
+
+entity Animal {
+    expose func speak() -> String {
+        return "animal";
+    }
+
+    expose func speak(times: Integer) -> String {
+        return "animal " + toString(times);
+    }
+}
+
+entity Dog extends Animal {
+    override expose func speak() -> String {
+        return "dog";
+    }
+
+    expose func speak(name: String) -> String {
+        return "dog " + name;
+    }
+}
+
+interface Formatter {
+    func fmt() -> String;
+    func fmt(n: Integer) -> String;
+}
+
+entity Message implements Formatter {
+    expose func fmt() -> String {
+        return "m";
+    }
+
+    expose func fmt(n: Integer) -> String {
+        return "m " + toString(n);
+    }
+}
+
+func start() {
+    var dog = new Dog();
+    var animal: Animal = dog;
+    var formatter: Formatter = new Message();
+
+    Viper.Terminal.Say(greet());
+    Viper.Terminal.Say(greet(1));
+    Viper.Terminal.Say(dog.speak());
+    Viper.Terminal.Say(dog.speak("Rex"));
+    Viper.Terminal.Say(dog.speak(2));
+    Viper.Terminal.Say(animal.speak());
+    Viper.Terminal.Say(animal.speak(3));
+    Viper.Terminal.Say(formatter.fmt());
+    Viper.Terminal.Say(formatter.fmt(4));
+}
+)";
+    CompilerInput input{.source = source, .path = "cross_inheritance_overloads.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    if (!result.succeeded())
+    {
+        for (const auto &d : result.diagnostics.diagnostics())
+            std::cerr << "  " << d.message << "\n";
+    }
+    EXPECT_TRUE(result.succeeded());
+}
+
 /// @brief Test basic 'as' cast without list (direct entity cast).
 TEST(ZiaEntities, AsCastBasic)
 {

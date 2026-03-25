@@ -924,26 +924,28 @@ class Lowerer
 
     /// @brief Lower a virtual method call using vtable dispatch.
     /// @param entityInfo The entity type info with vtable.
-    /// @param methodName The method name.
-    /// @param vtableSlot The vtable slot index.
+    /// @param slotKey The resolved dispatch slot key.
+    /// @param method The resolved method declaration.
     /// @param selfValue The receiver value (self).
     /// @param expr The call expression for arguments.
     /// @return The call result.
     LowerResult lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
-                                       const std::string &methodName,
-                                       size_t vtableSlot,
+                                       const std::string &slotKey,
+                                       const std::string &ownerType,
+                                       MethodDecl *method,
                                        Value selfValue,
                                        CallExpr *expr);
 
     /// @brief Lower an interface method call using class_id-based dispatch.
     /// @param ifaceInfo The interface type info.
-    /// @param methodName The method name.
-    /// @param method The method declaration from the interface.
+    /// @param slotKey The resolved dispatch slot key.
+    /// @param method The resolved method declaration from the interface.
     /// @param selfValue The receiver value (self).
     /// @param expr The call expression for arguments.
     /// @return The call result.
     LowerResult lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo,
-                                         const std::string &methodName,
+                                         const std::string &slotKey,
+                                         const std::string &ownerType,
                                          MethodDecl *method,
                                          Value selfValue,
                                          CallExpr *expr);

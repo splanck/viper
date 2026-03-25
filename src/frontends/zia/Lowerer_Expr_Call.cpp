@@ -119,6 +119,127 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         return lowerGenericFunctionCall(genericCallee, expr);
     }
 
+    if (MethodDecl *resolvedMethod = sema_.resolvedMethodDecl(expr))
+    {
+        std::string ownerType = sema_.resolvedMethodOwnerType(expr);
+        std::string slotKey = sema_.resolvedMethodSlotKey(expr);
+
+        if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get()))
+        {
+            if (fieldExpr->base->kind == ExprKind::SuperExpr)
+            {
+                Value selfPtr;
+                if (getSelfPtr(selfPtr))
+                    return lowerMethodCall(resolvedMethod, ownerType, selfPtr, expr);
+            }
+
+            auto baseResult = lowerExpr(fieldExpr->base.get());
+            TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
+            if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType())
+                baseType = baseType->innerType();
+
+            if (baseType && baseType->kind == TypeKindSem::Interface)
+            {
+                auto ifaceIt = interfaceTypes_.find(baseType->name);
+                if (ifaceIt != interfaceTypes_.end())
+                    return lowerInterfaceMethodCall(
+                        ifaceIt->second, slotKey, ownerType.empty() ? baseType->name : ownerType, resolvedMethod, baseResult.value, expr);
+            }
+
+            if (baseType && baseType->kind == TypeKindSem::Entity && !resolvedMethod->isStatic)
+            {
+                const EntityTypeInfo *entityInfoPtr = getOrCreateEntityTypeInfo(baseType->name);
+                if (entityInfoPtr)
+                {
+                    return lowerVirtualMethodCall(
+                        *entityInfoPtr,
+                        slotKey,
+                        ownerType.empty() ? baseType->name : ownerType,
+                        resolvedMethod,
+                        baseResult.value,
+                        expr);
+                }
+            }
+
+            return lowerMethodCall(
+                resolvedMethod, ownerType.empty() ? (baseType ? baseType->name : "") : ownerType, baseResult.value, expr);
+        }
+
+        Value selfPtr;
+        if (getSelfPtr(selfPtr))
+        {
+            if (currentEntityType_ && !resolvedMethod->isStatic)
+                return lowerVirtualMethodCall(
+                    *currentEntityType_, slotKey, ownerType.empty() ? currentEntityType_->name : ownerType, resolvedMethod, selfPtr, expr);
+
+            std::string implicitOwner = ownerType;
+            if (implicitOwner.empty())
+            {
+                if (currentEntityType_)
+                    implicitOwner = currentEntityType_->name;
+                else if (currentValueType_)
+                    implicitOwner = currentValueType_->name;
+            }
+            return lowerMethodCall(resolvedMethod, implicitOwner, selfPtr, expr);
+        }
+    }
+
+    std::string resolvedFunction = sema_.resolvedFunctionCallee(expr);
+    if (!resolvedFunction.empty())
+    {
+        TypeRef calleeType = sema_.typeOf(expr->callee.get());
+        TypeRef returnType = calleeType ? calleeType->returnType() : nullptr;
+        Type ilReturnType = returnType ? mapType(returnType) : Type(Type::Kind::Void);
+
+        std::vector<TypeRef> paramTypes;
+        if (calleeType)
+            paramTypes = calleeType->paramTypes();
+
+        std::vector<Value> args;
+        args.reserve(expr->args.size());
+        for (size_t i = 0; i < expr->args.size(); ++i)
+        {
+            auto result = lowerExpr(expr->args[i].value.get());
+            Value argValue = result.value;
+            if (i < paramTypes.size())
+            {
+                TypeRef paramType = paramTypes[i];
+                TypeRef argType = sema_.typeOf(expr->args[i].value.get());
+                if (paramType && paramType->kind == TypeKindSem::Optional)
+                {
+                    TypeRef innerType = paramType->innerType();
+                    if (argType && argType->kind == TypeKindSem::Unit)
+                        argValue = Value::null();
+                    else if (argType && argType->kind != TypeKindSem::Optional && innerType)
+                        argValue = emitOptionalWrap(result.value, innerType);
+                }
+                else if (paramType && paramType->kind == TypeKindSem::Number && argType &&
+                         argType->kind == TypeKindSem::Integer)
+                {
+                    unsigned convId = nextTempId();
+                    il::core::Instr convInstr;
+                    convInstr.result = convId;
+                    convInstr.op = Opcode::Sitofp;
+                    convInstr.type = Type(Type::Kind::F64);
+                    convInstr.operands = {argValue};
+                    convInstr.loc = curLoc_;
+                    blockMgr_.currentBlock()->instructions.push_back(convInstr);
+                    argValue = Value::temp(convId);
+                }
+            }
+            args.push_back(argValue);
+        }
+
+        padDefaultArgs(resolvedFunction, args, expr);
+        if (ilReturnType.kind == Type::Kind::Void)
+        {
+            emitCall(resolvedFunction, args);
+            return {Value::constInt(0), Type(Type::Kind::Void)};
+        }
+        Value result = emitCallRet(ilReturnType, resolvedFunction, args);
+        return {result, ilReturnType};
+    }
+
     // Handle generic function calls that weren't detected during semantic analysis
     // This happens for calls inside generic function bodies like: identity[T](x)
     // where T is a type parameter that needs to be substituted
@@ -206,19 +327,24 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             if (entityInfoPtr)
             {
                 const EntityTypeInfo &entityInfo = *entityInfoPtr;
+                MethodDecl *namedMethod = entityInfo.findMethod(fieldExpr->field);
 
-                size_t vtableSlot = entityInfo.findVtableSlot(fieldExpr->field);
-                if (vtableSlot != SIZE_MAX)
+                if (namedMethod)
                 {
-                    auto baseResult = lowerExpr(fieldExpr->base.get());
-                    return lowerVirtualMethodCall(
-                        entityInfo, fieldExpr->field, vtableSlot, baseResult.value, expr);
+                    std::string slotKey = sema_.methodSlotKey(typeName, namedMethod);
+                    size_t vtableSlot = entityInfo.findVtableSlot(slotKey);
+                    if (vtableSlot != SIZE_MAX)
+                    {
+                        auto baseResult = lowerExpr(fieldExpr->base.get());
+                        return lowerVirtualMethodCall(
+                            entityInfo, slotKey, typeName, namedMethod, baseResult.value, expr);
+                    }
                 }
 
-                if (auto *method = entityInfo.findMethod(fieldExpr->field))
+                if (namedMethod)
                 {
                     auto baseResult = lowerExpr(fieldExpr->base.get());
-                    return lowerMethodCall(method, typeName, baseResult.value, expr);
+                    return lowerMethodCall(namedMethod, typeName, baseResult.value, expr);
                 }
 
                 // Check parent entity for inherited methods
@@ -255,8 +381,10 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                     if (methodIt != ifaceIt->second.methodMap.end())
                     {
                         auto baseResult = lowerExpr(fieldExpr->base.get());
+                        std::string slotKey = sema_.methodSlotKey(typeName, methodIt->second);
                         return lowerInterfaceMethodCall(ifaceIt->second,
-                                                        fieldExpr->field,
+                                                        slotKey,
+                                                        typeName,
                                                         methodIt->second,
                                                         baseResult.value,
                                                         expr);

@@ -34,6 +34,10 @@ module Test;
 
 entity Person {
     expose String name;
+
+    expose func init(n: String) {
+        name = n;
+    }
 }
 
 func start() {
@@ -73,6 +77,10 @@ module Test;
 
 entity Person {
     expose String name;
+
+    expose func init(n: String) {
+        name = n;
+    }
 }
 
 func start() {
@@ -114,6 +122,10 @@ module Test;
 
 entity Person {
     expose String name;
+
+    expose func init(n: String) {
+        name = n;
+    }
 }
 
 func start() {
@@ -153,6 +165,10 @@ module Test;
 
 entity Person {
     expose String name;
+
+    expose func init(n: String) {
+        name = n;
+    }
 
     expose func greet() -> String {
         return "Hello, " + self.name;
@@ -200,6 +216,10 @@ module Test;
 
 entity Person {
     expose String name;
+
+    expose func init(n: String) {
+        name = n;
+    }
 }
 
 func start() {
@@ -235,6 +255,10 @@ module Test;
 
 entity Item {
     expose String label;
+
+    expose func init(l: String) {
+        label = l;
+    }
 }
 
 func useItem(item: Item) {
@@ -294,6 +318,10 @@ module Test;
 
 entity Node {
     expose String value;
+
+    expose func init(v: String) {
+        value = v;
+    }
 }
 
 func start() {

@@ -67,6 +67,10 @@ module Test;
 
 entity Person {
     expose Integer age;
+
+    expose func init(a: Integer) {
+        age = a;
+    }
 }
 
 func start() {

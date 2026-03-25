@@ -292,6 +292,14 @@ void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string 
 ///          - Regular function and method calls
 TypeRef Sema::analyzeCall(CallExpr *expr)
 {
+    auto analyzeArgTypes = [&]() {
+        std::vector<TypeRef> argTypes;
+        argTypes.reserve(expr->args.size());
+        for (auto &arg : expr->args)
+            argTypes.push_back(analyzeExpr(arg.value.get()));
+        return argTypes;
+    };
+
     // Handle generic function calls: identity[Integer](100)
     // Parser produces: CallExpr(callee=IndexExpr(base=IdentExpr, index=IdentExpr/expr), args)
     // We need to detect when the "index" is actually a type argument
@@ -497,6 +505,45 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         }
     }
 
+    if (expr->callee->kind == ExprKind::Ident)
+    {
+        auto *identExpr = static_cast<IdentExpr *>(expr->callee.get());
+        std::vector<TypeRef> argTypes = analyzeArgTypes();
+
+        if (currentSelfType_ &&
+            (currentSelfType_->kind == TypeKindSem::Entity || currentSelfType_->kind == TypeKindSem::Value))
+        {
+            Symbol *local = currentScope_->lookupLocal(identExpr->name);
+            if (!local || local->kind == Symbol::Kind::Method)
+            {
+                std::string resolvedOwner;
+                if (MethodDecl *method = resolveMethodOverload(
+                        currentSelfType_->name, identExpr->name, argTypes, expr->loc, &resolvedOwner, true))
+                {
+                    resolvedMethodDecls_[expr] = method;
+                    resolvedMethodOwnerTypes_[expr] = resolvedOwner;
+                    resolvedMethodSlotKeys_[expr] = methodSlotKey(resolvedOwner, method);
+                    TypeRef methodType = getMethodType(resolvedOwner, method);
+                    exprTypes_[expr->callee.get()] = methodType;
+                    return methodType && methodType->kind == TypeKindSem::Function
+                               ? methodType->returnType()
+                               : types::unknown();
+                }
+            }
+        }
+
+        std::string loweredName;
+        if (FunctionDecl *func = resolveFunctionOverload(identExpr->name, argTypes, expr->loc, &loweredName))
+        {
+            TypeRef funcType = functionDeclTypes_[func];
+            resolvedFunctionCallees_[expr] = loweredName;
+            exprTypes_[expr->callee.get()] = funcType;
+            validateCallArgs(expr, funcType, loweredName);
+            return funcType && funcType->kind == TypeKindSem::Function ? funcType->returnType()
+                                                                       : types::unknown();
+        }
+    }
+
     // First, try to resolve dotted function names like Viper.Terminal.Say or MyLib.helper
     // This unified lookup works for both runtime functions and user-defined namespaced functions
     std::string dottedName;
@@ -527,6 +574,19 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 // Expand: Canvas.New -> Viper.Graphics.Canvas.New
                 dottedName = importIt->second + "." + rest;
             }
+        }
+
+        std::vector<TypeRef> argTypes = analyzeArgTypes();
+
+        std::string loweredName;
+        if (FunctionDecl *func = resolveFunctionOverload(dottedName, argTypes, expr->loc, &loweredName))
+        {
+            TypeRef funcType = functionDeclTypes_[func];
+            resolvedFunctionCallees_[expr] = loweredName;
+            exprTypes_[expr->callee.get()] = funcType;
+            validateCallArgs(expr, funcType, loweredName);
+            return funcType && funcType->kind == TypeKindSem::Function ? funcType->returnType()
+                                                                       : types::unknown();
         }
 
         // Check if it's a known function (runtime or user-defined with qualified name)
@@ -596,6 +656,34 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
     if (expr->callee->kind == ExprKind::Field)
     {
         auto *fieldExpr = static_cast<FieldExpr *>(expr->callee.get());
+        std::vector<TypeRef> argTypes = analyzeArgTypes();
+
+        if (fieldExpr->base->kind == ExprKind::SuperExpr && currentSelfType_ &&
+            currentSelfType_->kind == TypeKindSem::Entity)
+        {
+            auto entityIt = entityDecls_.find(currentSelfType_->name);
+            if (entityIt != entityDecls_.end() && !entityIt->second->baseClass.empty())
+            {
+                std::string resolvedOwner;
+                if (MethodDecl *method = resolveMethodOverload(entityIt->second->baseClass,
+                                                               fieldExpr->field,
+                                                               argTypes,
+                                                               expr->loc,
+                                                               &resolvedOwner,
+                                                               true))
+                {
+                    resolvedMethodDecls_[expr] = method;
+                    resolvedMethodOwnerTypes_[expr] = resolvedOwner;
+                    resolvedMethodSlotKeys_[expr] = methodSlotKey(resolvedOwner, method);
+                    TypeRef methodType = getMethodType(resolvedOwner, method);
+                    exprTypes_[expr->callee.get()] = methodType;
+                    return methodType && methodType->kind == TypeKindSem::Function
+                               ? methodType->returnType()
+                               : types::unknown();
+                }
+            }
+        }
+
         TypeRef baseType = analyzeExpr(fieldExpr->base.get());
 
         // Helper to analyze all arguments
@@ -606,6 +694,38 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 analyzeExpr(arg.value.get());
             }
         };
+
+        if (baseType && (baseType->kind == TypeKindSem::Value || baseType->kind == TypeKindSem::Entity ||
+                         baseType->kind == TypeKindSem::Interface))
+        {
+            std::string resolvedOwner;
+            if (MethodDecl *method = resolveMethodOverload(
+                    baseType->name,
+                    fieldExpr->field,
+                    argTypes,
+                    expr->loc,
+                    &resolvedOwner,
+                    baseType->kind != TypeKindSem::Interface))
+            {
+                bool isInsideType = currentSelfType_ && currentSelfType_->name == resolvedOwner;
+                if (method->visibility == Visibility::Private && !isInsideType)
+                {
+                    error(expr->loc,
+                          "Cannot access private member '" + fieldExpr->field + "' of type '" +
+                              resolvedOwner + "'");
+                    return types::unknown();
+                }
+
+                resolvedMethodDecls_[expr] = method;
+                resolvedMethodOwnerTypes_[expr] = resolvedOwner;
+                resolvedMethodSlotKeys_[expr] = methodSlotKey(resolvedOwner, method);
+                TypeRef methodType = getMethodType(resolvedOwner, method);
+                exprTypes_[expr->callee.get()] = methodType;
+                return methodType && methodType->kind == TypeKindSem::Function
+                           ? methodType->returnType()
+                           : types::unknown();
+            }
+        }
 
         // Handle List methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::List)
