@@ -161,7 +161,7 @@ TEST(NativeAsmArm64, MultiFunctionCall)
               "il 0.1\n"
               "func @add(%a:i64, %b:i64) -> i64 {\n"
               "entry(%a:i64, %b:i64):\n"
-              "  %r = add %a, %b\n"
+              "  %r = iadd.ovf %a, %b\n"
               "  ret %r\n"
               "}\n"
               "func @main() -> i64 {\n"
@@ -221,7 +221,7 @@ TEST(NativeAsmArm64, EquivBasicReturn)
               "il 0.1\n"
               "func @add(%a:i64, %b:i64) -> i64 {\n"
               "entry(%a:i64, %b:i64):\n"
-              "  %r = add %a, %b\n"
+              "  %r = iadd.ovf %a, %b\n"
               "  ret %r\n"
               "}\n"
               "func @main() -> i64 {\n"
@@ -270,7 +270,7 @@ TEST(NativeAsmArm64, FloatingPoint)
               "  %a = const.f64 3.14\n"
               "  %b = const.f64 2.86\n"
               "  %c = fadd %a, %b\n"
-              "  %r = fptosi %c\n"
+              "  %r = cast.fp_to_si.rte.chk %c\n"
               "  ret %r\n"
               "}\n");
     // 3.14 + 2.86 = 6.0, truncated to 6

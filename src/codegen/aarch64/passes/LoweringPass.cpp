@@ -36,6 +36,14 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags)
         return false;
     }
 
+    module.mir.clear();
+    module.assembly.clear();
+    module.rodataPool = RodataPool{};
+    module.binaryText.reset();
+    module.binaryRodata.reset();
+    module.binaryTextSections.clear();
+    module.debugLineData.clear();
+
     const il::core::Module &ilMod = *module.ilMod;
     const TargetInfo &ti = *module.ti;
 

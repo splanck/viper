@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
+#include "codegen/x86_64/passes/BinaryEmitPass.hpp"
 #include "codegen/x86_64/passes/EmitPass.hpp"
 #include "codegen/x86_64/passes/LegalizePass.hpp"
 #include "codegen/x86_64/passes/LoweringPass.hpp"
@@ -59,6 +60,24 @@ namespace
     return module;
 }
 
+[[nodiscard]] il::core::Module makeZeroModule()
+{
+    il::core::Module module{};
+
+    il::core::Function fn;
+    fn.name = "main";
+    fn.retType = il::core::Type(il::core::Type::Kind::I64);
+
+    il::core::BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+    entry.instructions.push_back(makeRetConst(0));
+
+    fn.blocks.push_back(entry);
+    module.functions.push_back(fn);
+    return module;
+}
+
 [[nodiscard]] viper::codegen::x64::CodegenResult baselineAssembly()
 {
     viper::codegen::x64::passes::Module module{};
@@ -91,6 +110,27 @@ namespace
     return *module.codegenResult;
 }
 
+[[nodiscard]] std::size_t managedBinarySize(int optimizeLevel)
+{
+    viper::codegen::x64::passes::Module module{};
+    module.il = makeZeroModule();
+    viper::codegen::x64::passes::Diagnostics diags{};
+    viper::codegen::x64::passes::PassManager manager{};
+    viper::codegen::x64::CodegenOptions opts{};
+    opts.optimizeLevel = optimizeLevel;
+    manager.addPass(std::make_unique<viper::codegen::x64::passes::LoweringPass>());
+    manager.addPass(std::make_unique<viper::codegen::x64::passes::LegalizePass>());
+    manager.addPass(std::make_unique<viper::codegen::x64::passes::RegAllocPass>());
+    manager.addPass(
+        std::make_unique<viper::codegen::x64::passes::BinaryEmitPass>(false, opts));
+
+    if (!manager.run(module, diags) || !module.binaryText)
+    {
+        return 0;
+    }
+    return module.binaryText->bytes().size();
+}
+
 } // namespace
 
 int main()
@@ -112,6 +152,19 @@ int main()
     if (baseline.asmText != managed.asmText)
     {
         std::cerr << "Assembly mismatch\n";
+        return EXIT_FAILURE;
+    }
+
+    const std::size_t o0Size = managedBinarySize(0);
+    const std::size_t o1Size = managedBinarySize(1);
+    if (o0Size == 0 || o1Size == 0)
+    {
+        std::cerr << "Binary emission failed\n";
+        return EXIT_FAILURE;
+    }
+    if (o0Size == o1Size)
+    {
+        std::cerr << "Expected native binary emission to reflect optimize level\n";
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;

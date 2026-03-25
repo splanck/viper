@@ -76,8 +76,8 @@ TEST(Arm64CLI, TrapFromErr)
     const std::string in = outPath("arm64_trap_from_err.il");
     const std::string out = outPath("arm64_trap_from_err.s");
     const std::string il = "il 0.1\n"
-                           "func @te(%c:i64) -> i64 {\n"
-                           "entry(%c:i64):\n"
+                           "func @te(%c:i32) -> i64 {\n"
+                           "entry(%c:i32):\n"
                            "  trap.from_err i32 %c\n"
                            "}\n";
     writeFile(in, il);

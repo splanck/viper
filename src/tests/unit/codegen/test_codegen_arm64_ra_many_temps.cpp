@@ -53,11 +53,11 @@ TEST(Arm64CLI, RA_ManyTemps_ProducesSpills)
     il << "func @many() -> i64 {\n";
     il << "entry:\n";
     for (int i = 0; i < 40; ++i)
-        il << "  %t" << i << " = add " << i << ", 1\n"; // materialize as constants via adds
+        il << "  %t" << i << " = iadd.ovf " << i << ", 1\n"; // materialize as constants via checked adds
     // Chain a few adds to make return
-    il << "  %a = add %t0, %t1\n";
-    il << "  %b = add %a, %t2\n";
-    il << "  %c = add %b, %t3\n";
+    il << "  %a = iadd.ovf %t0, %t1\n";
+    il << "  %b = iadd.ovf %a, %t2\n";
+    il << "  %c = iadd.ovf %b, %t3\n";
     il << "  ret %c\n";
     il << "}\n";
 
@@ -72,7 +72,7 @@ TEST(Arm64CLI, RA_ManyTemps_ProducesSpills)
     const std::string asmText = readFile(outP);
     // For now, ensure we emitted a valid function body with adds and a return.
     EXPECT_NE(asmText.find(".text"), std::string::npos);
-    EXPECT_NE(asmText.find("add x"), std::string::npos);
+    EXPECT_NE(asmText.find("adds x"), std::string::npos);
     EXPECT_NE(asmText.find("ret"), std::string::npos);
 }
 

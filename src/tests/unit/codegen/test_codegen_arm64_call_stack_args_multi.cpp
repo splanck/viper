@@ -48,7 +48,7 @@ TEST(Arm64CLI, CallWithStackArgsReused)
                            "entry(%a:i64, %b:i64):\n"
                            "  %x = call @h1(%a, %b, 3, 4, 5, 6, 7, 8, 9, 10)\n"
                            "  %y = call @h2(%a, %b, 13, 14, 15, 16, 17, 18, 19, 20)\n"
-                           "  %r = add %x, %y\n"
+                           "  %r = iadd.ovf %x, %y\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);

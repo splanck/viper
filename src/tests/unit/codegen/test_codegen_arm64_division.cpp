@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_arm64_division.cpp
-// Purpose: Verify signed and unsigned division (sdiv/udiv) lowering on AArch64.
+// Purpose: Verify checked signed/unsigned division and remainder lowering on AArch64.
 // Key invariants: Emits sdiv/udiv instructions with divide-by-zero checks.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
@@ -53,7 +53,7 @@ TEST(Arm64Division, SDivSimple)
     const std::string il = "il 0.1\n"
                            "func @div(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %r = sdiv %a, %b\n"
+                           "  %r = sdiv.chk0 %a, %b\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -72,7 +72,7 @@ TEST(Arm64Division, UDivSimple)
     const std::string il = "il 0.1\n"
                            "func @udiv(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %r = udiv %a, %b\n"
+                           "  %r = udiv.chk0 %a, %b\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -141,7 +141,7 @@ TEST(Arm64Division, SRemSimple)
     const std::string il = "il 0.1\n"
                            "func @rem(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %r = srem %a, %b\n"
+                           "  %r = srem.chk0 %a, %b\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -162,7 +162,7 @@ TEST(Arm64Division, URemSimple)
     const std::string il = "il 0.1\n"
                            "func @urem(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %r = urem %a, %b\n"
+                           "  %r = urem.chk0 %a, %b\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -183,7 +183,7 @@ TEST(Arm64Division, DivByConstant)
     const std::string il = "il 0.1\n"
                            "func @divby4(%a:i64) -> i64 {\n"
                            "entry(%a:i64):\n"
-                           "  %r = sdiv %a, 4\n"
+                           "  %r = sdiv.chk0 %a, 4\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);

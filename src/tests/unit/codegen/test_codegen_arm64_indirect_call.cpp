@@ -110,7 +110,7 @@ TEST(Arm64IndirectCall, WithMultipleArgs)
     const std::string il = "il 0.1\n"
                            "func @target(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %r = add %a, %b\n"
+                           "  %r = iadd.ovf %a, %b\n"
                            "  ret %r\n"
                            "}\n"
                            "func @caller(%a:i64, %b:i64) -> i64 {\n"

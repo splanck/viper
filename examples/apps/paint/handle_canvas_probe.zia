@@ -38,6 +38,7 @@ entity ProbeApp {
     hide Integer mouseY;
     hide Integer canvasOffsetX;
     hide Integer canvasOffsetY;
+    hide Integer strokeReleaseFrames;
 
     expose func init() {
         canvas = new DrawingCanvas();
@@ -54,6 +55,7 @@ entity ProbeApp {
         mouseY = 0;
         canvasOffsetX = 0;
         canvasOffsetY = 0;
+        strokeReleaseFrames = 0;
     }
 
     expose func step(nextMouseDown: Integer, nextX: Integer, nextY: Integer) {
@@ -71,6 +73,7 @@ entity ProbeApp {
         lastMouseDown = 0;
         mouseX = 0;
         mouseY = 0;
+        strokeReleaseFrames = 0;
     }
 
     expose func ink() -> Integer {
@@ -78,24 +81,49 @@ entity ProbeApp {
     }
 
     hide func handleCanvasInput() {
-        var cx = mouseX - canvasOffsetX;
-        var cy = mouseY - canvasOffsetY;
+        var rawX = mouseX - canvasOffsetX;
+        var rawY = mouseY - canvasOffsetY;
         var inCanvas = 0;
-        if cx >= 0 and cx < canvas.width and cy >= 0 and cy < canvas.height {
+        if rawX >= 0 and rawX < canvas.width and rawY >= 0 and rawY < canvas.height {
             inCanvas = 1;
         }
 
-        if inCanvas == 0 {
-            return;
-        }
+        var cx = rawX;
+        var cy = rawY;
+        if cx < 0 { cx = 0; }
+        if cy < 0 { cy = 0; }
+        if cx >= canvas.width { cx = canvas.width - 1; }
+        if cy >= canvas.height { cy = canvas.height - 1; }
 
-        if mouseDown == 1 and lastMouseDown == 0 {
-            onCanvasMouseDown(cx, cy);
-        } else if mouseDown == 1 and lastMouseDown == 1 {
-            onCanvasMouseMove(cx, cy);
-        } else if mouseDown == 0 and lastMouseDown == 1 {
-            onCanvasMouseUp(cx, cy);
+        var toolDrawing = activeToolIsDrawing();
+        if mouseDown == 1 {
+            strokeReleaseFrames = 0;
+            if inCanvas == 1 or toolDrawing == 1 {
+                if toolDrawing == 1 {
+                    onCanvasMouseMove(cx, cy);
+                } else {
+                    onCanvasMouseDown(cx, cy);
+                }
+            }
+        } else if toolDrawing == 1 {
+            strokeReleaseFrames = strokeReleaseFrames + 1;
+            if strokeReleaseFrames >= 2 {
+                onCanvasMouseUp(cx, cy);
+                strokeReleaseFrames = 0;
+            }
+        } else {
+            strokeReleaseFrames = 0;
         }
+    }
+
+    hide func activeToolIsDrawing() -> Integer {
+        if currentTool == config.TOOL_PENCIL {
+            return pencilTool.isDrawing();
+        }
+        if currentTool == config.TOOL_BRUSH {
+            return brushTool.isDrawing();
+        }
+        return 0;
     }
 
     hide func onCanvasMouseDown(x: Integer, y: Integer) {
@@ -137,5 +165,13 @@ func main() {
     app.step(1, 2, 10);
     app.step(1, 10, 10);
     app.step(0, 10, 10);
+    SayInt(app.ink());
+
+    app.clearAndSelect(config.TOOL_PENCIL);
+    app.step(1, 2, 2);
+    app.step(0, 6, 2);
+    app.step(1, 10, 2);
+    app.step(0, 10, 2);
+    app.step(0, 10, 2);
     SayInt(app.ink());
 }

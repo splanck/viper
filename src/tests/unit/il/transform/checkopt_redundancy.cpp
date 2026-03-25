@@ -245,9 +245,10 @@ TEST(CheckOpt, EliminatesIdxChkWithConstantOperandsInBounds)
     EXPECT_EQ(chkCount, 0U);
 }
 
-TEST(CheckOpt, EliminatesSDivChk0WithNonZeroConstDivisor)
+TEST(CheckOpt, PreservesSDivChk0WithNonZeroConstDivisor)
 {
-    // sdiv.chk0(lhs, 3) is trivially safe: divisor 3 != 0.
+    // Even with a non-zero constant divisor, sdiv.chk0 still produces the
+    // division result. CheckOpt must not erase or rewrite it to the divisor.
     Module M;
     Function F;
     F.name = "const_sdiv";
@@ -278,9 +279,67 @@ TEST(CheckOpt, EliminatesSDivChk0WithNonZeroConstDivisor)
 
     size_t chkCount = 0;
     for (const auto &I : Fn.blocks[0].instructions)
+    {
         if (I.op == Opcode::SDivChk0)
             ++chkCount;
-    EXPECT_EQ(chkCount, 0U);
+    }
+    EXPECT_EQ(chkCount, 1U);
+}
+
+TEST(CheckOpt, PreservesCheckedDivResultWhenDivisorIsConstNonZero)
+{
+    Module M;
+    Function F;
+    F.name = "checked_div_result";
+    F.retType = Type(Type::Kind::Void);
+
+    Param lhs;
+    lhs.id = 0;
+    lhs.type = Type(Type::Kind::I64);
+    F.params.push_back(lhs);
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr chk;
+    chk.result = 1;
+    chk.op = Opcode::SDivChk0;
+    chk.type = Type(Type::Kind::I64);
+    chk.operands = {Value::temp(0), Value::constInt(100)};
+
+    Instr add;
+    add.result = 2;
+    add.op = Opcode::IAddOvf;
+    add.type = Type(Type::Kind::I64);
+    add.operands = {Value::constInt(7), Value::temp(1)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    entry.instructions = {std::move(chk), std::move(add), std::move(ret)};
+    entry.terminated = true;
+
+    F.blocks.push_back(std::move(entry));
+    M.functions.push_back(std::move(F));
+    auto &Fn = M.functions.front();
+
+    il::transform::AnalysisRegistry registry = makeRegistry();
+    il::transform::AnalysisManager manager(M, registry);
+
+    il::transform::CheckOpt pass;
+    pass.run(Fn, manager);
+
+    ASSERT_GE(Fn.blocks[0].instructions.size(), 2U);
+    const auto &divInstr = Fn.blocks[0].instructions[0];
+    const auto &addInstr = Fn.blocks[0].instructions[1];
+
+    EXPECT_EQ(divInstr.op, Opcode::SDivChk0);
+    ASSERT_EQ(addInstr.op, Opcode::IAddOvf);
+    ASSERT_EQ(addInstr.operands.size(), 2U);
+    EXPECT_EQ(addInstr.operands[0].kind, Value::Kind::ConstInt);
+    EXPECT_EQ(addInstr.operands[0].i64, 7);
+    EXPECT_EQ(addInstr.operands[1].kind, Value::Kind::Temp);
+    EXPECT_EQ(addInstr.operands[1].id, 1U);
 }
 
 TEST(CheckOpt, PreservesIdxChkWhenOutOfBounds)

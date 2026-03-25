@@ -1287,6 +1287,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_spriteanim PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_spriteanim test_rt_spriteanim)
 
+    viper_add_test(test_rt_animstate ${VIPER_TESTS_DIR}/runtime/RTAnimStateTests.cpp)
+    target_link_libraries(test_rt_animstate PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_animstate test_rt_animstate)
+
     viper_add_test(test_rt_collision ${VIPER_TESTS_DIR}/unit/runtime/RTCollisionTests.cpp)
     target_link_libraries(test_rt_collision PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_collision test_rt_collision)

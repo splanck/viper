@@ -55,7 +55,7 @@ static std::string blSym(const std::string &name)
 #endif
 }
 
-// Test 1: eh.push alone
+// Test 1: eh.push with balanced unwind state
 TEST(Arm64EH, EhPush)
 {
     const std::string in = outPath("arm64_eh_push.il");
@@ -64,6 +64,7 @@ TEST(Arm64EH, EhPush)
                            "func @f() -> i64 {\n"
                            "entry:\n"
                            "  eh.push ^handler\n"
+                           "  eh.pop\n"
                            "  ret 0\n"
                            "handler ^handler(%err:Error, %tok:ResumeTok):\n"
                            "  eh.entry\n"
@@ -126,8 +127,8 @@ TEST(Arm64EH, TrapFromErr)
     const std::string in = outPath("arm64_eh_trap_err.il");
     const std::string out = outPath("arm64_eh_trap_err.s");
     const std::string il = "il 0.1\n"
-                           "func @f(%code:i64) -> i64 {\n"
-                           "entry(%code:i64):\n"
+                           "func @f(%code:i32) -> i64 {\n"
+                           "entry(%code:i32):\n"
                            "  trap.from_err i32 %code\n"
                            "}\n";
     writeFile(in, il);
@@ -196,7 +197,7 @@ TEST(Arm64EH, TryCatchPattern)
                            "  %r = call @may_throw(%x)\n"
                            "  eh.pop\n"
                            "  ret %r\n"
-                           "catch ^catch(%err:Error, %tok:ResumeTok):\n"
+                           "handler ^catch(%err:Error, %tok:ResumeTok):\n"
                            "  eh.entry\n"
                            "  ret 0\n"
                            "}\n";
@@ -219,12 +220,14 @@ TEST(Arm64EH, NestedHandlers)
                            "  eh.push ^outer\n"
                            "  eh.push ^inner\n"
                            "  trap.from_err i32 1\n"
-                           "inner ^inner(%e1:Error, %t1:ResumeTok):\n"
+                           "handler ^inner(%err:Error, %tok:ResumeTok):\n"
                            "  eh.entry\n"
                            "  eh.pop\n"
+                           "  eh.pop\n"
                            "  ret 1\n"
-                           "outer ^outer(%e2:Error, %t2:ResumeTok):\n"
+                           "handler ^outer(%err:Error, %tok:ResumeTok):\n"
                            "  eh.entry\n"
+                           "  eh.pop\n"
                            "  ret 2\n"
                            "}\n";
     writeFile(in, il);

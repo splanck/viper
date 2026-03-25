@@ -103,6 +103,7 @@ set(RT_COLLECTIONS_SOURCES
         collections/rt_grid2d.c
         collections/rt_timer.c
         collections/rt_statemachine.c
+        collections/rt_animstate.c
         collections/rt_tween.c
         collections/rt_buttongroup.c
         collections/rt_smoothvalue.c
@@ -346,6 +347,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_grid2d.h
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_timer.h
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_statemachine.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_animstate.h
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_tween.h
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_buttongroup.h
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_smoothvalue.h

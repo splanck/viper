@@ -239,43 +239,6 @@ bool isCheckTriviallyTrue(const Instr &instr, Value &replacementOut)
             }
             return false;
         }
-
-        case Opcode::SDivChk0:
-        case Opcode::SRemChk0:
-        {
-            // sdiv/srem.chk0 lhs divisor — passes when divisor != 0
-            if (instr.operands.size() < 2)
-                return false;
-            const Value &divisor = instr.operands[1];
-            if (!isConstInt(divisor))
-                return false;
-            if (divisor.i64 != 0)
-            {
-                replacementOut = divisor; // result is the divisor
-                return true;
-            }
-            return false;
-        }
-
-        case Opcode::UDivChk0:
-        case Opcode::URemChk0:
-        {
-            // udiv/urem.chk0 lhs divisor — passes when divisor != 0 (unsigned)
-            if (instr.operands.size() < 2)
-                return false;
-            const Value &divisor = instr.operands[1];
-            if (!isConstInt(divisor))
-                return false;
-            // Reinterpret as unsigned: any non-zero bit pattern passes.
-            const auto udivisor = static_cast<unsigned long long>(divisor.i64);
-            if (udivisor != 0)
-            {
-                replacementOut = divisor; // result is the divisor
-                return true;
-            }
-            return false;
-        }
-
         default:
             return false;
     }

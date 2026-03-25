@@ -70,10 +70,13 @@ entity PaintApp {
     // Mouse state
     hide Integer mouseX;
     hide Integer mouseY;
+    hide Integer lastMouseX;
+    hide Integer lastMouseY;
     hide Integer mouseDown;
     hide Integer lastMouseDown;
     hide Integer mouseRight;
     hide Integer lastMouseRight;
+    hide Integer strokeReleaseFrames;
 
     // Undo stack (List of Pixels snapshots)
     hide List undoStack;
@@ -122,10 +125,13 @@ entity PaintApp {
         statusMessage = "Ready - Click to draw, 1-8: tools, Ctrl+Z: undo, Q: quit";
         mouseX = 0;
         mouseY = 0;
+        lastMouseX = 0;
+        lastMouseY = 0;
         mouseDown = 0;
         lastMouseDown = 0;
         mouseRight = 0;
         lastMouseRight = 0;
+        strokeReleaseFrames = 0;
 
         // Undo stack
         undoStack = new List();
@@ -238,6 +244,8 @@ entity PaintApp {
         }
 
         // Get mouse state
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
         lastMouseDown = mouseDown;
         lastMouseRight = mouseRight;
         mouseX = Viper.Input.Mouse.X();
@@ -427,14 +435,70 @@ entity PaintApp {
 
     // Handle drawing on canvas area
     hide func handleCanvasInput() {
-        // Check if mouse is in canvas area
-        var cx = mouseX - canvasOffsetX;
-        var cy = mouseY - canvasOffsetY;
+        var rawX = mouseX - canvasOffsetX;
+        var rawY = mouseY - canvasOffsetY;
         var inCanvas = 0;
-        if cx >= 0 and cx < canvas.width and cy >= 0 and cy < canvas.height {
+        if rawX >= 0 and rawX < canvas.width and rawY >= 0 and rawY < canvas.height {
             inCanvas = 1;
         }
 
+        var cx = rawX;
+        var cy = rawY;
+        if cx < 0 { cx = 0; }
+        if cy < 0 { cy = 0; }
+        if cx >= canvas.width { cx = canvas.width - 1; }
+        if cy >= canvas.height { cy = canvas.height - 1; }
+
+        if isFreehandTool() == 1 {
+            var toolDrawing = activeToolIsDrawing();
+            var mouseMoved = 0;
+            var prevX = lastMouseX - canvasOffsetX;
+            var prevY = lastMouseY - canvasOffsetY;
+            var hadPendingRelease = 0;
+            if mouseX != lastMouseX or mouseY != lastMouseY {
+                mouseMoved = 1;
+            }
+            if strokeReleaseFrames > 0 {
+                hadPendingRelease = 1;
+            }
+            if prevX < 0 { prevX = 0; }
+            if prevY < 0 { prevY = 0; }
+            if prevX >= canvas.width { prevX = canvas.width - 1; }
+            if prevY >= canvas.height { prevY = canvas.height - 1; }
+
+            if mouseDown == 1 {
+                if hadPendingRelease == 1 and toolDrawing == 1 and lastMouseDown == 0 {
+                    onCanvasMouseUp(prevX, prevY);
+                    toolDrawing = 0;
+                }
+                strokeReleaseFrames = 0;
+                if inCanvas == 1 or toolDrawing == 1 {
+                    if toolDrawing == 1 {
+                        onCanvasMouseMove(cx, cy);
+                    } else {
+                        onCanvasMouseDown(cx, cy);
+                    }
+                }
+            } else if toolDrawing == 1 {
+                // Some optimized builds appear to miss a burst of mouse-button
+                // polls mid-drag, especially on leftward motion. Allow a
+                // bounded moving release window, then force the stroke to end
+                // before any later click can connect back to it.
+                if mouseMoved == 1 and strokeReleaseFrames < 8 {
+                    strokeReleaseFrames = strokeReleaseFrames + 1;
+                    onCanvasMouseMove(cx, cy);
+                    return;
+                }
+
+                onCanvasMouseUp(cx, cy);
+                strokeReleaseFrames = 0;
+            } else {
+                strokeReleaseFrames = 0;
+            }
+            return;
+        }
+
+        strokeReleaseFrames = 0;
         if inCanvas == 0 {
             return;
         }
@@ -451,6 +515,32 @@ entity PaintApp {
         else if mouseDown == 0 and lastMouseDown == 1 {
             onCanvasMouseUp(cx, cy);
         }
+    }
+
+    hide func isFreehandTool() -> Integer {
+        if currentTool == config.TOOL_PENCIL {
+            return 1;
+        }
+        if currentTool == config.TOOL_BRUSH {
+            return 1;
+        }
+        if currentTool == config.TOOL_ERASER {
+            return 1;
+        }
+        return 0;
+    }
+
+    hide func activeToolIsDrawing() -> Integer {
+        if currentTool == config.TOOL_PENCIL {
+            return pencilTool.isDrawing();
+        }
+        if currentTool == config.TOOL_BRUSH {
+            return brushTool.isDrawing();
+        }
+        if currentTool == config.TOOL_ERASER {
+            return eraserTool.isDrawing();
+        }
+        return 0;
     }
 
     // Canvas mouse down handler

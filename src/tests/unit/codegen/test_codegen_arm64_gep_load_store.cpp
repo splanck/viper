@@ -52,7 +52,7 @@ TEST(Arm64CLI, GepLoadStore_NonStack)
                            "entry(%p:ptr, %off:i64):\n"
                            "  %addr = gep %p, %off\n"
                            "  %v = load i64, %addr\n"
-                           "  %one = add %v, 1\n"
+                           "  %one = iadd.ovf %v, 1\n"
                            "  store i64, %addr, %one\n"
                            "  ret %v\n"
                            "}\n";

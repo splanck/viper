@@ -61,8 +61,8 @@ TEST(Arm64CallConv, Add3Helper)
     const std::string il = "il 0.1\n"
                            "func @add3(%a:i64, %b:i64, %c:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64, %c:i64):\n"
-                           "  %t1 = add %a, %b\n"
-                           "  %t2 = add %t1, %c\n"
+                           "  %t1 = iadd.ovf %a, %b\n"
+                           "  %t2 = iadd.ovf %t1, %c\n"
                            "  ret %t2\n"
                            "}\n";
     writeFile(in, il);
@@ -70,7 +70,8 @@ TEST(Arm64CallConv, Add3Helper)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect add instructions
-    EXPECT_NE(asmText.find("add x"), std::string::npos);
+    EXPECT_TRUE(asmText.find("add x") != std::string::npos ||
+                asmText.find("adds x") != std::string::npos);
 }
 
 // Test 2: Caller passes computed values to add3
@@ -82,9 +83,9 @@ TEST(Arm64CallConv, CallerWithComputedArgs)
                            "extern @add3(i64, i64, i64) -> i64\n"
                            "func @caller(%x:i64, %y:i64) -> i64 {\n"
                            "entry(%x:i64, %y:i64):\n"
-                           "  %a = mul %x, 2\n"
-                           "  %b = add %y, 1\n"
-                           "  %c = sub %x, %y\n"
+                           "  %a = imul.ovf %x, 2\n"
+                           "  %b = iadd.ovf %y, 1\n"
+                           "  %c = isub.ovf %x, %y\n"
                            "  %r = call @add3(%a, %b, %c)\n"
                            "  ret %r\n"
                            "}\n";
@@ -96,8 +97,8 @@ TEST(Arm64CallConv, CallerWithComputedArgs)
     // mul * 2 may be strength-reduced to lsl #1, so accept either
     EXPECT_TRUE(asmText.find("mul x") != std::string::npos ||
                 asmText.find("lsl x") != std::string::npos);
-    EXPECT_NE(asmText.find("add x"), std::string::npos);
-    EXPECT_NE(asmText.find("sub x"), std::string::npos);
+    EXPECT_NE(asmText.find("adds x"), std::string::npos);
+    EXPECT_NE(asmText.find("subs x"), std::string::npos);
     EXPECT_NE(asmText.find(blSym("add3")), std::string::npos);
 }
 
@@ -114,7 +115,7 @@ TEST(Arm64CallConv, CallResultStoredAndReused)
                            "  %c = call @twice(%a)\n"
                            "  store i64, %L, %c\n"
                            "  %v = load i64, %L\n"
-                           "  %r = add %v, 10\n"
+                           "  %r = iadd.ovf %v, 10\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -165,8 +166,8 @@ TEST(Arm64CallConv, ManyArgsComputed)
                            "extern @sum10(i64,i64,i64,i64,i64,i64,i64,i64,i64,i64) -> i64\n"
                            "func @f(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %v1 = add %a, 1\n"
-                           "  %v2 = add %b, 2\n"
+                           "  %v1 = iadd.ovf %a, 1\n"
+                           "  %v2 = iadd.ovf %b, 2\n"
                            "  %r = call @sum10(%v1, %v2, 3, 4, 5, 6, 7, 8, 9, 10)\n"
                            "  ret %r\n"
                            "}\n";

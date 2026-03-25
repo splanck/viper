@@ -7,70 +7,369 @@
 //
 // File: codegen/aarch64/CodegenPipeline.cpp
 // Purpose: Implements the modular AArch64 code-generation pipeline by wiring
-//          all AArch64 passes through the PassManager in the correct order.
-//
-// Key invariants:
-//   - Pass order: Lowering → RegAlloc → Peephole → Scheduler → Emit.
-//   - MIR dump hooks fire between passes when requested via PipelineOptions.
-//   - All passes implement the Pass<AArch64Module> interface.
-//
-// Ownership/Lifetime:
-//   - The pipeline does not own the AArch64Module; it is borrowed from the caller.
-//
-// Links: codegen/aarch64/CodegenPipeline.hpp (public API),
-//        codegen/aarch64/passes/ (individual pass implementations)
+//          all AArch64 passes through the PassManager in the correct order and
+//          providing a reusable end-to-end pipeline for the CLI.
 //
 //===----------------------------------------------------------------------===//
 
 #include "codegen/aarch64/CodegenPipeline.hpp"
 
 #include "codegen/aarch64/MachineIR.hpp"
+#include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/passes/BinaryEmitPass.hpp"
 #include "codegen/aarch64/passes/EmitPass.hpp"
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 #include "codegen/aarch64/passes/PeepholePass.hpp"
 #include "codegen/aarch64/passes/RegAllocPass.hpp"
 #include "codegen/aarch64/passes/SchedulerPass.hpp"
+#include "codegen/common/LinkerSupport.hpp"
+#include "codegen/common/linker/NativeLinker.hpp"
+#include "codegen/common/objfile/ObjectFileWriter.hpp"
+#include "common/RunProcess.hpp"
+#include "il/transform/PassManager.hpp"
+#include "tools/common/module_loader.hpp"
 
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <sstream>
+#include <string_view>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace viper::codegen::aarch64
 {
 
-/// @brief Dump all MIR functions to stderr with a header tag.
-static void dumpMir(const passes::AArch64Module &module, const char *tag)
+namespace
+{
+
+using viper::codegen::common::LinkContext;
+
+/// @brief Dump all MIR functions to the provided stream with a header tag.
+static void dumpMir(const passes::AArch64Module &module, const char *tag, std::ostream &os)
 {
     for (const auto &fn : module.mir)
     {
-        std::cerr << "=== MIR " << tag << ": " << fn.name << " ===\n";
-        std::cerr << toString(fn) << "\n";
+        os << "=== MIR " << tag << ": " << fn.name << " ===\n";
+        os << toString(fn) << "\n";
     }
 }
 
-bool runCodegenPipeline(passes::AArch64Module &module, const PipelineOptions &opts)
+static bool writeTextFile(const std::string &path, const std::string &text, std::ostream &err)
+{
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out)
+    {
+        err << "error: unable to open '" << path << "' for writing\n";
+        return false;
+    }
+    out << text;
+    if (!out)
+    {
+        err << "error: failed to write file '" << path << "'\n";
+        return false;
+    }
+    return true;
+}
+
+static std::vector<std::string> systemAssemblerArgs()
+{
+#if defined(__APPLE__)
+    return {"cc", "-arch", "arm64"};
+#elif defined(_WIN32)
+    return {"clang", "--target=aarch64-pc-windows-msvc"};
+#else
+    return {"cc"};
+#endif
+}
+
+static int linkToExe(const std::string &asmPath,
+                     const std::string &exePath,
+                     std::ostream &out,
+                     std::ostream &err)
+{
+    using namespace viper::codegen::common;
+
+    LinkContext ctx;
+    if (const int rc = prepareLinkContext(asmPath, ctx, out, err); rc != 0)
+        return rc;
+
+#if defined(__APPLE__)
+    std::vector<std::string> linkCmd = {"cc", "-arch", "arm64", asmPath};
+#elif defined(_WIN32)
+    std::vector<std::string> linkCmd = {"clang", "--target=aarch64-pc-windows-msvc", asmPath};
+#else
+    std::vector<std::string> linkCmd = {"cc", asmPath};
+#endif
+    appendArchives(ctx, linkCmd);
+    {
+        std::vector<std::string> frameworks;
+#if defined(__APPLE__)
+        frameworks = {
+            "Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers", "Metal", "QuartzCore"};
+#endif
+        appendGraphicsLibs(ctx, linkCmd, frameworks);
+    }
+    appendAudioLibs(ctx, linkCmd);
+
+    if (hasComponent(ctx, viper::codegen::RtComponent::Threads))
+        linkCmd.push_back("-lc++");
+
+#if defined(__APPLE__)
+    linkCmd.push_back("-Wl,-dead_strip");
+#elif !defined(_WIN32)
+    linkCmd.push_back("-Wl,--gc-sections");
+    if (hasComponent(ctx, viper::codegen::RtComponent::Threads))
+        linkCmd.push_back("-pthread");
+#endif
+
+    linkCmd.push_back("-o");
+    linkCmd.push_back(exePath);
+
+    const RunResult rr = run_process(linkCmd);
+    if (rr.exit_code == -1)
+    {
+        err << "error: failed to launch system linker command\n";
+        return -1;
+    }
+    if (!rr.out.empty())
+        out << rr.out;
+#if defined(_WIN32)
+    if (!rr.err.empty())
+        err << rr.err;
+#endif
+    return rr.exit_code == 0 ? 0 : 1;
+}
+
+static int linkObjToExe(const std::string &objPath,
+                        const std::string &exePath,
+                        const LinkContext &ctx,
+                        std::ostream &out,
+                        std::ostream &err)
+{
+    using namespace viper::codegen::common;
+
+#if defined(__APPLE__)
+    std::vector<std::string> linkCmd = {"cc", "-arch", "arm64", objPath};
+#elif defined(_WIN32)
+    std::vector<std::string> linkCmd = {"clang", "--target=aarch64-pc-windows-msvc", objPath};
+#else
+    std::vector<std::string> linkCmd = {"cc", objPath};
+#endif
+    appendArchives(ctx, linkCmd);
+    {
+        std::vector<std::string> frameworks;
+#if defined(__APPLE__)
+        frameworks = {
+            "Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers", "Metal", "QuartzCore"};
+#endif
+        appendGraphicsLibs(ctx, linkCmd, frameworks);
+    }
+    appendAudioLibs(ctx, linkCmd);
+
+    if (hasComponent(ctx, viper::codegen::RtComponent::Threads))
+        linkCmd.push_back("-lc++");
+
+#if defined(__APPLE__)
+    linkCmd.push_back("-Wl,-dead_strip");
+#elif !defined(_WIN32)
+    linkCmd.push_back("-Wl,--gc-sections");
+    if (hasComponent(ctx, viper::codegen::RtComponent::Threads))
+        linkCmd.push_back("-pthread");
+#endif
+
+    linkCmd.push_back("-o");
+    linkCmd.push_back(exePath);
+
+    const RunResult rr = run_process(linkCmd);
+    if (rr.exit_code == -1)
+    {
+        err << "error: failed to launch system linker command\n";
+        return -1;
+    }
+    if (!rr.out.empty())
+        out << rr.out;
+#if defined(_WIN32)
+    if (!rr.err.empty())
+        err << rr.err;
+#endif
+    return rr.exit_code == 0 ? 0 : 1;
+}
+
+static void applyDarwinAsmFixups(std::string &asmText, const il::core::Module &mod)
+{
+    auto replace_all = [](std::string &hay, const std::string &from, const std::string &to)
+    {
+        std::size_t pos = 0;
+        while ((pos = hay.find(from, pos)) != std::string::npos)
+        {
+            hay.replace(pos, from.size(), to);
+            pos += to.size();
+        }
+    };
+
+    replace_all(asmText, "\n.globl main\n", "\n.globl _main\n");
+    replace_all(asmText, "\nmain:\n", "\n_main:\n");
+
+    for (const auto &fn : mod.functions)
+    {
+        const std::string &name = fn.name;
+        if (name == "main")
+            continue;
+        if (name.empty() || name[0] != 'L')
+            continue;
+        replace_all(
+            asmText, std::string(".globl ") + name + "\n", std::string(".globl _") + name + "\n");
+        replace_all(asmText, std::string("\n") + name + ":\n", std::string("\n_") + name + ":\n");
+        replace_all(asmText, std::string(" bl ") + name + "\n", std::string(" bl _") + name + "\n");
+    }
+
+    const char *runtime_funcs[] = {"rt_trap",
+                                   "rt_str_concat",
+                                   "rt_print",
+                                   "rt_input",
+                                   "rt_malloc",
+                                   "rt_free",
+                                   "rt_memcpy",
+                                   "rt_memset",
+                                   "rt_const_cstr",
+                                   "rt_print_str"};
+    for (const char *rtfn : runtime_funcs)
+    {
+        replace_all(asmText, std::string(" bl ") + rtfn + "\n", std::string(" bl _") + rtfn + "\n");
+    }
+
+    for (const auto &ex : mod.externs)
+    {
+        if (ex.name.rfind("rt_", 0) == 0)
+            continue;
+
+        const std::string from = std::string(" bl ") + ex.name + "\n";
+        if (ex.name.rfind("Viper.Console.", 0) == 0)
+        {
+            const std::string suffix = ex.name.substr(std::string("Viper.Console.").size());
+            std::string rt_equiv;
+            if (suffix == "PrintStr")
+                rt_equiv = "rt_print_str";
+            else if (suffix == "PrintI64")
+                rt_equiv = "rt_print_i64";
+            else if (suffix == "PrintF64")
+                rt_equiv = "rt_print_f64";
+            if (!rt_equiv.empty())
+                replace_all(asmText, from, std::string(" bl _") + rt_equiv + "\n");
+            else
+                replace_all(asmText, from, std::string(" bl _") + ex.name + "\n");
+        }
+        else
+        {
+            replace_all(asmText, from, std::string(" bl _") + ex.name + "\n");
+        }
+    }
+
+    replace_all(asmText, " bl rt_", " bl _rt_");
+}
+
+static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel)
+{
+    if (optimizeLevel < 1)
+        return true;
+
+    constexpr std::size_t kLargeModuleIlOptThreshold = 100000;
+    auto totalInstructionCount = [](const il::core::Module &module)
+    {
+        std::size_t totalInstrs = 0;
+        for (const auto &fn : module.functions)
+            for (const auto &bb : fn.blocks)
+                totalInstrs += bb.instructions.size();
+        return totalInstrs;
+    };
+
+    il::transform::PassManager ilpm;
+    const std::size_t totalInstrs = totalInstructionCount(mod);
+    if (totalInstrs > kLargeModuleIlOptThreshold)
+    {
+        // Huge frontend-built modules such as sqldb spend disproportionate
+        // time in the IL optimizer. Skip IL-level optimization entirely here
+        // and rely on backend codegen cleanup so native demo builds do not
+        // appear hung for minutes.
+        return true;
+    }
+    if (optimizeLevel >= 2)
+    {
+        ilpm.registerPipeline("codegen-O2",
+                              {"loop-simplify",
+                               "loop-rotate",
+                               "indvars",
+                               "loop-unroll",
+                               "simplify-cfg",
+                               "sccp",
+                               "check-opt",
+                               "eh-opt",
+                               "dce",
+                               "simplify-cfg",
+                               "sibling-recursion",
+                               "inline",
+                               "simplify-cfg",
+                               "sccp",
+                               "constfold",
+                               "dce",
+                               "simplify-cfg",
+                               "gvn",
+                               "reassociate",
+                               "earlycse",
+                               "dse",
+                               "dce",
+                               "late-cleanup"});
+        return ilpm.runPipeline(mod, "codegen-O2");
+    }
+
+    ilpm.registerPipeline("codegen-O1",
+                          {"simplify-cfg",
+                           "sccp",
+                           "constfold",
+                           "dce",
+                           "simplify-cfg",
+                           "sccp",
+                           "inline",
+                           "dce",
+                           "simplify-cfg"});
+    return ilpm.runPipeline(mod, "codegen-O1");
+}
+
+static const TargetInfo &hostAArch64Target()
+{
+#if defined(_WIN32)
+    return windowsTarget();
+#elif defined(__APPLE__)
+    return darwinTarget();
+#else
+    return linuxTarget();
+#endif
+}
+
+} // namespace
+
+bool runCodegenPipeline(passes::AArch64Module &module,
+                        const PipelineOptions &opts,
+                        std::ostream &diagOut)
 {
     passes::Diagnostics diags;
 
-    // Phase 1: Lowering (IL → MIR + rodata pool + label sanitization)
     {
         passes::LoweringPass pass;
         if (!pass.run(module, diags))
         {
-            diags.flush(std::cerr);
+            diags.flush(diagOut);
             return false;
         }
     }
 
-    // Detect leaf functions: scan for Bl/Blr instructions, but skip trap blocks
-    // (e.g. .Ltrap_ovf_*) because those are cold, noreturn paths that should not
-    // force the function to save/restore callee-saved registers on the hot path.
     for (auto &fn : module.mir)
     {
         fn.isLeaf = true;
         for (const auto &bb : fn.blocks)
         {
-            // Skip trap blocks — they only contain a noreturn call to rt_trap
-            // and should not affect leaf-function classification.
             if (bb.name.find(".Ltrap_") == 0)
                 continue;
 
@@ -88,69 +387,371 @@ bool runCodegenPipeline(passes::AArch64Module &module, const PipelineOptions &op
     }
 
     if (opts.dumpMirBeforeRA)
-        dumpMir(module, "before RA");
+        dumpMir(module, "before RA", diagOut);
 
-    // Phase 2: Register Allocation
     {
         passes::RegAllocPass pass;
         if (!pass.run(module, diags))
         {
-            diags.flush(std::cerr);
+            diags.flush(diagOut);
             return false;
         }
     }
 
     if (opts.dumpMirAfterRA)
-        dumpMir(module, "after RA");
+        dumpMir(module, "after RA", diagOut);
 
-    // Phase 3: Peephole Optimizations + Prune Unused Callee-Saved Regs.
-    // Must run before scheduling so that store-load forwarding, cset+branch
-    // fusion, and dead store elimination produce the best MIR first.
     {
         passes::PeepholePass pass;
         if (!pass.run(module, diags))
         {
-            diags.flush(std::cerr);
+            diags.flush(diagOut);
             return false;
         }
     }
 
     if (opts.dumpMirAfterRA)
-        dumpMir(module, "after peephole");
+        dumpMir(module, "after peephole", diagOut);
 
-    // Phase 4: Post-RA instruction scheduling.
     {
         passes::SchedulerPass sched;
         if (!sched.run(module, diags))
         {
-            diags.flush(std::cerr);
+            diags.flush(diagOut);
             return false;
         }
     }
 
-    // Phase 5: Assembly Emission
     {
         passes::EmitPass pass;
         if (!pass.run(module, diags))
         {
-            diags.flush(std::cerr);
+            diags.flush(diagOut);
             return false;
         }
     }
 
-    // Phase 6 (optional): Binary Emission
     if (opts.useBinaryEmit)
     {
         passes::BinaryEmitPass pass;
         if (!pass.run(module, diags))
         {
-            diags.flush(std::cerr);
+            diags.flush(diagOut);
             return false;
         }
     }
 
-    diags.flush(std::cerr);
+    diags.flush(diagOut);
     return true;
+}
+
+CodegenPipeline::CodegenPipeline(Options opts) : opts_(std::move(opts)) {}
+
+PipelineResult CodegenPipeline::run()
+{
+    PipelineResult result{};
+    std::ostringstream out;
+    std::ostringstream err;
+
+    il::core::Module mod;
+    const auto load = il::tools::common::loadModuleFromFile(opts_.input_il_path, mod, err);
+    if (!load.succeeded())
+    {
+        result.exit_code = 1;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
+    if (!il::tools::common::verifyModule(mod, err))
+    {
+        result.exit_code = 1;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
+
+    if (!runIlOptimizations(mod, opts_.optimize))
+    {
+        err << "error: failed to run AArch64 IL optimization pipeline\n";
+        result.exit_code = 1;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
+    if (opts_.optimize >= 1 && !il::tools::common::verifyModule(mod, err))
+    {
+        err << "error: IL verification failed after optimization\n";
+        result.exit_code = 1;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
+
+    if (opts_.run_native)
+    {
+#if !(defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__)))
+        err << "error: --run-native is only supported on macOS arm64 hosts\n";
+        result.exit_code = 1;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+#endif
+    }
+
+    const TargetInfo &ti = hostAArch64Target();
+
+    passes::AArch64Module pipelineModule;
+    pipelineModule.ilMod = &mod;
+    pipelineModule.ti = &ti;
+
+    PipelineOptions pipeOpts;
+    pipeOpts.dumpMirBeforeRA = opts_.dump_mir_before_ra;
+    pipeOpts.dumpMirAfterRA = opts_.dump_mir_after_ra;
+    pipeOpts.useBinaryEmit = opts_.assembler_mode == AssemblerMode::Native;
+
+    if (!runCodegenPipeline(pipelineModule, pipeOpts, err))
+    {
+        result.exit_code = 1;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
+
+    std::string asmText = pipelineModule.assembly;
+    std::string asmPath = opts_.output_asm_path;
+    if (asmPath.empty())
+    {
+        std::filesystem::path p(opts_.input_il_path);
+        p.replace_extension(".s");
+        asmPath = p.string();
+    }
+
+    if (ti.abiFormat == ABIFormat::Darwin && (!opts_.output_obj_path.empty() || opts_.run_native))
+        applyDarwinAsmFixups(asmText, mod);
+
+    if (opts_.emit_asm)
+    {
+        if (!writeTextFile(asmPath, asmText, err))
+        {
+            result.exit_code = 1;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+    }
+
+    if (opts_.output_obj_path.empty() && !opts_.run_native)
+    {
+        if (!opts_.emit_asm && !writeTextFile(asmPath, asmText, err))
+        {
+            result.exit_code = 1;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
+
+    if (opts_.assembler_mode == AssemblerMode::Native && pipelineModule.binaryText)
+    {
+        std::filesystem::path objPath;
+        bool outputIsObj = false;
+        if (!opts_.output_obj_path.empty() &&
+            std::filesystem::path(opts_.output_obj_path).extension() == ".o")
+        {
+            objPath = opts_.output_obj_path;
+            outputIsObj = true;
+        }
+        else
+        {
+            objPath = std::filesystem::path(opts_.input_il_path).replace_extension(".o");
+        }
+
+        using namespace viper::codegen::objfile;
+        auto writer = createObjectFileWriter(detectHostFormat(), ObjArch::AArch64);
+        if (!writer)
+        {
+            err << "error: no native object file writer for this platform\n";
+            result.exit_code = 1;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+        if (!pipelineModule.debugLineData.empty())
+            writer->setDebugLineData(std::move(pipelineModule.debugLineData));
+        if (!writer->write(
+                objPath.string(), pipelineModule.binaryTextSections, *pipelineModule.binaryRodata, err))
+        {
+            err << "error: failed to write object file '" << objPath.string() << "'\n";
+            result.exit_code = 1;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+
+        if (outputIsObj)
+        {
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+
+        std::unordered_set<std::string> extSymbols;
+        for (const auto &sym : pipelineModule.binaryText->symbols())
+        {
+            if (sym.binding == viper::codegen::objfile::SymbolBinding::External)
+                extSymbols.insert(sym.name);
+        }
+
+        LinkContext ctx;
+        if (const int rc = viper::codegen::common::prepareLinkContextFromSymbols(
+                extSymbols, ctx, out, err);
+            rc != 0)
+        {
+            result.exit_code = 1;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+
+        std::filesystem::path exe =
+            opts_.output_obj_path.empty()
+                ? std::filesystem::path(opts_.input_il_path).replace_extension("")
+                : std::filesystem::path(opts_.output_obj_path);
+
+        int lrc = 0;
+        if (opts_.link_mode == LinkMode::Native)
+        {
+            viper::codegen::linker::NativeLinkerOptions linkOpts;
+            linkOpts.objPath = objPath.string();
+            linkOpts.exePath = exe.string();
+            using viper::codegen::RtComponent;
+            using viper::codegen::archiveNameForComponent;
+            using viper::codegen::common::fileExists;
+            using viper::codegen::common::runtimeArchivePath;
+            static constexpr RtComponent allComponents[] = {
+                RtComponent::Network,
+                RtComponent::Threads,
+                RtComponent::Audio,
+                RtComponent::Graphics,
+                RtComponent::Exec,
+                RtComponent::IoFs,
+                RtComponent::Text,
+                RtComponent::Collections,
+                RtComponent::Arrays,
+                RtComponent::Oop,
+                RtComponent::Base,
+            };
+            for (auto comp : allComponents)
+            {
+                auto arPath = runtimeArchivePath(ctx.buildDir, archiveNameForComponent(comp));
+                if (fileExists(arPath))
+                    linkOpts.archivePaths.push_back(arPath.string());
+            }
+
+            auto addIfExists = [&](const std::filesystem::path &p)
+            {
+                if (fileExists(p))
+                    linkOpts.archivePaths.push_back(p.string());
+            };
+            addIfExists(ctx.buildDir / "src" / "lib" / "gui" / "libvipergui.a");
+            addIfExists(ctx.buildDir / "lib" / "libvipergfx.a");
+            addIfExists(ctx.buildDir / "lib" / "libviperaud.a");
+
+            lrc = viper::codegen::linker::nativeLink(linkOpts, out, err);
+        }
+        else
+        {
+            lrc = linkObjToExe(objPath.string(), exe.string(), ctx, out, err);
+        }
+
+        if (!outputIsObj)
+        {
+            std::error_code ec;
+            std::filesystem::remove(objPath, ec);
+        }
+
+        if (lrc != 0)
+        {
+            result.exit_code = 1;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+
+        if (opts_.run_native)
+        {
+            const int rc = viper::codegen::common::runExecutable(exe.string(), out, err);
+            result.exit_code = rc == -1 ? 1 : rc;
+        }
+
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
+
+    if (!opts_.emit_asm && !writeTextFile(asmPath, asmText, err))
+    {
+        result.exit_code = 1;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
+
+    if (!opts_.output_obj_path.empty() && !opts_.run_native)
+    {
+        const std::string &outPath = opts_.output_obj_path;
+        if (std::filesystem::path(outPath).extension() == ".o")
+        {
+            const int arc = viper::codegen::common::invokeAssembler(
+                systemAssemblerArgs(), asmPath, outPath, out, err);
+            result.exit_code = arc == 0 ? 0 : 1;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+
+        const int lrc = linkToExe(asmPath, outPath, out, err);
+        if (lrc == 0 && !opts_.emit_asm)
+        {
+            std::error_code ec;
+            std::filesystem::remove(asmPath, ec);
+        }
+        result.exit_code = lrc == 0 ? 0 : 1;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
+
+    std::filesystem::path exe =
+        opts_.output_obj_path.empty() ? std::filesystem::path(opts_.input_il_path).replace_extension("")
+                                      : std::filesystem::path(opts_.output_obj_path);
+
+    if (linkToExe(asmPath, exe.string(), out, err) != 0)
+    {
+        result.exit_code = 1;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
+
+    if (!opts_.emit_asm)
+    {
+        std::error_code ec;
+        std::filesystem::remove(asmPath, ec);
+    }
+
+    if (opts_.run_native)
+    {
+        const int rc = viper::codegen::common::runExecutable(exe.string(), out, err);
+        result.exit_code = rc == -1 ? 1 : rc;
+    }
+
+    result.stdout_text = out.str();
+    result.stderr_text = err.str();
+    return result;
 }
 
 } // namespace viper::codegen::aarch64

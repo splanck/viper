@@ -33,13 +33,17 @@
 #include "tests/TestHarness.hpp"
 #include <sstream>
 #include <string>
+#include <vector>
 
+#include "codegen/aarch64/CodegenPipeline.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
+#include "codegen/aarch64/passes/BinaryEmitPass.hpp"
 #include "codegen/aarch64/passes/EmitPass.hpp"
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 #include "codegen/aarch64/passes/PassManager.hpp"
 #include "codegen/aarch64/passes/PeepholePass.hpp"
 #include "codegen/aarch64/passes/RegAllocPass.hpp"
+#include "codegen/aarch64/passes/SchedulerPass.hpp"
 #include "il/io/Parser.hpp"
 
 using namespace viper::codegen::aarch64;
@@ -78,6 +82,38 @@ static std::string compileToAsm(const std::string &il, const TargetInfo &ti)
     Diagnostics diags;
     pm.run(m, diags);
     return m.assembly;
+}
+
+static std::vector<std::string> compileToBinarySymbols(const std::string &il, const TargetInfo &ti)
+{
+    il::core::Module mod = parseIL(il);
+    if (mod.functions.empty())
+        return {};
+
+    AArch64Module m;
+    m.ilMod = &mod;
+    m.ti = &ti;
+
+    viper::codegen::aarch64::PipelineOptions opts;
+    opts.useBinaryEmit = true;
+    std::ostringstream sink;
+    if (!viper::codegen::aarch64::runCodegenPipeline(m, opts, sink) || m.binaryTextSections.empty())
+        return {};
+
+    std::vector<std::string> names;
+    for (const auto &sym : m.binaryTextSections.front().symbols().symbols())
+        names.push_back(sym.name);
+    return names;
+}
+
+static bool hasSymbol(const std::vector<std::string> &symbols, const std::string &name)
+{
+    for (const auto &sym : symbols)
+    {
+        if (sym == name)
+            return true;
+    }
+    return false;
 }
 
 // A minimal function to compile for output inspection.
@@ -206,6 +242,20 @@ TEST(AArch64LinuxABI, LinuxCallSite)
 
     // Must NOT have 'bl _callee' (Darwin mangling).
     EXPECT_TRUE(asm_.find("bl _callee") == std::string::npos);
+}
+
+TEST(AArch64LinuxABI, LinuxBinarySymbolsStayUnprefixed)
+{
+    const auto symbols = compileToBinarySymbols(kSimpleIL, linuxTarget());
+    EXPECT_TRUE(hasSymbol(symbols, "hello_linux"));
+    EXPECT_FALSE(hasSymbol(symbols, "_hello_linux"));
+}
+
+TEST(AArch64LinuxABI, DarwinBinaryEncoderLeavesNamesUnprefixedForWriter)
+{
+    const auto symbols = compileToBinarySymbols(kSimpleIL, darwinTarget());
+    EXPECT_TRUE(hasSymbol(symbols, "hello_linux"));
+    EXPECT_FALSE(hasSymbol(symbols, "_hello_linux"));
 }
 
 int main(int argc, char **argv)

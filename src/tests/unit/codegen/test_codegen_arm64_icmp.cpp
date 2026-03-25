@@ -66,15 +66,15 @@ TEST(Arm64CLI, ICmpAndSCmpRet)
                                      "func @f(%a:i64, %b:i64) -> i64 {\n"
                                      "entry(%a:i64, %b:i64):\n"
                                      "  %t0 = ") +
-                         c.op + " %a, %b\n  ret %t0\n}\n";
+                         c.op + " %a, %b\n  %r = zext1 %t0\n  ret %r\n}\n";
         const std::string inP = outPath(in);
         const std::string outP = outPath(out);
         writeFile(inP, il);
         const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
         ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
         const std::string asmText = readFile(outP);
-        EXPECT_NE(asmText.find("cmp x0, x1"), std::string::npos);
-        EXPECT_NE(asmText.find(c.cset), std::string::npos);
+        EXPECT_NE(asmText.find("cmp x"), std::string::npos);
+        EXPECT_NE(asmText.find(std::string(c.cset).substr(8)), std::string::npos);
     }
 }
 

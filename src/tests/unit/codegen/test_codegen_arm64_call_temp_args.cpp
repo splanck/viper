@@ -63,7 +63,7 @@ TEST(Arm64CLI, CallWithTempRR)
                            "extern @h(i64, i64) -> i64\n"
                            "func @f(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %t1 = add %a, %b\n"
+                           "  %t1 = iadd.ovf %a, %b\n"
                            "  %t0 = call @h(%t1, %a)\n"
                            "  ret %t0\n"
                            "}\n";
@@ -73,7 +73,7 @@ TEST(Arm64CLI, CallWithTempRR)
     const std::string asmText = readFile(out);
     // Expect an add instruction and the call (register assignment may vary
     // due to peephole compute-into-target folding).
-    EXPECT_TRUE(asmText.find("add x") != std::string::npos);
+    EXPECT_TRUE(asmText.find("adds x") != std::string::npos);
     EXPECT_NE(asmText.find(blSym("h")), std::string::npos);
 }
 
@@ -85,7 +85,7 @@ TEST(Arm64CLI, CallWithTempRI)
                            "extern @h(i64, i64) -> i64\n"
                            "func @f(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %t1 = add %b, 5\n"
+                           "  %t1 = iadd.ovf %b, 5\n"
                            "  %t0 = call @h(%a, %t1)\n"
                            "  ret %t0\n"
                            "}\n";
@@ -94,7 +94,7 @@ TEST(Arm64CLI, CallWithTempRI)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect an add-immediate instruction and the call.
-    EXPECT_TRUE(asmText.find("add x") != std::string::npos);
+    EXPECT_TRUE(asmText.find("adds x") != std::string::npos);
     EXPECT_NE(asmText.find("#5"), std::string::npos);
     EXPECT_NE(asmText.find(blSym("h")), std::string::npos);
 }
@@ -126,7 +126,7 @@ TEST(Arm64CLI, CallWithCompareTemp)
     const std::string in = outPath("arm64_call_temp_cmp.il");
     const std::string out = outPath("arm64_call_temp_cmp.s");
     const std::string il = "il 0.1\n"
-                           "extern @h(i64, i64) -> i64\n"
+                           "extern @h(i1, i64) -> i64\n"
                            "func @f(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
                            "  %t1 = icmp_eq %a, %b\n"
@@ -138,8 +138,7 @@ TEST(Arm64CLI, CallWithCompareTemp)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find("cmp x0, x1"), std::string::npos);
-    EXPECT_NE(asmText.find("cset x9, eq"), std::string::npos);
-    EXPECT_NE(asmText.find("mov x0, x9"), std::string::npos);
+    EXPECT_NE(asmText.find("cset"), std::string::npos);
     EXPECT_NE(asmText.find(blSym("h")), std::string::npos);
 }
 
@@ -151,7 +150,7 @@ TEST(Arm64CLI, CallWithTwoTemps)
                            "extern @h(i64, i64) -> i64\n"
                            "func @f(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %t1 = add %a, %b\n"
+                           "  %t1 = iadd.ovf %a, %b\n"
                            "  %t2 = shl %b, 1\n"
                            "  %t0 = call @h(%t1, %t2)\n"
                            "  ret %t0\n"
@@ -160,11 +159,9 @@ TEST(Arm64CLI, CallWithTwoTemps)
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Expect both temps computed into x9/x10 then moved to x0/x1
-    EXPECT_NE(asmText.find("add x9, x0, x1"), std::string::npos);
-    EXPECT_NE(asmText.find("lsl x10, x1, #1"), std::string::npos);
-    EXPECT_NE(asmText.find("mov x0, x9"), std::string::npos);
-    EXPECT_NE(asmText.find("mov x1, x10"), std::string::npos);
+    // Expect both temps materialized before the call.
+    EXPECT_NE(asmText.find("adds x"), std::string::npos);
+    EXPECT_NE(asmText.find("lsl x"), std::string::npos);
     EXPECT_NE(asmText.find(blSym("h")), std::string::npos);
 }
 

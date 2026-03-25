@@ -52,7 +52,7 @@ TEST(Arm64CLI, AddTwoParams)
     const std::string il = "il 0.1\n"
                            "func @add2(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %t0 = add %a, %b\n"
+                           "  %t0 = iadd.ovf %a, %b\n"
                            "  ret %t0\n"
                            "}\n";
     const std::string inP = outPath(in);
@@ -63,10 +63,10 @@ TEST(Arm64CLI, AddTwoParams)
     const int rc = cmd_codegen_arm64(3, const_cast<char **>(argv));
     ASSERT_EQ(rc, 0);
     const std::string asmText = readFile(outP);
-    // Expect add instruction that computes the sum into x0.
+    // Expect checked-add lowering that computes the sum into x0.
     // The second operand may be x1 directly or a copy (e.g., x9).
-    bool hasAdd = asmText.find("add x0, x0, x1") != std::string::npos ||
-                  asmText.find("add x0, x0, x") != std::string::npos;
+    bool hasAdd = asmText.find("adds x0, x0, x1") != std::string::npos ||
+                  asmText.find("adds x0, x0, x") != std::string::npos;
     EXPECT_TRUE(hasAdd);
 }
 

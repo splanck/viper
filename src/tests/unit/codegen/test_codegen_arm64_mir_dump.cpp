@@ -66,8 +66,8 @@ TEST(Arm64MIRDump, BeforeRA_ProducesMIROutput)
     const std::string il = "il 0.1\n"
                            "func @test_func(%a:i64, %b:i64, %c:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64, %c:i64):\n"
-                           "  %t1 = add %a, %b\n"
-                           "  %t2 = mul %t1, %c\n"
+                           "  %t1 = iadd.ovf %a, %b\n"
+                           "  %t2 = imul.ovf %t1, %c\n"
                            "  ret %t2\n"
                            "}\n";
     writeFile(in, il);
@@ -98,8 +98,8 @@ TEST(Arm64MIRDump, AfterRA_ShowsPhysicalRegs)
     const std::string il = "il 0.1\n"
                            "func @test_func(%a:i64, %b:i64, %c:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64, %c:i64):\n"
-                           "  %t1 = add %a, %b\n"
-                           "  %t2 = mul %t1, %c\n"
+                           "  %t1 = iadd.ovf %a, %b\n"
+                           "  %t2 = imul.ovf %t1, %c\n"
                            "  ret %t2\n"
                            "}\n";
     writeFile(in, il);
@@ -128,7 +128,7 @@ TEST(Arm64MIRDump, Full_ShowsBothPhases)
     const std::string il = "il 0.1\n"
                            "func @test_func(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %sum = add %a, %b\n"
+                           "  %sum = iadd.ovf %a, %b\n"
                            "  ret %sum\n"
                            "}\n";
     writeFile(in, il);
@@ -155,8 +155,8 @@ TEST(Arm64MIRDump, ShowsExpectedOpcodes)
     const std::string il = "il 0.1\n"
                            "func @add_mul(%a:i64, %b:i64, %c:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64, %c:i64):\n"
-                           "  %t1 = add %a, %b\n"
-                           "  %t2 = mul %t1, %c\n"
+                           "  %t1 = iadd.ovf %a, %b\n"
+                           "  %t2 = imul.ovf %t1, %c\n"
                            "  ret %t2\n"
                            "}\n";
     writeFile(in, il);

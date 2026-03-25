@@ -522,6 +522,12 @@ state tracking) and ButtonGroup (replacing manual selection management).
 
 #### New Runtime APIs
 
+**AnimStateMachine** — Combined state machine and animation playback controller. Maps each
+state to an animation clip (frame range, duration, loop flag). Transitions automatically
+reconfigure the internal animation. Surfaces `CurrentFrame`, `IsAnimFinished`, `Progress`,
+`JustEntered`/`JustExited` edge flags, and `FramesInState`. Eliminates the boilerplate of
+manually wiring `StateMachine` and `SpriteAnimation` together in every character controller.
+
 **TextureAtlas** — Named-region 2D sprite sheet atlas. Maps string names to rectangular sub-regions
 of a Pixels buffer, enabling content pipelines where frames are referenced by name instead of raw
 pixel coordinates. Supports grid-based auto-slicing (`LoadGrid`) and manual region definition (`Add`).

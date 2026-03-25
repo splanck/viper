@@ -59,7 +59,7 @@ TEST(Arm64CLI, ModvarAddr_LoadStore)
                            "  %n = const_str @.Lname\n"
                            "  %p = call @rt_modvar_addr_i64(%n)\n"
                            "  %v = load i64, %p\n"
-                           "  %v1 = add %v, 1\n"
+                           "  %v1 = iadd.ovf %v, 1\n"
                            "  store i64, %p, %v1\n"
                            "  ret %v1\n"
                            "}\n";

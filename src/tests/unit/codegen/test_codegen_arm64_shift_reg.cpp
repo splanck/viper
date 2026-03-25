@@ -116,7 +116,7 @@ TEST(Arm64ShiftReg, ShiftFromComputation)
     const std::string il = "il 0.1\n"
                            "func @shift_computed(%val:i64, %base:i64) -> i64 {\n"
                            "entry(%val:i64, %base:i64):\n"
-                           "  %amt = add %base, 1\n"
+                           "  %amt = iadd.ovf %base, 1\n"
                            "  %r = shl %val, %amt\n"
                            "  ret %r\n"
                            "}\n";
@@ -125,7 +125,7 @@ TEST(Arm64ShiftReg, ShiftFromComputation)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Should have add and shift
-    EXPECT_NE(asmText.find("add x"), std::string::npos);
+    EXPECT_NE(asmText.find("adds x"), std::string::npos);
     bool hasShift =
         asmText.find("lslv x") != std::string::npos || asmText.find("lsl x") != std::string::npos;
     EXPECT_TRUE(hasShift);

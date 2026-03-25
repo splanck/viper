@@ -53,7 +53,7 @@ TEST(Arm64PeepholeComprehensive, AddZero)
     const std::string il = "il 0.1\n"
                            "func @add0(%x:i64) -> i64 {\n"
                            "entry(%x:i64):\n"
-                           "  %r = add %x, 0\n"
+                           "  %r = iadd.ovf %x, 0\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -72,7 +72,7 @@ TEST(Arm64PeepholeComprehensive, SubZero)
     const std::string il = "il 0.1\n"
                            "func @sub0(%x:i64) -> i64 {\n"
                            "entry(%x:i64):\n"
-                           "  %r = sub %x, 0\n"
+                           "  %r = isub.ovf %x, 0\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -90,7 +90,7 @@ TEST(Arm64PeepholeComprehensive, MulOne)
     const std::string il = "il 0.1\n"
                            "func @mul1(%x:i64) -> i64 {\n"
                            "entry(%x:i64):\n"
-                           "  %r = mul %x, 1\n"
+                           "  %r = imul.ovf %x, 1\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -108,7 +108,7 @@ TEST(Arm64PeepholeComprehensive, MulZero)
     const std::string il = "il 0.1\n"
                            "func @mul0(%x:i64) -> i64 {\n"
                            "entry(%x:i64):\n"
-                           "  %r = mul %x, 0\n"
+                           "  %r = imul.ovf %x, 0\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -198,7 +198,7 @@ TEST(Arm64PeepholeComprehensive, FallthroughBranch)
     const std::string il = "il 0.1\n"
                            "func @fallthrough(%x:i64) -> i64 {\n"
                            "entry(%x:i64):\n"
-                           "  %t = add %x, 1\n"
+                           "  %t = iadd.ovf %x, 1\n"
                            "  br ^next\n"
                            "next:\n"
                            "  ret %t\n"
@@ -219,9 +219,9 @@ TEST(Arm64PeepholeComprehensive, ConsecutiveMoves)
     const std::string il = "il 0.1\n"
                            "func @moves(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %t1 = add %a, %b\n"
-                           "  %t2 = add %t1, 0\n"
-                           "  %r = add %t2, 0\n"
+                           "  %t1 = iadd.ovf %a, %b\n"
+                           "  %t2 = iadd.ovf %t1, 0\n"
+                           "  %r = iadd.ovf %t2, 0\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);

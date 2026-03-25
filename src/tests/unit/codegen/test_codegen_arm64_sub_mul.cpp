@@ -53,15 +53,16 @@ TEST(Arm64SubMul, SubSimple)
     const std::string il = "il 0.1\n"
                            "func @sub(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %r = sub %a, %b\n"
+                           "  %r = isub.ovf %a, %b\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Expect sub instruction
-    EXPECT_NE(asmText.find("sub x"), std::string::npos);
+    // Expect checked-sub instruction
+    EXPECT_TRUE(asmText.find("sub x") != std::string::npos ||
+                asmText.find("subs x") != std::string::npos);
 }
 
 // Test 2: Subtraction with immediate
@@ -72,15 +73,16 @@ TEST(Arm64SubMul, SubImmediate)
     const std::string il = "il 0.1\n"
                            "func @sub5(%a:i64) -> i64 {\n"
                            "entry(%a:i64):\n"
-                           "  %r = sub %a, 5\n"
+                           "  %r = isub.ovf %a, 5\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Expect sub with immediate (sub xN, xM, #5)
-    EXPECT_NE(asmText.find("sub x"), std::string::npos);
+    // Expect checked-sub with immediate (subs xN, xM, #5)
+    EXPECT_TRUE(asmText.find("sub x") != std::string::npos ||
+                asmText.find("subs x") != std::string::npos);
 }
 
 // Test 3: Simple multiplication of two parameters
@@ -91,7 +93,7 @@ TEST(Arm64SubMul, MulSimple)
     const std::string il = "il 0.1\n"
                            "func @mul(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %r = mul %a, %b\n"
+                           "  %r = imul.ovf %a, %b\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -110,7 +112,7 @@ TEST(Arm64SubMul, MulPowerOf2)
     const std::string il = "il 0.1\n"
                            "func @mul8(%a:i64) -> i64 {\n"
                            "entry(%a:i64):\n"
-                           "  %r = mul %a, 8\n"
+                           "  %r = imul.ovf %a, 8\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -131,8 +133,8 @@ TEST(Arm64SubMul, MulAccumulate)
     const std::string il = "il 0.1\n"
                            "func @madd(%a:i64, %b:i64, %c:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64, %c:i64):\n"
-                           "  %t = mul %b, %c\n"
-                           "  %r = add %a, %t\n"
+                           "  %t = imul.ovf %b, %c\n"
+                           "  %r = iadd.ovf %a, %t\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -154,18 +156,19 @@ TEST(Arm64SubMul, SubChained)
     const std::string il = "il 0.1\n"
                            "func @sub_chain(%a:i64, %b:i64, %c:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64, %c:i64):\n"
-                           "  %t = sub %a, %b\n"
-                           "  %r = sub %t, %c\n"
+                           "  %t = isub.ovf %a, %b\n"
+                           "  %r = isub.ovf %t, %c\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Count sub instructions
+    // Count checked-sub instructions
     std::size_t subCount = 0;
     std::size_t pos = 0;
-    while ((pos = asmText.find("sub x", pos)) != std::string::npos)
+    while ((pos = asmText.find("sub x", pos)) != std::string::npos ||
+           (pos = asmText.find("subs x", pos)) != std::string::npos)
     {
         ++subCount;
         pos += 5;
@@ -181,17 +184,18 @@ TEST(Arm64SubMul, MixedArith)
     const std::string il = "il 0.1\n"
                            "func @expr(%a:i64, %b:i64, %c:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64, %c:i64):\n"
-                           "  %t = mul %a, %b\n"
-                           "  %r = sub %t, %c\n"
+                           "  %t = imul.ovf %a, %b\n"
+                           "  %r = isub.ovf %t, %c\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Should have both mul and sub
+    // Should have both mul and checked-sub
     EXPECT_NE(asmText.find("mul x"), std::string::npos);
-    EXPECT_NE(asmText.find("sub x"), std::string::npos);
+    EXPECT_TRUE(asmText.find("sub x") != std::string::npos ||
+                asmText.find("subs x") != std::string::npos);
 }
 
 // Test 8: Negation via subtraction from zero
@@ -202,16 +206,16 @@ TEST(Arm64SubMul, Negate)
     const std::string il = "il 0.1\n"
                            "func @neg(%a:i64) -> i64 {\n"
                            "entry(%a:i64):\n"
-                           "  %r = sub 0, %a\n"
+                           "  %r = isub.ovf 0, %a\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Could be neg or sub from xzr
+    // Could be negs or checked-sub from xzr.
     bool hasNegate =
-        asmText.find("neg x") != std::string::npos || asmText.find("sub x") != std::string::npos;
+        asmText.find("negs x") != std::string::npos || asmText.find("subs x") != std::string::npos;
     EXPECT_TRUE(hasNegate);
 }
 

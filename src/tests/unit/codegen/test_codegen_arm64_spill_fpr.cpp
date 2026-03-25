@@ -152,8 +152,8 @@ TEST(Arm64SpillFPR, MixedRegisterPressure)
     const std::string il = "il 0.1\n"
                            "func @mixed(%i1:i64, %i2:i64, %f1:f64, %f2:f64) -> f64 {\n"
                            "entry(%i1:i64, %i2:i64, %f1:f64, %f2:f64):\n"
-                           "  %ia = add %i1, %i2\n"
-                           "  %ib = mul %i1, %i2\n"
+                           "  %ia = iadd.ovf %i1, %i2\n"
+                           "  %ib = imul.ovf %i1, %i2\n"
                            "  %fa = fadd %f1, %f2\n"
                            "  %fb = fmul %f1, %f2\n"
                            "  %fi = sitofp %ia\n"
@@ -165,7 +165,7 @@ TEST(Arm64SpillFPR, MixedRegisterPressure)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Should have both integer and FP operations
-    EXPECT_NE(asmText.find("add x"), std::string::npos);
+    EXPECT_NE(asmText.find("adds x"), std::string::npos);
     EXPECT_NE(asmText.find("fadd d"), std::string::npos);
 }
 
@@ -181,7 +181,7 @@ TEST(Arm64SpillFPR, LoopAccumulator)
                            "loop(%i:i64, %acc:f64):\n"
                            "  %one = sitofp 1\n"
                            "  %next_acc = fadd %acc, %one\n"
-                           "  %next_i = add %i, 1\n"
+                           "  %next_i = iadd.ovf %i, 1\n"
                            "  %done = icmp_eq %next_i, %n\n"
                            "  cbr %done, exit(%next_acc), loop(%next_i, %next_acc)\n"
                            "exit(%result:f64):\n"

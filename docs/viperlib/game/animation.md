@@ -5,7 +5,7 @@ last-verified: 2026-03-04
 ---
 
 # Animation & Movement
-> Tween, SpriteAnimation, SpriteSheet, PathFollower, ButtonGroup
+> Tween, SpriteAnimation, AnimStateMachine, SpriteSheet, PathFollower, ButtonGroup
 
 **Part of [Viper Runtime Library](../README.md) › [Game Utilities](README.md)**
 
@@ -262,6 +262,84 @@ IF attackAnim.Update() THEN
     ' Animation finished, return to idle
     idleAnim.Play()
 END IF
+```
+
+---
+
+## Viper.Game.AnimStateMachine
+
+Combined state machine + animation playback. Each state maps to an animation clip
+(frame range, duration, loop flag). Transitions automatically reconfigure the animation.
+Eliminates the boilerplate of manually wiring StateMachine and SpriteAnimation together.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Game.AnimStateMachine()`
+
+### Properties
+
+| Property         | Type    | Access | Description                                       |
+|------------------|---------|--------|---------------------------------------------------|
+| `CurrentState`   | Integer | Read   | Current state ID (-1 if none set)                 |
+| `PreviousState`  | Integer | Read   | Previous state ID (-1 if no transition occurred)  |
+| `JustEntered`    | Boolean | Read   | 1 if a transition occurred since last ClearFlags  |
+| `JustExited`     | Boolean | Read   | 1 if the previous state was exited                |
+| `FramesInState`  | Integer | Read   | Frames spent in the current state                 |
+| `CurrentFrame`   | Integer | Read   | Current animation frame index                     |
+| `IsAnimFinished` | Boolean | Read   | 1 if the current one-shot clip has finished       |
+| `Progress`       | Integer | Read   | Animation progress 0-100 within the current clip  |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `AddState(id, start, end, dur, loop)` | `Void(Integer, Integer, Integer, Integer, Boolean)` | Register a state with its animation clip |
+| `SetInitial(id)` | `Boolean(Integer)` | Set the initial state (must be added first) |
+| `Transition(id)` | `Boolean(Integer)` | Transition to a new state (no-op if same state) |
+| `Update()` | `Void()` | Advance one frame — call once per game loop |
+| `ClearFlags()` | `Void()` | Clear JustEntered / JustExited edge flags |
+
+### Zia Example
+
+```rust
+module CharacterDemo;
+bind Viper.Game;
+
+// State IDs
+final IDLE = 0;
+final WALK = 1;
+final JUMP = 2;
+final ATTACK = 3;
+
+func start() {
+    var anim = AnimStateMachine.New();
+
+    // Define states: (id, startFrame, endFrame, frameDuration, loop)
+    anim.AddState(IDLE,   0,  3, 8, true);   // frames 0-3, slow loop
+    anim.AddState(WALK,   4,  9, 4, true);   // frames 4-9, medium loop
+    anim.AddState(JUMP,  10, 13, 3, false);  // frames 10-13, one-shot
+    anim.AddState(ATTACK,14, 17, 2, false);  // frames 14-17, fast one-shot
+
+    anim.SetInitial(IDLE);
+
+    // Game loop
+    // ...
+    anim.Update();
+    var frame = anim.CurrentFrame;  // Use to set sprite frame
+
+    // Transition based on input
+    if speed > 0 {
+        anim.Transition(WALK);
+    } else {
+        anim.Transition(IDLE);
+    }
+
+    // Check for one-shot completion
+    if anim.IsAnimFinished {
+        anim.Transition(IDLE);
+    }
+
+    anim.ClearFlags();
+}
 ```
 
 ---

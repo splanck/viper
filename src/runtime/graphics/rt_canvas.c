@@ -225,11 +225,6 @@ int64_t rt_canvas_poll(void *canvas_ptr)
     // Poll gamepads for state updates
     rt_pad_poll();
 
-    // Update mouse position from current cursor location
-    int32_t mx = 0, my = 0;
-    vgfx_mouse_pos(canvas->gfx_win, &mx, &my);
-    rt_mouse_update_pos((int64_t)mx, (int64_t)my);
-
     while (vgfx_poll_event(canvas->gfx_win, &canvas->last_event))
     {
         if (canvas->last_event.type == VGFX_EVENT_CLOSE)
@@ -253,13 +248,31 @@ int64_t rt_canvas_poll(void *canvas_ptr)
         }
         else if (canvas->last_event.type == VGFX_EVENT_MOUSE_DOWN)
         {
+            float cs = vgfx_window_get_scale(canvas->gfx_win);
+            if (cs < 0.001f)
+                cs = 1.0f;
+            int64_t emx = (int64_t)(canvas->last_event.data.mouse_button.x / cs);
+            int64_t emy = (int64_t)(canvas->last_event.data.mouse_button.y / cs);
+            rt_mouse_update_pos(emx, emy);
             rt_mouse_button_down((int64_t)canvas->last_event.data.mouse_button.button);
         }
         else if (canvas->last_event.type == VGFX_EVENT_MOUSE_UP)
         {
+            float cs = vgfx_window_get_scale(canvas->gfx_win);
+            if (cs < 0.001f)
+                cs = 1.0f;
+            int64_t emx = (int64_t)(canvas->last_event.data.mouse_button.x / cs);
+            int64_t emy = (int64_t)(canvas->last_event.data.mouse_button.y / cs);
+            rt_mouse_update_pos(emx, emy);
             rt_mouse_button_up((int64_t)canvas->last_event.data.mouse_button.button);
         }
     }
+
+    // Finish with the live cursor position so queued historical move events
+    // cannot leave the frame using stale coordinates.
+    int32_t mx = 0, my = 0;
+    vgfx_mouse_pos(canvas->gfx_win, &mx, &my);
+    rt_mouse_update_pos((int64_t)mx, (int64_t)my);
 
     // Update action mapping state AFTER events are processed so that
     // Action.Pressed/Held/Released reflect this frame's input.

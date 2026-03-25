@@ -941,15 +941,15 @@ int64_t rt_canvas3d_poll(void *obj)
 
     int8_t captured = rt_mouse_is_captured();
 
-    /* Read current platform mouse position */
-    int32_t mx, my;
-    vgfx_mouse_pos(c->gfx_win, &mx, &my);
-
     /* Begin frame (resets per-frame state for keyboard/mouse/pad) */
     rt_keyboard_begin_frame();
     rt_mouse_begin_frame();
     rt_pad_begin_frame();
     rt_pad_poll();
+
+    /* Read current platform mouse position */
+    int32_t mx, my;
+    vgfx_mouse_pos(c->gfx_win, &mx, &my);
 
     /* For captured (FPS) mode: compute delta as offset from window center.
      * This avoids issues with warp timing, stale events, and OS mouse tracking. */
@@ -984,9 +984,29 @@ int64_t rt_canvas3d_poll(void *obj)
                                 (int64_t)(evt.data.mouse_move.y / cs));
         }
         else if (evt.type == VGFX_EVENT_MOUSE_DOWN)
+        {
+            float cs = vgfx_window_get_scale(c->gfx_win);
+            if (cs < 0.001f)
+                cs = 1.0f;
+            rt_mouse_update_pos((int64_t)(evt.data.mouse_button.x / cs),
+                                (int64_t)(evt.data.mouse_button.y / cs));
             rt_mouse_button_down((int64_t)evt.data.mouse_button.button);
+        }
         else if (evt.type == VGFX_EVENT_MOUSE_UP)
+        {
+            float cs = vgfx_window_get_scale(c->gfx_win);
+            if (cs < 0.001f)
+                cs = 1.0f;
+            rt_mouse_update_pos((int64_t)(evt.data.mouse_button.x / cs),
+                                (int64_t)(evt.data.mouse_button.y / cs));
             rt_mouse_button_up((int64_t)evt.data.mouse_button.button);
+        }
+    }
+
+    if (!captured)
+    {
+        vgfx_mouse_pos(c->gfx_win, &mx, &my);
+        rt_mouse_update_pos((int64_t)mx, (int64_t)my);
     }
 
     /* Warp cursor to center for next frame (only when captured) */

@@ -94,6 +94,8 @@ entity BrushTool {
     hide func drawBrushLine(x1: Integer, y1: Integer, x2: Integer, y2: Integer, canvas: DrawingCanvas, colors: ColorManager, brushSettings: BrushSettings) {
         var dx = x2 - x1;
         var dy = y2 - y1;
+        var deltaX = dx;
+        var deltaY = dy;
         if dx < 0 { dx = 0 - dx; }
         if dy < 0 { dy = 0 - dy; }
 
@@ -105,19 +107,16 @@ entity BrushTool {
             steps = 1;
         }
 
-        // Spacing based on brush size for smooth strokes
-        var spacing = brushSettings.size / 4;
-        if spacing < 1 {
-            spacing = 1;
-        }
-
         var i = 0;
         while i <= steps {
-            var t = i * 100 / steps;
-            var px = x1 + (x2 - x1) * t / 100;
-            var py = y1 + (y2 - y1) * t / 100;
+            var px = x1 + deltaX * i / steps;
+            var py = y1 + deltaY * i / steps;
             drawBrushStamp(px, py, canvas, colors, brushSettings);
-            i = i + spacing;
+            i = i + 1;
         }
+
+        // Always stamp the endpoint so the last segment cannot be skipped by
+        // spacing or integer division rounding.
+        drawBrushStamp(x2, y2, canvas, colors, brushSettings);
     }
 }

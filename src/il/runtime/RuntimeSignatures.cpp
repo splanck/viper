@@ -235,6 +235,7 @@
 #include "rt_spritesheet.h"
 #include "rt_stack.h"
 #include "rt_statemachine.h"
+#include "rt_animstate.h"
 #include "rt_stopwatch.h"
 #include "rt_stream.h"
 #include "rt_string.h"

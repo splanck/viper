@@ -110,7 +110,7 @@ TEST(Arm64Bugfix, AddFpImmDirtyFlagUnderPressure)
 
     // 22 live temps — enough to exceed the 19-register GPR pool
     for (int i = 0; i < 22; ++i)
-        il += "  %v" + std::to_string(i) + " = add 0, " + std::to_string(i + 1) + "\n";
+        il += "  %v" + std::to_string(i) + " = iadd.ovf 0, " + std::to_string(i + 1) + "\n";
 
     // 192-byte alloca (enough for 24 i64 fields)
     il += "  %base = alloca 192\n";

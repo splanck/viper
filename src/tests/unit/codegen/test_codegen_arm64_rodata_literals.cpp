@@ -190,9 +190,9 @@ TEST(Arm64Rodata, ConstantDeduplication)
     const std::string il = "il 0.1\n"
                            "func @use_const_twice(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %t1 = add %a, 0x123456789ABCDEF0\n"
-                           "  %t2 = add %b, 0x123456789ABCDEF0\n"
-                           "  %r = add %t1, %t2\n"
+                           "  %t1 = iadd.ovf %a, 0x123456789ABCDEF0\n"
+                           "  %t2 = iadd.ovf %b, 0x123456789ABCDEF0\n"
+                           "  %r = iadd.ovf %t1, %t2\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);

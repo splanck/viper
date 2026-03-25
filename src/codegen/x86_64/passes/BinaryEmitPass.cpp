@@ -25,7 +25,9 @@
 namespace viper::codegen::x64::passes
 {
 
-BinaryEmitPass::BinaryEmitPass(bool isDarwin) noexcept : isDarwin_(isDarwin) {}
+BinaryEmitPass::BinaryEmitPass(bool isDarwin, CodegenOptions options) noexcept
+    : isDarwin_(isDarwin), options_(std::move(options))
+{}
 
 bool BinaryEmitPass::run(Module &module, Diagnostics &diags)
 {
@@ -40,7 +42,7 @@ bool BinaryEmitPass::run(Module &module, Diagnostics &diags)
         return false;
     }
 
-    BinaryEmitResult result = emitModuleToBinary(*module.lowered, CodegenOptions{}, isDarwin_);
+    BinaryEmitResult result = emitModuleToBinary(*module.lowered, options_, isDarwin_);
     if (!result.errors.empty())
     {
         std::string message = "error: x64 binary codegen failed:\n";

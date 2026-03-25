@@ -50,8 +50,8 @@ TEST(Arm64CLI, SwitchSmall)
     const std::string in = outPath("arm64_switch_small.il");
     const std::string out = outPath("arm64_switch_small.s");
     const std::string il = "il 0.1\n"
-                           "func @f(%x:i64) -> i64 {\n"
-                           "entry(%x:i64):\n"
+                           "func @f(%x:i32) -> i64 {\n"
+                           "entry(%x:i32):\n"
                            "  switch.i32 %x, ^Ld, 1 -> ^L1, 2 -> ^L2\n"
                            "L1():\n"
                            "  ret 10\n"
@@ -79,8 +79,8 @@ TEST(Arm64CLI, SwitchMany)
     const std::string out = outPath("arm64_switch_many.s");
     std::ostringstream il;
     il << "il 0.1\n";
-    il << "func @g(%x:i64) -> i64 {\n";
-    il << "entry(%x:i64):\n";
+    il << "func @g(%x:i32) -> i64 {\n";
+    il << "entry(%x:i32):\n";
     il << "  switch.i32 %x, ^Ld";
     for (int i = 0; i < 8; ++i)
         il << ", " << i << " -> ^L" << i;
@@ -107,8 +107,8 @@ TEST(Arm64CLI, SwitchDefaultOnly)
     const std::string in = outPath("arm64_switch_default_only.il");
     const std::string out = outPath("arm64_switch_default_only.s");
     const std::string il = "il 0.1\n"
-                           "func @h(%x:i64) -> i64 {\n"
-                           "entry(%x:i64):\n"
+                           "func @h(%x:i32) -> i64 {\n"
+                           "entry(%x:i32):\n"
                            "  switch.i32 %x, ^Ld\n"
                            "Ld():\n"
                            "  ret 0\n"

@@ -159,7 +159,7 @@ TEST(Arm64FP, FptosiConversion)
     const std::string il = "il 0.1\n"
                            "func @ftoi(%x:f64) -> i64 {\n"
                            "entry(%x:f64):\n"
-                           "  %r = fptosi %x\n"
+                           "  %r = cast.fp_to_si.rte.chk %x\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);

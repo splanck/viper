@@ -15,6 +15,7 @@
 #include "rt_network.h"
 #include "rt_string.h"
 #include "rt_websocket.h"
+#include "rt_netutils.h"
 
 #include <atomic>
 #include <cassert>
@@ -104,6 +105,7 @@ static void ws_send_handshake(void *client, const char *headers_buf)
 //=============================================================================
 
 static std::atomic<bool> ws_server_ready{false};
+static std::atomic<bool> ws_server_failed{false};
 
 /// @brief Accept a TCP connection and perform a minimal WS handshake,
 ///        then sit idle (never send data) so recv_for can time out.
@@ -113,10 +115,12 @@ static void ws_silent_server_thread(int port)
     if (!server)
     {
         printf("  WARNING: Could not create server on port %d\n", port);
+        ws_server_failed = true;
         ws_server_ready = true;
         return;
     }
 
+    ws_server_failed = false;
     ws_server_ready = true;
 
     // Accept one client
@@ -167,10 +171,12 @@ static void ws_echo_server_thread(int port)
     if (!server)
     {
         printf("  WARNING: Could not create server on port %d\n", port);
+        ws_server_failed = true;
         ws_server_ready = true;
         return;
     }
 
+    ws_server_failed = false;
     ws_server_ready = true;
 
     void *client = rt_tcp_server_accept_for(server, 5000);
@@ -296,13 +302,25 @@ static void test_ws_recv_for_timeout()
 {
     printf("\nTesting WebSocket recv_for timeout:\n");
 
-    const int port = 19920;
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0)
+    {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
     ws_server_ready = false;
+    ws_server_failed = false;
 
     std::thread server(ws_silent_server_thread, port);
 
     while (!ws_server_ready)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (ws_server_failed)
+    {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     // Connect to our silent WS server
@@ -333,13 +351,25 @@ static void test_ws_recv_bytes_for_timeout()
 {
     printf("\nTesting WebSocket recv_bytes_for timeout:\n");
 
-    const int port = 19921;
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0)
+    {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
     ws_server_ready = false;
+    ws_server_failed = false;
 
     std::thread server(ws_silent_server_thread, port);
 
     while (!ws_server_ready)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (ws_server_failed)
+    {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     char url_buf[64];
@@ -368,13 +398,25 @@ static void test_ws_connect_for_success()
 {
     printf("\nTesting WebSocket connect_for (success case):\n");
 
-    const int port = 19922;
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0)
+    {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
     ws_server_ready = false;
+    ws_server_failed = false;
 
     std::thread server(ws_echo_server_thread, port);
 
     while (!ws_server_ready)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (ws_server_failed)
+    {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     // Connect with a generous timeout (should succeed quickly)

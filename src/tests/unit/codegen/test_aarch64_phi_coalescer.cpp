@@ -119,7 +119,7 @@ TEST(AArch64PhiCoalescer, SinglePhiLoop)
                            "entry:\n"
                            "  br loop(0)\n"
                            "loop(%i:i64):\n"
-                           "  %next = add %i, 1\n"
+                           "  %next = iadd.ovf %i, 1\n"
                            "  %done = icmp_eq %next, 100\n"
                            "  cbr %done, exit(%next), loop(%next)\n"
                            "exit(%r:i64):\n"
@@ -169,8 +169,8 @@ TEST(AArch64PhiCoalescer, TwoPhiLoop)
                            "entry:\n"
                            "  br loop(0, 0)\n"
                            "loop(%i:i64, %sum:i64):\n"
-                           "  %new_sum = add %sum, %i\n"
-                           "  %next_i  = add %i, 1\n"
+                           "  %new_sum = iadd.ovf %sum, %i\n"
+                           "  %next_i  = iadd.ovf %i, 1\n"
                            "  %done    = icmp_eq %next_i, 10\n"
                            "  cbr %done, exit(%new_sum), loop(%next_i, %new_sum)\n"
                            "exit(%r:i64):\n"
@@ -241,7 +241,7 @@ TEST(AArch64PhiCoalescer, LoopStructurePreserved)
                            "entry:\n"
                            "  br loop(0)\n"
                            "loop(%i:i64):\n"
-                           "  %next = add %i, 1\n"
+                           "  %next = iadd.ovf %i, 1\n"
                            "  %done = icmp_eq %next, 5\n"
                            "  cbr %done, exit(%next), loop(%next)\n"
                            "exit(%r:i64):\n"
@@ -255,7 +255,7 @@ TEST(AArch64PhiCoalescer, LoopStructurePreserved)
     const std::string asmText = readFile(out);
 
     // Counter increment must be present.
-    EXPECT_NE(asmText.find("add x"), std::string::npos);
+    EXPECT_NE(asmText.find("adds x"), std::string::npos);
     // Compare must be present.
     EXPECT_NE(asmText.find("cmp x"), std::string::npos);
     // Load from phi slot at loop entry must be present.

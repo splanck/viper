@@ -52,7 +52,7 @@ TEST(Arm64CLI, AddImmParam0)
     const std::string il = "il 0.1\n"
                            "func @f(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %t0 = add %a, 5\n"
+                           "  %t0 = iadd.ovf %a, 5\n"
                            "  ret %t0\n"
                            "}\n";
     const std::string inP = outPath(in);
@@ -61,7 +61,7 @@ TEST(Arm64CLI, AddImmParam0)
     const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(outP);
-    EXPECT_NE(asmText.find("add x0, x0, #5"), std::string::npos);
+    EXPECT_NE(asmText.find("adds x0, x0, #5"), std::string::npos);
 }
 
 TEST(Arm64CLI, SubImmParam1)
@@ -71,7 +71,7 @@ TEST(Arm64CLI, SubImmParam1)
     const std::string il = "il 0.1\n"
                            "func @g(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %t0 = sub %b, 3\n"
+                           "  %t0 = isub.ovf %b, 3\n"
                            "  ret %t0\n"
                            "}\n";
     const std::string inP2 = outPath(in);
@@ -82,7 +82,7 @@ TEST(Arm64CLI, SubImmParam1)
     const std::string asmText = readFile(outP2);
     // Expect move param1 to x0 then sub immediate
     EXPECT_NE(asmText.find("mov x0, x1"), std::string::npos);
-    EXPECT_NE(asmText.find("sub x0, x0, #3"), std::string::npos);
+    EXPECT_NE(asmText.find("subs x0, x0, #3"), std::string::npos);
 }
 
 int main(int argc, char **argv)

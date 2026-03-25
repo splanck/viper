@@ -18,7 +18,7 @@ last-verified: 2026-03-09
 | [Game Loop Framework](gameloop.md) | GameBase, IScene — eliminates game loop boilerplate |
 | [Core Utilities](core.md) | Timer, StateMachine, SmoothValue, ObjectPool |
 | [Physics & Collision](physics.md) | Grid2D, CollisionRect, Collision, Physics2D, Quadtree |
-| [Animation & Movement](animation.md) | Tween, SpriteAnimation, SpriteSheet, PathFollower, ButtonGroup |
+| [Animation & Movement](animation.md) | Tween, SpriteAnimation, AnimStateMachine, SpriteSheet, PathFollower, ButtonGroup |
 | [Visual Effects](effects.md) | ParticleEmitter, ScreenFX |
 | [Debug Overlay](debug.md) | DebugOverlay — FPS, dt, custom watch variables |
 | [Persistence](persistence.md) | SaveData — cross-platform key-value save/load |

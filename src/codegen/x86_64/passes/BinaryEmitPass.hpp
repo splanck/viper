@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include "codegen/x86_64/Backend.hpp"
 #include "codegen/x86_64/passes/PassManager.hpp"
 
 namespace viper::codegen::x64::passes
@@ -32,12 +33,13 @@ class BinaryEmitPass final : public Pass
 {
   public:
     /// @param isDarwin If true, symbol names get underscore-prefixed (Mach-O convention).
-    explicit BinaryEmitPass(bool isDarwin) noexcept;
+    BinaryEmitPass(bool isDarwin, CodegenOptions options) noexcept;
 
     bool run(Module &module, Diagnostics &diags) override;
 
   private:
     bool isDarwin_;
+    CodegenOptions options_{};
 };
 
 } // namespace viper::codegen::x64::passes

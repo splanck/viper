@@ -142,8 +142,10 @@ TEST(Arm64GaddrNull, CmpWithNull)
     const std::string il = "il 0.1\n"
                            "func @is_null(%p:ptr) -> i64 {\n"
                            "entry(%p:ptr):\n"
-                           "  %n = const_null\n"
-                           "  %c = icmp_eq %p, %n\n"
+                           "  %slot = alloca 8\n"
+                           "  store ptr, %slot, %p\n"
+                           "  %bits = load i64, %slot\n"
+                           "  %c = icmp_eq %bits, 0\n"
                            "  %r = zext1 %c\n"
                            "  ret %r\n"
                            "}\n";
@@ -153,6 +155,7 @@ TEST(Arm64GaddrNull, CmpWithNull)
     const std::string asmText = readFile(out);
     // Should have compare (could be cmp with 0 or cbz pattern)
     bool hasCmp = asmText.find("cmp x") != std::string::npos ||
+                  asmText.find("tst x") != std::string::npos ||
                   asmText.find("cbz x") != std::string::npos ||
                   asmText.find("cbnz x") != std::string::npos;
     EXPECT_TRUE(hasCmp);

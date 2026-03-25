@@ -127,7 +127,7 @@ TEST(AArch64PassManager, PartialPipeline)
     const std::string il = "il 0.1\n"
                            "func @add_two(%a:i64, %b:i64) -> i64 {\n"
                            "entry:\n"
-                           "  %r = add %a, %b\n"
+                           "  %r = iadd.ovf %a, %b\n"
                            "  ret %r\n"
                            "}\n";
 

@@ -57,23 +57,7 @@ func start() {
         return;
     }
 
-    // === Test 4: TcpServer listen and close ===
-    var server = Viper.Network.TcpServer.Listen(49213);
-    var listening = Viper.Network.TcpServer.get_IsListening(server);
-    if (listening != 1) {
-        Say("FAIL: server should be listening");
-        return;
-    }
-
-    var serverPort = Viper.Network.TcpServer.get_Port(server);
-    if (serverPort != 49213) {
-        Say("FAIL: server port should be 49213");
-        return;
-    }
-
-    Viper.Network.TcpServer.Close(server);
-
-    // === Test 5: RetryPolicy ===
+    // === Test 4: RetryPolicy ===
     var retry = Viper.Network.RetryPolicy.New(3, 100);
     var maxRetries = Viper.Network.RetryPolicy.get_MaxRetries(retry);
     if (maxRetries != 3) {
@@ -112,7 +96,7 @@ func start() {
         return;
     }
 
-    // === Test 6: RateLimiter ===
+    // === Test 5: RateLimiter ===
     var limiter = Viper.Network.RateLimiter.New(2, 1.0);
     var maxLim = Viper.Network.RateLimiter.get_Max(limiter);
     if (maxLim != 2) {

@@ -124,7 +124,7 @@ TEST(Arm64CLI, ArrayAccess_StructInArray)
     const std::string il = "il 0.1\n"
                            "func @load_struct_field(%base:ptr, %idx:i64) -> i64 {\n"
                            "entry(%base:ptr, %idx:i64):\n"
-                           "  %struct_size = mul %idx, 24\n"
+                           "  %struct_size = imul.ovf %idx, 24\n"
                            "  %elem_ptr = gep %base, %struct_size\n"
                            "  %field_ptr = gep %elem_ptr, 8\n"
                            "  %v = load i64, %field_ptr\n"

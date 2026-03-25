@@ -101,9 +101,9 @@ TEST(AArch64BlockLayout, CorrectOutput)
     const std::string il = "il 0.1\n"
                            "func @layout_simple() -> i64 {\n"
                            "entry:\n"
-                           "  %a = add 1, 2\n"
-                           "  %b = add 3, 4\n"
-                           "  %c = add %a, %b\n"
+                           "  %a = iadd.ovf 1, 2\n"
+                           "  %b = iadd.ovf 3, 4\n"
+                           "  %c = iadd.ovf %a, %b\n"
                            "  ret %c\n"
                            "}\n";
 
@@ -137,7 +137,7 @@ TEST(AArch64BlockLayout, BlockCountStable)
                            "entry:\n"
                            "  br loop(0)\n"
                            "loop(%i:i64):\n"
-                           "  %next = add %i, 1\n"
+                           "  %next = iadd.ovf %i, 1\n"
                            "  %done = icmp_eq %next, 10\n"
                            "  cbr %done, exit(%next), loop(%next)\n"
                            "exit(%r:i64):\n"
@@ -219,8 +219,8 @@ TEST(AArch64BlockLayout, LoopBranchReduced)
                            "  %done = icmp_eq %i, 10\n"
                            "  cbr %done, exit(%s), loop(%i, %s)\n"
                            "loop(%i:i64, %s:i64):\n"
-                           "  %ns = add %s, %i\n"
-                           "  %ni = add %i, 1\n"
+                           "  %ns = iadd.ovf %s, %i\n"
+                           "  %ni = iadd.ovf %i, 1\n"
                            "  br start(%ni, %ns)\n"
                            "}\n";
 
@@ -290,7 +290,7 @@ TEST(AArch64BlockLayout, EntryBlockFirst)
                            "entry:\n"
                            "  br loop(0)\n"
                            "loop(%i:i64):\n"
-                           "  %next = add %i, 1\n"
+                           "  %next = iadd.ovf %i, 1\n"
                            "  %done = icmp_eq %next, 5\n"
                            "  cbr %done, exit(%next), loop(%next)\n"
                            "exit(%r:i64):\n"
@@ -332,8 +332,8 @@ TEST(AArch64BlockLayout, PipelineIntegration)
     const std::string il = "il 0.1\n"
                            "func @layout_integration() -> i64 {\n"
                            "entry:\n"
-                           "  %a = add 10, 20\n"
-                           "  %b = mul %a, 3\n"
+                           "  %a = iadd.ovf 10, 20\n"
+                           "  %b = imul.ovf %a, 3\n"
                            "  ret %b\n"
                            "}\n";
 

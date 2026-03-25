@@ -61,6 +61,17 @@ constexpr const char *kCcCommand = "clang";
 constexpr const char *kCcCommand = "cc";
 #endif
 
+constexpr std::size_t kLargeModuleIlOptThreshold = 100000;
+
+std::size_t totalInstructionCount(const il::core::Module &module)
+{
+    std::size_t totalInstrs = 0;
+    for (const auto &fn : module.functions)
+        for (const auto &bb : fn.blocks)
+            totalInstrs += bb.instructions.size();
+    return totalInstrs;
+}
+
 /// @brief Convert platform-specific process status codes to POSIX-style exits.
 /// @details Handles negative launch failures, Windows return values, and
 ///          Unix wait statuses so pipeline users receive consistent exit
@@ -586,67 +597,68 @@ PipelineResult CodegenPipeline::run()
     }
 
     // Run IL optimizations before lowering to MIR.
-    // The codegen pipelines match the canonical O1/O2 pipelines from
-    // PassManager.cpp so native output benefits from the full optimization
-    // stack (loop opts, LICM, check-opt, sibling-recursion, etc.).
+    // Keep these pipelines aligned with the currently safe canonical O1/O2
+    // policies: mem2reg, LICM, and IL peephole remain disabled here too until
+    // their rehab pipelines are proven sound.
     if (opts_.optimize >= 1)
     {
         il::transform::PassManager ilpm;
-        if (opts_.optimize >= 2)
+        const std::size_t totalInstrs = totalInstructionCount(module);
+        if (totalInstrs <= kLargeModuleIlOptThreshold)
         {
-            ilpm.registerPipeline("codegen-O2",
-                                  {"loop-simplify",
-                                   "loop-rotate",
-                                   "indvars",
-                                   "loop-unroll",
-                                   "simplify-cfg",
-                                   "mem2reg",
-                                   "simplify-cfg",
-                                   "sccp",
-                                   "check-opt",
-                                   "eh-opt",
-                                   "dce",
-                                   "simplify-cfg",
-                                   "sibling-recursion",
-                                   "inline",
-                                   "simplify-cfg",
-                                   "sccp",
-                                   "constfold",
-                                   "dce",
-                                   "simplify-cfg",
-                                   "licm",
-                                   "simplify-cfg",
-                                   "gvn",
-                                   "reassociate",
-                                   "earlycse",
-                                   "dse",
-                                   "peephole",
-                                   "dce",
-                                   "late-cleanup"});
-            ilpm.runPipeline(module, "codegen-O2");
-        }
-        else
-        {
-            ilpm.registerPipeline("codegen-O1",
-                                  {"simplify-cfg",
-                                   "mem2reg",
-                                   "simplify-cfg",
-                                   "sccp",
-                                   "constfold",
-                                   "dce",
-                                   "simplify-cfg",
-                                   "inline",
-                                   "simplify-cfg",
-                                   "sccp",
-                                   "dce",
-                                   "licm",
-                                   "simplify-cfg",
-                                   "peephole",
-                                   "dce"});
-            ilpm.runPipeline(module, "codegen-O1");
-        }
+            bool ok = true;
+            if (opts_.optimize >= 2)
+            {
+                ilpm.registerPipeline("codegen-O2",
+                                      {"loop-simplify",
+                                       "loop-rotate",
+                                       "indvars",
+                                       "loop-unroll",
+                                       "simplify-cfg",
+                                       "sccp",
+                                       "check-opt",
+                                       "eh-opt",
+                                       "dce",
+                                       "simplify-cfg",
+                                       "sibling-recursion",
+                                       "inline",
+                                       "simplify-cfg",
+                                       "sccp",
+                                       "constfold",
+                                       "dce",
+                                       "simplify-cfg",
+                                       "gvn",
+                                       "reassociate",
+                                       "earlycse",
+                                       "dse",
+                                       "dce",
+                                       "late-cleanup"});
+                ok = ilpm.runPipeline(module, "codegen-O2");
+            }
+            else
+            {
+                ilpm.registerPipeline("codegen-O1",
+                                      {"simplify-cfg",
+                                       "sccp",
+                                       "constfold",
+                                       "dce",
+                                       "simplify-cfg",
+                                       "sccp",
+                                       "inline",
+                                       "dce",
+                                       "simplify-cfg"});
+                ok = ilpm.runPipeline(module, "codegen-O1");
+            }
 
-
+            if (!ok)
+            {
+                err << "error: failed to run x86-64 IL optimization pipeline\n";
+                result.exit_code = 1;
+                result.stdout_text = out.str();
+                result.stderr_text = err.str();
+                return result;
+            }
+        }
         // Re-verify IL after optimization to catch optimizer bugs early.
         if (!il::tools::common::verifyModule(module, err))
         {
@@ -676,7 +688,9 @@ PipelineResult CodegenPipeline::run()
 #else
         constexpr bool isDarwin = false;
 #endif
-        manager.addPass(std::make_unique<passes::BinaryEmitPass>(isDarwin));
+        CodegenOptions codegenOpts{};
+        codegenOpts.optimizeLevel = opts_.optimize;
+        manager.addPass(std::make_unique<passes::BinaryEmitPass>(isDarwin, codegenOpts));
     }
     else
     {

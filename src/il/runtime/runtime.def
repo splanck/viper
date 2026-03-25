@@ -4201,6 +4201,25 @@ RT_FUNC(StateMachineHasState, rt_statemachine_has_state, "Viper.Game.StateMachin
 RT_FUNC(StateMachineStateCount, rt_statemachine_state_count, "Viper.Game.StateMachine.get_StateCount", "i64(obj)")
 
 //=============================================================================
+// Viper.AnimStateMachine - Combined State + Animation Playback
+//=============================================================================
+
+RT_FUNC(AnimStateNew,           rt_animstate_new,              "Viper.Game.AnimStateMachine.New",              "obj()")
+RT_FUNC(AnimStateAddState,      rt_animstate_add_state,        "Viper.Game.AnimStateMachine.AddState",         "void(obj,i64,i64,i64,i64,i1)")
+RT_FUNC(AnimStateSetInitial,    rt_animstate_set_initial,      "Viper.Game.AnimStateMachine.SetInitial",       "i1(obj,i64)")
+RT_FUNC(AnimStateTransition,    rt_animstate_transition,       "Viper.Game.AnimStateMachine.Transition",       "i1(obj,i64)")
+RT_FUNC(AnimStateUpdate,        rt_animstate_update,           "Viper.Game.AnimStateMachine.Update",           "void(obj)")
+RT_FUNC(AnimStateClearFlags,    rt_animstate_clear_flags,      "Viper.Game.AnimStateMachine.ClearFlags",       "void(obj)")
+RT_FUNC(AnimStateCurrent,       rt_animstate_current_state,    "Viper.Game.AnimStateMachine.get_CurrentState", "i64(obj)")
+RT_FUNC(AnimStatePrevious,      rt_animstate_previous_state,   "Viper.Game.AnimStateMachine.get_PreviousState","i64(obj)")
+RT_FUNC(AnimStateJustEntered,   rt_animstate_just_entered,     "Viper.Game.AnimStateMachine.get_JustEntered",  "i1(obj)")
+RT_FUNC(AnimStateJustExited,    rt_animstate_just_exited,      "Viper.Game.AnimStateMachine.get_JustExited",   "i1(obj)")
+RT_FUNC(AnimStateFramesInState, rt_animstate_frames_in_state,  "Viper.Game.AnimStateMachine.get_FramesInState","i64(obj)")
+RT_FUNC(AnimStateCurrentFrame,  rt_animstate_current_frame,    "Viper.Game.AnimStateMachine.get_CurrentFrame", "i64(obj)")
+RT_FUNC(AnimStateIsFinished,    rt_animstate_is_anim_finished, "Viper.Game.AnimStateMachine.get_IsAnimFinished","i1(obj)")
+RT_FUNC(AnimStateProgress,      rt_animstate_progress,         "Viper.Game.AnimStateMachine.get_Progress",     "i64(obj)")
+
+//=============================================================================
 // Viper.Tween - Animation and Interpolation
 //=============================================================================
 
@@ -7148,6 +7167,23 @@ RT_CLASS_BEGIN("Viper.Game.StateMachine", StateMachine, "obj", StateMachineNew)
     RT_METHOD("ClearFlags", "void()", StateMachineClearFlags)
     RT_METHOD("Update", "void()", StateMachineUpdate)
     RT_METHOD("HasState", "i1(i64)", StateMachineHasState)
+RT_CLASS_END()
+
+// Viper.AnimStateMachine - combined state + animation playback
+RT_CLASS_BEGIN("Viper.Game.AnimStateMachine", AnimStateMachine, "obj", AnimStateNew)
+    RT_PROP("CurrentState", "i64", AnimStateCurrent, none)
+    RT_PROP("PreviousState", "i64", AnimStatePrevious, none)
+    RT_PROP("JustEntered", "i1", AnimStateJustEntered, none)
+    RT_PROP("JustExited", "i1", AnimStateJustExited, none)
+    RT_PROP("FramesInState", "i64", AnimStateFramesInState, none)
+    RT_PROP("CurrentFrame", "i64", AnimStateCurrentFrame, none)
+    RT_PROP("IsAnimFinished", "i1", AnimStateIsFinished, none)
+    RT_PROP("Progress", "i64", AnimStateProgress, none)
+    RT_METHOD("AddState", "void(i64,i64,i64,i64,i1)", AnimStateAddState)
+    RT_METHOD("SetInitial", "i1(i64)", AnimStateSetInitial)
+    RT_METHOD("Transition", "i1(i64)", AnimStateTransition)
+    RT_METHOD("Update", "void()", AnimStateUpdate)
+    RT_METHOD("ClearFlags", "void()", AnimStateClearFlags)
 RT_CLASS_END()
 
 // Viper.Tween - animation and interpolation

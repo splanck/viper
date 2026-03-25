@@ -111,7 +111,8 @@ static void net_cleanup()
 static sock_t make_listener(int *out_port)
 {
     sock_t fd = socket(AF_INET, SOCK_STREAM, 0);
-    assert(fd != SOCK_INVALID);
+    if (fd == SOCK_INVALID)
+        return SOCK_INVALID;
 
     int opt = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
@@ -122,10 +123,18 @@ static sock_t make_listener(int *out_port)
     addr.sin_port = 0;
 
     int rc = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
-    assert(rc == 0);
+    if (rc != 0)
+    {
+        SOCK_CLOSE(fd);
+        return SOCK_INVALID;
+    }
 
     rc = listen(fd, 1);
-    assert(rc == 0);
+    if (rc != 0)
+    {
+        SOCK_CLOSE(fd);
+        return SOCK_INVALID;
+    }
 
 #if defined(_WIN32)
     int addrlen = sizeof(addr);
@@ -183,6 +192,11 @@ static void test_send_after_remote_close()
 {
     int port = 0;
     sock_t listener = make_listener(&port);
+    if (listener == SOCK_INVALID)
+    {
+        printf("  SKIP: SendAfterRemoteClose → local bind unavailable in this environment\n");
+        return;
+    }
 
     rt_string host = rt_string_from_bytes("127.0.0.1", 9);
     void *conn = rt_tcp_connect(host, port);
@@ -238,6 +252,11 @@ static void test_recv_on_closed_connection()
 {
     int port = 0;
     sock_t listener = make_listener(&port);
+    if (listener == SOCK_INVALID)
+    {
+        printf("  SKIP: RecvOnClosedConnection → local bind unavailable in this environment\n");
+        return;
+    }
 
     rt_string host = rt_string_from_bytes("127.0.0.1", 9);
     void *conn = rt_tcp_connect(host, port);
@@ -301,6 +320,11 @@ static void test_connection_stall_mid_transfer()
 {
     int port = 0;
     sock_t listener = make_listener(&port);
+    if (listener == SOCK_INVALID)
+    {
+        printf("  SKIP: ConnectionStallMidTransfer → local bind unavailable in this environment\n");
+        return;
+    }
 
     rt_string host = rt_string_from_bytes("127.0.0.1", 9);
     void *conn = rt_tcp_connect(host, port);

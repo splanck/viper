@@ -104,7 +104,7 @@ TEST(Arm64IdxChk, MultipleChecks)
                            "entry(%i1:i64, %i2:i64, %len:i64):\n"
                            "  %c1 = idx.chk %i1, 0, %len\n"
                            "  %c2 = idx.chk %i2, 0, %len\n"
-                           "  %sum = add %c1, %c2\n"
+                           "  %sum = iadd.ovf %c1, %c2\n"
                            "  ret %sum\n"
                            "}\n";
     writeFile(in, il);

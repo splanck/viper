@@ -64,7 +64,7 @@ TEST(Arm64CLI, CallMidFunction_ResultReused)
                            "  %c = call @twice(%a)\n"
                            "  store i64, %L, %c\n"
                            "  %v = load i64, %L\n"
-                           "  %r = add %v, 1\n"
+                           "  %r = iadd.ovf %v, 1\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -79,7 +79,7 @@ TEST(Arm64CLI, CallMidFunction_ResultReused)
     // After store-load forwarding, the load may be replaced with a mov.
     EXPECT_TRUE(asmText.find("ldr x") != std::string::npos ||
                 asmText.find("mov x") != std::string::npos);
-    EXPECT_NE(asmText.find("add x"), std::string::npos);
+    EXPECT_NE(asmText.find("adds x"), std::string::npos);
 }
 
 int main(int argc, char **argv)

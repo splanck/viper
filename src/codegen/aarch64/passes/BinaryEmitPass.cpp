@@ -31,6 +31,15 @@ namespace viper::codegen::aarch64::passes
 
 bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags)
 {
+    if (!module.ti)
+    {
+        diags.error("BinaryEmitPass: ti must be non-null");
+        return false;
+    }
+
+    module.binaryTextSections.clear();
+    module.debugLineData.clear();
+
     if (module.mir.empty())
     {
         // Not an error — modules with no functions produce empty output.
@@ -39,14 +48,7 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags)
         return true;
     }
 
-    // Determine ABI format from host platform.
-#if defined(__APPLE__)
-    constexpr auto abi = ABIFormat::Darwin;
-#elif defined(_WIN32)
-    constexpr auto abi = ABIFormat::Windows;
-#else
-    constexpr auto abi = ABIFormat::Linux;
-#endif
+    const auto abi = module.ti->abiFormat;
 
     objfile::CodeSection text;
     objfile::CodeSection rodata;

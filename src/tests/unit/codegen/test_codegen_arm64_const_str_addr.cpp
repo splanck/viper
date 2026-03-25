@@ -48,7 +48,7 @@ TEST(Arm64CLI, ConstStr_AddressMaterialization)
     const std::string out = "arm64_cli_const_str.s";
     const std::string il = "il 0.1\n"
                            "global const str @.Lmsg = \"hi\"\n"
-                           "func @get() -> ptr {\n"
+                           "func @get() -> str {\n"
                            "entry:\n"
                            "  %p = const_str @.Lmsg\n"
                            "  ret %p\n"

@@ -28,10 +28,19 @@
 
 #include "codegen/aarch64/passes/PassManager.hpp"
 
+#include <cstddef>
+#include <iosfwd>
 #include <string>
 
 namespace viper::codegen::aarch64
 {
+
+struct PipelineResult
+{
+    int exit_code{0};
+    std::string stdout_text{};
+    std::string stderr_text{};
+};
 
 /// Options controlling optional MIR dumps and diagnostics.
 struct PipelineOptions
@@ -41,10 +50,50 @@ struct PipelineOptions
     bool useBinaryEmit = false; ///< When true, also run BinaryEmitPass after EmitPass.
 };
 
+class CodegenPipeline
+{
+  public:
+    enum class AssemblerMode
+    {
+        System,
+        Native,
+    };
+
+    enum class LinkMode
+    {
+        System,
+        Native,
+    };
+
+    struct Options
+    {
+        std::string input_il_path{};
+        std::string output_obj_path{};
+        std::string output_asm_path{};
+        bool emit_asm = false;
+        bool run_native = false;
+        bool dump_mir_before_ra = false;
+        bool dump_mir_after_ra = false;
+        int optimize = 0;
+        AssemblerMode assembler_mode = AssemblerMode::Native;
+        LinkMode link_mode = LinkMode::Native;
+    };
+
+    explicit CodegenPipeline(Options opts);
+
+    [[nodiscard]] PipelineResult run();
+
+  private:
+    Options opts_;
+};
+
 /// @brief Run the full AArch64 code-generation pipeline.
 /// @param module  Mutable module state; ilMod and ti must be set.
 /// @param opts    Pipeline options (MIR dump flags, etc.).
-/// @return true on success, false on error (diagnostics printed to stderr).
-bool runCodegenPipeline(passes::AArch64Module &module, const PipelineOptions &opts);
+/// @param diagOut Stream receiving MIR dumps and diagnostics.
+/// @return true on success, false on error.
+bool runCodegenPipeline(passes::AArch64Module &module,
+                        const PipelineOptions &opts,
+                        std::ostream &diagOut);
 
 } // namespace viper::codegen::aarch64

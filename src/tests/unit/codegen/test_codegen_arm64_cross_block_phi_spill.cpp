@@ -79,15 +79,15 @@ TEST(Arm64CrossBlockPhi, LoopWithPressure)
     const std::string il = "il 0.1\n"
                            "func @loop_sum(%n:i64, %a:i64, %b:i64, %c:i64) -> i64 {\n"
                            "entry(%n:i64, %a:i64, %b:i64, %c:i64):\n"
-                           "  %x = add %a, %b\n"
-                           "  %y = mul %b, %c\n"
-                           "  %z = sub %a, %c\n"
+                           "  %x = iadd.ovf %a, %b\n"
+                           "  %y = imul.ovf %b, %c\n"
+                           "  %z = isub.ovf %a, %c\n"
                            "  br loop(0, 0)\n"
                            "loop(%i:i64, %sum:i64):\n"
-                           "  %t1 = add %sum, %x\n"
-                           "  %t2 = add %t1, %y\n"
-                           "  %t3 = add %t2, %z\n"
-                           "  %next_i = add %i, 1\n"
+                           "  %t1 = iadd.ovf %sum, %x\n"
+                           "  %t2 = iadd.ovf %t1, %y\n"
+                           "  %t3 = iadd.ovf %t2, %z\n"
+                           "  %next_i = iadd.ovf %i, 1\n"
                            "  %done = icmp_eq %next_i, %n\n"
                            "  cbr %done, exit(%t3), loop(%next_i, %t3)\n"
                            "exit(%result:i64):\n"
@@ -98,7 +98,7 @@ TEST(Arm64CrossBlockPhi, LoopWithPressure)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Should have loop structure
-    EXPECT_NE(asmText.find("add x"), std::string::npos);
+    EXPECT_NE(asmText.find("adds x"), std::string::npos);
 }
 
 // Test 3: Multiple phis in join block
@@ -116,7 +116,7 @@ TEST(Arm64CrossBlockPhi, MultiplePhis)
                            "noswap:\n"
                            "  br join(%a, %b)\n"
                            "join(%x:i64, %y:i64):\n"
-                           "  %r = add %x, %y\n"
+                           "  %r = iadd.ovf %x, %y\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -164,13 +164,13 @@ TEST(Arm64CrossBlockPhi, NestedLoopPhi)
                            "outer(%i:i64, %total:i64):\n"
                            "  br inner(0, %total)\n"
                            "inner(%j:i64, %sum:i64):\n"
-                           "  %prod = mul %i, %j\n"
-                           "  %new_sum = add %sum, %prod\n"
-                           "  %next_j = add %j, 1\n"
+                           "  %prod = imul.ovf %i, %j\n"
+                           "  %new_sum = iadd.ovf %sum, %prod\n"
+                           "  %next_j = iadd.ovf %j, 1\n"
                            "  %j_done = icmp_eq %next_j, %m\n"
                            "  cbr %j_done, inner_exit(%new_sum), inner(%next_j, %new_sum)\n"
                            "inner_exit(%inner_result:i64):\n"
-                           "  %next_i = add %i, 1\n"
+                           "  %next_i = iadd.ovf %i, 1\n"
                            "  %i_done = icmp_eq %next_i, %n\n"
                            "  cbr %i_done, exit(%inner_result), outer(%next_i, %inner_result)\n"
                            "exit(%final:i64):\n"

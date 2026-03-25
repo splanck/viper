@@ -357,6 +357,8 @@ Last updated: 2026-02-17
 | `rt_spritebatch.h`  | Sprite batch declarations                              |
 | `rt_statemachine.c` | State machine for game objects                         |
 | `rt_statemachine.h` | State machine declarations                             |
+| `rt_animstate.c`    | Animation state machine — combines StateMachine + SpriteAnimation |
+| `rt_animstate.h`    | AnimStateMachine declarations                          |
 | `rt_tween.c`        | Tweening/interpolation for animation                   |
 | `rt_tween.h`        | Tween declarations                                     |
 

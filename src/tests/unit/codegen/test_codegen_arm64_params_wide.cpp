@@ -54,7 +54,7 @@ TEST(Arm64CLI, ParamsBeyondX1)
         const std::string il = "il 0.1\n"
                                "func @f(%a:i64, %b:i64, %c:i64) -> i64 {\n"
                                "entry(%a:i64, %b:i64, %c:i64):\n"
-                               "  %t0 = add %c, %a\n"
+                               "  %t0 = iadd.ovf %c, %a\n"
                                "  ret %t0\n"
                                "}\n";
         const std::string inP = outPath(in);
@@ -63,21 +63,21 @@ TEST(Arm64CLI, ParamsBeyondX1)
         const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
         ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
         const std::string asmText = readFile(outP);
-        // Expected sequence: mov x9, x0; mov x0, x2; mov x1, x9; add x0, x0, x1
+        // Expected sequence: mov x9, x0; mov x0, x2; mov x1, x9; adds x0, x0, x1
         EXPECT_NE(asmText.find("mov x9, x0"), std::string::npos);
         EXPECT_NE(asmText.find("mov x0, x2"), std::string::npos);
         EXPECT_NE(asmText.find("mov x1, x9"), std::string::npos);
-        EXPECT_NE(asmText.find("add x0, x0, x1"), std::string::npos);
+        EXPECT_NE(asmText.find("adds x0, x0, x1"), std::string::npos);
     }
 
-    // ri: sub %d(x3), 7 → expect mov x0, x3; sub x0, x0, #7
+    // ri: checked-sub %d(x3), 7 → expect mov x0, x3; subs x0, x0, #7
     {
         const std::string in = "arm64_wide_ri.il";
         const std::string out = "arm64_wide_ri.s";
         const std::string il = "il 0.1\n"
                                "func @g(%a:i64, %b:i64, %c:i64, %d:i64) -> i64 {\n"
                                "entry(%a:i64, %b:i64, %c:i64, %d:i64):\n"
-                               "  %t0 = sub %d, 7\n"
+                               "  %t0 = isub.ovf %d, 7\n"
                                "  ret %t0\n"
                                "}\n";
         const std::string inP2 = outPath(in);
@@ -87,7 +87,7 @@ TEST(Arm64CLI, ParamsBeyondX1)
         ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
         const std::string asmText = readFile(outP2);
         EXPECT_NE(asmText.find("mov x0, x3"), std::string::npos);
-        EXPECT_NE(asmText.find("sub x0, x0, #7"), std::string::npos);
+        EXPECT_NE(asmText.find("subs x0, x0, #7"), std::string::npos);
     }
 }
 

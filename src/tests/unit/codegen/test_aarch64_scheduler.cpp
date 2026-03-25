@@ -111,9 +111,9 @@ TEST(AArch64Scheduler, CorrectOutput)
     const std::string il = "il 0.1\n"
                            "func @sched_simple() -> i64 {\n"
                            "entry:\n"
-                           "  %a = add 10, 20\n"
-                           "  %b = add 30, 40\n"
-                           "  %c = add %a, %b\n"
+                           "  %a = iadd.ovf 10, 20\n"
+                           "  %b = iadd.ovf 30, 40\n"
+                           "  %c = iadd.ovf %a, %b\n"
                            "  ret %c\n"
                            "}\n";
 
@@ -150,10 +150,10 @@ TEST(AArch64Scheduler, InstructionCountStable)
     const std::string il = "il 0.1\n"
                            "func @count_stable() -> i64 {\n"
                            "entry:\n"
-                           "  %a = add 1, 2\n"
-                           "  %b = add 3, 4\n"
-                           "  %c = mul %a, %b\n"
-                           "  %d = add %c, 5\n"
+                           "  %a = iadd.ovf 1, 2\n"
+                           "  %b = iadd.ovf 3, 4\n"
+                           "  %c = imul.ovf %a, %b\n"
+                           "  %d = iadd.ovf %c, 5\n"
                            "  ret %d\n"
                            "}\n";
 
@@ -249,9 +249,9 @@ TEST(AArch64Scheduler, LoadUseSeparation)
     const std::string il = "il 0.1\n"
                            "func @interleaved(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %x = mul %a, %a\n" // 3-cycle multiply
-                           "  %y = mul %b, %b\n" // 3-cycle multiply (independent of x)
-                           "  %r = add %x, %y\n" // uses both
+                           "  %x = imul.ovf %a, %a\n" // 3-cycle multiply
+                           "  %y = imul.ovf %b, %b\n" // 3-cycle multiply (independent of x)
+                           "  %r = iadd.ovf %x, %y\n" // uses both
                            "  ret %r\n"
                            "}\n";
 
@@ -298,7 +298,7 @@ TEST(AArch64Scheduler, TerminatorLast)
                            "entry:\n"
                            "  br loop(0)\n"
                            "loop(%i:i64):\n"
-                           "  %next = add %i, 1\n"
+                           "  %next = iadd.ovf %i, 1\n"
                            "  %done = icmp_eq %next, 10\n"
                            "  cbr %done, exit(%next), loop(%next)\n"
                            "exit(%r:i64):\n"
@@ -345,6 +345,8 @@ TEST(AArch64Scheduler, TerminatorLast)
             const MOpcode lastOpc = bb.instrs.back().opc;
             if (!isMirTerminator(lastOpc))
             {
+                if (bb.name.rfind("L.Ltrap_ovf_", 0) == 0)
+                    continue;
                 std::cerr << "Block '" << bb.name << "' does not end with a terminator.\n";
                 terminatorOk = false;
             }
@@ -361,9 +363,9 @@ TEST(AArch64Scheduler, PipelineIntegration)
     const std::string il = "il 0.1\n"
                            "func @pipeline_test() -> i64 {\n"
                            "entry:\n"
-                           "  %a = add 1, 2\n"
-                           "  %b = add 3, 4\n"
-                           "  %c = mul %a, %b\n"
+                           "  %a = iadd.ovf 1, 2\n"
+                           "  %b = iadd.ovf 3, 4\n"
+                           "  %c = imul.ovf %a, %b\n"
                            "  ret %c\n"
                            "}\n";
 

@@ -43,13 +43,13 @@ TEST(Arm64MixedCallF64, ParseNumOrValidString)
                            "  %s = const_str @.Lnum\n"
                            "  %def = sitofp 99\n"
                            "  %r = call @rt_parse_num_or(%s, %def)\n"
-                           "  %i = fptosi %r\n"
+                           "  %i = cast.fp_to_si.rte.chk %r\n"
                            "  ret %i\n"
                            "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-run-native"};
     const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));
-    // "3" parses to 3.0, fptosi → 3
+    // "3" parses to 3.0, checked fp->si cast → 3
     ASSERT_EQ(rc, 3);
 }
 
@@ -67,13 +67,13 @@ TEST(Arm64MixedCallF64, ParseNumOrInvalidStringReturnsDefault)
                            "  %s = const_str @.Lfail\n"
                            "  %def = sitofp 42\n"
                            "  %r = call @rt_parse_num_or(%s, %def)\n"
-                           "  %i = fptosi %r\n"
+                           "  %i = cast.fp_to_si.rte.chk %r\n"
                            "  ret %i\n"
                            "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-run-native"};
     const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));
-    // "abc" fails to parse, returns default 42.0, fptosi → 42
+    // "abc" fails to parse, returns default 42.0, checked fp->si cast → 42
     ASSERT_EQ(rc, 42);
 }
 
@@ -90,13 +90,13 @@ TEST(Arm64MixedCallF64, ParseNumOrEmptyStringReturnsDefault)
                            "  %s = const_str @.Lempty\n"
                            "  %def = sitofp 7\n"
                            "  %r = call @rt_parse_num_or(%s, %def)\n"
-                           "  %i = fptosi %r\n"
+                           "  %i = cast.fp_to_si.rte.chk %r\n"
                            "  ret %i\n"
                            "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-run-native"};
     const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));
-    // Empty string fails to parse, returns default 7.0, fptosi → 7
+    // Empty string fails to parse, returns default 7.0, checked fp->si cast → 7
     ASSERT_EQ(rc, 7);
 }
 

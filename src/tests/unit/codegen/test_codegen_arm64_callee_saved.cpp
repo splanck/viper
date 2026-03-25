@@ -65,7 +65,7 @@ TEST(Arm64CalleeSaved, ValueAcrossCall)
                            "func @use_across(%x:i64) -> i64 {\n"
                            "entry(%x:i64):\n"
                            "  %tmp = call @compute(%x)\n"
-                           "  %r = add %tmp, %x\n"
+                           "  %r = iadd.ovf %tmp, %x\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -86,11 +86,11 @@ TEST(Arm64CalleeSaved, MultipleValuesAcrossCall)
                            "extern @work() -> i64\n"
                            "func @multi(%a:i64, %b:i64, %c:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64, %c:i64):\n"
-                           "  %x = add %a, %b\n"
-                           "  %y = mul %b, %c\n"
+                           "  %x = iadd.ovf %a, %b\n"
+                           "  %y = imul.ovf %b, %c\n"
                            "  %tmp = call @work()\n"
-                           "  %r1 = add %x, %y\n"
-                           "  %r = add %r1, %tmp\n"
+                           "  %r1 = iadd.ovf %x, %y\n"
+                           "  %r = iadd.ovf %r1, %tmp\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -134,8 +134,8 @@ TEST(Arm64CalleeSaved, LoopWithCall)
                            "  br loop(0, 0)\n"
                            "loop(%i:i64, %sum:i64):\n"
                            "  %v = call @get_value(%i)\n"
-                           "  %new_sum = add %sum, %v\n"
-                           "  %next_i = add %i, 1\n"
+                           "  %new_sum = iadd.ovf %sum, %v\n"
+                           "  %next_i = iadd.ovf %i, 1\n"
                            "  %done = icmp_eq %next_i, %n\n"
                            "  cbr %done, exit(%new_sum), loop(%next_i, %new_sum)\n"
                            "exit(%result:i64):\n"
@@ -161,7 +161,7 @@ TEST(Arm64CalleeSaved, NestedCalls)
                            "entry(%x:i64):\n"
                            "  %a = call @outer(%x)\n"
                            "  %b = call @inner(%a)\n"
-                           "  %r = add %x, %b\n"
+                           "  %r = iadd.ovf %x, %b\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -182,16 +182,16 @@ TEST(Arm64CalleeSaved, ManyValuesNeedSave)
                            "extern @work() -> i64\n"
                            "func @many(%a:i64, %b:i64, %c:i64, %d:i64, %e:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64, %c:i64, %d:i64, %e:i64):\n"
-                           "  %t1 = add %a, %b\n"
-                           "  %t2 = add %c, %d\n"
-                           "  %t3 = add %t1, %t2\n"
-                           "  %t4 = add %t3, %e\n"
+                           "  %t1 = iadd.ovf %a, %b\n"
+                           "  %t2 = iadd.ovf %c, %d\n"
+                           "  %t3 = iadd.ovf %t1, %t2\n"
+                           "  %t4 = iadd.ovf %t3, %e\n"
                            "  %x = call @work()\n"
-                           "  %r1 = add %t4, %a\n"
-                           "  %r2 = add %r1, %b\n"
-                           "  %r3 = add %r2, %c\n"
-                           "  %r4 = add %r3, %d\n"
-                           "  %r = add %r4, %x\n"
+                           "  %r1 = iadd.ovf %t4, %a\n"
+                           "  %r2 = iadd.ovf %r1, %b\n"
+                           "  %r3 = iadd.ovf %r2, %c\n"
+                           "  %r4 = iadd.ovf %r3, %d\n"
+                           "  %r = iadd.ovf %r4, %x\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -213,7 +213,7 @@ TEST(Arm64CalleeSaved, NoCalls)
     const std::string il = "il 0.1\n"
                            "func @simple(%a:i64, %b:i64) -> i64 {\n"
                            "entry(%a:i64, %b:i64):\n"
-                           "  %r = add %a, %b\n"
+                           "  %r = iadd.ovf %a, %b\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
@@ -221,7 +221,7 @@ TEST(Arm64CalleeSaved, NoCalls)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Simple leaf function may not need to save callee-saved regs
-    EXPECT_NE(asmText.find("add x"), std::string::npos);
+    EXPECT_NE(asmText.find("adds x"), std::string::npos);
 }
 
 // Test 8: Verify prologue/epilogue structure
@@ -234,7 +234,7 @@ TEST(Arm64CalleeSaved, PrologueEpilogue)
                            "func @needs_frame(%x:i64) -> i64 {\n"
                            "entry(%x:i64):\n"
                            "  %tmp = call @work()\n"
-                           "  %r = add %tmp, %x\n"
+                           "  %r = iadd.ovf %tmp, %x\n"
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
