@@ -107,7 +107,7 @@ Viper is in **early development**. All components are functional but evolving:
 | [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon + Windows ARM64; register coalescer, post-RA scheduler |
 | [x86-64 Backend](docs/codegen/x86_64.md) | Windows + Linux; 300+ stress tests, IEEE 754 NaN-safe |
 | [Native Toolchain](docs/codegen/native-assembler.md) | Assembler (ELF/Mach-O/COFF) + linker (dead stripping, ICF, DWARF v5, code signing) |
-| [Runtime](docs/viperlib/README.md) | 270+ classes across 22 modules; 1,351 tests |
+| [Runtime](docs/viperlib/README.md) | 270+ classes across 22 modules; 1,354 tests |
 | [3D Graphics](docs/graphics3d-guide.md) | 28 classes; Metal, D3D11, OpenGL, software backends |
 | [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, UI widgets |
 | [GUI](docs/viperlib/gui/README.md) | 46 widget classes; cross-platform desktop apps |

@@ -6,7 +6,9 @@
 // game development abstractions:
 //
 // NEW FEATURES DEMONSTRATED:
-// - Viper.Input.Manager:   Edge detection and debounced input for menus
+// - Viper.Game.StateMachine:    Game state transitions (menu, playing, paused, etc.)
+// - Viper.Game.ButtonGroup:     Menu selection with auto-wraparound
+// - Viper.Input.Action:         Edge detection and debounced input for menus
 // - Viper.Game.Grid2D:          2D tile storage with bounds checking
 // - Viper.Game.Timer:           Frame-based timers (repeating, countdown)
 // - Viper.Game.Tween:           Smooth animations (ready text bounce)
@@ -36,12 +38,13 @@ func start() {
     Say("PAC-MAN - A Zia/Viper Game Demo");
     Say("===========================================");
     Say("");
-    Say("Demonstrating new game development features:");
-    Say("  - Viper.Input.Manager (debounced input)");
+    Say("Demonstrating game development features:");
+    Say("  - Viper.Game.StateMachine (game state FSM)");
+    Say("  - Viper.Game.ButtonGroup (menu navigation)");
+    Say("  - Viper.Input.Action (debounced input)");
     Say("  - Viper.Game.Grid2D (2D tile storage)");
     Say("  - Viper.Game.Timer (frame-based timers)");
     Say("  - Viper.Game.Tween (smooth animations)");
-    Say("  - Viper.Game.SmoothValue (animated counters)");
     Say("");
     Say("Controls:");
     Say("  Arrow Keys / WASD - Move");

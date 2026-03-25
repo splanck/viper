@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-03-25
 ---
 
 # Game
@@ -317,20 +317,62 @@ configurable frame rate. There is **no upper limit** on the number of frames.
 
 ## Viper.Game.StateMachine
 
-A finite state machine with up to **256 states**. Each state has optional `Enter`, `Update`,
-and `Exit` callbacks. Traps if the state limit is exceeded.
+A finite state machine with up to **256 numeric states**. Supports one-frame edge flags
+(`JustEntered`/`JustExited`) for triggering enter/exit logic, a per-state frame counter,
+and transition validation. Traps if the state limit is exceeded.
 
 **Type:** Instance (obj)
 **Constructor:** `StateMachine.New()`
+
+### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `Current` | Integer | Current state ID (-1 if none set) |
+| `Previous` | Integer | Previous state ID (-1 if none) |
+| `JustEntered` | Boolean | True on the frame a state was entered |
+| `JustExited` | Boolean | True on the frame a state was exited |
+| `FramesInState` | Integer | Frames since entering current state (incremented by `Update()`) |
+| `StateCount` | Integer | Number of registered states |
 
 ### Methods
 
 | Method | Signature | Description |
 |---|---|---|
-| `AddState(id, enter, update, exit)` | `none(Integer, fn, fn, fn)` | Register a state |
-| `SetState(id)` | `none(Integer)` | Transition to a state |
-| `Update(dt)` | `none(Integer)` | Tick the active state |
-| `GetState()` | `Integer()` | Current state ID |
+| `AddState(id)` | `Boolean(Integer)` | Register a state ID. Returns false if duplicate |
+| `SetInitial(id)` | `Boolean(Integer)` | Set initial state (sets `JustEntered` flag) |
+| `Transition(id)` | `Boolean(Integer)` | Transition to a registered state. Sets edge flags, resets frame counter |
+| `IsState(id)` | `Boolean(Integer)` | True if current state equals `id` |
+| `HasState(id)` | `Boolean(Integer)` | True if state `id` is registered |
+| `Update()` | `Void()` | Increment `FramesInState` counter (call once per frame) |
+| `ClearFlags()` | `Void()` | Clear `JustEntered` and `JustExited` flags |
+
+### Example
+
+```zia
+bind Viper.Game;
+
+// Register states and set initial
+var sm = StateMachine.New();
+sm.AddState(0);  // MENU
+sm.AddState(1);  // PLAYING
+sm.AddState(2);  // PAUSED
+sm.SetInitial(0);
+
+// In game loop:
+sm.Update();
+sm.ClearFlags();
+
+if sm.IsState(0) {
+    // Menu logic...
+    if startPressed { sm.Transition(1); }
+} else if sm.IsState(1) {
+    // Gameplay logic...
+    if pausePressed { sm.Transition(2); }
+}
+```
+
+**Reference implementation:** [Pac-Man](../../examples/games/pacman/game.zia) — uses StateMachine for 8 game states.
 
 ### Current Limits
 
@@ -487,6 +529,8 @@ can be selected at a time. Traps if the button limit is exceeded.
 | Limit | Value | Notes |
 |---|---|---|
 | `RT_BUTTONGROUP_MAX` | 256 | Maximum buttons per group. Traps if exceeded |
+
+**Reference implementation:** [Pac-Man](../../examples/games/pacman/game.zia) — uses ButtonGroup for menu navigation with `SelectNext()`/`SelectPrev()` wraparound.
 
 ---
 

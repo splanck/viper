@@ -2,6 +2,8 @@
 // PAC-MAN - Game Controller Entity
 // =============================================================================
 // Uses Viper runtime features:
+// - StateMachine for game state transitions (menu, playing, paused, etc.)
+// - ButtonGroup for menu selection with auto-wraparound
 // - Action for device-agnostic input (keyboard + gamepad)
 // - Timer for game timing (ready state, death, mode switching)
 // - Tween for animations (ready text bounce)
@@ -47,8 +49,8 @@ entity Game {
     hide Integer dotsEaten;
     hide Integer ghostsEaten;
     hide Boolean extraLifeAwarded;
-    hide Integer gameState;
-    hide Integer menuSelection;
+    hide StateMachine sm;
+    hide ButtonGroup menuBtns;
 
     // Use Timers instead of manual counters
     hide Timer readyTimer;
@@ -113,15 +115,31 @@ entity Game {
         highScores.add(2000);
         highScore = 10000;
 
-        // Initialize state
+        // Initialize state machine with all game states
+        sm = StateMachine.New();
+        sm.AddState(config.STATE_MENU);
+        sm.AddState(config.STATE_PLAYING);
+        sm.AddState(config.STATE_PAUSED);
+        sm.AddState(config.STATE_GAME_OVER);
+        sm.AddState(config.STATE_WIN);
+        sm.AddState(config.STATE_READY);
+        sm.AddState(config.STATE_DYING);
+        sm.AddState(config.STATE_HIGHSCORES);
+        sm.SetInitial(config.STATE_MENU);
+
+        // Initialize menu button group (0=Start, 1=Scores, 2=Quit)
+        menuBtns = ButtonGroup.New();
+        menuBtns.Add(0);
+        menuBtns.Add(1);
+        menuBtns.Add(2);
+        menuBtns.Select(0);
+
         score = 0;
         lives = 3;
         level = 1;
         dotsEaten = 0;
         ghostsEaten = 0;
         extraLifeAwarded = false;
-        gameState = config.STATE_MENU;
-        menuSelection = 0;
         chaseMode = false;
     }
 
@@ -191,29 +209,33 @@ entity Game {
             displayScore.Target = score * 1.0;
             displayScore.Update();
 
-            // State-specific logic
-            if gameState == config.STATE_MENU {
+            // Advance frame counter and clear edge flags
+            sm.Update();
+            sm.ClearFlags();
+
+            // State-specific logic via StateMachine
+            if sm.IsState(config.STATE_MENU) {
                 running = self.updateMenu();
                 self.renderMenu();
-            } else if gameState == config.STATE_HIGHSCORES {
+            } else if sm.IsState(config.STATE_HIGHSCORES) {
                 self.updateHighScores();
                 self.renderHighScores();
-            } else if gameState == config.STATE_READY {
+            } else if sm.IsState(config.STATE_READY) {
                 self.updateReady();
                 self.render();
-            } else if gameState == config.STATE_PLAYING {
+            } else if sm.IsState(config.STATE_PLAYING) {
                 self.updatePlaying();
                 self.render();
-            } else if gameState == config.STATE_PAUSED {
+            } else if sm.IsState(config.STATE_PAUSED) {
                 self.updatePaused();
                 self.render();
-            } else if gameState == config.STATE_DYING {
+            } else if sm.IsState(config.STATE_DYING) {
                 self.updateDying();
                 self.render();
-            } else if gameState == config.STATE_GAME_OVER {
+            } else if sm.IsState(config.STATE_GAME_OVER) {
                 self.updateGameOver();
                 self.render();
-            } else if gameState == config.STATE_WIN {
+            } else if sm.IsState(config.STATE_WIN) {
                 self.updateWin();
                 self.render();
             }
@@ -227,25 +249,24 @@ entity Game {
     // =========================================================================
 
     hide func updateMenu() -> Boolean {
-        // Menu navigation via Action system (edge-detected)
+        // Menu navigation via ButtonGroup (auto-wraparound)
         if Action.Pressed(config.ACTION_UP) {
-            menuSelection = menuSelection - 1;
-            if menuSelection < 0 { menuSelection = 2; }
+            menuBtns.SelectPrev();
         }
         if Action.Pressed(config.ACTION_DOWN) {
-            menuSelection = menuSelection + 1;
-            if menuSelection > 2 { menuSelection = 0; }
+            menuBtns.SelectNext();
         }
 
         // Selection
         if Action.Pressed(config.ACTION_CONFIRM) {
-            if menuSelection == 0 {
+            var sel = menuBtns.Selected;
+            if sel == 0 {
                 // Start Game
                 self.resetGame();
                 self.startReady();
-            } else if menuSelection == 1 {
+            } else if sel == 1 {
                 // High Scores
-                gameState = config.STATE_HIGHSCORES;
+                sm.Transition(config.STATE_HIGHSCORES);
             } else {
                 // Quit
                 return false;
@@ -266,14 +287,14 @@ entity Game {
         // Title
         canvas.Text(config.SCREEN_WIDTH / 2 - 80, 100, "PAC-MAN", config.COLOR_YELLOW);
 
-        // Menu options with highlighting
+        // Menu options with highlighting via ButtonGroup
         var startColor = config.COLOR_WHITE;
         var scoresColor = config.COLOR_WHITE;
         var quitColor = config.COLOR_WHITE;
 
-        if menuSelection == 0 { startColor = config.COLOR_YELLOW; }
-        if menuSelection == 1 { scoresColor = config.COLOR_YELLOW; }
-        if menuSelection == 2 { quitColor = config.COLOR_YELLOW; }
+        if menuBtns.IsSelected(0) { startColor = config.COLOR_YELLOW; }
+        if menuBtns.IsSelected(1) { scoresColor = config.COLOR_YELLOW; }
+        if menuBtns.IsSelected(2) { quitColor = config.COLOR_YELLOW; }
 
         canvas.Text(config.SCREEN_WIDTH / 2 - 60, 250, "START GAME", startColor);
         canvas.Text(config.SCREEN_WIDTH / 2 - 60, 300, "HIGH SCORES", scoresColor);
@@ -302,7 +323,7 @@ entity Game {
 
     hide func updateHighScores() {
         if Action.Pressed(config.ACTION_CONFIRM) || Action.Pressed(config.ACTION_CANCEL) {
-            gameState = config.STATE_MENU;
+            sm.Transition(config.STATE_MENU);
         }
     }
 
@@ -354,7 +375,7 @@ entity Game {
     hide func startReady() {
         readyTimer.Start(config.READY_DURATION);
         readyTween.StartI64(0, 100, 30, config.EASE_OUT_BOUNCE);
-        gameState = config.STATE_READY;
+        sm.Transition(config.STATE_READY);
     }
 
     hide func updateReady() {
@@ -364,7 +385,7 @@ entity Game {
         if readyTimer.IsExpired {
             modeTimer.Start(config.MODE_SWITCH_TIME);
             chaseMode = false;
-            gameState = config.STATE_PLAYING;
+            sm.Transition(config.STATE_PLAYING);
         }
     }
 
@@ -375,7 +396,7 @@ entity Game {
     hide func updatePlaying() {
         // Handle pause
         if Action.Pressed(config.ACTION_PAUSE) {
-            gameState = config.STATE_PAUSED;
+            sm.Transition(config.STATE_PAUSED);
             return;
         }
 
@@ -504,7 +525,7 @@ entity Game {
 
         // Check win condition
         if theMaze.allDotsEaten() {
-            gameState = config.STATE_WIN;
+            sm.Transition(config.STATE_WIN);
         }
     }
 
@@ -520,10 +541,10 @@ entity Game {
 
         if lives <= 0 {
             self.updateHighScoresList();
-            gameState = config.STATE_GAME_OVER;
+            sm.Transition(config.STATE_GAME_OVER);
         } else {
             deathTimer.Start(config.DEATH_DURATION);
-            gameState = config.STATE_DYING;
+            sm.Transition(config.STATE_DYING);
         }
     }
 
@@ -549,10 +570,10 @@ entity Game {
 
     hide func updatePaused() {
         if Action.Pressed(config.ACTION_PAUSE) || Action.Pressed(config.ACTION_CONFIRM) {
-            gameState = config.STATE_PLAYING;
+            sm.Transition(config.STATE_PLAYING);
         }
         if Action.Pressed(config.ACTION_CANCEL) {
-            gameState = config.STATE_MENU;
+            sm.Transition(config.STATE_MENU);
         }
     }
 
@@ -566,7 +587,7 @@ entity Game {
             self.startReady();
         }
         if Action.Pressed(config.ACTION_CANCEL) {
-            gameState = config.STATE_MENU;
+            sm.Transition(config.STATE_MENU);
         }
     }
 
@@ -579,7 +600,7 @@ entity Game {
             self.nextLevel();
         }
         if Action.Pressed(config.ACTION_CANCEL) {
-            gameState = config.STATE_MENU;
+            sm.Transition(config.STATE_MENU);
         }
     }
 
@@ -658,22 +679,22 @@ entity Game {
         }
 
         // Draw state overlays
-        if gameState == config.STATE_READY {
+        if sm.IsState(config.STATE_READY) {
             var tweenProgress = readyTween.Progress;
             var textY = config.SCREEN_HEIGHT / 2 - 10 + (100 - tweenProgress);
             canvas.Text(config.SCREEN_WIDTH / 2 - 40, textY, "READY!", config.COLOR_YELLOW);
-        } else if gameState == config.STATE_PAUSED {
+        } else if sm.IsState(config.STATE_PAUSED) {
             canvas.Text(config.SCREEN_WIDTH / 2 - 40, config.SCREEN_HEIGHT / 2, "PAUSED", config.COLOR_YELLOW);
             canvas.Text(config.SCREEN_WIDTH / 2 - 70, config.SCREEN_HEIGHT / 2 + 30, "P to continue", config.COLOR_WHITE);
             canvas.Text(config.SCREEN_WIDTH / 2 - 70, config.SCREEN_HEIGHT / 2 + 60, "ESC for menu", config.COLOR_WHITE);
-        } else if gameState == config.STATE_GAME_OVER {
+        } else if sm.IsState(config.STATE_GAME_OVER) {
             canvas.Text(config.SCREEN_WIDTH / 2 - 60, config.SCREEN_HEIGHT / 2, "GAME OVER", config.COLOR_RED);
             canvas.Text(config.SCREEN_WIDTH / 2 - 70, config.SCREEN_HEIGHT / 2 + 30, "R to restart", config.COLOR_WHITE);
             canvas.Text(config.SCREEN_WIDTH / 2 - 70, config.SCREEN_HEIGHT / 2 + 60, "ESC for menu", config.COLOR_WHITE);
-        } else if gameState == config.STATE_WIN {
+        } else if sm.IsState(config.STATE_WIN) {
             canvas.Text(config.SCREEN_WIDTH / 2 - 80, config.SCREEN_HEIGHT / 2, "LEVEL COMPLETE!", config.COLOR_YELLOW);
             canvas.Text(config.SCREEN_WIDTH / 2 - 90, config.SCREEN_HEIGHT / 2 + 30, "R for next level", config.COLOR_WHITE);
-        } else if gameState == config.STATE_DYING {
+        } else if sm.IsState(config.STATE_DYING) {
             canvas.Text(config.SCREEN_WIDTH / 2 - 40, config.SCREEN_HEIGHT / 2, "OUCH!", config.COLOR_RED);
         }
 
