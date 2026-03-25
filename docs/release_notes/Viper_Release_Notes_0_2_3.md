@@ -28,7 +28,6 @@ Version 0.2.3 is a major hardening, tooling, and infrastructure release. Highlig
 - **Language Audit** — comprehensive Zia/BASIC feature verification (13 findings: 6 confirmed fixed, 7 filed as open bugs), reference doc corrections, 13 new Zia feature/runtime tests.
 - **Frontend Decomposition** — shared utilities, parser/lowerer file splits, CRTP LexerBase.
 - **Codebase Reorganization** — demos consolidated into `examples/`, devdocs merged into `docs/`, 900+ doc fixes.
-- **Website** — Solarized dark/light theme, 66-page project site.
 
 #### By the Numbers
 
@@ -619,16 +618,6 @@ A complete 3D graphics engine built as a zero-dependency C runtime module with p
 - Particle systems (`Particles3D`)
 
 28 classes total. Documented in [Graphics3D Guide](../graphics3d-guide.md) and [Graphics3D Architecture](../graphics3d-architecture.md).
-
-#### Website
-
-A hand-crafted project website under `misc/site/` for GitHub Pages deployment:
-
-- **66 pages**: Landing, docs hub, showcase gallery, feature pages, blog, learning paths
-- **Solarized dark/light theme** with CSS custom properties (single `style.css` themes all pages)
-- Syntax highlighting with Solarized accent palette
-- Responsive layout, localStorage theme persistence
-- Zero dependencies — plain HTML/CSS/JS
 
 ---
 
@@ -1290,7 +1279,6 @@ table of contents to cover all 80+ sections.
 | **AArch64 Scheduler** | No | Post-RA list scheduler + coalescer |
 | **SipHash** | FNV-1a | SipHash-2-4 with OS CSPRNG seed |
 | **ECDSA P-256** | OpenSSL-dependent | Pure C, MSVC-compatible |
-| **Website** | No | 66-page Solarized site |
 | **Sidescroller Demo** | 1 level, rectangles | 5 levels, sprite art, full game |
 | **O1 Native Codegen** | Broken (paint, pacman crashes) | 9/11 demos correct at O1 |
 | **Network Classes** | 5 | 15 (+10 new classes) |
@@ -1310,7 +1298,6 @@ Remaining v0.2.x focus areas:
 - RISC-V backend exploration
 - GUI library maturation (accessibility, additional widget types)
 - Runtime API stability and performance improvements
-- Website Phase 2: convert docs to HTML, search, interactive code samples
 - Self-hosting compiler groundwork
 
 ---

@@ -17,10 +17,10 @@ ipch/
 Thumbs.db
 
 # --- CMake / Ninja / Make build artifacts ---
-build/
-build*/
-build-*/
-build_*/
+/build/
+/build*/
+/build-*/
+/build_*/
 cmake-build*/
 cmake-build-*/
 CMakeFiles/
