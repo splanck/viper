@@ -121,6 +121,13 @@ PassManager::PassManager()
 
     // Pre-register common pipelines
     registerPipeline("O0", {"simplify-cfg", "dce"});
+    // Rehab-only pipelines for disabled passes. These are intentionally not
+    // part of the canonical O1/O2 presets; they exist so differential,
+    // randomized, and native-vs-VM validation can exercise one risky pass in
+    // relative isolation without rewriting the production pipelines.
+    registerPipeline("rehab-mem2reg", {"simplify-cfg", "mem2reg", "dce"});
+    registerPipeline("rehab-peephole", {"peephole", "dce"});
+    registerPipeline("rehab-licm", {"loop-simplify", "licm", "simplify-cfg", "dce"});
     // mem2reg and IL peephole are disabled due to correctness bugs:
     // - mem2reg: incorrect SSA promotion corrupts loop counters
     // - IL peephole: global replaceAll + DCE param compaction breaks values
@@ -245,7 +252,7 @@ void PassManager::enableParallelFunctionPasses(bool enable)
 ///          itself stateless.
 /// @param module Module undergoing transformation.
 /// @param pipeline Ordered list of pass identifiers to execute.
-void PassManager::run(core::Module &module, const Pipeline &pipeline) const
+bool PassManager::run(core::Module &module, const Pipeline &pipeline) const
 {
     PipelineExecutor::Instrumentation instrumentation{};
 
@@ -313,7 +320,7 @@ void PassManager::run(core::Module &module, const Pipeline &pipeline) const
 
     PipelineExecutor executor(
         passRegistry_, analysisRegistry_, std::move(instrumentation), parallelFunctionPasses_);
-    executor.run(module, pipeline);
+    return executor.run(module, pipeline);
 }
 
 /// @brief Execute a named pipeline if it exists.
@@ -328,8 +335,7 @@ bool PassManager::runPipeline(core::Module &module, const std::string &pipelineI
     const Pipeline *pipeline = getPipeline(pipelineId);
     if (!pipeline)
         return false;
-    run(module, *pipeline);
-    return true;
+    return run(module, *pipeline);
 }
 
 } // namespace il::transform

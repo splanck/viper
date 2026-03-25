@@ -488,6 +488,9 @@ Creates a sprite batch with the given initial capacity (use 0 for default). Spri
 | `SetAlpha(alpha)`                               | `Void(Integer)`                                        | Set global alpha (0-255) for all sprites       |
 | `SetSortByDepth(enabled)`                       | `Void(Integer)`                                        | Enable/disable depth sorting (1=on, 0=off)     |
 | `SetTint(color)`                                | `Void(Integer)`                                        | Set tint color (ARGB) for all sprites          |
+| `DrawAtlas(atlas, name, x, y)`                  | `Void(TextureAtlas, String, Integer, Integer)`         | Draw named atlas region at position            |
+| `DrawAtlasScaled(atlas, name, x, y, scale)`     | `Void(TextureAtlas, String, Integer, Integer, Integer)`| Draw named atlas region with uniform scale     |
+| `DrawAtlasEx(atlas, name, x, y, scale, rot, depth)` | `Void(TextureAtlas, String, Integer...)`           | Draw named atlas region with full transform    |
 
 ### Zia Example
 
@@ -626,6 +629,79 @@ batch.End(canvas)
 - **Minimize Begin/End calls:** Each Begin/End pair flushes the batch
 - **Use depth sorting wisely:** Disable `SetSortByDepth` when not needed for faster rendering
 - **Pre-allocate batches:** Create SpriteBatch once with sufficient capacity, reuse each frame
+
+---
+
+## Viper.Graphics.TextureAtlas
+
+Named-region sprite sheet atlas. Maps string names to rectangular sub-regions of a
+backing Pixels buffer, enabling content pipelines where frames are referenced by name
+instead of raw pixel coordinates.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Graphics.TextureAtlas(pixels)` or `TextureAtlas.LoadGrid(pixels, frameW, frameH)`
+
+### Properties
+
+| Property      | Type    | Access | Description                                |
+|---------------|---------|--------|--------------------------------------------|
+| `Pixels`      | Pixels  | Read   | The backing Pixels buffer                  |
+| `RegionCount` | Integer | Read   | Number of named regions in the atlas       |
+
+### Methods
+
+| Method                            | Signature                                        | Description                                    |
+|-----------------------------------|--------------------------------------------------|------------------------------------------------|
+| `Add(name, x, y, w, h)`          | `Void(String, Integer, Integer, Integer, Integer)` | Add a named rectangular region               |
+| `Has(name)`                       | `Boolean(String)`                                | Check if a named region exists                 |
+| `GetX(name)`                      | `Integer(String)`                                | Get region X coordinate                        |
+| `GetY(name)`                      | `Integer(String)`                                | Get region Y coordinate                        |
+| `GetWidth(name)`                  | `Integer(String)`                                | Get region width                               |
+| `GetHeight(name)`                 | `Integer(String)`                                | Get region height                              |
+
+### Static Methods
+
+| Method                            | Signature                                        | Description                                    |
+|-----------------------------------|--------------------------------------------------|------------------------------------------------|
+| `LoadGrid(pixels, frameW, frameH)` | `TextureAtlas(Pixels, Integer, Integer)`        | Create atlas by slicing a grid; names are "0", "1", "2", ... |
+
+### Zia Example
+
+```rust
+module AtlasDemo;
+bind Viper.Graphics;
+
+func start() {
+    var canvas = Canvas.New("Atlas Demo", 640, 480);
+
+    // Load a sprite sheet and create a grid atlas
+    var sheet = Pixels.LoadBmp("spritesheet.bmp");
+    var atlas = TextureAtlas.LoadGrid(sheet, 32, 32);
+
+    // Add friendly names for specific frames
+    atlas.Add("idle", 0, 0, 32, 32);
+    atlas.Add("walk1", 32, 0, 32, 32);
+    atlas.Add("walk2", 64, 0, 32, 32);
+    atlas.Add("jump", 96, 0, 32, 32);
+
+    // Draw using SpriteBatch
+    var batch = SpriteBatch.New(64);
+
+    while !canvas.ShouldClose {
+        canvas.Poll();
+        canvas.Clear(Color.BLACK);
+
+        batch.Begin();
+        batch.DrawAtlas(atlas, "idle", 100, 200);
+        batch.DrawAtlas(atlas, "walk1", 150, 200);
+        batch.DrawAtlas(atlas, "walk2", 200, 200);
+        batch.DrawAtlas(atlas, "jump", 250, 200);
+        batch.End(canvas);
+
+        canvas.Flip();
+    }
+}
+```
 
 ---
 

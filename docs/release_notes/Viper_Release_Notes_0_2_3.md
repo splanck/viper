@@ -522,6 +522,11 @@ state tracking) and ButtonGroup (replacing manual selection management).
 
 #### New Runtime APIs
 
+**TextureAtlas** — Named-region 2D sprite sheet atlas. Maps string names to rectangular sub-regions
+of a Pixels buffer, enabling content pipelines where frames are referenced by name instead of raw
+pixel coordinates. Supports grid-based auto-slicing (`LoadGrid`) and manual region definition (`Add`).
+Integrates with SpriteBatch via `DrawAtlas`, `DrawAtlasScaled`, and `DrawAtlasEx` methods.
+
 **Canvas.DeltaTime** — Milliseconds elapsed since the last frame, available as a property. Combined
 with `Canvas.SetDTMax()` for automatic delta-time clamping, this enables frame-rate-independent
 physics without manual timer management.
@@ -738,6 +743,15 @@ Post-audit fixes across the 3D graphics subsystem:
 ---
 
 ### Zia Compiler Fixes
+
+#### Static Property Resolution
+
+- **Color.RED, Color.WHITE, etc. now work** — the sema's module field handler now tries the
+  `get_` prefix convention when resolving static properties through alias bindings. Previously,
+  `Color.RED` errored with "Module has no exported symbol 'RED'" because the getter was
+  registered as `Viper.Graphics.Color.get_RED` but the lookup tried
+  `Viper.Graphics.Color.RED`. This fix applies to ALL static properties on ALL runtime classes,
+  not just Color.
 
 #### P0 Bugs
 

@@ -223,6 +223,23 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
             return typeIt->second;
         }
 
+        // Try the getter convention (get_PropertyName) for static properties
+        // on runtime classes. Properties like Color.RED are registered as
+        // "Viper.Graphics.Color.get_RED" in the symbol table.
+        {
+            std::string getterName = baseType->name + ".get_" + expr->field;
+            Symbol *getter = lookupSymbol(getterName);
+            if (getter && getter->kind == Symbol::Kind::Function)
+            {
+                // Record the getter so the lowerer emits a call (same as Path A)
+                runtimeFieldGetters_[expr] = getterName;
+                TypeRef funcType = getter->type;
+                if (funcType && funcType->kind == TypeKindSem::Function)
+                    return funcType->returnType();
+                return funcType;
+            }
+        }
+
         // If not found in global scope, report error
         error(expr->loc,
               "Module '" + baseType->name + "' has no exported symbol '" + expr->field + "'");

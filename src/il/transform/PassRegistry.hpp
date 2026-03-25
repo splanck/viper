@@ -113,11 +113,30 @@ class PreservedAnalyses
     /// @brief Convenience helper to preserve the basic alias analysis.
     PreservedAnalyses &preserveBasicAA();
 
+    /// @brief Record that a module pass changed a specific function body.
+    /// @details Allows module passes that only rewrite a subset of functions
+    ///          (for example the inliner) to invalidate cached function
+    ///          analyses selectively instead of clearing all function-analysis
+    ///          results in the module.
+    /// @param name Function name whose cached analyses must be dropped.
+    /// @return Reference to this object for method chaining.
+    PreservedAnalyses &markChangedFunction(const std::string &name);
+
+    /// @brief Check whether a module pass reported any changed functions.
+    /// @return True when one or more functions were marked changed.
+    bool hasChangedFunctions() const;
+
+    /// @brief Check whether a function name was marked changed.
+    /// @param name Function name to query.
+    /// @return True when the function was explicitly marked changed.
+    bool isChangedFunction(const std::string &name) const;
+
   private:
     bool preserveAllModules_ = false;
     bool preserveAllFunctions_ = false;
     std::unordered_set<std::string> moduleAnalyses_;
     std::unordered_set<std::string> functionAnalyses_;
+    std::unordered_set<std::string> changedFunctions_;
 };
 
 /// @brief Base class for transformation passes operating on entire modules.
@@ -172,6 +191,7 @@ struct PassFactory
     PassKind kind;
     std::function<std::unique_ptr<ModulePass>()> makeModule;
     std::function<std::unique_ptr<FunctionPass>()> makeFunction;
+    bool parallelSafe = false;
 };
 } // namespace detail
 
@@ -191,33 +211,44 @@ class PassRegistry
     /// @brief Register a module pass using a factory function.
     /// @param id Unique identifier for the pass.
     /// @param factory Function returning a new ModulePass instance.
-    void registerModulePass(const std::string &id, ModulePassFactory factory);
+    void registerModulePass(const std::string &id,
+                            ModulePassFactory factory,
+                            bool parallelSafe = false);
 
     /// @brief Register a module pass using a callback with analysis access.
     /// @param id Unique identifier for the pass.
     /// @param callback Function implementing the pass transformation.
-    void registerModulePass(const std::string &id, ModulePassCallback callback);
+    void registerModulePass(const std::string &id,
+                            ModulePassCallback callback,
+                            bool parallelSafe = false);
 
     /// @brief Register a simple module pass without analysis access.
     /// @param id Unique identifier for the pass.
     /// @param fn Function transforming the module (no return value).
-    void registerModulePass(const std::string &id, const std::function<void(core::Module &)> &fn);
+    void registerModulePass(const std::string &id,
+                            const std::function<void(core::Module &)> &fn,
+                            bool parallelSafe = false);
 
     /// @brief Register a function pass using a factory function.
     /// @param id Unique identifier for the pass.
     /// @param factory Function returning a new FunctionPass instance.
-    void registerFunctionPass(const std::string &id, FunctionPassFactory factory);
+    void registerFunctionPass(const std::string &id,
+                              FunctionPassFactory factory,
+                              bool parallelSafe = false);
 
     /// @brief Register a function pass using a callback with analysis access.
     /// @param id Unique identifier for the pass.
     /// @param callback Function implementing the pass transformation.
-    void registerFunctionPass(const std::string &id, FunctionPassCallback callback);
+    void registerFunctionPass(const std::string &id,
+                              FunctionPassCallback callback,
+                              bool parallelSafe = false);
 
     /// @brief Register a simple function pass without analysis access.
     /// @param id Unique identifier for the pass.
     /// @param fn Function transforming a function (no return value).
     void registerFunctionPass(const std::string &id,
-                              const std::function<void(core::Function &)> &fn);
+                              const std::function<void(core::Function &)> &fn,
+                              bool parallelSafe = false);
 
     /// @brief Look up a registered pass by identifier.
     /// @param id Pass identifier to query.

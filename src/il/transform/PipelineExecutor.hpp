@@ -73,7 +73,9 @@ class PipelineExecutor
     ///          order.  Instrumentation hooks are called around each pass.
     /// @param module   Module to transform in place.
     /// @param pipeline Ordered list of pass identifiers to run.
-    void run(core::Module &module, const std::vector<std::string> &pipeline) const;
+    /// @return @c true when every pass was materialized and executed
+    ///         successfully; otherwise @c false.
+    bool run(core::Module &module, const std::vector<std::string> &pipeline) const;
 
   private:
     const PassRegistry &registry_;

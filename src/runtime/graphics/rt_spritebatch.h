@@ -106,6 +106,23 @@ extern "C"
                                     int64_t sw,
                                     int64_t sh);
 
+    /// @brief Internal/shared helper for region draws with transform metadata.
+    /// @details Used by TextureAtlas-backed draws so region items can participate
+    ///          in depth sorting and transformed rendering without exposing a new
+    ///          public language API surface.
+    void rt_spritebatch_draw_region_ex(void *batch,
+                                       void *pixels,
+                                       int64_t dx,
+                                       int64_t dy,
+                                       int64_t sx,
+                                       int64_t sy,
+                                       int64_t sw,
+                                       int64_t sh,
+                                       int64_t scale_x,
+                                       int64_t scale_y,
+                                       int64_t rotation,
+                                       int64_t depth);
+
     //=========================================================================
     // SpriteBatch Properties
     //=========================================================================
@@ -140,6 +157,38 @@ extern "C"
 
     /// @brief Clear all settings to defaults.
     void rt_spritebatch_reset_settings(void *batch);
+
+    //=========================================================================
+    // SpriteBatch Atlas Drawing Extensions (from rt_texatlas.h)
+    //=========================================================================
+
+    /// @brief Draw a named atlas region through the sprite batch.
+    void rt_spritebatch_draw_atlas(void *batch, void *atlas, void *name,
+                                   int64_t x, int64_t y);
+
+    /// @brief Draw a named atlas region with uniform scale.
+    void rt_spritebatch_draw_atlas_scaled(void *batch, void *atlas, void *name,
+                                          int64_t x, int64_t y, int64_t scale);
+
+    /// @brief Draw a named atlas region with full transform.
+    void rt_spritebatch_draw_atlas_ex(void *batch, void *atlas, void *name,
+                                      int64_t x, int64_t y, int64_t scale,
+                                      int64_t rotation, int64_t depth);
+
+    //=========================================================================
+    // TextureAtlas (see rt_texatlas.h for full API)
+    //=========================================================================
+
+    void *rt_texatlas_new(void *pixels);
+    void *rt_texatlas_load_grid(void *pixels, int64_t frame_w, int64_t frame_h);
+    void rt_texatlas_add(void *atlas, void *name, int64_t x, int64_t y, int64_t w, int64_t h);
+    int8_t rt_texatlas_has(void *atlas, void *name);
+    int64_t rt_texatlas_get_x(void *atlas, void *name);
+    int64_t rt_texatlas_get_y(void *atlas, void *name);
+    int64_t rt_texatlas_get_w(void *atlas, void *name);
+    int64_t rt_texatlas_get_h(void *atlas, void *name);
+    void *rt_texatlas_get_pixels(void *atlas);
+    int64_t rt_texatlas_region_count(void *atlas);
 
 #ifdef __cplusplus
 }

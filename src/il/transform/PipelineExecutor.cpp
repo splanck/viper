@@ -73,7 +73,7 @@ PipelineExecutor::PipelineExecutor(const PassRegistry &registry,
 ///          the IL verifier between passes when @p verifyBetweenPasses was set.
 /// @param module Module undergoing transformation.
 /// @param pipeline Ordered list of pass identifiers.
-void PipelineExecutor::run(core::Module &module, const std::vector<std::string> &pipeline) const
+bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> &pipeline) const
 {
     AnalysisManager analysis(module, analysisRegistry_);
     const bool collectMetrics = static_cast<bool>(instrumentation_.passMetrics);
@@ -137,7 +137,10 @@ void PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                         };
 
                         bool executedAll = true;
-                        if (parallelFunctionPasses_ && module.functions.size() > 1)
+                        // Parallel execution is reserved for function passes
+                        // that were explicitly audited and registered as safe.
+                        if (parallelFunctionPasses_ && factory->parallelSafe &&
+                            module.functions.size() > 1)
                         {
                             const std::size_t workerCount = std::min<std::size_t>(
                                 module.functions.size(),
@@ -198,12 +201,9 @@ void PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
     bool ok = driver.runPipeline(pipeline);
     if (!ok)
     {
-#ifndef NDEBUG
-        assert(false && "pass pipeline execution failed");
-#else
         std::cerr << "warning: pass pipeline execution failed\n";
-#endif
     }
+    return ok;
 }
 
 } // namespace il::transform

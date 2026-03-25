@@ -15,6 +15,7 @@
 
 #include "il/transform/AnalysisManager.hpp"
 
+#include "il/core/Function.hpp"
 #include "il/transform/PassRegistry.hpp"
 
 #include <cassert>
@@ -131,8 +132,31 @@ class AnalysisCacheInvalidator
             return;
         if (preserved_.preservesAllFunctionAnalyses())
             return;
+        auto eraseChangedFunctions =
+            [this](std::unordered_map<const core::Function *, std::any> &cacheForAnalysis)
+        {
+            for (auto it = cacheForAnalysis.begin(); it != cacheForAnalysis.end();)
+            {
+                if (it->first && preserved_.isChangedFunction(it->first->name))
+                    it = cacheForAnalysis.erase(it);
+                else
+                    ++it;
+            }
+        };
         if (!preserved_.hasFunctionPreservations())
         {
+            if (preserved_.hasChangedFunctions())
+            {
+                for (auto it = manager_.functionCache_.begin(); it != manager_.functionCache_.end();)
+                {
+                    eraseChangedFunctions(it->second);
+                    if (it->second.empty())
+                        it = manager_.functionCache_.erase(it);
+                    else
+                        ++it;
+                }
+                return;
+            }
             manager_.functionCache_.clear();
             return;
         }
@@ -142,6 +166,15 @@ class AnalysisCacheInvalidator
             if (preserved_.isFunctionPreserved(it->first))
             {
                 ++it;
+                continue;
+            }
+            if (preserved_.hasChangedFunctions())
+            {
+                eraseChangedFunctions(it->second);
+                if (it->second.empty())
+                    it = manager_.functionCache_.erase(it);
+                else
+                    ++it;
                 continue;
             }
             it = manager_.functionCache_.erase(it);

@@ -203,7 +203,8 @@ int main()
                             {
                                 ++parallelRuns;
                                 return transform::PreservedAnalyses::all();
-                            });
+                            },
+                            true);
     pm.registerPipeline("parallel-count", {"count-fns"});
 
     std::string seqIL;
@@ -232,6 +233,62 @@ int main()
         assert(parIL == seqIL);
     }
     pm.enableParallelFunctionPasses(false);
+
+    pm.registerPipeline("bad-pass", {"definitely-missing-pass"});
+    assert(!pm.runPipeline(module, "bad-pass"));
+
+    {
+        int fooCount = 0;
+        int barCount = 0;
+        transform::PassManager selectivePm;
+        selectivePm.registerFunctionAnalysis<int>(
+            "per-fn",
+            [&fooCount, &barCount](core::Module &, core::Function &fn)
+            {
+                if (fn.name == "foo")
+                    return ++fooCount;
+                if (fn.name == "bar")
+                    return ++barCount;
+                return 0;
+            });
+        selectivePm.registerFunctionPass(
+            "seed-per-fn",
+            [](core::Function &fn, transform::AnalysisManager &analysis)
+            {
+                int &value = analysis.getFunctionResult<int>("per-fn", fn);
+                (void)value;
+                transform::PreservedAnalyses preserved;
+                preserved.preserveFunction("per-fn");
+                return preserved;
+            });
+        selectivePm.registerModulePass(
+            "touch-foo-only",
+            [](core::Module &, transform::AnalysisManager &)
+            {
+                transform::PreservedAnalyses preserved;
+                preserved.markChangedFunction("foo");
+                return preserved;
+            });
+        selectivePm.registerFunctionPass(
+            "recheck-per-fn",
+            [&fooCount, &barCount](core::Function &fn, transform::AnalysisManager &analysis)
+            {
+                int &value = analysis.getFunctionResult<int>("per-fn", fn);
+                if (fn.name == "foo")
+                    assert(value == 2);
+                else if (fn.name == "bar")
+                    assert(value == 1);
+                return transform::PreservedAnalyses::all();
+            });
+        selectivePm.registerPipeline(
+            "selective-module-invalidation", {"seed-per-fn", "touch-foo-only", "recheck-per-fn"});
+
+        core::Module selective = parseParallelModule();
+        bool ranSelective = selectivePm.runPipeline(selective, "selective-module-invalidation");
+        assert(ranSelective);
+        assert(fooCount == 2);
+        assert(barCount == 1);
+    }
 
     assert(!pm.runPipeline(module, "missing"));
 

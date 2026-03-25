@@ -955,6 +955,7 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
             setBlockDepth(depths, fn.name, B.label, 0);
 
     bool changed = false;
+    std::unordered_set<std::string> changedFunctions;
 
     for (size_t fnIdx = 0; fnIdx < module.functions.size(); ++fnIdx)
     {
@@ -1030,6 +1031,7 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
                     codeGrowth += cost.instrCount - 1;
 
                 changed = true;
+                changedFunctions.insert(caller.name);
                 break; // block reshaped; move to next block
             }
         }
@@ -1037,8 +1039,10 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
 
     if (!changed)
         return PreservedAnalyses::all();
-
-    return PreservedAnalyses{}; // invalidate all analyses for simplicity
+    PreservedAnalyses preserved;
+    for (const auto &name : changedFunctions)
+        preserved.markChangedFunction(name);
+    return preserved;
 }
 
 void registerInlinePass(PassRegistry &registry)

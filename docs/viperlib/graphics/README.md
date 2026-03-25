@@ -18,7 +18,7 @@ last-verified: 2026-03-09
 | [Canvas & Color](canvas.md) | Canvas drawing surface and Color utilities |
 | [Fonts](fonts.md) | BitmapFont for custom BDF/PSF font rendering |
 | [Images & Sprites](pixels.md) | Pixels, Sprite, SpriteSheet, Tilemap |
-| [Scene Graph](scene.md) | SceneNode, Scene, SpriteBatch, Camera, SpriteAnimation |
+| [Scene Graph](scene.md) | SceneNode, Scene, SpriteBatch, TextureAtlas, Camera, SpriteAnimation |
 
 ## See Also
 

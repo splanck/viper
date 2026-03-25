@@ -211,6 +211,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_tilemap_io.c
         graphics/rt_scene.c
         graphics/rt_spritebatch.c
+        graphics/rt_texatlas.c
         graphics/rt_bitmapfont.c
         graphics/fonts/embedded_font.c  # JetBrains Mono Regular (MIT) — embedded for portable font rendering
         graphics/rt_canvas3d.c
@@ -368,6 +369,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_tilemap.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_scene.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_spritebatch.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_texatlas.h
         ${CMAKE_CURRENT_SOURCE_DIR}/audio/rt_audio.h
         ${CMAKE_CURRENT_SOURCE_DIR}/audio/rt_soundbank.h
         ${CMAKE_CURRENT_SOURCE_DIR}/audio/rt_synth.h

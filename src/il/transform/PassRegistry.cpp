@@ -190,6 +190,22 @@ PreservedAnalyses &PreservedAnalyses::preserveBasicAA()
     return preserveFunction(kAnalysisBasicAA);
 }
 
+PreservedAnalyses &PreservedAnalyses::markChangedFunction(const std::string &name)
+{
+    changedFunctions_.insert(name);
+    return *this;
+}
+
+bool PreservedAnalyses::hasChangedFunctions() const
+{
+    return !changedFunctions_.empty();
+}
+
+bool PreservedAnalyses::isChangedFunction(const std::string &name) const
+{
+    return changedFunctions_.contains(name);
+}
+
 namespace
 {
 class LambdaModulePass : public ModulePass
@@ -277,9 +293,12 @@ class LambdaFunctionPass : public FunctionPass
 ///          program lifetime.
 /// @param id Identifier used to reference the pass from pipelines.
 /// @param factory Callable producing unique @ref ModulePass instances.
-void PassRegistry::registerModulePass(const std::string &id, ModulePassFactory factory)
+void PassRegistry::registerModulePass(const std::string &id,
+                                      ModulePassFactory factory,
+                                      bool parallelSafe)
 {
-    registry_[id] = detail::PassFactory{detail::PassKind::Module, std::move(factory), {}};
+    registry_[id] =
+        detail::PassFactory{detail::PassKind::Module, std::move(factory), {}, parallelSafe};
 }
 
 /// @brief Register a module pass implemented via a simple callback.
@@ -288,13 +307,16 @@ void PassRegistry::registerModulePass(const std::string &id, ModulePassFactory f
 ///          keeping registration sites terse.
 /// @param id Identifier used to reference the pass from pipelines.
 /// @param callback Callback implementing the pass behaviour.
-void PassRegistry::registerModulePass(const std::string &id, ModulePassCallback callback)
+void PassRegistry::registerModulePass(const std::string &id,
+                                      ModulePassCallback callback,
+                                      bool parallelSafe)
 {
     auto cb = ModulePassCallback(callback);
     registry_[id] = detail::PassFactory{detail::PassKind::Module,
                                         [passId = std::string(id), cb]()
                                         { return std::make_unique<LambdaModulePass>(passId, cb); },
-                                        {}};
+                                        {},
+                                        parallelSafe};
 }
 
 /// @brief Register a void callback as a module pass.
@@ -304,14 +326,16 @@ void PassRegistry::registerModulePass(const std::string &id, ModulePassCallback 
 /// @param id Identifier used to reference the pass from pipelines.
 /// @param fn Callback executed when the pass runs.
 void PassRegistry::registerModulePass(const std::string &id,
-                                      const std::function<void(core::Module &)> &fn)
+                                      const std::function<void(core::Module &)> &fn,
+                                      bool parallelSafe)
 {
     registerModulePass(id,
                        [fn](core::Module &module, AnalysisManager &)
                        {
                            fn(module);
                            return PreservedAnalyses::none();
-                       });
+                       },
+                       parallelSafe);
 }
 
 /// @brief Register a function pass factory under a stable identifier.
@@ -320,9 +344,12 @@ void PassRegistry::registerModulePass(const std::string &id,
 ///          identifier.
 /// @param id Identifier used to reference the pass from pipelines.
 /// @param factory Callable producing unique @ref FunctionPass instances.
-void PassRegistry::registerFunctionPass(const std::string &id, FunctionPassFactory factory)
+void PassRegistry::registerFunctionPass(const std::string &id,
+                                        FunctionPassFactory factory,
+                                        bool parallelSafe)
 {
-    registry_[id] = detail::PassFactory{detail::PassKind::Function, {}, std::move(factory)};
+    registry_[id] =
+        detail::PassFactory{detail::PassKind::Function, {}, std::move(factory), parallelSafe};
 }
 
 /// @brief Register a function pass implemented via a simple callback.
@@ -331,14 +358,17 @@ void PassRegistry::registerFunctionPass(const std::string &id, FunctionPassFacto
 ///          objects.
 /// @param id Identifier used to reference the pass from pipelines.
 /// @param callback Callback implementing the pass behaviour.
-void PassRegistry::registerFunctionPass(const std::string &id, FunctionPassCallback callback)
+void PassRegistry::registerFunctionPass(const std::string &id,
+                                        FunctionPassCallback callback,
+                                        bool parallelSafe)
 {
     auto cb = FunctionPassCallback(callback);
     registry_[id] =
         detail::PassFactory{detail::PassKind::Function,
                             {},
                             [passId = std::string(id), cb]()
-                            { return std::make_unique<LambdaFunctionPass>(passId, cb); }};
+                            { return std::make_unique<LambdaFunctionPass>(passId, cb); },
+                            parallelSafe};
 }
 
 /// @brief Register a void callback as a function pass.
@@ -348,14 +378,16 @@ void PassRegistry::registerFunctionPass(const std::string &id, FunctionPassCallb
 /// @param id Identifier used to reference the pass from pipelines.
 /// @param fn Callback executed when the pass runs.
 void PassRegistry::registerFunctionPass(const std::string &id,
-                                        const std::function<void(core::Function &)> &fn)
+                                        const std::function<void(core::Function &)> &fn,
+                                        bool parallelSafe)
 {
     registerFunctionPass(id,
                          [fn](core::Function &function, AnalysisManager &)
                          {
                              fn(function);
                              return PreservedAnalyses::none();
-                         });
+                         },
+                         parallelSafe);
 }
 
 /// @brief Retrieve the factory metadata associated with an identifier.
@@ -447,8 +479,11 @@ void registerDSEPass(PassRegistry &registry)
             changed |= runMemorySSADSE(fn, am);
             if (!changed)
                 return PreservedAnalyses::all();
-            PreservedAnalyses p; // conservatively invalidate function analyses
+            PreservedAnalyses p;
             p.preserveAllModules();
+            p.preserveCFG();
+            p.preserveDominators();
+            p.preserveLoopInfo();
             return p;
         });
 }
@@ -463,6 +498,9 @@ void registerEarlyCSEPass(PassRegistry &registry)
                                           return PreservedAnalyses::all();
                                       PreservedAnalyses p;
                                       p.preserveAllModules();
+                                      p.preserveCFG();
+                                      p.preserveDominators();
+                                      p.preserveLoopInfo();
                                       return p;
                                   });
 }

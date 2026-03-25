@@ -408,6 +408,7 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_Sprite3D,
     RTCLS_Water3D,
     RTCLS_TextureAtlas3D,
+    RTCLS_TextureAtlas2D,
 };
 
 /// @brief Describes a property on a runtime class.

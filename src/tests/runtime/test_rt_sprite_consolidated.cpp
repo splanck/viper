@@ -5,6 +5,7 @@
 #include "rt_seq.h"
 #include "rt_spritebatch.h"
 #include "rt_spritesheet.h"
+#include "rt_texatlas.h"
 #include "rt_string.h"
 #include "tests/TestHarness.hpp"
 #include "tests/common/PosixCompat.h"
@@ -199,6 +200,81 @@ TEST(RTSprite, SpritebatchDrawRegion)
     ASSERT_TRUE(rt_spritebatch_count(batch) == 1);
 
     printf("test_spritebatch_draw_region: PASSED\n");
+}
+
+TEST(RTSprite, TextureAtlasAddAndLookup)
+{
+    void *pixels = rt_pixels_new(32, 32);
+    ASSERT_TRUE(pixels != nullptr);
+
+    void *atlas = rt_texatlas_new(pixels);
+    ASSERT_TRUE(atlas != nullptr);
+
+    rt_string name = rt_string_from_bytes("hero_idle_0", 11);
+    ASSERT_TRUE(name != nullptr);
+
+    rt_texatlas_add(atlas, name, 4, 8, 12, 16);
+    ASSERT_TRUE(rt_texatlas_region_count(atlas) == 1);
+    ASSERT_TRUE(rt_texatlas_has(atlas, name) == 1);
+    ASSERT_TRUE(rt_texatlas_get_x(atlas, name) == 4);
+    ASSERT_TRUE(rt_texatlas_get_y(atlas, name) == 8);
+    ASSERT_TRUE(rt_texatlas_get_w(atlas, name) == 12);
+    ASSERT_TRUE(rt_texatlas_get_h(atlas, name) == 16);
+
+    rt_string_unref(name);
+    rt_obj_release_check0(atlas);
+    rt_obj_release_check0(pixels);
+}
+
+TEST(RTSprite, TextureAtlasLoadGrid)
+{
+    void *pixels = rt_pixels_new(32, 16);
+    ASSERT_TRUE(pixels != nullptr);
+
+    void *atlas = rt_texatlas_load_grid(pixels, 16, 16);
+    ASSERT_TRUE(atlas != nullptr);
+    ASSERT_TRUE(rt_texatlas_region_count(atlas) == 2);
+
+    rt_string zero = rt_string_from_bytes("0", 1);
+    rt_string one = rt_string_from_bytes("1", 1);
+    ASSERT_TRUE(rt_texatlas_has(atlas, zero) == 1);
+    ASSERT_TRUE(rt_texatlas_has(atlas, one) == 1);
+    ASSERT_TRUE(rt_texatlas_get_x(atlas, one) == 16);
+    ASSERT_TRUE(rt_texatlas_get_y(atlas, one) == 0);
+    ASSERT_TRUE(rt_texatlas_get_w(atlas, one) == 16);
+    ASSERT_TRUE(rt_texatlas_get_h(atlas, one) == 16);
+
+    rt_string_unref(zero);
+    rt_string_unref(one);
+    rt_obj_release_check0(atlas);
+    rt_obj_release_check0(pixels);
+}
+
+TEST(RTSprite, SpritebatchDrawAtlasVariantsIncrementCount)
+{
+    void *pixels = rt_pixels_new(32, 32);
+    ASSERT_TRUE(pixels != nullptr);
+
+    void *atlas = rt_texatlas_new(pixels);
+    ASSERT_TRUE(atlas != nullptr);
+
+    rt_string name = rt_string_from_bytes("coin", 4);
+    ASSERT_TRUE(name != nullptr);
+    rt_texatlas_add(atlas, name, 0, 0, 16, 16);
+
+    void *batch = rt_spritebatch_new(0);
+    ASSERT_TRUE(batch != nullptr);
+
+    rt_spritebatch_begin(batch);
+    rt_spritebatch_draw_atlas(batch, atlas, name, 0, 0);
+    rt_spritebatch_draw_atlas_scaled(batch, atlas, name, 32, 32, 150);
+    rt_spritebatch_draw_atlas_ex(batch, atlas, name, 64, 64, 200, 45, 7);
+    ASSERT_TRUE(rt_spritebatch_count(batch) == 3);
+
+    rt_string_unref(name);
+    rt_obj_release_check0(batch);
+    rt_obj_release_check0(atlas);
+    rt_obj_release_check0(pixels);
 }
 
 // ============================================================================

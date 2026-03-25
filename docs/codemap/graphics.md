@@ -24,8 +24,10 @@ The Viper.Graphics.* namespace is implemented by these C runtime files:
 | `rt_sprite.c`       | Animated sprite with scaling, collision detection, and multi-frame support |
 | `rt_spriteanim.h`   | `Viper.Game.SpriteAnimation` class declaration                            |
 | `rt_spriteanim.c`   | Frame-based sprite animation state machine (play/pause/stop, looping, ping-pong, speed multiplier) — exposed as `Viper.Game.SpriteAnimation` |
-| `rt_spritebatch.h`  | SpriteBatch class declaration                                             |
+| `rt_spritebatch.h`  | SpriteBatch class declaration + TextureAtlas forward declarations         |
 | `rt_spritebatch.c`  | Efficient batched sprite rendering                                        |
+| `rt_texatlas.h`     | TextureAtlas class declaration — named-region sprite sheet atlas          |
+| `rt_texatlas.c`     | TextureAtlas implementation — grid slicing, named regions, hash lookup    |
 | `rt_spritesheet.h`  | SpriteSheet class declaration                                             |
 | `rt_spritesheet.c`  | Sprite sheet/atlas for named region extraction from a single texture      |
 | `rt_tilemap.h`      | Tilemap class declaration                                                 |

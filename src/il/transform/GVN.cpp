@@ -290,6 +290,9 @@ PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis)
 
     PreservedAnalyses p;
     p.preserveAllModules();
+    p.preserveCFG();
+    p.preserveDominators();
+    p.preserveLoopInfo();
     return p;
 }
 

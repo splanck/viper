@@ -1565,6 +1565,23 @@ RT_FUNC(SpriteBatchSetTint,       rt_spritebatch_set_tint,         "Viper.Graphi
 RT_FUNC(SpriteBatchSetAlpha,      rt_spritebatch_set_alpha,        "Viper.Graphics.SpriteBatch.SetAlpha",      "void(obj,i64)")
 RT_FUNC(SpriteBatchResetSettings, rt_spritebatch_reset_settings,   "Viper.Graphics.SpriteBatch.ResetSettings", "void(obj)")
 
+// SpriteBatch atlas drawing extensions
+RT_FUNC(SpriteBatchDrawAtlas,       rt_spritebatch_draw_atlas,       "Viper.Graphics.SpriteBatch.DrawAtlas",       "void(obj,obj,str,i64,i64)")
+RT_FUNC(SpriteBatchDrawAtlasScaled, rt_spritebatch_draw_atlas_scaled,"Viper.Graphics.SpriteBatch.DrawAtlasScaled", "void(obj,obj,str,i64,i64,i64)")
+RT_FUNC(SpriteBatchDrawAtlasEx,     rt_spritebatch_draw_atlas_ex,    "Viper.Graphics.SpriteBatch.DrawAtlasEx",     "void(obj,obj,str,i64,i64,i64,i64,i64)")
+
+// TextureAtlas — named-region sprite sheet
+RT_FUNC(TexAtlasNew,         rt_texatlas_new,          "Viper.Graphics.TextureAtlas.New",          "obj(obj)")
+RT_FUNC(TexAtlasLoadGrid,    rt_texatlas_load_grid,    "Viper.Graphics.TextureAtlas.LoadGrid",     "obj(obj,i64,i64)")
+RT_FUNC(TexAtlasAdd,         rt_texatlas_add,          "Viper.Graphics.TextureAtlas.Add",          "void(obj,str,i64,i64,i64,i64)")
+RT_FUNC(TexAtlasHas,         rt_texatlas_has,          "Viper.Graphics.TextureAtlas.Has",          "i1(obj,str)")
+RT_FUNC(TexAtlasGetX,        rt_texatlas_get_x,        "Viper.Graphics.TextureAtlas.GetX",         "i64(obj,str)")
+RT_FUNC(TexAtlasGetY,        rt_texatlas_get_y,        "Viper.Graphics.TextureAtlas.GetY",         "i64(obj,str)")
+RT_FUNC(TexAtlasGetW,        rt_texatlas_get_w,        "Viper.Graphics.TextureAtlas.GetWidth",     "i64(obj,str)")
+RT_FUNC(TexAtlasGetH,        rt_texatlas_get_h,        "Viper.Graphics.TextureAtlas.GetHeight",    "i64(obj,str)")
+RT_FUNC(TexAtlasGetPixels,   rt_texatlas_get_pixels,   "Viper.Graphics.TextureAtlas.get_Pixels",   "obj(obj)")
+RT_FUNC(TexAtlasRegionCount, rt_texatlas_region_count,  "Viper.Graphics.TextureAtlas.get_RegionCount", "i64(obj)")
+
 //=============================================================================
 // GUI - APPLICATION
 //=============================================================================
@@ -6090,6 +6107,22 @@ RT_CLASS_BEGIN("Viper.Graphics.SpriteBatch", SpriteBatch, "obj", SpriteBatchNew)
     RT_METHOD("SetTint", "void(i64)", SpriteBatchSetTint)
     RT_METHOD("SetAlpha", "void(i64)", SpriteBatchSetAlpha)
     RT_METHOD("ResetSettings", "void()", SpriteBatchResetSettings)
+    RT_METHOD("DrawAtlas", "void(obj,str,i64,i64)", SpriteBatchDrawAtlas)
+    RT_METHOD("DrawAtlasScaled", "void(obj,str,i64,i64,i64)", SpriteBatchDrawAtlasScaled)
+    RT_METHOD("DrawAtlasEx", "void(obj,str,i64,i64,i64,i64,i64)", SpriteBatchDrawAtlasEx)
+RT_CLASS_END()
+
+// Viper.Graphics.TextureAtlas - named-region sprite sheet atlas
+RT_CLASS_BEGIN("Viper.Graphics.TextureAtlas", TextureAtlas2D, "obj", TexAtlasNew)
+    RT_PROP("Pixels", "obj", TexAtlasGetPixels, none)
+    RT_PROP("RegionCount", "i64", TexAtlasRegionCount, none)
+    RT_METHOD("LoadGrid", "obj(obj,i64,i64)", TexAtlasLoadGrid)
+    RT_METHOD("Add", "void(str,i64,i64,i64,i64)", TexAtlasAdd)
+    RT_METHOD("Has", "i1(str)", TexAtlasHas)
+    RT_METHOD("GetX", "i64(str)", TexAtlasGetX)
+    RT_METHOD("GetY", "i64(str)", TexAtlasGetY)
+    RT_METHOD("GetWidth", "i64(str)", TexAtlasGetW)
+    RT_METHOD("GetHeight", "i64(str)", TexAtlasGetH)
 RT_CLASS_END()
 
 //=============================================================================

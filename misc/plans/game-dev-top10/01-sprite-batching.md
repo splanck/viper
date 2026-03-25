@@ -30,7 +30,6 @@ descriptor-driven path for tools like Aseprite or JSON atlas exporters.
 ```text
 TextureAtlas.New(pixels) -> TextureAtlas
 TextureAtlas.LoadGrid(pixels, frameW, frameH) -> TextureAtlas
-TextureAtlas.LoadJson(pixels, path) -> TextureAtlas
 TextureAtlas.Add(name, x, y, w, h)
 TextureAtlas.Has(name) -> Boolean
 TextureAtlas.GetX(name) -> Integer
@@ -63,7 +62,6 @@ batch.SetBlendMode(mode)   // Alpha first; additive/multiply only if validated
 - Store named regions in a compact array or small map
 - Support:
   - grid slicing for sprite sheets
-  - JSON descriptor loading through the existing JSON runtime
 - Keep v1 scope to rectangular named regions only
 
 ### Phase 2: Extend existing SpriteBatch (1-2 days)

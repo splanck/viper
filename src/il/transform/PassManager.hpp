@@ -104,50 +104,61 @@ class PassManager
     /// @brief Register a module pass using a factory function.
     /// @param id Unique identifier for the pass.
     /// @param factory Function returning a new ModulePass instance.
-    void registerModulePass(const std::string &id, PassRegistry::ModulePassFactory factory)
+    void registerModulePass(const std::string &id,
+                            PassRegistry::ModulePassFactory factory,
+                            bool parallelSafe = false)
     {
-        passRegistry_.registerModulePass(id, std::move(factory));
+        passRegistry_.registerModulePass(id, std::move(factory), parallelSafe);
     }
 
     /// @brief Register a module pass using a callback with analysis access.
     /// @param id Unique identifier for the pass.
     /// @param callback Function implementing the pass transformation.
-    void registerModulePass(const std::string &id, PassRegistry::ModulePassCallback callback)
+    void registerModulePass(const std::string &id,
+                            PassRegistry::ModulePassCallback callback,
+                            bool parallelSafe = false)
     {
-        passRegistry_.registerModulePass(id, std::move(callback));
+        passRegistry_.registerModulePass(id, std::move(callback), parallelSafe);
     }
 
     /// @brief Register a simple module pass without analysis access.
     /// @param id Unique identifier for the pass.
     /// @param fn Function transforming the module (no return value).
-    void registerModulePass(const std::string &id, const std::function<void(core::Module &)> &fn)
+    void registerModulePass(const std::string &id,
+                            const std::function<void(core::Module &)> &fn,
+                            bool parallelSafe = false)
     {
-        passRegistry_.registerModulePass(id, fn);
+        passRegistry_.registerModulePass(id, fn, parallelSafe);
     }
 
     /// @brief Register a function pass using a factory function.
     /// @param id Unique identifier for the pass.
     /// @param factory Function returning a new FunctionPass instance.
-    void registerFunctionPass(const std::string &id, PassRegistry::FunctionPassFactory factory)
+    void registerFunctionPass(const std::string &id,
+                              PassRegistry::FunctionPassFactory factory,
+                              bool parallelSafe = false)
     {
-        passRegistry_.registerFunctionPass(id, std::move(factory));
+        passRegistry_.registerFunctionPass(id, std::move(factory), parallelSafe);
     }
 
     /// @brief Register a function pass using a callback with analysis access.
     /// @param id Unique identifier for the pass.
     /// @param callback Function implementing the pass transformation.
-    void registerFunctionPass(const std::string &id, PassRegistry::FunctionPassCallback callback)
+    void registerFunctionPass(const std::string &id,
+                              PassRegistry::FunctionPassCallback callback,
+                              bool parallelSafe = false)
     {
-        passRegistry_.registerFunctionPass(id, std::move(callback));
+        passRegistry_.registerFunctionPass(id, std::move(callback), parallelSafe);
     }
 
     /// @brief Register a simple function pass without analysis access.
     /// @param id Unique identifier for the pass.
     /// @param fn Function transforming a function (no return value).
     void registerFunctionPass(const std::string &id,
-                              const std::function<void(core::Function &)> &fn)
+                              const std::function<void(core::Function &)> &fn,
+                              bool parallelSafe = false)
     {
-        passRegistry_.registerFunctionPass(id, fn);
+        passRegistry_.registerFunctionPass(id, fn, parallelSafe);
     }
 
     /// @brief Add the SimplifyCFG pass to the pass registry.
@@ -193,12 +204,15 @@ class PassManager
     /// @brief Execute a pipeline of passes on a module.
     /// @param module Module to transform.
     /// @param pipeline Ordered list of pass identifiers to run.
-    void run(core::Module &module, const Pipeline &pipeline) const;
+    /// @return @c true when every pass in the pipeline was materialized and
+    ///         executed successfully; otherwise @c false.
+    bool run(core::Module &module, const Pipeline &pipeline) const;
 
     /// @brief Execute a named registered pipeline on a module.
     /// @param module Module to transform.
     /// @param pipelineId Identifier of the registered pipeline.
-    /// @return True if the pipeline was found and executed.
+    /// @return @c true when the pipeline existed and every pass in it ran
+    ///         successfully; otherwise @c false.
     bool runPipeline(core::Module &module, const std::string &pipelineId) const;
 
   private:
