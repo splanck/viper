@@ -32,6 +32,23 @@ function(viper_add_zia_tests)
     target_link_libraries(test_zia_enums PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_enums test_zia_enums)
 
+    # Async surface tests
+    viper_add_test(test_zia_async ${_VIPER_ZIA_DIR}/test_zia_async.cpp)
+    target_link_libraries(test_zia_async PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_async test_zia_async)
+
+    # String instance-method dispatch tests
+    viper_add_test(test_zia_string_instance_methods
+        ${_VIPER_ZIA_DIR}/test_zia_string_instance_methods.cpp)
+    target_link_libraries(test_zia_string_instance_methods PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_string_instance_methods test_zia_string_instance_methods)
+
+    # Destructor bind-resolution tests
+    viper_add_test(test_zia_destructor_bindings
+        ${_VIPER_ZIA_DIR}/test_zia_destructor_bindings.cpp)
+    target_link_libraries(test_zia_destructor_bindings PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_destructor_bindings test_zia_destructor_bindings)
+
     # Expression tests (arithmetic, operators)
     viper_add_test(test_zia_expressions ${_VIPER_ZIA_DIR}/test_zia_expressions.cpp)
     target_link_libraries(test_zia_expressions PRIVATE ${VIPER_ZIA_LIBS})

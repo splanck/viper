@@ -441,6 +441,13 @@ functionName(arg1, arg2)
 object.methodName(arg1)
 ```
 
+Strings also support instance-style calls for common `Viper.String` operations:
+
+```viper
+var name = "  viper  ".Trim().ToUpper();
+var part = "abcdef".Substring(1, 3);   // "bcd"
+```
+
 #### Named Arguments
 
 Arguments can be passed by name using `name: value` syntax:
@@ -479,6 +486,9 @@ var pair = (42, "hello");
 var num = pair.0;           // 42
 var str = pair.1;           // "hello"
 ```
+
+> **Known limitation:** Tuple destructuring in `var` declarations (`var (x, y) = expr;`)
+> is not yet supported. Use `.0` / `.1` element access instead.
 
 ### Collection Literals
 
@@ -664,7 +674,19 @@ Supported patterns:
 - Binding identifiers (`x`)
 - Tuple patterns with two elements (`(x, y)`)
 - Constructor patterns (`Point(x, y)`, `Some(value)`, `None`)
+- OR patterns (`pattern1 | pattern2 | pattern3 => ...`) — multiple alternatives for one arm
+- Enum variant patterns (`Color.Red`, `Direction.Left`)
 - Guards (`pattern if condition => ...`)
+
+OR pattern example:
+
+```viper
+match x {
+    1 | 2 | 3 => Say("small");
+    10 | 20 => Say("round");
+    _ => Say("other");
+}
+```
 
 ### Try/Catch/Finally Statement
 
@@ -673,17 +695,19 @@ Structured exception handling for runtime errors:
 ```viper
 try {
     riskyOperation();
-} catch (e: Error) {
-    handleError(e);
-} finally {
-    cleanup();
+} catch(e) {
+    Say("caught: " + e);
 }
 ```
 
 - The `try` block is always required.
-- The `catch` block receives the error object. The catch variable name and type annotation are required.
-- The `finally` block runs whether or not an exception was thrown.
+- The `catch` block handles exceptions. Named error binding uses parentheses: `catch(e) { ... }`.
+  Anonymous catch `catch { ... }` is also supported.
 - Both `catch` and `finally` are optional, but at least one must be present.
+- `finally` runs regardless of whether an exception was thrown.
+
+> **Known limitation:** Typed catch syntax (`catch(e: RuntimeError)`) parses but
+> currently fails during IL verification. Use untyped `catch(e)` as a workaround.
 
 ### Throw Statement
 
@@ -744,6 +768,22 @@ func findMax[T: Comparable](a: T, b: T) -> T {
 ```
 
 Type parameters are declared in `[...]` after the function name. Constraints (like `T: Comparable`) restrict the type parameter to types implementing the named interface.
+
+### Async Functions
+
+Use `async func` to return a `Viper.Threads.Future`, and `await` to unwrap the completed payload:
+
+```viper
+async func fetchName() -> String {
+    return "viper";
+}
+
+func start() {
+    var name: String = await fetchName();
+}
+```
+
+`await` is valid on values of type `Viper.Threads.Future`. The awaited value is unboxed back to the async function's declared return type.
 
 ### Global Variable Declaration
 
@@ -853,16 +893,17 @@ Properties provide computed get/set accessors for entity fields:
 entity Temperature {
     Number celsius;
 
-    property fahrenheit: Number {
+    expose property fahrenheit: Number {
         get { return self.celsius * 1.8 + 32.0; }
-        set(value) { self.celsius = (value - 32.0) / 1.8; }
+        set(v) { self.celsius = (v - 32.0) / 1.8; }
     }
 }
 ```
 
 - The `get` body returns the computed value.
-- The `set` body receives a `value` parameter (name declared in parentheses).
+- The `set` body receives a parameter whose name is declared in parentheses.
 - Either `get` or `set` may be omitted for read-only or write-only properties.
+- Use `expose property` when the property should be accessible outside the declaring type.
 - Properties are accessed like fields: `temp.fahrenheit` calls the getter, `temp.fahrenheit = 212.0` calls the setter.
 
 ### Static Members
@@ -904,7 +945,10 @@ entity FileHandle {
 
 - At most one `deinit` block per entity.
 - The destructor automatically releases reference-typed fields after the user body executes.
-- The generated IL function is named `__dtor_TypeName`.
+- The generated IL function is named `TypeName.__dtor`.
+- Bound runtime/module symbols remain visible inside `deinit`, just like other entity members.
+- If you need deterministic cleanup, releasing the last reference explicitly with
+  `Viper.Memory.Release(handle)` will run `deinit` before the object storage is freed.
 
 ---
 
@@ -997,7 +1041,7 @@ At module initialization, a `__zia_iface_init` function registers each interface
 
 ## Enums
 
-Enums define a type with a fixed set of named integer constants. Each variant is lowered to an `I64` constant at the IL level — no new opcodes or runtime support required.
+Enums define a type with a fixed set of named integer constants. Each variant is lowered to an `I64` constant at the IL level, while source programs still treat the value as its enum type.
 
 ### Declaration
 
@@ -1034,8 +1078,6 @@ enum Priority {
 }
 ```
 
-Negative values are supported: `Backward = -1`.
-
 ### Variant Access
 
 Access variants with dot notation:
@@ -1049,6 +1091,14 @@ Enum values can be compared with `==` and `!=`:
 
 ```viper
 if c != Color.Red {
+    // ...
+}
+```
+
+Enum variants are not implicitly typed as `Integer` in source code. Compare them to variants of the same enum, or use `match` for branching:
+
+```viper
+if s == HttpStatus.NOT_FOUND {
     // ...
 }
 ```
@@ -1416,6 +1466,7 @@ The following words are reserved and cannot be used as identifiers:
 ```text
 and         as          bind        break       catch
 continue    deinit      else        entity      enum
+async       await
 expose      extends     false       final       finally
 for         func        guard       hide        if
 implements  in          interface   is          match
@@ -1424,6 +1475,8 @@ or          override    property    return      self
 static      super       throw       true        try
 value       var         while
 ```
+
+`async func` returns `Viper.Threads.Future`. `await` is only valid on `Viper.Threads.Future` values and unwraps the payload produced by an async call.
 
 ### Reserved for Future Use
 
@@ -1489,7 +1542,7 @@ continueStmt ::= "continue" ";"
 guardStmt   ::= "guard" expr "else" block
 matchStmt   ::= "match" expr "{" matchArm* "}"
 matchArm    ::= pattern ["if" expr] "=>" (block | expr ";")
-tryStmt     ::= "try" block ["catch" "(" IDENT ":" type ")" block] ["finally" block]
+tryStmt     ::= "try" block ["catch" ["(" IDENT [":" type] ")"] block] ["finally" block]
 throwStmt   ::= "throw" expr ";"
 exprStmt    ::= expr ";"
 ```

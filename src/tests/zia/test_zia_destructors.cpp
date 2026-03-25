@@ -261,6 +261,40 @@ func start() {
     EXPECT_TRUE(hasFunction(result.module, "Handle.__dtor"));
 }
 
+/// @brief Test that managed releases route through the shared destructor dispatcher.
+TEST(ZiaDestructors, ExplicitReleaseInvokesDispatcher)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+bind Viper.Memory;
+
+entity Resource {
+    deinit { }
+}
+
+func start() {
+    var r = new Resource();
+    Release(r);
+}
+)";
+
+    CompilerInput input{.source = source, .path = "test_dtor_dispatch.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(hasFunction(result.module, "__zia_dtor_dispatch"));
+    EXPECT_TRUE(hasCallee(result.module, "makeResource", "__zia_dtor_dispatch") ||
+                hasCallee(result.module, "main", "__zia_dtor_dispatch"));
+    EXPECT_TRUE(hasCallee(result.module, "__zia_dtor_dispatch", "Resource.__dtor"));
+    EXPECT_TRUE(hasCallee(result.module, "main", "rt_heap_release_deferred") ||
+                hasCallee(result.module, "makeResource", "rt_heap_release_deferred"));
+    EXPECT_TRUE(hasCallee(result.module, "main", "rt_obj_free") ||
+                hasCallee(result.module, "makeResource", "rt_obj_free"));
+}
+
 } // anonymous namespace
 
 int main()

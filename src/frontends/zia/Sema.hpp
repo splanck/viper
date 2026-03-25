@@ -288,16 +288,24 @@ class Sema
         return mangledName;
     }
 
-    /// @brief Get the runtime getter function name for a field expression.
+    /// @brief Get the resolved getter function name for a field expression.
     /// @param expr The field expression to look up.
-    /// @return The getter name (e.g., "Viper.Math.get_Pi") or empty string.
+    /// @return The getter name (e.g., "Viper.Math.get_Pi" or "Counter.get_count") or empty
+    /// string.
     ///
-    /// @details For field expressions that resolve to runtime class property getters
-    /// (like Viper.Math.Pi), this returns the resolved getter function name.
-    std::string runtimeFieldGetter(const FieldExpr *expr) const
+    /// @details For field expressions that resolve to runtime or user-defined property
+    /// getters, this returns the lowered getter function name.
+    std::string resolvedFieldGetter(const FieldExpr *expr) const
     {
-        auto it = runtimeFieldGetters_.find(expr);
-        return it != runtimeFieldGetters_.end() ? it->second : "";
+        auto it = resolvedFieldGetters_.find(expr);
+        return it != resolvedFieldGetters_.end() ? it->second : "";
+    }
+
+    /// @brief Get the resolved setter function name for a field assignment.
+    std::string resolvedFieldSetter(const FieldExpr *expr) const
+    {
+        auto it = resolvedFieldSetters_.find(expr);
+        return it != resolvedFieldSetters_.end() ? it->second : "";
     }
 
     /// @brief Get the resolved direct-call target for a user-defined function call.
@@ -305,6 +313,12 @@ class Sema
     {
         auto it = resolvedFunctionCallees_.find(expr);
         return it != resolvedFunctionCallees_.end() ? it->second : "";
+    }
+
+    FunctionDecl *resolvedFunctionDecl(const CallExpr *expr) const
+    {
+        auto it = resolvedFunctionDecls_.find(expr);
+        return it != resolvedFunctionDecls_.end() ? it->second : nullptr;
     }
 
     /// @brief Get the resolved method declaration for a call site.
@@ -641,10 +655,20 @@ class Sema
     /// @param ownerType The type containing this field.
     void analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType);
 
+    /// @brief Analyze a property declaration within a type.
+    void analyzePropertyDecl(PropertyDecl &decl, TypeRef ownerType);
+
+    /// @brief Analyze a destructor declaration within an entity type.
+    void analyzeDestructorDecl(DestructorDecl &decl, TypeRef ownerType);
+
     /// @brief Analyze a method declaration within a type.
     /// @param decl The method declaration.
     /// @param ownerType The type containing this method.
     void analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType);
+
+    /// @brief Find a property declaration by owner type and property name.
+    const PropertyDecl *findPropertyDecl(const std::string &ownerName,
+                                         const std::string &propertyName) const;
 
     /// @brief Build a semantic function type for a function declaration.
     TypeRef functionTypeForDecl(const FunctionDecl &decl) const;
@@ -1471,6 +1495,9 @@ class Sema
     /// @brief Resolved direct-call targets for user-defined functions.
     std::unordered_map<const CallExpr *, std::string> resolvedFunctionCallees_;
 
+    /// @brief Resolved function declarations for direct-call sites.
+    std::unordered_map<const CallExpr *, FunctionDecl *> resolvedFunctionDecls_;
+
     /// @brief Resolved method declarations for call sites.
     std::unordered_map<const CallExpr *, MethodDecl *> resolvedMethodDecls_;
 
@@ -1483,10 +1510,11 @@ class Sema
     /// @brief Resolved init declarations for new-expressions.
     std::unordered_map<const NewExpr *, MethodDecl *> resolvedInitDecls_;
 
-    /// @brief Map from field expressions to their resolved runtime getter names.
-    /// @details For namespace-style property access like Viper.Math.Pi, this maps
-    /// the FieldExpr to "Viper.Math.get_Pi" so the lowerer can emit a getter call.
-    std::unordered_map<const FieldExpr *, std::string> runtimeFieldGetters_;
+    /// @brief Map from field expressions to their resolved getter names.
+    std::unordered_map<const FieldExpr *, std::string> resolvedFieldGetters_;
+
+    /// @brief Map from field-expression assignment targets to their resolved setter names.
+    std::unordered_map<const FieldExpr *, std::string> resolvedFieldSetters_;
 
     /// @brief Set of bind paths seen in the current module (file binds).
     std::unordered_set<std::string> binds_;

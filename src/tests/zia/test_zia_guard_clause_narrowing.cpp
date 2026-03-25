@@ -130,6 +130,45 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+/// @brief Guard-clause narrowing must also lower optional primitives as non-optional values.
+TEST(ZiaGuardClause, PrimitiveOptionalGuardNarrowsForLowering)
+{
+    const std::string src = R"(
+module Test;
+
+func emitValue(x: Integer?) {
+    if (x == null) {
+        return;
+    }
+
+    Integer narrowed = x;
+    Viper.Terminal.SayInt(x);
+    Viper.Terminal.SayInt(narrowed);
+}
+
+func start() {
+    emitValue(42);
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = src, .path = "guard_clause_integer.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for PrimitiveOptionalGuardNarrowsForLowering:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 int main(int argc, char **argv)

@@ -311,6 +311,12 @@ class Lowerer
     /// lowering to emit ConstInt for enum variant access.
     std::unordered_map<std::string, int64_t> enumVariantValues_;
 
+    /// @brief True while lowering an async worker trampoline.
+    bool currentAsyncWorker_{false};
+
+    /// @brief Owned boxed or retained argument values that must be released on worker exit.
+    std::vector<Value> asyncOwnedValues_;
+
     /// @brief Current value type context (for self access).
     const ValueTypeInfo *currentValueType_{nullptr};
 
@@ -364,7 +370,7 @@ class Lowerer
     struct DeferredRelease
     {
         Value value;     ///< The temporary SSA value to release.
-        bool isString;   ///< true = rt_str_release_maybe; false = rt_heap_release.
+        bool isString;   ///< true = rt_str_release_maybe; false = managed object release.
         size_t blockIdx; ///< Block where this temp was defined (for SSA safety).
     };
 
@@ -376,6 +382,16 @@ class Lowerer
 
     /// @brief Emit release calls for all deferred temporaries, then clear.
     void releaseDeferredTemps();
+
+    /// @brief Emit the Zia-managed release sequence for a reference-counted value.
+    /// @details Pointer values defer the decref so user `deinit` can run before
+    ///          `rt_obj_free`. String values route directly to
+    ///          `rt_str_release_maybe`.
+    void emitManagedRelease(Value value, bool isString);
+
+    /// @brief Emit the Zia-managed release sequence and return the new retain count.
+    /// @details Used for explicit `Viper.Memory.Release(...)` calls.
+    Value emitManagedReleaseRet(Value value, bool isString);
 
     /// @brief Remove a value from the deferred list (it was consumed by a
     ///        store-to-slot or return, so it must NOT be released).
@@ -521,6 +537,12 @@ class Lowerer
     ///   2. For each implementing entity, allocates an itable, populates it
     ///      with function pointers, and binds it via rt_bind_interface
     void emitItableInit();
+
+    /// @brief Emit the destructor dispatcher used by managed release paths.
+    /// @details Generates `__zia_dtor_dispatch(self: Ptr) -> Void`, which
+    ///          switches on `rt_obj_class_id(self)` and invokes the matching
+    ///          synthesized `Type.__dtor` for Zia entities.
+    void emitDestructorDispatch();
 
     /// @brief Lower a namespace declaration.
     /// @param decl The namespace declaration.

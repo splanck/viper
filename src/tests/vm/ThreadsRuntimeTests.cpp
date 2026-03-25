@@ -29,6 +29,10 @@ int main()
                 Type(Type::Kind::Ptr),
                 {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
     b.addExtern("Viper.Threads.Thread.Join", Type(Type::Kind::Void), {Type(Type::Kind::Ptr)});
+    b.addExtern("Viper.Threads.Async.Run",
+                Type(Type::Kind::Ptr),
+                {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
+    b.addExtern("Viper.Threads.Future.Get", Type(Type::Kind::Ptr), {Type(Type::Kind::Ptr)});
 
     // worker() -> void: g = g + 1
     auto &worker = b.startFunction("worker", Type(Type::Kind::Void), {});
@@ -72,6 +76,56 @@ int main()
     workerEntry.instructions.push_back(storeG);
 
     b.emitRet(std::optional<Value>{}, {1, 1, 5});
+
+    // worker_async(ptr) -> ptr: g = g + 1; return null
+    auto &workerAsync =
+        b.startFunction("worker_async", Type(Type::Kind::Ptr), {{"env", Type(Type::Kind::Ptr)}});
+    auto &workerAsyncEntry = b.createBlock(workerAsync, "entry", workerAsync.params);
+    b.setInsertPoint(workerAsyncEntry);
+
+    Instr asyncGAddr;
+    asyncGAddr.result = b.reserveTempId();
+    asyncGAddr.op = Opcode::GAddr;
+    asyncGAddr.type = Type(Type::Kind::Ptr);
+    asyncGAddr.operands.push_back(Value::global("g"));
+    asyncGAddr.loc = {1, 1, 6};
+    workerAsyncEntry.instructions.push_back(asyncGAddr);
+    const unsigned asyncGPtrId = *asyncGAddr.result;
+
+    Instr asyncLoadG;
+    asyncLoadG.result = b.reserveTempId();
+    asyncLoadG.op = Opcode::Load;
+    asyncLoadG.type = Type(Type::Kind::I64);
+    asyncLoadG.operands.push_back(Value::temp(asyncGPtrId));
+    asyncLoadG.loc = {1, 1, 7};
+    workerAsyncEntry.instructions.push_back(asyncLoadG);
+    const unsigned asyncGValId = *asyncLoadG.result;
+
+    Instr asyncAdd1;
+    asyncAdd1.result = b.reserveTempId();
+    asyncAdd1.op = Opcode::Add;
+    asyncAdd1.type = Type(Type::Kind::I64);
+    asyncAdd1.operands.push_back(Value::temp(asyncGValId));
+    asyncAdd1.operands.push_back(Value::constInt(1));
+    asyncAdd1.loc = {1, 1, 8};
+    workerAsyncEntry.instructions.push_back(asyncAdd1);
+    const unsigned asyncNextId = *asyncAdd1.result;
+
+    Instr asyncStoreG;
+    asyncStoreG.op = Opcode::Store;
+    asyncStoreG.type = Type(Type::Kind::I64);
+    asyncStoreG.operands.push_back(Value::temp(asyncGPtrId));
+    asyncStoreG.operands.push_back(Value::temp(asyncNextId));
+    asyncStoreG.loc = {1, 1, 9};
+    workerAsyncEntry.instructions.push_back(asyncStoreG);
+
+    Instr asyncNullRet;
+    asyncNullRet.result = b.reserveTempId();
+    asyncNullRet.op = Opcode::ConstNull;
+    asyncNullRet.type = Type(Type::Kind::Ptr);
+    asyncNullRet.loc = {1, 1, 10};
+    workerAsyncEntry.instructions.push_back(asyncNullRet);
+    b.emitRet(Value::temp(*asyncNullRet.result), {1, 1, 11});
 
     // main() -> i64
     auto &mainFn = b.startFunction("main", Type(Type::Kind::I64), {});
@@ -122,15 +176,45 @@ int main()
     b.emitCall(
         "Viper.Threads.Thread.Join", {Value::temp(threadId)}, std::optional<Value>{}, {1, 2, 6});
 
+    // Reset global and exercise Async.Run/Future.Get through the VM-aware extern bridge.
+    Instr storeAsyncInit;
+    storeAsyncInit.op = Opcode::Store;
+    storeAsyncInit.type = Type(Type::Kind::I64);
+    storeAsyncInit.operands.push_back(Value::temp(mainGPtrId));
+    storeAsyncInit.operands.push_back(Value::constInt(41));
+    storeAsyncInit.loc = {1, 2, 6};
+    mainEntry.instructions.push_back(storeAsyncInit);
+
+    Instr asyncEntryPtr;
+    asyncEntryPtr.result = b.reserveTempId();
+    asyncEntryPtr.op = Opcode::GAddr;
+    asyncEntryPtr.type = Type(Type::Kind::Ptr);
+    asyncEntryPtr.operands.push_back(Value::global("worker_async"));
+    asyncEntryPtr.loc = {1, 2, 7};
+    mainEntry.instructions.push_back(asyncEntryPtr);
+    const unsigned asyncEntryId = *asyncEntryPtr.result;
+
+    unsigned futureId = b.reserveTempId();
+    b.emitCall("Viper.Threads.Async.Run",
+               {Value::temp(asyncEntryId), Value::temp(nullId)},
+               Value::temp(futureId),
+               {1, 2, 8});
+
+    unsigned awaitedId = b.reserveTempId();
+    b.emitCall("Viper.Threads.Future.Get",
+               {Value::temp(futureId)},
+               Value::temp(awaitedId),
+               {1, 2, 9});
+
     Instr loadFinal;
     loadFinal.result = b.reserveTempId();
     loadFinal.op = Opcode::Load;
     loadFinal.type = Type(Type::Kind::I64);
     loadFinal.operands.push_back(Value::temp(mainGPtrId));
-    loadFinal.loc = {1, 2, 7};
+    loadFinal.loc = {1, 2, 10};
     mainEntry.instructions.push_back(loadFinal);
 
-    b.emitRet(Value::temp(*loadFinal.result), {1, 2, 8});
+    b.emitRet(Value::temp(*loadFinal.result), {1, 2, 11});
 
     il::vm::VM vm(m);
     const int64_t rc = vm.run();

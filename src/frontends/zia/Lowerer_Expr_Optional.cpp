@@ -464,7 +464,16 @@ LowerResult Lowerer::lowerAwait(AwaitExpr *expr)
 
     // Emit call to Viper.Threads.Future.Get(future) which blocks until resolved.
     Value result = emitCallRet(Type(Type::Kind::Ptr), runtime::kFutureGet, {futureResult.value});
-    return {result, Type(Type::Kind::Ptr)};
+
+    TypeRef awaitedType = sema_.typeOf(expr);
+    if (!awaitedType || awaitedType->kind == TypeKindSem::Any ||
+        awaitedType->kind == TypeKindSem::Unknown || awaitedType->kind == TypeKindSem::Void)
+        return {result, Type(Type::Kind::Ptr)};
+
+    Type ilType = mapType(awaitedType);
+    if (awaitedType->kind == TypeKindSem::Value || ilType.kind != Type::Kind::Ptr)
+        return emitUnboxValue(result, ilType, awaitedType);
+    return {result, ilType};
 }
 
 } // namespace il::frontends::zia

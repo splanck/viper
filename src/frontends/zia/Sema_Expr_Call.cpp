@@ -537,6 +537,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         {
             TypeRef funcType = functionDeclTypes_[func];
             resolvedFunctionCallees_[expr] = loweredName;
+            resolvedFunctionDecls_[expr] = func;
             exprTypes_[expr->callee.get()] = funcType;
             validateCallArgs(expr, funcType, loweredName);
             return funcType && funcType->kind == TypeKindSem::Function ? funcType->returnType()
@@ -583,6 +584,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         {
             TypeRef funcType = functionDeclTypes_[func];
             resolvedFunctionCallees_[expr] = loweredName;
+            resolvedFunctionDecls_[expr] = func;
             exprTypes_[expr->callee.get()] = funcType;
             validateCallArgs(expr, funcType, loweredName);
             return funcType && funcType->kind == TypeKindSem::Function ? funcType->returnType()
@@ -841,6 +843,78 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             {
                 analyzeArgs();
                 return resolveMethodReturnType(method->returnKind, baseType);
+            }
+
+            std::string fullMethodName = "Viper.String." + fieldExpr->field;
+            Symbol *sym = nullptr;
+
+            if (const auto *rtClass = il::runtime::findRuntimeClassByQName("Viper.String"))
+            {
+                for (const auto &m : rtClass->methods)
+                {
+                    if (m.name && iequals(m.name, fieldExpr->field) && m.target)
+                    {
+                        sym = lookupSymbol(m.target);
+                        if (sym && sym->kind == Symbol::Kind::Function)
+                        {
+                            fullMethodName = m.target;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!sym)
+                sym = lookupSymbol(fullMethodName);
+
+            if (sym && sym->kind == Symbol::Kind::Function)
+            {
+                analyzeArgs();
+
+                if (sym->type && sym->type->kind == TypeKindSem::Function)
+                {
+                    const auto paramTys = sym->type->paramTypes();
+                    const size_t expectedArgs = paramTys.size();
+                    const size_t actualArgs = expr->args.size();
+
+                    if (actualArgs > expectedArgs)
+                    {
+                        error(expr->loc,
+                              "Too many arguments to '" + fieldExpr->field + "': expected " +
+                                  std::to_string(expectedArgs) + ", got " +
+                                  std::to_string(actualArgs));
+                    }
+                    else if (actualArgs < expectedArgs)
+                    {
+                        error(expr->loc,
+                              "Too few arguments to '" + fieldExpr->field + "': expected " +
+                                  std::to_string(expectedArgs) + ", got " +
+                                  std::to_string(actualArgs));
+                    }
+
+                    const size_t checkCount = std::min(actualArgs, expectedArgs);
+                    for (size_t i = 0; i < checkCount; ++i)
+                    {
+                        TypeRef argType = exprTypes_.count(expr->args[i].value.get())
+                                              ? exprTypes_[expr->args[i].value.get()]
+                                              : nullptr;
+                        TypeRef paramType = paramTys[i];
+
+                        if (!argType || !paramType || argType->kind == TypeKindSem::Unknown ||
+                            paramType->kind == TypeKindSem::Unknown)
+                            continue;
+
+                        if (!paramType->isAssignableFrom(*argType))
+                            errorTypeMismatch(expr->args[i].value->loc, paramType, argType);
+                    }
+                }
+
+                if (sym->isExtern)
+                    runtimeCallees_[expr] = fullMethodName;
+
+                if (sym->type && sym->type->kind == TypeKindSem::Function)
+                    return sym->type->returnType();
+                return sym->type;
             }
         }
 

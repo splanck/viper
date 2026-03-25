@@ -172,7 +172,9 @@ Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag)
 
 TypeRef Sema::functionTypeForDecl(const FunctionDecl &decl) const
 {
-    TypeRef returnType = decl.returnType ? resolveType(decl.returnType.get()) : types::voidType();
+    TypeRef returnType = decl.isAsync ? types::runtimeClass("Viper.Threads.Future")
+                                      : (decl.returnType ? resolveType(decl.returnType.get())
+                                                         : types::voidType());
     std::vector<TypeRef> paramTypes;
     paramTypes.reserve(decl.params.size());
     for (const auto &param : decl.params)

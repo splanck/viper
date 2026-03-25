@@ -33,17 +33,51 @@ using namespace runtime;
 
 LowerResult Lowerer::lowerField(FieldExpr *expr)
 {
-    // BUG-012 fix: Check if this field expression was resolved as a runtime getter
-    // (e.g., Viper.Math.Pi -> Viper.Math.get_Pi)
-    std::string getterName = sema_.runtimeFieldGetter(expr);
+    auto dottedName = [](Expr *node, std::string &out, auto &self) -> bool
+    {
+        if (auto *ident = dynamic_cast<IdentExpr *>(node))
+        {
+            out = ident->name;
+            return true;
+        }
+        if (auto *field = dynamic_cast<FieldExpr *>(node))
+        {
+            std::string base;
+            if (!self(field->base.get(), base, self))
+                return false;
+            out = base + "." + field->field;
+            return true;
+        }
+        return false;
+    };
+
+    // Property access lowers to a synthesized getter call for both runtime and
+    // user-defined properties.
+    std::string getterName = sema_.resolvedFieldGetter(expr);
     if (!getterName.empty())
     {
-        // Get the return type of the getter from the expression type
         TypeRef resultType = sema_.typeOf(expr);
         Type ilType = mapType(resultType);
-        // Emit a no-argument call to the getter
-        Value result = emitCallRet(ilType, getterName, {});
+        TypeRef baseType = sema_.typeOf(expr->base.get());
+        std::vector<Value> args;
+        if (!baseType || baseType->kind != TypeKindSem::Module)
+        {
+            auto base = lowerExpr(expr->base.get());
+            args.push_back(base.value);
+        }
+        Value result = emitCallRet(ilType, getterName, args);
         return {result, ilType};
+    }
+
+    // Handle dotted enum variant access even when the base expression itself was
+    // not cached as an Enum type during semantic analysis (e.g. Color.Red).
+    std::string dottedBase;
+    if (dottedName(expr->base.get(), dottedBase, dottedName))
+    {
+        std::string key = dottedBase + "." + expr->field;
+        auto it = enumVariantValues_.find(key);
+        if (it != enumVariantValues_.end())
+            return {Value::constInt(it->second), Type(Type::Kind::I64)};
     }
 
     // Get the type of the base expression first (before lowering)

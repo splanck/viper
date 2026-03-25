@@ -161,6 +161,32 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
             // (e.g., Page? narrowed to Page), but reassignment should still accept
             // the original type.
             {
+                if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get()))
+                {
+                    TypeRef baseType = typeOf(fieldExpr->base.get());
+                    if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType())
+                        baseType = baseType->innerType();
+
+                    if (baseType &&
+                        (baseType->kind == TypeKindSem::Entity || baseType->kind == TypeKindSem::Value))
+                    {
+                        if (const PropertyDecl *prop = findPropertyDecl(baseType->name, fieldExpr->field))
+                        {
+                            if (!prop->setterBody)
+                            {
+                                error(expr->loc,
+                                      "Property '" + fieldExpr->field + "' of type '" +
+                                          baseType->name + "' is read-only");
+                            }
+                            else
+                            {
+                                resolvedFieldSetters_[fieldExpr] =
+                                    baseType->name + ".set_" + prop->name;
+                            }
+                        }
+                    }
+                }
+
                 TypeRef assignTarget = leftType;
                 if (expr->left->kind == ExprKind::Ident)
                 {

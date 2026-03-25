@@ -460,6 +460,10 @@ void Sema::analyzeValueDecl(ValueDecl &decl)
         {
             analyzeMethodDecl(*static_cast<MethodDecl *>(member.get()), selfType);
         }
+        else if (member->kind == DeclKind::Property)
+        {
+            analyzePropertyDecl(*static_cast<PropertyDecl *>(member.get()), selfType);
+        }
     }
 
     // Validate interface implementations after members are known
@@ -479,6 +483,7 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
 {
     // Register field types (if applicable)
     std::unordered_set<std::string> seenFields;
+    std::unordered_set<std::string> seenProperties;
     if (includeFields)
     {
         for (auto &member : decl.members)
@@ -498,6 +503,32 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
                 std::string fieldKey = decl.name + "." + field->name;
                 fieldTypes_[fieldKey] = fieldType;
                 memberVisibility_[fieldKey] = field->visibility;
+            }
+            else if (member->kind == DeclKind::Property)
+            {
+                auto *prop = static_cast<PropertyDecl *>(member.get());
+                if (!seenProperties.insert(prop->name).second || seenFields.contains(prop->name))
+                {
+                    error(prop->loc,
+                          "Duplicate definition of '" + prop->name + "' in type '" + decl.name +
+                              "'");
+                    continue;
+                }
+
+                TypeRef propType = prop->type ? resolveTypeNode(prop->type.get()) : types::unknown();
+                std::string getterKey = decl.name + ".get_" + prop->name;
+                TypeRef getterType = types::function({}, propType);
+                methodTypes_[getterKey] = getterType;
+                memberVisibility_[decl.name + "." + prop->name] = prop->visibility;
+                memberVisibility_[getterKey] = prop->visibility;
+
+                if (prop->setterBody)
+                {
+                    std::string setterKey = decl.name + ".set_" + prop->name;
+                    TypeRef setterType = types::function({propType}, types::voidType());
+                    methodTypes_[setterKey] = setterType;
+                    memberVisibility_[setterKey] = prop->visibility;
+                }
             }
         }
     }
@@ -703,6 +734,14 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
         {
             analyzeMethodDecl(*static_cast<MethodDecl *>(member.get()), selfType);
         }
+        else if (member->kind == DeclKind::Property)
+        {
+            analyzePropertyDecl(*static_cast<PropertyDecl *>(member.get()), selfType);
+        }
+        else if (member->kind == DeclKind::Destructor)
+        {
+            analyzeDestructorDecl(*static_cast<DestructorDecl *>(member.get()), selfType);
+        }
     }
 
     // Validate interface implementations
@@ -798,8 +837,11 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl)
 
     currentFunction_ = &decl;
     TypeRef funcType = functionDeclTypes_.count(&decl) ? functionDeclTypes_[&decl] : functionTypeForDecl(decl);
-    expectedReturnType_ = funcType && funcType->kind == TypeKindSem::Function ? funcType->returnType()
-                                                                               : types::voidType();
+    if (decl.isAsync)
+        expectedReturnType_ = decl.returnType ? resolveTypeNode(decl.returnType.get()) : types::voidType();
+    else
+        expectedReturnType_ = funcType && funcType->kind == TypeKindSem::Function ? funcType->returnType()
+                                                                                   : types::voidType();
 
     pushScope(decl.loc);
 
@@ -875,6 +917,129 @@ void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType)
     sym.isFinal = decl.isFinal;
     sym.decl = &decl;
     defineSymbol(decl.name, sym);
+}
+
+void Sema::analyzePropertyDecl(PropertyDecl &decl, TypeRef ownerType)
+{
+    TypeRef propType = decl.type ? resolveTypeNode(decl.type.get()) : types::unknown();
+
+    auto analyzeBody = [&](Stmt *body, TypeRef returnType, bool defineSetterParam) {
+        if (!body)
+            return;
+
+        TypeRef savedSelfType = currentSelfType_;
+        TypeRef savedExpectedReturnType = expectedReturnType_;
+
+        currentSelfType_ = ownerType;
+        expectedReturnType_ = returnType;
+
+        pushScope(decl.loc);
+
+        if (!decl.isStatic)
+        {
+            Symbol selfSym;
+            selfSym.kind = Symbol::Kind::Parameter;
+            selfSym.name = "self";
+            selfSym.type = ownerType;
+            selfSym.isFinal = true;
+            defineSymbol("self", selfSym, decl.loc);
+            markInitialized("self");
+        }
+
+        if (defineSetterParam)
+        {
+            Symbol paramSym;
+            paramSym.kind = Symbol::Kind::Parameter;
+            paramSym.name = decl.setterParam;
+            paramSym.type = propType;
+            paramSym.isFinal = true;
+            defineSymbol(decl.setterParam, paramSym, decl.loc);
+            markInitialized(decl.setterParam);
+        }
+
+        analyzeStmt(body);
+
+        if (returnType && returnType->kind != TypeKindSem::Void && !stmtAlwaysExits(body))
+        {
+            warn(WarningCode::W008_MissingReturn,
+                 decl.loc,
+                 "Property '" + decl.name + "' may not return a value on all code paths");
+        }
+
+        popScope(scopeEndForStmt(body));
+        expectedReturnType_ = savedExpectedReturnType;
+        currentSelfType_ = savedSelfType;
+    };
+
+    analyzeBody(decl.getterBody.get(), propType, false);
+    if (decl.setterBody)
+        analyzeBody(decl.setterBody.get(), types::voidType(), true);
+}
+
+const PropertyDecl *Sema::findPropertyDecl(const std::string &ownerName,
+                                           const std::string &propertyName) const
+{
+    auto scanMembers = [&](const auto *typeDecl) -> const PropertyDecl * {
+        if (!typeDecl)
+            return nullptr;
+        for (const auto &member : typeDecl->members)
+        {
+            if (member->kind != DeclKind::Property)
+                continue;
+            auto *prop = static_cast<PropertyDecl *>(member.get());
+            if (prop->name == propertyName)
+                return prop;
+        }
+        return nullptr;
+    };
+
+    auto entityIt = entityDecls_.find(ownerName);
+    if (entityIt != entityDecls_.end())
+    {
+        if (const PropertyDecl *prop = scanMembers(entityIt->second))
+            return prop;
+        if (!entityIt->second->baseClass.empty())
+            return findPropertyDecl(entityIt->second->baseClass, propertyName);
+        return nullptr;
+    }
+
+    auto valueIt = valueDecls_.find(ownerName);
+    if (valueIt != valueDecls_.end())
+        return scanMembers(valueIt->second);
+
+    return nullptr;
+}
+
+void Sema::analyzeDestructorDecl(DestructorDecl &decl, TypeRef ownerType)
+{
+    if (!decl.body)
+        return;
+
+    TypeRef savedSelfType = currentSelfType_;
+    TypeRef savedExpectedReturnType = expectedReturnType_;
+    FunctionDecl *savedFunction = currentFunction_;
+
+    currentSelfType_ = ownerType;
+    expectedReturnType_ = types::voidType();
+    currentFunction_ = nullptr;
+
+    pushScope(decl.loc);
+
+    Symbol selfSym;
+    selfSym.kind = Symbol::Kind::Parameter;
+    selfSym.name = "self";
+    selfSym.type = ownerType;
+    selfSym.isFinal = true;
+    defineSymbol("self", selfSym, decl.loc);
+    markInitialized("self");
+
+    analyzeStmt(decl.body.get());
+
+    popScope(scopeEndForStmt(decl.body.get()));
+
+    currentFunction_ = savedFunction;
+    expectedReturnType_ = savedExpectedReturnType;
+    currentSelfType_ = savedSelfType;
 }
 
 /// @brief Analyze a method declaration body (implicit self parameter, parameters, body).

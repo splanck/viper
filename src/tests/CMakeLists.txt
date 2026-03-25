@@ -631,6 +631,12 @@ set(ZIA_LANG_TESTS
         30_value_types
         31_typed_catch_list_shorthand
         32_overloading_inheritance
+        33_enum_runtime
+        34_async_functions
+        35_optional_primitive_narrowing
+        36_entity_properties
+        37_string_instance_methods
+        38_deinit_bindings
 )
 
 foreach (test_name IN LISTS ZIA_LANG_TESTS)

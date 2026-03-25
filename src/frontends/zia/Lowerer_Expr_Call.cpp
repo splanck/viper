@@ -230,6 +230,14 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             args.push_back(argValue);
         }
 
+        if (resolvedFunction == kHeapRelease && args.size() == 1)
+        {
+            TypeRef argType = sema_.typeOf(expr->args[0].value.get());
+            bool isString = isStringType(argType);
+            Value releaseCount = emitManagedReleaseRet(args[0], isString);
+            return {releaseCount, Type(Type::Kind::I64)};
+        }
+
         padDefaultArgs(resolvedFunction, args, expr);
         if (ilReturnType.kind == Type::Kind::Void)
         {
@@ -453,6 +461,14 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 TypeRef exprType = sema_.typeOf(expr);
                 Type ilReturnType = exprType ? mapType(exprType) : Type(Type::Kind::Void);
 
+                if (funcName == kHeapRelease && args.size() == 1)
+                {
+                    TypeRef argType = sema_.typeOf(expr->args[0].value.get());
+                    bool isString = isStringType(argType);
+                    Value releaseCount = emitManagedReleaseRet(args[0], isString);
+                    return {releaseCount, Type(Type::Kind::I64)};
+                }
+
                 // Use the extern's declared return type for the call instruction
                 // to match the function signature. The sema type may differ (e.g.,
                 // String? maps to Ptr, but the extern returns str). We'll use the
@@ -599,7 +615,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
             if (baseType &&
                 (baseType->name.find("Viper.") == 0 || baseType->kind == TypeKindSem::Set ||
-                 baseType->kind == TypeKindSem::List || baseType->kind == TypeKindSem::Map))
+                 baseType->kind == TypeKindSem::List || baseType->kind == TypeKindSem::Map ||
+                 baseType->kind == TypeKindSem::String))
             {
                 auto baseResult = lowerExpr(fieldExpr->base.get());
                 args.push_back(baseResult.value);
@@ -657,6 +674,14 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
         TypeRef exprType = sema_.functionReturnType(runtimeCallee);
         Type ilReturnType = exprType ? mapType(exprType) : Type(Type::Kind::Void);
+
+        if (runtimeCallee == kHeapRelease && args.size() == 1)
+        {
+            TypeRef argType = sema_.typeOf(expr->args[0].value.get());
+            bool isString = isStringType(argType);
+            Value releaseCount = emitManagedReleaseRet(args[0], isString);
+            return {releaseCount, Type(Type::Kind::I64)};
+        }
 
         // Use the extern's declared return type for the call instruction so it
         // matches the function signature. The sema type may differ for optional

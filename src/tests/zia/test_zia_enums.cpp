@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Compiler.hpp"
+#include "il/core/Opcode.hpp"
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
 #include <string>
@@ -28,6 +29,32 @@ using namespace il::support;
 
 namespace
 {
+
+static bool hasCallWithConstIntArg(const il::core::Module &mod,
+                                   const std::string &fnName,
+                                   const std::string &callee,
+                                   int64_t value)
+{
+    for (const auto &fn : mod.functions)
+    {
+        if (fn.name != fnName)
+            continue;
+        for (const auto &block : fn.blocks)
+        {
+            for (const auto &instr : block.instructions)
+            {
+                if (instr.op != il::core::Opcode::Call || instr.callee != callee)
+                    continue;
+                for (const auto &operand : instr.operands)
+                {
+                    if (operand.kind == il::core::Value::Kind::ConstInt && operand.i64 == value)
+                        return true;
+                }
+            }
+        }
+    }
+    return false;
+}
 
 // ===== Basic Declaration =====
 
@@ -516,6 +543,57 @@ func start() {
     }
 
     EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaEnums, LoweringPreservesAutoIncrementValues)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+bind Viper.Terminal;
+
+enum Fruit {
+    Apple,
+    Banana,
+    Cherry,
+}
+
+func start() {
+    Viper.Terminal.SayInt(Fruit.Banana);
+}
+)";
+    CompilerInput input{.source = source, .path = "enum_lower_autoinc.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(hasCallWithConstIntArg(result.module, "main", "Viper.Terminal.SayInt", 1));
+}
+
+TEST(ZiaEnums, LoweringPreservesExplicitValues)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+bind Viper.Terminal;
+
+enum HttpStatus {
+    Ok = 200,
+    NotFound = 404,
+}
+
+func start() {
+    Viper.Terminal.SayInt(HttpStatus.NotFound);
+}
+)";
+    CompilerInput input{.source = source, .path = "enum_lower_explicit.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(hasCallWithConstIntArg(result.module, "main", "Viper.Terminal.SayInt", 404));
 }
 
 } // anonymous namespace

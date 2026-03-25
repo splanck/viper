@@ -1,0 +1,36 @@
+module RuntimeTest35;
+
+bind Viper.Terminal;
+
+func requireValue(x: Integer?) -> Integer {
+    if (x == null) {
+        return -1;
+    }
+
+    var y: Integer = x;
+    Viper.Terminal.SayInt(x);
+    return y;
+}
+
+func start() {
+    var direct = requireValue(42);
+    if (direct != 42) {
+        Viper.Terminal.Say("FAIL: guard_narrowing");
+        return;
+    }
+
+    var maybe: Integer? = 7;
+    if (maybe != null) {
+        var branchValue: Integer = maybe;
+        if (branchValue != 7) {
+            Viper.Terminal.Say("FAIL: branch_assignment");
+            return;
+        }
+        Viper.Terminal.SayInt(maybe);
+    } else {
+        Viper.Terminal.Say("FAIL: branch_narrowing");
+        return;
+    }
+
+    Viper.Terminal.Say("RESULT: ok");
+}

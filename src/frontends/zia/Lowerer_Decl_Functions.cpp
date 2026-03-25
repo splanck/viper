@@ -212,6 +212,182 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     if (mangledName.empty())
         mangledName = mangleFunctionName(qualifiedName);
 
+    TypeRef declaredReturnType =
+        decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
+
+    if (decl.isAsync)
+    {
+        auto resetLoweringState = [&]()
+        {
+            blockMgr_.reset(nullptr);
+            locals_.clear();
+            slots_.clear();
+            localTypes_.clear();
+            deferredTemps_.clear();
+            asyncOwnedValues_.clear();
+            currentAsyncWorker_ = false;
+            currentFunc_ = nullptr;
+            currentReturnType_ = nullptr;
+        };
+
+        auto emitAsyncImplicitReturn = [&](TypeRef payloadType)
+        {
+            if (isTerminated())
+                return;
+
+            if (!payloadType || payloadType->kind == TypeKindSem::Void)
+            {
+                for (const auto &owned : asyncOwnedValues_)
+                    emitManagedRelease(owned, /*isString=*/false);
+                asyncOwnedValues_.clear();
+                releaseDeferredTemps();
+                emitRet(Value::null());
+                return;
+            }
+
+            Type payloadIlType = mapType(payloadType);
+            Value defaultValue;
+            switch (payloadIlType.kind)
+            {
+                case Type::Kind::I1:
+                    defaultValue = Value::constBool(false);
+                    break;
+                case Type::Kind::I64:
+                case Type::Kind::I16:
+                case Type::Kind::I32:
+                    defaultValue = Value::constInt(0);
+                    break;
+                case Type::Kind::F64:
+                    defaultValue = Value::constFloat(0.0);
+                    break;
+                case Type::Kind::Str:
+                    defaultValue = emitConstStr("");
+                    break;
+                case Type::Kind::Ptr:
+                    defaultValue = Value::null();
+                    break;
+                default:
+                    defaultValue = Value::constInt(0);
+                    break;
+            }
+
+            Value futureValue = defaultValue;
+            if (payloadType->kind == TypeKindSem::Value || payloadIlType.kind != Type::Kind::Ptr)
+                futureValue = emitBoxValue(defaultValue, payloadIlType, payloadType);
+            else
+                emitCall("rt_obj_retain_maybe", {futureValue});
+
+            for (const auto &owned : asyncOwnedValues_)
+                emitManagedRelease(owned, /*isString=*/false);
+            asyncOwnedValues_.clear();
+            releaseDeferredTemps();
+            emitRet(futureValue);
+        };
+
+        const std::string workerName = mangledName + "__async_worker";
+        definedFunctions_.insert(workerName);
+
+        // Emit the async worker trampoline: ptr(ptr env)
+        currentFunc_ =
+            &builder_->startFunction(workerName, Type(Type::Kind::Ptr), {{"__env", Type(Type::Kind::Ptr)}});
+        currentReturnType_ = declaredReturnType;
+        currentAsyncWorker_ = true;
+        blockMgr_.bind(builder_.get(), currentFunc_);
+        locals_.clear();
+        slots_.clear();
+        localTypes_.clear();
+        deferredTemps_.clear();
+        asyncOwnedValues_.clear();
+
+        builder_->createBlock(*currentFunc_, "entry_0", currentFunc_->params);
+        size_t workerEntryIdx = currentFunc_->blocks.size() - 1;
+        setBlock(workerEntryIdx);
+
+        const auto &workerParams = currentFunc_->blocks[workerEntryIdx].params;
+        Value envPtr = Value::temp(workerParams[0].id);
+
+        for (size_t i = 0; i < decl.params.size(); ++i)
+        {
+            TypeRef paramType =
+                i < cachedParamTypes.size()
+                    ? cachedParamTypes[i]
+                    : (decl.params[i].type ? sema_.resolveType(decl.params[i].type.get())
+                                           : types::unknown());
+            Type ilParamType = mapType(paramType);
+
+            Value argAddr = emitGEP(envPtr, static_cast<int64_t>(i * sizeof(void *)));
+            Value ownedArg = emitLoad(argAddr, Type(Type::Kind::Ptr));
+            asyncOwnedValues_.push_back(ownedArg);
+
+            Value unpacked = ownedArg;
+            if (paramType && (paramType->kind == TypeKindSem::Value || ilParamType.kind != Type::Kind::Ptr))
+                unpacked = emitUnboxValue(ownedArg, ilParamType, paramType).value;
+
+            createSlot(decl.params[i].name, ilParamType);
+            storeToSlot(decl.params[i].name, unpacked, ilParamType);
+            localTypes_[decl.params[i].name] = paramType;
+        }
+
+        emitManagedRelease(envPtr, /*isString=*/false);
+
+        if (decl.body)
+            lowerStmt(decl.body.get());
+        emitAsyncImplicitReturn(declaredReturnType);
+        resetLoweringState();
+
+        // Emit the public wrapper that packages arguments and starts the async task.
+        definedFunctions_.insert(mangledName);
+        currentFunc_ = &builder_->startFunction(mangledName, ilReturnType, params);
+        currentReturnType_ = returnType;
+        if (decl.visibility == Visibility::Public)
+            currentFunc_->linkage = il::core::Linkage::Export;
+
+        blockMgr_.bind(builder_.get(), currentFunc_);
+        locals_.clear();
+        slots_.clear();
+        localTypes_.clear();
+        deferredTemps_.clear();
+
+        builder_->createBlock(*currentFunc_, "entry_0", currentFunc_->params);
+        size_t wrapperEntryIdx = currentFunc_->blocks.size() - 1;
+        setBlock(wrapperEntryIdx);
+        const auto &wrapperParams = currentFunc_->blocks[wrapperEntryIdx].params;
+
+        Value envSize = Value::constInt(static_cast<int64_t>(decl.params.size() * sizeof(void *)));
+        Value wrapperEnv = emitCallRet(Type(Type::Kind::Ptr),
+                                       "rt_obj_new_i64",
+                                       {Value::constInt(0), envSize});
+
+        for (size_t i = 0; i < decl.params.size() && i < wrapperParams.size(); ++i)
+        {
+            TypeRef paramType =
+                i < cachedParamTypes.size()
+                    ? cachedParamTypes[i]
+                    : (decl.params[i].type ? sema_.resolveType(decl.params[i].type.get())
+                                           : types::unknown());
+            Type ilParamType = mapType(paramType);
+            Value paramValue = Value::temp(wrapperParams[i].id);
+
+            Value storedValue = paramValue;
+            if (paramType && (paramType->kind == TypeKindSem::Value || ilParamType.kind != Type::Kind::Ptr))
+            {
+                storedValue = emitBoxValue(paramValue, ilParamType, paramType);
+            }
+            else
+            {
+                emitCall("rt_obj_retain_maybe", {storedValue});
+            }
+
+            Value argAddr = emitGEP(wrapperEnv, static_cast<int64_t>(i * sizeof(void *)));
+            emitStore(argAddr, storedValue, Type(Type::Kind::Ptr));
+        }
+
+        Value future = emitCallRet(Type(Type::Kind::Ptr), kAsyncRun, {Value::global(workerName), wrapperEnv});
+        emitRet(future);
+        resetLoweringState();
+        return;
+    }
+
     // Track this function as defined in this module
     definedFunctions_.insert(mangledName);
 
@@ -954,13 +1130,13 @@ void Lowerer::lowerDestructorDecl(DestructorDecl &decl, const std::string &typeN
             {
                 Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field.offset));
                 Value fieldValue = emitLoad(fieldAddr, Type(Type::Kind::Str));
-                emitCall(runtime::kStrReleaseMaybe, {fieldValue});
+                emitManagedRelease(fieldValue, /*isString=*/true);
             }
             else if (ilFieldType.kind == Type::Kind::Ptr)
             {
                 Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field.offset));
                 Value fieldValue = emitLoad(fieldAddr, Type(Type::Kind::Ptr));
-                emitCallRet(Type(Type::Kind::I64), runtime::kHeapRelease, {fieldValue});
+                emitManagedRelease(fieldValue, /*isString=*/false);
             }
         }
     }

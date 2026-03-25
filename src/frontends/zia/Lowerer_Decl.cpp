@@ -250,10 +250,14 @@ void Lowerer::lowerEnumDecl(EnumDecl &decl)
 {
     // Enums don't produce IL structures -- each variant is an I64 constant.
     // Just register variant values for later lookup during expression lowering.
+    int64_t nextValue = 0;
     for (const auto &variant : decl.variants)
     {
         std::string key = qualifyName(decl.name) + "." + variant.name;
-        enumVariantValues_[key] = variant.explicitValue.value_or(0);
+        if (variant.explicitValue.has_value())
+            nextValue = *variant.explicitValue;
+        enumVariantValues_[key] = nextValue;
+        ++nextValue;
     }
 }
 

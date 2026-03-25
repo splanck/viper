@@ -1411,6 +1411,8 @@ static void printDecl(const Decl &decl, Printer &p)
         {
             const auto &d = static_cast<const FunctionDecl &>(decl);
             std::string header = "FunctionDecl \"" + d.name + "\"";
+            if (d.isAsync)
+                header += " (async)";
             if (d.isOverride)
                 header += " (override)";
             header += " " + locStr(d.loc);

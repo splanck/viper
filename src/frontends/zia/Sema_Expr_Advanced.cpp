@@ -122,7 +122,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
             if (sym && sym->kind == Symbol::Kind::Function)
             {
                 // Store the resolved getter for the lowerer
-                runtimeFieldGetters_[expr] = getterName;
+                resolvedFieldGetters_[expr] = getterName;
                 // Return the function's return type (the property type)
                 TypeRef funcType = sym->type;
                 if (funcType && funcType->kind == TypeKindSem::Function)
@@ -232,7 +232,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
             if (getter && getter->kind == Symbol::Kind::Function)
             {
                 // Record the getter so the lowerer emits a call (same as Path A)
-                runtimeFieldGetters_[expr] = getterName;
+                resolvedFieldGetters_[expr] = getterName;
                 TypeRef funcType = getter->type;
                 if (funcType && funcType->kind == TypeKindSem::Function)
                     return funcType->returnType();
@@ -309,6 +309,20 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
         if (fieldIt != fieldTypes_.end())
         {
             return fieldIt->second;
+        }
+
+        if (const PropertyDecl *prop = findPropertyDecl(baseType->name, expr->field))
+        {
+            if (prop->visibility == Visibility::Private && !isInsideType)
+            {
+                error(expr->loc,
+                      "Cannot access private member '" + expr->field + "' of type '" +
+                          baseType->name + "'");
+                return types::unknown();
+            }
+
+            resolvedFieldGetters_[expr] = baseType->name + ".get_" + prop->name;
+            return prop->type ? resolveTypeNode(prop->type.get()) : types::unknown();
         }
 
         // Field/method not found on this entity or value type

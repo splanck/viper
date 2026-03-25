@@ -983,6 +983,7 @@ For complete namespace documentation, see [Namespace Reference](basic-namespaces
 - `EOF`
 - `ERROR`
 - `EXIT`
+- `EXPORT`
 
 ### F
 

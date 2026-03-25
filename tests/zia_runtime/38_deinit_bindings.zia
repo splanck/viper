@@ -1,0 +1,29 @@
+module RuntimeTest38;
+
+bind Viper.Terminal;
+bind Viper.Memory;
+
+var released: Boolean = false;
+
+entity Resource {
+    deinit {
+        released = true;
+        Say("deinit");
+    }
+}
+
+func makeResource() {
+    var r = new Resource();
+    Release(r);
+}
+
+func start() {
+    makeResource();
+
+    if (!released) {
+        Viper.Terminal.Say("FAIL: deinit_not_run");
+        return;
+    }
+
+    Viper.Terminal.Say("RESULT: ok");
+}

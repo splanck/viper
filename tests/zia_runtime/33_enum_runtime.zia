@@ -1,0 +1,50 @@
+module RuntimeTest33;
+
+bind "./_support";
+
+enum Fruit {
+    Apple,
+    Banana,
+    Cherry,
+}
+
+enum HttpStatus {
+    Ok = 200,
+    NotFound = 404,
+}
+
+enum Offset {
+    Back = -1,
+    None = 0,
+    Forward = 1,
+}
+
+func start() {
+    assertTrue(Fruit.Apple != Fruit.Banana, "fruit_distinct_apple_banana");
+    assertTrue(Fruit.Banana != Fruit.Cherry, "fruit_distinct_banana_cherry");
+    assertTrue(Fruit.Apple != Fruit.Cherry, "fruit_distinct_apple_cherry");
+
+    assertTrue(HttpStatus.Ok != HttpStatus.NotFound, "http_distinct_variants");
+
+    assertTrue(Offset.Back < Offset.None, "offset_back_before_none");
+    assertTrue(Offset.None < Offset.Forward, "offset_none_before_forward");
+
+    var color = Fruit.Cherry;
+    var matched = "";
+    match color {
+        Fruit.Apple => { matched = "apple"; }
+        Fruit.Banana => { matched = "banana"; }
+        Fruit.Cherry => { matched = "cherry"; }
+    }
+    assertEqStr(matched, "cherry", "enum_match");
+
+    var status = HttpStatus.NotFound;
+    var statusLabel = "";
+    match status {
+        HttpStatus.Ok => { statusLabel = "ok"; }
+        HttpStatus.NotFound => { statusLabel = "missing"; }
+    }
+    assertEqStr(statusLabel, "missing", "enum_explicit_match");
+
+    report();
+}

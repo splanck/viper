@@ -354,6 +354,57 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
         {
             auto base = lowerExpr(fieldExpr->base.get());
             TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
+            TypeRef targetType = sema_.typeOf(fieldExpr);
+
+            std::string setterName = sema_.resolvedFieldSetter(fieldExpr);
+            if (!setterName.empty())
+            {
+                Value setterValue = wrapValueForOptionalField(right.value, targetType, rightType);
+
+                if (right.type.kind == Type::Kind::Ptr && targetType)
+                {
+                    Type targetILType = mapType(targetType);
+                    if (targetILType.kind != Type::Kind::Ptr)
+                        setterValue = emitUnbox(setterValue, targetILType).value;
+                }
+
+                if (targetType && rightType)
+                {
+                    if (targetType->kind == TypeKindSem::Integer &&
+                        rightType->kind == TypeKindSem::Number)
+                    {
+                        unsigned convId = nextTempId();
+                        il::core::Instr conv;
+                        conv.result = convId;
+                        conv.op = Opcode::CastFpToSiRteChk;
+                        conv.type = Type(Type::Kind::I64);
+                        conv.operands = {setterValue};
+                        conv.loc = curLoc_;
+                        blockMgr_.currentBlock()->instructions.push_back(conv);
+                        setterValue = Value::temp(convId);
+                    }
+                    else if (targetType->kind == TypeKindSem::Number &&
+                             rightType->kind == TypeKindSem::Integer)
+                    {
+                        unsigned convId = nextTempId();
+                        il::core::Instr conv;
+                        conv.result = convId;
+                        conv.op = Opcode::Sitofp;
+                        conv.type = Type(Type::Kind::F64);
+                        conv.operands = {setterValue};
+                        conv.loc = curLoc_;
+                        blockMgr_.currentBlock()->instructions.push_back(conv);
+                        setterValue = Value::temp(convId);
+                    }
+                }
+
+                TypeRef resolvedBaseType = sema_.typeOf(fieldExpr->base.get());
+                if (resolvedBaseType && resolvedBaseType->kind == TypeKindSem::Module)
+                    emitCall(setterName, {setterValue});
+                else
+                    emitCall(setterName, {base.value, setterValue});
+                return right;
+            }
 
             // Unwrap Optional types for field assignment
             // This handles variables assigned from optionals after null checks

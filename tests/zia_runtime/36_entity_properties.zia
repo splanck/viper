@@ -1,0 +1,37 @@
+module RuntimeTest36;
+
+bind Viper.Terminal;
+
+entity Counter {
+    hide Integer _count;
+
+    expose func init() {
+        _count = 0;
+    }
+
+    expose property count: Integer {
+        get {
+            return _count;
+        }
+        set(v) {
+            _count = v;
+        }
+    }
+}
+
+func start() {
+    var c = new Counter();
+    c.count = 42;
+    if (c.count != 42) {
+        Viper.Terminal.Say("FAIL: property_setter");
+        return;
+    }
+
+    c.count = c.count + 8;
+    if (c.count != 50) {
+        Viper.Terminal.Say("FAIL: property_getter");
+        return;
+    }
+
+    Viper.Terminal.Say("RESULT: ok");
+}

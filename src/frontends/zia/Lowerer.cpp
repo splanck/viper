@@ -181,6 +181,9 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
         lowerGenericFunctionInstantiation(mangledName, decl);
     }
 
+    // Emit destructor dispatch after all concrete entity destructors exist.
+    emitDestructorDispatch();
+
     // Emit interface registration and itable binding
     emitItableInit();
 

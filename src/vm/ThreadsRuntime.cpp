@@ -22,6 +22,9 @@
 #include "il/runtime/RuntimeNames.hpp"
 #include "il/runtime/signatures/Registry.hpp"
 #include "rt.hpp"
+#include "rt_async.h"
+#include "rt_future.h"
+#include "rt_object.h"
 #include "rt_threads.h"
 #include "vm/OpHandlerAccess.hpp"
 #include "vm/VM.hpp"
@@ -48,6 +51,18 @@ struct VmThreadStartPayload
     std::shared_ptr<VM::ProgramState> program;
     const il::core::Function *entry = nullptr;
     void *arg = nullptr;
+};
+
+/// @brief Payload passed to VM-backed Async.Run worker threads.
+/// @details Extends the basic thread payload with a promise reference owned by
+///          the worker thread until it resolves the asynchronous result.
+struct VmAsyncRunPayload
+{
+    const il::core::Module *module = nullptr;
+    std::shared_ptr<VM::ProgramState> program;
+    const il::core::Function *entry = nullptr;
+    void *arg = nullptr;
+    void *promise = nullptr;
 };
 
 /// @brief Thread entry trampoline for VM-backed Thread.Start.
@@ -120,6 +135,19 @@ static void validateEntrySignature(const il::core::Function &fn)
     if (fn.params.size() == 1 && fn.params[0].type.kind == Kind::Ptr)
         return;
     rt_trap("Thread.Start: invalid entry signature");
+}
+
+/// @brief Validate the signature of an Async.Run worker entry function.
+/// @details Async worker trampolines lowered from Zia async functions must
+///          return an object pointer and accept exactly one environment pointer.
+static void validateAsyncEntrySignature(const il::core::Function &fn)
+{
+    using Kind = il::core::Type::Kind;
+    if (fn.retType.kind != Kind::Ptr)
+        rt_trap("Async.Run: invalid entry signature");
+    if (fn.params.size() == 1 && fn.params[0].type.kind == Kind::Ptr)
+        return;
+    rt_trap("Async.Run: invalid entry signature");
 }
 
 /// @brief Runtime bridge handler for Viper.Threads.Thread.Start.
@@ -258,10 +286,101 @@ static void threads_thread_start_safe_handler(void **args, void *result)
         *reinterpret_cast<void **>(result) = thread;
 }
 
+/// @brief Async worker trampoline for VM-backed Async.Run.
+/// @details Executes the IL worker function in a child VM, then resolves the
+///          promise with the returned object pointer.
+extern "C" void vm_async_run_entry_trampoline(void *raw)
+{
+    VmAsyncRunPayload *payload = static_cast<VmAsyncRunPayload *>(raw);
+    if (!payload || !payload->module || !payload->entry || !payload->promise)
+    {
+        delete payload;
+        rt_abort("Async.Run: invalid entry");
+    }
+
+    try
+    {
+        VM vm(*payload->module, payload->program);
+
+        il::support::SmallVector<Slot, 2> args;
+        Slot argSlot{};
+        argSlot.ptr = payload->arg;
+        args.push_back(argSlot);
+
+        Slot result = detail::VMAccess::callFunction(vm, *payload->entry, args);
+        rt_promise_set(payload->promise, result.ptr);
+    }
+    catch (...)
+    {
+        rt_promise_set_error(payload->promise, rt_const_cstr("Async.Run: unhandled exception"));
+    }
+
+    if (rt_obj_release_check0(payload->promise))
+        rt_obj_free(payload->promise);
+    delete payload;
+}
+
+/// @brief Runtime bridge handler for Viper.Threads.Async.Run.
+/// @details Uses the native runtime helper outside the VM, but when an IL
+///          function pointer is supplied from VM execution it spawns a child VM
+///          and resolves a Future with that worker's returned object.
+static void threads_async_run_handler(void **args, void *result)
+{
+    void *entry = nullptr;
+    void *arg = nullptr;
+    if (args && args[0])
+        entry = *reinterpret_cast<void **>(args[0]);
+    if (args && args[1])
+        arg = *reinterpret_cast<void **>(args[1]);
+
+    if (!entry)
+        rt_trap("Async.Run: null entry");
+
+    VM *parentVm = activeVMInstance();
+    if (!parentVm)
+    {
+        void *future = rt_async_run(entry, arg);
+        if (result)
+            *reinterpret_cast<void **>(result) = future;
+        return;
+    }
+
+    std::shared_ptr<VM::ProgramState> program = parentVm->programState();
+    if (!program)
+        rt_trap("Async.Run: invalid runtime state");
+
+    const il::core::Module &module = parentVm->module();
+    const il::core::Function *entryFn = resolveEntryFunction(module, entry);
+    if (!entryFn)
+        rt_trap("Async.Run: invalid entry");
+    validateAsyncEntrySignature(*entryFn);
+
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+
+    auto *payload = new VmAsyncRunPayload{&module, std::move(program), entryFn, arg, promise};
+    void *thread =
+        rt_thread_start(reinterpret_cast<void *>(&vm_async_run_entry_trampoline), payload);
+    if (!thread)
+    {
+        delete payload;
+        rt_promise_set_error(promise, rt_const_cstr("Async.Run: failed to create thread"));
+        if (result)
+            *reinterpret_cast<void **>(result) = future;
+        return;
+    }
+
+    if (rt_obj_release_check0(thread))
+        rt_obj_free(thread);
+    if (result)
+        *reinterpret_cast<void **>(result) = future;
+}
+
 } // namespace
 
 /// @brief Register VM-aware thread externals with the runtime bridge.
-/// @details Installs the `Viper.Threads.Thread.Start` and `Thread.StartSafe`
+/// @details Installs the `Viper.Threads.Thread.Start`, `Thread.StartSafe`, and
+///          `Async.Run`
 ///          handlers so they use the VM trampoline when invoked from managed code.
 ///          When the BytecodeVM is linked, its unified handlers overwrite these
 ///          registrations via a static initializer.
@@ -279,6 +398,13 @@ void registerThreadsRuntimeExternals()
         ext.name = il::runtime::names::kThreadsThreadStartSafe;
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_thread_start_safe_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = il::runtime::names::kThreadsAsyncRun;
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_async_run_handler);
         RuntimeBridge::registerExtern(ext);
     }
 }

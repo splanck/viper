@@ -4,6 +4,9 @@
 #include "bytecode/BytecodeVM.hpp"
 #include "il/core/Module.hpp"
 #include "il/runtime/signatures/Registry.hpp"
+#include "rt_async.h"
+#include "rt_future.h"
+#include "rt_object.h"
 #include "rt_threads.h"
 #include "support/small_vector.hpp"
 #include "viper/runtime/rt.h"
@@ -1800,6 +1803,16 @@ struct BytecodeThreadPayload
     bool runtimeBridgeEnabled;
 };
 
+/// Payload for bytecode-backed Async.Run.
+struct BytecodeAsyncPayload
+{
+    const BytecodeModule *module;
+    const BytecodeFunction *entry;
+    void *arg;
+    bool runtimeBridgeEnabled;
+    void *promise;
+};
+
 /// Thread entry trampoline for bytecode VM threads.
 extern "C" void bytecode_thread_entry_trampoline(void *raw)
 {
@@ -1874,6 +1887,15 @@ struct VmThreadStartPayload
     void *arg = nullptr;
 };
 
+struct VmAsyncRunPayload
+{
+    const il::core::Module *module = nullptr;
+    std::shared_ptr<il::vm::VM::ProgramState> program;
+    const il::core::Function *entry = nullptr;
+    void *arg = nullptr;
+    void *promise = nullptr;
+};
+
 /// Standard VM thread entry trampoline
 extern "C" void vm_thread_entry_trampoline_bc(void *raw)
 {
@@ -1929,6 +1951,22 @@ static void validateEntrySignature(const il::core::Function &fn)
     if (fn.params.size() == 1 && fn.params[0].type.kind == Kind::Ptr)
         return;
     rt_trap("Thread.Start: invalid entry signature");
+}
+
+static void validateAsyncEntrySignature(const il::core::Function &fn)
+{
+    using Kind = il::core::Type::Kind;
+    if (fn.retType.kind != Kind::Ptr)
+        rt_trap("Async.Run: invalid entry signature");
+    if (fn.params.size() == 1 && fn.params[0].type.kind == Kind::Ptr)
+        return;
+    rt_trap("Async.Run: invalid entry signature");
+}
+
+static void validateBytecodeAsyncEntrySignature(const BytecodeFunction &fn)
+{
+    if (!fn.hasReturn || fn.numParams != 1)
+        rt_trap("Async.Run: invalid bytecode entry signature");
 }
 
 /// Handler for Viper.Threads.Thread.Start - handles both standard VM and BytecodeVM.
@@ -2050,7 +2088,158 @@ static void unified_thread_start_safe_handler(void **args, void *result)
         *reinterpret_cast<void **>(result) = thread;
 }
 
-/// Static initializer to register the unified Thread.Start and Thread.StartSafe handlers.
+extern "C" void vm_async_run_entry_trampoline_bc(void *raw)
+{
+    VmAsyncRunPayload *payload = static_cast<VmAsyncRunPayload *>(raw);
+    if (!payload || !payload->module || !payload->entry || !payload->promise)
+    {
+        delete payload;
+        rt_abort("Async.Run: invalid entry");
+        return;
+    }
+
+    try
+    {
+        il::vm::VM vm(*payload->module, payload->program);
+        il::support::SmallVector<il::vm::Slot, 2> args;
+        il::vm::Slot s{};
+        s.ptr = payload->arg;
+        args.push_back(s);
+        il::vm::Slot result = il::vm::detail::VMAccess::callFunction(vm, *payload->entry, args);
+        rt_promise_set(payload->promise, result.ptr);
+    }
+    catch (...)
+    {
+        rt_promise_set_error(payload->promise, rt_const_cstr("Async.Run: unhandled exception"));
+    }
+
+    if (rt_obj_release_check0(payload->promise))
+        rt_obj_free(payload->promise);
+    delete payload;
+}
+
+extern "C" void bytecode_async_entry_trampoline(void *raw)
+{
+    BytecodeAsyncPayload *payload = static_cast<BytecodeAsyncPayload *>(raw);
+    if (!payload || !payload->module || !payload->entry || !payload->promise)
+    {
+        delete payload;
+        rt_abort("Async.Run: invalid bytecode entry");
+        return;
+    }
+
+    BytecodeVM vm;
+    vm.load(payload->module);
+    vm.setRuntimeBridgeEnabled(payload->runtimeBridgeEnabled);
+
+    std::vector<BCSlot> args;
+    BCSlot argSlot{};
+    argSlot.ptr = payload->arg;
+    args.push_back(argSlot);
+
+    BCSlot result = vm.exec(payload->entry, args);
+    if (vm.state() == VMState::Trapped)
+    {
+        const std::string &message = vm.trapMessage();
+        rt_promise_set_error(payload->promise,
+                             message.empty() ? rt_const_cstr("Async.Run: trapped")
+                                             : rt_string_from_bytes(message.data(), message.size()));
+    }
+    else
+    {
+        rt_promise_set(payload->promise, result.ptr);
+    }
+
+    if (rt_obj_release_check0(payload->promise))
+        rt_obj_free(payload->promise);
+    delete payload;
+}
+
+static void unified_async_run_handler(void **args, void *result)
+{
+    void *entry = nullptr;
+    void *arg = nullptr;
+    if (args && args[0])
+        entry = *reinterpret_cast<void **>(args[0]);
+    if (args && args[1])
+        arg = *reinterpret_cast<void **>(args[1]);
+
+    if (!entry)
+        rt_trap("Async.Run: null entry");
+
+    // Standard VM path
+    il::vm::VM *stdVm = il::vm::activeVMInstance();
+    if (stdVm)
+    {
+        std::shared_ptr<il::vm::VM::ProgramState> program = stdVm->programState();
+        if (!program)
+            rt_trap("Async.Run: invalid runtime state");
+
+        const il::core::Module &module = stdVm->module();
+        const il::core::Function *entryFn = resolveILEntry(module, entry);
+        if (!entryFn)
+            rt_trap("Async.Run: invalid entry");
+        validateAsyncEntrySignature(*entryFn);
+
+        void *promise = rt_promise_new();
+        void *future = rt_promise_get_future(promise);
+        auto *payload = new VmAsyncRunPayload{&module, std::move(program), entryFn, arg, promise};
+        void *thread =
+            rt_thread_start(reinterpret_cast<void *>(&vm_async_run_entry_trampoline_bc), payload);
+        if (!thread)
+        {
+            delete payload;
+            rt_promise_set_error(promise, rt_const_cstr("Async.Run: failed to create thread"));
+            if (result)
+                *reinterpret_cast<void **>(result) = future;
+            return;
+        }
+
+        if (rt_obj_release_check0(thread))
+            rt_obj_free(thread);
+        if (result)
+            *reinterpret_cast<void **>(result) = future;
+        return;
+    }
+
+    // Bytecode VM path
+    BytecodeVM *bcVm = activeBytecodeVMInstance();
+    const BytecodeModule *bcModule = activeBytecodeModule();
+    if (bcVm && bcModule)
+    {
+        const BytecodeFunction *entryFn = resolveBytecodeEntry(bcModule, entry);
+        if (!entryFn)
+            rt_trap("Async.Run: invalid bytecode entry");
+        validateBytecodeAsyncEntrySignature(*entryFn);
+
+        void *promise = rt_promise_new();
+        void *future = rt_promise_get_future(promise);
+        auto *payload =
+            new BytecodeAsyncPayload{bcModule, entryFn, arg, bcVm->runtimeBridgeEnabled(), promise};
+        void *thread =
+            rt_thread_start(reinterpret_cast<void *>(&bytecode_async_entry_trampoline), payload);
+        if (!thread)
+        {
+            delete payload;
+            rt_promise_set_error(promise, rt_const_cstr("Async.Run: failed to create thread"));
+            if (result)
+                *reinterpret_cast<void **>(result) = future;
+            return;
+        }
+
+        if (rt_obj_release_check0(thread))
+            rt_obj_free(thread);
+        if (result)
+            *reinterpret_cast<void **>(result) = future;
+        return;
+    }
+
+    void *future = rt_async_run(entry, arg);
+    if (result)
+        *reinterpret_cast<void **>(result) = future;
+}
+
+/// Static initializer to register the unified thread/async handlers.
 /// This overrides the standard VM handlers when BytecodeVM is linked.
 struct UnifiedThreadHandlerRegistrar
 {
@@ -2073,6 +2262,14 @@ struct UnifiedThreadHandlerRegistrar
             ext.signature =
                 make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
             ext.fn = reinterpret_cast<void *>(&unified_thread_start_safe_handler);
+            il::vm::RuntimeBridge::registerExtern(ext);
+        }
+        {
+            il::vm::ExternDesc ext;
+            ext.name = "Viper.Threads.Async.Run";
+            ext.signature =
+                make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+            ext.fn = reinterpret_cast<void *>(&unified_async_run_handler);
             il::vm::RuntimeBridge::registerExtern(ext);
         }
     }

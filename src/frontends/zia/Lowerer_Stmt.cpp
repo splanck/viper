@@ -947,6 +947,31 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
             }
         }
 
+        if (currentAsyncWorker_)
+        {
+            Type payloadIlType = mapType(currentReturnType_);
+            Value futureValue = returnValue;
+            if (currentReturnType_ &&
+                (currentReturnType_->kind == TypeKindSem::Value || payloadIlType.kind != Type::Kind::Ptr))
+            {
+                futureValue = emitBoxValue(returnValue, payloadIlType, currentReturnType_);
+            }
+            else
+            {
+                emitCall("rt_obj_retain_maybe", {futureValue});
+            }
+
+            for (const auto &owned : asyncOwnedValues_)
+                emitManagedRelease(owned, /*isString=*/false);
+            asyncOwnedValues_.clear();
+
+            // The async runtime consumes the returned object.
+            consumeDeferred(futureValue);
+            releaseDeferredTemps();
+            emitRet(futureValue);
+            return;
+        }
+
         // The return value is transferred to the caller — don't release it.
         // But release any intermediate temps from evaluating the return expr.
         consumeDeferred(returnValue);
@@ -955,6 +980,16 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
     }
     else
     {
+        if (currentAsyncWorker_)
+        {
+            for (const auto &owned : asyncOwnedValues_)
+                emitManagedRelease(owned, /*isString=*/false);
+            asyncOwnedValues_.clear();
+            releaseDeferredTemps();
+            emitRet(Value::null());
+            return;
+        }
+
         releaseDeferredTemps();
         emitRetVoid();
     }

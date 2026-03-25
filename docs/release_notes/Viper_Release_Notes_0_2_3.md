@@ -33,13 +33,13 @@ Version 0.2.3 is a major hardening, tooling, and infrastructure release. Highlig
 
 | Metric | Value |
 |--------|-------|
-| Commits | 201+ |
-| Files changed | 3,700+ |
-| Lines added | ~280K |
-| Lines removed | ~325K |
-| Source files | 3,727 |
-| Test count | 1,340 |
-| Codebase | ~750K LOC |
+| Commits | 99 |
+| Files changed | 3,537 |
+| Lines added | ~272K |
+| Lines removed | ~323K |
+| Source files | 2,668 |
+| Test count | 1,342 |
+| Codebase | ~348K SLOC (production C/C++/ObjC) |
 
 ---
 
@@ -778,6 +778,16 @@ Post-audit fixes across the 3D graphics subsystem:
 - **BUG-IL-002**: Type annotations for Dynamic result types in IL serializer; add `call.indirect`
   parser/serializer support
 
+#### Entity & Inheritance Fixes
+
+- **Init overload resolution**: Entity `init()` methods now correctly match parameter count
+  and types against the call site. Previously, entities with inherited init from a parent
+  would fail with "no init overload matching the provided arguments"
+- **Override keyword**: `override expose func` on entity methods now works for method
+  dispatch. Child entities can override parent methods with the `override` keyword
+- **Entity method dispatch**: Improved codegen routing for entity method calls through
+  the inheritance chain
+
 #### Sema Fixes
 
 - Guard-clause narrowing interaction: assignment type checking uses original declared type
@@ -787,6 +797,7 @@ Post-audit fixes across the 3D graphics subsystem:
 - Call instructions use extern-declared return type for IL verification
 - Match exhaustiveness checking (W019)
 - Escape analysis in BasicAA (non-escaping allocas vs Param → NoAlias)
+- Warning suppression improvements for entity method self-parameter warnings
 
 ---
 
@@ -976,6 +987,8 @@ issue tracker.
 | Canvas3D (new) | 2 | Depth buffer and 3D canvas validation tests |
 | Scene3D (new) | 2 | Scene graph cleanup and node management tests |
 | Network runtime | 1 | Network operation integration tests |
+| AnimStateMachine | 7 | State transitions, frame advance, one-shot, progress, flags |
+| TextureAtlas | 3 | Grid slicing, named regions, SpriteBatch integration |
 
 #### Determinism Stress Test
 
@@ -1082,23 +1095,39 @@ table of contents to cover all 80+ sections.
 - **Linux linking**: Add `-lX11` for graphics demos
 - **macOS**: Guard frameworks behind `#if defined(__APPLE__)` in AArch64 backend
 
+### GUI Improvements
+
+- **ListBox**: Multi-select mode, search/filter with keyboard, scroll-to-selection
+- **TextInput**: Undo/redo stack, text selection with shift+arrows, clipboard integration
+- **Layout**: Improved dock layout edge cases, floating panel cleanup
+- **Event handling**: Refined widget focus and keyboard event dispatch
+
+---
+
+### IL Pass Infrastructure
+
+- **Pass registry**: Strengthened pass lookup with better error messages for missing passes
+- **GVN**: Added safety guards for edge cases in global value numbering
+- **Pipeline executor**: Improved error reporting and pass metrics collection
+- **Analysis manager**: Extended with additional analysis invalidation hooks
+
 ---
 
 ### Project Statistics
 
 | Metric              | v0.2.2    | v0.2.3 (draft) | Change     |
 |---------------------|-----------|----------------|------------|
-| Codebase (LOC)      | ~700,000  | ~750,000       | +50K net   |
-| Source Files         | 2,288     | 3,727          | +1,439     |
-| Test Count          | 1,261     | 1,340          | +79        |
-| Commits             | —         | 201+           | —          |
-| Files Changed       | —         | 3,700+         | —          |
-| Lines Added         | —         | ~280K          | —          |
-| Lines Removed       | —         | ~325K          | —          |
+| Codebase (SLOC)     | ~310,000  | ~348,000       | +38K       |
+| Source Files         | 2,288     | 2,668          | +380       |
+| Test Count          | 1,261     | 1,342          | +81        |
+| Commits             | —         | 99             | —          |
+| Files Changed       | —         | 3,537          | —          |
+| Lines Added         | —         | ~272K          | —          |
+| Lines Removed       | —         | ~323K          | —          |
 
-> Net LOC is roughly flat because ~1,100 stale files were deleted (obsolete test fixtures,
-> dead demos, devdocs, zia-review) while ~349 new source files were added across 3D graphics,
-> game engine, native toolchain, and test suites.
+> Lines removed exceed lines added because ~1,100 stale files were deleted (obsolete test
+> fixtures, dead demos, devdocs, zia-review). Net production SLOC grew by ~38K across 3D
+> graphics, game engine, native toolchain, optimizer, and new runtime classes.
 
 ---
 
@@ -1187,7 +1216,7 @@ table of contents to cover all 80+ sections.
 | **Game Engine Framework** | No | GameBase/IScene + 7 runtime APIs |
 | **Runtime Classes** | 226 | 272 (+46) |
 | **IL Optimizer Passes** | 35 | 38 (+EH-Opt, LoopRotate, Reassoc) |
-| **Test Count** | 1,261 | 1,340 (+79 net) |
+| **Test Count** | 1,261 | 1,342 (+81 net) |
 | **Full O2 Pipeline** | O1-level only | All 10 missing passes restored |
 | **Benchmark Results** | — | 24-87% improvement (Apple M4 Max) |
 | **AArch64 Peephole** | Monolithic (2750 LOC) | 6 sub-passes + shared templates |

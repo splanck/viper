@@ -130,11 +130,109 @@ TypeRef Sema::analyzeExpr(Expr *expr)
         case ExprKind::Await:
         {
             auto *awaitExpr = static_cast<AwaitExpr *>(expr);
-            analyzeExpr(awaitExpr->operand.get());
-            // await returns an opaque object (the resolved Future value)
+            TypeRef operandType = analyzeExpr(awaitExpr->operand.get());
+            TypeRef awaitedType = operandType;
+            if (awaitedType && awaitedType->kind == TypeKindSem::Optional &&
+                awaitedType->innerType())
+                awaitedType = awaitedType->innerType();
+
+            if (awaitedType && awaitedType->kind != TypeKindSem::Any &&
+                awaitedType->kind != TypeKindSem::Unknown &&
+                !(awaitedType->kind == TypeKindSem::Ptr &&
+                  awaitedType->name == "Viper.Threads.Future"))
+            {
+                error(expr->loc, "`await` expects Viper.Threads.Future");
+            }
+
             result = types::any();
+            if (auto *call = dynamic_cast<CallExpr *>(awaitExpr->operand.get()))
+            {
+                if (FunctionDecl *asyncDecl = resolvedFunctionDecl(call);
+                    asyncDecl && asyncDecl->isAsync)
+                {
+                    result = asyncDecl->returnType ? resolveTypeNode(asyncDecl->returnType.get())
+                                                   : types::voidType();
+                    break;
+                }
+
+                auto findAsyncDecl = [&](const std::string &name) -> FunctionDecl *
+                {
+                    if (FunctionDecl *decl = getFunctionDecl(name); decl && decl->isAsync)
+                        return decl;
+                    for (FunctionDecl *decl : getFunctionOverloads(name))
+                    {
+                        if (decl && decl->isAsync)
+                            return decl;
+                    }
+                    return nullptr;
+                };
+
+                FunctionDecl *asyncDecl = nullptr;
+
+                std::string calleeName = resolvedFunctionCallee(call);
+                if (!calleeName.empty())
+                {
+                    asyncDecl = findAsyncDecl(calleeName);
+                }
+
+                if (!asyncDecl)
+                {
+                    if (auto *ident = dynamic_cast<IdentExpr *>(call->callee.get()))
+                    {
+                        if (Symbol *sym = lookupSymbol(ident->name);
+                            sym && sym->kind == Symbol::Kind::Function && sym->decl)
+                            asyncDecl = static_cast<FunctionDecl *>(sym->decl);
+
+                        if (asyncDecl && !asyncDecl->isAsync)
+                            asyncDecl = nullptr;
+
+                        if (!asyncDecl)
+                            asyncDecl = findAsyncDecl(ident->name);
+                    }
+                    else if (auto *field = dynamic_cast<FieldExpr *>(call->callee.get()))
+                    {
+                        std::function<bool(Expr *, std::string &)> buildName =
+                            [&](Expr *node, std::string &out) -> bool
+                        {
+                            if (auto *name = dynamic_cast<IdentExpr *>(node))
+                            {
+                                out = name->name;
+                                return true;
+                            }
+                            if (auto *nested = dynamic_cast<FieldExpr *>(node))
+                            {
+                                if (!buildName(nested->base.get(), out))
+                                    return false;
+                                out += ".";
+                                out += nested->field;
+                                return true;
+                            }
+                            return false;
+                        };
+
+                        std::string dottedName;
+                        if (buildName(field, dottedName))
+                        {
+                            if (Symbol *sym = lookupSymbol(dottedName);
+                                sym && sym->kind == Symbol::Kind::Function && sym->decl)
+                                asyncDecl = static_cast<FunctionDecl *>(sym->decl);
+
+                            if (asyncDecl && !asyncDecl->isAsync)
+                                asyncDecl = nullptr;
+
+                            if (!asyncDecl)
+                                asyncDecl = findAsyncDecl(dottedName);
+                        }
+                    }
+                }
+
+                if (asyncDecl && asyncDecl->isAsync)
+                    result = asyncDecl->returnType ? resolveTypeNode(asyncDecl->returnType.get())
+                                                   : types::voidType();
+            }
             break;
         }
+            break;
         default:
             result = types::unknown();
             break;

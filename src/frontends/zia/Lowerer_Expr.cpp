@@ -155,27 +155,48 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
 
 LowerResult Lowerer::lowerIdent(IdentExpr *expr)
 {
+    auto semaType = sema_.typeOf(expr);
+    auto resolveIdentType = [&](TypeRef fallback) -> TypeRef
+    {
+        if (semaType && semaType->kind != TypeKindSem::Unknown && semaType->kind != TypeKindSem::Any)
+            return semaType;
+        return fallback;
+    };
+    auto lowerStoredValue = [&](Value storedValue, TypeRef storageType, TypeRef useType) -> LowerResult
+    {
+        if (storageType && storageType->kind == TypeKindSem::Optional && useType &&
+            useType->kind != TypeKindSem::Optional)
+        {
+            TypeRef innerType = storageType->innerType();
+            if (innerType && innerType->equals(*useType))
+                return emitOptionalUnwrap(storedValue, innerType);
+        }
+
+        Type resultType = mapType(useType ? useType : storageType);
+        return {storedValue, resultType};
+    };
+
     // Check for slot-based mutable variables first (e.g., loop variables)
     auto slotIt = slots_.find(expr->name);
     if (slotIt != slots_.end())
     {
-        // Use localTypes_ first (set for parameters in generic method bodies), fall back to
-        // sema_.typeOf()
         auto localTypeIt = localTypes_.find(expr->name);
-        TypeRef type =
-            (localTypeIt != localTypes_.end()) ? localTypeIt->second : sema_.typeOf(expr);
-        Type ilType = mapType(type);
-        Value loaded = loadFromSlot(expr->name, ilType);
-        return {loaded, ilType};
+        TypeRef storageType =
+            (localTypeIt != localTypes_.end()) ? localTypeIt->second : nullptr;
+        TypeRef useType = resolveIdentType(storageType);
+        Type loadType = mapType(storageType ? storageType : useType);
+        Value loaded = loadFromSlot(expr->name, loadType);
+        return lowerStoredValue(loaded, storageType, useType);
     }
 
     Value *local = lookupLocal(expr->name);
     if (local)
     {
         auto localTypeIt = localTypes_.find(expr->name);
-        TypeRef type =
-            (localTypeIt != localTypes_.end()) ? localTypeIt->second : sema_.typeOf(expr);
-        return {*local, mapType(type)};
+        TypeRef storageType =
+            (localTypeIt != localTypes_.end()) ? localTypeIt->second : nullptr;
+        TypeRef useType = resolveIdentType(storageType);
+        return lowerStoredValue(*local, storageType, useType);
     }
 
     // Check for implicit field access (self.field) inside a value type method
@@ -245,11 +266,12 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
     auto globalIt = globalVariables_.find(expr->name);
     if (globalIt != globalVariables_.end())
     {
-        TypeRef type = globalIt->second;
-        Type ilType = mapType(type);
-        Value addr = getGlobalVarAddr(expr->name, type);
-        Value loaded = emitLoad(addr, ilType);
-        return {loaded, ilType};
+        TypeRef storageType = globalIt->second;
+        TypeRef useType = resolveIdentType(storageType);
+        Type loadType = mapType(storageType ? storageType : useType);
+        Value addr = getGlobalVarAddr(expr->name, storageType);
+        Value loaded = emitLoad(addr, loadType);
+        return lowerStoredValue(loaded, storageType, useType);
     }
 
     // Check for auto-evaluated property getters (e.g., Pi → call Viper.Math.get_Pi())

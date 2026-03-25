@@ -13,6 +13,7 @@
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
 #include "support/alignment.hpp"
+#include <algorithm>
 #include <cctype>
 
 namespace il::frontends::zia
@@ -828,6 +829,48 @@ bool Lowerer::isStringType(TypeRef type) const
     return type && type->kind == TypeKindSem::String;
 }
 
+Lowerer::Value Lowerer::emitManagedReleaseRet(Value value, bool isString)
+{
+    if (isString)
+    {
+        emitCall(kStrReleaseMaybe, {value});
+        return Value::constInt(0);
+    }
+
+    Value nextRefCount =
+        emitCallRet(Type(Type::Kind::I64), "rt_heap_release_deferred", {value});
+
+    unsigned slotId = nextTempId();
+    il::core::Instr allocaInstr;
+    allocaInstr.result = slotId;
+    allocaInstr.op = Opcode::Alloca;
+    allocaInstr.type = Type(Type::Kind::Ptr);
+    allocaInstr.operands = {Value::constInt(8)};
+    allocaInstr.loc = curLoc_;
+    blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
+    Value resultSlot = Value::temp(slotId);
+    emitStore(resultSlot, nextRefCount, Type(Type::Kind::I64));
+
+    Value isZero =
+        emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), nextRefCount, Value::constInt(0));
+    size_t destroyIdx = createBlock("release_destroy");
+    size_t contIdx = createBlock("release_cont");
+    emitCBr(isZero, destroyIdx, contIdx);
+
+    setBlock(destroyIdx);
+    emitCall("__zia_dtor_dispatch", {value});
+    emitCall("rt_obj_free", {value});
+    emitBr(contIdx);
+
+    setBlock(contIdx);
+    return emitLoad(resultSlot, Type(Type::Kind::I64));
+}
+
+void Lowerer::emitManagedRelease(Value value, bool isString)
+{
+    (void)emitManagedReleaseRet(value, isString);
+}
+
 void Lowerer::deferRelease(Value v, bool isString)
 {
     deferredTemps_.push_back({v, isString, blockMgr_.currentBlockIndex()});
@@ -866,12 +909,102 @@ void Lowerer::releaseDeferredTemps()
     {
         if (t.blockIdx != curBlock)
             continue;
-        if (t.isString)
-            emitCall(kStrReleaseMaybe, {t.value});
-        else
-            emitCallRet(Type(Type::Kind::I64), kHeapRelease, {t.value});
+        emitManagedRelease(t.value, t.isString);
     }
     deferredTemps_.clear();
+}
+
+void Lowerer::emitDestructorDispatch()
+{
+    std::vector<std::pair<int, std::string>> destructors;
+    destructors.reserve(entityTypes_.size());
+    for (const auto &[typeName, info] : entityTypes_)
+    {
+        const std::string dtorName = typeName + ".__dtor";
+        if (definedFunctions_.count(dtorName) > 0)
+            destructors.emplace_back(info.classId, dtorName);
+    }
+
+    std::sort(destructors.begin(), destructors.end(), [](const auto &lhs, const auto &rhs)
+              { return lhs.first < rhs.first; });
+
+    Function *savedFunc = currentFunc_;
+    auto savedLocals = std::move(locals_);
+    auto savedSlots = std::move(slots_);
+    auto savedLocalTypes = std::move(localTypes_);
+    auto savedDeferredTemps = std::move(deferredTemps_);
+    TypeRef savedReturnType = currentReturnType_;
+    const EntityTypeInfo *savedEntityType = currentEntityType_;
+    const ValueTypeInfo *savedValueType = currentValueType_;
+
+    auto &fn = builder_->startFunction(
+        "__zia_dtor_dispatch", Type(Type::Kind::Void), {{"self", Type(Type::Kind::Ptr)}});
+    currentFunc_ = &fn;
+    currentReturnType_ = types::voidType();
+    currentEntityType_ = nullptr;
+    currentValueType_ = nullptr;
+    definedFunctions_.insert("__zia_dtor_dispatch");
+    blockMgr_.bind(builder_.get(), &fn);
+    locals_.clear();
+    slots_.clear();
+    localTypes_.clear();
+    deferredTemps_.clear();
+
+    builder_->createBlock(fn, "entry_0", fn.params);
+    setBlock(fn.blocks.size() - 1);
+
+    Value selfValue = Value::temp(fn.blocks.back().params[0].id);
+    if (destructors.empty())
+    {
+        emitRetVoid();
+    }
+    else
+    {
+        Value classId = emitCallRet(Type(Type::Kind::I64), "rt_obj_class_id", {selfValue});
+        size_t defaultIdx = createBlock("dtor_default");
+        std::vector<size_t> testBlocks;
+        std::vector<size_t> callBlocks;
+        testBlocks.reserve(destructors.size());
+        callBlocks.reserve(destructors.size());
+
+        for (size_t i = 0; i < destructors.size(); ++i)
+        {
+            testBlocks.push_back(i == 0 ? blockMgr_.currentBlockIndex()
+                                        : createBlock("dtor_test_" + std::to_string(i)));
+            callBlocks.push_back(createBlock("dtor_call_" + std::to_string(i)));
+        }
+
+        for (size_t i = 0; i < destructors.size(); ++i)
+        {
+            if (i != 0)
+                setBlock(testBlocks[i]);
+            Value match = emitBinary(Opcode::ICmpEq,
+                                     Type(Type::Kind::I1),
+                                     classId,
+                                     Value::constInt(destructors[i].first));
+            size_t falseIdx = (i + 1 < destructors.size()) ? testBlocks[i + 1] : defaultIdx;
+            emitCBr(match, callBlocks[i], falseIdx);
+            setBlock(callBlocks[i]);
+            emitCall(destructors[i].second, {selfValue});
+            emitRetVoid();
+        }
+
+        setBlock(defaultIdx);
+        emitRetVoid();
+    }
+
+    currentFunc_ = savedFunc;
+    currentReturnType_ = savedReturnType;
+    currentEntityType_ = savedEntityType;
+    currentValueType_ = savedValueType;
+    locals_ = std::move(savedLocals);
+    slots_ = std::move(savedSlots);
+    localTypes_ = std::move(savedLocalTypes);
+    deferredTemps_ = std::move(savedDeferredTemps);
+    if (savedFunc)
+        blockMgr_.bind(builder_.get(), savedFunc);
+    else
+        blockMgr_.reset(nullptr);
 }
 
 } // namespace il::frontends::zia

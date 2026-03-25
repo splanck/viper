@@ -1,0 +1,37 @@
+module RuntimeTest34;
+
+bind Viper.Terminal;
+
+async func answer() -> Integer {
+    return 42;
+}
+
+async func echo(name: String) -> String {
+    return name;
+}
+
+async func add(a: Integer, b: Integer) -> Integer {
+    return a + b;
+}
+
+func start() {
+    var answerValue: Integer = await answer();
+    if (answerValue != 42) {
+        Viper.Terminal.Say("FAIL: await answer");
+        return;
+    }
+
+    var echoValue: String = await echo("viper");
+    if (echoValue != "viper") {
+        Viper.Terminal.Say("FAIL: await echo");
+        return;
+    }
+
+    var sumValue: Integer = await add(10, 32);
+    if (sumValue != 42) {
+        Viper.Terminal.Say("FAIL: async params");
+        return;
+    }
+
+    Viper.Terminal.Say("RESULT: ok");
+}

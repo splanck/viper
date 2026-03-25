@@ -1,0 +1,43 @@
+module RuntimeTest37;
+
+bind Viper.Terminal;
+
+func start() {
+    var trimmed = "  hello  ".Trim();
+    if (trimmed != "hello") {
+        Viper.Terminal.Say("FAIL: trim");
+        return;
+    }
+
+    var upper = trimmed.ToUpper();
+    if (upper != "HELLO") {
+        Viper.Terminal.Say("FAIL: upper");
+        return;
+    }
+
+    var lower = upper.ToLower();
+    if (lower != "hello") {
+        Viper.Terminal.Say("FAIL: lower");
+        return;
+    }
+
+    var left = "  hi".TrimStart();
+    if (left != "hi") {
+        Viper.Terminal.Say("FAIL: trim_start");
+        return;
+    }
+
+    var right = "hi  ".TrimEnd();
+    if (right != "hi") {
+        Viper.Terminal.Say("FAIL: trim_end");
+        return;
+    }
+
+    var middle = "abcdef".Substring(1, 3);
+    if (middle != "bcd") {
+        Viper.Terminal.Say("FAIL: substring");
+        return;
+    }
+
+    Viper.Terminal.Say("RESULT: ok");
+}

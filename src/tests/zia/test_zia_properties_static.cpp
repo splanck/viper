@@ -177,6 +177,57 @@ func start() {
     EXPECT_TRUE(hasFunction(result.module, "Temperature.set_fahrenheit"));
 }
 
+/// @brief Property access syntax should lower through synthesized getter/setter methods.
+TEST(ZiaProperties, MemberAccessUsesSynthesizedAccessors)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Counter {
+    hide Integer _count;
+
+    expose func init() {
+        _count = 0;
+    }
+
+    expose property count: Integer {
+        get {
+            return _count;
+        }
+        set(v) {
+            _count = v;
+        }
+    }
+}
+
+func start() {
+    var c = new Counter();
+    c.count = 42;
+    Viper.Terminal.SayInt(c.count);
+}
+)";
+
+    CompilerInput input{.source = source, .path = "test_prop_member_access.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(hasFunction(result.module, "Counter.get_count"));
+    EXPECT_TRUE(hasFunction(result.module, "Counter.set_count"));
+    EXPECT_TRUE(hasCallee(result.module, "main", "Counter.get_count"));
+    EXPECT_TRUE(hasCallee(result.module, "main", "Counter.set_count"));
+}
+
 // ============================================================================
 // Static member tests
 // ============================================================================
