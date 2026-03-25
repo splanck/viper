@@ -76,11 +76,9 @@ echo === BASIC Demos ===
 echo.
 
 REM Build BASIC demos
-call :build_demo chess "%GAMES_DIR%\chess-basic"
 call :build_demo vtris "%GAMES_DIR%\vtris"
 call :build_demo frogger "%GAMES_DIR%\frogger-basic"
 call :build_demo centipede "%GAMES_DIR%\centipede-basic"
-call :build_demo pacman "%GAMES_DIR%\pacman-basic"
 
 echo === Zia Demos ===
 echo.

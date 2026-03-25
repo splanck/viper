@@ -70,11 +70,9 @@ fi
 
 # Demo configurations: name:project_dir
 BASIC_DEMOS=(
-    "chess:${GAMES_DIR}/chess-basic"
     "vtris:${GAMES_DIR}/vtris"
     "frogger:${GAMES_DIR}/frogger-basic"
     "centipede:${GAMES_DIR}/centipede-basic"
-    "pacman:${GAMES_DIR}/pacman-basic"
 )
 
 ZIA_DEMOS=(

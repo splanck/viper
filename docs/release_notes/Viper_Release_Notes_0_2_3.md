@@ -25,6 +25,7 @@ Version 0.2.3 is a major hardening, tooling, and infrastructure release. Highlig
 - **Comprehensive Safety Audits** — VM, codegen, runtime, network, 3D graphics, and concurrency hardening with TSan verification.
 - **Backend Codegen Review** — decomposed monolithic files, CFG-aware register allocation liveness, shared infrastructure across both backends.
 - **Game Engine Framework** — GameBase/IScene, screen transitions, A* pathfinding, SaveData, DebugOverlay, SoundBank/Synth.
+- **Language Audit** — comprehensive Zia/BASIC feature verification (13 findings: 6 confirmed fixed, 7 filed as open bugs), reference doc corrections, 13 new Zia feature/runtime tests.
 - **Frontend Decomposition** — shared utilities, parser/lowerer file splits, CRTP LexerBase.
 - **Codebase Reorganization** — demos consolidated into `examples/`, devdocs merged into `docs/`, 900+ doc fixes.
 - **Website** — Solarized dark/light theme, 66-page project site.
@@ -33,12 +34,12 @@ Version 0.2.3 is a major hardening, tooling, and infrastructure release. Highlig
 
 | Metric | Value |
 |--------|-------|
-| Commits | 99 |
-| Files changed | 3,537 |
-| Lines added | ~272K |
+| Commits | 100 |
+| Files changed | 3,557 |
+| Lines added | ~279K |
 | Lines removed | ~323K |
-| Source files | 2,668 |
-| Test count | 1,342 |
+| Source files | 2,671 |
+| Test count | 1,351 |
 | Codebase | ~348K SLOC (production C/C++/ObjC) |
 
 ---
@@ -167,8 +168,9 @@ A dual-protocol language server supporting both MCP (for AI assistants) and LSP 
 - MCP transport (newline-delimited) with 11 tool definitions for AI assistants
 - LSP transport (Content-Length framed) with diagnostics, completions, hover, and document symbols
 - JSON-RPC 2.0 request/response handling
-- `CompilerBridge` facade wrapping Zia compiler APIs
+- `CompilerBridge` facade wrapping Zia compiler APIs, including entity field hover
 - VS Code extension with auto-discovery of `zia-server` binary
+- Completion engine improvements for both Zia and BASIC frontends
 
 #### Zia Language Features
 
@@ -228,6 +230,42 @@ Three missing platform features identified by the comprehensive documentation au
 - **Color constants**: `Color.RED` through `Color.ORANGE` (10 named constants) as static properties
 
 Plus 900+ documentation fixes across the Bible reference manual.
+
+#### Language Audit
+
+Comprehensive end-to-end verification of all documented Zia and BASIC language features against the
+live compiler and runtime. Validated every feature claimed in the reference documentation, filed a
+structured bug report (`docs/bugs/language_audit_2026_03_25.md`) with 13 findings:
+
+**Confirmed Fixed (6)**
+- Enum variant values (previously all evaluated to 0)
+- String instance methods (`.Trim()`, `.Replace()`, `.Split()`)
+- Async/await syntax and runtime execution
+- Deinit destructor field bindings
+- BASIC `EXPORT` keyword
+- Entity property getter/setter resolution
+
+**Open Bugs Filed (7)**
+- ZIA-BUG-001: Guard clause narrowing for optional primitives at lowering
+- ZIA-BUG-003: Match arms don't accept bare `return` after `=>`
+- ZIA-BUG-004: Properties — getters/setters parse but hit sema/lowering errors
+- ZIA-BUG-005: Typed catch (`catch (e: Error)`) not yet supported
+- ZIA-BUG-006: Tuple destructuring not supported in Zia
+- ZIA-BUG-007: Child entity overriding parent `init()` with different args
+- BASIC-BUG-001: `FOR EACH` loop off-by-one on collection iteration
+
+**Reference Documentation Corrections**
+- Zia reference: fixed try/catch syntax examples, added OR pattern documentation,
+  added limitation notes for properties and tuples, removed stale enum bug note
+- BASIC reference: added `EXPORT` keyword documentation
+
+**New Runtime Test Programs (6)**
+- `33_enum_runtime.zia` — enum declaration, variant access, match exhaustiveness
+- `34_async_functions.zia` — async/await with Future.Get runtime calls
+- `35_optional_primitive_narrowing.zia` — guard clause narrowing for `Integer?`
+- `36_entity_properties.zia` — getter/setter property declarations
+- `37_string_instance_methods.zia` — `.Trim()`, `.Replace()`, `.Split()`, `.Contains()`
+- `38_deinit_bindings.zia` — destructor field binding propagation
 
 #### IL Optimizer — Three New Passes
 
@@ -788,6 +826,23 @@ Post-audit fixes across the 3D graphics subsystem:
 - **Entity method dispatch**: Improved codegen routing for entity method calls through
   the inheritance chain
 
+#### Destructor & Property Fixes
+
+- **Deinit binding propagation**: Destructor (`deinit`) blocks can now access entity fields
+  through `self` bindings — previously, field accesses inside `deinit` hit lowering errors
+  because the binding context wasn't propagated to the destructor scope
+- **Destructor dispatch**: Correct lowering of `__dtor_TypeName` IL function calls through
+  entity inheritance chains
+- **Property access improvements**: Sema now correctly resolves property getter/setter
+  declarations and validates return types against the backing field type
+
+#### Async Improvements
+
+- **ThreadsRuntime async execution**: VM `ThreadsRuntime` improved for async function handling,
+  supporting `Future.Get` continuation semantics for `await` expressions
+- **Async test coverage**: New compiler and runtime tests validating async/await lowering
+  through the full pipeline (parser → sema → IL → VM execution)
+
 #### Sema Fixes
 
 - Guard-clause narrowing interaction: assignment type checking uses original declared type
@@ -798,6 +853,7 @@ Post-audit fixes across the 3D graphics subsystem:
 - Match exhaustiveness checking (W019)
 - Escape analysis in BasicAA (non-escaping allocas vs Param → NoAlias)
 - Warning suppression improvements for entity method self-parameter warnings
+- Import deduplication in `ImportResolver` to prevent redundant module loads
 
 ---
 
@@ -989,6 +1045,15 @@ issue tracker.
 | Network runtime | 1 | Network operation integration tests |
 | AnimStateMachine | 7 | State transitions, frame advance, one-shot, progress, flags |
 | TextureAtlas | 3 | Grid slicing, named regions, SpriteBatch integration |
+| Zia async | 3 | Async function parsing, sema validation, lowering |
+| Zia destructors | 3 | Deinit blocks, binding propagation, field access |
+| Zia enums (runtime) | 2 | Enum variant values, match exhaustiveness at runtime |
+| Zia properties | 1 | Static property resolution through module aliases |
+| Zia string methods | 2 | Instance method dispatch (Trim, Replace, Split) |
+| Zia guard narrowing | 1 | Optional primitive narrowing after guard clause |
+| Zia runtime programs | 6 | End-to-end runtime tests (enums, async, properties, deinit, etc.) |
+| AArch64 Linux ABI | 1 | Linux calling convention validation |
+| Pipeline equivalence | 1 | x86-64 pipeline output consistency |
 
 #### Determinism Stress Test
 
@@ -1118,11 +1183,11 @@ table of contents to cover all 80+ sections.
 | Metric              | v0.2.2    | v0.2.3 (draft) | Change     |
 |---------------------|-----------|----------------|------------|
 | Codebase (SLOC)     | ~310,000  | ~348,000       | +38K       |
-| Source Files         | 2,288     | 2,668          | +380       |
-| Test Count          | 1,261     | 1,342          | +81        |
-| Commits             | —         | 99             | —          |
-| Files Changed       | —         | 3,537          | —          |
-| Lines Added         | —         | ~272K          | —          |
+| Source Files         | 2,288     | 2,671          | +383       |
+| Test Count          | 1,261     | 1,351          | +90        |
+| Commits             | —         | 100            | —          |
+| Files Changed       | —         | 3,557          | —          |
+| Lines Added         | —         | ~279K          | —          |
 | Lines Removed       | —         | ~323K          | —          |
 
 > Lines removed exceed lines added because ~1,100 stale files were deleted (obsolete test
@@ -1216,7 +1281,7 @@ table of contents to cover all 80+ sections.
 | **Game Engine Framework** | No | GameBase/IScene + 7 runtime APIs |
 | **Runtime Classes** | 226 | 272 (+46) |
 | **IL Optimizer Passes** | 35 | 38 (+EH-Opt, LoopRotate, Reassoc) |
-| **Test Count** | 1,261 | 1,342 (+81 net) |
+| **Test Count** | 1,261 | 1,351 (+90 net) |
 | **Full O2 Pipeline** | O1-level only | All 10 missing passes restored |
 | **Benchmark Results** | — | 24-87% improvement (Apple M4 Max) |
 | **AArch64 Peephole** | Monolithic (2750 LOC) | 6 sub-passes + shared templates |
@@ -1232,6 +1297,7 @@ table of contents to cover all 80+ sections.
 | **Crypto** | ChaCha20-Poly1305, ECDSA | + AES-128-GCM, HMAC-SHA256, HKDF |
 | **3D Demo** | No | Dungeon of Viper — 3D FPS |
 | **Codebase Organization** | demos/ + devdocs/ | Unified examples/ + docs/ |
+| **Language Audit** | No | 13 findings validated, 6 fixed, 7 filed |
 
 ---
 
