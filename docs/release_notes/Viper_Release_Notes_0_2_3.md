@@ -4,10 +4,7 @@
 > These are early development releases. Viper is under active development and not ready for production use.
 > Future milestones will define supported releases when appropriate.
 
-> **DRAFT** — This document is a preliminary draft for v0.2.3. Content is subject to change before
-> the official release.
-
-## Version 0.2.3 - Pre-Alpha (March 2026) — DRAFT
+## Version 0.2.3 - Pre-Alpha (March 25, 2026)
 
 ### Release Overview
 
@@ -1169,7 +1166,7 @@ table of contents to cover all 80+ sections.
 
 ### Project Statistics
 
-| Metric              | v0.2.2    | v0.2.3 (draft) | Change     |
+| Metric              | v0.2.2    | v0.2.3         | Change     |
 |---------------------|-----------|----------------|------------|
 | Codebase (SLOC)     | ~310,000  | ~348,000       | +38K       |
 | Source Files         | 2,288     | 2,671          | +383       |
