@@ -119,7 +119,7 @@ void Sema::analyzeStmt(Stmt *stmt)
 
             if (tryStmt->catchBody)
             {
-                pushScope();
+                pushScope(tryStmt->loc);
                 if (!tryStmt->catchVar.empty())
                 {
                     Symbol sym;
@@ -129,7 +129,8 @@ void Sema::analyzeStmt(Stmt *stmt)
                     defineSymbol(tryStmt->catchVar, sym, tryStmt->loc);
                 }
                 analyzeStmt(tryStmt->catchBody.get());
-                popScope();
+                popScope(tryStmt->catchBody ? scopeEndForStmt(tryStmt->catchBody.get())
+                                            : tryStmt->loc);
             }
             if (tryStmt->finallyBody)
                 analyzeStmt(tryStmt->finallyBody.get());
@@ -164,7 +165,7 @@ static bool stmtTerminates(const Stmt *s)
 
 void Sema::analyzeBlockStmt(BlockStmt *stmt)
 {
-    pushScope();
+    pushScope(stmt->loc);
     bool afterTerminator = false;
     int guardNarrowings = 0;
     for (auto &s : stmt->statements)
@@ -215,7 +216,7 @@ void Sema::analyzeBlockStmt(BlockStmt *stmt)
     }
     for (int i = 0; i < guardNarrowings; i++)
         popNarrowingScope();
-    popScope();
+    popScope(scopeEndForStmt(stmt));
 }
 
 void Sema::analyzeVarStmt(VarStmt *stmt)
@@ -444,7 +445,7 @@ void Sema::analyzeWhileStmt(WhileStmt *stmt)
 
 void Sema::analyzeForStmt(ForStmt *stmt)
 {
-    pushScope();
+    pushScope(stmt->loc);
     if (stmt->init)
         analyzeStmt(stmt->init.get());
     if (stmt->condition)
@@ -471,12 +472,12 @@ void Sema::analyzeForStmt(ForStmt *stmt)
     loopDepth_++;
     analyzeStmt(stmt->body.get());
     loopDepth_--;
-    popScope();
+    popScope(stmt->body ? scopeEndForStmt(stmt->body.get()) : stmt->loc);
 }
 
 void Sema::analyzeForInStmt(ForInStmt *stmt)
 {
-    pushScope();
+    pushScope(stmt->loc);
 
     TypeRef iterableType = analyzeExpr(stmt->iterable.get());
 
@@ -577,7 +578,7 @@ void Sema::analyzeForInStmt(ForInStmt *stmt)
     loopDepth_++;
     analyzeStmt(stmt->body.get());
     loopDepth_--;
-    popScope();
+    popScope(stmt->body ? scopeEndForStmt(stmt->body.get()) : stmt->loc);
 }
 
 void Sema::analyzeReturnStmt(ReturnStmt *stmt)
@@ -630,7 +631,7 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt)
     for (auto &arm : stmt->arms)
     {
         std::unordered_map<std::string, TypeRef> bindings;
-        pushScope();
+        pushScope(stmt->loc);
 
         analyzeMatchPattern(arm.pattern, scrutineeType, coverage, bindings);
 
@@ -654,7 +655,7 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt)
         }
 
         analyzeExpr(arm.body.get());
-        popScope();
+        popScope(arm.body ? arm.body->loc : stmt->loc);
     }
 
     if (!coverage.hasIrrefutable)

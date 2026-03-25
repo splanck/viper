@@ -53,6 +53,7 @@ Token Parser::advance()
 {
     Token cur = peek();
     ++tokenPos_;
+    compactBufferedTokens();
     return cur;
 }
 
@@ -101,6 +102,21 @@ bool Parser::expect(TokenKind kind, const char *what, Token *out)
     }
     error(std::string("expected ") + what + ", got " + tokenKindToString(peek().kind));
     return false;
+}
+
+void Parser::compactBufferedTokens()
+{
+    // Do not compact during speculative parsing; saved token positions are
+    // relative to the current buffer.
+    if (suppressionDepth_ > 0)
+        return;
+
+    constexpr size_t kCompactThreshold = 256;
+    if (tokenPos_ < kCompactThreshold)
+        return;
+
+    tokens_.erase(tokens_.begin(), tokens_.begin() + static_cast<std::ptrdiff_t>(tokenPos_));
+    tokenPos_ = 0;
 }
 
 void Parser::resyncAfterError()

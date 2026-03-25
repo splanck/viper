@@ -147,11 +147,15 @@ CompilerResult compile(const CompilerInput &input,
         std::cerr << "=== AST after parsing ===\n" << printer.dump(*module) << "=== End AST ===\n";
     }
 
+    Sema sema(result.diagnostics);
+    sema.initWarnings(options.warningPolicy);
+    sema.addWarningSuppressions(result.fileId, input.source);
+
     debugTime("Phase 2.5: Import resolution");
     // Phase 2.5: Process binds (load and merge bound files)
     if (!module->binds.empty())
     {
-        ImportResolver resolver(result.diagnostics, sm);
+        ImportResolver resolver(result.diagnostics, sm, &sema.warningSuppressions());
         if (!resolver.resolve(*module, std::string(input.path)))
         {
             // Import processing failed
@@ -161,8 +165,6 @@ CompilerResult compile(const CompilerInput &input,
 
     debugTime("Phase 3: Semantic Analysis");
     // Phase 3: Semantic Analysis
-    Sema sema(result.diagnostics);
-    sema.initWarnings(options.warningPolicy, input.source);
     bool semanticOk = sema.analyze(*module);
 
     // Dump AST after semantic analysis.
@@ -284,11 +286,17 @@ std::unique_ptr<AnalysisResult> parseAndAnalyze(const CompilerInput &input,
 
     result->ast = std::move(module);
 
+    result->fileId = fileId;
+
+    result->sema = std::make_unique<Sema>(result->diagnostics);
+    result->sema->initWarnings(options.warningPolicy);
+    result->sema->addWarningSuppressions(fileId, input.source);
+
     // Phase 2.5: Import resolution (best-effort).
     // Failures are accumulated in diagnostics but do not abort analysis.
     if (!result->ast->binds.empty())
     {
-        ImportResolver resolver(result->diagnostics, sm);
+        ImportResolver resolver(result->diagnostics, sm, &result->sema->warningSuppressions());
         resolver.resolve(*result->ast, std::string(input.path));
     }
 
@@ -296,7 +304,6 @@ std::unique_ptr<AnalysisResult> parseAndAnalyze(const CompilerInput &input,
     // We always construct and run Sema — even when there were parse errors —
     // because partial type resolution is still valuable for completions.
     // DiagnosticEngine address is stable (heap-allocated in result).
-    result->sema = std::make_unique<Sema>(result->diagnostics);
     result->sema->analyze(*result->ast);
     // Ignore false return: partial Sema state is the desired output.
 

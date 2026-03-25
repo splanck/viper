@@ -9,7 +9,7 @@
 // Purpose: Code-completion engine for the Viper BASIC language.
 // Key invariants:
 //   - Reuses same CompletionKind/CompletionItem types as Zia
-//   - One-entry LRU cache keyed by FNV-1a source hash
+//   - One-entry LRU cache keyed by FNV-1a source hash plus file path
 //   - Provider architecture: keywords, snippets, builtins, scope symbols, members
 // Ownership/Lifetime:
 //   - CompletionEngine owns the cache (BasicAnalysisResult)
@@ -127,6 +127,7 @@ class BasicCompletionEngine
     struct Cache
     {
         uint64_t hash{0};
+        std::string filePath;
         std::unique_ptr<BasicAnalysisResult> result;
     };
 

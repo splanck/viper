@@ -352,7 +352,13 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event)
     while (!event->handled && current)
     {
         if (current->vtable && current->vtable->handle_event)
-            current->vtable->handle_event(current, event);
+        {
+            if (current->vtable->handle_event(current, event))
+            {
+                event->handled = true;
+                return true;
+            }
+        }
         current = current->parent;
     }
 

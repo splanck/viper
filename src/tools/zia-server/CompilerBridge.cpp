@@ -151,7 +151,11 @@ static std::string buildSignatureFromType(const TypeRef &funcType)
 }
 
 /// @brief Resolve a hover target using Sema APIs.
-static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx, int line, int col)
+static HoverResult resolveHoverTarget(const AnalysisResult &ar,
+                                      const Sema &sema,
+                                      const HoverContext &ctx,
+                                      int line,
+                                      int col)
 {
     HoverResult result;
 
@@ -195,7 +199,7 @@ static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx,
         if (!current)
         {
             auto *scoped = sema.findSymbolAtPosition(
-                parts[0], static_cast<uint32_t>(line), static_cast<uint32_t>(col));
+                parts[0], ar.fileId, static_cast<uint32_t>(line), static_cast<uint32_t>(col));
             if (scoped)
                 current = scoped->symbol.type;
         }
@@ -324,7 +328,7 @@ static HoverResult resolveHoverTarget(const Sema &sema, const HoverContext &ctx,
     // 0. Position-based lookup.
     {
         auto *scoped = sema.findSymbolAtPosition(
-            ctx.identifier, static_cast<uint32_t>(line), static_cast<uint32_t>(col));
+            ctx.identifier, ar.fileId, static_cast<uint32_t>(line), static_cast<uint32_t>(col));
         if (scoped)
         {
             result.name = scoped->symbol.name;
@@ -519,7 +523,7 @@ std::string CompilerBridge::hover(const std::string &source,
     if (!result->sema)
         return "";
 
-    auto hoverResult = resolveHoverTarget(*result->sema, ctx, line, col);
+    auto hoverResult = resolveHoverTarget(*result, *result->sema, ctx, line, col);
     if (hoverResult.name.empty())
         return "";
 

@@ -24,6 +24,7 @@
 #pragma once
 
 #include "frontends/zia/Warnings.hpp"
+#include "support/source_location.hpp"
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -35,11 +36,21 @@ namespace il::frontends::zia
 class WarningSuppressions
 {
   public:
-    /// @brief Scan source text and extract all @suppress directives.
-    /// @param source The full source text to scan.
-    void scan(std::string_view source)
+    /// @brief Remove all recorded suppressions.
+    void clear()
     {
         suppressions_.clear();
+    }
+
+    /// @brief Scan source text and extract all @suppress directives for a file.
+    /// @param fileId SourceManager file identifier for the source text.
+    /// @param source The full source text to scan.
+    void scan(uint32_t fileId, std::string_view source)
+    {
+        if (fileId == 0)
+            return;
+
+        auto &fileSuppressions = suppressions_[fileId];
         uint32_t lineNum = 1;
         size_t pos = 0;
 
@@ -51,25 +62,33 @@ class WarningSuppressions
                 eol = source.size();
 
             std::string_view line = source.substr(pos, eol - pos);
-            parseLine(line, lineNum);
+            parseLine(fileSuppressions, line, lineNum);
 
             pos = eol + 1;
             lineNum++;
         }
     }
 
-    /// @brief Check if a warning is suppressed at a given line.
+    /// @brief Check if a warning is suppressed at a given source location.
     /// @details A `// @suppress(Wxxx)` on line N suppresses warnings on lines N and N+1.
     /// @param code The warning code to check.
-    /// @param line The 1-based line number where the warning would be emitted.
+    /// @param loc The source location where the warning would be emitted.
     /// @return true if the warning is suppressed.
-    bool isSuppressed(WarningCode code, uint32_t line) const
+    bool isSuppressed(WarningCode code, const il::support::SourceLoc &loc) const
     {
+        if (!loc.hasFile() || !loc.hasLine())
+            return false;
+
+        auto fileIt = suppressions_.find(loc.file_id);
+        if (fileIt == suppressions_.end())
+            return false;
+
         // Check if suppressed on this line (inline suppress) or preceding line
+        uint32_t line = loc.line;
         for (uint32_t checkLine = (line > 0 ? line - 1 : 0); checkLine <= line; checkLine++)
         {
-            auto it = suppressions_.find(checkLine);
-            if (it != suppressions_.end() && it->second.count(code))
+            auto it = fileIt->second.find(checkLine);
+            if (it != fileIt->second.end() && it->second.count(code))
                 return true;
         }
         return false;
@@ -77,7 +96,9 @@ class WarningSuppressions
 
   private:
     /// @brief Parse a single line for @suppress directives.
-    void parseLine(std::string_view line, uint32_t lineNum)
+    void parseLine(std::unordered_map<uint32_t, std::unordered_set<WarningCode>> &fileSuppressions,
+                   std::string_view line,
+                   uint32_t lineNum)
     {
         // Look for "// @suppress(" anywhere on the line
         auto commentPos = line.find("// @suppress(");
@@ -117,7 +138,7 @@ class WarningSuppressions
                 std::string_view token = content.substr(p, end - p);
                 if (auto code = parseWarningCode(token))
                 {
-                    suppressions_[lineNum].insert(*code);
+                    fileSuppressions[lineNum].insert(*code);
                 }
             }
 
@@ -125,8 +146,9 @@ class WarningSuppressions
         }
     }
 
-    /// @brief Map from line number to set of suppressed warning codes on that line.
-    std::unordered_map<uint32_t, std::unordered_set<WarningCode>> suppressions_;
+    /// @brief Map from file id to line-local suppressed warning codes.
+    std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::unordered_set<WarningCode>>>
+        suppressions_;
 };
 
 } // namespace il::frontends::zia

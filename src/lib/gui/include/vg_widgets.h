@@ -228,11 +228,11 @@ extern "C"
         vg_widget_t base;
 
         char *text;             ///< Current text content (owned)
-        size_t text_len;        ///< Current text length
-        size_t text_capacity;   ///< Allocated capacity
-        size_t cursor_pos;      ///< Cursor position (byte offset)
-        size_t selection_start; ///< Selection start position
-        size_t selection_end;   ///< Selection end position
+        size_t text_len;        ///< Current text length in bytes
+        size_t text_capacity;   ///< Allocated capacity in bytes
+        size_t cursor_pos;      ///< Cursor position (UTF-8 codepoint index)
+        size_t selection_start; ///< Selection start position (UTF-8 codepoint index)
+        size_t selection_end;   ///< Selection end position (UTF-8 codepoint index)
 
         const char *placeholder; ///< Placeholder text (owned)
         vg_font_t *font;         ///< Font for rendering
@@ -312,7 +312,7 @@ extern "C"
 
     /// @brief Set cursor position
     /// @param input Text input widget
-    /// @param pos Cursor position (byte offset)
+    /// @param pos Cursor position (UTF-8 codepoint index)
     void vg_textinput_set_cursor(vg_textinput_t *input, size_t pos);
 
     /// @brief Select text range
@@ -333,6 +333,11 @@ extern "C"
     /// @brief Delete selected text
     /// @param input Text input widget
     void vg_textinput_delete_selection(vg_textinput_t *input);
+
+    /// @brief Copy the selected text into a newly allocated UTF-8 string.
+    /// @param input Text input widget
+    /// @return Newly allocated selection text, or NULL when nothing is selected.
+    char *vg_textinput_get_selection(vg_textinput_t *input);
 
     /// @brief Set font for text input
     /// @param input Text input widget
@@ -566,6 +571,7 @@ extern "C"
         bool *selection_bitmap;       ///< Selection state for virtual mode
         size_t selection_bitmap_size; ///< Bitmap size
         size_t selected_index;        ///< Currently selected index (virtual mode)
+        size_t hovered_index;         ///< Currently hovered index (virtual mode)
 
         // Appearance
         uint32_t bg_color;     ///< Background color

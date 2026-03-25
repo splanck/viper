@@ -45,6 +45,7 @@
 #pragma once
 
 #include "frontends/zia/AST.hpp"
+#include "frontends/zia/WarningSuppressions.hpp"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 #include <memory>
@@ -73,7 +74,9 @@ class ImportResolver
     /// @param sm   Reference to the source manager that tracks loaded source files.
     ///             Used to register newly-loaded import files so their content is
     ///             available for error reporting and source location mapping.
-    ImportResolver(il::support::DiagnosticEngine &diag, il::support::SourceManager &sm);
+    ImportResolver(il::support::DiagnosticEngine &diag,
+                   il::support::SourceManager &sm,
+                   WarningSuppressions *warningSuppressions = nullptr);
 
     /// @brief Resolve all imports for @p module.
     /// @details Scans the module's declaration list for import statements, resolves
@@ -159,6 +162,9 @@ class ImportResolver
 
     /// @brief Source manager for loading and tracking source file contents.
     il::support::SourceManager &sm_;
+
+    /// @brief Optional warning suppression accumulator for imported files.
+    WarningSuppressions *warningSuppressions_{nullptr};
 
     /// @brief Set of fully-processed file paths (normalized).
     /// @details Files in this set have been completely parsed and their declarations

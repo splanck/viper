@@ -80,7 +80,6 @@ void vg_floatingpanel_destroy(vg_floatingpanel_t *panel)
     if (!panel)
         return;
     vg_widget_destroy(&panel->base);
-    free(panel);
 }
 
 static void floatingpanel_measure(vg_widget_t *widget,

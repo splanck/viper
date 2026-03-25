@@ -65,6 +65,86 @@ static bool ensure_capacity(vg_textinput_t *input, size_t needed)
     return true;
 }
 
+static size_t textinput_char_count(const vg_textinput_t *input)
+{
+    return input && input->text ? (size_t)vg_utf8_strlen(input->text) : 0;
+}
+
+static size_t textinput_clamp_char_pos(const vg_textinput_t *input, size_t pos)
+{
+    size_t chars = textinput_char_count(input);
+    return pos > chars ? chars : pos;
+}
+
+static size_t textinput_byte_offset(const vg_textinput_t *input, size_t char_pos)
+{
+    return (size_t)vg_utf8_offset(input->text, (int)textinput_clamp_char_pos(input, char_pos));
+}
+
+static size_t textinput_char_index_from_byte_offset(const char *text, size_t byte_offset)
+{
+    if (!text)
+        return 0;
+
+    const char *cursor = text;
+    const char *target = text + byte_offset;
+    size_t chars = 0;
+    while (*cursor && cursor < target)
+    {
+        vg_utf8_decode(&cursor);
+        chars++;
+    }
+    return chars;
+}
+
+static size_t textinput_codepoint_count_in_prefix(const char *text, size_t byte_len)
+{
+    if (!text)
+        return 0;
+
+    const char *cursor = text;
+    const char *end = text + byte_len;
+    size_t chars = 0;
+    while (*cursor && cursor < end)
+    {
+        const char *prev = cursor;
+        vg_utf8_decode(&cursor);
+        if (cursor > end)
+            break;
+        if (cursor == prev)
+            break;
+        chars++;
+    }
+    return chars;
+}
+
+static size_t textinput_valid_utf8_prefix(const char *text, size_t max_bytes)
+{
+    if (!text)
+        return 0;
+
+    const char *cursor = text;
+    const char *limit = text + max_bytes;
+    while (*cursor && cursor < limit)
+    {
+        const char *prev = cursor;
+        vg_utf8_decode(&cursor);
+        if (cursor > limit)
+            return (size_t)(prev - text);
+        if (cursor == prev)
+            break;
+    }
+    return (size_t)(cursor - text);
+}
+
+static void textinput_set_cursor_internal(vg_textinput_t *input, size_t pos)
+{
+    size_t clamped = textinput_clamp_char_pos(input, pos);
+    input->cursor_pos = clamped;
+    input->selection_start = clamped;
+    input->selection_end = clamped;
+}
+
 //=============================================================================
 // TextInput Implementation
 //=============================================================================
@@ -290,7 +370,8 @@ static void textinput_paint(vg_widget_t *widget, void *canvas)
     {
         // Mask text with asterisks
         char masked[1024];
-        size_t n = input->text_len < sizeof(masked) - 1 ? input->text_len : sizeof(masked) - 1;
+        size_t char_count = textinput_char_count(input);
+        size_t n = char_count < sizeof(masked) - 1 ? char_count : sizeof(masked) - 1;
         for (size_t m = 0; m < n; m++)
             masked[m] = '*';
         masked[n] = '\0';
@@ -396,10 +477,7 @@ static void textinput_undo(vg_textinput_t *input)
     input->text_len = len;
 
     size_t cur = input->undo_cursors[input->undo_pos];
-    if (cur > len)
-        cur = len;
-    input->cursor_pos = cur;
-    input->selection_start = input->selection_end = cur;
+    textinput_set_cursor_internal(input, cur);
     input->base.needs_paint = true;
 }
 
@@ -421,10 +499,7 @@ static void textinput_redo(vg_textinput_t *input)
     input->text_len = len;
 
     size_t cur = input->undo_cursors[input->undo_pos];
-    if (cur > len)
-        cur = len;
-    input->cursor_pos = cur;
-    input->selection_start = input->selection_end = cur;
+    textinput_set_cursor_internal(input, cur);
     input->base.needs_paint = true;
 }
 
@@ -453,7 +528,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                 }
                 else
                 {
-                    input->cursor_pos = input->text_len;
+                    input->cursor_pos = textinput_char_count(input);
                 }
                 input->selection_start = input->cursor_pos;
                 input->selection_end = input->cursor_pos;
@@ -519,8 +594,8 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
 
                     case VG_KEY_A: // Select all
                         input->selection_start = 0;
-                        input->selection_end = input->text_len;
-                        input->cursor_pos = input->text_len;
+                        input->selection_end = textinput_char_count(input);
+                        input->cursor_pos = input->selection_end;
                         widget->needs_paint = true;
                         return true;
 
@@ -545,6 +620,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
 
             if (input->read_only)
             {
+                size_t char_count = textinput_char_count(input);
                 // Only allow navigation in read-only mode
                 switch (event->key.key)
                 {
@@ -553,14 +629,14 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                             input->cursor_pos--;
                         break;
                     case VG_KEY_RIGHT:
-                        if (input->cursor_pos < input->text_len)
+                        if (input->cursor_pos < char_count)
                             input->cursor_pos++;
                         break;
                     case VG_KEY_HOME:
                         input->cursor_pos = 0;
                         break;
                     case VG_KEY_END:
-                        input->cursor_pos = input->text_len;
+                        input->cursor_pos = char_count;
                         break;
                     default:
                         break;
@@ -577,12 +653,14 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                     case VG_KEY_LEFT:
                     {
                         size_t pos = input->cursor_pos;
+                        size_t byte_pos = textinput_byte_offset(input, pos);
                         /* Skip leading spaces */
-                        while (pos > 0 && input->text[pos - 1] == ' ')
-                            pos--;
+                        while (byte_pos > 0 && input->text[byte_pos - 1] == ' ')
+                            byte_pos--;
                         /* Skip word characters */
-                        while (pos > 0 && input->text[pos - 1] != ' ')
-                            pos--;
+                        while (byte_pos > 0 && input->text[byte_pos - 1] != ' ')
+                            byte_pos--;
+                        pos = textinput_char_index_from_byte_offset(input->text, byte_pos);
                         if (has_shift)
                         {
                             /* Extend / shrink selection toward cursor */
@@ -599,12 +677,14 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                     case VG_KEY_RIGHT:
                     {
                         size_t pos = input->cursor_pos;
+                        size_t byte_pos = textinput_byte_offset(input, pos);
                         /* Skip word characters */
-                        while (pos < input->text_len && input->text[pos] != ' ')
-                            pos++;
+                        while (byte_pos < input->text_len && input->text[byte_pos] != ' ')
+                            byte_pos++;
                         /* Skip trailing spaces */
-                        while (pos < input->text_len && input->text[pos] == ' ')
-                            pos++;
+                        while (byte_pos < input->text_len && input->text[byte_pos] == ' ')
+                            byte_pos++;
+                        pos = textinput_char_index_from_byte_offset(input->text, byte_pos);
                         if (has_shift)
                         {
                             input->selection_end = pos;
@@ -633,12 +713,13 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                     }
                     else if (input->cursor_pos > 0)
                     {
-                        // Delete character before cursor
-                        memmove(input->text + input->cursor_pos - 1,
-                                input->text + input->cursor_pos,
-                                input->text_len - input->cursor_pos + 1);
+                        size_t end = textinput_byte_offset(input, input->cursor_pos);
+                        size_t start = textinput_byte_offset(input, input->cursor_pos - 1);
+                        memmove(input->text + start,
+                                input->text + end,
+                                input->text_len - end + 1);
                         input->cursor_pos--;
-                        input->text_len--;
+                        input->text_len -= (end - start);
                         textinput_push_undo(input);
                         if (input->on_change)
                         {
@@ -653,13 +734,14 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                         vg_textinput_delete_selection(input);
                         textinput_push_undo(input);
                     }
-                    else if (input->cursor_pos < input->text_len)
+                    else if (input->cursor_pos < textinput_char_count(input))
                     {
-                        // Delete character at cursor
-                        memmove(input->text + input->cursor_pos,
-                                input->text + input->cursor_pos + 1,
-                                input->text_len - input->cursor_pos);
-                        input->text_len--;
+                        size_t start = textinput_byte_offset(input, input->cursor_pos);
+                        size_t end = textinput_byte_offset(input, input->cursor_pos + 1);
+                        memmove(input->text + start,
+                                input->text + end,
+                                input->text_len - end + 1);
+                        input->text_len -= (end - start);
                         textinput_push_undo(input);
                         if (input->on_change)
                         {
@@ -690,7 +772,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                 case VG_KEY_RIGHT:
                     if (has_shift)
                     {
-                        if (input->cursor_pos < input->text_len)
+                        if (input->cursor_pos < textinput_char_count(input))
                             input->cursor_pos++;
                         input->selection_end = input->cursor_pos;
                     }
@@ -698,7 +780,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                     {
                         if (input->selection_start != input->selection_end)
                             input->cursor_pos = input->selection_end;
-                        else if (input->cursor_pos < input->text_len)
+                        else if (input->cursor_pos < textinput_char_count(input))
                             input->cursor_pos++;
                         input->selection_start = input->selection_end = input->cursor_pos;
                     }
@@ -720,13 +802,13 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                 case VG_KEY_END:
                     if (has_shift)
                     {
-                        input->cursor_pos = input->text_len;
-                        input->selection_end = input->text_len;
+                        input->cursor_pos = textinput_char_count(input);
+                        input->selection_end = input->cursor_pos;
                     }
                     else
                     {
-                        input->cursor_pos = input->text_len;
-                        input->selection_start = input->selection_end = input->text_len;
+                        input->cursor_pos = textinput_char_count(input);
+                        input->selection_start = input->selection_end = input->cursor_pos;
                     }
                     break;
 
@@ -823,9 +905,7 @@ void vg_textinput_set_text(vg_textinput_t *input, const char *text)
         input->text[0] = '\0';
     }
     input->text_len = len;
-    input->cursor_pos = len;
-    input->selection_start = len;
-    input->selection_end = len;
+    textinput_set_cursor_internal(input, textinput_char_count(input));
 
     input->base.needs_paint = true;
 
@@ -880,11 +960,7 @@ void vg_textinput_set_cursor(vg_textinput_t *input, size_t pos)
     if (!input)
         return;
 
-    if (pos > input->text_len)
-        pos = input->text_len;
-    input->cursor_pos = pos;
-    input->selection_start = pos;
-    input->selection_end = pos;
+    textinput_set_cursor_internal(input, pos);
     input->base.needs_paint = true;
 }
 
@@ -893,14 +969,9 @@ void vg_textinput_select(vg_textinput_t *input, size_t start, size_t end)
     if (!input)
         return;
 
-    if (start > input->text_len)
-        start = input->text_len;
-    if (end > input->text_len)
-        end = input->text_len;
-
-    input->selection_start = start;
-    input->selection_end = end;
-    input->cursor_pos = end;
+    input->selection_start = textinput_clamp_char_pos(input, start);
+    input->selection_end = textinput_clamp_char_pos(input, end);
+    input->cursor_pos = input->selection_end;
     input->base.needs_paint = true;
 }
 
@@ -910,8 +981,8 @@ void vg_textinput_select_all(vg_textinput_t *input)
         return;
 
     input->selection_start = 0;
-    input->selection_end = input->text_len;
-    input->cursor_pos = input->text_len;
+    input->selection_end = textinput_char_count(input);
+    input->cursor_pos = input->selection_end;
     input->base.needs_paint = true;
 }
 
@@ -933,23 +1004,26 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text)
     if (input->max_length > 0 && new_len > (size_t)input->max_length)
     {
         insert_len = (size_t)input->max_length - input->text_len;
+        insert_len = textinput_valid_utf8_prefix(text, insert_len);
         if (insert_len == 0)
             return;
-        new_len = (size_t)input->max_length;
+        new_len = input->text_len + insert_len;
     }
 
     if (!ensure_capacity(input, new_len + 1))
         return;
 
+    size_t byte_pos = textinput_byte_offset(input, input->cursor_pos);
+
     // Make room for new text
-    memmove(input->text + input->cursor_pos + insert_len,
-            input->text + input->cursor_pos,
-            input->text_len - input->cursor_pos + 1);
+    memmove(input->text + byte_pos + insert_len,
+            input->text + byte_pos,
+            input->text_len - byte_pos + 1);
 
     // Insert text
-    memcpy(input->text + input->cursor_pos, text, insert_len);
+    memcpy(input->text + byte_pos, text, insert_len);
     input->text_len = new_len;
-    input->cursor_pos += insert_len;
+    input->cursor_pos += textinput_codepoint_count_in_prefix(text, insert_len);
     input->selection_start = input->selection_end = input->cursor_pos;
 
     input->base.needs_paint = true;
@@ -971,10 +1045,12 @@ void vg_textinput_delete_selection(vg_textinput_t *input)
                                                                  : input->selection_end;
     size_t end = input->selection_start < input->selection_end ? input->selection_end
                                                                : input->selection_start;
+    size_t start_byte = textinput_byte_offset(input, start);
+    size_t end_byte = textinput_byte_offset(input, end);
 
-    memmove(input->text + start, input->text + end, input->text_len - end + 1);
+    memmove(input->text + start_byte, input->text + end_byte, input->text_len - end_byte + 1);
 
-    input->text_len -= (end - start);
+    input->text_len -= (end_byte - start_byte);
     input->cursor_pos = start;
     input->selection_start = start;
     input->selection_end = start;
@@ -998,13 +1074,15 @@ char *vg_textinput_get_selection(vg_textinput_t *input)
                                                                  : input->selection_end;
     size_t end = input->selection_start < input->selection_end ? input->selection_end
                                                                : input->selection_start;
+    size_t start_byte = textinput_byte_offset(input, start);
+    size_t end_byte = textinput_byte_offset(input, end);
 
-    size_t len = end - start;
+    size_t len = end_byte - start_byte;
     char *result = malloc(len + 1);
     if (!result)
         return NULL;
 
-    memcpy(result, input->text + start, len);
+    memcpy(result, input->text + start_byte, len);
     result[len] = '\0';
 
     return result;

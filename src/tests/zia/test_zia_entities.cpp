@@ -490,8 +490,8 @@ entity Animal {
 entity Dog extends Animal {
     hide String name;
 
-    expose func init(a: Integer, n: String) {
-        super.init(a);
+    expose func setup(a: Integer, n: String) {
+        age = a;
         name = n;
     }
 
@@ -502,8 +502,12 @@ entity Dog extends Animal {
 
 func start() {
     var animals = Viper.Collections.List.New();
-    animals.Add(new Dog(5, "Rex"));
-    animals.Add(new Dog(3, "Max"));
+    var d1 = new Dog(0);
+    d1.setup(5, "Rex");
+    animals.Add(d1);
+    var d2 = new Dog(0);
+    d2.setup(3, "Max");
+    animals.Add(d2);
 
     // Test single element cast
     var item = animals[0];
@@ -512,7 +516,7 @@ func start() {
 
     // Test cast in loop
     var totalAge = 0;
-    for i in 0..animals.Count {
+    for i in 0..animals.Length {
         var dog = animals[i] as Dog;
         totalAge = totalAge + dog.getAge();
     }
@@ -524,6 +528,65 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
+    if (!result.succeeded())
+    {
+        for (const auto &d : result.diagnostics.diagnostics())
+            std::cerr << "  " << d.message << "\n";
+    }
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaEntities, InheritanceOverridesAndDerivedSetup)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Animal {
+    hide Integer age;
+
+    expose func init(a: Integer) {
+        age = a;
+    }
+
+    expose func getAge() -> Integer {
+        return age;
+    }
+
+    expose func speak() -> String {
+        return "...";
+    }
+}
+
+entity Dog extends Animal {
+    hide String name;
+
+    expose func setup(a: Integer, n: String) {
+        age = a;
+        name = n;
+    }
+
+    override expose func speak() -> String {
+        return "Woof!";
+    }
+
+    expose func getName() -> String {
+        return name;
+    }
+}
+
+func start() {
+    var dog = new Dog();
+    dog.setup(5, "Rex");
+    Viper.Terminal.SayInt(dog.getAge());
+    Viper.Terminal.Say(dog.getName());
+    Viper.Terminal.Say(dog.speak());
+}
+)";
+    CompilerInput input{.source = source, .path = "inherit_override_setup.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
     EXPECT_TRUE(result.succeeded());
 }
 

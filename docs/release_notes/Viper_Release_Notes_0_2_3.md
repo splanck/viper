@@ -20,7 +20,9 @@ Version 0.2.3 is a major hardening, tooling, and infrastructure release. Highlig
 - **AArch64 Performance** — post-RA scheduler, register coalescer, loop-invariant hoisting, cross-block store-load forwarding, division strength reduction. **24-87% benchmark improvements** on Apple M4 Max.
 - **3 New IL Optimizer Passes** — EH optimization, loop rotation, reassociation. Full O2 pipeline restored (10 passes were missing from native codegen).
 - **Interactive REPL** — `viper repl` for both Zia and BASIC with tab completion, persistent history, and meta-commands.
-- **Comprehensive Safety Audits** — VM, codegen, runtime, network, and concurrency hardening with TSan verification.
+- **O1 Native Codegen Correctness** — 10+ optimizer bug fixes enabling reliable -O1 compilation across all demos. Inliner escape analysis, DCE alloca observation, SimplifyCFG param preservation, and compilation performance (27x speedup for medium modules).
+- **Network Runtime Expansion** — comprehensive security audit of 14K lines + 10 new networking classes (HttpServer, WebSocketServer, ConnectionPool, SmtpClient, etc.) + AES-128-GCM cipher suite.
+- **Comprehensive Safety Audits** — VM, codegen, runtime, network, 3D graphics, and concurrency hardening with TSan verification.
 - **Backend Codegen Review** — decomposed monolithic files, CFG-aware register allocation liveness, shared infrastructure across both backends.
 - **Game Engine Framework** — GameBase/IScene, screen transitions, A* pathfinding, SaveData, DebugOverlay, SoundBank/Synth.
 - **Frontend Decomposition** — shared utilities, parser/lowerer file splits, CRTP LexerBase.
@@ -31,13 +33,13 @@ Version 0.2.3 is a major hardening, tooling, and infrastructure release. Highlig
 
 | Metric | Value |
 |--------|-------|
-| Commits | 82 |
-| Files changed | 3,322 |
-| Lines added | ~245K |
-| Lines removed | ~321K |
-| Source files | 2,637 |
-| Runtime classes | 272 |
-| Codebase | ~700K LOC |
+| Commits | 201+ |
+| Files changed | 3,700+ |
+| Lines added | ~280K |
+| Lines removed | ~325K |
+| Source files | 3,727 |
+| Test count | 1,340 |
+| Codebase | ~750K LOC |
 
 ---
 
@@ -265,6 +267,52 @@ before EarlyCSE in the O2 pipeline to expose more common subexpression eliminati
   requires signed arithmetic to use `.ovf` variants); overflow constant folding deferred to
   ConstFold pass
 - **DCE**: Fix `predEdges` map invalidation after instruction removal (vector pointer stability)
+
+#### O1 Optimizer Correctness & Performance
+
+Major O1 optimization pipeline audit fixing multiple correctness bugs discovered through native
+demo testing. All 11 demos now compile at O1; 9 of 11 run correctly at native -O1.
+
+**Correctness Fixes**
+
+- **Inliner escaped value type resolution**: Call instruction types are canonically Void in the
+  parser. The inliner's escaped value analysis now resolves actual return types from the module's
+  function lookup table instead of using the Void instruction type — fixes paint app O1 crash
+- **Inliner temp name uniquification**: Append `_il{id}` suffix to cloned block params and
+  instruction results to prevent name collisions between caller and callee scopes
+- **DCE alloca observation tracking**: Split alloca tracking into two passes (collect then observe)
+  to prevent late-defined allocas from overwriting earlier observation marks. Added observation
+  checks for store-value operands, return operands, and branch arguments
+- **DCE entry block param protection**: Never remove function-argument block parameters from the
+  entry block — external callers pass a fixed argument count matching the function signature.
+  Uses positional ABI prefix preservation with funcParamId fast-path
+- **SimplifyCFG entry block param protection**: Same fix applied to `canonicalizeParamsAndArgs`
+  in SimplifyCFG's parameter canonicalization pass
+- **BranchVerifier Void compatibility**: Allow Void-typed branch arguments (from DCE-orphaned
+  definitions) as compatible with any parameter type, since the register allocator tracks
+  liveness independently of IL types
+- **AArch64 LoopOpt disabled**: The `hoistLoopConstants` peephole pass incorrectly identified
+  non-loop control flow (if/else merges, function exits) as loops, removing MovRI instructions
+  from mutually exclusive code paths — caused black ghosts in pacman and crashes in paint
+- **Multi-block inlining restricted**: `blockBudget=1` limits inlining to single-block callees
+  until multi-block continuation value threading is hardened. Single-block functions (getters,
+  setters, simple helpers) are the highest-value inline targets
+- **IL peephole removed from O1**: The peephole's global `replaceAll` creates cross-block SSA
+  violations when DCE's block param compaction runs afterward. SCCP already handles constant
+  folding; the AArch64 codegen peephole handles machine-level optimizations
+- **LICM readonly call safety**: Conservative guard prevents hoisting readonly calls when the
+  loop contains mutating memory operations
+
+**Compilation Performance**
+
+- **SimplifyCFG verification hooks removed**: Debug-only `Verifier::verify()` calls inside
+  SimplifyCFG verified the entire module per function per iteration (up to 40 full-module
+  verifications for a single SimplifyCFG invocation). Replaced with no-ops — the PassManager's
+  `-verify-each` flag provides equivalent functionality when needed. **27x speedup** for
+  medium-sized modules (viperide: 4 minutes → 8.5 seconds)
+- **Large module auto-downgrade**: Modules exceeding 100K instructions skip IL optimization
+  entirely to avoid O(n^2) behavior in SimplifyCFG and other passes. The AArch64 codegen
+  peephole still runs. Reduces sqldb compilation from 8+ minutes to 11 seconds
 
 #### Alloca Escape Verification
 
@@ -631,6 +679,51 @@ get/put with `rt_trap` + `rt_arr_oob_panic`.
 - Volatile memset for crypto key material wiping (HKDF, TLS)
 - Replace `atoi()` with `strtol()` + range validation in WebSocket port parsing
 
+#### Network Audit & New Classes
+
+Comprehensive file-by-file security and correctness review of all 11 C source files (14,427 lines)
+in the network runtime, plus 10 new networking classes.
+
+**Security Fixes**
+
+- AES-128-GCM cipher suite implementation (~300 LOC) for TLS dual cipher support
+- ChaCha20 counter overflow protection and Poly1305 key zeroing
+- TLS buffered data check for WebSocket and HTTP keep-alive
+- Windows socket type fix in TLS layer
+- Thread-safe CA certificate DER cache with heap-allocated PEM base64
+- HTTP HEAD response Content-Length fix, 303 redirect method rewrite
+- Memory leak fixes in URL parsing (key_str unref, parse validation)
+- recv_line length cap to prevent unbounded reads
+- ViperDOS ifaddrs compatibility fix, INT_MAX socket send clamp
+
+**New Network Classes (10)**
+
+- `HttpRouter` — path pattern matching with parameter extraction
+- `HttpServer` — multi-client event-loop HTTP server
+- `ConnectionPool` — connection reuse with idle timeout and health checks
+- `MultipartParser` — multipart/form-data streaming parser
+- `NetUtils` — DNS resolution, interface enumeration, port checking
+- `WebSocketServer` — multi-client WebSocket server with broadcast
+- `SSEClient` — Server-Sent Events client with auto-reconnect
+- `HttpClient` — high-level HTTP client with cookie jar and redirects
+- `SmtpClient` — SMTP email sending with AUTH and TLS
+- `AsyncSocket` — non-blocking socket with completion callbacks
+
+**Crypto Additions**
+
+- HMAC-SHA256 implementation for message authentication
+- HKDF (HMAC-based Key Derivation Function) for key expansion
+
+#### 3D Graphics Hardening
+
+Post-audit fixes across the 3D graphics subsystem:
+
+- Canvas3D depth buffer bounds validation and initialization guards
+- Mesh3D vertex/index bounds checking on construction
+- Scene3D node cleanup and dangling reference prevention
+- Software rasterizer triangle clipping and edge-case guards
+- Pixels module additional bounds checks for direct pixel operations
+
 #### Concurrency Hardening (TSan-verified)
 
 - Pool allocator: `block->next` pointer uses atomic load/store to prevent ARM64 memory ordering
@@ -719,6 +812,21 @@ and level intro splash screens.
   leaving enemies stuck in permanent hurt state. Added hurt-state guards to turret and boss AI
 - Clear nearby enemy bullets on enemy death to prevent ghost collision damage at dead turret
   positions (4-tile radius despawn)
+
+---
+
+### Dungeon of Viper — 3D FPS Demo
+
+A first-person dungeon crawler built on the Graphics3D engine, demonstrating 3D game development
+in Zia:
+
+- First-person camera with mouselook and WASD movement
+- Procedural dungeon generation with rooms and corridors
+- 3D rendering using the software rasterizer backend
+- Enemy spawning and basic combat mechanics
+- HUD with health, ammo, and minimap
+
+Located at `examples/games/dungeon/`. Built with `viper build` and the native ARM64 codegen.
 
 ---
 
@@ -839,6 +947,15 @@ issue tracker.
 | ELF exe writer | 10 | ELF executable output validation |
 | Linker integration | 7 | End-to-end linker pipeline (multi-object, archives) |
 | Fuzz harnesses | 2 | libFuzzer harnesses for Zia lexer and parser |
+| DCE param compaction | 1 | Entry-block ABI param preservation test |
+| Alias precision | 1 | LICM alias analysis precision test |
+| Inline round-trip | 1 | Continuation block def-before-use serialization test |
+| Canonical pipeline | 3 | O0/O1/O2 pipeline configuration validation |
+| Crypto (new) | 2 | HMAC-SHA256, HKDF implementation tests |
+| Pixels (new) | 3 | Additional bounds-checking pixel operation tests |
+| Canvas3D (new) | 2 | Depth buffer and 3D canvas validation tests |
+| Scene3D (new) | 2 | Scene graph cleanup and node management tests |
+| Network runtime | 1 | Network operation integration tests |
 
 #### Determinism Stress Test
 
@@ -924,6 +1041,15 @@ table of contents to cover all 80+ sections.
 
 - **TextCenteredScaled**: Fix swapped `scale`/`color` parameters in `rt_canvas_text_centered_scaled`
   that caused enormous near-black rectangles covering the screen during level intro overlays
+- **Comprehensive C Source Audit**: 230+ bugs fixed across all runtime C source files in four
+  batches. Covers bounds checking, null guards, integer overflow, format string safety,
+  memory leak prevention, and error handling across graphics, network, collections, and core
+  subsystems
+- **Graphics Audit**: Canvas coordinate overflow guards, pixel bounds validation, bitmap font
+  character range checks, GUI widget input handling fixes, navmesh boundary validation,
+  FBX loader robustness improvements, scene graph cleanup
+- **Input System**: Keychord and action unboxing fixes, color hex alpha parsing correction
+- **Drawing**: Circle fill algorithm fix in rt_drawing.c, canvas coordinate guard in rt_canvas.c
 
 ### Graphics
 
@@ -942,14 +1068,13 @@ table of contents to cover all 80+ sections.
 
 | Metric              | v0.2.2    | v0.2.3 (draft) | Change     |
 |---------------------|-----------|----------------|------------|
-| Codebase (LOC)      | ~700,000  | ~700,000       | (net zero after cleanup) |
-| Source Files         | 2,288     | 2,637          | +349       |
-| Runtime Classes      | 226       | 272            | +46        |
-| Test Count          | 1,261     | 1,307          | +46        |
-| Commits             | —         | 82             | —          |
-| Files Changed       | —         | 3,322          | —          |
-| Lines Added         | —         | ~245K          | —          |
-| Lines Removed       | —         | ~321K          | —          |
+| Codebase (LOC)      | ~700,000  | ~750,000       | +50K net   |
+| Source Files         | 2,288     | 3,727          | +1,439     |
+| Test Count          | 1,261     | 1,340          | +79        |
+| Commits             | —         | 201+           | —          |
+| Files Changed       | —         | 3,700+         | —          |
+| Lines Added         | —         | ~280K          | —          |
+| Lines Removed       | —         | ~325K          | —          |
 
 > Net LOC is roughly flat because ~1,100 stale files were deleted (obsolete test fixtures,
 > dead demos, devdocs, zia-review) while ~349 new source files were added across 3D graphics,
@@ -1042,7 +1167,7 @@ table of contents to cover all 80+ sections.
 | **Game Engine Framework** | No | GameBase/IScene + 7 runtime APIs |
 | **Runtime Classes** | 226 | 272 (+46) |
 | **IL Optimizer Passes** | 35 | 38 (+EH-Opt, LoopRotate, Reassoc) |
-| **Test Count** | 1,261 | 1,307 (+46 net) |
+| **Test Count** | 1,261 | 1,340 (+79 net) |
 | **Full O2 Pipeline** | O1-level only | All 10 missing passes restored |
 | **Benchmark Results** | — | 24-87% improvement (Apple M4 Max) |
 | **AArch64 Peephole** | Monolithic (2750 LOC) | 6 sub-passes + shared templates |
@@ -1053,6 +1178,10 @@ table of contents to cover all 80+ sections.
 | **ECDSA P-256** | OpenSSL-dependent | Pure C, MSVC-compatible |
 | **Website** | No | 66-page Solarized site |
 | **Sidescroller Demo** | 1 level, rectangles | 5 levels, sprite art, full game |
+| **O1 Native Codegen** | Broken (paint, pacman crashes) | 9/11 demos correct at O1 |
+| **Network Classes** | 5 | 15 (+10 new classes) |
+| **Crypto** | ChaCha20-Poly1305, ECDSA | + AES-128-GCM, HMAC-SHA256, HKDF |
+| **3D Demo** | No | Dungeon of Viper — 3D FPS |
 | **Codebase Organization** | demos/ + devdocs/ | Unified examples/ + docs/ |
 
 ---

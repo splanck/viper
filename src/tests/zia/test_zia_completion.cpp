@@ -291,6 +291,31 @@ func compute() -> Number {
     EXPECT_TRUE(hasName(names, "Math"));
 }
 
+TEST(ZiaCompletion, FindSymbolAtPosition_IgnoresOutOfScopeShadow)
+{
+    SourceManager sm;
+    const std::string source = R"(module Test;
+
+func start() {
+    var x = 1;
+    if true {
+        var x = 2;
+        Viper.Terminal.SayInt(x);
+    }
+    Viper.Terminal.SayInt(x);
+}
+)";
+    CompilerInput input{.source = source, .path = "scope_lookup.zia"};
+    CompilerOptions opts{};
+
+    auto ar = parseAndAnalyze(input, opts, sm);
+    ASSERT_TRUE(ar->sema != nullptr);
+
+    const ScopedSymbol *sym = ar->sema->findSymbolAtPosition("x", ar->fileId, 9, 32);
+    ASSERT_TRUE(sym != nullptr);
+    EXPECT_EQ(sym->loc.line, 4u);
+}
+
 } // anonymous namespace
 
 int main()

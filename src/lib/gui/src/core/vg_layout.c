@@ -825,14 +825,18 @@ static void grid_arrange(vg_widget_t *self, float x, float y, float width, float
     if (auto_col_w < 0)
         auto_col_w = 0;
 
-    float *col_x = calloc(cols, sizeof(float));
-    float *col_w = calloc(cols, sizeof(float));
-    if (!col_x || !col_w)
-    {
-        free(col_x);
-        free(col_w);
+    size_t scratch_count = (size_t)(cols * 2 + rows * 2);
+    float scratch_stack[128];
+    float *scratch =
+        scratch_count <= (sizeof(scratch_stack) / sizeof(scratch_stack[0]))
+            ? scratch_stack
+            : malloc(scratch_count * sizeof(float));
+    if (!scratch)
         return;
-    }
+    float *col_x = scratch;
+    float *col_w = col_x + cols;
+    float *row_y = col_w + cols;
+    float *row_h = row_y + rows;
 
     float cursor = content_x;
     for (int c = 0; c < cols; c++)
@@ -849,17 +853,6 @@ static void grid_arrange(vg_widget_t *self, float x, float y, float width, float
     float auto_row_h = (content_h - total_row_gap) / (float)rows;
     if (auto_row_h < 0)
         auto_row_h = 0;
-
-    float *row_y = calloc(rows, sizeof(float));
-    float *row_h = calloc(rows, sizeof(float));
-    if (!row_y || !row_h)
-    {
-        free(col_x);
-        free(col_w);
-        free(row_y);
-        free(row_h);
-        return;
-    }
 
     cursor = content_y;
     for (int r = 0; r < rows; r++)
@@ -922,10 +915,8 @@ static void grid_arrange(vg_widget_t *self, float x, float y, float width, float
             auto_idx = row * cols + col + cs; /* advance past spanned cells */
     }
 
-    free(col_x);
-    free(col_w);
-    free(row_y);
-    free(row_h);
+    if (scratch != scratch_stack)
+        free(scratch);
 }
 
 static const vg_widget_vtable_t g_grid_vtable = {

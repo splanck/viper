@@ -110,6 +110,9 @@ struct AnalysisResult
     /// `diagnostics`, so declared last (destroyed first).
     std::unique_ptr<Sema> sema;
 
+    /// @brief SourceManager file id for the primary source being analyzed.
+    uint32_t fileId{0};
+
     /// @brief True if any errors were reported during parsing or sema.
     [[nodiscard]] bool hasErrors() const
     {

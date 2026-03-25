@@ -140,6 +140,7 @@ class Parser
 
     mutable Lexer lexer_;                    ///< Provides tokens from the source buffer.
     mutable std::vector<Token> tokens_;      ///< Lookahead token buffer.
+    size_t tokenStart_ = 0;                  ///< First unconsumed token in @ref tokens_.
     DiagnosticEmitter *emitter_ = nullptr;   ///< Diagnostic sink; not owned.
     std::unordered_set<std::string> arrays_; ///< Names of arrays declared via DIM.
     // Namespaces seen during parsing (top-level heads). Used to disambiguate
@@ -751,6 +752,11 @@ class Parser
     /// @param tok Token providing source location.
     /// @param message Warning message text.
     void emitWarning(std::string_view code, const Token &tok, std::string message);
+
+    /// @brief Drop consumed tokens once the buffer prefix grows large enough.
+    /// @details Keeps @ref consume amortized O(1) instead of erasing from the
+    ///          front of the vector for every token.
+    void compactConsumedTokens();
 
   private:
     /// @brief Common helper for diagnostic emission.

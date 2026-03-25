@@ -10,14 +10,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Compiler.hpp"
+#include "frontends/zia/ZiaAnalysis.hpp"
 #include "frontends/zia/Warnings.hpp"
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 using namespace il::frontends::zia;
 using namespace il::support;
+
+namespace fs = std::filesystem;
 
 namespace
 {
@@ -53,6 +58,13 @@ size_t countWarningCode(const CompilerResult &r, const char *code)
             n++;
     }
     return n;
+}
+
+void writeFile(const fs::path &path, const std::string &contents)
+{
+    fs::create_directories(path.parent_path());
+    std::ofstream out(path);
+    out << contents;
 }
 
 //=============================================================================
@@ -465,6 +477,62 @@ TEST(ZiaWarnings, ParseWarningCode_NumericAndName)
 
     auto c3 = parseWarningCode("bogus");
     EXPECT_FALSE(c3.has_value());
+}
+
+TEST(ZiaWarnings, ParseAndAnalyze_HonorsInlineSuppressions)
+{
+    SourceManager sm;
+    WarningPolicy policy;
+    policy.enableAll = true;
+
+    const std::string source = R"(module Test;
+func demo() -> Integer {
+    return 1;
+    // @suppress(W002)
+    var dead = 2;
+})";
+
+    CompilerInput input{.source = source, .path = "completion_warning_test.zia"};
+    CompilerOptions opts{};
+    opts.warningPolicy = policy;
+
+    auto ar = parseAndAnalyze(input, opts, sm);
+    EXPECT_FALSE(ar->hasErrors());
+
+    bool sawW002 = false;
+    for (const auto &d : ar->diagnostics.diagnostics())
+    {
+        if (d.code == "W002")
+            sawW002 = true;
+    }
+    EXPECT_FALSE(sawW002);
+}
+
+TEST(ZiaWarnings, ImportedFileSuppressionsAreHonored)
+{
+    const fs::path tempRoot =
+        fs::temp_directory_path() / "zia_warning_tests" / "imported_suppressions";
+    fs::remove_all(tempRoot);
+    fs::create_directories(tempRoot);
+
+    writeFile(tempRoot / "lib.zia",
+              R"(module Lib;
+func helper() {
+    // @suppress(W001)
+    var ignored = 1;
+})");
+
+    writeFile(tempRoot / "main.zia",
+              R"(module Main;
+bind "./lib";
+func start() {})");
+
+    SourceManager sm;
+    CompilerOptions opts{};
+    auto r = compileFile((tempRoot / "main.zia").string(), opts, sm);
+
+    EXPECT_TRUE(r.succeeded());
+    EXPECT_FALSE(hasWarningCode(r, "W001"));
 }
 
 // =============================================================================

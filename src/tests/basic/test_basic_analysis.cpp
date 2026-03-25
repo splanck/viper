@@ -20,6 +20,7 @@
 
 #include "frontends/basic/BasicAnalysis.hpp"
 #include "frontends/basic/BasicCompiler.hpp"
+#include "frontends/basic/Options.hpp"
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
 
@@ -129,6 +130,21 @@ TEST(BasicAnalysis, FileIdIsAssigned)
     // should have assigned one)
     // Just verify it was set — exact value depends on SourceManager implementation
     (void)result->fileId;
+}
+
+TEST(BasicAnalysis, DoesNotMutateFrontendOptions)
+{
+    il::support::SourceManager sm;
+    const bool prior = FrontendOptions::enableRuntimeNamespaces();
+    FrontendOptions::setEnableRuntimeNamespaces(false);
+
+    BasicCompilerInput input{.source = "PRINT 42\nEND\n", .path = "test.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    EXPECT_TRUE(result != nullptr);
+    EXPECT_FALSE(FrontendOptions::enableRuntimeNamespaces());
+
+    FrontendOptions::setEnableRuntimeNamespaces(prior);
 }
 
 int main(int argc, char **argv)

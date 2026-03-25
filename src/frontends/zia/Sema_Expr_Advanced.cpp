@@ -836,7 +836,7 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr)
     for (auto &arm : expr->arms)
     {
         std::unordered_map<std::string, TypeRef> bindings;
-        pushScope();
+        pushScope(expr->loc);
 
         analyzeMatchPattern(arm.pattern, scrutineeType, coverage, bindings);
 
@@ -862,7 +862,7 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr)
         TypeRef bodyType = analyzeExpr(arm.body.get());
         resultType = commonType(resultType, bodyType);
 
-        popScope();
+        popScope(arm.body ? arm.body->loc : expr->loc);
     }
 
     if (!coverage.hasIrrefutable)
@@ -982,14 +982,26 @@ TypeRef Sema::analyzeNew(NewExpr *expr)
     // For entity types, validate that arguments match init method
     if (type->kind == TypeKindSem::Entity)
     {
-        std::string initMethodKey = type->name + ".init";
-        auto methodIt = methodTypes_.find(initMethodKey);
-        if (methodIt != methodTypes_.end() && methodIt->second)
+        auto entityIt = entityDecls_.find(type->name);
+        MethodDecl *initDecl = nullptr;
+        if (entityIt != entityDecls_.end())
         {
-            // methodTypes_ stores just the declared params (self is added at codegen, not stored
-            // here)
-            auto params = methodIt->second->paramTypes();
-            size_t expectedArgs = params.size();
+            for (const auto &member : entityIt->second->members)
+            {
+                if (member->kind != DeclKind::Method)
+                    continue;
+                auto *method = static_cast<MethodDecl *>(member.get());
+                if (method->name == "init")
+                {
+                    initDecl = method;
+                    break;
+                }
+            }
+        }
+
+        if (initDecl)
+        {
+            size_t expectedArgs = initDecl->params.size();
             size_t providedArgs = expr->args.size();
             if (providedArgs != expectedArgs)
             {
@@ -1012,7 +1024,7 @@ TypeRef Sema::analyzeLambda(LambdaExpr *expr)
         lambdaLocals.insert(param.name);
     }
 
-    pushScope();
+    pushScope(expr->loc);
 
     std::vector<TypeRef> paramTypes;
     for (const auto &param : expr->params)
@@ -1031,7 +1043,7 @@ TypeRef Sema::analyzeLambda(LambdaExpr *expr)
 
     TypeRef bodyType = analyzeExpr(expr->body.get());
 
-    popScope();
+    popScope(expr->body ? expr->body->loc : expr->loc);
 
     // Collect captured variables (free variables referenced in the body)
     collectCaptures(expr->body.get(), lambdaLocals, expr->captures);
@@ -1128,7 +1140,7 @@ TypeRef Sema::analyzeTupleIndex(TupleIndexExpr *expr)
 
 TypeRef Sema::analyzeBlockExpr(BlockExpr *expr)
 {
-    pushScope();
+    pushScope(expr->loc);
 
     // Analyze each statement in the block
     for (auto &stmt : expr->statements)
@@ -1143,7 +1155,10 @@ TypeRef Sema::analyzeBlockExpr(BlockExpr *expr)
         resultType = analyzeExpr(expr->value.get());
     }
 
-    popScope();
+    SourceLoc endLoc = expr->value ? expr->value->loc : expr->loc;
+    if (!expr->statements.empty())
+        endLoc = scopeEndForStmt(expr->statements.back().get());
+    popScope(endLoc);
     return resultType;
 }
 

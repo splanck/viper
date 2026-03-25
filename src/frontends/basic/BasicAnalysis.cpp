@@ -53,13 +53,6 @@ std::unique_ptr<BasicAnalysisResult> parseAndAnalyzeBasic(const BasicCompilerInp
 
     result->emitter->addSource(fileId, std::string{input.source});
 
-    // Enable runtime namespaces (same as compileBasic).
-    const char *ns_disable = std::getenv("VIPER_NO_RUNTIME_NAMESPACES");
-    if (ns_disable && ns_disable[0] == '1')
-        FrontendOptions::setEnableRuntimeNamespaces(false);
-    else
-        FrontendOptions::setEnableRuntimeNamespaces(true);
-
     // Parse
     std::vector<std::string> includeStack;
     Parser parser(input.source, fileId, result->emitter.get(), &sm, &includeStack, false);

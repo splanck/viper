@@ -17,12 +17,15 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <unordered_set>
 
 namespace il::frontends::zia
 {
 
-ImportResolver::ImportResolver(il::support::DiagnosticEngine &diag, il::support::SourceManager &sm)
-    : diag_(diag), sm_(sm)
+ImportResolver::ImportResolver(il::support::DiagnosticEngine &diag,
+                               il::support::SourceManager &sm,
+                               WarningSuppressions *warningSuppressions)
+    : diag_(diag), sm_(sm), warningSuppressions_(warningSuppressions)
 {
 }
 
@@ -76,6 +79,8 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
     std::string source = buffer.str();
 
     uint32_t fileId = sm_.addFile(path);
+    if (warningSuppressions_)
+        warningSuppressions_->scan(fileId, source);
     Lexer lexer(source, fileId, diag_);
     Parser parser(lexer, diag_);
 
@@ -152,6 +157,33 @@ bool ImportResolver::processModule(ModuleDecl &module,
     // This ensures proper dependency order: if A imports B then C, and C also
     // imports B (already processed), we get [B, C, A] not [C, B, A].
     std::vector<DeclPtr> importedDecls;
+    std::unordered_set<std::string> seenFileBinds;
+    std::unordered_set<std::string> seenNamespaceBinds;
+
+    auto makeNamespaceBindKey = [](const BindDecl &bind) {
+        std::string key = bind.path;
+        key.push_back('\n');
+        key += bind.alias;
+        key.push_back('\n');
+        for (const auto &item : bind.specificItems)
+        {
+            key += item;
+            key.push_back('\n');
+        }
+        return key;
+    };
+
+    for (const auto &existingBind : module.binds)
+    {
+        if (existingBind.isNamespaceBind)
+        {
+            seenNamespaceBinds.insert(makeNamespaceBindKey(existingBind));
+            continue;
+        }
+
+        std::string existingResolved = resolveImportPath(existingBind.path, modulePath);
+        seenFileBinds.insert(normalizePath(existingResolved));
+    }
 
     // Important: Use index-based iteration because we may add transitive binds
     // to module.binds during processing. Range-based for would cause iterator
@@ -197,21 +229,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
             // Namespace binds don't need path resolution - they're handled by Sema
             if (transitiveBind.isNamespaceBind)
             {
-                // Check if already bound
-                bool alreadyBound = false;
-                for (const auto &existingBind : module.binds)
-                {
-                    // Aliased and unaliased binds for the same path serve
-                    // different purposes (alias vs full import) and must
-                    // both be kept so imported declarations can use either.
-                    if (existingBind.isNamespaceBind && existingBind.path == transitiveBind.path &&
-                        existingBind.alias == transitiveBind.alias)
-                    {
-                        alreadyBound = true;
-                        break;
-                    }
-                }
-                if (!alreadyBound)
+                if (seenNamespaceBinds.insert(makeNamespaceBindKey(transitiveBind)).second)
                 {
                     BindDecl nsBind(transitiveBind.loc, transitiveBind.path);
                     nsBind.alias = transitiveBind.alias;
@@ -226,21 +244,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
             std::string resolvedPath = resolveImportPath(transitiveBind.path, bindFilePath);
             std::string transitiveNormalizedPath = normalizePath(resolvedPath);
 
-            // Check if this normalized path is already bound
-            bool alreadyBound = false;
-            for (const auto &existingBind : module.binds)
-            {
-                if (existingBind.isNamespaceBind)
-                    continue; // Skip namespace binds when comparing file paths
-                std::string existingResolved = resolveImportPath(existingBind.path, modulePath);
-                std::string existingNormalized = normalizePath(existingResolved);
-                if (existingNormalized == transitiveNormalizedPath)
-                {
-                    alreadyBound = true;
-                    break;
-                }
-            }
-            if (!alreadyBound)
+            if (seenFileBinds.insert(transitiveNormalizedPath).second)
             {
                 // Store the absolute path so it resolves correctly from any context
                 BindDecl absoluteBind(transitiveBind.loc, transitiveNormalizedPath);

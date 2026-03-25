@@ -31,6 +31,22 @@
 namespace il::frontends::zia
 {
 
+namespace
+{
+
+int compareLoc(const SourceLoc &a, const SourceLoc &b)
+{
+    if (a.file_id != b.file_id)
+        return (a.file_id < b.file_id) ? -1 : 1;
+    if (a.line != b.line)
+        return (a.line < b.line) ? -1 : 1;
+    if (a.column != b.column)
+        return (a.column < b.column) ? -1 : 1;
+    return 0;
+}
+
+} // namespace
+
 //=============================================================================
 // Scope Implementation
 //=============================================================================
@@ -71,16 +87,23 @@ Symbol *Scope::lookupLocal(const std::string &name)
 
 Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag)
 {
-    scopes_.push_back(std::make_unique<Scope>());
+    scopes_.push_back(std::make_unique<Scope>(nullptr, nextScopeId_, 0));
     currentScope_ = scopes_.back().get();
+    scopeSnapshots_[nextScopeId_] = ScopeSnapshot{nextScopeId_, 0, 0, {}, {}};
+    nextScopeId_++;
     types::clearInterfaceImplementations();
     registerBuiltins();
 }
 
-void Sema::initWarnings(const WarningPolicy &policy, std::string_view source)
+void Sema::initWarnings(const WarningPolicy &policy)
 {
     warningPolicy_ = &policy;
-    suppressions_.scan(source);
+    suppressions_.clear();
+}
+
+void Sema::addWarningSuppressions(uint32_t fileId, std::string_view source)
+{
+    suppressions_.scan(fileId, source);
 }
 
 /// @brief Run multi-pass semantic analysis on a module.
@@ -155,7 +178,6 @@ bool Sema::analyze(ModuleDecl &module)
             case DeclKind::Value:
             {
                 auto *value = static_cast<ValueDecl *>(decl.get());
-                valueDecls_[value->name] = value;
 
                 TypeRef valueType;
                 if (!value->genericParams.empty())
@@ -175,20 +197,21 @@ bool Sema::analyze(ModuleDecl &module)
                 {
                     valueType = types::value(value->name);
                 }
-                typeRegistry_[value->name] = valueType;
-
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
                 sym.name = value->name;
                 sym.type = valueType;
                 sym.decl = value;
-                defineSymbol(value->name, sym);
+                if (defineSymbol(value->name, sym))
+                {
+                    valueDecls_[value->name] = value;
+                    typeRegistry_[value->name] = valueType;
+                }
                 break;
             }
             case DeclKind::Entity:
             {
                 auto *entity = static_cast<EntityDecl *>(decl.get());
-                entityDecls_[entity->name] = entity;
 
                 TypeRef entityType;
                 if (!entity->genericParams.empty())
@@ -208,43 +231,47 @@ bool Sema::analyze(ModuleDecl &module)
                 {
                     entityType = types::entity(entity->name);
                 }
-                typeRegistry_[entity->name] = entityType;
-
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
                 sym.name = entity->name;
                 sym.type = entityType;
                 sym.decl = entity;
-                defineSymbol(entity->name, sym);
+                if (defineSymbol(entity->name, sym))
+                {
+                    entityDecls_[entity->name] = entity;
+                    typeRegistry_[entity->name] = entityType;
+                }
                 break;
             }
             case DeclKind::Interface:
             {
                 auto *iface = static_cast<InterfaceDecl *>(decl.get());
-                interfaceDecls_[iface->name] = iface;
                 auto ifaceType = types::interface(iface->name);
-                typeRegistry_[iface->name] = ifaceType;
 
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
                 sym.name = iface->name;
                 sym.type = ifaceType;
                 sym.decl = iface;
-                defineSymbol(iface->name, sym);
+                if (defineSymbol(iface->name, sym))
+                {
+                    interfaceDecls_[iface->name] = iface;
+                    typeRegistry_[iface->name] = ifaceType;
+                }
                 break;
             }
             case DeclKind::Enum:
             {
                 auto *enumDecl = static_cast<EnumDecl *>(decl.get());
                 auto enumT = types::enumType(enumDecl->name);
-                typeRegistry_[enumDecl->name] = enumT;
 
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
                 sym.name = enumDecl->name;
                 sym.type = enumT;
                 sym.decl = enumDecl;
-                defineSymbol(enumDecl->name, sym);
+                if (defineSymbol(enumDecl->name, sym))
+                    typeRegistry_[enumDecl->name] = enumT;
                 break;
             }
             case DeclKind::GlobalVar:
@@ -272,10 +299,12 @@ bool Sema::analyze(ModuleDecl &module)
                 sym.type = varType;
                 sym.isFinal = gvar->isFinal;
                 sym.decl = gvar;
-                defineSymbol(gvar->name, sym);
-                // Global variables are always considered initialized
-                // (either explicitly or default-initialized)
-                markInitialized(gvar->name);
+                if (defineSymbol(gvar->name, sym))
+                {
+                    // Global variables are always considered initialized
+                    // (either explicitly or default-initialized)
+                    markInitialized(gvar->name);
+                }
                 break;
             }
             case DeclKind::Namespace:
@@ -339,21 +368,29 @@ TypeRef Sema::resolveType(const TypeNode *node) const
 //=============================================================================
 
 /// @brief Push a new child scope onto the scope stack.
-void Sema::pushScope()
+void Sema::pushScope(SourceLoc startLoc)
 {
-    scopes_.push_back(std::make_unique<Scope>(currentScope_));
+    const uint32_t scopeId = nextScopeId_++;
+    const size_t depth = currentScope_ ? currentScope_->depth() + 1 : 0;
+    const uint32_t parentId = currentScope_ ? currentScope_->id() : 0;
+    scopes_.push_back(std::make_unique<Scope>(currentScope_, scopeId, depth));
     currentScope_ = scopes_.back().get();
+    scopeSnapshots_[scopeId] = ScopeSnapshot{scopeId, parentId, depth, startLoc, {}};
 }
 
 /// @brief Pop the current scope, restoring its parent as the active scope.
 /// @pre There must be more than the global scope remaining.
 /// @details Checks for unused variables (W001) in the scope before popping.
-void Sema::popScope()
+void Sema::popScope(SourceLoc endLoc)
 {
     assert(scopes_.size() > 1 && "cannot pop global scope");
 
     // W001: Check for unused variables/parameters in the scope being popped
     checkUnusedVariables(*currentScope_);
+
+    auto snapIt = scopeSnapshots_.find(currentScope_->id());
+    if (snapIt != scopeSnapshots_.end() && endLoc.isValid())
+        snapIt->second.endLoc = endLoc;
 
     currentScope_ = currentScope_->parent();
     scopes_.pop_back();
@@ -364,8 +401,22 @@ void Sema::popScope()
 /// @param name The symbol name to register.
 /// @param symbol The symbol metadata to associate with the name.
 /// @param locOverride Optional source location for symbols without decl (locals, params).
-void Sema::defineSymbol(const std::string &name, Symbol symbol, SourceLoc locOverride)
+bool Sema::defineSymbol(const std::string &name, Symbol symbol, SourceLoc locOverride)
 {
+    SourceLoc defLoc = locOverride.isValid() ? locOverride : (symbol.decl ? symbol.decl->loc : SourceLoc{});
+    if (Symbol *existing = currentScope_->lookupLocal(name))
+    {
+        if (existing->decl == nullptr && symbol.decl == nullptr)
+        {
+            symbol.loc = defLoc;
+            currentScope_->define(name, std::move(symbol));
+            return true;
+        }
+    }
+    if (!reportDuplicateDefinition(name, defLoc))
+        return false;
+
+    symbol.loc = defLoc;
     currentScope_->define(name, std::move(symbol));
 
     // Capture a snapshot for position-based hover queries.
@@ -374,33 +425,58 @@ void Sema::defineSymbol(const std::string &name, Symbol symbol, SourceLoc locOve
     {
         ScopedSymbol ss;
         ss.symbol = *defined;
-        ss.loc = locOverride.isValid() ? locOverride
-                                       : (defined->decl ? defined->decl->loc : SourceLoc{});
+        ss.loc = defLoc;
         ss.ownerType = currentSelfType_ ? currentSelfType_->name : "";
+        ss.scopeId = currentScope_->id();
         scopedSymbols_.push_back(std::move(ss));
     }
+    return true;
 }
 
 /// @brief Find the most relevant symbol at a given cursor position.
 const ScopedSymbol *Sema::findSymbolAtPosition(const std::string &name,
+                                               uint32_t fileId,
                                                uint32_t line,
                                                uint32_t col) const
 {
     const ScopedSymbol *best = nullptr;
+    const SourceLoc cursor{fileId, line, col};
     for (const auto &ss : scopedSymbols_)
     {
         if (ss.symbol.name != name)
             continue;
         if (!ss.loc.isValid())
             continue;
+        if (fileId != 0 && ss.loc.file_id != fileId)
+            continue;
         // Symbol must be defined at or before the cursor position.
-        if (ss.loc.line > line)
+        if (compareLoc(ss.loc, cursor) > 0)
             continue;
-        if (ss.loc.line == line && ss.loc.column > col)
+
+        auto scopeIt = scopeSnapshots_.find(ss.scopeId);
+        if (scopeIt != scopeSnapshots_.end())
+        {
+            const auto &scope = scopeIt->second;
+            if (fileId != 0 && scope.startLoc.hasFile() && scope.startLoc.file_id != fileId)
+                continue;
+            if (scope.startLoc.isValid() && compareLoc(scope.startLoc, cursor) > 0)
+                continue;
+            if (scope.endLoc.isValid() && cursor.file_id == scope.endLoc.file_id &&
+                cursor.line > scope.endLoc.line)
+                continue;
+        }
+
+        if (!best)
+        {
+            best = &ss;
             continue;
-        // Pick the innermost (most recently defined before cursor) match.
-        if (!best || ss.loc.line > best->loc.line ||
-            (ss.loc.line == best->loc.line && ss.loc.column > best->loc.column))
+        }
+
+        const auto bestScopeIt = scopeSnapshots_.find(best->scopeId);
+        const size_t bestDepth = bestScopeIt != scopeSnapshots_.end() ? bestScopeIt->second.depth : 0;
+        const size_t thisDepth = scopeIt != scopeSnapshots_.end() ? scopeIt->second.depth : 0;
+        if (thisDepth > bestDepth ||
+            (thisDepth == bestDepth && compareLoc(ss.loc, best->loc) > 0))
         {
             best = &ss;
         }
@@ -566,7 +642,7 @@ void Sema::warn(WarningCode code, SourceLoc loc, const std::string &message)
     }
 
     // Check inline suppression
-    if (suppressions_.isSuppressed(code, loc.line))
+    if (suppressions_.isSuppressed(code, loc))
         return;
 
     // Determine severity: Warning or Error (if -Werror)
@@ -600,8 +676,9 @@ void Sema::checkUnusedVariables(const Scope &scope)
         if (!sym.used)
         {
             std::string what = (sym.kind == Symbol::Kind::Parameter) ? "Parameter" : "Variable";
+            SourceLoc loc = sym.loc.isValid() ? sym.loc : (sym.decl ? sym.decl->loc : SourceLoc{});
             warn(WarningCode::W001_UnusedVariable,
-                 sym.decl ? sym.decl->loc : SourceLoc{},
+                 loc,
                  what + " '" + name + "' is declared but never used");
         }
     }
@@ -612,6 +689,95 @@ void Sema::error(SourceLoc loc, const std::string &message)
 {
     hasError_ = true;
     diag_.report({il::support::Severity::Error, message, loc, "V3000"});
+}
+
+bool Sema::reportDuplicateDefinition(const std::string &name, SourceLoc loc)
+{
+    if (!currentScope_)
+        return true;
+
+    Symbol *existing = currentScope_->lookupLocal(name);
+    if (!existing)
+        return true;
+
+    SourceLoc existingLoc = existing->loc.isValid() ? existing->loc
+                                                    : (existing->decl ? existing->decl->loc
+                                                                      : SourceLoc{});
+    if (!existingLoc.isValid())
+    {
+        for (auto it = scopedSymbols_.rbegin(); it != scopedSymbols_.rend(); ++it)
+        {
+            if (it->scopeId == currentScope_->id() && it->symbol.name == name)
+            {
+                existingLoc = it->loc;
+                break;
+            }
+        }
+    }
+
+    std::string message = "Duplicate definition of '" + name + "'";
+    if (existingLoc.isValid())
+    {
+        message += " (previous definition at line " + std::to_string(existingLoc.line) + ", column " +
+                   std::to_string(existingLoc.column) + ")";
+    }
+    error(loc, message);
+    return false;
+}
+
+SourceLoc Sema::scopeEndForStmt(const Stmt *stmt)
+{
+    if (!stmt)
+        return {};
+
+    switch (stmt->kind)
+    {
+        case StmtKind::Block:
+        {
+            auto *block = static_cast<const BlockStmt *>(stmt);
+            if (block->statements.empty())
+                return stmt->loc;
+            return scopeEndForStmt(block->statements.back().get());
+        }
+        case StmtKind::If:
+        {
+            auto *ifStmt = static_cast<const IfStmt *>(stmt);
+            SourceLoc end = scopeEndForStmt(ifStmt->thenBranch.get());
+            if (ifStmt->elseBranch)
+            {
+                SourceLoc elseEnd = scopeEndForStmt(ifStmt->elseBranch.get());
+                if (!end.isValid() || (elseEnd.isValid() && compareLoc(elseEnd, end) > 0))
+                    end = elseEnd;
+            }
+            return end.isValid() ? end : stmt->loc;
+        }
+        case StmtKind::While:
+            return scopeEndForStmt(static_cast<const WhileStmt *>(stmt)->body.get());
+        case StmtKind::For:
+            return scopeEndForStmt(static_cast<const ForStmt *>(stmt)->body.get());
+        case StmtKind::ForIn:
+            return scopeEndForStmt(static_cast<const ForInStmt *>(stmt)->body.get());
+        case StmtKind::Try:
+        {
+            auto *tryStmt = static_cast<const TryStmt *>(stmt);
+            SourceLoc end = scopeEndForStmt(tryStmt->tryBody.get());
+            if (tryStmt->catchBody)
+            {
+                SourceLoc catchEnd = scopeEndForStmt(tryStmt->catchBody.get());
+                if (!end.isValid() || (catchEnd.isValid() && compareLoc(catchEnd, end) > 0))
+                    end = catchEnd;
+            }
+            if (tryStmt->finallyBody)
+            {
+                SourceLoc finallyEnd = scopeEndForStmt(tryStmt->finallyBody.get());
+                if (!end.isValid() || (finallyEnd.isValid() && compareLoc(finallyEnd, end) > 0))
+                    end = finallyEnd;
+            }
+            return end.isValid() ? end : stmt->loc;
+        }
+        default:
+            return stmt->loc;
+    }
 }
 
 /// @brief Report an "undefined identifier" error for the given name.
@@ -863,48 +1029,54 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl)
             {
                 auto *value = static_cast<ValueDecl *>(innerDecl.get());
                 std::string qualifiedName = qualifyName(value->name);
-                valueDecls_[qualifiedName] = value;
                 auto valueType = types::value(qualifiedName);
-                typeRegistry_[qualifiedName] = valueType;
 
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
                 sym.name = qualifiedName;
                 sym.type = valueType;
                 sym.decl = value;
-                defineSymbol(qualifiedName, sym);
+                if (defineSymbol(qualifiedName, sym))
+                {
+                    valueDecls_[qualifiedName] = value;
+                    typeRegistry_[qualifiedName] = valueType;
+                }
                 break;
             }
             case DeclKind::Entity:
             {
                 auto *entity = static_cast<EntityDecl *>(innerDecl.get());
                 std::string qualifiedName = qualifyName(entity->name);
-                entityDecls_[qualifiedName] = entity;
                 auto entityType = types::entity(qualifiedName);
-                typeRegistry_[qualifiedName] = entityType;
 
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
                 sym.name = qualifiedName;
                 sym.type = entityType;
                 sym.decl = entity;
-                defineSymbol(qualifiedName, sym);
+                if (defineSymbol(qualifiedName, sym))
+                {
+                    entityDecls_[qualifiedName] = entity;
+                    typeRegistry_[qualifiedName] = entityType;
+                }
                 break;
             }
             case DeclKind::Interface:
             {
                 auto *iface = static_cast<InterfaceDecl *>(innerDecl.get());
                 std::string qualifiedName = qualifyName(iface->name);
-                interfaceDecls_[qualifiedName] = iface;
                 auto ifaceType = types::interface(qualifiedName);
-                typeRegistry_[qualifiedName] = ifaceType;
 
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
                 sym.name = qualifiedName;
                 sym.type = ifaceType;
                 sym.decl = iface;
-                defineSymbol(qualifiedName, sym);
+                if (defineSymbol(qualifiedName, sym))
+                {
+                    interfaceDecls_[qualifiedName] = iface;
+                    typeRegistry_[qualifiedName] = ifaceType;
+                }
                 break;
             }
             case DeclKind::GlobalVar:

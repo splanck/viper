@@ -233,6 +233,9 @@ class Parser
     /// like "expected 'what', found '...'". The token is consumed on match.
     bool expect(TokenKind kind, const char *what, Token *out = nullptr);
 
+    /// @brief Reclaim consumed tokens from the front of the lookahead buffer.
+    void compactBufferedTokens();
+
     /// @brief Attempt to resynchronize after a syntax error.
     ///
     /// @details Skips tokens until reaching a likely statement or

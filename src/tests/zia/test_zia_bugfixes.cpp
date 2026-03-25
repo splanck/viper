@@ -1462,6 +1462,33 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+TEST(ZiaBugFixes, DuplicateTopLevelDefinitionsAreRejected)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func greet() {}
+func greet() {}
+)";
+    CompilerInput input{.source = source, .path = "duplicate_defs.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+    bool sawDuplicate = false;
+    for (const auto &d : result.diagnostics.diagnostics())
+    {
+        if (d.message.find("Duplicate definition of 'greet'") != std::string::npos)
+        {
+            sawDuplicate = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(sawDuplicate);
+}
+
 } // namespace
 
 int main()

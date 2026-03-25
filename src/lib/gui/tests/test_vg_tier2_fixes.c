@@ -57,6 +57,30 @@ static int g_failed = 0;
 #define ASSERT_TRUE(cond) ASSERT(cond)
 #define ASSERT_FALSE(cond) ASSERT(!(cond))
 
+typedef struct
+{
+    vg_widget_t base;
+    int handled_count;
+} test_bubble_widget_t;
+
+static bool test_bubble_handle(vg_widget_t *widget, vg_event_t *event)
+{
+    (void)event;
+    ((test_bubble_widget_t *)widget)->handled_count++;
+    return true;
+}
+
+static const vg_widget_vtable_t g_bubble_vtable = {
+    .destroy = NULL,
+    .measure = NULL,
+    .arrange = NULL,
+    .paint = NULL,
+    .paint_overlay = NULL,
+    .handle_event = test_bubble_handle,
+    .can_focus = NULL,
+    .on_focus = NULL,
+};
+
 //=============================================================================
 // BINDING-003: GuiWidget field accessors
 //=============================================================================
@@ -278,6 +302,80 @@ TEST(codeeditor_get_selection_with_selection_returns_text)
     vg_widget_destroy((vg_widget_t *)editor);
 }
 
+TEST(widget_destroy_child_detaches_from_parent)
+{
+    vg_widget_t *parent = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(parent);
+    ASSERT_NOT_NULL(child);
+
+    vg_widget_add_child(parent, child);
+    ASSERT_EQ(parent->child_count, 1);
+
+    vg_widget_destroy(child);
+
+    ASSERT_EQ(parent->child_count, 0);
+    ASSERT_NULL(parent->first_child);
+    ASSERT_NULL(parent->last_child);
+
+    vg_widget_destroy(parent);
+}
+
+TEST(widget_add_child_rejects_cycles)
+{
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    ASSERT_NOT_NULL(child);
+
+    vg_widget_add_child(root, child);
+    vg_widget_add_child(child, root);
+
+    ASSERT_NULL(root->parent);
+    ASSERT_EQ(root->child_count, 1);
+    ASSERT_EQ(root->first_child, child);
+    ASSERT_EQ(child->child_count, 0);
+
+    vg_widget_destroy(root);
+}
+
+TEST(event_bubble_honors_parent_return_value)
+{
+    test_bubble_widget_t *parent = calloc(1, sizeof(test_bubble_widget_t));
+    test_bubble_widget_t *child = calloc(1, sizeof(test_bubble_widget_t));
+    ASSERT_NOT_NULL(parent);
+    ASSERT_NOT_NULL(child);
+
+    vg_widget_init(&parent->base, VG_WIDGET_CONTAINER, &g_bubble_vtable);
+    vg_widget_init(&child->base, VG_WIDGET_CONTAINER, NULL);
+    vg_widget_add_child(&parent->base, &child->base);
+
+    vg_event_t ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = VG_EVENT_CLICK;
+
+    bool handled = vg_event_send(&child->base, &ev);
+    ASSERT_TRUE(handled);
+    ASSERT_TRUE(ev.handled);
+    ASSERT_EQ(parent->handled_count, 1);
+
+    vg_widget_destroy(&parent->base);
+}
+
+TEST(floatingpanel_destroy_no_double_free)
+{
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+
+    vg_floatingpanel_t *panel = vg_floatingpanel_create(root);
+    ASSERT_NOT_NULL(panel);
+
+    vg_floatingpanel_destroy(panel);
+    ASSERT_EQ(root->child_count, 0);
+
+    vg_widget_destroy(root);
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -315,6 +413,10 @@ int main(void)
     // PARTIAL-007: GetSelectedText
     RUN(codeeditor_get_selection_without_selection_is_null);
     RUN(codeeditor_get_selection_with_selection_returns_text);
+    RUN(widget_destroy_child_detaches_from_parent);
+    RUN(widget_add_child_rejects_cycles);
+    RUN(event_bubble_honors_parent_return_value);
+    RUN(floatingpanel_destroy_no_double_free);
 
     printf("\n%d passed, %d failed\n", g_passed, g_failed);
     return g_failed ? 1 : 0;

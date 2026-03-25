@@ -90,6 +90,9 @@ struct Symbol
     /// @brief Pointer to the AST declaration node.
     /// @details May be nullptr for built-in symbols or extern functions.
     Decl *decl{nullptr};
+
+    /// @brief Source location of the definition when available.
+    SourceLoc loc{};
 };
 
 /// @}
@@ -102,6 +105,7 @@ struct ScopedSymbol
     Symbol symbol;         ///< The full symbol metadata (kind, name, type, etc.)
     SourceLoc loc;         ///< Position of the defining declaration/statement
     std::string ownerType; ///< Entity name when inside entity body (empty otherwise)
+    uint32_t scopeId{0};   ///< Lexical scope that owns the definition
 };
 
 //===----------------------------------------------------------------------===//
@@ -131,7 +135,10 @@ class Scope
   public:
     /// @brief Create a scope with an optional parent.
     /// @param parent The enclosing scope, or nullptr for global scope.
-    explicit Scope(Scope *parent = nullptr) : parent_(parent) {}
+    explicit Scope(Scope *parent = nullptr, uint32_t id = 0, size_t depth = 0)
+        : parent_(parent), id_(id), depth_(depth)
+    {
+    }
 
     /// @brief Define a symbol in this scope.
     /// @param name The symbol name.
@@ -163,6 +170,18 @@ class Scope
         return parent_;
     }
 
+    /// @brief Stable scope identifier assigned by Sema.
+    uint32_t id() const
+    {
+        return id_;
+    }
+
+    /// @brief Lexical nesting depth (0 for global scope).
+    size_t depth() const
+    {
+        return depth_;
+    }
+
     /// @brief Check if any symbol name starts with the given prefix.
     bool hasSymbolWithPrefix(const std::string &prefix) const
     {
@@ -185,6 +204,12 @@ class Scope
   private:
     /// @brief The enclosing scope.
     Scope *parent_{nullptr};
+
+    /// @brief Stable scope identifier assigned by Sema.
+    uint32_t id_{0};
+
+    /// @brief Lexical nesting depth.
+    size_t depth_{0};
 
     /// @brief Symbols defined in this scope.
     std::unordered_map<std::string, Symbol> symbols_;

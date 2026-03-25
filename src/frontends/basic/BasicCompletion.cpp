@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <unordered_set>
 
 namespace il::frontends::basic
 {
@@ -137,6 +138,15 @@ BasicCompletionEngine::Context BasicCompletionEngine::extractContext(std::string
 // --- Helpers ---
 
 static std::string toLowerStr(const std::string &s)
+{
+    std::string lower;
+    lower.reserve(s.size());
+    for (char c : s)
+        lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return lower;
+}
+
+static std::string toLowerStr(std::string_view s)
 {
     std::string lower;
     lower.reserve(s.size());
@@ -463,12 +473,23 @@ void BasicCompletionEngine::rank(std::vector<CompletionItem> &items,
     }
 
     std::string lp = toLowerStr(prefix);
-    std::sort(items.begin(),
-              items.end(),
-              [&lp](const CompletionItem &a, const CompletionItem &b)
+    std::vector<std::string> lowerLabels;
+    lowerLabels.reserve(items.size());
+    for (const auto &item : items)
+        lowerLabels.push_back(toLowerStr(item.label));
+
+    std::vector<size_t> order(items.size());
+    for (size_t i = 0; i < order.size(); ++i)
+        order[i] = i;
+
+    std::sort(order.begin(),
+              order.end(),
+              [&items, &lowerLabels, &lp](size_t ai, size_t bi)
               {
-                  std::string la = toLowerStr(a.label);
-                  std::string lb = toLowerStr(b.label);
+                  const auto &a = items[ai];
+                  const auto &b = items[bi];
+                  const auto &la = lowerLabels[ai];
+                  const auto &lb = lowerLabels[bi];
                   bool aExact = (la == lp);
                   bool bExact = (lb == lp);
                   if (aExact != bExact)
@@ -481,24 +502,26 @@ void BasicCompletionEngine::rank(std::vector<CompletionItem> &items,
                       return a.sortPriority < b.sortPriority;
                   return la < lb;
               });
+
+    std::vector<CompletionItem> ranked;
+    ranked.reserve(items.size());
+    for (size_t idx : order)
+        ranked.push_back(std::move(items[idx]));
+    items = std::move(ranked);
 }
 
 void BasicCompletionEngine::deduplicate(std::vector<CompletionItem> &items) const
 {
+    std::unordered_set<std::string> seen;
+    seen.reserve(items.size());
     std::vector<CompletionItem> unique;
     unique.reserve(items.size());
     for (auto &item : items)
     {
-        bool dup = false;
-        for (const auto &u : unique)
-        {
-            if (u.label == item.label && u.kind == item.kind)
-            {
-                dup = true;
-                break;
-            }
-        }
-        if (!dup)
+        std::string key = item.label;
+        key.push_back('\0');
+        key += std::to_string(static_cast<unsigned>(item.kind));
+        if (seen.insert(key).second)
             unique.push_back(std::move(item));
     }
     items = std::move(unique);
@@ -511,12 +534,13 @@ std::vector<CompletionItem> BasicCompletionEngine::complete(
 {
     // Check cache
     uint64_t hash = fnv1a(source);
-    if (cache_.hash != hash || !cache_.result)
+    if (cache_.hash != hash || cache_.filePath != filePath || !cache_.result)
     {
         sm_ = std::make_unique<il::support::SourceManager>();
         BasicCompilerInput input{.source = source, .path = filePath};
         cache_.result = parseAndAnalyzeBasic(input, *sm_);
         cache_.hash = hash;
+        cache_.filePath = std::string(filePath);
     }
 
     auto &ar = *cache_.result;

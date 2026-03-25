@@ -82,6 +82,25 @@ static vg_event_t make_click(void)
     return ev;
 }
 
+static vg_event_t make_mouse_down(float screen_x, float screen_y)
+{
+    vg_event_t ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = VG_EVENT_MOUSE_DOWN;
+    ev.mouse.screen_x = screen_x;
+    ev.mouse.screen_y = screen_y;
+    return ev;
+}
+
+static vg_event_t make_mouse_wheel(float delta_y)
+{
+    vg_event_t ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = VG_EVENT_MOUSE_WHEEL;
+    ev.wheel.delta_y = delta_y;
+    return ev;
+}
+
 //=============================================================================
 // BUG-GUI-003 — Button keyboard activation
 //=============================================================================
@@ -520,9 +539,76 @@ TEST(textinput_plain_left_collapses_selection)
     ti->base.vtable->handle_event(&ti->base, &ev);
     // Should collapse to start of selection, not move further left
     ASSERT_EQ((int)ti->cursor_pos, 0);
-    ASSERT_EQ((int)ti->selection_start, ti->selection_end);
+    ASSERT_EQ((int)ti->selection_start, (int)ti->selection_end);
 
     vg_widget_destroy(&ti->base);
+}
+
+TEST(textinput_utf8_backspace_removes_whole_codepoint)
+{
+    vg_textinput_t *ti = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(ti);
+    vg_textinput_set_text(ti, "A\xE2\x82\xAC""B");
+
+    ti->cursor_pos = 2;
+    ti->selection_start = 2;
+    ti->selection_end = 2;
+
+    vg_event_t ev = make_key_down(VG_KEY_BACKSPACE, VG_MOD_NONE);
+    ti->base.vtable->handle_event(&ti->base, &ev);
+    ASSERT_EQ(strcmp(ti->text, "AB"), 0);
+    ASSERT_EQ((int)ti->cursor_pos, 1);
+
+    vg_widget_destroy(&ti->base);
+}
+
+TEST(textinput_utf8_selection_extracts_full_character)
+{
+    vg_textinput_t *ti = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(ti);
+    vg_textinput_set_text(ti, "A\xE2\x82\xAC""B");
+
+    vg_textinput_select(ti, 1, 2);
+    char *selection = vg_textinput_get_selection(ti);
+    ASSERT_NOT_NULL(selection);
+    ASSERT_EQ(strcmp(selection, "\xE2\x82\xAC"), 0);
+    free(selection);
+
+    vg_widget_destroy(&ti->base);
+}
+
+TEST(listbox_virtual_mouse_selects_index)
+{
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+    vg_listbox_set_virtual_mode(lb, true, 100, 20.0f);
+
+    lb->base.y = 10.0f;
+    lb->base.height = 60.0f;
+
+    vg_event_t ev = make_mouse_down(5.0f, 55.0f);
+    bool handled = lb->base.vtable->handle_event(&lb->base, &ev);
+    ASSERT_TRUE(handled);
+    ASSERT_EQ((int)vg_listbox_get_selected_index(lb), 2);
+
+    vg_widget_destroy(&lb->base);
+}
+
+TEST(listbox_virtual_wheel_clamps_using_total_count)
+{
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+    vg_listbox_set_virtual_mode(lb, true, 100, 10.0f);
+
+    lb->base.height = 25.0f;
+
+    vg_event_t ev = make_mouse_wheel(-1000.0f);
+    bool handled = lb->base.vtable->handle_event(&lb->base, &ev);
+    ASSERT_TRUE(handled);
+    ASSERT_TRUE(lb->scroll_y > 900.0f);
+    ASSERT_TRUE(lb->scroll_y <= 975.0f);
+
+    vg_widget_destroy(&lb->base);
 }
 
 //=============================================================================
@@ -586,6 +672,10 @@ int main(void)
     RUN(textinput_ctrl_right_jumps_word);
     RUN(textinput_ctrl_left_jumps_word);
     RUN(textinput_plain_left_collapses_selection);
+    RUN(textinput_utf8_backspace_removes_whole_codepoint);
+    RUN(textinput_utf8_selection_extracts_full_character);
+    RUN(listbox_virtual_mouse_selects_index);
+    RUN(listbox_virtual_wheel_clamps_using_total_count);
 
     printf("\n-- BUG-GUI-001: Label word_wrap struct fields --\n");
     RUN(label_wordwrap_fields_accessible);

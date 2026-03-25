@@ -156,12 +156,16 @@ class Sema
     /// analyzer.
     explicit Sema(il::support::DiagnosticEngine &diag);
 
-    /// @brief Initialize warning infrastructure with a policy and source text.
+    /// @brief Initialize warning infrastructure with a policy.
     /// @param policy Warning policy controlling which warnings are enabled.
-    /// @param source Full source text for scanning @suppress directives.
     /// @details Must be called before analyze() for warning support. If not
     ///          called, warnings use the default policy (conservative set).
-    void initWarnings(const WarningPolicy &policy, std::string_view source);
+    void initWarnings(const WarningPolicy &policy);
+
+    /// @brief Scan one source file for inline warning suppressions.
+    /// @param fileId SourceManager file identifier for the scanned file.
+    /// @param source Full source text for scanning @suppress directives.
+    void addWarningSuppressions(uint32_t fileId, std::string_view source);
 
     /// @brief Analyze a module declaration.
     /// @param module The parsed module to analyze.
@@ -775,20 +779,20 @@ class Sema
     ///
     /// @details Creates a new scope with the current scope as parent.
     /// Must be balanced with popScope().
-    void pushScope();
+    void pushScope(SourceLoc startLoc = {});
 
     /// @brief Pop the current scope from the scope stack.
     ///
     /// @details Returns to the parent scope. All symbols in the popped
     /// scope become inaccessible.
-    void popScope();
+    void popScope(SourceLoc endLoc = {});
 
     /// @brief Define a symbol in the current scope.
     /// @param name The symbol name.
     /// @param symbol The symbol information.
     /// @param locOverride Optional source location for symbols without a decl pointer
     ///        (local variables, parameters). If invalid, falls back to symbol.decl->loc.
-    void defineSymbol(const std::string &name, Symbol symbol, SourceLoc locOverride = {});
+    bool defineSymbol(const std::string &name, Symbol symbol, SourceLoc locOverride = {});
 
     /// @brief Look up a symbol by name.
     /// @param name The symbol name.
@@ -978,6 +982,7 @@ class Sema
     /// and parameters that are no longer in scope). Returns the innermost
     /// (most recently defined before cursor) match.
     const ScopedSymbol *findSymbolAtPosition(const std::string &name,
+                                             uint32_t fileId,
                                              uint32_t line,
                                              uint32_t col) const;
 
@@ -1051,6 +1056,12 @@ class Sema
     /// @param message Error message.
     void error(SourceLoc loc, const std::string &message);
 
+    /// @brief Report a duplicate definition in the current lexical scope.
+    /// @param name Symbol name being redefined.
+    /// @param loc Source location of the new definition.
+    /// @return false when a duplicate exists and the definition should be skipped.
+    bool reportDuplicateDefinition(const std::string &name, SourceLoc loc);
+
     /// @brief Report an undefined name error.
     /// @param loc Source location.
     /// @param name The undefined name.
@@ -1089,6 +1100,9 @@ class Sema
     ///          Skips symbols named "_" (conventional discard name).
     void checkUnusedVariables(const Scope &scope);
 
+    /// @brief Compute an approximate lexical end location for a statement-owned scope.
+    static SourceLoc scopeEndForStmt(const Stmt *stmt);
+
     /// @}
     //=========================================================================
     /// @name Warning Infrastructure
@@ -1101,6 +1115,15 @@ class Sema
 
     /// @brief Source-level warning suppressions from @suppress comments.
     WarningSuppressions suppressions_;
+
+  public:
+    /// @brief Mutable access for compiler-side import scanning.
+    WarningSuppressions &warningSuppressions()
+    {
+        return suppressions_;
+    }
+
+  private:
 
     /// @}
     //=========================================================================
@@ -1144,6 +1167,18 @@ class Sema
     /// @brief All symbol definitions captured during analysis for position-based lookup.
     /// @details Populated by defineSymbol(). Persists after scopes are popped.
     std::vector<ScopedSymbol> scopedSymbols_;
+
+    struct ScopeSnapshot
+    {
+        uint32_t id{0};
+        uint32_t parentId{0};
+        size_t depth{0};
+        SourceLoc startLoc{};
+        SourceLoc endLoc{};
+    };
+
+    std::unordered_map<uint32_t, ScopeSnapshot> scopeSnapshots_;
+    uint32_t nextScopeId_{1};
 
     /// @brief Owned lexical scope stack (scopes_[0] is global).
     std::vector<std::unique_ptr<Scope>> scopes_;

@@ -34,9 +34,13 @@
 #include "frontends/zia/ZiaCompletion.hpp"
 #include "tests/TestHarness.hpp"
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 using namespace il::frontends::zia;
+
+namespace fs = std::filesystem;
 
 namespace
 {
@@ -59,6 +63,13 @@ static bool hasKind(const std::vector<CompletionItem> &items,
         if (it.label == label && it.kind == kind)
             return true;
     return false;
+}
+
+static void writeFile(const fs::path &path, const std::string &contents)
+{
+    fs::create_directories(path.parent_path());
+    std::ofstream out(path);
+    out << contents;
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +243,31 @@ TEST(CompletionEngine, ClearCache_ForcesReparse)
     auto items2 = engine.complete(source, 1, 0, "<test>", 0);
     EXPECT_FALSE(items2.empty());
     EXPECT_EQ(items1.size(), items2.size());
+}
+
+TEST(CompletionEngine, Cache_KeyIncludesFilePath)
+{
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_completion_cache_paths";
+    fs::remove_all(tempRoot);
+
+    const fs::path dirA = tempRoot / "a";
+    const fs::path dirB = tempRoot / "b";
+    writeFile(dirA / "dep.zia", "module Dep;\nfunc alpha() {}\n");
+    writeFile(dirB / "dep.zia", "module Dep;\nfunc beta() {}\n");
+
+    const std::string mainSource = R"(module Test;
+bind "./dep";
+
+func start() {}
+)";
+
+    CompletionEngine engine;
+    auto itemsA = engine.complete(mainSource, 4, 0, (dirA / "main.zia").string(), 0);
+    auto itemsB = engine.complete(mainSource, 4, 0, (dirB / "main.zia").string(), 0);
+
+    EXPECT_TRUE(hasLabel(itemsA, "alpha"));
+    EXPECT_FALSE(hasLabel(itemsA, "beta"));
+    EXPECT_TRUE(hasLabel(itemsB, "beta"));
 }
 
 // ---------------------------------------------------------------------------

@@ -146,6 +146,16 @@ static const vg_widget_vtable_t g_default_vtable = {
     .on_focus = default_on_focus,
 };
 
+static bool widget_is_ancestor(const vg_widget_t *ancestor, const vg_widget_t *widget)
+{
+    for (const vg_widget_t *current = widget; current; current = current->parent)
+    {
+        if (current == ancestor)
+            return true;
+    }
+    return false;
+}
+
 //=============================================================================
 // Widget Initialization
 //=============================================================================
@@ -187,13 +197,15 @@ void vg_widget_destroy(vg_widget_t *widget)
     if (!widget)
         return;
 
-    // Recursively destroy children
-    vg_widget_t *child = widget->first_child;
-    while (child)
+    if (widget->parent)
     {
-        vg_widget_t *next = child->next_sibling;
-        vg_widget_destroy(child);
-        child = next;
+        vg_widget_remove_child(widget->parent, widget);
+    }
+
+    // Recursively destroy children
+    while (widget->first_child)
+    {
+        vg_widget_destroy(widget->first_child);
     }
 
     // Call type-specific destructor
@@ -232,6 +244,9 @@ void vg_widget_destroy(vg_widget_t *widget)
         g_modal_root = NULL;
     }
 
+    widget->parent = NULL;
+    widget->prev_sibling = NULL;
+    widget->next_sibling = NULL;
     free(widget);
 }
 
@@ -243,7 +258,7 @@ void vg_widget_add_child(vg_widget_t *parent, vg_widget_t *child)
 {
     if (!parent || !child)
         return;
-    if (parent == child)
+    if (parent == child || widget_is_ancestor(child, parent))
         return;
 
     // Remove from previous parent if any
@@ -274,6 +289,8 @@ void vg_widget_add_child(vg_widget_t *parent, vg_widget_t *child)
 void vg_widget_insert_child(vg_widget_t *parent, vg_widget_t *child, int index)
 {
     if (!parent || !child || index < 0)
+        return;
+    if (parent == child || widget_is_ancestor(child, parent))
         return;
 
     // Remove from previous parent if any
@@ -682,10 +699,14 @@ void vg_widget_measure(vg_widget_t *root, float available_width, float available
     if (!root || !root->visible)
         return;
 
-    // Measure children first
-    VG_FOREACH_VISIBLE_CHILD(root, child)
+    bool recurse_children =
+        !root->vtable || !root->vtable->measure || root->vtable->measure == default_measure;
+    if (recurse_children)
     {
-        vg_widget_measure(child, available_width, available_height);
+        VG_FOREACH_VISIBLE_CHILD(root, child)
+        {
+            vg_widget_measure(child, available_width, available_height);
+        }
     }
 
     // Then measure this widget

@@ -173,6 +173,7 @@ CompletionEngine::~CompletionEngine() = default;
 void CompletionEngine::clearCache()
 {
     cache_.hash = 0;
+    cache_.filePath.clear();
     cache_.result = nullptr;
     // Recreate SourceManager so file IDs are fresh.
     sm_ = std::make_unique<il::support::SourceManager>();
@@ -682,9 +683,10 @@ std::vector<CompletionItem> CompletionEngine::complete(
 {
     // ── Cache lookup ─────────────────────────────────────────────────────────
     uint64_t hash = fnv1a(source);
-    if (hash != cache_.hash || !cache_.result)
+    if (hash != cache_.hash || cache_.filePath != filePath || !cache_.result)
     {
         cache_.hash = 0;
+        cache_.filePath.clear();
         cache_.result = nullptr;
         sm_ = std::make_unique<il::support::SourceManager>();
 
@@ -699,7 +701,10 @@ std::vector<CompletionItem> CompletionEngine::complete(
 
         cache_.result = parseAndAnalyze(input, opts, *sm_);
         if (cache_.result)
+        {
             cache_.hash = hash;
+            cache_.filePath = pathStr;
+        }
     }
 
     // ── Context extraction ───────────────────────────────────────────────────

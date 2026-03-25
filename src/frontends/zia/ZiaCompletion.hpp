@@ -245,6 +245,7 @@ class CompletionEngine
     struct Cache
     {
         uint64_t hash{0};
+        std::string filePath;
         std::unique_ptr<AnalysisResult> result;
     };
 

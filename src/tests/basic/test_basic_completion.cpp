@@ -21,6 +21,8 @@
 #include "tests/TestHarness.hpp"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 using namespace il::frontends::basic;
@@ -123,6 +125,52 @@ TEST(BasicCompletion, ClearCache)
     engine.clearCache();
     auto items = engine.complete("DIM x AS INTEGER\n\n", 2, 1, "test.bas");
     (void)items;
+}
+
+TEST(BasicCompletion, CacheKeyIncludesFilePath)
+{
+    namespace fs = std::filesystem;
+
+    const fs::path tempRoot = fs::temp_directory_path() / "basic_completion_cache_paths";
+    fs::remove_all(tempRoot);
+
+    const fs::path dirA = tempRoot / "a";
+    const fs::path dirB = tempRoot / "b";
+    fs::create_directories(dirA);
+    fs::create_directories(dirB);
+
+    {
+        std::ofstream(dirA / "inc.bas") << "DIM Apple AS INTEGER\n";
+        std::ofstream(dirB / "inc.bas") << "DIM Apricot AS INTEGER\n";
+    }
+
+    const std::string source = "ADDFILE \"inc.bas\"\nA\n";
+    BasicCompletionEngine engine;
+    auto itemsA = engine.complete(source, 2, 2, (dirA / "main.bas").string(), 0);
+    auto itemsB = engine.complete(source, 2, 2, (dirB / "main.bas").string(), 0);
+
+    bool foundAppleA = false;
+    bool foundApricotA = false;
+    for (const auto &item : itemsA)
+    {
+        if (item.label == "APPLE")
+            foundAppleA = true;
+        if (item.label == "APRICOT")
+            foundApricotA = true;
+    }
+
+    bool foundApricotB = false;
+    for (const auto &item : itemsB)
+    {
+        if (item.label == "APRICOT")
+            foundApricotB = true;
+    }
+
+    EXPECT_TRUE(foundAppleA);
+    EXPECT_FALSE(foundApricotA);
+    EXPECT_TRUE(foundApricotB);
+
+    fs::remove_all(tempRoot);
 }
 
 int main(int argc, char **argv)

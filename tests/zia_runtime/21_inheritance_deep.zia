@@ -33,7 +33,7 @@ entity Animal {
 entity Dog extends Animal {
     hide String breed;
 
-    expose func init(n: String, b: String) {
+    expose func setup(n: String, b: String) {
         name = n;
         breed = b;
     }
@@ -54,7 +54,7 @@ entity Dog extends Animal {
 entity Cat extends Animal {
     hide Boolean indoor;
 
-    expose func init(n: String, i: Boolean) {
+    expose func setup(n: String, i: Boolean) {
         name = n;
         indoor = i;
     }
@@ -93,7 +93,7 @@ entity Shape {
 entity Circle extends Shape {
     hide Integer radius;
 
-    expose func init(r: Integer) {
+    expose func setup(r: Integer) {
         radius = r;
     }
 
@@ -120,7 +120,7 @@ entity Rectangle extends Shape {
     hide Integer width;
     hide Integer height;
 
-    expose func init(w: Integer, h: Integer) {
+    expose func setup(w: Integer, h: Integer) {
         width = w;
         height = h;
     }
@@ -162,7 +162,7 @@ entity Grandparent {
 entity Parent extends Grandparent {
     expose Integer generation;
 
-    expose func init(fn: String, gen: Integer) {
+    expose func setup(fn: String, gen: Integer) {
         familyName = fn;
         generation = gen;
     }
@@ -171,7 +171,7 @@ entity Parent extends Grandparent {
 entity Child extends Parent {
     expose String nickname;
 
-    expose func init(fn: String, gen: Integer, nick: String) {
+    expose func setup(fn: String, gen: Integer, nick: String) {
         familyName = fn;  // grandparent field
         generation = gen; // parent field
         nickname = nick;  // own field
@@ -203,13 +203,15 @@ func start() {
     assertEqStr(animal.speak(), "...", "animal_speak");
     assertEqStr(animal.move(), "moving", "animal_move");
 
-    var dog = new Dog("Buddy", "Golden Retriever");
+    var dog = new Dog();
+    dog.setup("Buddy", "Golden Retriever");
     assertEqStr(dog.getName(), "Buddy", "dog_name");
     assertEqStr(dog.getBreed(), "Golden Retriever", "dog_breed");
     assertEqStr(dog.speak(), "Woof!", "dog_speak");
     assertEqStr(dog.move(), "running", "dog_move");
 
-    var cat = new Cat("Whiskers", true);
+    var cat = new Cat();
+    cat.setup("Whiskers", true);
     assertEqStr(cat.getName(), "Whiskers", "cat_name");
     assertTrue(cat.isIndoor(), "cat_indoor");
     assertEqStr(cat.speak(), "Meow!", "cat_speak");
@@ -219,8 +221,12 @@ func start() {
     // Test 2: Polymorphism - derived assigned to base type
     //=========================================================================
     var a1: Animal = new Animal("Base");
-    var a2: Animal = new Dog("Rex", "German Shepherd");
-    var a3: Animal = new Cat("Mittens", false);
+    var d_a2 = new Dog();
+    d_a2.setup("Rex", "German Shepherd");
+    var a2: Animal = d_a2;
+    var c_a3 = new Cat();
+    c_a3.setup("Mittens", false);
+    var a3: Animal = c_a3;
 
     assertEqStr(a1.speak(), "...", "poly_animal_speak");
     assertEqStr(a2.speak(), "Woof!", "poly_dog_speak");
@@ -245,13 +251,15 @@ func start() {
     assertEqInt(shape.area(), 0, "shape_area");
     assertEqInt(shape.perimeter(), 0, "shape_perimeter");
 
-    var circle = new Circle(5);
+    var circle = new Circle();
+    circle.setup(5);
     assertEqStr(circle.name(), "Circle", "circle_name");
     assertEqInt(circle.getRadius(), 5, "circle_radius");
     assertEqInt(circle.area(), 75, "circle_area");
     assertEqInt(circle.perimeter(), 30, "circle_perimeter");
 
-    var rect = new Rectangle(4, 3);
+    var rect = new Rectangle();
+    rect.setup(4, 3);
     assertEqStr(rect.name(), "Rectangle", "rect_name");
     assertEqInt(rect.getWidth(), 4, "rect_width");
     assertEqInt(rect.getHeight(), 3, "rect_height");
@@ -262,8 +270,12 @@ func start() {
     // Test 5: Shape polymorphism
     //=========================================================================
     var s1: Shape = new Shape();
-    var s2: Shape = new Circle(3);
-    var s3: Shape = new Rectangle(5, 2);
+    var c_s2 = new Circle();
+    c_s2.setup(3);
+    var s2: Shape = c_s2;
+    var r_s3 = new Rectangle();
+    r_s3.setup(5, 2);
+    var s3: Shape = r_s3;
 
     assertEqInt(getShapeArea(s1), 0, "poly_shape_area");
     assertEqInt(getShapeArea(s2), 27, "poly_circle_area");
@@ -272,9 +284,12 @@ func start() {
     //=========================================================================
     // Test 6: Multiple instances of same derived type
     //=========================================================================
-    var dog1 = new Dog("Max", "Beagle");
-    var dog2 = new Dog("Luna", "Poodle");
-    var dog3 = new Dog("Charlie", "Bulldog");
+    var dog1 = new Dog();
+    dog1.setup("Max", "Beagle");
+    var dog2 = new Dog();
+    dog2.setup("Luna", "Poodle");
+    var dog3 = new Dog();
+    dog3.setup("Charlie", "Bulldog");
 
     assertEqStr(dog1.getName(), "Max", "multi_dog1_name");
     assertEqStr(dog2.getName(), "Luna", "multi_dog2_name");
@@ -289,8 +304,12 @@ func start() {
     //=========================================================================
     var animals: List[Animal] = [];
     animals.add(new Animal("creature"));
-    animals.add(new Dog("Spot", "Dalmatian"));
-    animals.add(new Cat("Fluffy", true));
+    var d_list = new Dog();
+    d_list.setup("Spot", "Dalmatian");
+    animals.add(d_list);
+    var c_list = new Cat();
+    c_list.setup("Fluffy", true);
+    animals.add(c_list);
 
     assertEqStr(animals.get(0).speak(), "...", "list_animal_speak");
     assertEqStr(animals.get(1).speak(), "Woof!", "list_dog_speak");
@@ -300,13 +319,16 @@ func start() {
     // Test 8: Inherited method not overridden
     //=========================================================================
     // getName() is inherited from Animal and not overridden
-    var pet: Animal = new Dog("Rover", "Mutt");
+    var d_pet = new Dog();
+    d_pet.setup("Rover", "Mutt");
+    var pet: Animal = d_pet;
     assertEqStr(pet.getName(), "Rover", "inherited_method");
 
     //=========================================================================
     // Test 9: 3-level inheritance - grandparent field access
     //=========================================================================
-    var child = new Child("Smith", 3, "Bobby");
+    var child = new Child();
+    child.setup("Smith", 3, "Bobby");
     assertEqStr(child.familyName, "Smith", "grandparent_field");
     assertEqInt(child.generation, 3, "parent_field");
     assertEqStr(child.nickname, "Bobby", "own_field");
@@ -315,10 +337,14 @@ func start() {
     //=========================================================================
     // Test 10: 3-level inheritance - polymorphism
     //=========================================================================
-    var gp: Grandparent = new Child("Jones", 2, "Timmy");
+    var c_gp = new Child();
+    c_gp.setup("Jones", 2, "Timmy");
+    var gp: Grandparent = c_gp;
     assertEqStr(gp.familyName, "Jones", "three_level_poly_gp");
 
-    var par: Parent = new Child("Wilson", 4, "Sally");
+    var c_par = new Child();
+    c_par.setup("Wilson", 4, "Sally");
+    var par: Parent = c_par;
     assertEqStr(par.familyName, "Wilson", "three_level_poly_parent_gp_field");
     assertEqInt(par.generation, 4, "three_level_poly_parent_field");
 

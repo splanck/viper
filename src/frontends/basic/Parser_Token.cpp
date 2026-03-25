@@ -50,11 +50,12 @@ const Token &Parser::peek(int n) const
     static const int kMaxPeekDistance = 256;
     if (n > kMaxPeekDistance)
         n = kMaxPeekDistance;
-    while (tokens_.size() <= static_cast<size_t>(n))
+    const size_t wantIndex = tokenStart_ + static_cast<size_t>(n);
+    while (tokens_.size() <= wantIndex)
     {
         tokens_.push_back(lexer_.next());
     }
-    return tokens_[n];
+    return tokens_[wantIndex];
 }
 
 /// @brief Remove and return the current token.
@@ -65,8 +66,19 @@ const Token &Parser::peek(int n) const
 Token Parser::consume()
 {
     Token t = peek();
-    tokens_.erase(tokens_.begin());
+    ++tokenStart_;
+    compactConsumedTokens();
     return t;
+}
+
+void Parser::compactConsumedTokens()
+{
+    constexpr size_t kCompactThreshold = 64;
+    if (tokenStart_ < kCompactThreshold || tokenStart_ * 2 < tokens_.size())
+        return;
+
+    tokens_.erase(tokens_.begin(), tokens_.begin() + static_cast<std::ptrdiff_t>(tokenStart_));
+    tokenStart_ = 0;
 }
 
 /// @brief Consume the next token when its kind matches the expected value.
