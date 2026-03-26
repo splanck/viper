@@ -84,6 +84,7 @@ entity Game {
         sm.AddState(STATE_CONTROLS);
         sm.AddState(STATE_BOSSFIGHT);
         sm.AddState(STATE_VICTORY);
+        sm.AddState(STATE_LEVELSELECT);
         sm.SetInitial(STATE_MENU);
 
         score = 0;
@@ -194,8 +195,11 @@ entity Game {
             } else {
             if sm.IsState(STATE_VICTORY) {
                 updateVictory();
+            } else {
+            if sm.IsState(STATE_LEVELSELECT) {
+                updateLevelSelect();
             }
-            }}}}}}}
+            }}}}}}}}
 
             // Debug overlay (rendered on top of everything)
             debugOverlay.Update(dt);
@@ -218,6 +222,10 @@ entity Game {
             sfx.playMenuSelect();
             startNewGame();
         }
+        if result == STATE_LEVELSELECT {
+            sfx.playMenuSelect();
+            sm.Transition(STATE_LEVELSELECT);
+        }
         if result == STATE_HIGHSCORES {
             sfx.playMenuSelect();
             sm.Transition(STATE_HIGHSCORES);
@@ -230,6 +238,31 @@ entity Game {
         if result == -2 {
             canvas.Close();
             return;
+        }
+    }
+
+    hide func updateLevelSelect() {
+        var result = menus.updateLevelSelect();
+        menus.drawLevelSelect(canvas);
+
+        if result == STATE_PLAYING {
+            sfx.playMenuSelect();
+            // Start game at the selected level
+            score = 0;
+            coins = 0;
+            currentLevel = menus.selectedLevel;
+            levelTimer = 0;
+            reachedCheckpoint = false;
+            deathTimer = 0;
+            player.reset();
+            loadLevel(currentLevel);
+            introTimer = 1200;
+            sm.Transition(STATE_PLAYING);
+        }
+        if result == STATE_MENU {
+            sfx.playMenuMove();
+            sm.Transition(STATE_MENU);
+            menus.resetSelection();
         }
     }
 
@@ -384,6 +417,9 @@ entity Game {
 
     hide func drawLevelIntro(levelNum: Integer) {
         var levelName = "THE DESCENT";
+        if levelNum == 2 { levelName = "SALVAGE"; }
+        if levelNum == 3 { levelName = "FROZEN ABYSS"; }
+        if levelNum == 4 { levelName = "OVERGROWTH"; }
 
         // Fade: moderate opacity at start, fading out near end
         var alpha = introTimer * 150 / 1200;

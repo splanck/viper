@@ -389,6 +389,38 @@ entity Renderer {
                     }
                 }
 
+                // Station: Electric tile spark
+                if tile == TILE_ELECTRIC {
+                    var sparkHit = (col * 29 + row * 41 + shimmerIndex) % 8;
+                    if sparkHit == 0 {
+                        canvas.DiscAlpha(sx + TILE_SIZE / 2, sy + TILE_SIZE / 2,
+                                        TILE_SIZE / 3, pal.electricSpark, 25);
+                    }
+                }
+
+                // Station: Coolant glow
+                if tile == TILE_COOLANT {
+                    canvas.DiscAlpha(sx + TILE_SIZE / 2, sy - 6,
+                                    TILE_SIZE / 2 + 4, pal.coolantBright, 15);
+                }
+
+                // Station: Console screen flicker
+                if tile == TILE_CONSOLE {
+                    var flickHit = (col * 37 + shimmerIndex) % 16;
+                    if flickHit == 0 {
+                        canvas.BoxAlpha(sx + 4, sy + 4, TILE_SIZE - 8, TILE_SIZE / 2,
+                                       pal.consoleScreen, 12);
+                    }
+                }
+
+                // Station: Holo bridge shimmer
+                if tile == TILE_HOLO_BRIDGE {
+                    var holoHit = (col * 19 + shimmerIndex) % 10;
+                    if holoHit < 3 {
+                        canvas.BoxAlpha(sx, sy, TILE_SIZE, 2, pal.holoLt, 15);
+                    }
+                }
+
                 col = col + 1;
             }
             row = row + 1;

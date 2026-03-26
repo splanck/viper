@@ -65,8 +65,16 @@ entity Level {
         hasCheckpoint = false;
         hasBoss = false;
 
-        // Xenoscape: single level "Descent" for all level numbers
-        buildDescent();
+        // Xenoscape: dispatch level by number
+        if num == 1 {
+            buildDescent();
+        } else if num == 2 {
+            buildSalvage();
+        } else if num == 3 {
+            buildFrozenAbyss();
+        } else {
+            buildOvergrowth();
+        }
     }
 
     expose func isSolid(col: Integer, row: Integer) -> Boolean {
@@ -96,6 +104,15 @@ entity Level {
         if t == TILE_CAVE_CRYSTAL { return true; }
         if t == TILE_METAL_GRATE { return true; }
         if t == TILE_MAGMA_ROCK { return true; }
+        // Level 2: Station solids
+        if t == TILE_HULL_PLATE { return true; }
+        if t == TILE_GIRDER { return true; }
+        if t == TILE_AIRLOCK { return true; }
+        if t == TILE_PIPE { return true; }
+        if t == TILE_CATWALK { return true; }
+        if t == TILE_CONDUIT { return true; }
+        if t == TILE_CONSOLE { return true; }
+        if t == TILE_HOLO_BRIDGE { return true; }
         return false;
     }
 
@@ -108,6 +125,8 @@ entity Level {
         if t == TILE_SPIKE { return true; }
         if t == TILE_LAVA { return true; }
         if t == TILE_THORN { return true; }
+        if t == TILE_ELECTRIC { return true; }
+        if t == TILE_COOLANT { return true; }
         return false;
     }
 
@@ -358,7 +377,459 @@ entity Level {
         tileGrid.Set(148, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
-    // Legacy level builders below — kept but unreachable (loadLevel calls buildDescent).
+    // =========================================================================
+    // Reusable Section Helpers
+    // =========================================================================
+
+    // Build a platform run with coins spaced above it.
+    hide func buildPlatformRun(col: Integer, row: Integer, width: Integer,
+                                tile: Integer, coinRow: Integer) {
+        addPlatformTile(col, row, width, tile);
+        // Place coins every 2-3 tiles above the platform
+        var c = col + 1;
+        while c < col + width - 1 {
+            addPickup(PICKUP_COIN, c, coinRow);
+            c = c + 2;
+        }
+    }
+
+    // Build a gap in the ground with a hazard tile at the bottom.
+    hide func buildGapWithHazard(gapStart: Integer, gapEnd: Integer,
+                                  hazardTile: Integer) {
+        clearGround(gapStart, gapEnd);
+        fillRowTile(FLOOR_ROW, gapStart, gapEnd, hazardTile);
+    }
+
+    // Build a flat boss arena with containment walls on both sides.
+    hide func buildArena(startCol: Integer, endCol: Integer,
+                          floorTile: Integer, wallTile: Integer) {
+        fillRowTile(GROUND_ROW, startCol, endCol, floorTile);
+        // Left wall
+        fillArea(startCol, 6, startCol, FLOOR_ROW, wallTile);
+        // Right wall
+        fillArea(endCol, 6, endCol, FLOOR_ROW, wallTile);
+    }
+
+    // =========================================================================
+    // Level 2: "Salvage" — Crashed Space Station
+    // Biome 1: Outer Hull (cols 0-49)
+    // Biome 2: Reactor Core (cols 50-99)
+    // Biome 3: Command Bridge + ARIA Boss (cols 100-149)
+    // =========================================================================
+
+    hide func buildSalvage() {
+        levelWidth = 150;
+        levelHeight = LEVEL_HEIGHT;
+        levelTheme = THEME_STATION;
+
+        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+
+        playerStartX = 3 * TILE_SIZE;
+        playerStartY = (GROUND_ROW - 2) * TILE_SIZE;
+
+        // ==== BIOME 1: OUTER HULL (cols 0-49) ====
+
+        // Hull floor
+        fillRowTile(GROUND_ROW, 0, 49, TILE_HULL_PLATE);
+        fillRowTile(FLOOR_ROW, 0, 49, TILE_HULL_PLATE);
+        // Hull ceiling
+        fillRowTile(0, 0, 49, TILE_AIRLOCK);
+        fillRowTile(1, 0, 49, TILE_HULL_PLATE);
+
+        // --- Hull Section 1: Entry airlock (cols 0-12) ---
+        buildPlatformRun(6, 12, 4, TILE_GIRDER, 11);
+        buildPlatformRun(11, 10, 3, TILE_GIRDER, 9);
+        addPickup(PICKUP_COIN, 4, 14);
+        addPickup(PICKUP_COIN, 8, 14);
+
+        // --- Hull Section 2: Hull breach gap (cols 13-25) ---
+        buildGapWithHazard(16, 20, TILE_ELECTRIC);
+        buildPlatformRun(16, 11, 2, TILE_GIRDER, 10);
+        buildPlatformRun(19, 9, 2, TILE_GIRDER, 8);
+        addEnemy(ENEMY_BAT, 18, 7);
+        addPickup(PICKUP_COIN, 17, 10);
+        addPickup(PICKUP_COIN, 20, 8);
+        addPickup(PICKUP_HEALTH, 22, 14);
+
+        // --- Hull Section 3: Debris field (cols 26-38) ---
+        buildPlatformRun(27, 12, 3, TILE_HULL_PLATE, 11);
+        buildPlatformRun(31, 10, 4, TILE_GIRDER, 9);
+        buildPlatformRun(36, 12, 3, TILE_HULL_PLATE, 11);
+        addEnemy(ENEMY_SLIME, 29, 11);
+        addEnemy(ENEMY_BAT, 34, 7);
+        addPickup(PICKUP_COIN, 28, 11);
+        addPickup(PICKUP_COIN, 33, 9);
+        addPickup(PICKUP_COIN, 37, 11);
+        addPickup(PICKUP_SPEED, 35, 14);
+
+        // --- Hull Section 4: Transition to reactor (cols 39-49) ---
+        buildPlatformRun(40, 13, 3, TILE_HULL_PLATE, 12);
+        buildPlatformRun(44, 11, 4, TILE_HULL_PLATE, 10);
+        addEnemy(ENEMY_SLIME, 42, 12);
+        addEnemy(ENEMY_BAT, 46, 8);
+        addPickup(PICKUP_COIN, 41, 12);
+        addPickup(PICKUP_COIN, 45, 10);
+        // Checkpoint
+        tileGrid.Set(48, GROUND_ROW - 1, TILE_CHECKPOINT);
+        checkpointX = 48 * TILE_SIZE;
+        checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
+        hasCheckpoint = true;
+
+        // ==== BIOME 2: REACTOR CORE (cols 50-99) ====
+
+        // Reactor walls and floor
+        fillRowTile(0, 50, 99, TILE_CONDUIT);
+        fillRowTile(1, 50, 99, TILE_PIPE);
+        fillRowTile(GROUND_ROW, 50, 99, TILE_CATWALK);
+        fillRowTile(FLOOR_ROW, 50, 99, TILE_CATWALK);
+
+        // --- Reactor Section 1: Pipe walkways (cols 50-62) ---
+        buildPlatformRun(52, 12, 4, TILE_PIPE, 11);
+        buildPlatformRun(57, 10, 3, TILE_PIPE, 9);
+        buildPlatformRun(61, 12, 3, TILE_CATWALK, 11);
+        addEnemy(ENEMY_TURRET, 55, 11);
+        addPickup(PICKUP_COIN, 53, 11);
+        addPickup(PICKUP_COIN, 58, 9);
+        addPickup(PICKUP_COIN, 62, 11);
+
+        // --- Reactor Section 2: Coolant river (cols 63-75) ---
+        buildGapWithHazard(66, 72, TILE_COOLANT);
+        buildPlatformRun(66, 11, 2, TILE_CATWALK, 10);
+        buildPlatformRun(69, 9, 2, TILE_PIPE, 8);
+        buildPlatformRun(72, 11, 2, TILE_CATWALK, 10);
+        addEnemy(ENEMY_BAT, 68, 6);
+        addEnemy(ENEMY_BAT, 71, 8);
+        addPickup(PICKUP_COIN, 67, 10);
+        addPickup(PICKUP_COIN, 70, 8);
+        addPickup(PICKUP_COIN, 73, 10);
+        addPickup(PICKUP_SHIELD, 75, 14);
+
+        // --- Reactor Section 3: Turret gauntlet (cols 76-90) ---
+        buildPlatformRun(77, 12, 5, TILE_CATWALK, 11);
+        buildPlatformRun(83, 10, 4, TILE_PIPE, 9);
+        buildPlatformRun(88, 12, 3, TILE_CATWALK, 11);
+        addEnemy(ENEMY_TURRET, 80, 11);
+        addEnemy(ENEMY_TURRET, 86, 9);
+        addEnemy(ENEMY_SLIME, 90, 11);
+        addPickup(PICKUP_COIN, 78, 11);
+        addPickup(PICKUP_COIN, 84, 9);
+        addPickup(PICKUP_COIN, 89, 11);
+        addPickup(PICKUP_RAPIDFIRE, 82, 14);
+
+        // --- Reactor Section 4: Bridge approach (cols 91-99) ---
+        buildPlatformRun(92, 11, 4, TILE_CATWALK, 10);
+        addEnemy(ENEMY_TURRET, 96, 10);
+        addPickup(PICKUP_HEALTH, 93, 10);
+        addPickup(PICKUP_COIN, 97, 14);
+        // Checkpoint
+        tileGrid.Set(98, GROUND_ROW - 1, TILE_CHECKPOINT);
+
+        // ==== BIOME 3: COMMAND BRIDGE (cols 100-149) ====
+
+        // Bridge floor and walls
+        fillRowTile(0, 100, 149, TILE_CONSOLE);
+        fillRowTile(GROUND_ROW, 100, 149, TILE_HOLO_BRIDGE);
+        fillRowTile(FLOOR_ROW, 100, 149, TILE_HOLO_BRIDGE);
+
+        // --- Bridge Section 1: Console corridors (cols 100-115) ---
+        buildPlatformRun(102, 12, 4, TILE_HOLO_BRIDGE, 11);
+        buildPlatformRun(107, 10, 3, TILE_CONSOLE, 9);
+        buildPlatformRun(112, 12, 3, TILE_HOLO_BRIDGE, 11);
+        addEnemy(ENEMY_BAT, 105, 7);
+        addEnemy(ENEMY_TURRET, 110, 9);
+        addPickup(PICKUP_COIN, 103, 11);
+        addPickup(PICKUP_COIN, 108, 9);
+        addPickup(PICKUP_COIN, 113, 11);
+
+        // --- Bridge Section 2: Data stream gap (cols 116-128) ---
+        buildGapWithHazard(118, 124, TILE_ELECTRIC);
+        buildPlatformRun(118, 11, 2, TILE_HOLO_BRIDGE, 10);
+        buildPlatformRun(121, 9, 2, TILE_HOLO_BRIDGE, 8);
+        buildPlatformRun(124, 11, 2, TILE_HOLO_BRIDGE, 10);
+        addEnemy(ENEMY_BAT, 120, 6);
+        addEnemy(ENEMY_TURRET, 126, 10);
+        addPickup(PICKUP_COIN, 119, 10);
+        addPickup(PICKUP_COIN, 122, 8);
+        addPickup(PICKUP_HEALTH, 127, 14);
+        addPickup(PICKUP_SHIELD, 125, 10);
+
+        // --- Bridge Section 3: Boss arena (cols 129-149) ---
+        buildArena(129, 149, TILE_HOLO_BRIDGE, TILE_CONSOLE);
+        bossX = 140 * TILE_SIZE;
+        bossY = (GROUND_ROW - 3) * TILE_SIZE;
+        hasBoss = true;
+        tileGrid.Set(148, GROUND_ROW - 1, TILE_SIGN_END);
+    }
+
+    // =========================================================================
+    // Level 3: "Frozen Abyss" — Ice Caverns
+    // Uses existing tile types: STONE, CRYSTAL, CAVE_WALL, SPIKE, BRIDGE
+    // Reuses cave/crystal biome backgrounds with a frozen color twist
+    // =========================================================================
+
+    hide func buildFrozenAbyss() {
+        levelWidth = 150;
+        levelHeight = LEVEL_HEIGHT;
+        levelTheme = THEME_CAVE;  // reuse cave background (blue-purple works for ice)
+
+        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+
+        playerStartX = 3 * TILE_SIZE;
+        playerStartY = (GROUND_ROW - 2) * TILE_SIZE;
+
+        // ==== BIOME 1: Frozen Surface (cols 0-49) ====
+        fillRowTile(GROUND_ROW, 0, 49, TILE_STONE);
+        fillRowTile(FLOOR_ROW, 0, 49, TILE_STONE);
+
+        // Intro platforms
+        buildPlatformRun(6, 12, 4, TILE_PLATFORM, 11);
+        buildPlatformRun(12, 10, 3, TILE_STONE, 9);
+        buildPlatformRun(17, 12, 4, TILE_PLATFORM, 11);
+        buildPlatformRun(22, 8, 3, TILE_STONE, 7);
+        addEnemy(ENEMY_SLIME, 10, 14);
+        addEnemy(ENEMY_SLIME, 20, 14);
+        addEnemy(ENEMY_BAT, 15, 6);
+        addPickup(PICKUP_COIN, 7, 11);
+        addPickup(PICKUP_COIN, 13, 9);
+        addPickup(PICKUP_COIN, 18, 11);
+        addPickup(PICKUP_COIN, 23, 7);
+
+        // Ice gap
+        buildGapWithHazard(28, 32, TILE_SPIKE);
+        buildPlatformRun(28, 11, 2, TILE_STONE, 10);
+        buildPlatformRun(31, 9, 2, TILE_STONE, 8);
+        addEnemy(ENEMY_BAT, 30, 6);
+        addPickup(PICKUP_COIN, 29, 10);
+        addPickup(PICKUP_COIN, 32, 8);
+        addPickup(PICKUP_HEALTH, 35, 14);
+
+        // More platforms
+        buildPlatformRun(36, 12, 5, TILE_PLATFORM, 11);
+        buildPlatformRun(42, 10, 4, TILE_STONE, 9);
+        addEnemy(ENEMY_SLIME, 38, 11);
+        addEnemy(ENEMY_TURRET, 44, 9);
+        addPickup(PICKUP_COIN, 37, 11);
+        addPickup(PICKUP_COIN, 43, 9);
+        addPickup(PICKUP_SPEED, 40, 14);
+
+        tileGrid.Set(48, GROUND_ROW - 1, TILE_CHECKPOINT);
+        checkpointX = 48 * TILE_SIZE;
+        checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
+        hasCheckpoint = true;
+
+        // ==== BIOME 2: Crystal Depths (cols 50-99) ====
+        fillRowTile(0, 50, 99, TILE_CAVE_TOP);
+        fillRowTile(1, 50, 99, TILE_CAVE_WALL);
+        fillRowTile(GROUND_ROW, 50, 99, TILE_CAVE_WALL);
+        fillRowTile(FLOOR_ROW, 50, 99, TILE_CAVE_WALL);
+
+        // Crystal platforms
+        buildPlatformRun(52, 12, 4, TILE_CAVE_CRYSTAL, 11);
+        buildPlatformRun(58, 10, 3, TILE_STONE, 9);
+        buildPlatformRun(63, 12, 3, TILE_CAVE_CRYSTAL, 11);
+        tileGrid.Set(55, 13, TILE_CRYSTAL);
+        tileGrid.Set(60, 11, TILE_CRYSTAL);
+        addEnemy(ENEMY_BAT, 56, 8);
+        addEnemy(ENEMY_TURRET, 61, 9);
+        addPickup(PICKUP_COIN, 53, 11);
+        addPickup(PICKUP_COIN, 59, 9);
+        addPickup(PICKUP_COIN, 64, 11);
+
+        // Lava crossing
+        buildGapWithHazard(68, 74, TILE_LAVA);
+        buildPlatformRun(68, 11, 2, TILE_STONE, 10);
+        buildPlatformRun(71, 9, 2, TILE_CAVE_CRYSTAL, 8);
+        buildPlatformRun(74, 11, 2, TILE_STONE, 10);
+        addEnemy(ENEMY_BAT, 70, 6);
+        addEnemy(ENEMY_BAT, 73, 8);
+        addPickup(PICKUP_COIN, 69, 10);
+        addPickup(PICKUP_COIN, 72, 8);
+        addPickup(PICKUP_SHIELD, 76, 14);
+
+        // Crystal gauntlet
+        buildPlatformRun(78, 12, 5, TILE_STONE, 11);
+        buildPlatformRun(84, 10, 4, TILE_CAVE_CRYSTAL, 9);
+        buildPlatformRun(89, 12, 4, TILE_STONE, 11);
+        addEnemy(ENEMY_TURRET, 81, 11);
+        addEnemy(ENEMY_TURRET, 87, 9);
+        addEnemy(ENEMY_SLIME, 91, 11);
+        addPickup(PICKUP_COIN, 79, 11);
+        addPickup(PICKUP_COIN, 85, 9);
+        addPickup(PICKUP_COIN, 90, 11);
+        addPickup(PICKUP_RAPIDFIRE, 83, 14);
+
+        tileGrid.Set(96, GROUND_ROW - 1, TILE_CHECKPOINT);
+
+        // ==== BIOME 3: Frozen Core + Boss (cols 100-149) ====
+        fillRowTile(0, 100, 149, TILE_CAVE_TOP);
+        fillRowTile(1, 100, 149, TILE_CAVE_WALL);
+        fillRowTile(GROUND_ROW, 100, 149, TILE_STONE);
+        fillRowTile(FLOOR_ROW, 100, 149, TILE_STONE);
+
+        buildPlatformRun(102, 12, 4, TILE_STONE, 11);
+        buildPlatformRun(108, 10, 3, TILE_CAVE_CRYSTAL, 9);
+        buildPlatformRun(113, 12, 4, TILE_STONE, 11);
+        addEnemy(ENEMY_BAT, 105, 7);
+        addEnemy(ENEMY_TURRET, 111, 9);
+        addEnemy(ENEMY_SLIME, 115, 11);
+        addPickup(PICKUP_COIN, 103, 11);
+        addPickup(PICKUP_COIN, 109, 9);
+        addPickup(PICKUP_COIN, 114, 11);
+        addPickup(PICKUP_HEALTH, 107, 14);
+
+        buildGapWithHazard(119, 125, TILE_SPIKE);
+        buildPlatformRun(119, 11, 2, TILE_STONE, 10);
+        buildPlatformRun(122, 9, 2, TILE_CAVE_CRYSTAL, 8);
+        buildPlatformRun(125, 11, 2, TILE_STONE, 10);
+        addEnemy(ENEMY_BAT, 121, 6);
+        addPickup(PICKUP_COIN, 120, 10);
+        addPickup(PICKUP_COIN, 123, 8);
+        addPickup(PICKUP_SHIELD, 127, 14);
+
+        // Boss arena
+        buildArena(130, 149, TILE_STONE, TILE_CAVE_WALL);
+        bossX = 140 * TILE_SIZE;
+        bossY = (GROUND_ROW - 3) * TILE_SIZE;
+        hasBoss = true;
+        tileGrid.Set(148, GROUND_ROW - 1, TILE_SIGN_END);
+    }
+
+    // =========================================================================
+    // Level 4: "Overgrowth" — Ancient Alien Ruins
+    // Uses existing tile types: RUIN_STONE, MOSS_STONE, VINE, JUNGLE tiles
+    // Reuses ruins background theme
+    // =========================================================================
+
+    hide func buildOvergrowth() {
+        levelWidth = 150;
+        levelHeight = LEVEL_HEIGHT;
+        levelTheme = THEME_RUINS;
+
+        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+
+        playerStartX = 3 * TILE_SIZE;
+        playerStartY = (GROUND_ROW - 2) * TILE_SIZE;
+
+        // ==== BIOME 1: Overgrown Surface (cols 0-49) ====
+        fillRowTile(GROUND_ROW, 0, 49, TILE_MOSS_STONE);
+        fillRowTile(FLOOR_ROW, 0, 49, TILE_RUIN_STONE);
+
+        // Vine-covered platforms
+        buildPlatformRun(6, 12, 4, TILE_MOSS_STONE, 11);
+        buildPlatformRun(12, 10, 3, TILE_JUNGLE_PLATFORM, 9);
+        buildPlatformRun(17, 12, 5, TILE_MOSS_STONE, 11);
+        buildPlatformRun(24, 8, 3, TILE_JUNGLE_PLATFORM, 7);
+        // Decorative vines
+        tileGrid.Set(8, 8, TILE_VINE);
+        tileGrid.Set(9, 9, TILE_VINE);
+        tileGrid.Set(14, 7, TILE_VINE);
+        tileGrid.Set(19, 9, TILE_VINE);
+        addEnemy(ENEMY_SLIME, 10, 14);
+        addEnemy(ENEMY_SLIME, 20, 14);
+        addEnemy(ENEMY_BAT, 16, 6);
+        addPickup(PICKUP_COIN, 7, 11);
+        addPickup(PICKUP_COIN, 13, 9);
+        addPickup(PICKUP_COIN, 18, 11);
+        addPickup(PICKUP_COIN, 25, 7);
+        addPickup(PICKUP_HEALTH, 22, 14);
+
+        // Thorn gap
+        buildGapWithHazard(29, 33, TILE_THORN);
+        buildPlatformRun(29, 11, 2, TILE_JUNGLE_PLATFORM, 10);
+        buildPlatformRun(32, 9, 2, TILE_JUNGLE_PLATFORM, 8);
+        addEnemy(ENEMY_BAT, 31, 6);
+        addPickup(PICKUP_COIN, 30, 10);
+        addPickup(PICKUP_COIN, 33, 8);
+
+        buildPlatformRun(36, 12, 5, TILE_MOSS_STONE, 11);
+        buildPlatformRun(42, 10, 4, TILE_JUNGLE_PLATFORM, 9);
+        addEnemy(ENEMY_TURRET, 39, 11);
+        addEnemy(ENEMY_SLIME, 44, 9);
+        addPickup(PICKUP_COIN, 37, 11);
+        addPickup(PICKUP_COIN, 43, 9);
+        addPickup(PICKUP_SPEED, 47, 14);
+
+        tileGrid.Set(48, GROUND_ROW - 1, TILE_CHECKPOINT);
+        checkpointX = 48 * TILE_SIZE;
+        checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
+        hasCheckpoint = true;
+
+        // ==== BIOME 2: Deep Ruins (cols 50-99) ====
+        fillRowTile(GROUND_ROW, 50, 99, TILE_RUIN_STONE);
+        fillRowTile(FLOOR_ROW, 50, 99, TILE_RUIN_STONE);
+
+        buildPlatformRun(52, 12, 4, TILE_RUIN_STONE, 11);
+        buildPlatformRun(58, 10, 3, TILE_MOSS_STONE, 9);
+        buildPlatformRun(63, 12, 4, TILE_RUIN_STONE, 11);
+        tileGrid.Set(55, 10, TILE_VINE);
+        tileGrid.Set(56, 11, TILE_VINE);
+        tileGrid.Set(61, 8, TILE_VINE);
+        addEnemy(ENEMY_BAT, 56, 7);
+        addEnemy(ENEMY_TURRET, 60, 9);
+        addEnemy(ENEMY_SLIME, 65, 11);
+        addPickup(PICKUP_COIN, 53, 11);
+        addPickup(PICKUP_COIN, 59, 9);
+        addPickup(PICKUP_COIN, 64, 11);
+
+        // Lava ruin crossing
+        buildGapWithHazard(69, 75, TILE_LAVA);
+        buildPlatformRun(69, 11, 2, TILE_RUIN_STONE, 10);
+        buildPlatformRun(72, 9, 2, TILE_MOSS_STONE, 8);
+        buildPlatformRun(75, 11, 2, TILE_RUIN_STONE, 10);
+        addEnemy(ENEMY_BAT, 71, 6);
+        addEnemy(ENEMY_BAT, 74, 8);
+        addPickup(PICKUP_COIN, 70, 10);
+        addPickup(PICKUP_COIN, 73, 8);
+        addPickup(PICKUP_SHIELD, 77, 14);
+
+        buildPlatformRun(79, 12, 5, TILE_RUIN_STONE, 11);
+        buildPlatformRun(85, 10, 4, TILE_MOSS_STONE, 9);
+        buildPlatformRun(90, 12, 4, TILE_RUIN_STONE, 11);
+        addEnemy(ENEMY_TURRET, 82, 11);
+        addEnemy(ENEMY_TURRET, 88, 9);
+        addEnemy(ENEMY_SLIME, 92, 11);
+        addPickup(PICKUP_COIN, 80, 11);
+        addPickup(PICKUP_COIN, 86, 9);
+        addPickup(PICKUP_COIN, 91, 11);
+        addPickup(PICKUP_RAPIDFIRE, 84, 14);
+
+        tileGrid.Set(97, GROUND_ROW - 1, TILE_CHECKPOINT);
+
+        // ==== BIOME 3: Heart of Ruins + Boss (cols 100-149) ====
+        fillRowTile(GROUND_ROW, 100, 149, TILE_MOSS_STONE);
+        fillRowTile(FLOOR_ROW, 100, 149, TILE_RUIN_STONE);
+
+        buildPlatformRun(102, 12, 4, TILE_MOSS_STONE, 11);
+        buildPlatformRun(108, 10, 3, TILE_RUIN_STONE, 9);
+        buildPlatformRun(114, 12, 4, TILE_MOSS_STONE, 11);
+        tileGrid.Set(105, 9, TILE_VINE);
+        tileGrid.Set(111, 8, TILE_VINE);
+        addEnemy(ENEMY_BAT, 106, 7);
+        addEnemy(ENEMY_TURRET, 112, 9);
+        addEnemy(ENEMY_SLIME, 116, 11);
+        addPickup(PICKUP_COIN, 103, 11);
+        addPickup(PICKUP_COIN, 109, 9);
+        addPickup(PICKUP_COIN, 115, 11);
+        addPickup(PICKUP_HEALTH, 107, 14);
+
+        buildGapWithHazard(120, 126, TILE_THORN);
+        buildPlatformRun(120, 11, 2, TILE_RUIN_STONE, 10);
+        buildPlatformRun(123, 9, 2, TILE_MOSS_STONE, 8);
+        buildPlatformRun(126, 11, 2, TILE_RUIN_STONE, 10);
+        addEnemy(ENEMY_BAT, 122, 6);
+        addPickup(PICKUP_COIN, 121, 10);
+        addPickup(PICKUP_COIN, 124, 8);
+        addPickup(PICKUP_SHIELD, 128, 14);
+
+        // Boss arena
+        buildArena(130, 149, TILE_MOSS_STONE, TILE_RUIN_STONE);
+        bossX = 140 * TILE_SIZE;
+        bossY = (GROUND_ROW - 3) * TILE_SIZE;
+        hasBoss = true;
+        tileGrid.Set(148, GROUND_ROW - 1, TILE_SIGN_END);
+    }
+
+    // Legacy level builders below — kept but unreachable.
 
     hide func buildGrasslands() {
         levelWidth = LEVEL1_WIDTH;

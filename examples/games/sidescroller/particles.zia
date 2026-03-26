@@ -281,4 +281,52 @@ entity ParticleSystem {
         emitter.set_Color(pal.sparkWhite);
         emitter.Burst(4);
     }
+
+    // =========================================================================
+    // Level 2: Station Particle Presets
+    // =========================================================================
+
+    // Electric spark — blue/white for electric hazards
+    expose func burstElectricSpark(x: Integer, y: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.set_Color(pal.electricSpark);
+        emitter.SetLifetime(6, 12);
+        emitter.SetVelocity(10.0, 25.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.0);
+        emitter.SetSize(1.0, 2.0);
+        emitter.Burst(8);
+        emitter.set_Color(pal.sparkWhite);
+        emitter.Burst(4);
+    }
+
+    // Coolant splash — green toxic splash
+    expose func burstCoolantSplash(x: Integer, y: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.set_Color(pal.coolant);
+        emitter.SetLifetime(12, 20);
+        emitter.SetVelocity(8.0, 20.0, 30.0, 150.0);
+        emitter.SetGravity(0.0, 0.5);
+        emitter.SetSize(2.0, 3.0);
+        emitter.Burst(8);
+        emitter.set_Color(pal.coolantBright);
+        emitter.Burst(4);
+    }
+
+    // Drone explode — mechanical sparks + smoke
+    expose func burstDroneExplode(x: Integer, y: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.set_Color(pal.sparkYellow);
+        emitter.SetLifetime(10, 18);
+        emitter.SetVelocity(12.0, 28.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.3);
+        emitter.SetSize(1.0, 3.0);
+        emitter.Burst(10);
+        // Smoke
+        emitter.set_Color(pal.hullPlateDk);
+        emitter.SetLifetime(20, 35);
+        emitter.SetVelocity(4.0, 10.0, 60.0, 120.0);
+        emitter.SetGravity(0.0, -0.2);
+        emitter.SetSize(2.0, 4.0);
+        emitter.Burst(4);
+    }
 }

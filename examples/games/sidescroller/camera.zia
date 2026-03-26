@@ -110,14 +110,36 @@ entity GameCamera {
     }
 
     expose func drawBackground(canvas: Canvas, theme: Integer, sprites: SpriteFactory) {
-        // Xenoscape: detect biome from camera X position (seamless transition)
-        var camCol = x / TILE_SIZE;
-        if camCol < BIOME_JUNGLE_END {
-            drawJungleBg(canvas, sprites);
-        } else if camCol < BIOME_CAVE_END {
+        // Theme-based background: Level 1 uses biome detection by column,
+        // other themes use the level's theme directly.
+        if theme == THEME_GRASSLANDS {
+            // Level 1 "Descent": biome transitions by camera position
+            var camCol = x / TILE_SIZE;
+            if camCol < BIOME_JUNGLE_END {
+                drawJungleBg(canvas, sprites);
+            } else if camCol < BIOME_CAVE_END {
+                drawCaveBg(canvas);
+            } else {
+                drawVolcanoBg(canvas);
+            }
+        } else if theme == THEME_STATION {
+            // Level 2 "Salvage": station biome detection by column
+            var camCol = x / TILE_SIZE;
+            if camCol < BIOME_HULL_END {
+                drawStationHullBg(canvas);
+            } else if camCol < BIOME_REACTOR_END {
+                drawStationReactorBg(canvas);
+            } else {
+                drawStationBridgeBg(canvas);
+            }
+        } else if theme == THEME_CAVE {
             drawCaveBg(canvas);
-        } else {
+        } else if theme == THEME_VOLCANO {
             drawVolcanoBg(canvas);
+        } else if theme == THEME_RUINS {
+            drawRuinsBg(canvas);
+        } else {
+            drawJungleBg(canvas, sprites);
         }
     }
 
@@ -360,6 +382,121 @@ entity GameCamera {
             canvas.Disc(fx, fy, 1, 0x88FF88);
             canvas.DiscAlpha(fx, fy, 4, 0x88FF88, 20);
             fi = fi + 1;
+        }
+    }
+
+    // =========================================================================
+    // Level 2: Station Background Renderers
+    // =========================================================================
+
+    hide func drawStationHullBg(canvas: Canvas) {
+        // Dark starfield
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.hullTop, pal.hullBot);
+
+        // Stars
+        var si = 0;
+        while si < 80 {
+            var sx = (si * 131 + 17) % SCREEN_W;
+            var sy = (si * 89 + 31) % SCREEN_H;
+            var twPhase = (bgTimer + si * 193) % 2000;
+            if twPhase < 1700 {
+                if si % 12 == 0 {
+                    canvas.Disc(sx, sy, 2, pal.emergencyLight);
+                    canvas.DiscAlpha(sx, sy, 4, pal.emergencyLight, 20);
+                } else {
+                    canvas.Disc(sx, sy, 1, pal.white);
+                }
+            }
+            si = si + 1;
+        }
+
+        // Floating debris silhouettes
+        var debrisScroll = x * 5 / 100;
+        var di = 0;
+        while di < 5 {
+            var dx = (di * 263 + 47) - (debrisScroll % 1400);
+            if dx < 0 - 40 { dx = dx + 1400; }
+            var dy = 100 + (di * 97) % 300;
+            canvas.BoxAlpha(dx, dy, 20 + di * 8, 10 + di * 4, pal.hullPlateDk, 40);
+            di = di + 1;
+        }
+
+        // Emergency light strips
+        var li = 0;
+        while li < 6 {
+            var lx = (li * 221 + 11) % SCREEN_W;
+            canvas.BoxAlpha(lx, SCREEN_H - 20, 40, 2, pal.emergencyLight, 60);
+            li = li + 1;
+        }
+    }
+
+    hide func drawStationReactorBg(canvas: Canvas) {
+        // Deep red emergency gradient
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.reactorTop, pal.reactorBot);
+
+        // Massive pipe silhouettes
+        var pipeScroll = x * 10 / 100;
+        var pi = 0;
+        while pi < 6 {
+            var ppx = (pi * 227 + 33) - (pipeScroll % 1400);
+            if ppx < 0 - 30 { ppx = ppx + 1400; }
+            canvas.BoxAlpha(ppx, 0, 20, SCREEN_H, pal.pipe, 30);
+            canvas.BoxAlpha(ppx + 5, 0, 10, SCREEN_H, pal.pipeLt, 20);
+            pi = pi + 1;
+        }
+
+        // Pulsing reactor glow
+        var pulseR = 80 + (bgTimer / 50) % 20;
+        canvas.DiscAlpha(SCREEN_W / 2, SCREEN_H / 2, pulseR, pal.reactorGlowRed, 12);
+        canvas.DiscAlpha(SCREEN_W / 2, SCREEN_H / 2, pulseR / 2, pal.reactorGlowRed, 20);
+
+        // Steam columns (animated)
+        var sti = 0;
+        while sti < 4 {
+            var stx = (sti * 311 + 77) % SCREEN_W;
+            var stOff = (bgTimer / 3 + sti * 100) % 200;
+            canvas.BoxAlpha(stx, SCREEN_H - 100 - stOff, 8, 60, pal.thermalSteam, 15);
+            sti = sti + 1;
+        }
+    }
+
+    hide func drawStationBridgeBg(canvas: Canvas) {
+        // Dark blue-black with holo glow
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.bridgeTop, pal.bridgeBot);
+
+        // Star viewport (large window in center)
+        canvas.BoxAlpha(SCREEN_W / 4, 60, SCREEN_W / 2, 300, pal.viewportBg, 100);
+        // Stars through viewport
+        var vi = 0;
+        while vi < 30 {
+            var vsx = SCREEN_W / 4 + 20 + (vi * 73 + 11) % (SCREEN_W / 2 - 40);
+            var vsy = 80 + (vi * 59 + 17) % 260;
+            canvas.Disc(vsx, vsy, 1, pal.white);
+            vi = vi + 1;
+        }
+
+        // Holographic screen glow panels
+        var hi = 0;
+        while hi < 5 {
+            var hx = (hi * 257 + 41) % SCREEN_W;
+            var hy = 40 + (hi * 79) % 200;
+            canvas.BoxAlpha(hx, hy, 30, 20, pal.holo, 18);
+            // Scan line
+            var scanY = hy + (bgTimer / 20 + hi * 30) % 20;
+            canvas.BoxAlpha(hx, scanY, 30, 1, pal.holoLt, 30);
+            hi = hi + 1;
+        }
+
+        // Data stream particles (falling colored dots)
+        var dsi = 0;
+        while dsi < 15 {
+            var dsx = (dsi * 83 + 29) % SCREEN_W;
+            var dsy = (bgTimer / 2 + dsi * 137) % SCREEN_H;
+            var dcol = pal.holo;
+            if dsi % 3 == 0 { dcol = pal.coolant; }
+            if dsi % 5 == 0 { dcol = pal.ariaBlue; }
+            canvas.Disc(dsx, dsy, 1, dcol);
+            dsi = dsi + 1;
         }
     }
 

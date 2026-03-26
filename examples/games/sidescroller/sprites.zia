@@ -103,6 +103,10 @@ entity SpriteFactory {
     // Level 2: Drone enemy
     hide List[Pixels] droneFrames;
 
+    // Tile lookup (replaces if-chain in getTile)
+    hide List[Integer] tileIds;
+    hide List[Pixels] tileSpriteList;
+
     // Pickups
     hide List[Pixels] coinFrames;
     hide Pixels healthOrb;
@@ -130,9 +134,13 @@ entity SpriteFactory {
         bossFrames = [];
         coinFrames = [];
 
+        droneFrames = [];
+
         buildPlayerSprites();
         buildEnemySprites();
         buildTileSprites();
+        buildStationTileSprites();
+        buildTileLookup();
         buildPickupSprites();
         buildBulletSprites();
         buildBackgroundElements();
@@ -1257,6 +1265,287 @@ entity SpriteFactory {
     }
 
     // =========================================================================
+    // Level 2: Station Tile Sprites
+    // =========================================================================
+
+    hide func buildStationTileSprites() {
+        tileHullPlate = scaleTile(buildHullPlateTile());
+        tileGirder = scaleTile(buildGirderTile());
+        tileElectric = scaleTile(buildElectricTile());
+        tileAirlock = scaleTile(buildAirlockTile());
+        tilePipe = scaleTile(buildPipeTile());
+        tileCatwalk = scaleTile(buildCatwalkTile());
+        tileCoolant1 = scaleTile(buildCoolantTile(0));
+        tileCoolant2 = scaleTile(buildCoolantTile(1));
+        tileConduit = scaleTile(buildConduitTile());
+        tileConsole = scaleTile(buildConsoleTile());
+        tileHoloBridge = scaleTile(buildHoloBridgeTile());
+        tileViewport = scaleTile(buildViewportTile());
+    }
+
+    hide func buildHullPlateTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        px.DrawBox(0, 0, 48, 48, pal.hullPlate);
+        // Panel seam lines
+        px.DrawLine(0, 23, 47, 23, pal.hullPlateDk);
+        px.DrawLine(23, 0, 23, 47, pal.hullPlateDk);
+        // Bevel highlights
+        px.DrawLine(1, 1, 22, 1, pal.hullPlateLt);
+        px.DrawLine(24, 25, 47, 25, pal.hullPlateLt);
+        // Rivet dots
+        px.DrawDisc(6, 6, 1, pal.hullPlateLt);
+        px.DrawDisc(42, 6, 1, pal.hullPlateLt);
+        px.DrawDisc(6, 42, 1, pal.hullPlateLt);
+        px.DrawDisc(42, 42, 1, pal.hullPlateLt);
+        // Scratches
+        px.DrawLine(10, 14, 18, 16, pal.hullPlateDk);
+        px.DrawLine(30, 32, 40, 30, pal.hullPlateDk);
+        return px;
+    }
+
+    hide func buildGirderTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        // I-beam cross section
+        px.DrawBox(0, 0, 48, 6, pal.girder);             // top flange
+        px.DrawBox(0, 42, 48, 6, pal.girder);             // bottom flange
+        px.DrawBox(20, 6, 8, 36, pal.girder);             // web
+        // Highlights
+        px.DrawLine(0, 0, 47, 0, pal.girderLt);
+        px.DrawLine(20, 6, 20, 42, pal.girderLt);
+        // Cross bracing
+        px.DrawLine(0, 6, 20, 24, pal.girderLt);
+        px.DrawLine(28, 24, 47, 42, pal.girderLt);
+        // Outline
+        px.DrawLine(0, 0, 47, 0, pal.outline);
+        px.DrawLine(0, 47, 47, 47, pal.outline);
+        return px;
+    }
+
+    hide func buildElectricTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        px.DrawBox(0, 0, 48, 48, pal.electricBg);
+        // Lightning bolt lines
+        px.DrawLine(12, 8, 20, 20, pal.electricSpark);
+        px.DrawLine(20, 20, 14, 28, pal.electricSpark);
+        px.DrawLine(14, 28, 24, 42, pal.electricSpark);
+        px.DrawLine(30, 6, 36, 16, pal.electricSpark);
+        px.DrawLine(36, 16, 32, 24, pal.electricSpark);
+        // Spark glow
+        px.DrawDisc(20, 20, 3, pal.electricSpark);
+        px.DrawDisc(14, 28, 2, pal.electricSpark);
+        // Warning border
+        px.DrawLine(0, 0, 47, 0, pal.airlockStripe);
+        px.DrawLine(0, 47, 47, 47, pal.airlockStripe);
+        return px;
+    }
+
+    hide func buildAirlockTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        px.DrawBox(0, 0, 48, 48, pal.airlock);
+        // Hazard stripes (diagonal yellow/black)
+        var i = 0;
+        while i < 48 {
+            px.DrawLine(i, 0, i + 8, 8, pal.airlockStripe);
+            px.DrawLine(i, 40, i + 8, 48, pal.airlockStripe);
+            i = i + 12;
+        }
+        // Heavy frame lines
+        px.DrawBox(0, 0, 48, 3, pal.hullPlateDk);
+        px.DrawBox(0, 45, 48, 3, pal.hullPlateDk);
+        px.DrawBox(0, 0, 3, 48, pal.hullPlateDk);
+        px.DrawBox(45, 0, 3, 48, pal.hullPlateDk);
+        // Center lock mechanism
+        px.DrawDisc(24, 24, 6, pal.hullPlateDk);
+        px.DrawDisc(24, 24, 4, pal.hullPlate);
+        px.DrawDisc(24, 24, 1, pal.outline);
+        return px;
+    }
+
+    hide func buildPipeTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        // Cylindrical pipe — gradient effect via layered ellipses
+        px.DrawBox(0, 12, 48, 24, pal.pipe);
+        px.DrawBox(0, 14, 48, 8, pal.pipeLt);               // top highlight
+        px.DrawBox(0, 28, 48, 6, pal.outline);               // bottom shadow
+        // Pipe joints
+        px.DrawBox(10, 10, 4, 28, pal.pipeLt);
+        px.DrawBox(34, 10, 4, 28, pal.pipeLt);
+        // Valve wheel
+        px.DrawDisc(24, 24, 5, pal.pipeLt);
+        px.DrawDisc(24, 24, 3, pal.pipe);
+        px.DrawLine(20, 24, 28, 24, pal.outline);
+        px.DrawLine(24, 20, 24, 28, pal.outline);
+        return px;
+    }
+
+    hide func buildCatwalkTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        px.DrawBox(0, 0, 48, 48, pal.catwalk);
+        // Grid pattern
+        var i = 0;
+        while i < 48 {
+            px.DrawLine(i, 0, i, 47, pal.hullPlateDk);
+            px.DrawLine(0, i, 47, i, pal.hullPlateDk);
+            i = i + 8;
+        }
+        // Red emergency strip along top
+        px.DrawBox(0, 0, 48, 3, pal.catwalkStripe);
+        // Highlight
+        px.DrawLine(0, 3, 47, 3, pal.hullPlateLt);
+        return px;
+    }
+
+    hide func buildCoolantTile(frame: Integer) -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        px.DrawBox(0, 0, 48, 48, pal.coolant);
+        // Bubbles (animated positions)
+        if frame == 0 {
+            px.DrawDisc(12, 14, 4, pal.coolantBright);
+            px.DrawDisc(34, 28, 3, pal.coolantBright);
+            px.DrawDisc(22, 38, 5, pal.coolantBright);
+        } else {
+            px.DrawDisc(26, 10, 3, pal.coolantBright);
+            px.DrawDisc(8, 30, 4, pal.coolantBright);
+            px.DrawDisc(38, 40, 3, pal.coolantBright);
+        }
+        // Surface glow
+        px.DrawEllipse(24, 4, 20, 4, pal.coolantBright);
+        // Toxic veins
+        px.DrawBezier(0, 22, 24, 16, 47, 24, pal.coolantBright);
+        return px;
+    }
+
+    hide func buildConduitTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        px.DrawBox(0, 0, 48, 48, pal.conduit);
+        // Cable bundles (colored lines running through)
+        px.DrawThickLine(4, 0, 4, 47, 3, pal.electricSpark);    // blue cable
+        px.DrawThickLine(14, 0, 14, 47, 2, pal.catwalkStripe);  // red cable
+        px.DrawThickLine(24, 0, 24, 47, 3, pal.coolant);        // green cable
+        px.DrawThickLine(34, 0, 34, 47, 2, pal.airlockStripe);  // yellow cable
+        px.DrawThickLine(44, 0, 44, 47, 2, pal.hullPlateLt);    // white cable
+        // Cable clamps
+        px.DrawBox(0, 10, 48, 3, pal.outline);
+        px.DrawBox(0, 34, 48, 3, pal.outline);
+        return px;
+    }
+
+    hide func buildConsoleTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        px.DrawBox(0, 0, 48, 48, pal.console);
+        // Screen (bright blue rectangle)
+        px.DrawBox(4, 4, 40, 24, pal.consoleScreen);
+        px.DrawBox(6, 6, 36, 20, pal.holo);
+        // Screen scan line
+        px.DrawLine(6, 14, 42, 14, pal.holoLt);
+        // Button row
+        px.DrawDisc(10, 36, 2, pal.catwalkStripe);     // red button
+        px.DrawDisc(18, 36, 2, pal.coolant);            // green button
+        px.DrawDisc(26, 36, 2, pal.electricSpark);      // blue button
+        px.DrawDisc(34, 36, 2, pal.airlockStripe);      // yellow button
+        // LED indicator
+        px.DrawDisc(42, 36, 1, pal.coolantBright);
+        // Frame
+        px.DrawLine(0, 0, 47, 0, pal.outline);
+        px.DrawLine(0, 47, 47, 47, pal.outline);
+        return px;
+    }
+
+    hide func buildHoloBridgeTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        // Translucent blue platform
+        px.DrawBox(0, 0, 48, 48, pal.holo);
+        // Scan lines for holographic effect
+        var i = 0;
+        while i < 48 {
+            px.DrawLine(0, i, 47, i, pal.holoLt);
+            i = i + 4;
+        }
+        // Edge glow
+        px.DrawBox(0, 0, 48, 2, pal.holoLt);
+        px.DrawBox(0, 46, 48, 2, pal.holoLt);
+        // Center data pattern
+        px.DrawDisc(24, 24, 6, pal.holoLt);
+        px.DrawDisc(24, 24, 3, pal.holo);
+        return px;
+    }
+
+    hide func buildViewportTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        // Dark space background
+        px.DrawBox(0, 0, 48, 48, pal.viewportBg);
+        // Stars visible through viewport
+        px.DrawDisc(8, 12, 1, pal.white);
+        px.DrawDisc(20, 6, 1, pal.emergencyLight);
+        px.DrawDisc(36, 18, 1, pal.white);
+        px.DrawDisc(14, 32, 1, pal.white);
+        px.DrawDisc(40, 38, 1, pal.emergencyLight);
+        px.DrawDisc(28, 42, 1, pal.white);
+        // Viewport frame
+        px.DrawBox(0, 0, 48, 3, pal.hullPlateDk);
+        px.DrawBox(0, 45, 48, 3, pal.hullPlateDk);
+        px.DrawBox(0, 0, 3, 48, pal.hullPlateDk);
+        px.DrawBox(45, 0, 3, 48, pal.hullPlateDk);
+        return px;
+    }
+
+    // =========================================================================
+    // Tile Lookup (replaces if-chain in getTile)
+    // =========================================================================
+
+    hide func buildTileLookup() {
+        tileIds = [];
+        tileSpriteList = [];
+
+        // Register all tiles: id → sprite mapping
+        // Level 1 tiles
+        registerTile(TILE_GRASS_TOP, tileGrassTop);
+        registerTile(TILE_GROUND, tileDirt);
+        registerTile(TILE_DIRT, tileDirt);
+        registerTile(TILE_STONE, tileStone);
+        registerTile(TILE_BRICK, tileBrick);
+        registerTile(TILE_PLATFORM, tilePlatform);
+        registerTile(TILE_CRYSTAL, tileCrystal);
+        registerTile(TILE_CAVE_TOP, tileCaveTop);
+        registerTile(TILE_CAVE_WALL, tileCaveWall);
+        registerTile(TILE_BRIDGE, tileBridge);
+        registerTile(TILE_SPIKE, tileSpike);
+        registerTile(TILE_CHECKPOINT, tileCheckpoint);
+        registerTile(TILE_MAGMA, tileMagma);
+        registerTile(TILE_OBSIDIAN, tileObsidian);
+        registerTile(TILE_CLOUD, tileCloud);
+        registerTile(TILE_SKY_BRICK, tileSkyBrick);
+        registerTile(TILE_RUIN_STONE, tileRuinStone);
+        registerTile(TILE_VINE, tileVine);
+        registerTile(TILE_MOSS_STONE, tileMossStone);
+        // Xenoscape biome tiles
+        registerTile(TILE_JUNGLE_GROUND, tileJungleGround);
+        registerTile(TILE_JUNGLE_PLATFORM, tileJunglePlatform);
+        registerTile(TILE_THORN, tileThorn);
+        registerTile(TILE_MUSHROOM, tileMushroom);
+        registerTile(TILE_CAVE_CRYSTAL, tileCaveCrystal);
+        registerTile(TILE_METAL_GRATE, tileMetalGrate);
+        registerTile(TILE_MAGMA_ROCK, tileMagmaRock);
+        // Level 2: Station tiles
+        registerTile(TILE_HULL_PLATE, tileHullPlate);
+        registerTile(TILE_GIRDER, tileGirder);
+        registerTile(TILE_ELECTRIC, tileElectric);
+        registerTile(TILE_AIRLOCK, tileAirlock);
+        registerTile(TILE_PIPE, tilePipe);
+        registerTile(TILE_CATWALK, tileCatwalk);
+        registerTile(TILE_COOLANT, tileCoolant1);
+        registerTile(TILE_CONDUIT, tileConduit);
+        registerTile(TILE_CONSOLE, tileConsole);
+        registerTile(TILE_HOLO_BRIDGE, tileHoloBridge);
+        registerTile(TILE_VIEWPORT, tileViewport);
+    }
+
+    hide func registerTile(id: Integer, sprite: Pixels) {
+        tileIds.add(id);
+        tileSpriteList.add(sprite);
+    }
+
+    // =========================================================================
     // Pickup Sprites
     // =========================================================================
 
@@ -1459,35 +1748,17 @@ entity SpriteFactory {
         return bossFrames.get(0);
     }
 
+    // List-based tile lookup: O(n) scan but zero code changes when adding tiles.
+    // New tiles just need a registerTile() call in buildTileLookup().
     expose func getTile(id: Integer) -> Pixels {
-        if id == TILE_GRASS_TOP { return tileGrassTop; }
-        if id == TILE_GROUND { return tileDirt; }
-        if id == TILE_DIRT { return tileDirt; }
-        if id == TILE_STONE { return tileStone; }
-        if id == TILE_BRICK { return tileBrick; }
-        if id == TILE_PLATFORM { return tilePlatform; }
-        if id == TILE_LAVA { return tileLava1; }
-        if id == TILE_CRYSTAL { return tileCrystal; }
-        if id == TILE_CAVE_TOP { return tileCaveTop; }
-        if id == TILE_CAVE_WALL { return tileCaveWall; }
-        if id == TILE_BRIDGE { return tileBridge; }
-        if id == TILE_SPIKE { return tileSpike; }
-        if id == TILE_CHECKPOINT { return tileCheckpoint; }
-        if id == TILE_MAGMA { return tileMagma; }
-        if id == TILE_OBSIDIAN { return tileObsidian; }
-        if id == TILE_CLOUD { return tileCloud; }
-        if id == TILE_SKY_BRICK { return tileSkyBrick; }
-        if id == TILE_RUIN_STONE { return tileRuinStone; }
-        if id == TILE_VINE { return tileVine; }
-        if id == TILE_MOSS_STONE { return tileMossStone; }
-        if id == TILE_JUNGLE_GROUND { return tileJungleGround; }
-        if id == TILE_JUNGLE_PLATFORM { return tileJunglePlatform; }
-        if id == TILE_THORN { return tileThorn; }
-        if id == TILE_MUSHROOM { return tileMushroom; }
-        if id == TILE_CAVE_CRYSTAL { return tileCaveCrystal; }
-        if id == TILE_METAL_GRATE { return tileMetalGrate; }
-        if id == TILE_MAGMA_ROCK { return tileMagmaRock; }
-        return tileDirt;
+        var i = 0;
+        while i < tileIds.length() {
+            if tileIds.get(i) == id {
+                return tileSpriteList.get(i);
+            }
+            i = i + 1;
+        }
+        return tileDirt;  // fallback
     }
 
     expose func getLavaTile(frame: Integer) -> Pixels {

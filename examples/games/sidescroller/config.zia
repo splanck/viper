@@ -230,17 +230,19 @@ final STATE_HIGHSCORES = 5;
 final STATE_CONTROLS = 6;
 final STATE_BOSSFIGHT = 7;
 final STATE_VICTORY = 8;
+final STATE_LEVELSELECT = 9;
 
 // Menu selection IDs
 final MENU_PLAY = 0;
-final MENU_HIGHSCORES = 1;
-final MENU_CONTROLS = 2;
-final MENU_QUIT = 3;
+final MENU_LEVELSELECT = 1;
+final MENU_HIGHSCORES = 2;
+final MENU_CONTROLS = 3;
+final MENU_QUIT = 4;
 
 // =============================================================================
 // Level Config — Xenoscape single-level "Descent"
 // =============================================================================
-final LEVEL_COUNT = 2;
+final LEVEL_COUNT = 4;
 final LEVEL1_WIDTH = 150;     // single level: jungle(0-49) + cave(50-99) + thermal(100-149)
 final LEVEL2_WIDTH = 150;     // unused (kept for compatibility)
 final LEVEL3_WIDTH = 150;

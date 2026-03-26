@@ -15,22 +15,34 @@ entity MenuSystem {
     hide ButtonGroup titleBG;
     hide ButtonGroup pauseBG;
     hide ButtonGroup gameOverBG;
+    hide ButtonGroup levelSelectBG;
     hide Palette pal;
     hide Integer titleTimer;     // for title animation
     hide Integer bgScroll;       // background scroll
+    expose Integer selectedLevel; // chosen level from level select (1-4)
     hide List[Integer] highScores;
     hide List[String] highNames;
     hide SaveData save;          // cross-platform persistent storage
 
     expose func init(p: Palette) {
         pal = p;
-        // Title menu: Play, High Scores, Controls, Quit
+        // Title menu: Play, Level Select, High Scores, Controls, Quit
         titleBG = ButtonGroup.New();
         titleBG.Add(MENU_PLAY);
+        titleBG.Add(MENU_LEVELSELECT);
         titleBG.Add(MENU_HIGHSCORES);
         titleBG.Add(MENU_CONTROLS);
         titleBG.Add(MENU_QUIT);
         titleBG.Select(MENU_PLAY);
+
+        // Level select menu (1-4)
+        levelSelectBG = ButtonGroup.New();
+        levelSelectBG.Add(1);
+        levelSelectBG.Add(2);
+        levelSelectBG.Add(3);
+        levelSelectBG.Add(4);
+        levelSelectBG.Select(1);
+        selectedLevel = 1;
 
         // Pause menu: Resume (0), Quit to Menu (1)
         pauseBG = ButtonGroup.New();
@@ -46,7 +58,7 @@ entity MenuSystem {
 
         titleTimer = 0;
         bgScroll = 0;
-        save = SaveData.New("nova_run");
+        save = SaveData.New("xenoscape");
 
         // Default high scores
         highScores = [];
@@ -77,13 +89,61 @@ entity MenuSystem {
 
         // Selection
         if Action.Pressed(ACT_CONFIRM) {
-            if titleBG.IsSelected(MENU_PLAY) { return STATE_PLAYING; }
+            if titleBG.IsSelected(MENU_PLAY) {
+                selectedLevel = 1;
+                return STATE_PLAYING;
+            }
+            if titleBG.IsSelected(MENU_LEVELSELECT) { return STATE_LEVELSELECT; }
             if titleBG.IsSelected(MENU_HIGHSCORES) { return STATE_HIGHSCORES; }
             if titleBG.IsSelected(MENU_CONTROLS) { return STATE_CONTROLS; }
             if titleBG.IsSelected(MENU_QUIT) { return -2; }
         }
 
         return -1;
+    }
+
+    // Level select screen — pick starting level for testing
+    expose func updateLevelSelect() -> Integer {
+        titleTimer = titleTimer + 1;
+
+        if Action.Pressed(ACT_UP) { levelSelectBG.SelectPrev(); }
+        if Action.Pressed(ACT_DOWN) { levelSelectBG.SelectNext(); }
+
+        if Action.Pressed(ACT_CONFIRM) {
+            selectedLevel = levelSelectBG.get_Selected();
+            return STATE_PLAYING;
+        }
+        if Action.Pressed(ACT_BACK) { return STATE_MENU; }
+
+        return STATE_LEVELSELECT;
+    }
+
+    expose func drawLevelSelect(canvas: Canvas) {
+        canvas.Box(0, 0, SCREEN_W, SCREEN_H, pal.menuBg);
+        drawStarfield(canvas);
+
+        canvas.TextCenteredScaled(60, "SELECT LEVEL", pal.titleOrange, 4);
+
+        var y = 180;
+        drawLevelOption(canvas, "1: THE DESCENT", 1, y);
+        drawLevelOption(canvas, "2: SALVAGE", 2, y + 60);
+        drawLevelOption(canvas, "3: FROZEN ABYSS", 3, y + 120);
+        drawLevelOption(canvas, "4: OVERGROWTH", 4, y + 180);
+
+        canvas.TextCenteredScaled(SCREEN_H - 40, "Press ENTER to start, ESC to go back", pal.hudGray, 2);
+    }
+
+    hide func drawLevelOption(canvas: Canvas, label: String, levelNum: Integer, y: Integer) {
+        var x = 440;
+        var col = pal.menuText;
+
+        if levelSelectBG.IsSelected(levelNum) {
+            canvas.BoxAlpha(x - 20, y - 4, 400, 40, pal.menuHighlight, 150);
+            col = pal.white;
+            canvas.TextScaled(x - 30, y + 2, ">", 3, pal.titleOrange);
+        }
+
+        canvas.TextScaled(x, y + 2, label, 3, col);
     }
 
     expose func drawTitle(canvas: Canvas) {
@@ -145,11 +205,12 @@ entity MenuSystem {
             canvas.Box(runX + 6, runY + 26, 6, 8, pal.playerBoots);
         }
 
-        var menuY = 280;
+        var menuY = 260;
         drawMenuOption(canvas, "PLAY", MENU_PLAY, menuY, titleBG);
-        drawMenuOption(canvas, "HIGH SCORES", MENU_HIGHSCORES, menuY + 50, titleBG);
-        drawMenuOption(canvas, "CONTROLS", MENU_CONTROLS, menuY + 100, titleBG);
-        drawMenuOption(canvas, "QUIT", MENU_QUIT, menuY + 150, titleBG);
+        drawMenuOption(canvas, "LEVEL SELECT", MENU_LEVELSELECT, menuY + 44, titleBG);
+        drawMenuOption(canvas, "HIGH SCORES", MENU_HIGHSCORES, menuY + 88, titleBG);
+        drawMenuOption(canvas, "CONTROLS", MENU_CONTROLS, menuY + 132, titleBG);
+        drawMenuOption(canvas, "QUIT", MENU_QUIT, menuY + 176, titleBG);
 
         // Version + attribution
         canvas.TextCenteredScaled(SCREEN_H - 30, "Made with Viper + Zia", pal.hudGray, 2);
@@ -268,11 +329,10 @@ entity MenuSystem {
 
         canvas.TextCenteredScaled(160, "LEVEL COMPLETE!", pal.hudGreen, 3);
 
-        var levelName = "GRASSLANDS";
-        if levelNum == 2 { levelName = "CRYSTAL CAVE"; }
-        if levelNum == 3 { levelName = "VOLCANIC DEPTHS"; }
-        if levelNum == 4 { levelName = "SKY FORTRESS"; }
-        if levelNum == 5 { levelName = "ANCIENT RUINS"; }
+        var levelName = "THE DESCENT";
+        if levelNum == 2 { levelName = "SALVAGE"; }
+        if levelNum == 3 { levelName = "FROZEN ABYSS"; }
+        if levelNum == 4 { levelName = "OVERGROWTH"; }
         canvas.TextCenteredScaled(210, levelName, pal.hudBlue, 2);
 
         var revealFrames = titleTimer;
@@ -324,8 +384,8 @@ entity MenuSystem {
 
         canvas.TextCenteredScaled(120, "VICTORY!", titleCol, 6);
 
-        canvas.TextCenteredScaled(230, "You escaped the alien depths!", pal.white, 2);
-        canvas.TextCenteredScaled(270, "The Mech Guardian is defeated!", pal.crystalBlue, 2);
+        canvas.TextCenteredScaled(230, "All sectors cleared!", pal.white, 2);
+        canvas.TextCenteredScaled(270, "The alien world is safe.", pal.crystalBlue, 2);
 
         var scoreStr = Int(score);
         canvas.TextScaled(450, 350, "FINAL SCORE:", 3, pal.hudGray);
