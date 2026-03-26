@@ -11,135 +11,74 @@
 
 ### Release Overview
 
-Version 0.2.4 focuses on game engine test coverage, demo quality, and documentation accuracy.
-
-- **Game Engine Test Coverage** — 4 new unit test suites covering Canvas frame helpers, SaveData persistence, Canvas text layout, and DebugOverlay.
-- **Demo Refactoring** — Pac-Man refactored to use StateMachine and ButtonGroup as reference implementation.
-- **Documentation Fixes** — StateMachine API docs corrected, canvas.md and game.md verified.
-
-#### By the Numbers
-
-| Metric | Value |
-|--------|-------|
-| Test count | 1,355 |
+Version 0.2.4 focuses on game engine showcase quality, demonstrating Viper's 2D game development capabilities through XENOSCAPE — a complete, visually polished 4-level sci-fi platformer.
 
 ---
 
-### Test Coverage Improvements
+### XENOSCAPE: Flagship Game Demo
 
-Four new unit test suites added for previously untested game engine runtime classes:
+The sidescroller demo has been transformed into **XENOSCAPE: The Descent** — a complete 4-level alien planet exploration game serving as Viper's flagship 2D game development showcase.
 
-#### Canvas Frame Helpers (1 test binary, 14 assertions)
+#### Visual Overhaul
+- **Realistic astronaut character**: properly proportioned with articulated limbs, detailed spacesuit panels, jetpack hardware, reflective visor. All sprites drawn at small size then upscaled via `Pixels.Scale()` for visible detail at 1280x720.
+- **Alien enemies**: translucent slime blobs with inner structure, angular membrane-winged bats, military sentry turrets with sensor domes, heavy mech boss with reactor core and hydraulic limbs.
+- **64px tiles** (up from 48px): larger, more detailed tile sprites with biome-specific art.
+- **Bright saturated color palette**: replaced dark moody colors with vivid, high-contrast palette.
+- **Tile edge bevels**: every solid tile gets 1px light/dark edge overlays for 3D depth.
+- **Biome ambient effects**: bioluminescent root glow, crystal shimmer, mushroom pulse, magma crack embers, electric sparks, coolant glow, console flicker, holographic shimmer.
 
-Tests for `SetDTMax()` and `BeginFrame()` — the Canvas frame management methods added in v0.2.3.
+#### Color.RGB() Palette System
+All 160+ color constants migrated from hex `final` values to a `Palette` entity using `Color.RGB(r, g, b)` for self-documenting, readable color definitions. The Palette is passed via constructor injection to all subsystems — enables future theme-swapping.
 
-- **Null safety** — all functions safe with NULL canvas
-- **DeltaTime clamping** — upper bound, lower bound (clamps to 1), negative dt, exact boundaries, within range
-- **SetDTMax toggle** — enable clamping with positive max, disable with 0, negative treated as 0
-- **BeginFrame logic** — returns 1 when `ShouldClose == 0`, returns 0 when closing or NULL
+#### Four Levels
 
-Uses fake `rt_canvas` structs (heap-allocated, no display required) for struct-level testing via conditional `VIPER_ENABLE_GRAPHICS` compilation.
+| Level | Theme | Biomes |
+|-------|-------|--------|
+| 1: The Descent | Alien planet | Jungle → Crystal Caverns → Thermal Vents |
+| 2: Salvage | Crashed station | Outer Hull → Reactor Core → Command Bridge |
+| 3: Frozen Abyss | Ice caverns | Frozen Surface → Crystal Depths → Frozen Core |
+| 4: Overgrowth | Ancient ruins | Overgrown Surface → Deep Ruins → Heart of Ruins |
 
-#### SaveData Persistence (1 test binary, 17 tests)
+Each level is 150 tiles wide with 3 seamless biome transitions, unique tile types, enemy placement, and a boss arena at the end.
 
-Tests for the `SaveData` key-value persistence system (JSON-backed, cross-platform paths).
+#### Level Select
+New menu option allows starting at any level — useful for testing and replayability.
 
-- **Null safety** — all 10 functions safe with NULL handle
-- **Constructor validation** — empty game name traps
-- **Key-value CRUD** — SetInt/GetInt, SetString/GetString with overwrite
-- **Type mismatch defaults** — GetString on int key returns default (and vice versa)
-- **Type overwrite** — int key overwritten with string value
-- **HasKey / Remove / Clear / Count** — full CRUD lifecycle
-- **Path computation** — save path contains game name and `save.json`
-- **Save/Load round-trip** — 5 entries (int + string) survive JSON serialization
-- **Load nonexistent** — returns 0, no crash
-- **Save overwrite** — second save replaces first, load sees latest
-- **Edge cases** — empty key ignored, JSON-special characters in values (`"`, `\`, `\n`), INT64_MAX/MIN
+#### 11 New Station Tile Types
+Hull plate, girder, electric hazard, airlock, pipe, catwalk, coolant (animated), conduit, console, holographic bridge, viewport — all with detailed sprites and ambient effects.
 
-Uses PID-unique game names to avoid collisions in parallel test runs. Cleans up save files after each test.
+#### Reusable Level Helpers
+Extracted common level-building patterns:
+- `buildPlatformRun()`: platform + coins in one call
+- `buildGapWithHazard()`: ground clear + hazard fill
+- `buildArena()`: flat boss arena with containment walls
+- `getTile()` refactored to list-based lookup (zero code changes when adding tiles)
 
-#### Canvas Text Layout (1 test binary, 14 tests)
-
-Tests for `TextCentered()`, `TextRight()`, `TextCenteredScaled()`, and `TextScaledWidth()`.
-
-- **Null safety** (7 tests) — null canvas, null text, zero/negative scale
-- **TextScaledWidth math** (4 tests) — `strlen * 8 * scale` formula with basic, scaled, empty, and null inputs
-- **Fake canvas integration** (3 tests) — layout functions execute without crash on canvases with NULL `gfx_win` (drawing is no-op, computation path exercised)
-
-#### DebugOverlay (1 test binary, 20 tests)
-
-Tests for the `DebugOverlay` development debug panel.
-
-- **Null safety** — all 11 functions safe with NULL handle
-- **Enable/Disable/Toggle** — disabled by default, toggle flips state
-- **FPS rolling average** (6 tests) — zero frames, steady 60 FPS, steady 30 FPS, rolling transition, partial fill (4 frames), zero dt (division-by-zero guard)
-- **Watch variables** (6 tests) — add/update, duplicate updates in-place, clear all, max capacity (17th silently ignored), null name, slot reuse after removal
-- **Draw safety** — null canvas, disabled overlay
+#### 3 Station Background Renderers
+- **Outer Hull**: dark starfield with floating debris and emergency light strips
+- **Reactor Core**: deep red emergency gradient with pipe silhouettes and pulsing reactor glow
+- **Command Bridge**: holographic screen glow with data stream particles
 
 ---
 
-### Demo Refactoring
+### Game Engine Test Coverage
 
-#### Pac-Man — StateMachine + ButtonGroup Reference Implementation
-
-Refactored the Pac-Man game (`examples/games/pacman/game.zia`) to replace manual integer state management with the `Viper.Game.StateMachine` and `Viper.Game.ButtonGroup` runtime classes.
-
-**StateMachine integration:**
-- 8 game states registered: Menu, Playing, Paused, GameOver, Win, Ready, Dying, HighScores
-- All `gameState = config.STATE_X` assignments → `sm.Transition(config.STATE_X)`
-- All `gameState == config.STATE_X` comparisons → `sm.IsState(config.STATE_X)`
-- `sm.Update()` and `sm.ClearFlags()` called each frame
-
-**ButtonGroup integration:**
-- 3 menu items (Start, High Scores, Quit) registered as button IDs 0, 1, 2
-- Manual wraparound arithmetic → `menuBtns.SelectNext()` / `menuBtns.SelectPrev()`
-- Menu highlighting → `menuBtns.IsSelected(id)` instead of `menuSelection == id`
+4 new unit test suites covering Canvas frame helpers (14 tests), SaveData persistence (17 tests), Canvas text layout (14 tests), and DebugOverlay (20 tests). Total: 1,355 tests passing.
 
 ---
 
-### Documentation Fixes
-
-- **StateMachine API** (game.md) — corrected stale callback-based API (`AddState(id, enter, update, exit)`, `SetState(id)`) to match actual implementation (numeric state IDs with `AddState(id)`, `Transition(id)`, `IsState(id)`, property-based edge flags). Added Zia example and reference implementation link.
-- **ButtonGroup** (game.md) — added reference implementation link to Pac-Man demo.
-- **Canvas** (canvas.md) — `last-verified` updated.
-- **SaveData** (persistence.md) — `last-verified` updated.
-- **DebugOverlay** (debug.md) — `last-verified` updated.
-
----
-
-### New Tests
-
-| Category | Tests | Description |
-|----------|:-----:|-------------|
-| Canvas frame helpers | 1 | SetDTMax clamping, BeginFrame logic, null safety (14 assertions) |
-| SaveData persistence | 1 | Key-value ops, save/load round-trip, JSON escaping, null safety (17 tests) |
-| Canvas text layout | 1 | TextCentered/Right/CenteredScaled null safety, TextScaledWidth math (14 tests) |
-| DebugOverlay | 1 | FPS rolling avg, watch CRUD, enable/toggle, null safety (20 tests) |
-
-**Total new tests:** 4 test binaries, 65 individual test cases.
+### Bug Fixes
+- **Sidescroller boss reset**: `bossMaxHp` now properly reset between levels
+- **Boss arena containment**: walls prevent boss from falling into adjacent sections
+- **Victory flow**: works correctly for multi-level progression
 
 ---
 
 ### Files Changed
 
-| File | Change |
-|------|--------|
-| `src/tests/runtime/RTCanvasFrameTests.cpp` | New — Canvas SetDTMax/BeginFrame tests |
-| `src/tests/runtime/RTSaveDataTests.cpp` | New — SaveData persistence tests |
-| `src/tests/runtime/RTCanvasTextLayoutTests.cpp` | New — Canvas text layout tests |
-| `src/tests/runtime/RTDebugOverlayTests.cpp` | New — DebugOverlay tests |
-| `src/tests/unit/CMakeLists.txt` | Register 4 new test targets |
-| `examples/games/pacman/game.zia` | StateMachine + ButtonGroup refactor |
-| `examples/games/pacman/main.zia` | Updated feature list |
-| `docs/viperlib/game.md` | Fixed StateMachine docs, added reference links |
-| `docs/viperlib/game/debug.md` | Updated last-verified |
-| `docs/viperlib/game/persistence.md` | Updated last-verified |
-| `docs/viperlib/graphics/canvas.md` | Updated last-verified |
-
----
-
-### Cumulative Statistics
-
-| Metric              | v0.2.3    | v0.2.4 (draft) | Change     |
-|---------------------|-----------|----------------|------------|
-| Test Count          | 1,351     | 1,355          | +4         |
+| Category | Files | Net LOC |
+|----------|-------|---------|
+| Demo overhaul | 17 sidescroller files | +4,000 |
+| New palette system | palette.zia (new) | +341 |
+| Test suites | 4 new test files | +700 |
+| Documentation | release notes, docs | +200 |
