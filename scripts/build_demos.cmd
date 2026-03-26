@@ -90,6 +90,7 @@ call :build_demo pacman-zia "%GAMES_DIR%\pacman"
 call :build_demo sqldb "%APPS_DIR%\sqldb"
 call :build_demo chess-zia "%GAMES_DIR%\chess"
 call :build_demo sidescroller "%GAMES_DIR%\sidescroller"
+call :build_demo platformer "%GAMES_DIR%\platformer"
 
 echo ==============================================
 if %FAILED%==0 (

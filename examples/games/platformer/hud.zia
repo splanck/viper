@@ -1,0 +1,142 @@
+// =============================================================================
+// HUD — Heads-Up Display with Viper UI Widgets
+// =============================================================================
+// Viper APIs demonstrated:
+//   - Viper.Game.UI.Bar: health bar with color thresholds. Bar.New(x,y,w,h,
+//     fillColor, emptyColor) creates a horizontal fill bar. SetValue(val, max)
+//     updates the fill ratio. SetColors() changes dynamically.
+//   - Viper.Game.UI.Label: positioned text label. Label.New(x,y,text,color)
+//     creates a label that can be repositioned and redrawn each frame.
+//   - Viper.Game.UI.Panel: semi-transparent background panel.
+//     Panel.New(x,y,w,h,color,alpha) creates a filled rectangle with alpha.
+//   - Viper.Game.SmoothValue: animated number display. SmoothValue.New(initial,
+//     smoothing) creates a value that rolls toward a target over multiple frames.
+//   - Viper.Game.Tween: smooth interpolation. Tween.New() + StartI64() animates
+//     a value between two endpoints with easing.
+//
+// Zia best practices:
+//   - Entity composition: HUD is a standalone subsystem composed into the game
+//   - UI widgets replace hand-drawn primitives for cleaner, more consistent UI
+//   - SmoothValue replaces manual interpolation for the score counter
+//   - Tween replaces manual lerp for boss bar damage feedback
+//
+// This file is part of the Platformer Reference Implementation.
+// =============================================================================
+
+module hud;
+
+bind Viper.Graphics;
+bind Viper.Fmt;
+bind Viper.Game;
+bind Viper.Game.UI;
+bind "./config";
+
+entity HUD {
+    // --- UI Widget instances ---
+    // These are created once in init() and redrawn each frame.
+    hide Panel hudPanel;       // semi-transparent background
+    hide Bar healthBar;        // player HP bar
+    hide Label scoreLabel;     // score display
+    hide Label coinLabel;      // coin count
+    hide Label stateLabel;     // player state name
+
+    // --- Animation ---
+    // SmoothValue.New(initialValue, smoothingFactor) — smoothing 0-1 where
+    // higher = slower approach to target. 0.8 = fast but visible roll.
+    hide SmoothValue displayScore;
+
+    hide Integer pulseTimer;   // low-health pulse effect
+
+    expose func init() {
+        // SmoothValue for animated score counter.
+        // When target changes, the displayed value rolls toward it over ~10 frames.
+        displayScore = SmoothValue.New(0.0, 0.8);
+        pulseTimer = 0;
+
+        // Panel.New(x, y, w, h, color, alpha) — semi-transparent backing.
+        // Alpha: 0=invisible, 255=opaque. 190 = mostly opaque with slight transparency.
+        hudPanel = Panel.New(0, 0, SCREEN_W, 30, COL_HUD_BG, 190);
+        hudPanel.SetBorder(COL_MENU_BORDER, 1);
+        hudPanel.set_CornerRadius(0);
+
+        // Bar.New(x, y, w, h, fillColor, emptyColor) — horizontal fill bar.
+        healthBar = Bar.New(10, 6, 100, 14, COL_HP_FULL, COL_HP_EMPTY);
+        healthBar.set_Border(1);
+
+        // Label.New(x, y, text, color) — positioned text.
+        scoreLabel = Label.New(130, 6, "SCORE 0", COL_HUD_TEXT);
+        scoreLabel.set_Scale(2);
+
+        coinLabel = Label.New(320, 6, "x0", COL_COIN);
+        coinLabel.set_Scale(2);
+
+        stateLabel = Label.New(500, 6, "Idle", COL_TEXT_DIM);
+        stateLabel.set_Scale(2);
+    }
+
+    // Update animated values. Call once per frame.
+    expose func update(targetScore: Integer, dt: Integer) {
+        // SmoothValue.set_Target(value) — the value we're rolling toward.
+        // SmoothValue.Update() — advance one step toward target.
+        displayScore.set_Target(targetScore + 0.0);
+        displayScore.Update();
+
+        pulseTimer = pulseTimer + dt;
+        if pulseTimer >= 600 { pulseTimer = 0; }
+    }
+
+    // Draw the complete HUD. Call after all game rendering.
+    expose func draw(canvas: Canvas, hp: Integer, maxHp: Integer,
+                     score: Integer, coins: Integer, totalCoins: Integer,
+                     playerState: Integer) {
+        // --- Background panel ---
+        // Panel.Draw(canvas) renders the semi-transparent rectangle.
+        hudPanel.Draw(canvas);
+
+        // --- Health bar with color thresholds ---
+        // Change bar color based on HP percentage:
+        //   >= 60% = green, 30-60% = yellow, < 30% = red (pulsing)
+        if hp * 3 < maxHp {
+            // Critical: pulse between bright red and dark red
+            if pulseTimer < 300 {
+                healthBar.SetColors(0xFF6666, COL_HP_EMPTY);
+            } else {
+                healthBar.SetColors(COL_HP_LOW, COL_HP_EMPTY);
+            }
+        } else {
+            healthBar.SetColors(COL_HP_FULL, COL_HP_EMPTY);
+        }
+        // Bar.SetValue(current, maximum) — updates the fill ratio.
+        healthBar.SetValue(hp, maxHp);
+        // Bar.Draw(canvas) renders the bar.
+        healthBar.Draw(canvas);
+
+        // HP text overlay
+        canvas.TextScaled(14, 8, Int(hp) + "/" + Int(maxHp), 2, COL_WHITE);
+
+        // --- Score (animated via SmoothValue) ---
+        // SmoothValue.get_ValueI64() returns the current (smoothed) integer value.
+        scoreLabel.SetText("SCORE " + Int(displayScore.get_ValueI64()));
+        scoreLabel.Draw(canvas);
+
+        // --- Coins ---
+        // Mini coin icon drawn with Canvas primitives
+        canvas.Disc(312, 13, 5, COL_COIN);
+        canvas.Ring(312, 13, 5, COL_COIN_DARK);
+        coinLabel.SetText("x" + Int(coins) + "/" + Int(totalCoins));
+        coinLabel.Draw(canvas);
+
+        // --- Player state (for debug visibility) ---
+        var stateName = "Idle";
+        if playerState == PS_RUN { stateName = "Run"; }
+        if playerState == PS_JUMP { stateName = "Jump"; }
+        if playerState == PS_FALL { stateName = "Fall"; }
+        if playerState == PS_WALL { stateName = "Wall"; }
+        if playerState == PS_HURT { stateName = "Hurt"; }
+        stateLabel.SetText(stateName);
+        stateLabel.Draw(canvas);
+
+        // --- Controls hint ---
+        canvas.TextScaled(10, SCREEN_H - 12, "WASD: Move | Space: Jump | F3: Debug | ESC: Menu", 1, COL_TEXT_DIM);
+    }
+}

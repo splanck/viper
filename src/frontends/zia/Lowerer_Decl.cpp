@@ -201,6 +201,18 @@ void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations)
                 // `-1`, `2 * 1024`) that are not direct literals (BUG-FE-011).
                 else if (auto folded = tryFoldNumericConstant(init))
                     globalConstants_[qualifiedName] = *folded;
+                else
+                {
+                    // BUG-FE-012: Emit diagnostic for non-constant final initializers
+                    // instead of silently dropping them (which causes 0-value fallback).
+                    diag_.report({il::support::Severity::Error,
+                                  "'final' requires a compile-time constant initializer "
+                                  "(literal, arithmetic expression, or string). "
+                                  "Use a 'var' field initialized in init() for "
+                                  "runtime-computed values.",
+                                  gvar->loc,
+                                  "V3202"});
+                }
             }
         }
         else if (decl->kind == DeclKind::Namespace)

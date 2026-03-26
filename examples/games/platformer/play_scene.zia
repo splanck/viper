@@ -349,7 +349,7 @@ entity PlayScene implements IScene {
     // =========================================================================
 
     expose func draw(canvas: Canvas) {
-        canvas.Box(0, 0, SCREEN_W, SCREEN_H, COL_SKY);
+        canvas.Box(0, 0, SCREEN_W, SCREEN_H, COL_SKY_BOT);
 
         drawTiles(canvas);
         drawMovingPlatform(canvas);
@@ -371,12 +371,12 @@ entity PlayScene implements IScene {
                     if sx > 0 - TILE_W {
                         if sx < SCREEN_W {
                             if tile == TILE_GROUND {
-                                canvas.Box(sx, sy, TILE_W, TILE_H, COL_GROUND);
-                                canvas.Box(sx, sy, TILE_W, 4, COL_GROUND_TOP);
+                                canvas.Box(sx, sy, TILE_W, TILE_H, COL_DIRT);
+                                canvas.Box(sx, sy, TILE_W, 4, COL_GRASS);
                             }
                             if tile == TILE_PLATFORM {
                                 canvas.Box(sx, sy, TILE_W, TILE_H, COL_PLATFORM);
-                                canvas.Box(sx, sy, TILE_W, 4, COL_PLAT_TOP);
+                                canvas.Box(sx, sy, TILE_W, 4, COL_PLATFORM);
                             }
                             if tile == TILE_SPIKE {
                                 // Draw spike triangles as a red box with dark top

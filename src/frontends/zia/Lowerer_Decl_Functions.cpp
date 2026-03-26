@@ -123,6 +123,11 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
         {
             return;
         }
+
+        // BUG-FE-012: Non-constant final initializer. The pre-pass
+        // (registerAllFinalConstants) already reported the diagnostic.
+        // Just return here to avoid creating a broken global variable.
+        return;
     }
 
     // For mutable variables, register for runtime storage

@@ -1,0 +1,181 @@
+// =============================================================================
+// Physics Helper — Tile collision, AABB overlap, gravity
+// =============================================================================
+// Viper APIs demonstrated:
+//   - Viper.Game.CollisionRect: AABB overlap detection with SetPosition/
+//     SetSize/Overlaps for entity-vs-entity collision testing
+//   - Viper.Game.Grid2D: 2D integer grid used as a decoration/metadata
+//     layer separate from the Tilemap (e.g., grass tufts, sign markers)
+//
+// Zia best practices:
+//   - Pure utility entity (no state, only functions) — init() is empty
+//   - All positions in centipixel (x100) for sub-pixel precision
+//   - Out-parameters via single-element List[Integer] (Zia workaround
+//     for returning multiple values from a function)
+//   - Separate X and Y collision resolution prevents corner-catching bugs
+//
+// This file is part of the Platformer Reference Implementation, designed
+// to teach Viper game development patterns.
+// =============================================================================
+
+module physics_helper;
+
+bind Viper.Game;
+bind "./config";
+
+entity PhysicsHelper {
+
+    // CollisionRect instances reused each frame (avoid allocation per check).
+    // CollisionRect.New(x, y, w, h) creates an AABB at the given position.
+    hide CollisionRect rectA;
+    hide CollisionRect rectB;
+
+    // Grid2D for decoration metadata (grass tufts, sign positions).
+    // Grid2D.New(width, height, defaultValue) creates a 2D integer grid.
+    expose Grid2D decoGrid;
+
+    expose func init() {
+        // CollisionRect.New(x, y, right, bottom) — note: right/bottom, not width/height!
+        rectA = CollisionRect.New(0.0, 0.0, 1.0, 1.0);
+        rectB = CollisionRect.New(0.0, 0.0, 1.0, 1.0);
+
+        // Decoration grid — stores visual metadata per tile position.
+        // Values: 0=empty, 1=grass tuft, 2=flower, 3=sign
+        decoGrid = Grid2D.New(LEVEL_W, LEVEL_H, 0);
+    }
+
+    // =========================================================================
+    // Gravity with jump-apex hang time
+    // =========================================================================
+    // Near the peak of a jump (|vy| < threshold), gravity is reduced to 60%
+    // for a floatier feel. This is a common platformer polish technique used
+    // in games like Celeste and Hollow Knight.
+
+    expose func applyGravity(vy: Integer, dt: Integer) -> Integer {
+        var g = GRAVITY * dt / DT_BASE;
+
+        // Apex hang: reduce gravity when velocity is near zero (peak of arc).
+        // The threshold of 200 (x100 = 2px/frame) covers ~3 frames around peak.
+        var absVy = vy;
+        if absVy < 0 { absVy = 0 - absVy; }
+        if absVy < 200 {
+            g = g * 3 / 5;  // 60% gravity at apex
+        }
+
+        var newVy = vy + g;
+        if newVy > MAX_FALL { newVy = MAX_FALL; }
+        return newVy;
+    }
+
+    // =========================================================================
+    // AABB Overlap Test (pixel coordinates)
+    // =========================================================================
+    // Uses CollisionRect.Overlaps() — the runtime does the math for us.
+    // This wraps the API to accept integer pixel coordinates directly.
+
+    expose func rectsOverlap(ax: Integer, ay: Integer, aw: Integer, ah: Integer,
+                              bx: Integer, by: Integer, bw: Integer, bh: Integer) -> Boolean {
+        // CollisionRect.SetPosition(x, y) + SetSize(w, h) update the AABB.
+        // Note: Zia requires float args, so we add 0.0 to convert int → float.
+        rectA.SetPosition(ax + 0.0, ay + 0.0);
+        rectA.SetSize(aw + 0.0, ah + 0.0);
+        rectB.SetPosition(bx + 0.0, by + 0.0);
+        rectB.SetSize(bw + 0.0, bh + 0.0);
+
+        // CollisionRect.Overlaps(other) returns true if AABBs intersect.
+        return rectA.Overlaps(rectB);
+    }
+
+    // =========================================================================
+    // Tile Collision — check if a point is inside a solid tile
+    // =========================================================================
+
+    expose func isTileSolid(tileGrid: Tilemap, pixX: Integer, pixY: Integer) -> Boolean {
+        var col = pixX / TILE_W;
+        var row = pixY / TILE_H;
+        if col < 0 { return true; }       // left world boundary = solid
+        if row < 0 { return false; }       // above world = open
+        if col >= LEVEL_W { return true; } // right boundary = solid
+        if row >= LEVEL_H { return true; } // below world = solid
+
+        // Tilemap.GetTile(col, row) returns the tile ID at that grid position.
+        var tile = tileGrid.GetTile(col, row);
+        if tile == TILE_GROUND { return true; }
+        if tile == TILE_PLATFORM { return true; }
+        if tile == TILE_CAVE_WALL { return true; }
+        if tile == TILE_BRIDGE { return true; }
+        return false;
+    }
+
+    // Check horizontal tile collision (for X-axis movement)
+    expose func checkTileCollisionH(tileGrid: Tilemap, pixX: Integer, pixY: Integer) -> Boolean {
+        var left = pixX / TILE_W;
+        var right = (pixX + PLAYER_W - 1) / TILE_W;
+        var top = pixY / TILE_H;
+        var bottom = (pixY + PLAYER_H - 1) / TILE_H;
+
+        var row = top;
+        while row <= bottom {
+            if isTileSolid(tileGrid, left * TILE_W, row * TILE_H) { return true; }
+            if isTileSolid(tileGrid, right * TILE_W, row * TILE_H) { return true; }
+            row = row + 1;
+        }
+        return false;
+    }
+
+    // Check vertical tile collision (for Y-axis movement)
+    expose func checkTileCollisionV(tileGrid: Tilemap, pixX: Integer, pixY: Integer) -> Boolean {
+        var left = pixX / TILE_W;
+        var right = (pixX + PLAYER_W - 1) / TILE_W;
+        var top = pixY / TILE_H;
+        var bottom = (pixY + PLAYER_H - 1) / TILE_H;
+
+        var col = left;
+        while col <= right {
+            if isTileSolid(tileGrid, col * TILE_W, top * TILE_H) { return true; }
+            if isTileSolid(tileGrid, col * TILE_W, bottom * TILE_H) { return true; }
+            col = col + 1;
+        }
+        return false;
+    }
+
+    // Check if standing on a hazard tile (spikes)
+    expose func isOnHazard(tileGrid: Tilemap, pixX: Integer, pixY: Integer) -> Boolean {
+        var feetY = pixY + PLAYER_H + 1;
+        var col = (pixX + PLAYER_W / 2) / TILE_W;
+        var row = feetY / TILE_H;
+        if col < 0 || col >= LEVEL_W { return false; }
+        if row < 0 || row >= LEVEL_H { return false; }
+        var tile = tileGrid.GetTile(col, row);
+        return tile == TILE_SPIKE;
+    }
+
+    // =========================================================================
+    // Decoration Grid Helpers
+    // =========================================================================
+    // Grid2D stores per-tile decoration metadata. The play scene reads this
+    // during rendering to draw grass tufts, flowers, and sign posts on top
+    // of the base tiles — without modifying the Tilemap collision data.
+
+    expose func setDeco(col: Integer, row: Integer, value: Integer) {
+        if col >= 0 {
+            if col < LEVEL_W {
+                if row >= 0 {
+                    if row < LEVEL_H {
+                        // Grid2D.Set(col, row, value) stores an integer at the position.
+                        decoGrid.Set(col, row, value);
+                    }
+                }
+            }
+        }
+    }
+
+    expose func getDeco(col: Integer, row: Integer) -> Integer {
+        if col < 0 { return 0; }
+        if col >= LEVEL_W { return 0; }
+        if row < 0 { return 0; }
+        if row >= LEVEL_H { return 0; }
+        // Grid2D.Get(col, row) returns the stored integer (0 = default/empty).
+        return decoGrid.Get(col, row);
+    }
+}

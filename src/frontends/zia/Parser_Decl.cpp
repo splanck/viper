@@ -653,6 +653,27 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
             dtor->body = parseBlock();
             members.push_back(std::move(dtor));
         }
+        else if (check(TokenKind::KwFinal))
+        {
+            // BUG-FE-012: 'final' is not allowed inside entity/value bodies.
+            // Finals are compile-time constants and must be declared at module scope.
+            // Provide a clear error instead of the generic "expected field..." message.
+            error("'final' declarations are not allowed inside entity bodies. "
+                  "Move 'final' to module scope, or use a field initialized in init()");
+            // Skip past the final declaration to recover
+            advance(); // consume 'final'
+            if (check(TokenKind::Identifier))
+                advance(); // consume name
+            if (match(TokenKind::Equal))
+            {
+                // Skip the initializer expression (simple skip to semicolon)
+                while (!check(TokenKind::Semicolon) && !check(TokenKind::RBrace) &&
+                       !check(TokenKind::Eof))
+                    advance();
+                if (check(TokenKind::Semicolon))
+                    advance();
+            }
+        }
         else if (check(TokenKind::Identifier))
         {
             auto field = parseFieldDecl();

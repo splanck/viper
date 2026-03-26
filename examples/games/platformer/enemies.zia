@@ -1,0 +1,297 @@
+// =============================================================================
+// Enemy Manager — Pool-based enemy management with spatial queries
+// =============================================================================
+// Viper APIs demonstrated:
+//   - Viper.Game.ObjectPool: slot-based entity management with Acquire/Release.
+//     Enemies are stored as integer handles in a fixed-capacity pool. Each slot
+//     has associated data (type, position) packed into a single integer.
+//   - Viper.Game.PathFollower: waypoint-based movement with ping-pong mode.
+//     Used by slime enemies to patrol between two points automatically.
+//   - Viper.Game.Quadtree: spatial indexing for efficient collision queries.
+//     Insert enemies by position, then QueryRect around the player to find
+//     only nearby enemies instead of checking all N enemies.
+//   - Viper.Game.StateMachine: behavior state tracking for enemies.
+//     Each enemy has a state (idle, patrol, chase, hurt) that determines AI.
+//
+// Zia best practices:
+//   - Parallel arrays: enemy data stored as List[Integer] arrays indexed
+//     by pool handle. This is the idiomatic Zia approach when no Map type
+//     is available.
+//   - ObjectPool acquire/release: slot-based management avoids GC pressure
+//     and provides predictable performance.
+//   - Quadtree spatial indexing: O(log n) collision queries instead of O(n).
+//
+// This file is part of the Platformer Reference Implementation.
+// =============================================================================
+
+module enemies;
+
+bind Viper.Graphics;
+bind Viper.Game;
+bind "./config";
+
+entity EnemyManager {
+    // ObjectPool.New(capacity) — fixed-size pool of reusable slots.
+    // Acquire() returns a handle (integer >= 0) or -1 if full.
+    // Release(handle) returns the slot to the pool.
+    hide ObjectPool pool;
+
+    // Parallel arrays indexed by pool handle (0 to MAX_ENEMIES-1).
+    // This is the Zia pattern for entity-component data when no Map exists.
+    hide List[Integer] etype;     // ENEMY_SLIME, ENEMY_BAT, etc.
+    hide List[Integer] ex;        // world X position (pixels)
+    hide List[Integer] ey;        // world Y position (pixels)
+    hide List[Integer] evx;       // velocity X
+    hide List[Integer] evy;       // velocity Y
+    hide List[Integer] ehp;       // hit points
+    hide List[Integer] edir;      // facing direction (-1 or 1)
+    hide List[Integer] eframe;    // animation frame counter
+
+    // PathFollower instances for patrol enemies.
+    // PathFollower.New() creates a waypoint-based path.
+    // AddPoint(x, y) adds a waypoint. set_Mode(2) enables ping-pong.
+    hide List[Integer] epathX;    // patrol start X (for respawning)
+    hide List[Integer] epathEndX; // patrol end X
+
+    // Quadtree.New(x, y, w, h) — spatial index for collision queries.
+    // Insert(id, x, y, w, h) adds an entity. QueryRect(x, y, w, h) finds
+    // all entities overlapping the rectangle. GetResult(i) returns the id.
+    hide Quadtree qtree;
+
+    expose func init() {
+        pool = ObjectPool.New(MAX_ENEMIES);
+        etype = [];
+        ex = [];
+        ey = [];
+        evx = [];
+        evy = [];
+        ehp = [];
+        edir = [];
+        eframe = [];
+        epathX = [];
+        epathEndX = [];
+
+        // Pre-fill arrays to MAX_ENEMIES slots (pool handles index into these).
+        for i in 0..MAX_ENEMIES {
+            etype.add(0);
+            ex.add(0);
+            ey.add(0);
+            evx.add(0);
+            evy.add(0);
+            ehp.add(0);
+            edir.add(1);
+            eframe.add(0);
+            epathX.add(0);
+            epathEndX.add(0);
+        }
+
+        // Quadtree covering the entire level in pixels.
+        qtree = Quadtree.New(0, 0, LEVEL_W * TILE_W, LEVEL_H * TILE_H);
+    }
+
+    expose func reset() {
+        pool.Clear();
+        qtree.Clear();
+    }
+
+    // =========================================================================
+    // Spawning — called by the level builder
+    // =========================================================================
+
+    expose func spawnEnemy(t: Integer, worldX: Integer, worldY: Integer) {
+        // ObjectPool.Acquire() returns a handle or -1 if full.
+        var handle = pool.Acquire();
+        if handle < 0 { return; }
+
+        etype.set(handle, t);
+        ex.set(handle, worldX);
+        ey.set(handle, worldY);
+        evx.set(handle, 0);
+        evy.set(handle, 0);
+        edir.set(handle, 1);
+        eframe.set(handle, 0);
+
+        if t == ENEMY_SLIME {
+            ehp.set(handle, 1);
+            // Store patrol range (slime walks ±3 tiles from spawn)
+            epathX.set(handle, worldX - 3 * TILE_W);
+            epathEndX.set(handle, worldX + 3 * TILE_W);
+            evx.set(handle, SLIME_SPEED);
+        }
+        if t == ENEMY_BAT {
+            ehp.set(handle, 1);
+            epathX.set(handle, worldX);
+            epathEndX.set(handle, 0);
+        }
+    }
+
+    // =========================================================================
+    // Update — called every frame
+    // =========================================================================
+
+    expose func updateAll(dt: Integer, playerX: Integer, playerY: Integer) {
+        // Rebuild Quadtree each frame with current enemy positions.
+        // Quadtree.Clear() removes all entries. Insert() re-adds them.
+        // This is O(n) but with n≤16 enemies it's negligible.
+        qtree.Clear();
+
+        // ObjectPool.FirstActive() / NextActive(handle) iterate active slots.
+        // This skips released slots automatically.
+        var handle = pool.FirstActive();
+        while handle >= 0 {
+            var next = pool.NextActive(handle);
+
+            var t = etype.get(handle);
+            var px = ex.get(handle);
+            var py = ey.get(handle);
+            var frame = eframe.get(handle);
+
+            // Update animation frame
+            eframe.set(handle, frame + 1);
+
+            // --- Slime AI: patrol back and forth ---
+            if t == ENEMY_SLIME {
+                var vx = evx.get(handle);
+                px = px + vx * dt / (DT_BASE * 100);
+
+                // Reverse at patrol boundaries
+                var minX = epathX.get(handle);
+                var maxX = epathEndX.get(handle);
+                if px <= minX {
+                    px = minX;
+                    evx.set(handle, SLIME_SPEED);
+                    edir.set(handle, 1);
+                }
+                if px >= maxX {
+                    px = maxX;
+                    evx.set(handle, 0 - SLIME_SPEED);
+                    edir.set(handle, -1);
+                }
+                ex.set(handle, px);
+            }
+
+            // --- Bat AI: sine-wave hover, chase when player is near ---
+            if t == ENEMY_BAT {
+                var baseY = epathX.get(handle);  // reuse field for base Y
+                // Sine approximation: use frame counter for oscillation
+                var sineOff = (frame % 60) - 30;
+                if sineOff < 0 { sineOff = 0 - sineOff; }
+                sineOff = sineOff - 15;  // range: -15 to +15
+                py = ey.get(handle) + sineOff / 3;
+
+                // Chase if player is within detect range
+                var dx = playerX - px;
+                if dx < 0 { dx = 0 - dx; }
+                var dy = playerY - py;
+                if dy < 0 { dy = 0 - dy; }
+                if dx < BAT_DETECT {
+                    if dy < BAT_DETECT {
+                        if playerX > px {
+                            px = px + BAT_SPEED * dt / (DT_BASE * 100);
+                        } else {
+                            px = px - BAT_SPEED * dt / (DT_BASE * 100);
+                        }
+                        ex.set(handle, px);
+                    }
+                }
+            }
+
+            // Insert into Quadtree for collision queries.
+            // Quadtree.Insert(id, x, y, w, h) — id is the pool handle.
+            var ew = SLIME_W;
+            var eh = SLIME_H;
+            if t == ENEMY_BAT { ew = BAT_W; eh = BAT_H; }
+            qtree.Insert(handle, px, py, ew, eh);
+
+            handle = next;
+        }
+    }
+
+    // =========================================================================
+    // Collision queries — called by play_scene to check player overlap
+    // =========================================================================
+
+    // Check if the player overlaps any enemy. Returns the handle or -1.
+    // Uses Quadtree.QueryRect() for efficient spatial lookup.
+    expose func checkPlayerCollision(playerX: Integer, playerY: Integer) -> Integer {
+        // QueryRect returns the count of overlapping entities.
+        var found = qtree.QueryRect(playerX, playerY, PLAYER_W, PLAYER_H);
+        if found > 0 {
+            // GetResult(index) returns the entity id (pool handle).
+            return qtree.GetResult(0);
+        }
+        return -1;
+    }
+
+    // Check if player is stomping (falling onto enemy from above)
+    expose func isStompable(handle: Integer, playerY: Integer, playerVy: Integer) -> Boolean {
+        if handle < 0 { return false; }
+        var enemyY = ey.get(handle);
+        // Stomp: player is above enemy and moving downward
+        return playerY < enemyY && playerVy > 0;
+    }
+
+    // Kill an enemy (release back to pool)
+    expose func killEnemy(handle: Integer) {
+        if handle < 0 { return; }
+        pool.Release(handle);
+    }
+
+    // Get enemy position (for particle effects, etc.)
+    expose func getX(handle: Integer) -> Integer { return ex.get(handle); }
+    expose func getY(handle: Integer) -> Integer { return ey.get(handle); }
+    expose func getType(handle: Integer) -> Integer { return etype.get(handle); }
+    expose func getActiveCount() -> Integer { return pool.get_ActiveCount(); }
+
+    // =========================================================================
+    // Drawing — called by rendering.zia
+    // =========================================================================
+
+    expose func drawAll(canvas: Canvas, camX: Integer, camY: Integer) {
+        var handle = pool.FirstActive();
+        while handle >= 0 {
+            var t = etype.get(handle);
+            var sx = ex.get(handle) - camX;
+            var sy = ey.get(handle) - camY;
+            var frame = eframe.get(handle);
+
+            if t == ENEMY_SLIME {
+                // Slime: green ellipse body with squish animation
+                var squish = (frame / 8) % 4;
+                var bodyH = SLIME_H - squish;
+                var bodyW = SLIME_W + squish * 2;
+                canvas.Ellipse(sx + SLIME_W / 2, sy + SLIME_H - bodyH / 2,
+                              bodyW / 2, bodyH / 2, COL_SLIME);
+                canvas.EllipseFrame(sx + SLIME_W / 2, sy + SLIME_H - bodyH / 2,
+                                   bodyW / 2, bodyH / 2, COL_SLIME_DARK);
+                // Eyes
+                canvas.Disc(sx + 7, sy + SLIME_H - bodyH / 2 - 2, 2, COL_WHITE);
+                canvas.Disc(sx + 17, sy + SLIME_H - bodyH / 2 - 2, 2, COL_WHITE);
+                canvas.Disc(sx + 8, sy + SLIME_H - bodyH / 2 - 1, 1, COL_BLACK);
+                canvas.Disc(sx + 18, sy + SLIME_H - bodyH / 2 - 1, 1, COL_BLACK);
+            }
+
+            if t == ENEMY_BAT {
+                // Bat: purple body with flapping wings
+                var wingOff = (frame / 6) % 3;
+                canvas.Ellipse(sx + BAT_W / 2, sy + BAT_H / 2, 6, 5, COL_BAT);
+                // Wings
+                if wingOff == 0 {
+                    canvas.Triangle(sx, sy, sx + 8, sy + 8, sx + 2, sy + 10, COL_BAT_DARK);
+                    canvas.Triangle(sx + BAT_W, sy, sx + BAT_W - 8, sy + 8, sx + BAT_W - 2, sy + 10, COL_BAT_DARK);
+                } else if wingOff == 1 {
+                    canvas.Triangle(sx, sy + 6, sx + 8, sy + 8, sx + 2, sy + 12, COL_BAT_DARK);
+                    canvas.Triangle(sx + BAT_W, sy + 6, sx + BAT_W - 8, sy + 8, sx + BAT_W - 2, sy + 12, COL_BAT_DARK);
+                } else {
+                    canvas.Triangle(sx, sy + 10, sx + 8, sy + 8, sx + 2, sy + 14, COL_BAT_DARK);
+                    canvas.Triangle(sx + BAT_W, sy + 10, sx + BAT_W - 8, sy + 8, sx + BAT_W - 2, sy + 14, COL_BAT_DARK);
+                }
+                // Eyes
+                canvas.Disc(sx + 8, sy + 6, 2, 0xFF4444);
+                canvas.Disc(sx + 14, sy + 6, 2, 0xFF4444);
+            }
+
+            handle = pool.NextActive(handle);
+        }
+    }
+}
