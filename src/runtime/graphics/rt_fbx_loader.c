@@ -1064,15 +1064,28 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
         double cyr = cos(ry), syr = sin(ry);
         double czr = cos(rz), szr = sin(rz);
         /* R = Rz * Ry * Rx (standard FBX Euler order) */
-        double r00 = cyr * czr, r01 = sxr * syr * czr - cxr * szr, r02 = cxr * syr * czr + sxr * szr;
-        double r10 = cyr * szr, r11 = sxr * syr * szr + cxr * czr, r12 = cxr * syr * szr - sxr * czr;
-        double r20 = -syr,      r21 = sxr * cyr,                    r22 = cxr * cyr;
+        double r00 = cyr * czr, r01 = sxr * syr * czr - cxr * szr,
+               r02 = cxr * syr * czr + sxr * szr;
+        double r10 = cyr * szr, r11 = sxr * syr * szr + cxr * czr,
+               r12 = cxr * syr * szr - sxr * czr;
+        double r20 = -syr, r21 = sxr * cyr, r22 = cxr * cyr;
         double scx = bi->lcl_scaling[0], scy = bi->lcl_scaling[1], scz = bi->lcl_scaling[2];
-        void *bind_mat = rt_mat4_new(
-            r00 * scx, r01 * scy, r02 * scz, tx,
-            r10 * scx, r11 * scy, r12 * scz, ty,
-            r20 * scx, r21 * scy, r22 * scz, tz,
-            0, 0, 0, 1);
+        void *bind_mat = rt_mat4_new(r00 * scx,
+                                     r01 * scy,
+                                     r02 * scz,
+                                     tx,
+                                     r10 * scx,
+                                     r11 * scy,
+                                     r12 * scz,
+                                     ty,
+                                     r20 * scx,
+                                     r21 * scy,
+                                     r22 * scz,
+                                     tz,
+                                     0,
+                                     0,
+                                     0,
+                                     1);
         rt_skeleton3d_add_bone(skel, rt_const_cstr(bi->name), parent_idx, bind_mat);
         bi->bone_index = (int32_t)i;
     }
@@ -1093,10 +1106,10 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
 
 /* Find all children of a given parent in the connection table */
 static int32_t fbx_find_children(const fbx_conn_table_t *ct,
-                                  int64_t parent_id,
-                                  int64_t *out_ids,
-                                  const char **out_props,
-                                  int32_t max_out)
+                                 int64_t parent_id,
+                                 int64_t *out_ids,
+                                 const char **out_props,
+                                 int32_t max_out)
 {
     int32_t count = 0;
     for (int32_t i = 0; i < ct->count && count < max_out; i++)
@@ -1232,7 +1245,8 @@ static void fbx_extract_animations(fbx_node_t *root,
                     continue;
 
                 /* Find which Model (bone) this curve node connects to and what property */
-                /* The CurveNode→Model connection has prop "Lcl Translation"/"Lcl Rotation"/"Lcl Scaling" */
+                /* The CurveNode→Model connection has prop "Lcl Translation"/"Lcl Rotation"/"Lcl
+                 * Scaling" */
                 int32_t trs_type = -1; /* 0=T, 1=R, 2=S */
                 int64_t model_id = 0;
                 for (int32_t ci2 = 0; ci2 < ct->count; ci2++)

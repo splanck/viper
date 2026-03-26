@@ -723,7 +723,8 @@ class Sema
                                       bool includeInherited = true);
 
     /// @brief Find an inherited exact-signature method for override validation.
-    MethodDecl *findInheritedExactMethod(const std::string &ownerType, const MethodDecl &decl) const;
+    MethodDecl *findInheritedExactMethod(const std::string &ownerType,
+                                         const MethodDecl &decl) const;
 
     /// @brief Check whether a name has multiple user-defined overloads.
     bool hasOverloadedFunctionName(const std::string &name) const;
@@ -1343,7 +1344,6 @@ class Sema
     }
 
   private:
-
     /// @}
     //=========================================================================
     /// @name Core State

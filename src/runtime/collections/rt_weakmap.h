@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_weakmap.h
 // Purpose: String-keyed map holding weak (non-retaining) references to values, so values may be
 // collected; getting a collected value returns NULL.

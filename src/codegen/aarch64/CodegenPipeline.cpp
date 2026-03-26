@@ -298,29 +298,12 @@ static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel)
     if (optimizeLevel >= 2)
     {
         ilpm.registerPipeline("codegen-O2",
-                              {"loop-simplify",
-                               "loop-rotate",
-                               "indvars",
-                               "loop-unroll",
-                               "simplify-cfg",
-                               "sccp",
-                               "check-opt",
-                               "eh-opt",
-                               "dce",
-                               "simplify-cfg",
-                               "sibling-recursion",
-                               "inline",
-                               "simplify-cfg",
-                               "sccp",
-                               "constfold",
-                               "dce",
-                               "simplify-cfg",
-                               "gvn",
-                               "reassociate",
-                               "earlycse",
-                               "dse",
-                               "dce",
-                               "late-cleanup"});
+                              {"loop-simplify", "loop-rotate",  "indvars",           "loop-unroll",
+                               "simplify-cfg",  "sccp",         "check-opt",         "eh-opt",
+                               "dce",           "simplify-cfg", "sibling-recursion", "inline",
+                               "simplify-cfg",  "sccp",         "constfold",         "dce",
+                               "simplify-cfg",  "gvn",          "reassociate",       "earlycse",
+                               "dse",           "dce",          "late-cleanup"});
         return ilpm.runPipeline(mod, "codegen-O2");
     }
 
@@ -581,8 +564,10 @@ PipelineResult CodegenPipeline::run()
         }
         if (!pipelineModule.debugLineData.empty())
             writer->setDebugLineData(std::move(pipelineModule.debugLineData));
-        if (!writer->write(
-                objPath.string(), pipelineModule.binaryTextSections, *pipelineModule.binaryRodata, err))
+        if (!writer->write(objPath.string(),
+                           pipelineModule.binaryTextSections,
+                           *pipelineModule.binaryRodata,
+                           err))
         {
             err << "error: failed to write object file '" << objPath.string() << "'\n";
             result.exit_code = 1;
@@ -606,8 +591,8 @@ PipelineResult CodegenPipeline::run()
         }
 
         LinkContext ctx;
-        if (const int rc = viper::codegen::common::prepareLinkContextFromSymbols(
-                extSymbols, ctx, out, err);
+        if (const int rc =
+                viper::codegen::common::prepareLinkContextFromSymbols(extSymbols, ctx, out, err);
             rc != 0)
         {
             result.exit_code = 1;
@@ -627,8 +612,8 @@ PipelineResult CodegenPipeline::run()
             viper::codegen::linker::NativeLinkerOptions linkOpts;
             linkOpts.objPath = objPath.string();
             linkOpts.exePath = exe.string();
-            using viper::codegen::RtComponent;
             using viper::codegen::archiveNameForComponent;
+            using viper::codegen::RtComponent;
             using viper::codegen::common::fileExists;
             using viper::codegen::common::runtimeArchivePath;
             static constexpr RtComponent allComponents[] = {
@@ -726,8 +711,9 @@ PipelineResult CodegenPipeline::run()
     }
 
     std::filesystem::path exe =
-        opts_.output_obj_path.empty() ? std::filesystem::path(opts_.input_il_path).replace_extension("")
-                                      : std::filesystem::path(opts_.output_obj_path);
+        opts_.output_obj_path.empty()
+            ? std::filesystem::path(opts_.input_il_path).replace_extension("")
+            : std::filesystem::path(opts_.output_obj_path);
 
     if (linkToExe(asmPath, exe.string(), out, err) != 0)
     {

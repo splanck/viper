@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_dialog.c
+//
+//===----------------------------------------------------------------------===//
 // vg_dialog.c - Dialog widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -801,6 +811,7 @@ void vg_dialog_set_title(vg_dialog_t *dialog, const char *title)
     dialog->base.needs_paint = true;
 }
 
+/// @brief Dialog set content.
 void vg_dialog_set_content(vg_dialog_t *dialog, vg_widget_t *content)
 {
     if (!dialog)
@@ -809,6 +820,7 @@ void vg_dialog_set_content(vg_dialog_t *dialog, vg_widget_t *content)
     dialog->base.needs_layout = true;
 }
 
+/// @brief Dialog set message.
 void vg_dialog_set_message(vg_dialog_t *dialog, const char *message)
 {
     if (!dialog)
@@ -818,6 +830,7 @@ void vg_dialog_set_message(vg_dialog_t *dialog, const char *message)
     dialog->base.needs_layout = true;
 }
 
+/// @brief Dialog set icon.
 void vg_dialog_set_icon(vg_dialog_t *dialog, vg_dialog_icon_t icon)
 {
     if (!dialog)
@@ -826,6 +839,7 @@ void vg_dialog_set_icon(vg_dialog_t *dialog, vg_dialog_icon_t icon)
     dialog->base.needs_layout = true;
 }
 
+/// @brief Dialog set custom icon.
 void vg_dialog_set_custom_icon(vg_dialog_t *dialog, vg_icon_t icon)
 {
     if (!dialog)
@@ -835,6 +849,7 @@ void vg_dialog_set_custom_icon(vg_dialog_t *dialog, vg_icon_t icon)
     dialog->base.needs_layout = true;
 }
 
+/// @brief Dialog set buttons.
 void vg_dialog_set_buttons(vg_dialog_t *dialog, vg_dialog_buttons_t buttons)
 {
     if (!dialog)
@@ -843,6 +858,7 @@ void vg_dialog_set_buttons(vg_dialog_t *dialog, vg_dialog_buttons_t buttons)
     dialog->base.needs_layout = true;
 }
 
+/// @brief Dialog set custom buttons.
 void vg_dialog_set_custom_buttons(vg_dialog_t *dialog,
                                   vg_dialog_button_def_t *buttons,
                                   size_t count)
@@ -878,6 +894,7 @@ void vg_dialog_set_custom_buttons(vg_dialog_t *dialog,
     dialog->base.needs_layout = true;
 }
 
+/// @brief Dialog set resizable.
 void vg_dialog_set_resizable(vg_dialog_t *dialog, bool resizable)
 {
     if (!dialog)
@@ -885,6 +902,7 @@ void vg_dialog_set_resizable(vg_dialog_t *dialog, bool resizable)
     dialog->resizable = resizable;
 }
 
+/// @brief Dialog set size constraints.
 void vg_dialog_set_size_constraints(
     vg_dialog_t *dialog, uint32_t min_w, uint32_t min_h, uint32_t max_w, uint32_t max_h)
 {
@@ -899,6 +917,7 @@ void vg_dialog_set_size_constraints(
     dialog->base.needs_layout = true;
 }
 
+/// @brief Dialog set modal.
 void vg_dialog_set_modal(vg_dialog_t *dialog, bool modal, vg_widget_t *parent)
 {
     if (!dialog)
@@ -907,6 +926,7 @@ void vg_dialog_set_modal(vg_dialog_t *dialog, bool modal, vg_widget_t *parent)
     dialog->modal_parent = parent;
 }
 
+/// @brief Dialog show.
 void vg_dialog_show(vg_dialog_t *dialog)
 {
     if (!dialog)
@@ -921,6 +941,7 @@ void vg_dialog_show(vg_dialog_t *dialog)
         vg_widget_set_modal_root(&dialog->base);
 }
 
+/// @brief Dialog show centered.
 void vg_dialog_show_centered(vg_dialog_t *dialog, vg_widget_t *relative_to)
 {
     if (!dialog)
@@ -955,6 +976,7 @@ void vg_dialog_show_centered(vg_dialog_t *dialog, vg_widget_t *relative_to)
                       dialog->base.measured_height);
 }
 
+/// @brief Dialog hide.
 void vg_dialog_hide(vg_dialog_t *dialog)
 {
     if (!dialog)
@@ -966,6 +988,7 @@ void vg_dialog_hide(vg_dialog_t *dialog)
         vg_widget_set_modal_root(NULL);
 }
 
+/// @brief Dialog close.
 void vg_dialog_close(vg_dialog_t *dialog, vg_dialog_result_t result)
 {
     if (!dialog)
@@ -1003,6 +1026,7 @@ bool vg_dialog_is_open(vg_dialog_t *dialog)
     return dialog->is_open;
 }
 
+/// @brief Dialog set on result.
 void vg_dialog_set_on_result(vg_dialog_t *dialog,
                              void (*callback)(vg_dialog_t *, vg_dialog_result_t, void *),
                              void *user_data)
@@ -1013,6 +1037,7 @@ void vg_dialog_set_on_result(vg_dialog_t *dialog,
     dialog->user_data = user_data;
 }
 
+/// @brief Dialog set on close.
 void vg_dialog_set_on_close(vg_dialog_t *dialog,
                             void (*callback)(vg_dialog_t *, void *),
                             void *user_data)
@@ -1026,6 +1051,7 @@ void vg_dialog_set_on_close(vg_dialog_t *dialog,
     }
 }
 
+/// @brief Dialog set font.
 void vg_dialog_set_font(vg_dialog_t *dialog, vg_font_t *font, float size)
 {
     if (!dialog)

@@ -163,6 +163,9 @@ void *rt_defaultmap_new(void *default_value)
 // Accessors
 // ---------------------------------------------------------------------------
 
+/// @brief Perform defaultmap len operation.
+/// @param map
+/// @return Result value.
 int64_t rt_defaultmap_len(void *map)
 {
     if (!map)
@@ -200,6 +203,10 @@ void *rt_defaultmap_get(void *map, rt_string key)
 // Set
 // ---------------------------------------------------------------------------
 
+/// @brief Perform defaultmap set operation.
+/// @param map
+/// @param key
+/// @param value
 void rt_defaultmap_set(void *map, rt_string key, void *value)
 {
     if (!map || !key)
@@ -255,6 +262,10 @@ void rt_defaultmap_set(void *map, rt_string key, void *value)
 // Has / Remove
 // ---------------------------------------------------------------------------
 
+/// @brief Perform defaultmap has operation.
+/// @param map
+/// @param key
+/// @return Result value.
 int64_t rt_defaultmap_has(void *map, rt_string key)
 {
     if (!map || !key)
@@ -277,6 +288,10 @@ int64_t rt_defaultmap_has(void *map, rt_string key)
     return 0;
 }
 
+/// @brief Perform defaultmap remove operation.
+/// @param map
+/// @param key
+/// @return Result value.
 int8_t rt_defaultmap_remove(void *map, rt_string key)
 {
     if (!map || !key)
@@ -345,6 +360,8 @@ void *rt_defaultmap_get_default(void *map)
     return ((rt_defaultmap_impl *)map)->default_value;
 }
 
+/// @brief Perform defaultmap clear operation.
+/// @param map
 void rt_defaultmap_clear(void *map)
 {
     if (!map)
@@ -368,6 +385,9 @@ void rt_defaultmap_clear(void *map)
     m->count = 0;
 }
 
+/// @brief Perform defaultmap is empty operation.
+/// @param map
+/// @return Result value.
 int8_t rt_defaultmap_is_empty(void *map)
 {
     if (!map)

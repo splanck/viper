@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/threads/rt_channel.h
 // Purpose: Thread-safe channel for inter-thread communication providing FIFO bounded/unbounded send
 // and receive with blocking semantics when empty or full.

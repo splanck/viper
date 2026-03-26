@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_hash.h
 // Purpose: Cryptographic hash functions (MD5, SHA-1, SHA-256) and CRC32 checksum computation,
 // returning lowercase hex strings or integer checksums.

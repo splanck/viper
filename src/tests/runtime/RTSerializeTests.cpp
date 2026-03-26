@@ -1,4 +1,7 @@
 //===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // RTSerializeTests.cpp - Tests for rt_serialize (unified serialization)
 //===----------------------------------------------------------------------===//
 
@@ -17,6 +20,7 @@ extern "C"
 #include "rt_serialize.h"
 #include "rt_string.h"
 
+    /// @brief Vm_trap.
     void vm_trap(const char *msg)
     {
         fprintf(stderr, "TRAP: %s\n", msg);
@@ -262,6 +266,7 @@ static void test_error_reporting()
     ASSERT(rt_str_len(err) > 0, "error message set");
 }
 
+/// @brief Main.
 int main()
 {
     // Metadata

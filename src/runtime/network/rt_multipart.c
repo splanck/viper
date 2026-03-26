@@ -172,6 +172,9 @@ void *rt_multipart_add_file(void *obj, rt_string name, rt_string filename, void 
     return obj;
 }
 
+/// @brief Perform multipart content type operation.
+/// @param obj
+/// @return Result value.
 rt_string rt_multipart_content_type(void *obj)
 {
     if (!obj)
@@ -216,15 +219,18 @@ void *rt_multipart_build(void *obj)
         // Headers
         if (part->is_file)
         {
-            pos += (size_t)snprintf((char *)buf + pos, total - pos,
+            pos += (size_t)snprintf((char *)buf + pos,
+                                    total - pos,
                                     "Content-Disposition: form-data; name=\"%s\"; "
                                     "filename=\"%s\"\r\n"
                                     "Content-Type: application/octet-stream\r\n\r\n",
-                                    part->name, part->filename);
+                                    part->name,
+                                    part->filename);
         }
         else
         {
-            pos += (size_t)snprintf((char *)buf + pos, total - pos,
+            pos += (size_t)snprintf((char *)buf + pos,
+                                    total - pos,
                                     "Content-Disposition: form-data; name=\"%s\"\r\n\r\n",
                                     part->name);
         }
@@ -247,6 +253,9 @@ void *rt_multipart_build(void *obj)
     return result;
 }
 
+/// @brief Perform multipart count operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_multipart_count(void *obj)
 {
     if (!obj)
@@ -403,6 +412,10 @@ void *rt_multipart_parse(rt_string content_type, void *body)
     return mp;
 }
 
+/// @brief Perform multipart get field operation.
+/// @param obj
+/// @param name
+/// @return Result value.
 rt_string rt_multipart_get_field(void *obj, rt_string name)
 {
     if (!obj)

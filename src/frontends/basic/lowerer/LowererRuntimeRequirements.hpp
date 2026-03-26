@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/frontends/basic/lowerer/LowererRuntimeRequirements.hpp
+//
+//===----------------------------------------------------------------------===//
 // =========================================================================
 // File: frontends/basic/lowerer/LowererRuntimeRequirements.hpp
 // Purpose: Runtime requirement declarations for the BASIC Lowerer.

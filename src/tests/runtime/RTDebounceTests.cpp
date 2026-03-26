@@ -117,6 +117,7 @@ static void test_null_safety()
     rt_throttle_reset(NULL);
 }
 
+/// @brief Main.
 int main()
 {
     test_debounce_create();

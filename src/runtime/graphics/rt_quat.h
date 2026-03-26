@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_quat.h
 // Purpose: Quaternion math for 3D rotation (Viper.Quat), providing construction from
 // axis/angle/Euler, conjugate, product, SLERP, and conversion to/from rotation matrices.

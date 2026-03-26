@@ -63,6 +63,8 @@ struct rt_spriteanim_impl
     int8_t frame_changed; ///< 1 if frame changed this update.
 };
 
+/// @brief Perform spriteanim new operation.
+/// @return Result value.
 rt_spriteanim rt_spriteanim_new(void)
 {
     struct rt_spriteanim_impl *anim =
@@ -88,6 +90,8 @@ rt_spriteanim rt_spriteanim_new(void)
     return anim;
 }
 
+/// @brief Perform spriteanim destroy operation.
+/// @param anim
 void rt_spriteanim_destroy(rt_spriteanim anim)
 {
     (void)anim;
@@ -117,6 +121,9 @@ void rt_spriteanim_setup(rt_spriteanim anim,
     anim->finished = 0;
 }
 
+/// @brief Perform spriteanim set loop operation.
+/// @param anim
+/// @param loop
 void rt_spriteanim_set_loop(rt_spriteanim anim, int8_t loop)
 {
     if (!anim)
@@ -124,6 +131,9 @@ void rt_spriteanim_set_loop(rt_spriteanim anim, int8_t loop)
     anim->loop = loop ? 1 : 0;
 }
 
+/// @brief Perform spriteanim set pingpong operation.
+/// @param anim
+/// @param pingpong
 void rt_spriteanim_set_pingpong(rt_spriteanim anim, int8_t pingpong)
 {
     if (!anim)
@@ -131,16 +141,24 @@ void rt_spriteanim_set_pingpong(rt_spriteanim anim, int8_t pingpong)
     anim->pingpong = pingpong ? 1 : 0;
 }
 
+/// @brief Perform spriteanim loop operation.
+/// @param anim
+/// @return Result value.
 int8_t rt_spriteanim_loop(rt_spriteanim anim)
 {
     return anim ? anim->loop : 0;
 }
 
+/// @brief Perform spriteanim pingpong operation.
+/// @param anim
+/// @return Result value.
 int8_t rt_spriteanim_pingpong(rt_spriteanim anim)
 {
     return anim ? anim->pingpong : 0;
 }
 
+/// @brief Perform spriteanim play operation.
+/// @param anim
 void rt_spriteanim_play(rt_spriteanim anim)
 {
     if (!anim)
@@ -154,6 +172,8 @@ void rt_spriteanim_play(rt_spriteanim anim)
     anim->speed_accum = 0.0;
 }
 
+/// @brief Perform spriteanim stop operation.
+/// @param anim
 void rt_spriteanim_stop(rt_spriteanim anim)
 {
     if (!anim)
@@ -162,6 +182,8 @@ void rt_spriteanim_stop(rt_spriteanim anim)
     anim->paused = 0;
 }
 
+/// @brief Perform spriteanim pause operation.
+/// @param anim
 void rt_spriteanim_pause(rt_spriteanim anim)
 {
     if (!anim)
@@ -170,6 +192,8 @@ void rt_spriteanim_pause(rt_spriteanim anim)
         anim->paused = 1;
 }
 
+/// @brief Perform spriteanim resume operation.
+/// @param anim
 void rt_spriteanim_resume(rt_spriteanim anim)
 {
     if (!anim)
@@ -177,6 +201,8 @@ void rt_spriteanim_resume(rt_spriteanim anim)
     anim->paused = 0;
 }
 
+/// @brief Perform spriteanim reset operation.
+/// @param anim
 void rt_spriteanim_reset(rt_spriteanim anim)
 {
     if (!anim)
@@ -188,6 +214,9 @@ void rt_spriteanim_reset(rt_spriteanim anim)
     anim->speed_accum = 0.0;
 }
 
+/// @brief Perform spriteanim update operation.
+/// @param anim
+/// @return Result value.
 int8_t rt_spriteanim_update(rt_spriteanim anim)
 {
     if (!anim)
@@ -266,6 +295,9 @@ int8_t rt_spriteanim_update(rt_spriteanim anim)
     return 0;
 }
 
+/// @brief Perform spriteanim frame operation.
+/// @param anim
+/// @return Result value.
 int64_t rt_spriteanim_frame(rt_spriteanim anim)
 {
     if (!anim)
@@ -273,6 +305,9 @@ int64_t rt_spriteanim_frame(rt_spriteanim anim)
     return anim->current_frame;
 }
 
+/// @brief Perform spriteanim set frame operation.
+/// @param anim
+/// @param frame
 void rt_spriteanim_set_frame(rt_spriteanim anim, int64_t frame)
 {
     if (!anim)
@@ -285,6 +320,9 @@ void rt_spriteanim_set_frame(rt_spriteanim anim, int64_t frame)
     anim->frame_counter = 0;
 }
 
+/// @brief Perform spriteanim frame duration operation.
+/// @param anim
+/// @return Result value.
 int64_t rt_spriteanim_frame_duration(rt_spriteanim anim)
 {
     if (!anim)
@@ -292,6 +330,9 @@ int64_t rt_spriteanim_frame_duration(rt_spriteanim anim)
     return anim->frame_duration;
 }
 
+/// @brief Perform spriteanim set frame duration operation.
+/// @param anim
+/// @param duration
 void rt_spriteanim_set_frame_duration(rt_spriteanim anim, int64_t duration)
 {
     if (!anim)
@@ -301,6 +342,9 @@ void rt_spriteanim_set_frame_duration(rt_spriteanim anim, int64_t duration)
     anim->frame_duration = duration;
 }
 
+/// @brief Perform spriteanim frame count operation.
+/// @param anim
+/// @return Result value.
 int64_t rt_spriteanim_frame_count(rt_spriteanim anim)
 {
     if (!anim)
@@ -308,6 +352,9 @@ int64_t rt_spriteanim_frame_count(rt_spriteanim anim)
     return anim->end_frame - anim->start_frame + 1;
 }
 
+/// @brief Perform spriteanim is playing operation.
+/// @param anim
+/// @return Result value.
 int8_t rt_spriteanim_is_playing(rt_spriteanim anim)
 {
     if (!anim)
@@ -315,6 +362,9 @@ int8_t rt_spriteanim_is_playing(rt_spriteanim anim)
     return anim->playing && !anim->paused;
 }
 
+/// @brief Perform spriteanim is paused operation.
+/// @param anim
+/// @return Result value.
 int8_t rt_spriteanim_is_paused(rt_spriteanim anim)
 {
     if (!anim)
@@ -322,6 +372,9 @@ int8_t rt_spriteanim_is_paused(rt_spriteanim anim)
     return anim->paused;
 }
 
+/// @brief Perform spriteanim is finished operation.
+/// @param anim
+/// @return Result value.
 int8_t rt_spriteanim_is_finished(rt_spriteanim anim)
 {
     if (!anim)
@@ -329,6 +382,9 @@ int8_t rt_spriteanim_is_finished(rt_spriteanim anim)
     return anim->finished;
 }
 
+/// @brief Perform spriteanim progress operation.
+/// @param anim
+/// @return Result value.
 int64_t rt_spriteanim_progress(rt_spriteanim anim)
 {
     if (!anim)
@@ -340,6 +396,9 @@ int64_t rt_spriteanim_progress(rt_spriteanim anim)
     return (current * 100) / total;
 }
 
+/// @brief Perform spriteanim set speed operation.
+/// @param anim
+/// @param speed
 void rt_spriteanim_set_speed(rt_spriteanim anim, double speed)
 {
     if (!anim)
@@ -351,6 +410,9 @@ void rt_spriteanim_set_speed(rt_spriteanim anim, double speed)
     anim->speed = speed;
 }
 
+/// @brief Perform spriteanim speed operation.
+/// @param anim
+/// @return Result value.
 double rt_spriteanim_speed(rt_spriteanim anim)
 {
     if (!anim)
@@ -358,6 +420,9 @@ double rt_spriteanim_speed(rt_spriteanim anim)
     return anim->speed;
 }
 
+/// @brief Perform spriteanim frame changed operation.
+/// @param anim
+/// @return Result value.
 int8_t rt_spriteanim_frame_changed(rt_spriteanim anim)
 {
     if (!anim)

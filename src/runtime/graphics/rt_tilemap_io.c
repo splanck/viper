@@ -72,6 +72,11 @@ static void ensure_props(void)
     }
 }
 
+/// @brief Perform tilemap set tile property operation.
+/// @param tm
+/// @param tile_index
+/// @param key
+/// @param value
 void rt_tilemap_set_tile_property(void *tm, int64_t tile_index, rt_string key, int64_t value)
 {
     (void)tm;
@@ -126,6 +131,11 @@ int64_t rt_tilemap_get_tile_property(void *tm,
     return default_val;
 }
 
+/// @brief Perform tilemap has tile property operation.
+/// @param tm
+/// @param tile_index
+/// @param key
+/// @return Result value.
 int8_t rt_tilemap_has_tile_property(void *tm, int64_t tile_index, rt_string key)
 {
     (void)tm;
@@ -230,6 +240,9 @@ void rt_tilemap_set_autotile_hi(void *tm,
     r->active = 1;
 }
 
+/// @brief Perform tilemap clear autotile operation.
+/// @param tm
+/// @param base_tile
 void rt_tilemap_clear_autotile(void *tm, int64_t base_tile)
 {
     (void)tm;
@@ -269,6 +282,12 @@ static int8_t is_same_base(int64_t tile, int64_t base)
     return 0;
 }
 
+/// @brief Perform tilemap apply autotile region operation.
+/// @param tm
+/// @param rx
+/// @param ry
+/// @param rw
+/// @param rh
 void rt_tilemap_apply_autotile_region(void *tm, int64_t rx, int64_t ry, int64_t rw, int64_t rh)
 {
     if (!tm || s_autotile_count == 0)
@@ -328,6 +347,8 @@ void rt_tilemap_apply_autotile_region(void *tm, int64_t rx, int64_t ry, int64_t 
     }
 }
 
+/// @brief Perform tilemap apply autotile operation.
+/// @param tm
 void rt_tilemap_apply_autotile(void *tm)
 {
     if (!tm)
@@ -339,6 +360,10 @@ void rt_tilemap_apply_autotile(void *tm)
 // JSON Save/Load
 //=============================================================================
 
+/// @brief Perform tilemap save to file operation.
+/// @param tm
+/// @param path
+/// @return Result value.
 int8_t rt_tilemap_save_to_file(void *tm, rt_string path)
 {
     if (!tm || !path)

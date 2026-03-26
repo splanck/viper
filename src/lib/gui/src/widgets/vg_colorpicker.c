@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_colorpicker.c
+//
+//===----------------------------------------------------------------------===//
 // vg_colorpicker.c - Color picker widget implementation
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
@@ -482,6 +492,7 @@ uint32_t vg_colorpicker_get_color(vg_colorpicker_t *picker)
     return picker->color;
 }
 
+/// @brief Colorpicker set rgb.
 void vg_colorpicker_set_rgb(vg_colorpicker_t *picker, uint8_t r, uint8_t g, uint8_t b)
 {
     if (!picker)
@@ -514,6 +525,7 @@ void vg_colorpicker_set_rgb(vg_colorpicker_t *picker, uint8_t r, uint8_t g, uint
     }
 }
 
+/// @brief Colorpicker get rgb.
 void vg_colorpicker_get_rgb(vg_colorpicker_t *picker, uint8_t *r, uint8_t *g, uint8_t *b)
 {
     if (!picker)
@@ -526,6 +538,7 @@ void vg_colorpicker_get_rgb(vg_colorpicker_t *picker, uint8_t *r, uint8_t *g, ui
         *b = picker->b;
 }
 
+/// @brief Colorpicker set alpha.
 void vg_colorpicker_set_alpha(vg_colorpicker_t *picker, uint8_t alpha)
 {
     if (!picker)
@@ -550,6 +563,7 @@ void vg_colorpicker_set_alpha(vg_colorpicker_t *picker, uint8_t alpha)
     }
 }
 
+/// @brief Colorpicker get alpha.
 uint8_t vg_colorpicker_get_alpha(vg_colorpicker_t *picker)
 {
     if (!picker)
@@ -557,6 +571,7 @@ uint8_t vg_colorpicker_get_alpha(vg_colorpicker_t *picker)
     return picker->a;
 }
 
+/// @brief Colorpicker show alpha.
 void vg_colorpicker_show_alpha(vg_colorpicker_t *picker, bool show)
 {
     if (!picker)
@@ -571,6 +586,7 @@ void vg_colorpicker_show_alpha(vg_colorpicker_t *picker, bool show)
     picker->base.needs_paint = true;
 }
 
+/// @brief Colorpicker show palette.
 void vg_colorpicker_show_palette(vg_colorpicker_t *picker, bool show)
 {
     if (!picker)
@@ -585,6 +601,7 @@ void vg_colorpicker_show_palette(vg_colorpicker_t *picker, bool show)
     picker->base.needs_paint = true;
 }
 
+/// @brief Colorpicker set on change.
 void vg_colorpicker_set_on_change(vg_colorpicker_t *picker,
                                   vg_colorpicker_callback_t callback,
                                   void *user_data)
@@ -596,6 +613,7 @@ void vg_colorpicker_set_on_change(vg_colorpicker_t *picker,
     picker->on_change_data = user_data;
 }
 
+/// @brief Colorpicker set font.
 void vg_colorpicker_set_font(vg_colorpicker_t *picker, vg_font_t *font, float size)
 {
     if (!picker)

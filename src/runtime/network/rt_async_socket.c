@@ -55,16 +55,27 @@ static void *default_pool = NULL;
 static LONG pool_init_state = 0;
 #else
 static pthread_once_t pool_once = PTHREAD_ONCE_INIT;
-static void init_default_pool(void) { default_pool = rt_threadpool_new(4); }
+
+static void init_default_pool(void)
+{
+    default_pool = rt_threadpool_new(4);
+}
 #endif
 
 static void *get_default_pool(void)
 {
 #ifdef _WIN32
-    if (pool_init_state == 2) return default_pool;
+    if (pool_init_state == 2)
+        return default_pool;
     LONG prev = InterlockedCompareExchange(&pool_init_state, 1, 0);
-    if (prev == 2) return default_pool;
-    if (prev == 1) { while (pool_init_state != 2) Sleep(0); return default_pool; }
+    if (prev == 2)
+        return default_pool;
+    if (prev == 1)
+    {
+        while (pool_init_state != 2)
+            Sleep(0);
+        return default_pool;
+    }
     default_pool = rt_threadpool_new(4);
     InterlockedExchange(&pool_init_state, 2);
     return default_pool;
@@ -96,16 +107,19 @@ static void async_connect_worker(void *arg)
     free(a);
 }
 
+/// @brief Async connect.
 void *rt_async_connect(rt_string host, int64_t port)
 {
     const char *h = rt_string_cstr(host);
-    if (!h) rt_trap("AsyncSocket: NULL host");
+    if (!h)
+        rt_trap("AsyncSocket: NULL host");
 
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
     connect_args_t *args = (connect_args_t *)malloc(sizeof(connect_args_t));
-    if (!args) rt_trap("AsyncSocket: OOM");
+    if (!args)
+        rt_trap("AsyncSocket: OOM");
     args->host = strdup(h);
     args->port = port;
     args->promise = promise;
@@ -134,15 +148,18 @@ static void async_send_worker(void *arg)
     free(a);
 }
 
+/// @brief Async send.
 void *rt_async_send(void *tcp, void *data)
 {
-    if (!tcp || !data) rt_trap("AsyncSocket: NULL arg");
+    if (!tcp || !data)
+        rt_trap("AsyncSocket: NULL arg");
 
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
     send_args_t *args = (send_args_t *)malloc(sizeof(send_args_t));
-    if (!args) rt_trap("AsyncSocket: OOM");
+    if (!args)
+        rt_trap("AsyncSocket: OOM");
     args->tcp = tcp;
     args->data = data;
     args->promise = promise;
@@ -170,15 +187,18 @@ static void async_recv_worker(void *arg)
     free(a);
 }
 
+/// @brief Async recv.
 void *rt_async_recv(void *tcp, int64_t max_bytes)
 {
-    if (!tcp) rt_trap("AsyncSocket: NULL tcp");
+    if (!tcp)
+        rt_trap("AsyncSocket: NULL tcp");
 
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
     recv_args_t *args = (recv_args_t *)malloc(sizeof(recv_args_t));
-    if (!args) rt_trap("AsyncSocket: OOM");
+    if (!args)
+        rt_trap("AsyncSocket: OOM");
     args->tcp = tcp;
     args->max_bytes = max_bytes;
     args->promise = promise;
@@ -209,16 +229,19 @@ static void async_http_get_worker(void *arg)
     free(a);
 }
 
+/// @brief Async http get.
 void *rt_async_http_get(rt_string url)
 {
     const char *u = rt_string_cstr(url);
-    if (!u) rt_trap("AsyncSocket: NULL URL");
+    if (!u)
+        rt_trap("AsyncSocket: NULL URL");
 
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
     http_args_t *args = (http_args_t *)malloc(sizeof(http_args_t));
-    if (!args) rt_trap("AsyncSocket: OOM");
+    if (!args)
+        rt_trap("AsyncSocket: OOM");
     args->url = strdup(u);
     args->body = NULL;
     args->promise = promise;
@@ -231,8 +254,8 @@ static void async_http_post_worker(void *arg)
 {
     http_args_t *a = (http_args_t *)arg;
     rt_string url = rt_string_from_bytes(a->url, strlen(a->url));
-    rt_string body = a->body ? rt_string_from_bytes(a->body, strlen(a->body))
-                             : rt_string_from_bytes("", 0);
+    rt_string body =
+        a->body ? rt_string_from_bytes(a->body, strlen(a->body)) : rt_string_from_bytes("", 0);
     rt_string result = rt_http_post(url, body);
     rt_string_unref(url);
     rt_string_unref(body);
@@ -242,17 +265,20 @@ static void async_http_post_worker(void *arg)
     free(a);
 }
 
+/// @brief Async http post.
 void *rt_async_http_post(rt_string url, rt_string body)
 {
     const char *u = rt_string_cstr(url);
     const char *b = rt_string_cstr(body);
-    if (!u) rt_trap("AsyncSocket: NULL URL");
+    if (!u)
+        rt_trap("AsyncSocket: NULL URL");
 
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
     http_args_t *args = (http_args_t *)malloc(sizeof(http_args_t));
-    if (!args) rt_trap("AsyncSocket: OOM");
+    if (!args)
+        rt_trap("AsyncSocket: OOM");
     args->url = strdup(u);
     args->body = b ? strdup(b) : NULL;
     args->promise = promise;

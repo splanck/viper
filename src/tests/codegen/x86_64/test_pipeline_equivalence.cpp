@@ -121,8 +121,7 @@ namespace
     manager.addPass(std::make_unique<viper::codegen::x64::passes::LoweringPass>());
     manager.addPass(std::make_unique<viper::codegen::x64::passes::LegalizePass>());
     manager.addPass(std::make_unique<viper::codegen::x64::passes::RegAllocPass>());
-    manager.addPass(
-        std::make_unique<viper::codegen::x64::passes::BinaryEmitPass>(false, opts));
+    manager.addPass(std::make_unique<viper::codegen::x64::passes::BinaryEmitPass>(false, opts));
 
     if (!manager.run(module, diags) || !module.binaryText)
     {

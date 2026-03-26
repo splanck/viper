@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_dropdown.c
+//
+//===----------------------------------------------------------------------===//
 // vg_dropdown.c - Dropdown/ComboBox widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -292,6 +302,7 @@ vg_dropdown_t *vg_dropdown_create(vg_widget_t *parent)
     return dropdown;
 }
 
+/// @brief Dropdown add item.
 int vg_dropdown_add_item(vg_dropdown_t *dropdown, const char *text)
 {
     if (!dropdown || !text)
@@ -312,6 +323,7 @@ int vg_dropdown_add_item(vg_dropdown_t *dropdown, const char *text)
     return dropdown->item_count++;
 }
 
+/// @brief Dropdown remove item.
 void vg_dropdown_remove_item(vg_dropdown_t *dropdown, int index)
 {
     if (!dropdown || index < 0 || index >= dropdown->item_count)
@@ -337,6 +349,7 @@ void vg_dropdown_remove_item(vg_dropdown_t *dropdown, int index)
     }
 }
 
+/// @brief Dropdown clear.
 void vg_dropdown_clear(vg_dropdown_t *dropdown)
 {
     if (!dropdown)
@@ -350,6 +363,7 @@ void vg_dropdown_clear(vg_dropdown_t *dropdown)
     dropdown->selected_index = -1;
 }
 
+/// @brief Dropdown set selected.
 void vg_dropdown_set_selected(vg_dropdown_t *dropdown, int index)
 {
     if (!dropdown)
@@ -374,6 +388,7 @@ void vg_dropdown_set_selected(vg_dropdown_t *dropdown, int index)
     }
 }
 
+/// @brief Dropdown get selected.
 int vg_dropdown_get_selected(vg_dropdown_t *dropdown)
 {
     return dropdown ? dropdown->selected_index : -1;
@@ -389,6 +404,7 @@ const char *vg_dropdown_get_selected_text(vg_dropdown_t *dropdown)
     return dropdown->items[dropdown->selected_index];
 }
 
+/// @brief Dropdown set placeholder.
 void vg_dropdown_set_placeholder(vg_dropdown_t *dropdown, const char *text)
 {
     if (!dropdown)
@@ -397,6 +413,7 @@ void vg_dropdown_set_placeholder(vg_dropdown_t *dropdown, const char *text)
     dropdown->placeholder = text; // Note: not copying, user must keep string alive
 }
 
+/// @brief Dropdown set font.
 void vg_dropdown_set_font(vg_dropdown_t *dropdown, vg_font_t *font, float size)
 {
     if (!dropdown)
@@ -405,6 +422,7 @@ void vg_dropdown_set_font(vg_dropdown_t *dropdown, vg_font_t *font, float size)
     dropdown->font_size = size;
 }
 
+/// @brief Dropdown set on change.
 void vg_dropdown_set_on_change(vg_dropdown_t *dropdown,
                                vg_dropdown_callback_t callback,
                                void *user_data)

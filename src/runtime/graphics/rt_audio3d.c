@@ -38,6 +38,9 @@ static double listener_fwd[3] = {0, 0, -1};
 static double listener_right[3] = {1, 0, 0};
 static double saved_max_dist = 50.0;
 
+/// @brief Perform audio3d set listener operation.
+/// @param position
+/// @param forward
 void rt_audio3d_set_listener(void *position, void *forward)
 {
     if (!position || !forward)
@@ -90,6 +93,12 @@ static void compute_3d_params(
     }
 }
 
+/// @brief Perform audio3d play at operation.
+/// @param sound
+/// @param position
+/// @param max_distance
+/// @param volume
+/// @return Result value.
 int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int64_t volume)
 {
     if (!sound || !position)
@@ -101,6 +110,10 @@ int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int
     return rt_sound_play_ex(sound, vol, pan);
 }
 
+/// @brief Perform audio3d update voice operation.
+/// @param voice
+/// @param position
+/// @param max_distance
 void rt_audio3d_update_voice(int64_t voice, void *position, double max_distance)
 {
     if (!position || voice <= 0)

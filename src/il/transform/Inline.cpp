@@ -63,8 +63,8 @@ struct InlineCost
     /// @brief Check if within basic structural constraints.
     bool isInlinable() const
     {
-        return !recursive && !hasEH && !hasAlloca && !hasNonScalarSignature &&
-               !unsupportedCFG && hasReturn;
+        return !recursive && !hasEH && !hasAlloca && !hasNonScalarSignature && !unsupportedCFG &&
+               hasReturn;
     }
 
     /// @brief Compute adjusted cost considering bonuses.
@@ -609,8 +609,7 @@ bool inlineCallSite(Function &caller,
     std::vector<unsigned> escapedIds;
     for (unsigned id : contUsed)
     {
-        if (contDefined.find(id) == contDefined.end() &&
-            allocaIds.find(id) == allocaIds.end())
+        if (contDefined.find(id) == contDefined.end() && allocaIds.find(id) == allocaIds.end())
             escapedIds.push_back(id);
     }
     std::sort(escapedIds.begin(), escapedIds.end());
@@ -1018,9 +1017,14 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
                 }
 
                 unsigned depth = getBlockDepth(depths, caller.name, block.label);
-                if (!inlineCallSite(
-                        caller, blockIdx, instIdx, *callee, depth, config_.maxInlineDepth, depths,
-                        functionLookup))
+                if (!inlineCallSite(caller,
+                                    blockIdx,
+                                    instIdx,
+                                    *callee,
+                                    depth,
+                                    config_.maxInlineDepth,
+                                    depths,
+                                    functionLookup))
                 {
                     ++instIdx;
                     continue;

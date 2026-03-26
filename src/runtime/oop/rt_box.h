@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/oop/rt_box.h
 // Purpose: Boxing and unboxing primitives for storing primitive types (i64, f64, i1, str) in
 // heap-allocated objects for use in generic collections.

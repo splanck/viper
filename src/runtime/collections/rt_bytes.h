@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_bytes.h
 // Purpose: Efficient byte array type for binary data manipulation, providing creation, element
 // access, search, encoding/decoding, and conversion to/from strings and hex.

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_countdown.h
 // Purpose: Countdown timer providing interval-based expiration detection with start, stop, reset,
 // and query operations, suitable for game loops and timed events.

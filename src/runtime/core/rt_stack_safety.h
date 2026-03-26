@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_stack_safety.h
 // Purpose: Stack overflow detection and graceful error handling for native code, registering
 // platform-specific exception/signal handlers to produce a diagnostic message instead of a hard

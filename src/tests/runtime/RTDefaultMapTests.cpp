@@ -151,6 +151,7 @@ static void test_null_safety()
     assert(rt_defaultmap_get_default(NULL) == NULL);
 }
 
+/// @brief Main.
 int main()
 {
     test_new();

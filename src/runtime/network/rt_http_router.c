@@ -58,8 +58,8 @@ typedef struct
 
 typedef struct
 {
-    char *method;                     // "GET", "POST", etc.
-    char *pattern;                    // Original pattern string
+    char *method;  // "GET", "POST", etc.
+    char *pattern; // Original pattern string
     segment_t segments[MAX_ROUTE_SEGMENTS];
     int segment_count;
 } route_t;

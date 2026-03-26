@@ -823,6 +823,7 @@ static void jpoint_to_affine(u256 x, u256 y, const jpoint *P)
 // ECDSA P-256 Verification (FIPS 186-4 / SEC1 §4.1.4)
 //=============================================================================
 
+/// @brief Ecdsa p256 verify.
 int ecdsa_p256_verify(const uint8_t pubkey_x[32],
                       const uint8_t pubkey_y[32],
                       const uint8_t digest[32],

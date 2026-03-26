@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_math.h
 // Purpose: Runtime library mathematical functions for BASIC programs, including transcendental
 // (sin, cos, tan, atan, exp, log), rounding (floor, ceil), and sign/absolute-value operations.

@@ -139,6 +139,7 @@ static void test_roundtrip_escape_unescape()
     assert(strcmp(rt_string_cstr(unescaped), "Hello <World> & \"Friends\"") == 0);
 }
 
+/// @brief Main.
 int main()
 {
     test_escape();

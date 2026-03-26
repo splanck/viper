@@ -1,5 +1,8 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
+//
+// Purpose: Bytecode opcode name table and encoding utilities for the Viper
+//   bytecode VM. Maps BCOpcode enum values to human-readable strings.
 
 #include "bytecode/Bytecode.hpp"
 

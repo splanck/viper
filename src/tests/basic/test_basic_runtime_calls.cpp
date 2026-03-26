@@ -110,6 +110,7 @@ PRINT "created"
 )"));
 }
 
+/// @brief Main.
 int main()
 {
     return viper_test::run_all_tests();

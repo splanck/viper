@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_contextmenu.c
+//
+//===----------------------------------------------------------------------===//
 // vg_contextmenu.c - ContextMenu widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -223,6 +233,7 @@ static void contextmenu_destroy(vg_widget_t *widget)
     free(menu->items);
 }
 
+/// @brief Contextmenu destroy.
 void vg_contextmenu_destroy(vg_contextmenu_t *menu)
 {
     if (menu)
@@ -664,6 +675,7 @@ vg_menu_item_t *vg_contextmenu_add_submenu(vg_contextmenu_t *menu,
     return item;
 }
 
+/// @brief Contextmenu add separator.
 void vg_contextmenu_add_separator(vg_contextmenu_t *menu)
 {
     if (!menu)
@@ -692,6 +704,7 @@ void vg_contextmenu_add_separator(vg_contextmenu_t *menu)
     menu->items[menu->item_count++] = item;
 }
 
+/// @brief Contextmenu clear.
 void vg_contextmenu_clear(vg_contextmenu_t *menu)
 {
     if (!menu)
@@ -704,18 +717,21 @@ void vg_contextmenu_clear(vg_contextmenu_t *menu)
     menu->item_count = 0;
 }
 
+/// @brief Contextmenu item set enabled.
 void vg_contextmenu_item_set_enabled(vg_menu_item_t *item, bool enabled)
 {
     if (item)
         item->enabled = enabled;
 }
 
+/// @brief Contextmenu item set checked.
 void vg_contextmenu_item_set_checked(vg_menu_item_t *item, bool checked)
 {
     if (item)
         item->checked = checked;
 }
 
+/// @brief Contextmenu item set icon.
 void vg_contextmenu_item_set_icon(vg_menu_item_t *item, vg_icon_t icon)
 {
     (void)item;
@@ -723,6 +739,7 @@ void vg_contextmenu_item_set_icon(vg_menu_item_t *item, vg_icon_t icon)
     // Icons not yet implemented for menu items
 }
 
+/// @brief Contextmenu show at.
 void vg_contextmenu_show_at(vg_contextmenu_t *menu, int x, int y)
 {
     if (!menu)
@@ -764,6 +781,7 @@ void vg_contextmenu_show_at(vg_contextmenu_t *menu, int x, int y)
     menu->base.needs_paint = true;
 }
 
+/// @brief Contextmenu show for widget.
 void vg_contextmenu_show_for_widget(vg_contextmenu_t *menu,
                                     vg_widget_t *widget,
                                     int offset_x,
@@ -777,6 +795,7 @@ void vg_contextmenu_show_for_widget(vg_contextmenu_t *menu,
     vg_contextmenu_show_at(menu, x, y);
 }
 
+/// @brief Contextmenu dismiss.
 void vg_contextmenu_dismiss(vg_contextmenu_t *menu)
 {
     if (!menu)
@@ -801,6 +820,7 @@ void vg_contextmenu_dismiss(vg_contextmenu_t *menu)
     }
 }
 
+/// @brief Contextmenu set on select.
 void vg_contextmenu_set_on_select(vg_contextmenu_t *menu,
                                   void (*callback)(vg_contextmenu_t *, vg_menu_item_t *, void *),
                                   void *user_data)
@@ -811,6 +831,7 @@ void vg_contextmenu_set_on_select(vg_contextmenu_t *menu,
     menu->user_data = user_data;
 }
 
+/// @brief Contextmenu set on dismiss.
 void vg_contextmenu_set_on_dismiss(vg_contextmenu_t *menu,
                                    void (*callback)(vg_contextmenu_t *, void *),
                                    void *user_data)
@@ -821,6 +842,7 @@ void vg_contextmenu_set_on_dismiss(vg_contextmenu_t *menu,
     menu->user_data = user_data;
 }
 
+/// @brief Contextmenu register for widget.
 void vg_contextmenu_register_for_widget(vg_widget_t *widget, vg_contextmenu_t *menu)
 {
     if (!widget || !menu)
@@ -845,6 +867,7 @@ void vg_contextmenu_register_for_widget(vg_widget_t *widget, vg_contextmenu_t *m
     }
 }
 
+/// @brief Contextmenu unregister for widget.
 void vg_contextmenu_unregister_for_widget(vg_widget_t *widget)
 {
     if (!widget)
@@ -881,6 +904,7 @@ bool vg_contextmenu_process_event(vg_widget_t *widget, vg_event_t *event)
     return false;
 }
 
+/// @brief Contextmenu set font.
 void vg_contextmenu_set_font(vg_contextmenu_t *menu, vg_font_t *font, float size)
 {
     if (!menu)

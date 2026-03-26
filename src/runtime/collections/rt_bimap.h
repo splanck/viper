@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_bimap.h
 // Purpose: Bidirectional string-to-string map where every key maps to exactly one value and every
 // value maps to exactly one key, supporting lookup in both directions.

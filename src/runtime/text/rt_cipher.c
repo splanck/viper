@@ -99,13 +99,15 @@ static void derive_key(const char *password,
     // Clear PRK from stack
     // Use volatile to prevent compiler from eliding the key-scrubbing write
     volatile uint8_t *vp = (volatile uint8_t *)prk;
-    for (size_t i = 0; i < sizeof(prk); i++) vp[i] = 0;
+    for (size_t i = 0; i < sizeof(prk); i++)
+        vp[i] = 0;
 }
 
 //=============================================================================
 // Password-Based Encryption
 //=============================================================================
 
+/// @brief Cipher encrypt.
 void *rt_cipher_encrypt(void *plaintext, rt_string password)
 {
     if (!plaintext)
@@ -156,11 +158,13 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password)
     // Clear key from stack
     // Use volatile to prevent compiler from eliding the key-scrubbing write
     volatile uint8_t *vk = (volatile uint8_t *)key;
-    for (size_t i = 0; i < sizeof(key); i++) vk[i] = 0;
+    for (size_t i = 0; i < sizeof(key); i++)
+        vk[i] = 0;
 
     return result;
 }
 
+/// @brief Cipher decrypt.
 void *rt_cipher_decrypt(void *ciphertext, rt_string password)
 {
     if (!ciphertext)
@@ -215,7 +219,8 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password)
     // Clear key from stack
     // Use volatile to prevent compiler from eliding the key-scrubbing write
     volatile uint8_t *vk = (volatile uint8_t *)key;
-    for (size_t i = 0; i < sizeof(key); i++) vk[i] = 0;
+    for (size_t i = 0; i < sizeof(key); i++)
+        vk[i] = 0;
 
     if (decrypt_result < 0)
     {
@@ -230,6 +235,7 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password)
 // Key-Based Encryption
 //=============================================================================
 
+/// @brief Cipher encrypt with key.
 void *rt_cipher_encrypt_with_key(void *plaintext, void *key_bytes)
 {
     if (!plaintext)
@@ -272,6 +278,7 @@ void *rt_cipher_encrypt_with_key(void *plaintext, void *key_bytes)
     return result;
 }
 
+/// @brief Cipher decrypt with key.
 void *rt_cipher_decrypt_with_key(void *ciphertext, void *key_bytes)
 {
     if (!ciphertext)
@@ -330,6 +337,7 @@ void *rt_cipher_decrypt_with_key(void *ciphertext, void *key_bytes)
 // Key Generation
 //=============================================================================
 
+/// @brief Cipher generate key.
 void *rt_cipher_generate_key(void)
 {
     void *key = rt_bytes_new(CIPHER_KEY_SIZE);
@@ -337,6 +345,7 @@ void *rt_cipher_generate_key(void)
     return key;
 }
 
+/// @brief Cipher derive key.
 void *rt_cipher_derive_key(rt_string password, void *salt_bytes)
 {
     if (!salt_bytes)

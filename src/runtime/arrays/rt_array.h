@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/arrays/rt_array.h
 // Purpose: Dynamic array API for 32-bit integers (i32) backing BASIC DIM/REDIM statements,
 // providing allocation, reference counting, bounds-checked access, and resize operations.

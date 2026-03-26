@@ -1,3 +1,16 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// Purpose: Tier 1 GUI widget fix validation tests — button, checkbox, dropdown, slider, scrollview,
+// textinput regression tests.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/tests/test_vg_tier1_fixes.c
+//
+//===----------------------------------------------------------------------===//
 // test_vg_tier1_fixes.c — Unit tests for Tier 1 GUI bug fixes
 //
 // Tests:
@@ -548,7 +561,9 @@ TEST(textinput_utf8_backspace_removes_whole_codepoint)
 {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
-    vg_textinput_set_text(ti, "A\xE2\x82\xAC""B");
+    vg_textinput_set_text(ti,
+                          "A\xE2\x82\xAC"
+                          "B");
 
     ti->cursor_pos = 2;
     ti->selection_start = 2;
@@ -566,7 +581,9 @@ TEST(textinput_utf8_selection_extracts_full_character)
 {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
-    vg_textinput_set_text(ti, "A\xE2\x82\xAC""B");
+    vg_textinput_set_text(ti,
+                          "A\xE2\x82\xAC"
+                          "B");
 
     vg_textinput_select(ti, 1, 2);
     char *selection = vg_textinput_get_selection(ti);

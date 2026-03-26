@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_spritebatch.h
 // Purpose: SpriteBatch for efficient batched sprite rendering, accumulating draw calls and
 // submitting them to the GPU in a single batch to reduce render API overhead.
@@ -163,17 +166,21 @@ extern "C"
     //=========================================================================
 
     /// @brief Draw a named atlas region through the sprite batch.
-    void rt_spritebatch_draw_atlas(void *batch, void *atlas, void *name,
-                                   int64_t x, int64_t y);
+    void rt_spritebatch_draw_atlas(void *batch, void *atlas, void *name, int64_t x, int64_t y);
 
     /// @brief Draw a named atlas region with uniform scale.
-    void rt_spritebatch_draw_atlas_scaled(void *batch, void *atlas, void *name,
-                                          int64_t x, int64_t y, int64_t scale);
+    void rt_spritebatch_draw_atlas_scaled(
+        void *batch, void *atlas, void *name, int64_t x, int64_t y, int64_t scale);
 
     /// @brief Draw a named atlas region with full transform.
-    void rt_spritebatch_draw_atlas_ex(void *batch, void *atlas, void *name,
-                                      int64_t x, int64_t y, int64_t scale,
-                                      int64_t rotation, int64_t depth);
+    void rt_spritebatch_draw_atlas_ex(void *batch,
+                                      void *atlas,
+                                      void *name,
+                                      int64_t x,
+                                      int64_t y,
+                                      int64_t scale,
+                                      int64_t rotation,
+                                      int64_t depth);
 
     //=========================================================================
     // TextureAtlas (see rt_texatlas.h for full API)

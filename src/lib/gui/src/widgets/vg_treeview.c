@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_treeview.c
+//
+//===----------------------------------------------------------------------===//
 // vg_treeview.c - TreeView widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -578,6 +588,7 @@ vg_tree_node_t *vg_treeview_add_node(vg_treeview_t *tree, vg_tree_node_t *parent
     return node;
 }
 
+/// @brief Treeview remove node.
 void vg_treeview_remove_node(vg_treeview_t *tree, vg_tree_node_t *node)
 {
     if (!tree || !node || node == tree->root)
@@ -623,6 +634,7 @@ void vg_treeview_remove_node(vg_treeview_t *tree, vg_tree_node_t *node)
     tree->base.needs_paint = true;
 }
 
+/// @brief Treeview clear.
 void vg_treeview_clear(vg_treeview_t *tree)
 {
     if (!tree)
@@ -649,6 +661,7 @@ void vg_treeview_clear(vg_treeview_t *tree)
     tree->base.needs_paint = true;
 }
 
+/// @brief Treeview expand.
 void vg_treeview_expand(vg_treeview_t *tree, vg_tree_node_t *node)
 {
     if (!tree || !node)
@@ -675,6 +688,7 @@ void vg_treeview_expand(vg_treeview_t *tree, vg_tree_node_t *node)
     }
 }
 
+/// @brief Treeview collapse.
 void vg_treeview_collapse(vg_treeview_t *tree, vg_tree_node_t *node)
 {
     if (!tree || !node)
@@ -693,6 +707,7 @@ void vg_treeview_collapse(vg_treeview_t *tree, vg_tree_node_t *node)
     }
 }
 
+/// @brief Treeview toggle.
 void vg_treeview_toggle(vg_treeview_t *tree, vg_tree_node_t *node)
 {
     if (!tree || !node)
@@ -708,6 +723,7 @@ void vg_treeview_toggle(vg_treeview_t *tree, vg_tree_node_t *node)
     }
 }
 
+/// @brief Treeview select.
 void vg_treeview_select(vg_treeview_t *tree, vg_tree_node_t *node)
 {
     if (!tree)
@@ -733,6 +749,7 @@ void vg_treeview_select(vg_treeview_t *tree, vg_tree_node_t *node)
     }
 }
 
+/// @brief Treeview scroll to.
 void vg_treeview_scroll_to(vg_treeview_t *tree, vg_tree_node_t *node)
 {
     if (!tree || !node)
@@ -759,6 +776,7 @@ void vg_treeview_scroll_to(vg_treeview_t *tree, vg_tree_node_t *node)
     tree->base.needs_paint = true;
 }
 
+/// @brief Tree node set data.
 void vg_tree_node_set_data(vg_tree_node_t *node, void *data)
 {
     if (node)
@@ -767,6 +785,7 @@ void vg_tree_node_set_data(vg_tree_node_t *node, void *data)
     }
 }
 
+/// @brief Treeview set font.
 void vg_treeview_set_font(vg_treeview_t *tree, vg_font_t *font, float size)
 {
     if (!tree)
@@ -778,6 +797,7 @@ void vg_treeview_set_font(vg_treeview_t *tree, vg_font_t *font, float size)
     tree->base.needs_paint = true;
 }
 
+/// @brief Treeview set on select.
 void vg_treeview_set_on_select(vg_treeview_t *tree,
                                vg_tree_select_callback_t callback,
                                void *user_data)
@@ -789,6 +809,7 @@ void vg_treeview_set_on_select(vg_treeview_t *tree,
     tree->on_select_data = user_data;
 }
 
+/// @brief Treeview set on expand.
 void vg_treeview_set_on_expand(vg_treeview_t *tree,
                                vg_tree_expand_callback_t callback,
                                void *user_data)
@@ -800,6 +821,7 @@ void vg_treeview_set_on_expand(vg_treeview_t *tree,
     tree->on_expand_data = user_data;
 }
 
+/// @brief Treeview set on activate.
 void vg_treeview_set_on_activate(vg_treeview_t *tree,
                                  vg_tree_activate_callback_t callback,
                                  void *user_data)
@@ -822,6 +844,7 @@ void vg_tree_node_set_icon(vg_tree_node_t *node, vg_icon_t icon)
     node->icon = icon;
 }
 
+/// @brief Tree node set expanded icon.
 void vg_tree_node_set_expanded_icon(vg_tree_node_t *node, vg_icon_t icon)
 {
     if (!node)
@@ -840,6 +863,7 @@ void vg_treeview_set_drag_enabled(vg_treeview_t *tree, bool enabled)
     tree->drag_enabled = enabled;
 }
 
+/// @brief Treeview set drag callbacks.
 void vg_treeview_set_drag_callbacks(vg_treeview_t *tree,
                                     vg_tree_can_drag_callback_t can_drag,
                                     vg_tree_can_drop_callback_t can_drop,
@@ -870,6 +894,7 @@ void vg_treeview_set_on_load_children(vg_treeview_t *tree,
     tree->on_load_children_data = user_data;
 }
 
+/// @brief Tree node set has children.
 void vg_tree_node_set_has_children(vg_tree_node_t *node, bool has_children)
 {
     if (!node)
@@ -877,6 +902,7 @@ void vg_tree_node_set_has_children(vg_tree_node_t *node, bool has_children)
     node->has_children = has_children;
 }
 
+/// @brief Tree node set loading.
 void vg_tree_node_set_loading(vg_tree_node_t *node, bool loading)
 {
     if (!node)

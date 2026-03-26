@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_gc.h
 // Purpose: Cycle-detecting garbage collector supplementing atomic reference counting, using a
 // trial-deletion mark-sweep algorithm to find and break unreachable reference cycles among tracked

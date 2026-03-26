@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_scrollview.c
+//
+//===----------------------------------------------------------------------===//
 // vg_scrollview.c - Scroll view widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -476,6 +486,7 @@ void vg_scrollview_set_scroll(vg_scrollview_t *scroll, float x, float y)
     scroll->base.needs_paint = true;
 }
 
+/// @brief Scrollview get scroll.
 void vg_scrollview_get_scroll(vg_scrollview_t *scroll, float *out_x, float *out_y)
 {
     if (!scroll)
@@ -487,6 +498,7 @@ void vg_scrollview_get_scroll(vg_scrollview_t *scroll, float *out_x, float *out_
         *out_y = scroll->scroll_y;
 }
 
+/// @brief Scrollview set content size.
 void vg_scrollview_set_content_size(vg_scrollview_t *scroll, float width, float height)
 {
     if (!scroll)
@@ -499,6 +511,7 @@ void vg_scrollview_set_content_size(vg_scrollview_t *scroll, float width, float 
     scroll->base.needs_paint = true;
 }
 
+/// @brief Scrollview scroll to widget.
 void vg_scrollview_scroll_to_widget(vg_scrollview_t *scroll, vg_widget_t *child)
 {
     if (!scroll || !child)
@@ -546,6 +559,7 @@ void vg_scrollview_scroll_to_widget(vg_scrollview_t *scroll, vg_widget_t *child)
     base->needs_paint = true;
 }
 
+/// @brief Scrollview set direction.
 void vg_scrollview_set_direction(vg_scrollview_t *scroll, vg_scroll_direction_t direction)
 {
     if (!scroll)

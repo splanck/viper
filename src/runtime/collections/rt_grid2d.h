@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_grid2d.h
 // Purpose: 2D grid container for integer values with fixed dimensions, providing element access,
 // fill, copy, and region operations for tile maps and pixel buffers.

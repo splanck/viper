@@ -26,11 +26,11 @@ extern "C"
 {
 #endif
 
-    void   *rt_decal3d_new(void *position, void *normal, double size, void *texture);
-    void    rt_decal3d_set_lifetime(void *decal, double seconds);
-    void    rt_decal3d_update(void *decal, double dt);
-    int8_t  rt_decal3d_is_expired(void *decal);
-    void    rt_canvas3d_draw_decal(void *canvas, void *decal);
+    void *rt_decal3d_new(void *position, void *normal, double size, void *texture);
+    void rt_decal3d_set_lifetime(void *decal, double seconds);
+    void rt_decal3d_update(void *decal, double dt);
+    int8_t rt_decal3d_is_expired(void *decal);
+    void rt_canvas3d_draw_decal(void *canvas, void *decal);
 
 #ifdef __cplusplus
 }

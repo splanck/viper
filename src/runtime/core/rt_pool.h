@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_pool.h
 // Purpose: Slab allocator with four size classes (64, 128, 256, 512 bytes), reducing allocation
 // overhead by reusing freed blocks without returning to the system allocator.

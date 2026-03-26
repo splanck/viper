@@ -32,8 +32,8 @@ extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_trap(const char *msg);
 extern void *rt_mesh3d_new(void);
-extern void rt_mesh3d_add_vertex(void *m, double x, double y, double z,
-                                  double nx, double ny, double nz, double u, double v);
+extern void rt_mesh3d_add_vertex(
+    void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
 extern void *rt_mat4_identity(void);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
@@ -54,20 +54,32 @@ typedef struct
     int32_t tex_w, tex_h;
 } rt_sprite3d;
 
-static void sprite3d_finalizer(void *obj) { (void)obj; }
+static void sprite3d_finalizer(void *obj)
+{
+    (void)obj;
+}
 
 void *rt_sprite3d_new(void *texture)
 {
     rt_sprite3d *s = (rt_sprite3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sprite3d));
-    if (!s) { rt_trap("Sprite3D.New: allocation failed"); return NULL; }
+    if (!s)
+    {
+        rt_trap("Sprite3D.New: allocation failed");
+        return NULL;
+    }
     s->vptr = NULL;
     s->texture = texture;
     s->position[0] = s->position[1] = s->position[2] = 0.0;
-    s->scale_wh[0] = 1.0; s->scale_wh[1] = 1.0;
-    s->anchor[0] = 0.5; s->anchor[1] = 0.5;
-    s->frame_x = 0; s->frame_y = 0;
-    s->frame_w = 0; s->frame_h = 0; /* 0 = use full texture */
-    s->tex_w = 0; s->tex_h = 0;
+    s->scale_wh[0] = 1.0;
+    s->scale_wh[1] = 1.0;
+    s->anchor[0] = 0.5;
+    s->anchor[1] = 0.5;
+    s->frame_x = 0;
+    s->frame_y = 0;
+    s->frame_w = 0;
+    s->frame_h = 0; /* 0 = use full texture */
+    s->tex_w = 0;
+    s->tex_h = 0;
 
     /* Try to get texture dimensions */
     if (texture)
@@ -82,38 +94,72 @@ void *rt_sprite3d_new(void *texture)
     return s;
 }
 
+/// @brief Perform sprite3d set position operation.
+/// @param obj
+/// @param x
+/// @param y
+/// @param z
 void rt_sprite3d_set_position(void *obj, double x, double y, double z)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_sprite3d *s = (rt_sprite3d *)obj;
-    s->position[0] = x; s->position[1] = y; s->position[2] = z;
+    s->position[0] = x;
+    s->position[1] = y;
+    s->position[2] = z;
 }
 
+/// @brief Perform sprite3d set scale operation.
+/// @param obj
+/// @param w
+/// @param h
 void rt_sprite3d_set_scale(void *obj, double w, double h)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_sprite3d *s = (rt_sprite3d *)obj;
-    s->scale_wh[0] = w; s->scale_wh[1] = h;
+    s->scale_wh[0] = w;
+    s->scale_wh[1] = h;
 }
 
+/// @brief Perform sprite3d set anchor operation.
+/// @param obj
+/// @param ax
+/// @param ay
 void rt_sprite3d_set_anchor(void *obj, double ax, double ay)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_sprite3d *s = (rt_sprite3d *)obj;
-    s->anchor[0] = ax; s->anchor[1] = ay;
+    s->anchor[0] = ax;
+    s->anchor[1] = ay;
 }
 
+/// @brief Perform sprite3d set frame operation.
+/// @param obj
+/// @param fx
+/// @param fy
+/// @param fw
+/// @param fh
 void rt_sprite3d_set_frame(void *obj, int64_t fx, int64_t fy, int64_t fw, int64_t fh)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_sprite3d *s = (rt_sprite3d *)obj;
-    s->frame_x = (int32_t)fx; s->frame_y = (int32_t)fy;
-    s->frame_w = (int32_t)fw; s->frame_h = (int32_t)fh;
+    s->frame_x = (int32_t)fx;
+    s->frame_y = (int32_t)fy;
+    s->frame_w = (int32_t)fw;
+    s->frame_h = (int32_t)fh;
 }
 
+/// @brief Perform canvas3d draw sprite3d operation.
+/// @param canvas
+/// @param obj
+/// @param camera
 void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera)
 {
-    if (!canvas || !obj || !camera) return;
+    if (!canvas || !obj || !camera)
+        return;
     rt_sprite3d *s = (rt_sprite3d *)obj;
     rt_camera3d *cam = (rt_camera3d *)camera;
 
@@ -145,20 +191,49 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera)
     void *mesh = rt_mesh3d_new();
     double nx = -(cam->view[8]), ny = -(cam->view[9]), nz = -(cam->view[10]); /* face camera */
 
-    rt_mesh3d_add_vertex(mesh, cx - rx*hw - ux*hh, cy - ry*hw - uy*hh, cz - rz*hw - uz*hh,
-                          nx, ny, nz, u0, v1);
-    rt_mesh3d_add_vertex(mesh, cx + rx*hw - ux*hh, cy + ry*hw - uy*hh, cz + rz*hw - uz*hh,
-                          nx, ny, nz, u1, v1);
-    rt_mesh3d_add_vertex(mesh, cx + rx*hw + ux*hh, cy + ry*hw + uy*hh, cz + rz*hw + uz*hh,
-                          nx, ny, nz, u1, v0);
-    rt_mesh3d_add_vertex(mesh, cx - rx*hw + ux*hh, cy - ry*hw + uy*hh, cz - rz*hw + uz*hh,
-                          nx, ny, nz, u0, v0);
+    rt_mesh3d_add_vertex(mesh,
+                         cx - rx * hw - ux * hh,
+                         cy - ry * hw - uy * hh,
+                         cz - rz * hw - uz * hh,
+                         nx,
+                         ny,
+                         nz,
+                         u0,
+                         v1);
+    rt_mesh3d_add_vertex(mesh,
+                         cx + rx * hw - ux * hh,
+                         cy + ry * hw - uy * hh,
+                         cz + rz * hw - uz * hh,
+                         nx,
+                         ny,
+                         nz,
+                         u1,
+                         v1);
+    rt_mesh3d_add_vertex(mesh,
+                         cx + rx * hw + ux * hh,
+                         cy + ry * hw + uy * hh,
+                         cz + rz * hw + uz * hh,
+                         nx,
+                         ny,
+                         nz,
+                         u1,
+                         v0);
+    rt_mesh3d_add_vertex(mesh,
+                         cx - rx * hw + ux * hh,
+                         cy - ry * hw + uy * hh,
+                         cz - rz * hw + uz * hh,
+                         nx,
+                         ny,
+                         nz,
+                         u0,
+                         v0);
     rt_mesh3d_add_triangle(mesh, 0, 1, 2);
     rt_mesh3d_add_triangle(mesh, 0, 2, 3);
 
     /* Material with texture, unlit */
     void *mat = rt_material3d_new();
-    if (s->texture) rt_material3d_set_texture(mat, s->texture);
+    if (s->texture)
+        rt_material3d_set_texture(mat, s->texture);
     rt_material3d_set_unlit(mat, 1);
 
     extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);

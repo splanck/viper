@@ -352,6 +352,9 @@ void *rt_json_stream_new(rt_string json)
     return s;
 }
 
+/// @brief Perform stream next operation.
+/// @param parser
+/// @return Result value.
 int64_t rt_json_stream_next(void *parser)
 {
     if (!parser)
@@ -499,6 +502,9 @@ int64_t rt_json_stream_next(void *parser)
     }
 }
 
+/// @brief Perform stream token type operation.
+/// @param parser
+/// @return Result value.
 int64_t rt_json_stream_token_type(void *parser)
 {
     if (!parser)
@@ -506,6 +512,9 @@ int64_t rt_json_stream_token_type(void *parser)
     return ((rt_json_stream_impl *)parser)->current_type;
 }
 
+/// @brief Perform stream string value operation.
+/// @param parser
+/// @return Result value.
 rt_string rt_json_stream_string_value(void *parser)
 {
     if (!parser)
@@ -516,6 +525,9 @@ rt_string rt_json_stream_string_value(void *parser)
     return rt_const_cstr("");
 }
 
+/// @brief Perform stream number value operation.
+/// @param parser
+/// @return Result value.
 double rt_json_stream_number_value(void *parser)
 {
     if (!parser)
@@ -523,6 +535,9 @@ double rt_json_stream_number_value(void *parser)
     return ((rt_json_stream_impl *)parser)->num_value;
 }
 
+/// @brief Perform stream bool value operation.
+/// @param parser
+/// @return Result value.
 int8_t rt_json_stream_bool_value(void *parser)
 {
     if (!parser)
@@ -530,6 +545,9 @@ int8_t rt_json_stream_bool_value(void *parser)
     return ((rt_json_stream_impl *)parser)->bool_value;
 }
 
+/// @brief Perform stream depth operation.
+/// @param parser
+/// @return Result value.
 int64_t rt_json_stream_depth(void *parser)
 {
     if (!parser)
@@ -537,6 +555,8 @@ int64_t rt_json_stream_depth(void *parser)
     return ((rt_json_stream_impl *)parser)->depth;
 }
 
+/// @brief Perform stream skip operation.
+/// @param parser
 void rt_json_stream_skip(void *parser)
 {
     if (!parser)
@@ -559,6 +579,9 @@ void rt_json_stream_skip(void *parser)
     /* Primitive values are already consumed */
 }
 
+/// @brief Perform stream has next operation.
+/// @param parser
+/// @return Result value.
 int8_t rt_json_stream_has_next(void *parser)
 {
     if (!parser)
@@ -570,6 +593,9 @@ int8_t rt_json_stream_has_next(void *parser)
     return c != '\0' ? 1 : 0;
 }
 
+/// @brief Perform stream error operation.
+/// @param parser
+/// @return Result value.
 rt_string rt_json_stream_error(void *parser)
 {
     if (!parser)

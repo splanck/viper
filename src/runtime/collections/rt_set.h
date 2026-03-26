@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_set.h
 // Purpose: Generic hash set using object identity (pointer equality) for element comparison,
 // providing O(1) average add, remove, and contains operations.

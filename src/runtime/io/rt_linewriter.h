@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/io/rt_linewriter.h
 // Purpose: Buffered text file writing for Viper.IO.LineWriter, supporting creation or appending
 // with Write, WriteLn, WriteChar operations and configurable line endings.

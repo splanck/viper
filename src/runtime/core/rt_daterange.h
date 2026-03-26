@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_daterange.h
 // Purpose: Date interval type representing a range between two Unix timestamps, with containment
 // testing, overlap detection, and duration queries.

@@ -147,7 +147,8 @@ class AnalysisCacheInvalidator
         {
             if (preserved_.hasChangedFunctions())
             {
-                for (auto it = manager_.functionCache_.begin(); it != manager_.functionCache_.end();)
+                for (auto it = manager_.functionCache_.begin();
+                     it != manager_.functionCache_.end();)
                 {
                     eraseChangedFunctions(it->second);
                     if (it->second.empty())

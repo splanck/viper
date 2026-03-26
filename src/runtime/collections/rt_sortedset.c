@@ -155,12 +155,18 @@ void *rt_sortedset_new(void)
     return set;
 }
 
+/// @brief Perform sortedset len operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_sortedset_len(void *obj)
 {
     rt_sortedset set = (rt_sortedset)obj;
     return set ? set->len : 0;
 }
 
+/// @brief Perform sortedset is empty operation.
+/// @param obj
+/// @return Result value.
 int8_t rt_sortedset_is_empty(void *obj)
 {
     return rt_sortedset_len(obj) == 0 ? 1 : 0;
@@ -170,6 +176,10 @@ int8_t rt_sortedset_is_empty(void *obj)
 // Basic Operations
 //=============================================================================
 
+/// @brief Perform sortedset add operation.
+/// @param obj
+/// @param str
+/// @return Result value.
 int8_t rt_sortedset_add(void *obj, rt_string str)
 {
     rt_sortedset set = (rt_sortedset)obj;
@@ -196,6 +206,10 @@ int8_t rt_sortedset_add(void *obj, rt_string str)
     return 1;
 }
 
+/// @brief Perform sortedset remove operation.
+/// @param obj
+/// @param str
+/// @return Result value.
 int8_t rt_sortedset_remove(void *obj, rt_string str)
 {
     rt_sortedset set = (rt_sortedset)obj;
@@ -221,6 +235,10 @@ int8_t rt_sortedset_remove(void *obj, rt_string str)
     return 1;
 }
 
+/// @brief Perform sortedset has operation.
+/// @param obj
+/// @param str
+/// @return Result value.
 int8_t rt_sortedset_has(void *obj, rt_string str)
 {
     rt_sortedset set = (rt_sortedset)obj;
@@ -232,6 +250,8 @@ int8_t rt_sortedset_has(void *obj, rt_string str)
     return found;
 }
 
+/// @brief Perform sortedset clear operation.
+/// @param obj
 void rt_sortedset_clear(void *obj)
 {
     rt_sortedset set = (rt_sortedset)obj;
@@ -249,6 +269,9 @@ void rt_sortedset_clear(void *obj)
 // Ordered Access
 //=============================================================================
 
+/// @brief Perform sortedset first operation.
+/// @param obj
+/// @return Result value.
 rt_string rt_sortedset_first(void *obj)
 {
     rt_sortedset set = (rt_sortedset)obj;
@@ -257,6 +280,9 @@ rt_string rt_sortedset_first(void *obj)
     return set->data[0];
 }
 
+/// @brief Perform sortedset last operation.
+/// @param obj
+/// @return Result value.
 rt_string rt_sortedset_last(void *obj)
 {
     rt_sortedset set = (rt_sortedset)obj;
@@ -265,6 +291,10 @@ rt_string rt_sortedset_last(void *obj)
     return set->data[set->len - 1];
 }
 
+/// @brief Perform sortedset floor operation.
+/// @param obj
+/// @param str
+/// @return Result value.
 rt_string rt_sortedset_floor(void *obj, rt_string str)
 {
     rt_sortedset set = (rt_sortedset)obj;
@@ -281,6 +311,10 @@ rt_string rt_sortedset_floor(void *obj, rt_string str)
     return set->data[idx - 1];
 }
 
+/// @brief Perform sortedset ceil operation.
+/// @param obj
+/// @param str
+/// @return Result value.
 rt_string rt_sortedset_ceil(void *obj, rt_string str)
 {
     rt_sortedset set = (rt_sortedset)obj;
@@ -297,6 +331,10 @@ rt_string rt_sortedset_ceil(void *obj, rt_string str)
     return set->data[idx];
 }
 
+/// @brief Perform sortedset lower operation.
+/// @param obj
+/// @param str
+/// @return Result value.
 rt_string rt_sortedset_lower(void *obj, rt_string str)
 {
     rt_sortedset set = (rt_sortedset)obj;
@@ -317,6 +355,10 @@ rt_string rt_sortedset_lower(void *obj, rt_string str)
     return set->data[idx];
 }
 
+/// @brief Perform sortedset higher operation.
+/// @param obj
+/// @param str
+/// @return Result value.
 rt_string rt_sortedset_higher(void *obj, rt_string str)
 {
     rt_sortedset set = (rt_sortedset)obj;
@@ -335,6 +377,10 @@ rt_string rt_sortedset_higher(void *obj, rt_string str)
     return set->data[idx];
 }
 
+/// @brief Perform sortedset at operation.
+/// @param obj
+/// @param index
+/// @return Result value.
 rt_string rt_sortedset_at(void *obj, int64_t index)
 {
     rt_sortedset set = (rt_sortedset)obj;
@@ -343,6 +389,10 @@ rt_string rt_sortedset_at(void *obj, int64_t index)
     return set->data[index];
 }
 
+/// @brief Perform sortedset index of operation.
+/// @param obj
+/// @param str
+/// @return Result value.
 int64_t rt_sortedset_index_of(void *obj, rt_string str)
 {
     rt_sortedset set = (rt_sortedset)obj;
@@ -537,6 +587,10 @@ void *rt_sortedset_diff(void *obj, void *other)
     return result;
 }
 
+/// @brief Perform sortedset is subset operation.
+/// @param obj
+/// @param other
+/// @return Result value.
 int8_t rt_sortedset_is_subset(void *obj, void *other)
 {
     rt_sortedset a = (rt_sortedset)obj;

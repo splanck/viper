@@ -43,6 +43,7 @@ TEST(create_destroy)
 TEST(setup)
 {
     rt_spriteanim sa = rt_spriteanim_new();
+    /// @brief Rt_spriteanim_setup.
     rt_spriteanim_setup(sa, 0, 7, 6); // Frames 0-7, 6 ticks each
 
     ASSERT(rt_spriteanim_frame_count(sa) == 8);
@@ -67,6 +68,7 @@ TEST(play_stop)
 TEST(update_frames)
 {
     rt_spriteanim sa = rt_spriteanim_new();
+    /// @brief Rt_spriteanim_setup.
     rt_spriteanim_setup(sa, 0, 3, 2); // 4 frames, 2 ticks each
     rt_spriteanim_play(sa);
 
@@ -86,11 +88,14 @@ TEST(update_frames)
 TEST(loop)
 {
     rt_spriteanim sa = rt_spriteanim_new();
+    /// @brief Rt_spriteanim_setup.
     rt_spriteanim_setup(sa, 0, 1, 1); // 2 frames, 1 tick each
     rt_spriteanim_set_loop(sa, 1);
     rt_spriteanim_play(sa);
 
+    /// @brief Rt_spriteanim_update.
     rt_spriteanim_update(sa); // Frame 0 -> 1
+                              /// @brief Rt_spriteanim_update.
     rt_spriteanim_update(sa); // Frame 1 -> 0 (loop)
     ASSERT(rt_spriteanim_frame(sa) == 0);
     ASSERT(rt_spriteanim_is_finished(sa) == 0);
@@ -104,6 +109,7 @@ TEST(one_shot)
     rt_spriteanim_set_loop(sa, 0);
     rt_spriteanim_play(sa);
 
+    /// @brief Rt_spriteanim_update.
     rt_spriteanim_update(sa);              // Frame 0 -> 1
     ASSERT(rt_spriteanim_update(sa) == 1); // Finished
     ASSERT(rt_spriteanim_is_finished(sa) == 1);
@@ -114,14 +120,19 @@ TEST(one_shot)
 TEST(pingpong)
 {
     rt_spriteanim sa = rt_spriteanim_new();
+    /// @brief Rt_spriteanim_setup.
     rt_spriteanim_setup(sa, 0, 2, 1); // 3 frames
     rt_spriteanim_set_pingpong(sa, 1);
     rt_spriteanim_play(sa);
 
+    /// @brief Rt_spriteanim_update.
     rt_spriteanim_update(sa); // 0 -> 1
+                              /// @brief Rt_spriteanim_update.
     rt_spriteanim_update(sa); // 1 -> 2
+                              /// @brief Rt_spriteanim_update.
     rt_spriteanim_update(sa); // 2 -> 1 (reverse)
     ASSERT(rt_spriteanim_frame(sa) == 1);
+    /// @brief Rt_spriteanim_update.
     rt_spriteanim_update(sa); // 1 -> 0
     ASSERT(rt_spriteanim_frame(sa) == 0);
     rt_spriteanim_destroy(sa);
@@ -150,7 +161,9 @@ TEST(pause_resume)
 TEST(speed)
 {
     rt_spriteanim sa = rt_spriteanim_new();
+    /// @brief Rt_spriteanim_setup.
     rt_spriteanim_setup(sa, 0, 3, 4); // 4 ticks per frame
+                                      /// @brief Rt_spriteanim_set_speed.
     rt_spriteanim_set_speed(sa, 2.0); // 2x speed
     rt_spriteanim_play(sa);
 
@@ -170,18 +183,22 @@ TEST(speed)
 TEST(progress)
 {
     rt_spriteanim sa = rt_spriteanim_new();
+    /// @brief Rt_spriteanim_setup.
     rt_spriteanim_setup(sa, 0, 3, 1); // 4 frames (0-3), 1 tick each
     rt_spriteanim_play(sa);
 
     // Progress = (current - start) * 100 / (end - start)
     ASSERT(rt_spriteanim_progress(sa) == 0);  // Frame 0: 0/3 = 0%
+                                              /// @brief Rt_spriteanim_update.
     rt_spriteanim_update(sa);                 // Frame 1
     ASSERT(rt_spriteanim_progress(sa) == 33); // Frame 1: 1/3 = 33%
+                                              /// @brief Rt_spriteanim_update.
     rt_spriteanim_update(sa);                 // Frame 2
     ASSERT(rt_spriteanim_progress(sa) == 66); // Frame 2: 2/3 = 66%
     rt_spriteanim_destroy(sa);
 }
 
+/// @brief Main.
 int main()
 {
     printf("RTSpriteAnimTests:\n");

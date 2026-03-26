@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_convert_coll.h
 // Purpose: Collection conversion utilities for transforming between Seq, List, Set, Map, Stack,
 // Queue, Deque, Bag, and Ring container types, plus variadic constructors for Seq, List, and Set.

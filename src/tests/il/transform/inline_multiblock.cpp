@@ -36,6 +36,7 @@ using namespace il::core;
 namespace
 {
 
+/// @brief Make abs helper.
 Function makeAbsHelper()
 {
     Function f;
@@ -109,6 +110,7 @@ Function makeAbsHelper()
     return f;
 }
 
+/// @brief Make inline caller.
 Function makeInlineCaller()
 {
     Function f;
@@ -140,6 +142,7 @@ Function makeInlineCaller()
     return f;
 }
 
+/// @brief Make large helper.
 Function makeLargeHelper()
 {
     Function f;
@@ -198,6 +201,7 @@ Function makeLargeHelper()
     return f;
 }
 
+/// @brief Make large caller.
 Function makeLargeCaller()
 {
     Function f;
@@ -228,6 +232,7 @@ Function makeLargeCaller()
     return f;
 }
 
+/// @brief Make recursive helper.
 Function makeRecursiveHelper()
 {
     Function f;
@@ -258,6 +263,7 @@ Function makeRecursiveHelper()
     return f;
 }
 
+/// @brief Make inline tail helper.
 Function makeInlineTailHelper()
 {
     Function f;
@@ -283,6 +289,7 @@ Function makeInlineTailHelper()
     return f;
 }
 
+/// @brief Make inline tail caller.
 Function makeInlineTailCaller()
 {
     Function f;
@@ -359,6 +366,7 @@ Function makeInlineTailCaller()
     return f;
 }
 
+/// @brief Has call.
 bool hasCall(const Function &fn)
 {
     for (const auto &B : fn.blocks)

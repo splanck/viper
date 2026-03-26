@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_int_format.h
 // Purpose: Portable, locale-independent 64-bit integer to decimal string formatting, providing
 // signed and unsigned variants that write into caller-supplied buffers.

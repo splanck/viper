@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_template.h
 // Purpose: Simple string templating with {{key}} placeholder substitution from a Map or sequential
 // Seq, supporting custom delimiters via RenderWith.

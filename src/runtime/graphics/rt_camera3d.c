@@ -479,7 +479,8 @@ static void apply_shake(rt_camera3d *cam, double dt)
 
 void rt_camera3d_shake(void *obj, double intensity, double duration, double decay)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_camera3d *cam = (rt_camera3d *)obj;
     cam->shake_intensity = intensity;
     cam->shake_duration = duration;
@@ -490,11 +491,11 @@ void rt_camera3d_shake(void *obj, double intensity, double duration, double deca
  * Smooth follow (third-person camera)
  *=========================================================================*/
 
-void rt_camera3d_smooth_follow(void *obj, void *target_pos,
-                                double distance, double height,
-                                double speed, double dt)
+void rt_camera3d_smooth_follow(
+    void *obj, void *target_pos, double distance, double height, double speed, double dt)
 {
-    if (!obj || !target_pos) return;
+    if (!obj || !target_pos)
+        return;
     rt_camera3d *cam = (rt_camera3d *)obj;
 
     double tx = rt_vec3_x(target_pos);
@@ -503,11 +504,7 @@ void rt_camera3d_smooth_follow(void *obj, void *target_pos,
 
     /* Desired position: behind target using current yaw */
     double yaw_rad = cam->fps_yaw * (M_PI / 180.0);
-    double desired[3] = {
-        tx - sin(yaw_rad) * distance,
-        ty,
-        tz + cos(yaw_rad) * distance
-    };
+    double desired[3] = {tx - sin(yaw_rad) * distance, ty, tz + cos(yaw_rad) * distance};
 
     /* Framerate-independent exponential damping */
     double t = 1.0 - exp(-speed * dt);
@@ -531,7 +528,8 @@ void rt_camera3d_smooth_follow(void *obj, void *target_pos,
 
 void rt_camera3d_smooth_look_at(void *obj, void *target, double speed, double dt)
 {
-    if (!obj || !target) return;
+    if (!obj || !target)
+        return;
     rt_camera3d *cam = (rt_camera3d *)obj;
 
     /* Current forward from view matrix */
@@ -541,18 +539,26 @@ void rt_camera3d_smooth_look_at(void *obj, void *target, double speed, double dt
     double dx = rt_vec3_x(target) - cam->eye[0];
     double dy = rt_vec3_y(target) - cam->eye[1];
     double dz = rt_vec3_z(target) - cam->eye[2];
-    double len = sqrt(dx*dx + dy*dy + dz*dz);
-    if (len > 1e-8) { dx /= len; dy /= len; dz /= len; }
+    double len = sqrt(dx * dx + dy * dy + dz * dz);
+    if (len > 1e-8)
+    {
+        dx /= len;
+        dy /= len;
+        dz /= len;
+    }
 
     /* Exponential lerp toward desired */
     double t = 1.0 - exp(-speed * dt);
-    double new_fwd[3] = {
-        cur_fwd[0] + (dx - cur_fwd[0]) * t,
-        cur_fwd[1] + (dy - cur_fwd[1]) * t,
-        cur_fwd[2] + (dz - cur_fwd[2]) * t
-    };
-    len = sqrt(new_fwd[0]*new_fwd[0] + new_fwd[1]*new_fwd[1] + new_fwd[2]*new_fwd[2]);
-    if (len > 1e-8) { new_fwd[0] /= len; new_fwd[1] /= len; new_fwd[2] /= len; }
+    double new_fwd[3] = {cur_fwd[0] + (dx - cur_fwd[0]) * t,
+                         cur_fwd[1] + (dy - cur_fwd[1]) * t,
+                         cur_fwd[2] + (dz - cur_fwd[2]) * t};
+    len = sqrt(new_fwd[0] * new_fwd[0] + new_fwd[1] * new_fwd[1] + new_fwd[2] * new_fwd[2]);
+    if (len > 1e-8)
+    {
+        new_fwd[0] /= len;
+        new_fwd[1] /= len;
+        new_fwd[2] /= len;
+    }
 
     double look[3] = {cam->eye[0] + new_fwd[0], cam->eye[1] + new_fwd[1], cam->eye[2] + new_fwd[2]};
     double up[3] = {0, 1, 0};

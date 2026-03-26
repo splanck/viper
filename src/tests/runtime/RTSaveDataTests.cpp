@@ -53,21 +53,24 @@ extern "C" void vm_trap(const char *msg)
     rt_abort(msg);
 }
 
-#define EXPECT_TRAP(expr)                                                                              \
-    do                                                                                                 \
-    {                                                                                                  \
-        g_trap_expected = true;                                                                        \
-        if (setjmp(g_trap_jmp) == 0)                                                                   \
-        {                                                                                              \
-            (expr);                                                                                    \
-            g_trap_expected = false;                                                                    \
-            assert(!"Expected trap did not fire");                                                     \
-        }                                                                                              \
-        g_trap_expected = false;                                                                        \
+#define EXPECT_TRAP(expr)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        g_trap_expected = true;                                                                    \
+        if (setjmp(g_trap_jmp) == 0)                                                               \
+        {                                                                                          \
+            (expr);                                                                                \
+            g_trap_expected = false;                                                               \
+            assert(!"Expected trap did not fire");                                                 \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
     } while (0)
 
 /// @brief Helper: create rt_string from C literal.
-static rt_string S(const char *s) { return rt_const_cstr(s); }
+static rt_string S(const char *s)
+{
+    return rt_const_cstr(s);
+}
 
 // ============================================================================
 // Null Safety Tests
@@ -182,7 +185,7 @@ static void test_type_overwrite()
     assert(rt_savedata_get_int(sd, S("val"), 0) == 100);
 
     rt_savedata_set_string(sd, S("val"), S("hello"));
-    assert(rt_savedata_get_int(sd, S("val"), -1) == -1);    // Now a string
+    assert(rt_savedata_get_int(sd, S("val"), -1) == -1); // Now a string
     rt_string sv = rt_savedata_get_string(sd, S("val"), S(""));
     assert(strcmp(rt_string_cstr(sv), "hello") == 0);
 

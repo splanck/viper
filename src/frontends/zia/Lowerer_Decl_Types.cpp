@@ -341,7 +341,8 @@ void Lowerer::emitItableInit()
             for (size_t s = 0; s < slotCount; ++s)
             {
                 const std::string &methodName = ifaceInfo.methods[s]->name;
-                const std::string slotKey = sema_.methodSlotKey(ifaceInfo.name, ifaceInfo.methods[s]);
+                const std::string slotKey =
+                    sema_.methodSlotKey(ifaceInfo.name, ifaceInfo.methods[s]);
                 int64_t offset = static_cast<int64_t>(s * 8ULL);
                 Value slotPtr = emitBinary(
                     Opcode::GEP, Type(Type::Kind::Ptr), itablePtr, Value::constInt(offset));

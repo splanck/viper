@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_multimap.h
 // Purpose: String-keyed multimap supporting multiple values per key, returning all values for a key
 // as a Seq, with O(1) average access.

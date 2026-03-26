@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_perlin.h
 // Purpose: Perlin noise generator for the Viper.Perlin runtime class, providing seeded 2D/3D noise
 // and fractal octave noise with deterministic output per seed.

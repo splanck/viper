@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_map.h
 // Purpose: String-keyed hash map providing O(1) average insertion, lookup, removal, and iteration
 // for the Viper.Collections.Map runtime class.

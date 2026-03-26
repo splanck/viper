@@ -609,30 +609,14 @@ PipelineResult CodegenPipeline::run()
             bool ok = true;
             if (opts_.optimize >= 2)
             {
-                ilpm.registerPipeline("codegen-O2",
-                                      {"loop-simplify",
-                                       "loop-rotate",
-                                       "indvars",
-                                       "loop-unroll",
-                                       "simplify-cfg",
-                                       "sccp",
-                                       "check-opt",
-                                       "eh-opt",
-                                       "dce",
-                                       "simplify-cfg",
-                                       "sibling-recursion",
-                                       "inline",
-                                       "simplify-cfg",
-                                       "sccp",
-                                       "constfold",
-                                       "dce",
-                                       "simplify-cfg",
-                                       "gvn",
-                                       "reassociate",
-                                       "earlycse",
-                                       "dse",
-                                       "dce",
-                                       "late-cleanup"});
+                ilpm.registerPipeline(
+                    "codegen-O2",
+                    {"loop-simplify", "loop-rotate",  "indvars",           "loop-unroll",
+                     "simplify-cfg",  "sccp",         "check-opt",         "eh-opt",
+                     "dce",           "simplify-cfg", "sibling-recursion", "inline",
+                     "simplify-cfg",  "sccp",         "constfold",         "dce",
+                     "simplify-cfg",  "gvn",          "reassociate",       "earlycse",
+                     "dse",           "dce",          "late-cleanup"});
                 ok = ilpm.runPipeline(module, "codegen-O2");
             }
             else

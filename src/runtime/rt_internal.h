@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/rt_internal.h
 // Purpose: Internal runtime helpers for buffer growth, allocation hooks, hex utilities, and array
 // macros. This header is implementation-only and must never be included by IL-generated or user

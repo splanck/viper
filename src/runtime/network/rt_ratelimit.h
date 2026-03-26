@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/network/rt_ratelimit.h
 // Purpose: Token bucket rate limiter for network and API operations, continuously refilling tokens
 // based on elapsed time up to a maximum capacity.

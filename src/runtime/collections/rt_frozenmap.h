@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_frozenmap.h
 // Purpose: Immutable string-keyed map created from existing Map or parallel key/value Seqs,
 // providing O(1) average lookup with guaranteed read-only semantics after construction.

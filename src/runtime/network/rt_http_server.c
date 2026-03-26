@@ -30,9 +30,9 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -82,13 +82,13 @@ typedef struct
 
 typedef struct
 {
-    char tag[256];    // Handler identifier (e.g., "handle_users_get")
+    char tag[256]; // Handler identifier (e.g., "handle_users_get")
 } handler_entry_t;
 
 typedef struct
 {
-    void *router;          // HttpRouter
-    void *tcp_server;      // TcpServer
+    void *router;     // HttpRouter
+    void *tcp_server; // TcpServer
     int64_t port;
     bool running;
     handler_entry_t handlers[MAX_HANDLER_TAGS];
@@ -198,8 +198,9 @@ static bool parse_size_decimal(const char *text, size_t len, size_t *out)
     return true;
 }
 
-static bool parse_content_length_header_block(
-    const char *headers, size_t headers_len, size_t *content_length_out)
+static bool parse_content_length_header_block(const char *headers,
+                                              size_t headers_len,
+                                              size_t *content_length_out)
 {
     const char *p = headers;
     const char *end = headers + headers_len;
@@ -398,9 +399,12 @@ static void free_server_req(server_req_t *req)
         rt_obj_free(req->params);
 }
 
-int rt_http_server_test_parse_request(
-    const char *raw, size_t raw_len, char **method_out, char **path_out, char **body_out,
-    size_t *body_len_out)
+int rt_http_server_test_parse_request(const char *raw,
+                                      size_t raw_len,
+                                      char **method_out,
+                                      char **path_out,
+                                      char **body_out,
+                                      size_t *body_len_out)
 {
     server_req_t req;
     if (!parse_http_request(raw, raw_len, &req))
@@ -427,18 +431,30 @@ static const char *status_text_for_code(int code)
 {
     switch (code)
     {
-        case 200: return "OK";
-        case 201: return "Created";
-        case 204: return "No Content";
-        case 301: return "Moved Permanently";
-        case 302: return "Found";
-        case 400: return "Bad Request";
-        case 401: return "Unauthorized";
-        case 403: return "Forbidden";
-        case 404: return "Not Found";
-        case 405: return "Method Not Allowed";
-        case 500: return "Internal Server Error";
-        default:  return "Unknown";
+        case 200:
+            return "OK";
+        case 201:
+            return "Created";
+        case 204:
+            return "No Content";
+        case 301:
+            return "Moved Permanently";
+        case 302:
+            return "Found";
+        case 400:
+            return "Bad Request";
+        case 401:
+            return "Unauthorized";
+        case 403:
+            return "Forbidden";
+        case 404:
+            return "Not Found";
+        case 405:
+            return "Method Not Allowed";
+        case 500:
+            return "Internal Server Error";
+        default:
+            return "Unknown";
     }
 }
 
@@ -493,7 +509,7 @@ static char *build_response(server_res_t *res, size_t *out_len)
 #define APPEND_FORMAT(...)                                                                         \
     do                                                                                             \
     {                                                                                              \
-        int written = snprintf(cursor, remaining, __VA_ARGS__);                                   \
+        int written = snprintf(cursor, remaining, __VA_ARGS__);                                    \
         if (written < 0 || (size_t)written >= remaining)                                           \
         {                                                                                          \
             free(buf);                                                                             \
@@ -558,9 +574,13 @@ static char *build_response(server_res_t *res, size_t *out_len)
     return buf;
 }
 
-char *rt_http_server_test_build_response(
-    int status_code, const char *body, size_t body_len, const char **header_names,
-    const char **header_values, size_t header_count, size_t *out_len)
+char *rt_http_server_test_build_response(int status_code,
+                                         const char *body,
+                                         size_t body_len,
+                                         const char **header_names,
+                                         const char **header_values,
+                                         size_t header_count,
+                                         size_t *out_len)
 {
     char *body_copy = NULL;
     server_res_t res;
@@ -633,7 +653,12 @@ static void handle_connection(rt_http_server_impl *server, void *tcp)
             break;
         }
 
-        typedef struct { int64_t len; uint8_t *d; } bi;
+        typedef struct
+        {
+            int64_t len;
+            uint8_t *d;
+        } bi;
+
         uint8_t *ptr = ((bi *)data)->d;
         memcpy(buf + buf_len, ptr, (size_t)data_len);
         buf_len += (size_t)data_len;
@@ -693,7 +718,8 @@ static void handle_connection(rt_http_server_impl *server, void *tcp)
     if (bad_request || !parse_http_request(buf, buf_len, &req))
     {
         // Send 400 Bad Request
-        const char *bad = "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
+        const char *bad =
+            "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
         rt_string bad_str = rt_const_cstr(bad);
         rt_tcp_send_str(tcp, bad_str);
         free(buf);
@@ -730,9 +756,12 @@ static void handle_connection(rt_http_server_impl *server, void *tcp)
             char *json = (char *)malloc(json_cap);
             if (json)
             {
-                int jlen = snprintf(json, json_cap,
-                    "{\"handler\":\"%s\",\"method\":\"%s\",\"path\":\"%s\"}",
-                    tag, req.method, req.path);
+                int jlen = snprintf(json,
+                                    json_cap,
+                                    "{\"handler\":\"%s\",\"method\":\"%s\",\"path\":\"%s\"}",
+                                    tag,
+                                    req.method,
+                                    req.path);
                 res.body = json;
                 res.body_len = (size_t)jlen;
                 rt_string ct_key = rt_const_cstr("Content-Type");
@@ -830,7 +859,8 @@ void *rt_http_server_new(int64_t port)
 
 void rt_http_server_get(void *obj, rt_string pattern, rt_string handler_tag)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_http_server_impl *s = (rt_http_server_impl *)obj;
     rt_http_router_get(s->router, pattern);
     const char *tag = rt_string_cstr(handler_tag);
@@ -843,7 +873,8 @@ void rt_http_server_get(void *obj, rt_string pattern, rt_string handler_tag)
 
 void rt_http_server_post(void *obj, rt_string pattern, rt_string handler_tag)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_http_server_impl *s = (rt_http_server_impl *)obj;
     rt_http_router_post(s->router, pattern);
     const char *tag = rt_string_cstr(handler_tag);
@@ -856,7 +887,8 @@ void rt_http_server_post(void *obj, rt_string pattern, rt_string handler_tag)
 
 void rt_http_server_put(void *obj, rt_string pattern, rt_string handler_tag)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_http_server_impl *s = (rt_http_server_impl *)obj;
     rt_http_router_put(s->router, pattern);
     const char *tag = rt_string_cstr(handler_tag);
@@ -869,7 +901,8 @@ void rt_http_server_put(void *obj, rt_string pattern, rt_string handler_tag)
 
 void rt_http_server_del(void *obj, rt_string pattern, rt_string handler_tag)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_http_server_impl *s = (rt_http_server_impl *)obj;
     rt_http_router_delete(s->router, pattern);
     const char *tag = rt_string_cstr(handler_tag);
@@ -898,8 +931,7 @@ void rt_http_server_start(void *obj)
     server->accept_thread = CreateThread(NULL, 0, accept_loop, server, 0, NULL);
     server->thread_started = server->accept_thread != NULL;
 #else
-    server->thread_started =
-        pthread_create(&server->accept_thread, NULL, accept_loop, server) == 0;
+    server->thread_started = pthread_create(&server->accept_thread, NULL, accept_loop, server) == 0;
 #endif
 }
 
@@ -930,13 +962,15 @@ void rt_http_server_stop(void *obj)
 
 int64_t rt_http_server_port(void *obj)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     return ((rt_http_server_impl *)obj)->port;
 }
 
 int8_t rt_http_server_is_running(void *obj)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     return ((rt_http_server_impl *)obj)->running ? 1 : 0;
 }
 
@@ -946,7 +980,8 @@ int8_t rt_http_server_is_running(void *obj)
 
 rt_string rt_server_req_method(void *obj)
 {
-    if (!obj) return rt_string_from_bytes("", 0);
+    if (!obj)
+        return rt_string_from_bytes("", 0);
     server_req_t *req = (server_req_t *)obj;
     return req->method ? rt_string_from_bytes(req->method, strlen(req->method))
                        : rt_string_from_bytes("", 0);
@@ -954,7 +989,8 @@ rt_string rt_server_req_method(void *obj)
 
 rt_string rt_server_req_path(void *obj)
 {
-    if (!obj) return rt_string_from_bytes("", 0);
+    if (!obj)
+        return rt_string_from_bytes("", 0);
     server_req_t *req = (server_req_t *)obj;
     return req->path ? rt_string_from_bytes(req->path, strlen(req->path))
                      : rt_string_from_bytes("", 0);
@@ -962,37 +998,44 @@ rt_string rt_server_req_path(void *obj)
 
 rt_string rt_server_req_body(void *obj)
 {
-    if (!obj) return rt_string_from_bytes("", 0);
+    if (!obj)
+        return rt_string_from_bytes("", 0);
     server_req_t *req = (server_req_t *)obj;
-    return req->body ? rt_string_from_bytes(req->body, req->body_len)
-                     : rt_string_from_bytes("", 0);
+    return req->body ? rt_string_from_bytes(req->body, req->body_len) : rt_string_from_bytes("", 0);
 }
 
 rt_string rt_server_req_header(void *obj, rt_string name)
 {
-    if (!obj) return rt_string_from_bytes("", 0);
+    if (!obj)
+        return rt_string_from_bytes("", 0);
     server_req_t *req = (server_req_t *)obj;
-    if (!req->headers) return rt_string_from_bytes("", 0);
+    if (!req->headers)
+        return rt_string_from_bytes("", 0);
     void *val = rt_map_get(req->headers, name);
     return val ? (rt_string)val : rt_string_from_bytes("", 0);
 }
 
 rt_string rt_server_req_param(void *obj, rt_string name)
 {
-    if (!obj) return rt_string_from_bytes("", 0);
+    if (!obj)
+        return rt_string_from_bytes("", 0);
     server_req_t *req = (server_req_t *)obj;
-    if (!req->params) return rt_string_from_bytes("", 0);
+    if (!req->params)
+        return rt_string_from_bytes("", 0);
     return rt_route_match_param(req->params, name);
 }
 
 rt_string rt_server_req_query(void *obj, rt_string name)
 {
-    if (!obj) return rt_string_from_bytes("", 0);
+    if (!obj)
+        return rt_string_from_bytes("", 0);
     server_req_t *req = (server_req_t *)obj;
-    if (!req->query) return rt_string_from_bytes("", 0);
+    if (!req->query)
+        return rt_string_from_bytes("", 0);
 
     const char *n = rt_string_cstr(name);
-    if (!n) return rt_string_from_bytes("", 0);
+    if (!n)
+        return rt_string_from_bytes("", 0);
 
     // Simple query string parsing: find name=value
     size_t nlen = strlen(n);
@@ -1019,7 +1062,8 @@ rt_string rt_server_req_query(void *obj, rt_string name)
 
 void *rt_server_res_status(void *obj, int64_t code)
 {
-    if (!obj) return obj;
+    if (!obj)
+        return obj;
     server_res_t *res = (server_res_t *)obj;
     res->status_code = (int)code;
     return obj;
@@ -1027,7 +1071,8 @@ void *rt_server_res_status(void *obj, int64_t code)
 
 void *rt_server_res_header(void *obj, rt_string name, rt_string value)
 {
-    if (!obj) return obj;
+    if (!obj)
+        return obj;
     server_res_t *res = (server_res_t *)obj;
     if (!res->headers)
         res->headers = rt_map_new();
@@ -1037,7 +1082,8 @@ void *rt_server_res_header(void *obj, rt_string name, rt_string value)
 
 void rt_server_res_send(void *obj, rt_string body)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     server_res_t *res = (server_res_t *)obj;
     const char *b = rt_string_cstr(body);
     free(res->body);
@@ -1048,7 +1094,8 @@ void rt_server_res_send(void *obj, rt_string body)
 
 void rt_server_res_json(void *obj, rt_string json_str)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     server_res_t *res = (server_res_t *)obj;
     if (!res->headers)
         res->headers = rt_map_new();

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_physics2d.h
 // Purpose: 2D physics engine for game entities providing AABB rigid-body simulation, impulse-based
 // collision resolution, bitmask collision filtering, and a simple world step loop.

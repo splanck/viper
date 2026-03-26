@@ -163,6 +163,9 @@ void *rt_countmap_new(void)
     return cm;
 }
 
+/// @brief Get the count of countmap len.
+/// @param obj
+/// @return Result value.
 int64_t rt_countmap_len(void *obj)
 {
     if (!obj)
@@ -170,16 +173,28 @@ int64_t rt_countmap_len(void *obj)
     return (int64_t)((rt_countmap_impl *)obj)->count;
 }
 
+/// @brief Get the count of countmap is empty.
+/// @param obj
+/// @return Result value.
 int8_t rt_countmap_is_empty(void *obj)
 {
     return rt_countmap_len(obj) == 0 ? 1 : 0;
 }
 
+/// @brief Get the count of countmap inc.
+/// @param obj
+/// @param key
+/// @return Result value.
 int64_t rt_countmap_inc(void *obj, rt_string key)
 {
     return rt_countmap_inc_by(obj, key, 1);
 }
 
+/// @brief Get the count of countmap inc by.
+/// @param obj
+/// @param key
+/// @param n
+/// @return Result value.
 int64_t rt_countmap_inc_by(void *obj, rt_string key, int64_t n)
 {
     if (!obj || n <= 0)
@@ -227,6 +242,10 @@ int64_t rt_countmap_inc_by(void *obj, rt_string key, int64_t n)
     return e->count;
 }
 
+/// @brief Get the count of countmap dec.
+/// @param obj
+/// @param key
+/// @return Result value.
 int64_t rt_countmap_dec(void *obj, rt_string key)
 {
     if (!obj)
@@ -261,6 +280,10 @@ int64_t rt_countmap_dec(void *obj, rt_string key)
     return 0;
 }
 
+/// @brief Get the count of countmap get.
+/// @param obj
+/// @param key
+/// @return Result value.
 int64_t rt_countmap_get(void *obj, rt_string key)
 {
     if (!obj)
@@ -277,6 +300,10 @@ int64_t rt_countmap_get(void *obj, rt_string key)
     return e ? e->count : 0;
 }
 
+/// @brief Get the count of countmap set.
+/// @param obj
+/// @param key
+/// @param count
 void rt_countmap_set(void *obj, rt_string key, int64_t count)
 {
     if (!obj)
@@ -343,11 +370,18 @@ void rt_countmap_set(void *obj, rt_string key, int64_t count)
     cm->total += count;
 }
 
+/// @brief Get the count of countmap has.
+/// @param obj
+/// @param key
+/// @return Result value.
 int8_t rt_countmap_has(void *obj, rt_string key)
 {
     return rt_countmap_get(obj, key) > 0 ? 1 : 0;
 }
 
+/// @brief Get the count of countmap total.
+/// @param obj
+/// @return Result value.
 int64_t rt_countmap_total(void *obj)
 {
     if (!obj)
@@ -433,6 +467,10 @@ void *rt_countmap_most_common(void *obj, int64_t n)
     return seq;
 }
 
+/// @brief Get the count of countmap remove.
+/// @param obj
+/// @param key
+/// @return Result value.
 int8_t rt_countmap_remove(void *obj, rt_string key)
 {
     if (!obj)
@@ -462,6 +500,8 @@ int8_t rt_countmap_remove(void *obj, rt_string key)
     return 0;
 }
 
+/// @brief Get the count of countmap clear.
+/// @param obj
 void rt_countmap_clear(void *obj)
 {
     if (!obj)

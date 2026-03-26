@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/threads/rt_concqueue.h
 // Purpose: Thread-safe concurrent queue with blocking and non-blocking dequeue operations, using a
 // mutex and condition variable for producer/consumer synchronization.

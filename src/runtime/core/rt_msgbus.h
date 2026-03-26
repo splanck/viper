@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_msgbus.h
 // Purpose: Pub/sub message bus for decoupled event communication, providing topic-based
 // publish/subscribe with integer subscription IDs for selective unsubscription.

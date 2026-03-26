@@ -160,7 +160,8 @@ bool ImportResolver::processModule(ModuleDecl &module,
     std::unordered_set<std::string> seenFileBinds;
     std::unordered_set<std::string> seenNamespaceBinds;
 
-    auto makeNamespaceBindKey = [](const BindDecl &bind) {
+    auto makeNamespaceBindKey = [](const BindDecl &bind)
+    {
         std::string key = bind.path;
         key.push_back('\n');
         key += bind.alias;

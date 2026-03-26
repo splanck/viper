@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_orderedmap.h
 // Purpose: Insertion-order preserving string-keyed map where iteration yields entries in the order
 // they were first inserted, with O(1) average access.

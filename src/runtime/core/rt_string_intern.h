@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_string_intern.h
 // Purpose: Global string interning table providing O(1) equality comparison via pointer identity
 // after interning, using FNV-1a hashing and a mutex for thread safety.

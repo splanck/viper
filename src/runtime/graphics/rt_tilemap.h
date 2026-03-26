@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_tilemap.h
 // Purpose: Tile-based 2D map for efficient grid rendering, providing per-tile attribute storage,
 // layer support, and optimized batch rendering to a canvas.

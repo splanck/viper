@@ -151,11 +151,8 @@ static std::string buildSignatureFromType(const TypeRef &funcType)
 }
 
 /// @brief Resolve a hover target using Sema APIs.
-static HoverResult resolveHoverTarget(const AnalysisResult &ar,
-                                      const Sema &sema,
-                                      const HoverContext &ctx,
-                                      int line,
-                                      int col)
+static HoverResult resolveHoverTarget(
+    const AnalysisResult &ar, const Sema &sema, const HoverContext &ctx, int line, int col)
 {
     HoverResult result;
 

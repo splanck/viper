@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_filedialog.c
+//
+//===----------------------------------------------------------------------===//
 // vg_filedialog.c - FileDialog widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -1062,6 +1072,7 @@ void vg_filedialog_destroy(vg_filedialog_t *dialog)
     }
 }
 
+/// @brief Filedialog set title.
 void vg_filedialog_set_title(vg_filedialog_t *dialog, const char *title)
 {
     if (!dialog)
@@ -1074,6 +1085,7 @@ void vg_filedialog_set_title(vg_filedialog_t *dialog, const char *title)
 #endif
 }
 
+/// @brief Filedialog set initial path.
 void vg_filedialog_set_initial_path(vg_filedialog_t *dialog, const char *path)
 {
     if (!dialog)
@@ -1086,6 +1098,7 @@ void vg_filedialog_set_initial_path(vg_filedialog_t *dialog, const char *path)
 #endif
 }
 
+/// @brief Filedialog set filename.
 void vg_filedialog_set_filename(vg_filedialog_t *dialog, const char *filename)
 {
     if (!dialog)
@@ -1098,24 +1111,28 @@ void vg_filedialog_set_filename(vg_filedialog_t *dialog, const char *filename)
 #endif
 }
 
+/// @brief Filedialog set multi select.
 void vg_filedialog_set_multi_select(vg_filedialog_t *dialog, bool multi)
 {
     if (dialog)
         dialog->multi_select = multi;
 }
 
+/// @brief Filedialog set show hidden.
 void vg_filedialog_set_show_hidden(vg_filedialog_t *dialog, bool show)
 {
     if (dialog)
         dialog->show_hidden = show;
 }
 
+/// @brief Filedialog set confirm overwrite.
 void vg_filedialog_set_confirm_overwrite(vg_filedialog_t *dialog, bool confirm)
 {
     if (dialog)
         dialog->confirm_overwrite = confirm;
 }
 
+/// @brief Filedialog add filter.
 void vg_filedialog_add_filter(vg_filedialog_t *dialog, const char *name, const char *pattern)
 {
     if (!dialog || !name || !pattern)
@@ -1142,6 +1159,7 @@ void vg_filedialog_add_filter(vg_filedialog_t *dialog, const char *name, const c
     dialog->filter_count++;
 }
 
+/// @brief Filedialog clear filters.
 void vg_filedialog_clear_filters(vg_filedialog_t *dialog)
 {
     if (!dialog)
@@ -1155,6 +1173,7 @@ void vg_filedialog_clear_filters(vg_filedialog_t *dialog)
     dialog->filter_count = 0;
 }
 
+/// @brief Filedialog set default extension.
 void vg_filedialog_set_default_extension(vg_filedialog_t *dialog, const char *ext)
 {
     if (!dialog)
@@ -1167,6 +1186,7 @@ void vg_filedialog_set_default_extension(vg_filedialog_t *dialog, const char *ex
 #endif
 }
 
+/// @brief Filedialog add bookmark.
 void vg_filedialog_add_bookmark(vg_filedialog_t *dialog, const char *name, const char *path)
 {
     if (!dialog || !name || !path)
@@ -1193,6 +1213,7 @@ void vg_filedialog_add_bookmark(vg_filedialog_t *dialog, const char *name, const
     dialog->bookmark_count++;
 }
 
+/// @brief Filedialog add default bookmarks.
 void vg_filedialog_add_default_bookmarks(vg_filedialog_t *dialog)
 {
     if (!dialog)
@@ -1248,6 +1269,7 @@ void vg_filedialog_add_default_bookmarks(vg_filedialog_t *dialog)
 #endif
 }
 
+/// @brief Filedialog clear bookmarks.
 void vg_filedialog_clear_bookmarks(vg_filedialog_t *dialog)
 {
     if (!dialog)
@@ -1261,6 +1283,7 @@ void vg_filedialog_clear_bookmarks(vg_filedialog_t *dialog)
     dialog->bookmark_count = 0;
 }
 
+/// @brief Filedialog show.
 void vg_filedialog_show(vg_filedialog_t *dialog)
 {
     if (!dialog)
@@ -1290,6 +1313,7 @@ char **vg_filedialog_get_selected_paths(vg_filedialog_t *dialog, size_t *count)
     return dialog->selected_files;
 }
 
+/// @brief Filedialog get selected path.
 char *vg_filedialog_get_selected_path(vg_filedialog_t *dialog)
 {
     if (!dialog || dialog->selected_file_count == 0)
@@ -1297,6 +1321,7 @@ char *vg_filedialog_get_selected_path(vg_filedialog_t *dialog)
     return dialog->selected_files[0];
 }
 
+/// @brief Filedialog set on select.
 void vg_filedialog_set_on_select(vg_filedialog_t *dialog,
                                  void (*callback)(vg_filedialog_t *, char **, size_t, void *),
                                  void *user_data)
@@ -1307,6 +1332,7 @@ void vg_filedialog_set_on_select(vg_filedialog_t *dialog,
     dialog->user_data = user_data;
 }
 
+/// @brief Filedialog set on cancel.
 void vg_filedialog_set_on_cancel(vg_filedialog_t *dialog,
                                  void (*callback)(vg_filedialog_t *, void *),
                                  void *user_data)
@@ -1358,6 +1384,7 @@ char *vg_filedialog_open_file(const char *title,
     return result;
 }
 
+/// @brief Filedialog save file.
 char *vg_filedialog_save_file(const char *title,
                               const char *initial_path,
                               const char *default_name,
@@ -1396,6 +1423,7 @@ char *vg_filedialog_save_file(const char *title,
     return result;
 }
 
+/// @brief Filedialog select folder.
 char *vg_filedialog_select_folder(const char *title, const char *initial_path)
 {
     vg_filedialog_t *dialog = vg_filedialog_create(VG_FILEDIALOG_SELECT_FOLDER);

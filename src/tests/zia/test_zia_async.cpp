@@ -22,6 +22,7 @@ using namespace il::support;
 namespace
 {
 
+/// @brief Has diag containing.
 bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle)
 {
     for (const auto &d : diag.diagnostics())
@@ -32,6 +33,7 @@ bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle)
     return false;
 }
 
+/// @brief Compile source.
 CompilerResult compileSource(const std::string &source, const std::string &path = "async_test.zia")
 {
     SourceManager sm;
@@ -40,6 +42,7 @@ CompilerResult compileSource(const std::string &source, const std::string &path 
     return compile(input, opts, sm);
 }
 
+/// @brief Has function.
 bool hasFunction(const il::core::Module &mod, const std::string &name)
 {
     for (const auto &fn : mod.functions)
@@ -70,6 +73,7 @@ bool hasDirectCall(const il::core::Module &mod,
     return false;
 }
 
+/// @brief Has indirect call.
 bool hasIndirectCall(const il::core::Module &mod, const std::string &fnName)
 {
     for (const auto &fn : mod.functions)
@@ -92,10 +96,12 @@ TEST(ZiaAsync, AsyncFunctionLowersToWorkerAndWrapper)
 {
     const std::string src = R"(module Test;
 
+/// @brief Fetch data.
 async func fetchData(name: String, retries: Integer) -> String {
     return name;
 }
 
+/// @brief Start.
 func start() {
     var future = fetchData("viper", 2);
 }
@@ -112,10 +118,12 @@ TEST(ZiaAsync, AwaitUsesFutureGetAndUnboxesKnownPayload)
 {
     const std::string src = R"(module Test;
 
+/// @brief Fetch data.
 async func fetchData() -> String {
     return "ready";
 }
 
+/// @brief Start.
 func start() {
     var value: String = await fetchData();
 }
@@ -130,6 +138,7 @@ TEST(ZiaAsync, AwaitRejectsNonFutureOperands)
 {
     const std::string src = R"(module Test;
 
+/// @brief Start.
 func start() {
     var value = await "not a future";
 }
@@ -144,10 +153,12 @@ TEST(ZiaAsync, AsyncWorkerInvokesBodyThroughGeneratedFunction)
 {
     const std::string src = R"(module Test;
 
+/// @brief Add one.
 async func addOne(value: Integer) -> Integer {
     return value + 1;
 }
 
+/// @brief Start.
 func start() {
     var future = addOne(41);
 }

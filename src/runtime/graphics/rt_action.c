@@ -360,6 +360,9 @@ static double clamp_axis(double value)
 // Action System Lifecycle
 //=========================================================================
 
+/// @brief Initialize the global action mapping system.
+/// @details Must be called once before any action operations. Clears all state.
+///   Called automatically by the Viper runtime startup.
 void rt_action_init(void)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -376,6 +379,12 @@ void rt_action_shutdown(void)
     g_initialized = 0;
 }
 
+/// @brief Update all action states for the current frame.
+/// @details Polls each registered action's bindings against the current input
+///   state (keyboard, mouse, gamepad). Computes pressed/released/held flags
+///   and axis values. Must be called exactly once per frame, AFTER rt_canvas_poll()
+///   has processed input events. Action.Pressed(), Action.Held(), and Action.Axis()
+///   return values computed by this function.
 void rt_action_update(void)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -524,6 +533,11 @@ void rt_action_clear(void)
 // Action Definition
 //=========================================================================
 
+/// @brief Register a new named action for input mapping.
+/// @details Creates a button-style action (pressed/released/held). The name must
+///   be unique. After defining, bind physical inputs with BindKey(), BindMouse(), etc.
+/// @param name Action name string (e.g., "jump", "fire"). Max 63 characters.
+/// @return 1 on success, 0 if name is empty, already exists, or allocation fails.
 int8_t rt_action_define(rt_string name)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -903,6 +917,12 @@ int8_t rt_action_bind_pad_button_axis(rt_string action,
 // Button Action State Queries
 //=========================================================================
 
+/// @brief Check if an action was just pressed this frame (edge-triggered).
+/// @details Returns 1 only on the single frame where the action transitions
+///   from not-held to held. Use this for jump, shoot, menu confirm — actions
+///   that should trigger once per press, not continuously.
+/// @param action Name of the action (e.g., "jump"). Must be defined first.
+/// @return 1 if pressed this frame, 0 otherwise.
 int8_t rt_action_pressed(rt_string action)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -910,6 +930,11 @@ int8_t rt_action_pressed(rt_string action)
     return a ? a->pressed : 0;
 }
 
+/// @brief Check if an action was just released this frame (edge-triggered).
+/// @details Returns 1 only on the single frame where the action transitions
+///   from held to not-held. Use for "on key up" behaviors.
+/// @param action Action name.
+/// @return 1 if released this frame, 0 otherwise.
 int8_t rt_action_released(rt_string action)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -917,6 +942,11 @@ int8_t rt_action_released(rt_string action)
     return a ? a->released : 0;
 }
 
+/// @brief Check if an action is currently held down (level-triggered).
+/// @details Returns 1 every frame the action is active. Use for movement,
+///   charging, or any continuous action.
+/// @param action Action name.
+/// @return 1 if held, 0 if not.
 int8_t rt_action_held(rt_string action)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -924,6 +954,11 @@ int8_t rt_action_held(rt_string action)
     return a ? a->held : 0;
 }
 
+/// @brief Get the strength of a button action (0.0 or 1.0 for digital inputs).
+/// @details For digital inputs (keyboard/buttons), returns 1.0 when held, 0.0
+///   when released. For analog inputs (gamepad triggers), returns the axis value.
+/// @param action Action name.
+/// @return Strength value in [0.0, 1.0].
 double rt_action_strength(rt_string action)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -935,6 +970,12 @@ double rt_action_strength(rt_string action)
 // Axis Action Queries
 //=========================================================================
 
+/// @brief Get the clamped axis value for an axis-type action.
+/// @details Returns a value in [-1.0, 1.0] for axis inputs (gamepad sticks,
+///   mouse movement). Button bindings contribute their configured `value` field
+///   (typically ±1.0). The result is clamped to [-1.0, 1.0].
+/// @param action Action name (must be defined as axis with DefineAxis).
+/// @return Axis value clamped to [-1.0, 1.0], or 0.0 if action not found.
 double rt_action_axis(rt_string action)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -942,6 +983,11 @@ double rt_action_axis(rt_string action)
     return a ? clamp_axis(a->axis_value) : 0.0;
 }
 
+/// @brief Get the raw (unclamped) axis value for an axis-type action.
+/// @details Like rt_action_axis() but without clamping. Raw values can exceed
+///   [-1.0, 1.0] when multiple bindings contribute simultaneously.
+/// @param action Action name.
+/// @return Raw accumulated axis value, or 0.0 if not found.
 double rt_action_axis_raw(rt_string action)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -1522,6 +1568,16 @@ static void load_preset_topdown(void)
 // Public Preset API
 //=========================================================================
 
+/// @brief Load a pre-configured set of action bindings by name.
+/// @details Defines actions and binds standard keyboard + gamepad inputs in one call.
+///   Available presets:
+///     "standard_movement" — WASD/arrows/D-pad for move, A/Space for fire, Start for pause
+///     "menu_navigation" — arrows/D-pad for menu_up/down, Enter/A for confirm, Escape/B for back
+///     "platformer" — WASD/arrows for move, Space/W/Up/A for jump, Z/X/RB for shoot
+///     "topdown" — WASD/arrows for move, A for fire, Start for pause, plus axis mapping
+///   Presets auto-initialize the action system if not already done.
+/// @param preset_name One of: "standard_movement", "menu_navigation", "platformer", "topdown".
+/// @return 1 if preset loaded successfully, 0 if name not recognized.
 int8_t rt_action_load_preset(rt_string preset_name)
 {
     RT_ASSERT_MAIN_THREAD();

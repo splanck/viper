@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_jsonpath.h
 // Purpose: JSONPath-like query expressions for navigating JSON objects using dotted access, bracket
 // notation, and array indexing on rt_json parsed maps/seqs.

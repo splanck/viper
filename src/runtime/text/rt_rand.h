@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_rand.h
 // Purpose: Cryptographically secure random number generation using the OS-provided CSPRNG
 // (/dev/urandom on Unix, BCryptGenRandom on Windows).

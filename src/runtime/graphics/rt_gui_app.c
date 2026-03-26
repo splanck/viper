@@ -52,6 +52,8 @@ rt_gui_app_t *s_current_app = NULL;
 // Rendered on top of everything else during rt_gui_app_render().
 static vg_dialog_t *g_active_dialog = NULL;
 
+/// @brief Set the active dialog value.
+/// @param dlg
 void rt_gui_set_active_dialog(void *dlg)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -149,6 +151,7 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
 }
 
 // Ensure the default font is loaded (lazy init on first use).
+/// @brief Perform ensure default font operation.
 void rt_gui_ensure_default_font(void)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -189,6 +192,8 @@ void rt_gui_ensure_default_font(void)
     }
 }
 
+/// @brief Perform app destroy operation.
+/// @param app_ptr
 void rt_gui_app_destroy(void *app_ptr)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -225,6 +230,9 @@ void rt_gui_app_destroy(void *app_ptr)
     }
 }
 
+/// @brief Perform app should close operation.
+/// @param app_ptr
+/// @return Result value.
 int64_t rt_gui_app_should_close(void *app_ptr)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -240,6 +248,8 @@ static void render_widget_tree(vgfx_window_t window,
                                float parent_abs_x,
                                float parent_abs_y);
 
+/// @brief Perform app poll operation.
+/// @param app_ptr
 void rt_gui_app_poll(void *app_ptr)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -301,8 +311,8 @@ void rt_gui_app_poll(void *app_ptr)
                 // Drag-and-drop: update drag-over state during drag
                 if (s_drag_source)
                 {
-                    vg_widget_t *hit = vg_widget_hit_test(
-                        app->root, (float)app->mouse_x, (float)app->mouse_y);
+                    vg_widget_t *hit =
+                        vg_widget_hit_test(app->root, (float)app->mouse_x, (float)app->mouse_y);
                     // Clear previous drag-over
                     if (s_drag_over_widget && s_drag_over_widget != hit)
                         s_drag_over_widget->_is_drag_over = false;
@@ -414,7 +424,7 @@ void rt_gui_app_poll(void *app_ptr)
                         else if (has_shift)
                         {
                             // US QWERTY shift mapping — non-US layouts may produce wrong
-                        // shifted characters. TODO: use platform-level translation.
+                            // shifted characters. TODO: use platform-level translation.
                             switch (key)
                             {
                                 case '1':
@@ -503,6 +513,8 @@ void rt_gui_app_poll(void *app_ptr)
     }
 }
 
+/// @brief Perform app render operation.
+/// @param app_ptr
 void rt_gui_app_render(void *app_ptr)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -606,6 +618,10 @@ void *rt_gui_app_get_root(void *app_ptr)
     return app->root;
 }
 
+/// @brief Perform app set font operation.
+/// @param app_ptr
+/// @param font
+/// @param size
 void rt_gui_app_set_font(void *app_ptr, void *font, double size)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -665,6 +681,8 @@ static void render_widget_tree(vgfx_window_t window,
 
 rt_gui_app_t *s_current_app = NULL;
 
+/// @brief Set the active dialog value.
+/// @param dlg
 void rt_gui_set_active_dialog(void *dlg)
 {
     (void)dlg;
@@ -678,24 +696,34 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
     return NULL;
 }
 
+/// @brief Perform ensure default font operation.
 void rt_gui_ensure_default_font(void) {}
 
+/// @brief Perform app destroy operation.
+/// @param app_ptr
 void rt_gui_app_destroy(void *app_ptr)
 {
     (void)app_ptr;
 }
 
+/// @brief Perform app should close operation.
+/// @param app_ptr
+/// @return Result value.
 int64_t rt_gui_app_should_close(void *app_ptr)
 {
     (void)app_ptr;
     return 1;
 }
 
+/// @brief Perform app poll operation.
+/// @param app_ptr
 void rt_gui_app_poll(void *app_ptr)
 {
     (void)app_ptr;
 }
 
+/// @brief Perform app render operation.
+/// @param app_ptr
 void rt_gui_app_render(void *app_ptr)
 {
     (void)app_ptr;
@@ -707,6 +735,10 @@ void *rt_gui_app_get_root(void *app_ptr)
     return NULL;
 }
 
+/// @brief Perform app set font operation.
+/// @param app_ptr
+/// @param font
+/// @param size
 void rt_gui_app_set_font(void *app_ptr, void *font, double size)
 {
     (void)app_ptr;

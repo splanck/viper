@@ -240,13 +240,16 @@ typedef struct
     uint16_t bits_per_sample;
 }
 #ifndef _MSC_VER
-    __attribute__((packed))
+__attribute__((packed))
 #endif
-        vaf_header;
+vaf_header;
 #ifdef _MSC_VER
 #pragma pack(pop)
 #endif
 
+/// @brief Check if vaf.
+/// @param path
+/// @return Result value.
 int8_t rt_audio_is_vaf(const char *path)
 {
     if (!path)
@@ -436,6 +439,10 @@ static wav_data parse_wav(const char *path)
 // Encode WAV -> VAF
 //=============================================================================
 
+/// @brief Perform encode vaf operation.
+/// @param input_wav_path
+/// @param output_vaf_path
+/// @return Result value.
 int8_t rt_audio_encode_vaf(rt_string input_wav_path, rt_string output_vaf_path)
 {
     if (!input_wav_path || !output_vaf_path)
@@ -494,6 +501,10 @@ int8_t rt_audio_encode_vaf(rt_string input_wav_path, rt_string output_vaf_path)
     return 1;
 }
 
+/// @brief Perform encode operation.
+/// @param input_path
+/// @param output_path
+/// @return Result value.
 int8_t rt_audio_encode(rt_string input_path, rt_string output_path)
 {
     return rt_audio_encode_vaf(input_path, output_path);

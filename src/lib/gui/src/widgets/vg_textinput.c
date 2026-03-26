@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_textinput.c
+//
+//===----------------------------------------------------------------------===//
 // vg_textinput.c - Text input widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -715,9 +725,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                     {
                         size_t end = textinput_byte_offset(input, input->cursor_pos);
                         size_t start = textinput_byte_offset(input, input->cursor_pos - 1);
-                        memmove(input->text + start,
-                                input->text + end,
-                                input->text_len - end + 1);
+                        memmove(input->text + start, input->text + end, input->text_len - end + 1);
                         input->cursor_pos--;
                         input->text_len -= (end - start);
                         textinput_push_undo(input);
@@ -738,9 +746,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                     {
                         size_t start = textinput_byte_offset(input, input->cursor_pos);
                         size_t end = textinput_byte_offset(input, input->cursor_pos + 1);
-                        memmove(input->text + start,
-                                input->text + end,
-                                input->text_len - end + 1);
+                        memmove(input->text + start, input->text + end, input->text_len - end + 1);
                         input->text_len -= (end - start);
                         textinput_push_undo(input);
                         if (input->on_change)
@@ -920,6 +926,7 @@ const char *vg_textinput_get_text(vg_textinput_t *input)
     return input ? input->text : NULL;
 }
 
+/// @brief Textinput set placeholder.
 void vg_textinput_set_placeholder(vg_textinput_t *input, const char *placeholder)
 {
     if (!input)
@@ -933,6 +940,7 @@ void vg_textinput_set_placeholder(vg_textinput_t *input, const char *placeholder
     input->base.needs_paint = true;
 }
 
+/// @brief Textinput set on change.
 void vg_textinput_set_on_change(vg_textinput_t *input,
                                 vg_text_change_callback_t callback,
                                 void *user_data)
@@ -944,6 +952,7 @@ void vg_textinput_set_on_change(vg_textinput_t *input,
     input->on_change_data = user_data;
 }
 
+/// @brief Textinput set on commit.
 void vg_textinput_set_on_commit(vg_textinput_t *input,
                                 vg_text_change_callback_t callback,
                                 void *user_data)
@@ -955,6 +964,7 @@ void vg_textinput_set_on_commit(vg_textinput_t *input,
     input->on_commit_data = user_data;
 }
 
+/// @brief Textinput set cursor.
 void vg_textinput_set_cursor(vg_textinput_t *input, size_t pos)
 {
     if (!input)
@@ -964,6 +974,7 @@ void vg_textinput_set_cursor(vg_textinput_t *input, size_t pos)
     input->base.needs_paint = true;
 }
 
+/// @brief Textinput select.
 void vg_textinput_select(vg_textinput_t *input, size_t start, size_t end)
 {
     if (!input)
@@ -975,6 +986,7 @@ void vg_textinput_select(vg_textinput_t *input, size_t start, size_t end)
     input->base.needs_paint = true;
 }
 
+/// @brief Textinput select all.
 void vg_textinput_select_all(vg_textinput_t *input)
 {
     if (!input)
@@ -986,6 +998,7 @@ void vg_textinput_select_all(vg_textinput_t *input)
     input->base.needs_paint = true;
 }
 
+/// @brief Textinput insert.
 void vg_textinput_insert(vg_textinput_t *input, const char *text)
 {
     if (!input || !text || input->read_only)
@@ -1034,6 +1047,7 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text)
     }
 }
 
+/// @brief Textinput delete selection.
 void vg_textinput_delete_selection(vg_textinput_t *input)
 {
     if (!input || input->read_only)
@@ -1063,6 +1077,7 @@ void vg_textinput_delete_selection(vg_textinput_t *input)
     }
 }
 
+/// @brief Textinput get selection.
 char *vg_textinput_get_selection(vg_textinput_t *input)
 {
     if (!input)
@@ -1088,6 +1103,7 @@ char *vg_textinput_get_selection(vg_textinput_t *input)
     return result;
 }
 
+/// @brief Textinput set font.
 void vg_textinput_set_font(vg_textinput_t *input, vg_font_t *font, float size)
 {
     if (!input)
@@ -1099,6 +1115,7 @@ void vg_textinput_set_font(vg_textinput_t *input, vg_font_t *font, float size)
     input->base.needs_paint = true;
 }
 
+/// @brief Textinput tick.
 void vg_textinput_tick(vg_textinput_t *input, float dt)
 {
     if (!input || !(input->base.state & VG_STATE_FOCUSED))

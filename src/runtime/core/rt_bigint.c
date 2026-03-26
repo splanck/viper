@@ -393,6 +393,9 @@ void *rt_bigint_one(void)
 // Conversion
 //=============================================================================
 
+/// @brief Perform bigint to i64 operation.
+/// @param a
+/// @return Result value.
 int64_t rt_bigint_to_i64(void *a)
 {
     if (!a)
@@ -420,11 +423,18 @@ int64_t rt_bigint_to_i64(void *a)
     return bi->sign ? -(int64_t)val : (int64_t)val;
 }
 
+/// @brief Perform bigint to str operation.
+/// @param a
+/// @return Result value.
 rt_string rt_bigint_to_str(void *a)
 {
     return rt_bigint_to_str_base(a, 10);
 }
 
+/// @brief Perform bigint to str base operation.
+/// @param a
+/// @param base
+/// @return Result value.
 rt_string rt_bigint_to_str_base(void *a, int64_t base)
 {
     if (!a)
@@ -566,6 +576,9 @@ void *rt_bigint_to_bytes(void *a)
     return result;
 }
 
+/// @brief Perform bigint fits i64 operation.
+/// @param a
+/// @return Result value.
 int8_t rt_bigint_fits_i64(void *a)
 {
     if (!a)
@@ -1121,6 +1134,10 @@ void *rt_bigint_abs(void *a)
 // Comparison
 //=============================================================================
 
+/// @brief Perform bigint cmp operation.
+/// @param a
+/// @param b
+/// @return Result value.
 int64_t rt_bigint_cmp(void *a, void *b)
 {
     if (!a && !b)
@@ -1146,11 +1163,18 @@ int64_t rt_bigint_cmp(void *a, void *b)
     return bi_a->sign ? -mag_cmp : mag_cmp;
 }
 
+/// @brief Perform bigint eq operation.
+/// @param a
+/// @param b
+/// @return Result value.
 int8_t rt_bigint_eq(void *a, void *b)
 {
     return rt_bigint_cmp(a, b) == 0 ? 1 : 0;
 }
 
+/// @brief Perform bigint is zero operation.
+/// @param a
+/// @return Result value.
 int8_t rt_bigint_is_zero(void *a)
 {
     if (!a)
@@ -1158,6 +1182,9 @@ int8_t rt_bigint_is_zero(void *a)
     return ((bigint_t *)a)->len == 0 ? 1 : 0;
 }
 
+/// @brief Perform bigint is negative operation.
+/// @param a
+/// @return Result value.
 int8_t rt_bigint_is_negative(void *a)
 {
     if (!a)
@@ -1166,6 +1193,9 @@ int8_t rt_bigint_is_negative(void *a)
     return (bi->len > 0 && bi->sign) ? 1 : 0;
 }
 
+/// @brief Perform bigint sign operation.
+/// @param a
+/// @return Result value.
 int64_t rt_bigint_sign(void *a)
 {
     if (!a)
@@ -1546,6 +1576,9 @@ void *rt_bigint_lcm(void *a, void *b)
     return result;
 }
 
+/// @brief Perform bigint bit length operation.
+/// @param a
+/// @return Result value.
 int64_t rt_bigint_bit_length(void *a)
 {
     if (!a)
@@ -1567,6 +1600,10 @@ int64_t rt_bigint_bit_length(void *a)
     return bits;
 }
 
+/// @brief Perform bigint test bit operation.
+/// @param a
+/// @param n
+/// @return Result value.
 int8_t rt_bigint_test_bit(void *a, int64_t n)
 {
     if (!a || n < 0)

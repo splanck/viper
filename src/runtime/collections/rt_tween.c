@@ -66,6 +66,10 @@ struct rt_tween_impl
 };
 
 // Forward declaration of public easing function
+/// @brief Perform ease operation.
+/// @param t
+/// @param ease_type
+/// @return Result value.
 double rt_tween_ease(double t, int64_t ease_type);
 
 // Forward declaration of internal easing functions
@@ -91,6 +95,8 @@ static double ease_in_bounce(double t);
 static double ease_out_bounce(double t);
 static double ease_in_out_bounce(double t);
 
+/// @brief Create a new new instance.
+/// @return Result value.
 rt_tween rt_tween_new(void)
 {
     struct rt_tween_impl *tween =
@@ -111,12 +117,20 @@ rt_tween rt_tween_new(void)
     return tween;
 }
 
+/// @brief Destroy and free destroy resources.
+/// @param tween
 void rt_tween_destroy(rt_tween tween)
 {
     if (tween && rt_obj_release_check0(tween))
         rt_obj_free(tween);
 }
 
+/// @brief Start start.
+/// @param tween
+/// @param from
+/// @param to
+/// @param duration
+/// @param ease_type
 void rt_tween_start(rt_tween tween, double from, double to, int64_t duration, int64_t ease_type)
 {
     if (!tween)
@@ -143,6 +157,9 @@ void rt_tween_start_i64(
     rt_tween_start(tween, (double)from, (double)to, duration, ease_type);
 }
 
+/// @brief Update update state for current frame.
+/// @param tween
+/// @return Result value.
 int8_t rt_tween_update(rt_tween tween)
 {
     if (!tween)
@@ -175,6 +192,9 @@ int8_t rt_tween_update(rt_tween tween)
     return 0;
 }
 
+/// @brief Perform value operation.
+/// @param tween
+/// @return Result value.
 double rt_tween_value(rt_tween tween)
 {
     if (!tween)
@@ -182,6 +202,9 @@ double rt_tween_value(rt_tween tween)
     return tween->current;
 }
 
+/// @brief Perform value i64 operation.
+/// @param tween
+/// @return Result value.
 int64_t rt_tween_value_i64(rt_tween tween)
 {
     if (!tween)
@@ -190,6 +213,9 @@ int64_t rt_tween_value_i64(rt_tween tween)
     return (int64_t)(tween->current + (tween->current >= 0 ? 0.5 : -0.5));
 }
 
+/// @brief Check if running.
+/// @param tween
+/// @return Result value.
 int8_t rt_tween_is_running(rt_tween tween)
 {
     if (!tween)
@@ -197,6 +223,9 @@ int8_t rt_tween_is_running(rt_tween tween)
     return tween->running && !tween->paused;
 }
 
+/// @brief Check if complete.
+/// @param tween
+/// @return Result value.
 int8_t rt_tween_is_complete(rt_tween tween)
 {
     if (!tween)
@@ -204,6 +233,9 @@ int8_t rt_tween_is_complete(rt_tween tween)
     return tween->complete;
 }
 
+/// @brief Perform progress operation.
+/// @param tween
+/// @return Result value.
 int64_t rt_tween_progress(rt_tween tween)
 {
     if (!tween || tween->duration == 0)
@@ -214,6 +246,9 @@ int64_t rt_tween_progress(rt_tween tween)
     return progress;
 }
 
+/// @brief Perform elapsed operation.
+/// @param tween
+/// @return Result value.
 int64_t rt_tween_elapsed(rt_tween tween)
 {
     if (!tween)
@@ -221,6 +256,9 @@ int64_t rt_tween_elapsed(rt_tween tween)
     return tween->elapsed;
 }
 
+/// @brief Perform duration operation.
+/// @param tween
+/// @return Result value.
 int64_t rt_tween_duration(rt_tween tween)
 {
     if (!tween)
@@ -228,6 +266,8 @@ int64_t rt_tween_duration(rt_tween tween)
     return tween->duration;
 }
 
+/// @brief Stop stop.
+/// @param tween
 void rt_tween_stop(rt_tween tween)
 {
     if (!tween)
@@ -236,6 +276,8 @@ void rt_tween_stop(rt_tween tween)
     tween->paused = 0;
 }
 
+/// @brief Reset reset to initial state.
+/// @param tween
 void rt_tween_reset(rt_tween tween)
 {
     if (!tween)
@@ -248,6 +290,8 @@ void rt_tween_reset(rt_tween tween)
     tween->paused = 0;
 }
 
+/// @brief Pause pause.
+/// @param tween
 void rt_tween_pause(rt_tween tween)
 {
     if (!tween)
@@ -255,6 +299,8 @@ void rt_tween_pause(rt_tween tween)
     tween->paused = 1;
 }
 
+/// @brief Resume resume.
+/// @param tween
 void rt_tween_resume(rt_tween tween)
 {
     if (!tween)
@@ -262,6 +308,9 @@ void rt_tween_resume(rt_tween tween)
     tween->paused = 0;
 }
 
+/// @brief Check if paused.
+/// @param tween
+/// @return Result value.
 int8_t rt_tween_is_paused(rt_tween tween)
 {
     if (!tween)
@@ -275,6 +324,11 @@ int8_t rt_tween_is_paused(rt_tween tween)
 
 // Note: rt_lerp is provided by rt_math.c
 
+/// @brief Perform lerp i64 operation.
+/// @param from
+/// @param to
+/// @param t
+/// @return Result value.
 int64_t rt_tween_lerp_i64(int64_t from, int64_t to, double t)
 {
     if (t < 0.0)
@@ -285,6 +339,10 @@ int64_t rt_tween_lerp_i64(int64_t from, int64_t to, double t)
     return (int64_t)(result + (result >= 0 ? 0.5 : -0.5));
 }
 
+/// @brief Perform ease operation.
+/// @param t
+/// @param ease_type
+/// @return Result value.
 double rt_tween_ease(double t, int64_t ease_type)
 {
     if (t <= 0.0)

@@ -190,6 +190,9 @@ void *rt_sparse_new(void)
     return (void *)sa;
 }
 
+/// @brief Perform sparse len operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_sparse_len(void *obj)
 {
     if (!obj)
@@ -205,6 +208,10 @@ void *rt_sparse_get(void *obj, int64_t index)
     return s ? s->value : NULL;
 }
 
+/// @brief Perform sparse set operation.
+/// @param obj
+/// @param index
+/// @param value
 void rt_sparse_set(void *obj, int64_t index, void *value)
 {
     if (!obj)
@@ -218,6 +225,10 @@ void rt_sparse_set(void *obj, int64_t index, void *value)
     sa_insert_internal(sa, index, value);
 }
 
+/// @brief Perform sparse has operation.
+/// @param obj
+/// @param index
+/// @return Result value.
 int8_t rt_sparse_has(void *obj, int64_t index)
 {
     if (!obj)
@@ -225,6 +236,10 @@ int8_t rt_sparse_has(void *obj, int64_t index)
     return sa_find((rt_sparse_impl *)obj, index) != NULL ? 1 : 0;
 }
 
+/// @brief Perform sparse remove operation.
+/// @param obj
+/// @param index
+/// @return Result value.
 int8_t rt_sparse_remove(void *obj, int64_t index)
 {
     if (!obj)
@@ -296,6 +311,8 @@ void *rt_sparse_values(void *obj)
     return seq;
 }
 
+/// @brief Perform sparse clear operation.
+/// @param obj
 void rt_sparse_clear(void *obj)
 {
     if (!obj)

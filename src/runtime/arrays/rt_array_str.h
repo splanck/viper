@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/arrays/rt_array_str.h
 // Purpose: Dynamic string array API for BASIC DIM'd string collections, providing two-level
 // reference counting over both the array container and each individual string element.

@@ -186,6 +186,7 @@ static void test_short_format()
     rt_string_unref(r);
 }
 
+/// @brief Main.
 int main()
 {
     // format_from (relative to reference)

@@ -20,6 +20,7 @@
 #include <math.h>
 #include <string.h>
 
+/// @brief 3d skin vertices.
 void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
                           vgfx3d_vertex_t *dst,
                           uint32_t vertex_count,

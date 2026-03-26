@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_sparsearray.h
 // Purpose: Memory-efficient sparse array mapping arbitrary int64_t indices to object pointer
 // values, allocating storage only for non-null entries via a hash map.

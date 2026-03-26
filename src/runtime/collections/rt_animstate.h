@@ -54,9 +54,12 @@ extern "C"
     /// @param end_frame Last frame index of the clip (inclusive).
     /// @param frame_duration Frames to display each animation frame.
     /// @param loop 1 to loop the clip, 0 for one-shot.
-    void rt_animstate_add_state(void *asm_, int64_t state_id,
-                                int64_t start_frame, int64_t end_frame,
-                                int64_t frame_duration, int8_t loop);
+    void rt_animstate_add_state(void *asm_,
+                                int64_t state_id,
+                                int64_t start_frame,
+                                int64_t end_frame,
+                                int64_t frame_duration,
+                                int8_t loop);
 
     /// @brief Set the initial state (must have been added).
     /// @return 1 on success, 0 if state not found.

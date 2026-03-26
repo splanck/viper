@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_debug.h
 // Purpose: Debug-oriented printing helpers providing deterministic, line-oriented output of i32 and
 // C-string values for IL golden tests and runtime diagnostics.

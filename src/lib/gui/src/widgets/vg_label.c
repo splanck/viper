@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_label.c
+//
+//===----------------------------------------------------------------------===//
 // vg_label.c - Label widget implementation
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"

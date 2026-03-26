@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/io/rt_tempfile.h
 // Purpose: Temporary file utilities creating files in the system temp directory with automatic
 // cleanup on process exit or explicit deletion.

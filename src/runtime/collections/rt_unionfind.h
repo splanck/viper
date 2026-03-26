@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_unionfind.h
 // Purpose: Disjoint-set (Union-Find) data structure for efficient set merging and connectivity
 // queries, using path compression and union by rank for near-constant-time operations.

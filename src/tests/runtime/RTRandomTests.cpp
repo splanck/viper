@@ -216,6 +216,7 @@ static void test_determinism()
     printf("  PASSED\n");
 }
 
+/// @brief Main.
 int main()
 {
     printf("=== Random Distribution Tests ===\n");

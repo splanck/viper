@@ -1,4 +1,7 @@
 //===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: tests/runtime/RTNullCheckTests.c
 // Purpose: Verify that runtime collection constructors and weak reference
 //          operations handle OOM gracefully (where testable without injecting

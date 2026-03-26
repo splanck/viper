@@ -1,4 +1,15 @@
-// vg_ttf.c - TTF font parser implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/font/vg_ttf.c
+// Purpose: TrueType font (TTF) parser — reads TTF binary format, extracts
+//   glyph outlines, metrics, and kerning data for rasterization.
+//
+//===----------------------------------------------------------------------===//
 #include "vg_ttf_internal.h"
 #include <stdio.h>
 #include <stdlib.h>

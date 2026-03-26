@@ -164,13 +164,15 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
                 if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get()))
                 {
                     TypeRef baseType = typeOf(fieldExpr->base.get());
-                    if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType())
+                    if (baseType && baseType->kind == TypeKindSem::Optional &&
+                        baseType->innerType())
                         baseType = baseType->innerType();
 
-                    if (baseType &&
-                        (baseType->kind == TypeKindSem::Entity || baseType->kind == TypeKindSem::Value))
+                    if (baseType && (baseType->kind == TypeKindSem::Entity ||
+                                     baseType->kind == TypeKindSem::Value))
                     {
-                        if (const PropertyDecl *prop = findPropertyDecl(baseType->name, fieldExpr->field))
+                        if (const PropertyDecl *prop =
+                                findPropertyDecl(baseType->name, fieldExpr->field))
                         {
                             if (!prop->setterBody)
                             {

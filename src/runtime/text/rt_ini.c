@@ -168,6 +168,9 @@ void *rt_ini_parse(rt_string text)
 // Format
 // ---------------------------------------------------------------------------
 
+/// @brief Perform ini format operation.
+/// @param ini_map
+/// @return Result value.
 rt_string rt_ini_format(void *ini_map)
 {
     if (!ini_map)
@@ -246,6 +249,11 @@ rt_string rt_ini_format(void *ini_map)
 // Get / Set / Remove
 // ---------------------------------------------------------------------------
 
+/// @brief Perform ini get operation.
+/// @param ini_map
+/// @param section
+/// @param key
+/// @return Result value.
 rt_string rt_ini_get(void *ini_map, rt_string section, rt_string key)
 {
     if (!ini_map || !section || !key)
@@ -264,6 +272,11 @@ rt_string rt_ini_get(void *ini_map, rt_string section, rt_string key)
     return val;
 }
 
+/// @brief Perform ini set operation.
+/// @param ini_map
+/// @param section
+/// @param key
+/// @param value
 void rt_ini_set(void *ini_map, rt_string section, rt_string key, rt_string value)
 {
     if (!ini_map || !section || !key)
@@ -278,6 +291,10 @@ void rt_ini_set(void *ini_map, rt_string section, rt_string key, rt_string value
     rt_map_set(sect_map, key, (void *)value);
 }
 
+/// @brief Perform ini has section operation.
+/// @param ini_map
+/// @param section
+/// @return Result value.
 int8_t rt_ini_has_section(void *ini_map, rt_string section)
 {
     if (!ini_map || !section)
@@ -292,6 +309,11 @@ void *rt_ini_sections(void *ini_map)
     return rt_map_keys(ini_map);
 }
 
+/// @brief Perform ini remove operation.
+/// @param ini_map
+/// @param section
+/// @param key
+/// @return Result value.
 int8_t rt_ini_remove(void *ini_map, rt_string section, rt_string key)
 {
     if (!ini_map || !section || !key)

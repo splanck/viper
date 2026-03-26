@@ -85,46 +85,86 @@ typedef ptrdiff_t GLintptr;
 // GL function pointer types
 //=============================================================================
 
+/// @brief Void operation.
 typedef void (*PFNGLCLEARPROC)(GLuint);
+/// @brief Void operation.
 typedef void (*PFNGLCLEARCOLORPROC)(GLfloat, GLfloat, GLfloat, GLfloat);
+/// @brief Void operation.
 typedef void (*PFNGLCLEARDEPTHPROC)(double);
+/// @brief Void operation.
 typedef void (*PFNGLENABLEPROC)(GLenum);
+/// @brief Void operation.
 typedef void (*PFNGLDISABLEPROC)(GLenum);
+/// @brief Void operation.
 typedef void (*PFNGLDEPTHFUNCPROC)(GLenum);
+/// @brief Void operation.
 typedef void (*PFNGLCULLFACEPROC)(GLenum);
+/// @brief Void operation.
 typedef void (*PFNGLFRONTFACEPROC)(GLenum);
+/// @brief Void operation.
 typedef void (*PFNGLVIEWPORTPROC)(GLint, GLint, GLsizei, GLsizei);
+/// @brief Void operation.
 typedef void (*PFNGLDRAWELEMENTSPROC)(GLenum, GLsizei, GLenum, const void *);
+/// @brief Gluint operation.
 typedef GLuint (*PFNGLCREATESHADERPROC)(GLenum);
+/// @brief Void operation.
 typedef void (*PFNGLSHADERSOURCEPROC)(GLuint, GLsizei, const GLchar **, const GLint *);
+/// @brief Void operation.
 typedef void (*PFNGLCOMPILESHADERPROC)(GLuint);
+/// @brief Void operation.
 typedef void (*PFNGLGETSHADERIVPROC)(GLuint, GLenum, GLint *);
+/// @brief Void operation.
 typedef void (*PFNGLGETSHADERINFOLOGPROC)(GLuint, GLsizei, GLsizei *, GLchar *);
+/// @brief Gluint operation.
 typedef GLuint (*PFNGLCREATEPROGRAMPROC)(void);
+/// @brief Void operation.
 typedef void (*PFNGLATTACHSHADERPROC)(GLuint, GLuint);
+/// @brief Void operation.
 typedef void (*PFNGLLINKPROGRAMPROC)(GLuint);
+/// @brief Void operation.
 typedef void (*PFNGLGETPROGRAMIVPROC)(GLuint, GLenum, GLint *);
+/// @brief Void operation.
 typedef void (*PFNGLUSEPROGRAMPROC)(GLuint);
+/// @brief Void operation.
 typedef void (*PFNGLDELETESHADERPROC)(GLuint);
+/// @brief Glint operation.
 typedef GLint (*PFNGLGETUNIFORMLOCATIONPROC)(GLuint, const GLchar *);
+/// @brief Void operation.
 typedef void (*PFNGLUNIFORMMATRIX4FVPROC)(GLint, GLsizei, GLboolean, const GLfloat *);
+/// @brief Void operation.
 typedef void (*PFNGLUNIFORM3FPROC)(GLint, GLfloat, GLfloat, GLfloat);
+/// @brief Void operation.
 typedef void (*PFNGLUNIFORM1IPROC)(GLint, GLint);
+/// @brief Void operation.
 typedef void (*PFNGLUNIFORM1FPROC)(GLint, GLfloat);
+/// @brief Void operation.
 typedef void (*PFNGLUNIFORM4FPROC)(GLint, GLfloat, GLfloat, GLfloat, GLfloat);
+/// @brief Void operation.
 typedef void (*PFNGLGENVERTEXARRAYSPROC)(GLsizei, GLuint *);
+/// @brief Void operation.
 typedef void (*PFNGLBINDVERTEXARRAYPROC)(GLuint);
+/// @brief Void operation.
 typedef void (*PFNGLGENBUFFERSPROC)(GLsizei, GLuint *);
+/// @brief Void operation.
 typedef void (*PFNGLBINDBUFFERPROC)(GLenum, GLuint);
+/// @brief Void operation.
 typedef void (*PFNGLBUFFERDATAPROC)(GLenum, GLsizeiptr, const void *, GLenum);
+/// @brief Void operation.
 typedef void (*PFNGLVERTEXATTRIBPOINTERPROC)(
     GLuint, GLint, GLenum, GLboolean, GLsizei, const void *);
+/// @brief Void operation.
 typedef void (*PFNGLVERTEXATTRIBIPOINTERPROC)(GLuint, GLint, GLenum, GLsizei, const void *);
+/// @brief Void operation.
 typedef void (*PFNGLENABLEVERTEXATTRIBARRAYPROC)(GLuint);
+/// @brief Void operation.
 typedef void (*PFNGLDELETEBUFFERSPROC)(GLsizei, const GLuint *);
+/// @brief Void operation.
 typedef void (*PFNGLDELETEVERTEXARRAYSPROC)(GLsizei, const GLuint *);
+/// @brief Void operation.
 typedef void (*PFNGLDELETEPROGRAMPROC)(GLuint);
+/// @brief Void operation.
 typedef void (*PFNGLBLENDFUNCPROC)(GLenum, GLenum);
+/// @brief Void operation.
 typedef void (*PFNGLDEPTHMASKPROC)(GLboolean);
 
 //=============================================================================
@@ -180,12 +220,18 @@ static struct
 typedef void *GLXContext;
 typedef unsigned long GLXDrawable;
 typedef struct __GLXFBConfigRec *GLXFBConfig;
+/// @brief Void operation.
 typedef void (*__GLXextFuncPtr)(void);
+/// @brief Glxcontext operation.
 typedef GLXContext (*PFNGLXCREATENEWCONTEXTPROC)(Display *, GLXFBConfig, int, GLXContext, int);
 typedef GLXFBConfig *(*PFNGLXCHOOSEFBCONFIGPROC)(Display *, int, const int *, int *);
+/// @brief Void operation.
 typedef void (*PFNGLXSWAPBUFFERSPROC)(Display *, GLXDrawable);
+/// @brief Int operation.
 typedef int (*PFNGLXMAKECURRENTPROC)(Display *, GLXDrawable, GLXContext);
+/// @brief Void operation.
 typedef void (*PFNGLXDESTROYCONTEXTPROC)(Display *, GLXContext);
+/// @brief   Glxextfuncptr operation.
 typedef __GLXextFuncPtr (*PFNGLXGETPROCADDRESSPROC)(const unsigned char *);
 
 static struct

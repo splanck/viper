@@ -177,6 +177,9 @@ void *rt_stream_from_memstream(void *memstream)
 // Stream Properties
 //=============================================================================
 
+/// @brief Perform stream get type operation.
+/// @param stream
+/// @return Result value.
 int64_t rt_stream_get_type(void *stream)
 {
     if (!stream)
@@ -184,6 +187,9 @@ int64_t rt_stream_get_type(void *stream)
     return ((stream_impl *)stream)->type;
 }
 
+/// @brief Perform stream get pos operation.
+/// @param stream
+/// @return Result value.
 int64_t rt_stream_get_pos(void *stream)
 {
     if (!stream)
@@ -200,6 +206,9 @@ int64_t rt_stream_get_pos(void *stream)
     }
 }
 
+/// @brief Perform stream set pos operation.
+/// @param stream
+/// @param pos
 void rt_stream_set_pos(void *stream, int64_t pos)
 {
     if (!stream)
@@ -216,6 +225,9 @@ void rt_stream_set_pos(void *stream, int64_t pos)
     }
 }
 
+/// @brief Perform stream get len operation.
+/// @param stream
+/// @return Result value.
 int64_t rt_stream_get_len(void *stream)
 {
     if (!stream)
@@ -232,6 +244,9 @@ int64_t rt_stream_get_len(void *stream)
     }
 }
 
+/// @brief Perform stream is eof operation.
+/// @param stream
+/// @return Result value.
 int8_t rt_stream_is_eof(void *stream)
 {
     if (!stream)
@@ -317,6 +332,9 @@ void *rt_stream_read_all(void *stream)
     }
 }
 
+/// @brief Perform stream write operation.
+/// @param stream
+/// @param bytes
 void rt_stream_write(void *stream, void *bytes)
 {
     if (!stream || !bytes)
@@ -334,6 +352,9 @@ void rt_stream_write(void *stream, void *bytes)
     }
 }
 
+/// @brief Perform stream read byte operation.
+/// @param stream
+/// @return Result value.
 int64_t rt_stream_read_byte(void *stream)
 {
     if (!stream)
@@ -355,6 +376,9 @@ int64_t rt_stream_read_byte(void *stream)
     }
 }
 
+/// @brief Perform stream write byte operation.
+/// @param stream
+/// @param byte
 void rt_stream_write_byte(void *stream, int64_t byte)
 {
     if (!stream)
@@ -371,6 +395,8 @@ void rt_stream_write_byte(void *stream, int64_t byte)
     }
 }
 
+/// @brief Perform stream flush operation.
+/// @param stream
 void rt_stream_flush(void *stream)
 {
     if (!stream)
@@ -384,6 +410,8 @@ void rt_stream_flush(void *stream)
     // MemStream doesn't need flushing
 }
 
+/// @brief Perform stream close operation.
+/// @param stream
 void rt_stream_close(void *stream)
 {
     if (!stream)

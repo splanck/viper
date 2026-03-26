@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_dateonly.h
 // Purpose: DateOnly type representing a calendar date without time or timezone components,
 // providing creation, parsing, arithmetic, and formatting operations.

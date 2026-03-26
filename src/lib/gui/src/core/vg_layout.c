@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/core/vg_layout.c
+//
+//===----------------------------------------------------------------------===//
 // vg_layout.c - Layout system implementation
 #include "../../include/vg_layout.h"
 #include "../../include/vg_widget.h"
@@ -827,10 +837,9 @@ static void grid_arrange(vg_widget_t *self, float x, float y, float width, float
 
     size_t scratch_count = (size_t)(cols * 2 + rows * 2);
     float scratch_stack[128];
-    float *scratch =
-        scratch_count <= (sizeof(scratch_stack) / sizeof(scratch_stack[0]))
-            ? scratch_stack
-            : malloc(scratch_count * sizeof(float));
+    float *scratch = scratch_count <= (sizeof(scratch_stack) / sizeof(scratch_stack[0]))
+                         ? scratch_stack
+                         : malloc(scratch_count * sizeof(float));
     if (!scratch)
         return;
     float *col_x = scratch;

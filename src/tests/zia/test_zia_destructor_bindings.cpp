@@ -18,7 +18,9 @@ using namespace il::support;
 namespace
 {
 
-static bool hasCallee(const il::core::Module &mod, const std::string &fnName, const std::string &callee)
+static bool hasCallee(const il::core::Module &mod,
+                      const std::string &fnName,
+                      const std::string &callee)
 {
     for (const auto &fn : mod.functions)
     {
@@ -53,6 +55,7 @@ entity Resource {
     }
 }
 
+/// @brief Start.
 func start() {
     {
         var r = new Resource();

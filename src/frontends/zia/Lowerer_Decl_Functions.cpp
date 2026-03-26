@@ -190,9 +190,9 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
             decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
         funcType = types::function(fallbackParamTypes, fallbackReturnType);
     }
-    TypeRef returnType =
-        funcType && funcType->kind == TypeKindSem::Function ? funcType->returnType()
-                                                            : types::voidType();
+    TypeRef returnType = funcType && funcType->kind == TypeKindSem::Function
+                             ? funcType->returnType()
+                             : types::voidType();
     Type ilReturnType = mapType(returnType);
 
     // Build parameter list
@@ -293,8 +293,8 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
         definedFunctions_.insert(workerName);
 
         // Emit the async worker trampoline: ptr(ptr env)
-        currentFunc_ =
-            &builder_->startFunction(workerName, Type(Type::Kind::Ptr), {{"__env", Type(Type::Kind::Ptr)}});
+        currentFunc_ = &builder_->startFunction(
+            workerName, Type(Type::Kind::Ptr), {{"__env", Type(Type::Kind::Ptr)}});
         currentReturnType_ = declaredReturnType;
         currentAsyncWorker_ = true;
         blockMgr_.bind(builder_.get(), currentFunc_);
@@ -325,7 +325,8 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
             asyncOwnedValues_.push_back(ownedArg);
 
             Value unpacked = ownedArg;
-            if (paramType && (paramType->kind == TypeKindSem::Value || ilParamType.kind != Type::Kind::Ptr))
+            if (paramType &&
+                (paramType->kind == TypeKindSem::Value || ilParamType.kind != Type::Kind::Ptr))
                 unpacked = emitUnboxValue(ownedArg, ilParamType, paramType).value;
 
             createSlot(decl.params[i].name, ilParamType);
@@ -359,9 +360,8 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
         const auto &wrapperParams = currentFunc_->blocks[wrapperEntryIdx].params;
 
         Value envSize = Value::constInt(static_cast<int64_t>(decl.params.size() * sizeof(void *)));
-        Value wrapperEnv = emitCallRet(Type(Type::Kind::Ptr),
-                                       "rt_obj_new_i64",
-                                       {Value::constInt(0), envSize});
+        Value wrapperEnv =
+            emitCallRet(Type(Type::Kind::Ptr), "rt_obj_new_i64", {Value::constInt(0), envSize});
 
         for (size_t i = 0; i < decl.params.size() && i < wrapperParams.size(); ++i)
         {
@@ -374,7 +374,8 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
             Value paramValue = Value::temp(wrapperParams[i].id);
 
             Value storedValue = paramValue;
-            if (paramType && (paramType->kind == TypeKindSem::Value || ilParamType.kind != Type::Kind::Ptr))
+            if (paramType &&
+                (paramType->kind == TypeKindSem::Value || ilParamType.kind != Type::Kind::Ptr))
             {
                 storedValue = emitBoxValue(paramValue, ilParamType, paramType);
             }
@@ -387,7 +388,8 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
             emitStore(argAddr, storedValue, Type(Type::Kind::Ptr));
         }
 
-        Value future = emitCallRet(Type(Type::Kind::Ptr), kAsyncRun, {Value::global(workerName), wrapperEnv});
+        Value future =
+            emitCallRet(Type(Type::Kind::Ptr), kAsyncRun, {Value::global(workerName), wrapperEnv});
         emitRet(future);
         resetLoweringState();
         return;

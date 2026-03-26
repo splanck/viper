@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_treemap.h
 // Purpose: Sorted key-value map with string keys maintained in lexicographic order, providing
 // floor/ceil/first/last navigation and ordered range iteration.

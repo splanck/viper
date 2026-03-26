@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_list.h
 // Purpose: Runtime-backed dynamic list of object references for Viper.Collections.List, providing
 // append, insert, remove, sort, and indexed access with automatic growth.

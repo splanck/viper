@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_checkbox.c
+//
+//===----------------------------------------------------------------------===//
 // vg_checkbox.c - Checkbox widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -264,6 +274,7 @@ bool vg_checkbox_is_checked(vg_checkbox_t *checkbox)
     return checkbox ? checkbox->checked : false;
 }
 
+/// @brief Checkbox toggle.
 void vg_checkbox_toggle(vg_checkbox_t *checkbox)
 {
     if (!checkbox)
@@ -272,6 +283,7 @@ void vg_checkbox_toggle(vg_checkbox_t *checkbox)
     vg_checkbox_set_checked(checkbox, !checkbox->checked);
 }
 
+/// @brief Checkbox set indeterminate.
 void vg_checkbox_set_indeterminate(vg_checkbox_t *checkbox, bool indeterminate)
 {
     if (!checkbox)
@@ -280,6 +292,7 @@ void vg_checkbox_set_indeterminate(vg_checkbox_t *checkbox, bool indeterminate)
     checkbox->base.needs_paint = true;
 }
 
+/// @brief Checkbox set text.
 void vg_checkbox_set_text(vg_checkbox_t *checkbox, const char *text)
 {
     if (!checkbox)
@@ -294,6 +307,7 @@ void vg_checkbox_set_text(vg_checkbox_t *checkbox, const char *text)
     checkbox->base.needs_paint = true;
 }
 
+/// @brief Checkbox set on change.
 void vg_checkbox_set_on_change(vg_checkbox_t *checkbox,
                                vg_checkbox_callback_t callback,
                                void *user_data)

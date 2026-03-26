@@ -31,8 +31,8 @@
 #include "rt_glob.h"
 
 #include "rt_dir.h"
-#include "rt_object.h"
 #include "rt_file_ext.h"
+#include "rt_object.h"
 #include "rt_path.h"
 #include "rt_seq.h"
 #include "rt_string.h"

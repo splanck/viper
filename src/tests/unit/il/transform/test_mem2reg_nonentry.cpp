@@ -32,6 +32,7 @@ using namespace il::core;
 namespace
 {
 
+/// @brief Count opcode in function.
 unsigned countOpcodeInFunction(const Function &fn, Opcode op)
 {
     unsigned count = 0;

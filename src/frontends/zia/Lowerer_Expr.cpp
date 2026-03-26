@@ -158,11 +158,13 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
     auto semaType = sema_.typeOf(expr);
     auto resolveIdentType = [&](TypeRef fallback) -> TypeRef
     {
-        if (semaType && semaType->kind != TypeKindSem::Unknown && semaType->kind != TypeKindSem::Any)
+        if (semaType && semaType->kind != TypeKindSem::Unknown &&
+            semaType->kind != TypeKindSem::Any)
             return semaType;
         return fallback;
     };
-    auto lowerStoredValue = [&](Value storedValue, TypeRef storageType, TypeRef useType) -> LowerResult
+    auto lowerStoredValue =
+        [&](Value storedValue, TypeRef storageType, TypeRef useType) -> LowerResult
     {
         if (storageType && storageType->kind == TypeKindSem::Optional && useType &&
             useType->kind != TypeKindSem::Optional)
@@ -181,8 +183,7 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
     if (slotIt != slots_.end())
     {
         auto localTypeIt = localTypes_.find(expr->name);
-        TypeRef storageType =
-            (localTypeIt != localTypes_.end()) ? localTypeIt->second : nullptr;
+        TypeRef storageType = (localTypeIt != localTypes_.end()) ? localTypeIt->second : nullptr;
         TypeRef useType = resolveIdentType(storageType);
         Type loadType = mapType(storageType ? storageType : useType);
         Value loaded = loadFromSlot(expr->name, loadType);
@@ -193,8 +194,7 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
     if (local)
     {
         auto localTypeIt = localTypes_.find(expr->name);
-        TypeRef storageType =
-            (localTypeIt != localTypes_.end()) ? localTypeIt->second : nullptr;
+        TypeRef storageType = (localTypeIt != localTypes_.end()) ? localTypeIt->second : nullptr;
         TypeRef useType = resolveIdentType(storageType);
         return lowerStoredValue(*local, storageType, useType);
     }

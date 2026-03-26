@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/threads/rt_threadpool.h
 // Purpose: Thread pool for async task execution (Viper.Threads.Pool) with FIFO task dispatch,
 // worker recycling, and configurable pool size.

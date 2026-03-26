@@ -135,6 +135,7 @@ static void test_null_safety()
     assert(rt_unionfind_set_size(NULL, 0) == 0);
 }
 
+/// @brief Main.
 int main()
 {
     test_new();

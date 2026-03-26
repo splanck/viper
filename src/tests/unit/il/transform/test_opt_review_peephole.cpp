@@ -349,6 +349,7 @@ TEST(Peephole, FCmpGE_ReflexiveNotFolded)
     EXPECT_TRUE(reflexiveCmpSurvived(m));
 }
 
+/// @brief Main.
 int main(int argc, char **argv)
 {
     viper_test::init(&argc, argv);

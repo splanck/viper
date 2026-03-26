@@ -214,6 +214,9 @@ void *rt_playlist_new(void)
 // Track Management
 //=============================================================================
 
+/// @brief Play playlist add.
+/// @param obj
+/// @param path
 void rt_playlist_add(void *obj, rt_string path)
 {
     if (!obj)
@@ -231,6 +234,10 @@ void rt_playlist_add(void *obj, rt_string path)
     }
 }
 
+/// @brief Play playlist insert.
+/// @param obj
+/// @param index
+/// @param path
 void rt_playlist_insert(void *obj, int64_t index, rt_string path)
 {
     if (!obj)
@@ -252,6 +259,9 @@ void rt_playlist_insert(void *obj, int64_t index, rt_string path)
     }
 }
 
+/// @brief Play playlist remove.
+/// @param obj
+/// @param index
 void rt_playlist_remove(void *obj, int64_t index)
 {
     if (!obj)
@@ -301,6 +311,8 @@ void rt_playlist_remove(void *obj, int64_t index)
     }
 }
 
+/// @brief Play playlist clear.
+/// @param obj
 void rt_playlist_clear(void *obj)
 {
     if (!obj)
@@ -333,6 +345,9 @@ void rt_playlist_clear(void *obj)
     }
 }
 
+/// @brief Play playlist len.
+/// @param obj
+/// @return Result value.
 int64_t rt_playlist_len(void *obj)
 {
     if (!obj)
@@ -341,6 +356,10 @@ int64_t rt_playlist_len(void *obj)
     return rt_seq_len(pl->tracks);
 }
 
+/// @brief Play playlist get.
+/// @param obj
+/// @param index
+/// @return Result value.
 rt_string rt_playlist_get(void *obj, int64_t index)
 {
     if (!obj)
@@ -357,6 +376,8 @@ rt_string rt_playlist_get(void *obj, int64_t index)
 // Playback Control
 //=============================================================================
 
+/// @brief Play playlist play.
+/// @param obj
 void rt_playlist_play(void *obj)
 {
     if (!obj)
@@ -389,6 +410,8 @@ void rt_playlist_play(void *obj)
     }
 }
 
+/// @brief Play playlist pause.
+/// @param obj
 void rt_playlist_pause(void *obj)
 {
     if (!obj)
@@ -403,6 +426,8 @@ void rt_playlist_pause(void *obj)
     }
 }
 
+/// @brief Play playlist stop.
+/// @param obj
 void rt_playlist_stop(void *obj)
 {
     if (!obj)
@@ -419,6 +444,8 @@ void rt_playlist_stop(void *obj)
     pl->current = 0;
 }
 
+/// @brief Play playlist next.
+/// @param obj
 void rt_playlist_next(void *obj)
 {
     if (!obj)
@@ -462,6 +489,8 @@ void rt_playlist_next(void *obj)
     }
 }
 
+/// @brief Play playlist prev.
+/// @param obj
 void rt_playlist_prev(void *obj)
 {
     if (!obj)
@@ -498,6 +527,9 @@ void rt_playlist_prev(void *obj)
     }
 }
 
+/// @brief Play playlist jump.
+/// @param obj
+/// @param index
 void rt_playlist_jump(void *obj, int64_t index)
 {
     if (!obj)
@@ -525,6 +557,9 @@ void rt_playlist_jump(void *obj, int64_t index)
 // Properties
 //=============================================================================
 
+/// @brief Play playlist get current.
+/// @param obj
+/// @return Result value.
 int64_t rt_playlist_get_current(void *obj)
 {
     if (!obj)
@@ -538,6 +573,9 @@ int64_t rt_playlist_get_current(void *obj)
     return pl->current;
 }
 
+/// @brief Play playlist is playing.
+/// @param obj
+/// @return Result value.
 int8_t rt_playlist_is_playing(void *obj)
 {
     if (!obj)
@@ -546,6 +584,9 @@ int8_t rt_playlist_is_playing(void *obj)
     return pl->playing;
 }
 
+/// @brief Play playlist is paused.
+/// @param obj
+/// @return Result value.
 int8_t rt_playlist_is_paused(void *obj)
 {
     if (!obj)
@@ -554,6 +595,9 @@ int8_t rt_playlist_is_paused(void *obj)
     return pl->paused;
 }
 
+/// @brief Play playlist get volume.
+/// @param obj
+/// @return Result value.
 int64_t rt_playlist_get_volume(void *obj)
 {
     if (!obj)
@@ -562,6 +606,9 @@ int64_t rt_playlist_get_volume(void *obj)
     return pl->volume;
 }
 
+/// @brief Play playlist set volume.
+/// @param obj
+/// @param volume
 void rt_playlist_set_volume(void *obj, int64_t volume)
 {
     if (!obj)
@@ -584,6 +631,9 @@ void rt_playlist_set_volume(void *obj, int64_t volume)
 // Playback Modes
 //=============================================================================
 
+/// @brief Play playlist set shuffle.
+/// @param obj
+/// @param shuffle
 void rt_playlist_set_shuffle(void *obj, int8_t shuffle)
 {
     if (!obj)
@@ -598,6 +648,9 @@ void rt_playlist_set_shuffle(void *obj, int8_t shuffle)
     }
 }
 
+/// @brief Play playlist get shuffle.
+/// @param obj
+/// @return Result value.
 int8_t rt_playlist_get_shuffle(void *obj)
 {
     if (!obj)
@@ -606,6 +659,9 @@ int8_t rt_playlist_get_shuffle(void *obj)
     return pl->shuffle;
 }
 
+/// @brief Play playlist set repeat.
+/// @param obj
+/// @param mode
 void rt_playlist_set_repeat(void *obj, int64_t mode)
 {
     if (!obj)
@@ -619,6 +675,9 @@ void rt_playlist_set_repeat(void *obj, int64_t mode)
     pl->repeat = mode;
 }
 
+/// @brief Play playlist get repeat.
+/// @param obj
+/// @return Result value.
 int64_t rt_playlist_get_repeat(void *obj)
 {
     if (!obj)
@@ -631,6 +690,8 @@ int64_t rt_playlist_get_repeat(void *obj)
 // Update
 //=============================================================================
 
+/// @brief Play playlist update.
+/// @param obj
 void rt_playlist_update(void *obj)
 {
     if (!obj)
@@ -662,6 +723,9 @@ void rt_playlist_update(void *obj)
 // Playlist Crossfade Settings
 //=============================================================================
 
+/// @brief Play playlist set crossfade.
+/// @param obj
+/// @param duration_ms
 void rt_playlist_set_crossfade(void *obj, int64_t duration_ms)
 {
     if (!obj)
@@ -670,6 +734,9 @@ void rt_playlist_set_crossfade(void *obj, int64_t duration_ms)
     pl->crossfade_ms = duration_ms < 0 ? 0 : duration_ms;
 }
 
+/// @brief Play playlist get crossfade.
+/// @param obj
+/// @return Result value.
 int64_t rt_playlist_get_crossfade(void *obj)
 {
     if (!obj)

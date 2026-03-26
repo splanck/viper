@@ -17,6 +17,7 @@ namespace viper
 namespace bytecode
 {
 
+/// @brief Compile.
 BytecodeModule BytecodeCompiler::compile(const il::core::Module &ilModule)
 {
     module_ = BytecodeModule();
@@ -37,6 +38,7 @@ BytecodeModule BytecodeCompiler::compile(const il::core::Module &ilModule)
     return std::move(module_);
 }
 
+/// @brief Compile Function.
 void BytecodeCompiler::compileFunction(const il::core::Function &fn)
 {
     // Create new bytecode function
@@ -93,6 +95,7 @@ void BytecodeCompiler::compileFunction(const il::core::Function &fn)
     currentFunc_ = nullptr;
 }
 
+/// @brief Build SSA To Locals Map.
 void BytecodeCompiler::buildSSAToLocalsMap(const il::core::Function &fn)
 {
     nextLocal_ = 0;
@@ -147,6 +150,7 @@ void BytecodeCompiler::buildSSAToLocalsMap(const il::core::Function &fn)
     }
 }
 
+/// @brief Linearize Blocks.
 std::vector<const il::core::BasicBlock *> BytecodeCompiler::linearizeBlocks(
     const il::core::Function &fn)
 {
@@ -207,6 +211,7 @@ std::vector<const il::core::BasicBlock *> BytecodeCompiler::linearizeBlocks(
     return result;
 }
 
+/// @brief Compile Block.
 void BytecodeCompiler::compileBlock(const il::core::BasicBlock &block)
 {
     // Record block offset
@@ -254,6 +259,7 @@ void BytecodeCompiler::compileBlock(const il::core::BasicBlock &block)
     }
 }
 
+/// @brief Compile Instr.
 void BytecodeCompiler::compileInstr(const il::core::Instr &instr)
 {
     using Opcode = il::core::Opcode;
@@ -365,6 +371,7 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr)
             pushValue(instr.operands[1]);
             pushValue(instr.operands[2]);
             emit(BCOpcode::IDX_CHK);
+            /// @brief Pop Stack.
             popStack(2); // Consumes 3, produces 1
             storeResult(instr);
             break;
@@ -377,6 +384,7 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr)
             {
                 // Record fixup for handler label
                 uint32_t offsetPos = static_cast<uint32_t>(currentFunc_->code.size());
+                /// @brief Emit.
                 emit(0u); // Placeholder for handler PC
                 // isRaw=true because the offset is in a separate word, not encoded in the
                 // instruction
@@ -403,6 +411,7 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr)
             emit(BCOpcode::ERR_GET_KIND);
             if (instr.operands.empty())
             {
+                /// @brief Push Stack.
                 pushStack(); // Result pushed
             }
             // else: consumed input, pushed output (net 0)
@@ -452,6 +461,7 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr)
             // Resume at the faulting instruction
             if (!instr.operands.empty())
             {
+                /// @brief Push Value.
                 pushValue(instr.operands[0]); // Push resume token
             }
             emit(BCOpcode::RESUME_SAME);
@@ -478,6 +488,7 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr)
             // Resume at a specific label
             if (!instr.operands.empty())
             {
+                /// @brief Push Value.
                 pushValue(instr.operands[0]); // Push resume token
             }
             emit(BCOpcode::RESUME_LABEL);
@@ -489,6 +500,7 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr)
             if (!instr.labels.empty())
             {
                 uint32_t offsetPos = static_cast<uint32_t>(currentFunc_->code.size());
+                /// @brief Emit.
                 emit(0u); // Placeholder
                 pendingBranches_.push_back({offsetPos, instr.labels[0], false, true});
             }
@@ -523,6 +535,7 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr)
     }
 }
 
+/// @brief Push Value.
 void BytecodeCompiler::pushValue(const il::core::Value &val)
 {
     switch (val.kind)
@@ -608,6 +621,7 @@ void BytecodeCompiler::pushValue(const il::core::Value &val)
     }
 }
 
+/// @brief Store Result.
 void BytecodeCompiler::storeResult(const il::core::Instr &instr)
 {
     if (instr.result)
@@ -623,41 +637,49 @@ void BytecodeCompiler::storeResult(const il::core::Instr &instr)
     }
 }
 
+/// @brief Emit.
 void BytecodeCompiler::emit(uint32_t instr)
 {
     currentFunc_->code.push_back(instr);
 }
 
+/// @brief Emit.
 void BytecodeCompiler::emit(BCOpcode op)
 {
     emit(encodeOp(op));
 }
 
+/// @brief Emit8.
 void BytecodeCompiler::emit8(BCOpcode op, uint8_t arg)
 {
     emit(encodeOp8(op, arg));
 }
 
+/// @brief Emit I8.
 void BytecodeCompiler::emitI8(BCOpcode op, int8_t arg)
 {
     emit(encodeOpI8(op, arg));
 }
 
+/// @brief Emit16.
 void BytecodeCompiler::emit16(BCOpcode op, uint16_t arg)
 {
     emit(encodeOp16(op, arg));
 }
 
+/// @brief Emit I16.
 void BytecodeCompiler::emitI16(BCOpcode op, int16_t arg)
 {
     emit(encodeOpI16(op, arg));
 }
 
+/// @brief Emit88.
 void BytecodeCompiler::emit88(BCOpcode op, uint8_t arg0, uint8_t arg1)
 {
     emit(encodeOp88(op, arg0, arg1));
 }
 
+/// @brief Emit Branch.
 void BytecodeCompiler::emitBranch(BCOpcode op, const std::string &label)
 {
     pendingBranches_.push_back({
@@ -666,9 +688,11 @@ void BytecodeCompiler::emitBranch(BCOpcode op, const std::string &label)
         false, // isLong
         false  // isRaw
     });
+    /// @brief Emit.
     emit(encodeOp16(op, 0)); // Placeholder offset
 }
 
+/// @brief Emit Branch Long.
 void BytecodeCompiler::emitBranchLong(BCOpcode op, const std::string &label)
 {
     pendingBranches_.push_back({
@@ -677,9 +701,11 @@ void BytecodeCompiler::emitBranchLong(BCOpcode op, const std::string &label)
         true, // isLong
         false // isRaw
     });
+    /// @brief Emit.
     emit(encodeOp24(op, 0)); // Placeholder offset
 }
 
+/// @brief Resolve Branches.
 void BytecodeCompiler::resolveBranches()
 {
     for (const auto &fixup : pendingBranches_)
@@ -725,6 +751,7 @@ void BytecodeCompiler::resolveBranches()
     }
 }
 
+/// @brief Push Stack.
 void BytecodeCompiler::pushStack(int32_t count)
 {
     currentStackDepth_ += count;
@@ -734,6 +761,7 @@ void BytecodeCompiler::pushStack(int32_t count)
     }
 }
 
+/// @brief Pop Stack.
 void BytecodeCompiler::popStack(int32_t count)
 {
     currentStackDepth_ -= count;
@@ -743,6 +771,7 @@ void BytecodeCompiler::popStack(int32_t count)
     }
 }
 
+/// @brief Get Local.
 uint32_t BytecodeCompiler::getLocal(uint32_t ssaId)
 {
     auto it = ssaToLocal_.find(ssaId);
@@ -756,6 +785,7 @@ uint32_t BytecodeCompiler::getLocal(uint32_t ssaId)
     return local;
 }
 
+/// @brief Emit Load Local.
 void BytecodeCompiler::emitLoadLocal(uint32_t local)
 {
     if (local < 256)
@@ -768,6 +798,7 @@ void BytecodeCompiler::emitLoadLocal(uint32_t local)
     }
 }
 
+/// @brief Emit Store Local.
 void BytecodeCompiler::emitStoreLocal(uint32_t local)
 {
     if (local < 256)
@@ -780,6 +811,7 @@ void BytecodeCompiler::emitStoreLocal(uint32_t local)
     }
 }
 
+/// @brief Compile Arithmetic.
 void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr)
 {
     using Opcode = il::core::Opcode;
@@ -835,10 +867,12 @@ void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr)
                     targetType = 3;
                     break;
             }
-            BCOpcode op = (instr.op == Opcode::IAddOvf)   ? BCOpcode::ADD_I64_OVF
+            BCOpcode op = (instr.op == Opcode::IAddOvf) ? BCOpcode::ADD_I64_OVF
+                          /// @brief :.
                           : (instr.op == Opcode::ISubOvf) ? BCOpcode::SUB_I64_OVF
                                                           : BCOpcode::MUL_I64_OVF;
             emit8(op, targetType);
+            /// @brief Pop Stack.
             popStack(); // Binary ops: consume 2, produce 1
             storeResult(instr);
             return; // Early return
@@ -872,10 +906,12 @@ void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr)
     }
 
     emit(bcOp);
+    /// @brief Pop Stack.
     popStack(); // Binary ops: consume 2, produce 1
     storeResult(instr);
 }
 
+/// @brief Compile Comparison.
 void BytecodeCompiler::compileComparison(const il::core::Instr &instr)
 {
     using Opcode = il::core::Opcode;
@@ -942,10 +978,12 @@ void BytecodeCompiler::compileComparison(const il::core::Instr &instr)
     }
 
     emit(bcOp);
+    /// @brief Pop Stack.
     popStack(); // Binary ops: consume 2, produce 1
     storeResult(instr);
 }
 
+/// @brief Compile Conversion.
 void BytecodeCompiler::compileConversion(const il::core::Instr &instr)
 {
     using Opcode = il::core::Opcode;
@@ -1015,6 +1053,7 @@ void BytecodeCompiler::compileConversion(const il::core::Instr &instr)
     storeResult(instr);
 }
 
+/// @brief Compile Bitwise.
 void BytecodeCompiler::compileBitwise(const il::core::Instr &instr)
 {
     using Opcode = il::core::Opcode;
@@ -1051,10 +1090,12 @@ void BytecodeCompiler::compileBitwise(const il::core::Instr &instr)
     }
 
     emit(bcOp);
+    /// @brief Pop Stack.
     popStack(); // Binary ops: consume 2, produce 1
     storeResult(instr);
 }
 
+/// @brief Compile Memory.
 void BytecodeCompiler::compileMemory(const il::core::Instr &instr)
 {
     using Opcode = il::core::Opcode;
@@ -1117,6 +1158,7 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr)
             break;
 
         case Opcode::Alloca:
+            /// @brief Push Value.
             pushValue(instr.operands[0]); // Size
             emit(BCOpcode::ALLOCA);
             // Alloca consumes 1, produces 1 - no stack change
@@ -1124,9 +1166,12 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr)
             break;
 
         case Opcode::GEP:
+            /// @brief Push Value.
             pushValue(instr.operands[0]); // Base pointer
+                                          /// @brief Push Value.
             pushValue(instr.operands[1]); // Offset
             emit(BCOpcode::GEP);
+            /// @brief Pop Stack.
             popStack(); // Consume 2, produce 1
             storeResult(instr);
             break;
@@ -1164,6 +1209,7 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr)
         case Opcode::Store:
             // store type, ptr, val -> operands[0] is ptr, operands[1] is val
             pushValue(instr.operands[0]); // Pointer
+                                          /// @brief Push Value.
             pushValue(instr.operands[1]); // Value
             // Emit appropriate store based on type
             switch (instr.type.kind)
@@ -1188,6 +1234,7 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr)
                     emit(BCOpcode::STORE_I64_MEM);
                     break;
             }
+            /// @brief Pop Stack.
             popStack(2); // Consume 2, produce 0
             break;
 
@@ -1209,6 +1256,7 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr)
     }
 }
 
+/// @brief Compile Call.
 void BytecodeCompiler::compileCall(const il::core::Instr &instr)
 {
     using Opcode = il::core::Opcode;
@@ -1277,6 +1325,7 @@ void BytecodeCompiler::compileCall(const il::core::Instr &instr)
     }
 }
 
+/// @brief Compile Branch.
 void BytecodeCompiler::compileBranch(const il::core::Instr &instr)
 {
     using Opcode = il::core::Opcode;
@@ -1399,6 +1448,7 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr)
 
             // Remember position for default offset and emit placeholder
             uint32_t defaultOffsetPos = static_cast<uint32_t>(currentFunc_->code.size());
+            /// @brief Emit.
             emit(0u); // placeholder for default offset
 
             // Remember positions for case offsets
@@ -1411,9 +1461,11 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr)
                 {
                     caseInt = static_cast<int32_t>(caseVal.i64);
                 }
+                /// @brief Emit.
                 emit(static_cast<uint32_t>(caseInt)); // case value
                 casePositions.push_back(
                     {caseInt, static_cast<uint32_t>(currentFunc_->code.size())});
+                /// @brief Emit.
                 emit(0u); // placeholder for target offset
             }
 
@@ -1433,6 +1485,7 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr)
     }
 }
 
+/// @brief Compile Return.
 void BytecodeCompiler::compileReturn(const il::core::Instr &instr)
 {
     if (!instr.operands.empty())

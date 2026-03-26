@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_splitpane.c
+//
+//===----------------------------------------------------------------------===//
 // vg_splitpane.c - SplitPane widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -388,11 +398,13 @@ void vg_splitpane_set_position(vg_splitpane_t *split, float position)
     split->base.needs_paint = true;
 }
 
+/// @brief Splitpane get position.
 float vg_splitpane_get_position(vg_splitpane_t *split)
 {
     return split ? split->split_position : 0.5f;
 }
 
+/// @brief Splitpane set min sizes.
 void vg_splitpane_set_min_sizes(vg_splitpane_t *split, float min_first, float min_second)
 {
     if (!split)

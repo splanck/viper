@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_spinner.c
+//
+//===----------------------------------------------------------------------===//
 // vg_spinner.c - Spinner/NumberInput widget implementation
 #include "../../include/vg_widgets.h"
 #include <stdio.h>
@@ -58,6 +68,7 @@ static void update_text_buffer(vg_spinner_t *spinner)
     }
 }
 
+/// @brief Spinner set value.
 void vg_spinner_set_value(vg_spinner_t *spinner, double value)
 {
     if (!spinner)
@@ -79,11 +90,13 @@ void vg_spinner_set_value(vg_spinner_t *spinner, double value)
     }
 }
 
+/// @brief Spinner get value.
 double vg_spinner_get_value(vg_spinner_t *spinner)
 {
     return spinner ? spinner->value : 0;
 }
 
+/// @brief Spinner set range.
 void vg_spinner_set_range(vg_spinner_t *spinner, double min_val, double max_val)
 {
     if (!spinner)
@@ -94,6 +107,7 @@ void vg_spinner_set_range(vg_spinner_t *spinner, double min_val, double max_val)
     vg_spinner_set_value(spinner, spinner->value);
 }
 
+/// @brief Spinner set step.
 void vg_spinner_set_step(vg_spinner_t *spinner, double step)
 {
     if (!spinner)
@@ -101,6 +115,7 @@ void vg_spinner_set_step(vg_spinner_t *spinner, double step)
     spinner->step = step > 0 ? step : 1;
 }
 
+/// @brief Spinner set decimals.
 void vg_spinner_set_decimals(vg_spinner_t *spinner, int decimals)
 {
     if (!spinner)
@@ -109,6 +124,7 @@ void vg_spinner_set_decimals(vg_spinner_t *spinner, int decimals)
     update_text_buffer(spinner);
 }
 
+/// @brief Spinner set font.
 void vg_spinner_set_font(vg_spinner_t *spinner, vg_font_t *font, float size)
 {
     if (!spinner)
@@ -117,6 +133,7 @@ void vg_spinner_set_font(vg_spinner_t *spinner, vg_font_t *font, float size)
     spinner->font_size = size;
 }
 
+/// @brief Spinner set on change.
 void vg_spinner_set_on_change(vg_spinner_t *spinner,
                               vg_spinner_callback_t callback,
                               void *user_data)

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_particle.h
 // Purpose: Particle emitter for visual effects (explosions, sparks, smoke) managing a pool of
 // particles with configurable lifetime, velocity, gravity, color, size, fade, and shrink.

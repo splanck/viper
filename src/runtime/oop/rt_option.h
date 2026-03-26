@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/oop/rt_option.h
 // Purpose: Option type representing either Some(value) or None, with typed extraction,
 // transformation (map, flat_map), and conversion to Result.

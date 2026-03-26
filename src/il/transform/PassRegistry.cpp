@@ -329,13 +329,14 @@ void PassRegistry::registerModulePass(const std::string &id,
                                       const std::function<void(core::Module &)> &fn,
                                       bool parallelSafe)
 {
-    registerModulePass(id,
-                       [fn](core::Module &module, AnalysisManager &)
-                       {
-                           fn(module);
-                           return PreservedAnalyses::none();
-                       },
-                       parallelSafe);
+    registerModulePass(
+        id,
+        [fn](core::Module &module, AnalysisManager &)
+        {
+            fn(module);
+            return PreservedAnalyses::none();
+        },
+        parallelSafe);
 }
 
 /// @brief Register a function pass factory under a stable identifier.
@@ -381,13 +382,14 @@ void PassRegistry::registerFunctionPass(const std::string &id,
                                         const std::function<void(core::Function &)> &fn,
                                         bool parallelSafe)
 {
-    registerFunctionPass(id,
-                         [fn](core::Function &function, AnalysisManager &)
-                         {
-                             fn(function);
-                             return PreservedAnalyses::none();
-                         },
-                         parallelSafe);
+    registerFunctionPass(
+        id,
+        [fn](core::Function &function, AnalysisManager &)
+        {
+            fn(function);
+            return PreservedAnalyses::none();
+        },
+        parallelSafe);
 }
 
 /// @brief Retrieve the factory metadata associated with an identifier.
@@ -468,24 +470,23 @@ void registerMem2RegPass(PassRegistry &registry)
 
 void registerDSEPass(PassRegistry &registry)
 {
-    registry.registerFunctionPass(
-        "dse",
-        [](core::Function &fn, AnalysisManager &am)
-        {
-            bool changed = runDSE(fn, am);
-            // MemorySSA-based cross-block DSE: catches stores that
-            // runDSE's conservative call-barrier logic would miss for
-            // non-escaping allocas.
-            changed |= runMemorySSADSE(fn, am);
-            if (!changed)
-                return PreservedAnalyses::all();
-            PreservedAnalyses p;
-            p.preserveAllModules();
-            p.preserveCFG();
-            p.preserveDominators();
-            p.preserveLoopInfo();
-            return p;
-        });
+    registry.registerFunctionPass("dse",
+                                  [](core::Function &fn, AnalysisManager &am)
+                                  {
+                                      bool changed = runDSE(fn, am);
+                                      // MemorySSA-based cross-block DSE: catches stores that
+                                      // runDSE's conservative call-barrier logic would miss for
+                                      // non-escaping allocas.
+                                      changed |= runMemorySSADSE(fn, am);
+                                      if (!changed)
+                                          return PreservedAnalyses::all();
+                                      PreservedAnalyses p;
+                                      p.preserveAllModules();
+                                      p.preserveCFG();
+                                      p.preserveDominators();
+                                      p.preserveLoopInfo();
+                                      return p;
+                                  });
 }
 
 void registerEarlyCSEPass(PassRegistry &registry)

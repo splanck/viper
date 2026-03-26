@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_smoothvalue.h
 // Purpose: Smooth value interpolation for camera follow and UI animations, applying exponential
 // smoothing each frame so the current value asymptotically approaches the target.

@@ -1,3 +1,15 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// Purpose: Font-to-canvas integration — renders rasterized glyphs onto ViperGFX canvas surfaces.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/font/vg_canvas_integration.c
+//
+//===----------------------------------------------------------------------===//
 // vg_canvas_integration.c - Integration with vgfx canvas
 #include "../../include/vg_font.h"
 #include "vgfx.h"

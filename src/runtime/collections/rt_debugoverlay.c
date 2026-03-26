@@ -69,6 +69,8 @@ struct rt_debugoverlay_impl
     int64_t watch_count;
 };
 
+/// @brief Perform debugoverlay new operation.
+/// @return Result value.
 rt_debugoverlay rt_debugoverlay_new(void)
 {
     struct rt_debugoverlay_impl *dbg = rt_obj_new_i64(0, sizeof(struct rt_debugoverlay_impl));
@@ -86,12 +88,16 @@ rt_debugoverlay rt_debugoverlay_new(void)
     return dbg;
 }
 
+/// @brief Perform debugoverlay destroy operation.
+/// @param dbg
 void rt_debugoverlay_destroy(rt_debugoverlay dbg)
 {
     // GC-managed; no manual free needed.
     (void)dbg;
 }
 
+/// @brief Perform debugoverlay enable operation.
+/// @param dbg
 void rt_debugoverlay_enable(rt_debugoverlay dbg)
 {
     if (!dbg)
@@ -99,6 +105,8 @@ void rt_debugoverlay_enable(rt_debugoverlay dbg)
     dbg->enabled = 1;
 }
 
+/// @brief Perform debugoverlay disable operation.
+/// @param dbg
 void rt_debugoverlay_disable(rt_debugoverlay dbg)
 {
     if (!dbg)
@@ -106,6 +114,8 @@ void rt_debugoverlay_disable(rt_debugoverlay dbg)
     dbg->enabled = 0;
 }
 
+/// @brief Perform debugoverlay toggle operation.
+/// @param dbg
 void rt_debugoverlay_toggle(rt_debugoverlay dbg)
 {
     if (!dbg)
@@ -113,6 +123,9 @@ void rt_debugoverlay_toggle(rt_debugoverlay dbg)
     dbg->enabled = dbg->enabled ? 0 : 1;
 }
 
+/// @brief Perform debugoverlay is enabled operation.
+/// @param dbg
+/// @return Result value.
 int8_t rt_debugoverlay_is_enabled(rt_debugoverlay dbg)
 {
     if (!dbg)
@@ -120,6 +133,9 @@ int8_t rt_debugoverlay_is_enabled(rt_debugoverlay dbg)
     return dbg->enabled;
 }
 
+/// @brief Perform debugoverlay update operation.
+/// @param dbg
+/// @param dt_ms
 void rt_debugoverlay_update(rt_debugoverlay dbg, int64_t dt_ms)
 {
     if (!dbg)
@@ -144,6 +160,10 @@ static int64_t find_watch(rt_debugoverlay dbg, const char *name)
     return -1;
 }
 
+/// @brief Perform debugoverlay watch operation.
+/// @param dbg
+/// @param name
+/// @param value
 void rt_debugoverlay_watch(rt_debugoverlay dbg, rt_string name, int64_t value)
 {
     if (!dbg || !name)
@@ -180,6 +200,10 @@ void rt_debugoverlay_watch(rt_debugoverlay dbg, rt_string name, int64_t value)
     // Silently ignore if all slots are full.
 }
 
+/// @brief Perform debugoverlay unwatch operation.
+/// @param dbg
+/// @param name
+/// @return Result value.
 int8_t rt_debugoverlay_unwatch(rt_debugoverlay dbg, rt_string name)
 {
     if (!dbg || !name)
@@ -199,6 +223,8 @@ int8_t rt_debugoverlay_unwatch(rt_debugoverlay dbg, rt_string name)
     return 1;
 }
 
+/// @brief Perform debugoverlay clear operation.
+/// @param dbg
 void rt_debugoverlay_clear(rt_debugoverlay dbg)
 {
     if (!dbg)
@@ -211,6 +237,9 @@ void rt_debugoverlay_clear(rt_debugoverlay dbg)
     dbg->watch_count = 0;
 }
 
+/// @brief Perform debugoverlay get fps operation.
+/// @param dbg
+/// @return Result value.
 int64_t rt_debugoverlay_get_fps(rt_debugoverlay dbg)
 {
     if (!dbg || dbg->frame_count == 0)
@@ -271,6 +300,9 @@ static char *i64_to_str(int64_t val, char *buf, size_t bufsize)
     return &buf[pos];
 }
 
+/// @brief Perform debugoverlay draw operation.
+/// @param dbg
+/// @param canvas_ptr
 void rt_debugoverlay_draw(rt_debugoverlay dbg, void *canvas_ptr)
 {
     if (!dbg || !canvas_ptr || !dbg->enabled)

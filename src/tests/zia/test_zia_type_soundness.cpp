@@ -67,6 +67,7 @@ TEST(ZiaTypeSoundness, AssignStringToInteger)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Integer x = "hello";
 }
@@ -80,6 +81,7 @@ TEST(ZiaTypeSoundness, AssignBooleanToString)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     String s = true;
 }
@@ -93,6 +95,7 @@ TEST(ZiaTypeSoundness, AssignIntegerToBoolean)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Boolean b = 42;
 }
@@ -106,6 +109,7 @@ TEST(ZiaTypeSoundness, AssignNumberToInteger)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Integer x = 3.14;
 }
@@ -119,6 +123,7 @@ TEST(ZiaTypeSoundness, AssignWrongListType)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     List[String] s = [1, 2, 3];
 }
@@ -134,6 +139,7 @@ TEST(ZiaTypeSoundness, AssignUnrelatedEntities)
 module Test;
 entity Cat { expose Integer lives; }
 entity Dog { expose Integer age; }
+/// @brief Start.
 func start() {
     Cat c = new Dog();
 }
@@ -149,6 +155,7 @@ TEST(ZiaTypeSoundness, AssignEntityToValueType)
 module Test;
 value Point { Integer x; Integer y; }
 entity Dog { expose Integer age; }
+/// @brief Start.
 func start() {
     Point p = new Dog();
 }
@@ -166,9 +173,11 @@ TEST(ZiaTypeSoundness, GAP_WrongArgTypeStringForInt)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Add.
 func add(Integer a, Integer b) -> Integer {
     return a + b;
 }
+/// @brief Start.
 func start() {
     Integer x = add("hello", 5);
 }
@@ -185,9 +194,11 @@ TEST(ZiaTypeSoundness, GAP_WrongArgTypeIntForEntity)
     auto result = compileSource(R"(
 module Test;
 entity Dog { expose Integer age; }
+/// @brief Pet dog.
 func petDog(Dog d) {
     Viper.Terminal.SayInt(d.age);
 }
+/// @brief Start.
 func start() {
     petDog(42);
 }
@@ -202,9 +213,11 @@ TEST(ZiaTypeSoundness, GAP_TooManyArguments)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Greet.
 func greet(String name) {
     Viper.Terminal.Say(name);
 }
+/// @brief Start.
 func start() {
     greet("Alice", "Bob");
 }
@@ -219,9 +232,11 @@ TEST(ZiaTypeSoundness, GAP_TooFewArguments)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Add.
 func add(Integer a, Integer b) -> Integer {
     return a + b;
 }
+/// @brief Start.
 func start() {
     Integer x = add(1);
 }
@@ -242,6 +257,7 @@ entity Counter {
         count = count + amount;
     }
 }
+/// @brief Start.
 func start() {
     Counter c = new Counter();
     c.addAmount("ten");
@@ -262,6 +278,7 @@ TEST(ZiaTypeSoundness, NonExistentFieldOnEntity)
     auto result = compileSource(R"(
 module Test;
 entity Dog { expose Integer age; }
+/// @brief Start.
 func start() {
     Dog d = new Dog();
     Integer c = d.color;
@@ -282,6 +299,7 @@ entity Secret {
     Integer hidden;
     expose func getHidden() -> Integer { return hidden; }
 }
+/// @brief Start.
 func start() {
     Secret s = new Secret();
     Integer x = s.hidden;
@@ -297,6 +315,7 @@ TEST(ZiaTypeSoundness, FieldOnPrimitive)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Integer x = 42;
     Integer y = x.value;
@@ -314,6 +333,7 @@ TEST(ZiaTypeSoundness, NonExistentFieldOnValue)
     auto result = compileSource(R"(
 module Test;
 value Point { Integer x; Integer y; }
+/// @brief Start.
 func start() {
     Point p = Point(1, 2);
     Integer z = p.z;
@@ -334,6 +354,7 @@ TEST(ZiaTypeSoundness, GAP_UninitializedVariable)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Integer x;
     Integer y = x + 1;
@@ -352,6 +373,7 @@ TEST(ZiaTypeSoundness, GAP_ConditionalInit)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Integer x;
     Boolean cond = true;
@@ -374,6 +396,7 @@ TEST(ZiaTypeSoundness, UndefinedVariable)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Integer y = x + 1;
 }
@@ -389,6 +412,7 @@ TEST(ZiaTypeSoundness, UseVariableWithoutTypeOrInit)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     var x;
 }
@@ -408,6 +432,7 @@ TEST(ZiaTypeSoundness, AssignIntegerToEntity)
     auto result = compileSource(R"(
 module Test;
 entity Foo { expose Integer val; }
+/// @brief Start.
 func start() {
     Foo f = 42;
 }
@@ -423,6 +448,7 @@ TEST(ZiaTypeSoundness, GAP_UncheckedAsCastIntToEntity)
     auto result = compileSource(R"(
 module Test;
 entity Foo { expose Integer val; }
+/// @brief Start.
 func start() {
     Integer n = 12345;
     Foo f = n as Foo;
@@ -440,6 +466,7 @@ TEST(ZiaTypeSoundness, GAP_AsCastEntityToInteger)
     auto result = compileSource(R"(
 module Test;
 entity Foo { expose Integer val; }
+/// @brief Start.
 func start() {
     Foo f = new Foo();
     Integer n = f as Integer;
@@ -455,6 +482,7 @@ TEST(ZiaTypeSoundness, AssignNullToNonOptional)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Integer x = null;
 }
@@ -473,6 +501,7 @@ TEST(ZiaTypeSoundness, NumberVariableToByte)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Number n = 300.5;
     Byte b = n;
@@ -488,6 +517,7 @@ TEST(ZiaTypeSoundness, LargeIntLiteralToByte)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Byte b = 300;
 }
@@ -502,6 +532,7 @@ TEST(ZiaTypeSoundness, IntegerVariableToByte)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Integer big = 1000;
     Byte b = big;
@@ -517,6 +548,7 @@ TEST(ZiaTypeSoundness, IntegerAsCondition)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Integer x = 42;
     if x {
@@ -535,10 +567,12 @@ TEST(ZiaTypeSoundness, NumberReturnFromIntegerFunc)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Half.
 func half(Integer n) -> Integer {
     Number result = n / 2.0;
     return result;
 }
+/// @brief Start.
 func start() {
     Integer x = half(10);
 }
@@ -562,6 +596,7 @@ module Test;
 entity Dog {
     expose Integer age;
 }
+/// @brief Start.
 func start() {
     Dog? d = null;
     Integer a = d.age;
@@ -583,6 +618,7 @@ entity Dog {
     expose Integer age;
     expose func bark() -> String { return "Woof"; }
 }
+/// @brief Start.
 func start() {
     Dog? d = null;
     String s = d.bark();
@@ -599,9 +635,11 @@ TEST(ZiaTypeSoundness, ReturnNullFromNonOptionalFunc)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Get value.
 func getValue() -> Integer {
     return null;
 }
+/// @brief Start.
 func start() {
     Integer x = getValue();
 }
@@ -616,9 +654,11 @@ TEST(ZiaTypeSoundness, GAP_PassOptionalToNonOptionalParam)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Double.
 func double(Integer n) -> Integer {
     return n + n;
 }
+/// @brief Start.
 func start() {
     Integer? x = null;
     Integer y = double(x);
@@ -635,6 +675,7 @@ TEST(ZiaTypeSoundness, OptionalAcceptsInnerType)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Integer? x = 42;
     Viper.Terminal.SayInt(x);
@@ -654,6 +695,7 @@ TEST(ZiaTypeSoundness, LogicalAndWithIntegers)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Integer a = 1;
     Integer b = 2;
@@ -671,6 +713,7 @@ TEST(ZiaTypeSoundness, BitwiseOrWithFloats)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Number a = 1.5;
     Number b = 2.5;
@@ -688,6 +731,7 @@ TEST(ZiaTypeSoundness, NegateString)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     String s = "hello";
     Integer n = -s;
@@ -708,6 +752,7 @@ TEST(ZiaTypeSoundness, IntegerToNumberWidening)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Number x = 42;
 }
@@ -722,6 +767,7 @@ TEST(ZiaTypeSoundness, ByteLiteralInRange)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     Byte b = 200;
 }
@@ -736,6 +782,7 @@ TEST(ZiaTypeSoundness, EmptyListInference)
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
+/// @brief Start.
 func start() {
     List[Integer] x = [];
 }

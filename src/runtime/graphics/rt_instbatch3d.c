@@ -40,8 +40,8 @@ extern double rt_mat4_get(void *m, int64_t r, int64_t c);
 typedef struct
 {
     void *vptr;
-    void *mesh;      /* borrowed Mesh3D */
-    void *material;  /* borrowed Material3D */
+    void *mesh;        /* borrowed Mesh3D */
+    void *material;    /* borrowed Material3D */
     float *transforms; /* N * 16 floats */
     int32_t instance_count;
     int32_t instance_capacity;
@@ -57,9 +57,14 @@ static void instbatch_finalizer(void *obj)
 
 void *rt_instbatch3d_new(void *mesh, void *material)
 {
-    if (!mesh || !material) return NULL;
+    if (!mesh || !material)
+        return NULL;
     rt_instbatch3d *b = (rt_instbatch3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_instbatch3d));
-    if (!b) { rt_trap("InstanceBatch3D.New: allocation failed"); return NULL; }
+    if (!b)
+    {
+        rt_trap("InstanceBatch3D.New: allocation failed");
+        return NULL;
+    }
     b->vptr = NULL;
     b->mesh = mesh;
     b->material = material;
@@ -72,7 +77,8 @@ void *rt_instbatch3d_new(void *mesh, void *material)
 
 void rt_instbatch3d_add(void *obj, void *transform)
 {
-    if (!obj || !transform) return;
+    if (!obj || !transform)
+        return;
     rt_instbatch3d *b = (rt_instbatch3d *)obj;
 
     if (b->instance_count >= b->instance_capacity)
@@ -93,9 +99,11 @@ void rt_instbatch3d_add(void *obj, void *transform)
 
 void rt_instbatch3d_remove(void *obj, int64_t index)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_instbatch3d *b = (rt_instbatch3d *)obj;
-    if (index < 0 || index >= b->instance_count) return;
+    if (index < 0 || index >= b->instance_count)
+        return;
 
     /* Swap with last */
     if (index < b->instance_count - 1)
@@ -107,9 +115,11 @@ void rt_instbatch3d_remove(void *obj, int64_t index)
 
 void rt_instbatch3d_set(void *obj, int64_t index, void *transform)
 {
-    if (!obj || !transform) return;
+    if (!obj || !transform)
+        return;
     rt_instbatch3d *b = (rt_instbatch3d *)obj;
-    if (index < 0 || index >= b->instance_count) return;
+    if (index < 0 || index >= b->instance_count)
+        return;
 
     float *dst = &b->transforms[index * 16];
     for (int i = 0; i < 4; i++)
@@ -119,7 +129,8 @@ void rt_instbatch3d_set(void *obj, int64_t index, void *transform)
 
 void rt_instbatch3d_clear(void *obj)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     ((rt_instbatch3d *)obj)->instance_count = 0;
 }
 
@@ -132,13 +143,16 @@ int64_t rt_instbatch3d_count(void *obj)
 /// since the software backend doesn't have a native instanced path.
 void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj)
 {
-    if (!canvas_obj || !batch_obj) return;
+    if (!canvas_obj || !batch_obj)
+        return;
     rt_canvas3d *c = (rt_canvas3d *)canvas_obj;
     rt_instbatch3d *b = (rt_instbatch3d *)batch_obj;
-    if (!c->in_frame || !c->backend || b->instance_count == 0) return;
+    if (!c->in_frame || !c->backend || b->instance_count == 0)
+        return;
 
     rt_mesh3d *mesh = (rt_mesh3d *)b->mesh;
-    if (!mesh || mesh->vertex_count == 0 || mesh->index_count == 0) return;
+    if (!mesh || mesh->vertex_count == 0 || mesh->index_count == 0)
+        return;
 
     /* Build draw command from batch mesh/material */
     rt_material3d *mat = (rt_material3d *)b->material;
@@ -182,7 +196,8 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj)
         for (int li = 0; li < VGFX3D_MAX_LIGHTS; li++)
         {
             const rt_light3d *l = c->lights[li];
-            if (!l) continue;
+            if (!l)
+                continue;
             lp[lc].type = l->type;
             lp[lc].direction[0] = (float)l->direction[0];
             lp[lc].direction[1] = (float)l->direction[1];
@@ -197,9 +212,8 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj)
             lp[lc].attenuation = (float)l->attenuation;
             lc++;
         }
-        c->backend->submit_draw(c->backend_ctx, c->gfx_win, &cmd,
-                                 lp, lc, c->ambient,
-                                 c->wireframe, c->backface_cull);
+        c->backend->submit_draw(
+            c->backend_ctx, c->gfx_win, &cmd, lp, lc, c->ambient, c->wireframe, c->backface_cull);
     }
 }
 

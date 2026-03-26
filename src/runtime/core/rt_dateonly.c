@@ -161,6 +161,9 @@ void *rt_dateonly_from_days(int64_t days)
 // Component Access
 //=============================================================================
 
+/// @brief Perform dateonly year operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_dateonly_year(void *obj)
 {
     if (!obj)
@@ -169,6 +172,9 @@ int64_t rt_dateonly_year(void *obj)
     return d->year;
 }
 
+/// @brief Perform dateonly month operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_dateonly_month(void *obj)
 {
     if (!obj)
@@ -177,6 +183,9 @@ int64_t rt_dateonly_month(void *obj)
     return d->month;
 }
 
+/// @brief Perform dateonly day operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_dateonly_day(void *obj)
 {
     if (!obj)
@@ -185,6 +194,9 @@ int64_t rt_dateonly_day(void *obj)
     return d->day;
 }
 
+/// @brief Perform dateonly day of week operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_dateonly_day_of_week(void *obj)
 {
     if (!obj)
@@ -197,6 +209,9 @@ int64_t rt_dateonly_day_of_week(void *obj)
     return (days + 4) % 7;
 }
 
+/// @brief Perform dateonly day of year operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_dateonly_day_of_year(void *obj)
 {
     if (!obj)
@@ -212,6 +227,9 @@ int64_t rt_dateonly_day_of_year(void *obj)
     return doy;
 }
 
+/// @brief Perform dateonly to days operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_dateonly_to_days(void *obj)
 {
     if (!obj)
@@ -282,6 +300,10 @@ void *rt_dateonly_add_years(void *obj, int64_t years)
     return rt_dateonly_create(year, month, day);
 }
 
+/// @brief Perform dateonly diff days operation.
+/// @param a
+/// @param b
+/// @return Result value.
 int64_t rt_dateonly_diff_days(void *a, void *b)
 {
     if (!a || !b)
@@ -293,6 +315,9 @@ int64_t rt_dateonly_diff_days(void *a, void *b)
 // Date Queries
 //=============================================================================
 
+/// @brief Perform dateonly is leap year operation.
+/// @param obj
+/// @return Result value.
 int8_t rt_dateonly_is_leap_year(void *obj)
 {
     if (!obj)
@@ -301,6 +326,9 @@ int8_t rt_dateonly_is_leap_year(void *obj)
     return is_leap_year(d->year);
 }
 
+/// @brief Perform dateonly days in month operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_dateonly_days_in_month(void *obj)
 {
     if (!obj)
@@ -345,6 +373,10 @@ void *rt_dateonly_end_of_year(void *obj)
 // Comparison
 //=============================================================================
 
+/// @brief Perform dateonly cmp operation.
+/// @param a
+/// @param b
+/// @return Result value.
 int64_t rt_dateonly_cmp(void *a, void *b)
 {
     if (!a && !b)
@@ -364,6 +396,10 @@ int64_t rt_dateonly_cmp(void *a, void *b)
     return 0;
 }
 
+/// @brief Perform dateonly equals operation.
+/// @param a
+/// @param b
+/// @return Result value.
 int8_t rt_dateonly_equals(void *a, void *b)
 {
     return rt_dateonly_cmp(a, b) == 0 ? 1 : 0;
@@ -373,6 +409,9 @@ int8_t rt_dateonly_equals(void *a, void *b)
 // Formatting
 //=============================================================================
 
+/// @brief Perform dateonly to string operation.
+/// @param obj
+/// @return Result value.
 rt_string rt_dateonly_to_string(void *obj)
 {
     if (!obj)
@@ -389,6 +428,10 @@ rt_string rt_dateonly_to_string(void *obj)
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
+/// @brief Perform dateonly format operation.
+/// @param obj
+/// @param fmt
+/// @return Result value.
 rt_string rt_dateonly_format(void *obj, rt_string fmt)
 {
     if (!obj)

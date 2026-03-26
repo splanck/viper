@@ -1,3 +1,15 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// Purpose: Glyph rasterization engine — converts TTF outlines to bitmap glyphs at specified sizes.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/font/vg_raster.c
+//
+//===----------------------------------------------------------------------===//
 // vg_raster.c - Glyph rasterization with antialiasing
 #include "vg_ttf_internal.h"
 #include <math.h>

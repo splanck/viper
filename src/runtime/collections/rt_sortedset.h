@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_sortedset.h
 // Purpose: Sorted set of unique strings maintained in lexicographic order, enabling range queries
 // (floor, ceil, between) and ordered forward/backward iteration.

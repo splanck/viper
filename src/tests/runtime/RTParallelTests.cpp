@@ -184,6 +184,7 @@ static void test_for_basic()
 static void test_for_empty_range()
 {
     g_for_sum = 0;
+    /// @brief Rt_parallel_for.
     rt_parallel_for(5, 5, (void *)for_accumulate); // Empty range
 
     test_result(g_for_sum == 0, "for_empty_range: should do nothing");
@@ -192,6 +193,7 @@ static void test_for_empty_range()
 static void test_for_single()
 {
     g_for_sum = 0;
+    /// @brief Rt_parallel_for.
     rt_parallel_for(7, 8, (void *)for_accumulate); // Single iteration
 
     test_result(g_for_sum == 7, "for_single: should execute once");
@@ -241,6 +243,7 @@ static void test_invoke_basic()
 static void test_invoke_empty()
 {
     void *funcs = rt_seq_new();
+    /// @brief Rt_parallel_invoke.
     rt_parallel_invoke(funcs); // Should not crash
 
     test_result(true, "invoke_empty: should handle empty sequence");

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_sprite.h
 // Purpose: 2D sprite with transform (position, rotation, scale), animation frame tracking, and
 // canvas-based rendering for game development.

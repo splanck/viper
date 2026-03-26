@@ -1,4 +1,7 @@
 //===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // RTIterTests.cpp - Tests for rt_iter (unified collection iterator)
 //===----------------------------------------------------------------------===//
 
@@ -21,6 +24,7 @@ extern "C"
 #include "rt_set.h"
 #include "rt_string.h"
 
+    /// @brief Vm_trap.
     void vm_trap(const char *msg)
     {
         fprintf(stderr, "TRAP: %s\n", msg);
@@ -70,6 +74,7 @@ static void test_null_safety()
     ASSERT(rt_iter_index(NULL) == 0, "index(null) = 0");
     ASSERT(rt_iter_count(NULL) == 0, "count(null) = 0");
     ASSERT(rt_iter_skip(NULL, 5) == 0, "skip(null) = 0");
+    /// @brief Rt_iter_reset.
     rt_iter_reset(NULL); // should not crash
 }
 
@@ -161,6 +166,7 @@ static void test_iter_to_seq()
     rt_seq_push(seq, c);
 
     void *it = rt_iter_from_seq(seq);
+    /// @brief Rt_iter_next.
     rt_iter_next(it); // skip first
 
     void *collected = rt_iter_to_seq(it);
@@ -333,6 +339,7 @@ static void test_iter_empty_seq()
     ASSERT(rt_seq_len(collected) == 0, "to_seq from empty = empty seq");
 }
 
+/// @brief Main.
 int main()
 {
     test_null_safety();

@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/frontends/basic/lowerer/LowererDetailAccess.hpp
+//
+//===----------------------------------------------------------------------===//
 // =========================================================================
 // File: frontends/basic/lowerer/LowererDetailAccess.hpp
 // Purpose: DetailAccess inner class for Lowerer — provides a narrow public

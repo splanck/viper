@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_statusbar.c
+//
+//===----------------------------------------------------------------------===//
 // vg_statusbar.c - Status bar widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -597,6 +607,7 @@ vg_statusbar_item_t *vg_statusbar_add_spacer(vg_statusbar_t *sb, vg_statusbar_zo
     return add_item_to_zone(sb, zone, item);
 }
 
+/// @brief Statusbar remove item.
 void vg_statusbar_remove_item(vg_statusbar_t *sb, vg_statusbar_item_t *item)
 {
     if (!sb || !item)
@@ -625,6 +636,7 @@ void vg_statusbar_remove_item(vg_statusbar_t *sb, vg_statusbar_item_t *item)
     }
 }
 
+/// @brief Statusbar clear zone.
 void vg_statusbar_clear_zone(vg_statusbar_t *sb, vg_statusbar_zone_t zone)
 {
     if (!sb)
@@ -659,6 +671,7 @@ void vg_statusbar_clear_zone(vg_statusbar_t *sb, vg_statusbar_zone_t zone)
     sb->base.needs_paint = true;
 }
 
+/// @brief Statusbar item set text.
 void vg_statusbar_item_set_text(vg_statusbar_item_t *item, const char *text)
 {
     if (!item)
@@ -669,6 +682,7 @@ void vg_statusbar_item_set_text(vg_statusbar_item_t *item, const char *text)
     item->text = text ? strdup(text) : NULL;
 }
 
+/// @brief Statusbar item set tooltip.
 void vg_statusbar_item_set_tooltip(vg_statusbar_item_t *item, const char *tooltip)
 {
     if (!item)
@@ -679,6 +693,7 @@ void vg_statusbar_item_set_tooltip(vg_statusbar_item_t *item, const char *toolti
     item->tooltip = tooltip ? strdup(tooltip) : NULL;
 }
 
+/// @brief Statusbar item set progress.
 void vg_statusbar_item_set_progress(vg_statusbar_item_t *item, float progress)
 {
     if (!item)
@@ -691,6 +706,7 @@ void vg_statusbar_item_set_progress(vg_statusbar_item_t *item, float progress)
     item->progress = progress;
 }
 
+/// @brief Statusbar item set visible.
 void vg_statusbar_item_set_visible(vg_statusbar_item_t *item, bool visible)
 {
     if (!item)
@@ -698,6 +714,7 @@ void vg_statusbar_item_set_visible(vg_statusbar_item_t *item, bool visible)
     item->visible = visible;
 }
 
+/// @brief Statusbar set font.
 void vg_statusbar_set_font(vg_statusbar_t *sb, vg_font_t *font, float size)
 {
     if (!sb)

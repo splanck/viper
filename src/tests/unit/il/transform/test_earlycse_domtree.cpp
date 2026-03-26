@@ -272,6 +272,7 @@ TEST(EarlyCSEDomTree, SiblingBranchExpressionsAreNotEliminated)
     EXPECT_EQ(addsAfter, 2u);
 }
 
+/// @brief Main.
 int main(int argc, char **argv)
 {
     viper_test::init(&argc, argv);

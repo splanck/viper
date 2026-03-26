@@ -1,3 +1,15 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// Purpose: Tier 2 GUI widget tests — treeview, tabbar, toolbar, statusbar, listbox, output pane.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/tests/test_vg_tier2_fixes.c
+//
+//===----------------------------------------------------------------------===//
 // test_vg_tier2_fixes.c — Unit tests for Tier 2 GUI improvements
 //
 // Tests:

@@ -74,6 +74,9 @@ static void objpool_finalizer(void *obj)
     pool->slots = NULL;
 }
 
+/// @brief Perform objpool new operation.
+/// @param capacity
+/// @return Result value.
 rt_objpool rt_objpool_new(int64_t capacity)
 {
     if (capacity < 1)
@@ -111,12 +114,17 @@ rt_objpool rt_objpool_new(int64_t capacity)
     return pool;
 }
 
+/// @brief Perform objpool destroy operation.
+/// @param pool
 void rt_objpool_destroy(rt_objpool pool)
 {
     // Object is GC-managed; finalizer frees internal data.
     (void)pool;
 }
 
+/// @brief Perform objpool acquire operation.
+/// @param pool
+/// @return Result value.
 int64_t rt_objpool_acquire(rt_objpool pool)
 {
     if (!pool)
@@ -137,6 +145,10 @@ int64_t rt_objpool_acquire(rt_objpool pool)
     return slot;
 }
 
+/// @brief Perform objpool release operation.
+/// @param pool
+/// @param slot
+/// @return Result value.
 int8_t rt_objpool_release(rt_objpool pool, int64_t slot)
 {
     if (!pool)
@@ -170,6 +182,10 @@ int8_t rt_objpool_release(rt_objpool pool, int64_t slot)
     return 1;
 }
 
+/// @brief Perform objpool is active operation.
+/// @param pool
+/// @param slot
+/// @return Result value.
 int8_t rt_objpool_is_active(rt_objpool pool, int64_t slot)
 {
     if (!pool)
@@ -179,31 +195,48 @@ int8_t rt_objpool_is_active(rt_objpool pool, int64_t slot)
     return pool->slots[slot].active;
 }
 
+/// @brief Perform objpool active count operation.
+/// @param pool
+/// @return Result value.
 int64_t rt_objpool_active_count(rt_objpool pool)
 {
     return pool ? pool->active_count : 0;
 }
 
+/// @brief Perform objpool free count operation.
+/// @param pool
+/// @return Result value.
 int64_t rt_objpool_free_count(rt_objpool pool)
 {
     return pool ? pool->capacity - pool->active_count : 0;
 }
 
+/// @brief Perform objpool capacity operation.
+/// @param pool
+/// @return Result value.
 int64_t rt_objpool_capacity(rt_objpool pool)
 {
     return pool ? pool->capacity : 0;
 }
 
+/// @brief Perform objpool is full operation.
+/// @param pool
+/// @return Result value.
 int8_t rt_objpool_is_full(rt_objpool pool)
 {
     return pool ? (pool->active_count >= pool->capacity ? 1 : 0) : 1;
 }
 
+/// @brief Perform objpool is empty operation.
+/// @param pool
+/// @return Result value.
 int8_t rt_objpool_is_empty(rt_objpool pool)
 {
     return pool ? (pool->active_count == 0 ? 1 : 0) : 1;
 }
 
+/// @brief Perform objpool clear operation.
+/// @param pool
 void rt_objpool_clear(rt_objpool pool)
 {
     if (!pool)
@@ -222,12 +255,19 @@ void rt_objpool_clear(rt_objpool pool)
     }
 }
 
+/// @brief Perform objpool first active operation.
+/// @param pool
+/// @return Result value.
 int64_t rt_objpool_first_active(rt_objpool pool)
 {
     // O(1): return head of the maintained active list
     return pool ? pool->active_head : -1;
 }
 
+/// @brief Perform objpool next active operation.
+/// @param pool
+/// @param after
+/// @return Result value.
 int64_t rt_objpool_next_active(rt_objpool pool, int64_t after)
 {
     // O(1): follow the intrusive next_active pointer
@@ -236,6 +276,11 @@ int64_t rt_objpool_next_active(rt_objpool pool, int64_t after)
     return pool->slots[after].next_active;
 }
 
+/// @brief Perform objpool set data operation.
+/// @param pool
+/// @param slot
+/// @param data
+/// @return Result value.
 int8_t rt_objpool_set_data(rt_objpool pool, int64_t slot, int64_t data)
 {
     if (!pool)
@@ -248,6 +293,10 @@ int8_t rt_objpool_set_data(rt_objpool pool, int64_t slot, int64_t data)
     return 1;
 }
 
+/// @brief Perform objpool get data operation.
+/// @param pool
+/// @param slot
+/// @return Result value.
 int64_t rt_objpool_get_data(rt_objpool pool, int64_t slot)
 {
     if (!pool)

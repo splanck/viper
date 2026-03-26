@@ -50,6 +50,8 @@ struct rt_inputmgr_impl
     int64_t debounce_count;                     // Number of keys being tracked
 };
 
+/// @brief Perform inputmgr new operation.
+/// @return Result value.
 rt_inputmgr rt_inputmgr_new(void)
 {
     struct rt_inputmgr_impl *mgr =
@@ -63,11 +65,15 @@ rt_inputmgr rt_inputmgr_new(void)
     return mgr;
 }
 
+/// @brief Perform inputmgr destroy operation.
+/// @param mgr
 void rt_inputmgr_destroy(rt_inputmgr mgr)
 {
     (void)mgr;
 }
 
+/// @brief Perform inputmgr update operation.
+/// @param mgr
 void rt_inputmgr_update(rt_inputmgr mgr)
 {
     if (!mgr)
@@ -87,18 +93,30 @@ void rt_inputmgr_update(rt_inputmgr mgr)
 // Keyboard
 //=============================================================================
 
+/// @brief Perform inputmgr key pressed operation.
+/// @param mgr
+/// @param key
+/// @return Result value.
 int8_t rt_inputmgr_key_pressed(rt_inputmgr mgr, int64_t key)
 {
     (void)mgr; // Uses global keyboard state
     return rt_keyboard_was_pressed(key);
 }
 
+/// @brief Perform inputmgr key released operation.
+/// @param mgr
+/// @param key
+/// @return Result value.
 int8_t rt_inputmgr_key_released(rt_inputmgr mgr, int64_t key)
 {
     (void)mgr;
     return rt_keyboard_was_released(key);
 }
 
+/// @brief Perform inputmgr key held operation.
+/// @param mgr
+/// @param key
+/// @return Result value.
 int8_t rt_inputmgr_key_held(rt_inputmgr mgr, int64_t key)
 {
     (void)mgr;
@@ -142,6 +160,10 @@ static int64_t find_or_create_debounce_slot(rt_inputmgr mgr, int64_t key)
     return oldest_slot;
 }
 
+/// @brief Perform inputmgr key pressed debounced operation.
+/// @param mgr
+/// @param key
+/// @return Result value.
 int8_t rt_inputmgr_key_pressed_debounced(rt_inputmgr mgr, int64_t key)
 {
     if (!mgr)
@@ -165,6 +187,9 @@ int8_t rt_inputmgr_key_pressed_debounced(rt_inputmgr mgr, int64_t key)
     return 0;
 }
 
+/// @brief Perform inputmgr set debounce delay operation.
+/// @param mgr
+/// @param frames
 void rt_inputmgr_set_debounce_delay(rt_inputmgr mgr, int64_t frames)
 {
     if (mgr && frames >= 0)
@@ -173,6 +198,9 @@ void rt_inputmgr_set_debounce_delay(rt_inputmgr mgr, int64_t frames)
     }
 }
 
+/// @brief Perform inputmgr get debounce delay operation.
+/// @param mgr
+/// @return Result value.
 int64_t rt_inputmgr_get_debounce_delay(rt_inputmgr mgr)
 {
     return mgr ? mgr->debounce_delay : 0;
@@ -182,54 +210,84 @@ int64_t rt_inputmgr_get_debounce_delay(rt_inputmgr mgr)
 // Mouse
 //=============================================================================
 
+/// @brief Perform inputmgr mouse pressed operation.
+/// @param mgr
+/// @param button
+/// @return Result value.
 int8_t rt_inputmgr_mouse_pressed(rt_inputmgr mgr, int64_t button)
 {
     (void)mgr;
     return rt_mouse_was_pressed(button);
 }
 
+/// @brief Perform inputmgr mouse released operation.
+/// @param mgr
+/// @param button
+/// @return Result value.
 int8_t rt_inputmgr_mouse_released(rt_inputmgr mgr, int64_t button)
 {
     (void)mgr;
     return rt_mouse_was_released(button);
 }
 
+/// @brief Perform inputmgr mouse held operation.
+/// @param mgr
+/// @param button
+/// @return Result value.
 int8_t rt_inputmgr_mouse_held(rt_inputmgr mgr, int64_t button)
 {
     (void)mgr;
     return rt_mouse_is_down(button);
 }
 
+/// @brief Perform inputmgr mouse x operation.
+/// @param mgr
+/// @return Result value.
 int64_t rt_inputmgr_mouse_x(rt_inputmgr mgr)
 {
     (void)mgr;
     return rt_mouse_x();
 }
 
+/// @brief Perform inputmgr mouse y operation.
+/// @param mgr
+/// @return Result value.
 int64_t rt_inputmgr_mouse_y(rt_inputmgr mgr)
 {
     (void)mgr;
     return rt_mouse_y();
 }
 
+/// @brief Perform inputmgr mouse delta x operation.
+/// @param mgr
+/// @return Result value.
 int64_t rt_inputmgr_mouse_delta_x(rt_inputmgr mgr)
 {
     (void)mgr;
     return rt_mouse_delta_x();
 }
 
+/// @brief Perform inputmgr mouse delta y operation.
+/// @param mgr
+/// @return Result value.
 int64_t rt_inputmgr_mouse_delta_y(rt_inputmgr mgr)
 {
     (void)mgr;
     return rt_mouse_delta_y();
 }
 
+/// @brief Perform inputmgr scroll y operation.
+/// @param mgr
+/// @return Result value.
 int64_t rt_inputmgr_scroll_y(rt_inputmgr mgr)
 {
     (void)mgr;
     return rt_mouse_wheel_y();
 }
 
+/// @brief Perform inputmgr scroll x operation.
+/// @param mgr
+/// @return Result value.
 int64_t rt_inputmgr_scroll_x(rt_inputmgr mgr)
 {
     (void)mgr;
@@ -240,6 +298,11 @@ int64_t rt_inputmgr_scroll_x(rt_inputmgr mgr)
 // Gamepad
 //=============================================================================
 
+/// @brief Perform inputmgr pad pressed operation.
+/// @param mgr
+/// @param pad
+/// @param button
+/// @return Result value.
 int8_t rt_inputmgr_pad_pressed(rt_inputmgr mgr, int64_t pad, int64_t button)
 {
     (void)mgr;
@@ -260,6 +323,11 @@ int8_t rt_inputmgr_pad_pressed(rt_inputmgr mgr, int64_t pad, int64_t button)
     return rt_pad_was_pressed(pad, button);
 }
 
+/// @brief Perform inputmgr pad released operation.
+/// @param mgr
+/// @param pad
+/// @param button
+/// @return Result value.
 int8_t rt_inputmgr_pad_released(rt_inputmgr mgr, int64_t pad, int64_t button)
 {
     (void)mgr;
@@ -279,6 +347,11 @@ int8_t rt_inputmgr_pad_released(rt_inputmgr mgr, int64_t pad, int64_t button)
     return rt_pad_was_released(pad, button);
 }
 
+/// @brief Perform inputmgr pad held operation.
+/// @param mgr
+/// @param pad
+/// @param button
+/// @return Result value.
 int8_t rt_inputmgr_pad_held(rt_inputmgr mgr, int64_t pad, int64_t button)
 {
     (void)mgr;
@@ -298,36 +371,60 @@ int8_t rt_inputmgr_pad_held(rt_inputmgr mgr, int64_t pad, int64_t button)
     return rt_pad_is_down(pad, button);
 }
 
+/// @brief Perform inputmgr pad left x operation.
+/// @param mgr
+/// @param pad
+/// @return Result value.
 double rt_inputmgr_pad_left_x(rt_inputmgr mgr, int64_t pad)
 {
     (void)mgr;
     return rt_pad_left_x(pad);
 }
 
+/// @brief Perform inputmgr pad left y operation.
+/// @param mgr
+/// @param pad
+/// @return Result value.
 double rt_inputmgr_pad_left_y(rt_inputmgr mgr, int64_t pad)
 {
     (void)mgr;
     return rt_pad_left_y(pad);
 }
 
+/// @brief Perform inputmgr pad right x operation.
+/// @param mgr
+/// @param pad
+/// @return Result value.
 double rt_inputmgr_pad_right_x(rt_inputmgr mgr, int64_t pad)
 {
     (void)mgr;
     return rt_pad_right_x(pad);
 }
 
+/// @brief Perform inputmgr pad right y operation.
+/// @param mgr
+/// @param pad
+/// @return Result value.
 double rt_inputmgr_pad_right_y(rt_inputmgr mgr, int64_t pad)
 {
     (void)mgr;
     return rt_pad_right_y(pad);
 }
 
+/// @brief Perform inputmgr pad left trigger operation.
+/// @param mgr
+/// @param pad
+/// @return Result value.
 double rt_inputmgr_pad_left_trigger(rt_inputmgr mgr, int64_t pad)
 {
     (void)mgr;
     return rt_pad_left_trigger(pad);
 }
 
+/// @brief Perform inputmgr pad right trigger operation.
+/// @param mgr
+/// @param pad
+/// @return Result value.
 double rt_inputmgr_pad_right_trigger(rt_inputmgr mgr, int64_t pad)
 {
     (void)mgr;
@@ -338,6 +435,9 @@ double rt_inputmgr_pad_right_trigger(rt_inputmgr mgr, int64_t pad)
 // Unified Direction Input
 //=============================================================================
 
+/// @brief Perform inputmgr up operation.
+/// @param mgr
+/// @return Result value.
 int8_t rt_inputmgr_up(rt_inputmgr mgr)
 {
     (void)mgr;
@@ -363,6 +463,9 @@ int8_t rt_inputmgr_up(rt_inputmgr mgr)
     return 0;
 }
 
+/// @brief Perform inputmgr down operation.
+/// @param mgr
+/// @return Result value.
 int8_t rt_inputmgr_down(rt_inputmgr mgr)
 {
     (void)mgr;
@@ -386,6 +489,9 @@ int8_t rt_inputmgr_down(rt_inputmgr mgr)
     return 0;
 }
 
+/// @brief Perform inputmgr left operation.
+/// @param mgr
+/// @return Result value.
 int8_t rt_inputmgr_left(rt_inputmgr mgr)
 {
     (void)mgr;
@@ -409,6 +515,9 @@ int8_t rt_inputmgr_left(rt_inputmgr mgr)
     return 0;
 }
 
+/// @brief Perform inputmgr right operation.
+/// @param mgr
+/// @return Result value.
 int8_t rt_inputmgr_right(rt_inputmgr mgr)
 {
     (void)mgr;
@@ -432,6 +541,9 @@ int8_t rt_inputmgr_right(rt_inputmgr mgr)
     return 0;
 }
 
+/// @brief Perform inputmgr confirm operation.
+/// @param mgr
+/// @return Result value.
 int8_t rt_inputmgr_confirm(rt_inputmgr mgr)
 {
     (void)mgr;
@@ -454,6 +566,9 @@ int8_t rt_inputmgr_confirm(rt_inputmgr mgr)
     return 0;
 }
 
+/// @brief Perform inputmgr cancel operation.
+/// @param mgr
+/// @return Result value.
 int8_t rt_inputmgr_cancel(rt_inputmgr mgr)
 {
     (void)mgr;
@@ -476,6 +591,9 @@ int8_t rt_inputmgr_cancel(rt_inputmgr mgr)
     return 0;
 }
 
+/// @brief Perform inputmgr axis x operation.
+/// @param mgr
+/// @return Result value.
 double rt_inputmgr_axis_x(rt_inputmgr mgr)
 {
     (void)mgr;
@@ -523,6 +641,9 @@ double rt_inputmgr_axis_x(rt_inputmgr mgr)
     return value;
 }
 
+/// @brief Perform inputmgr axis y operation.
+/// @param mgr
+/// @return Result value.
 double rt_inputmgr_axis_y(rt_inputmgr mgr)
 {
     (void)mgr;

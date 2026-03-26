@@ -72,6 +72,9 @@ void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable)
     return tab;
 }
 
+/// @brief Perform tabbar remove tab operation.
+/// @param tabbar
+/// @param tab
 void rt_tabbar_remove_tab(void *tabbar, void *tab)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -81,6 +84,9 @@ void rt_tabbar_remove_tab(void *tabbar, void *tab)
     }
 }
 
+/// @brief Perform tabbar set active operation.
+/// @param tabbar
+/// @param tab
 void rt_tabbar_set_active(void *tabbar, void *tab)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -90,6 +96,9 @@ void rt_tabbar_set_active(void *tabbar, void *tab)
     }
 }
 
+/// @brief Perform tab set title operation.
+/// @param tab
+/// @param title
 void rt_tab_set_title(void *tab, rt_string title)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -100,6 +109,9 @@ void rt_tab_set_title(void *tab, rt_string title)
     free(ctitle);
 }
 
+/// @brief Perform tab set modified operation.
+/// @param tab
+/// @param modified
 void rt_tab_set_modified(void *tab, int64_t modified)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -115,6 +127,9 @@ void *rt_tabbar_get_active(void *tabbar)
     return tabbar ? ((vg_tabbar_t *)tabbar)->active_tab : NULL;
 }
 
+/// @brief Perform tabbar get active index operation.
+/// @param tabbar
+/// @return Result value.
 int64_t rt_tabbar_get_active_index(void *tabbar)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -124,6 +139,9 @@ int64_t rt_tabbar_get_active_index(void *tabbar)
     return vg_tabbar_get_tab_index(tb, tb->active_tab);
 }
 
+/// @brief Perform tabbar was changed operation.
+/// @param tabbar
+/// @return Result value.
 int64_t rt_tabbar_was_changed(void *tabbar)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -138,12 +156,18 @@ int64_t rt_tabbar_was_changed(void *tabbar)
     return 0;
 }
 
+/// @brief Perform tabbar get tab count operation.
+/// @param tabbar
+/// @return Result value.
 int64_t rt_tabbar_get_tab_count(void *tabbar)
 {
     RT_ASSERT_MAIN_THREAD();
     return tabbar ? ((vg_tabbar_t *)tabbar)->tab_count : 0;
 }
 
+/// @brief Perform tabbar was close clicked operation.
+/// @param tabbar
+/// @return Result value.
 int64_t rt_tabbar_was_close_clicked(void *tabbar)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -152,6 +176,9 @@ int64_t rt_tabbar_was_close_clicked(void *tabbar)
     return ((vg_tabbar_t *)tabbar)->close_clicked_tab ? 1 : 0;
 }
 
+/// @brief Perform tabbar get close clicked index operation.
+/// @param tabbar
+/// @return Result value.
 int64_t rt_tabbar_get_close_clicked_index(void *tabbar)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -173,6 +200,9 @@ void *rt_tabbar_get_tab_at(void *tabbar, int64_t index)
     return vg_tabbar_get_tab_at((vg_tabbar_t *)tabbar, (int)index);
 }
 
+/// @brief Perform tabbar set auto close operation.
+/// @param tabbar
+/// @param auto_close
 void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -193,6 +223,9 @@ void *rt_splitpane_new(void *parent, int64_t horizontal)
     return vg_splitpane_create((vg_widget_t *)parent, direction);
 }
 
+/// @brief Perform splitpane set position operation.
+/// @param split
+/// @param position
 void rt_splitpane_set_position(void *split, double position)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -203,6 +236,9 @@ void rt_splitpane_set_position(void *split, double position)
 }
 
 // BINDING-006: SplitPane position query
+/// @brief Perform splitpane get position operation.
+/// @param split
+/// @return Result value.
 double rt_splitpane_get_position(void *split)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -247,6 +283,9 @@ void *rt_codeeditor_new(void *parent)
     return editor;
 }
 
+/// @brief Perform codeeditor set text operation.
+/// @param editor
+/// @param text
 void rt_codeeditor_set_text(void *editor, rt_string text)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -257,6 +296,9 @@ void rt_codeeditor_set_text(void *editor, rt_string text)
     free(ctext);
 }
 
+/// @brief Perform codeeditor get text operation.
+/// @param editor
+/// @return Result value.
 rt_string rt_codeeditor_get_text(void *editor)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -270,6 +312,9 @@ rt_string rt_codeeditor_get_text(void *editor)
     return result;
 }
 
+/// @brief Perform codeeditor get selected text operation.
+/// @param editor
+/// @return Result value.
 rt_string rt_codeeditor_get_selected_text(void *editor)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -283,6 +328,10 @@ rt_string rt_codeeditor_get_selected_text(void *editor)
     return result;
 }
 
+/// @brief Perform codeeditor set cursor operation.
+/// @param editor
+/// @param line
+/// @param col
 void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -292,6 +341,9 @@ void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col)
     }
 }
 
+/// @brief Perform codeeditor scroll to line operation.
+/// @param editor
+/// @param line
 void rt_codeeditor_scroll_to_line(void *editor, int64_t line)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -301,6 +353,9 @@ void rt_codeeditor_scroll_to_line(void *editor, int64_t line)
     }
 }
 
+/// @brief Perform codeeditor get line count operation.
+/// @param editor
+/// @return Result value.
 int64_t rt_codeeditor_get_line_count(void *editor)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -309,6 +364,9 @@ int64_t rt_codeeditor_get_line_count(void *editor)
     return vg_codeeditor_get_line_count((vg_codeeditor_t *)editor);
 }
 
+/// @brief Perform codeeditor is modified operation.
+/// @param editor
+/// @return Result value.
 int64_t rt_codeeditor_is_modified(void *editor)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -317,6 +375,8 @@ int64_t rt_codeeditor_is_modified(void *editor)
     return vg_codeeditor_is_modified((vg_codeeditor_t *)editor) ? 1 : 0;
 }
 
+/// @brief Perform codeeditor clear modified operation.
+/// @param editor
 void rt_codeeditor_clear_modified(void *editor)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -326,6 +386,10 @@ void rt_codeeditor_clear_modified(void *editor)
     }
 }
 
+/// @brief Perform codeeditor set font operation.
+/// @param editor
+/// @param font
+/// @param size
 void rt_codeeditor_set_font(void *editor, void *font, double size)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -335,6 +399,9 @@ void rt_codeeditor_set_font(void *editor, void *font, double size)
     }
 }
 
+/// @brief Perform codeeditor get font size operation.
+/// @param editor
+/// @return Result value.
 double rt_codeeditor_get_font_size(void *editor)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -350,6 +417,9 @@ double rt_codeeditor_get_font_size(void *editor)
     return (double)(ed->font_size / _s);
 }
 
+/// @brief Perform codeeditor set font size operation.
+/// @param editor
+/// @param size
 void rt_codeeditor_set_font_size(void *editor, double size)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -374,6 +444,7 @@ void rt_codeeditor_set_font_size(void *editor, double size)
 // Theme Functions
 //=============================================================================
 
+/// @brief Perform theme apply hidpi scale operation.
 void rt_theme_apply_hidpi_scale(void)
 {
     if (!s_current_app || !s_current_app->window)
@@ -403,6 +474,7 @@ void rt_theme_apply_hidpi_scale(void)
     _t->scrollbar.width *= _s;
 }
 
+/// @brief Perform theme set dark operation.
 void rt_theme_set_dark(void)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -410,6 +482,7 @@ void rt_theme_set_dark(void)
     rt_theme_apply_hidpi_scale();
 }
 
+/// @brief Perform theme set light operation.
 void rt_theme_set_light(void)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -417,6 +490,8 @@ void rt_theme_set_light(void)
     rt_theme_apply_hidpi_scale();
 }
 
+/// @brief Perform theme get name operation.
+/// @return Result value.
 rt_string rt_theme_get_name(void)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -442,6 +517,9 @@ void *rt_hbox_new(void)
     return vg_hbox_create(0.0f);
 }
 
+/// @brief Perform container set spacing operation.
+/// @param container
+/// @param spacing
 void rt_container_set_spacing(void *container, double spacing)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -453,6 +531,9 @@ void rt_container_set_spacing(void *container, double spacing)
     vg_vbox_set_spacing((vg_widget_t *)container, (float)spacing);
 }
 
+/// @brief Perform container set padding operation.
+/// @param container
+/// @param padding
 void rt_container_set_padding(void *container, double padding)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -466,6 +547,9 @@ void rt_container_set_padding(void *container, double padding)
 // Widget State Functions
 //=============================================================================
 
+/// @brief Perform widget is hovered operation.
+/// @param widget
+/// @return Result value.
 int64_t rt_widget_is_hovered(void *widget)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -474,6 +558,9 @@ int64_t rt_widget_is_hovered(void *widget)
     return (((vg_widget_t *)widget)->state & VG_STATE_HOVERED) ? 1 : 0;
 }
 
+/// @brief Perform widget is pressed operation.
+/// @param widget
+/// @return Result value.
 int64_t rt_widget_is_pressed(void *widget)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -482,6 +569,9 @@ int64_t rt_widget_is_pressed(void *widget)
     return (((vg_widget_t *)widget)->state & VG_STATE_PRESSED) ? 1 : 0;
 }
 
+/// @brief Perform widget is focused operation.
+/// @param widget
+/// @return Result value.
 int64_t rt_widget_is_focused(void *widget)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -493,12 +583,17 @@ int64_t rt_widget_is_focused(void *widget)
 // Global for tracking last clicked widget (set by GUI.App.Poll)
 static vg_widget_t *g_last_clicked_widget = NULL;
 
+/// @brief Set the last clicked value.
+/// @param widget
 void rt_gui_set_last_clicked(void *widget)
 {
     RT_ASSERT_MAIN_THREAD();
     g_last_clicked_widget = (vg_widget_t *)widget;
 }
 
+/// @brief Perform widget was clicked operation.
+/// @param widget
+/// @return Result value.
 int64_t rt_widget_was_clicked(void *widget)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -507,6 +602,10 @@ int64_t rt_widget_was_clicked(void *widget)
     return (g_last_clicked_widget == widget) ? 1 : 0;
 }
 
+/// @brief Perform widget set position operation.
+/// @param widget
+/// @param x
+/// @param y
 void rt_widget_set_position(void *widget, int64_t x, int64_t y)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -528,6 +627,10 @@ void *rt_dropdown_new(void *parent)
     return vg_dropdown_create((vg_widget_t *)parent);
 }
 
+/// @brief Perform dropdown add item operation.
+/// @param dropdown
+/// @param text
+/// @return Result value.
 int64_t rt_dropdown_add_item(void *dropdown, rt_string text)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -539,6 +642,9 @@ int64_t rt_dropdown_add_item(void *dropdown, rt_string text)
     return index;
 }
 
+/// @brief Perform dropdown remove item operation.
+/// @param dropdown
+/// @param index
 void rt_dropdown_remove_item(void *dropdown, int64_t index)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -548,6 +654,8 @@ void rt_dropdown_remove_item(void *dropdown, int64_t index)
     }
 }
 
+/// @brief Perform dropdown clear operation.
+/// @param dropdown
 void rt_dropdown_clear(void *dropdown)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -557,6 +665,9 @@ void rt_dropdown_clear(void *dropdown)
     }
 }
 
+/// @brief Perform dropdown set selected operation.
+/// @param dropdown
+/// @param index
 void rt_dropdown_set_selected(void *dropdown, int64_t index)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -566,6 +677,9 @@ void rt_dropdown_set_selected(void *dropdown, int64_t index)
     }
 }
 
+/// @brief Perform dropdown get selected operation.
+/// @param dropdown
+/// @return Result value.
 int64_t rt_dropdown_get_selected(void *dropdown)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -574,6 +688,9 @@ int64_t rt_dropdown_get_selected(void *dropdown)
     return vg_dropdown_get_selected((vg_dropdown_t *)dropdown);
 }
 
+/// @brief Perform dropdown get selected text operation.
+/// @param dropdown
+/// @return Result value.
 rt_string rt_dropdown_get_selected_text(void *dropdown)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -585,6 +702,9 @@ rt_string rt_dropdown_get_selected_text(void *dropdown)
     return rt_string_from_bytes(text, strlen(text));
 }
 
+/// @brief Perform dropdown set placeholder operation.
+/// @param dropdown
+/// @param placeholder
 void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -606,6 +726,9 @@ void *rt_slider_new(void *parent, int64_t horizontal)
     return vg_slider_create((vg_widget_t *)parent, orient);
 }
 
+/// @brief Perform slider set value operation.
+/// @param slider
+/// @param value
 void rt_slider_set_value(void *slider, double value)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -615,6 +738,9 @@ void rt_slider_set_value(void *slider, double value)
     }
 }
 
+/// @brief Perform slider get value operation.
+/// @param slider
+/// @return Result value.
 double rt_slider_get_value(void *slider)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -623,6 +749,10 @@ double rt_slider_get_value(void *slider)
     return (double)vg_slider_get_value((vg_slider_t *)slider);
 }
 
+/// @brief Perform slider set range operation.
+/// @param slider
+/// @param min_val
+/// @param max_val
 void rt_slider_set_range(void *slider, double min_val, double max_val)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -632,6 +762,9 @@ void rt_slider_set_range(void *slider, double min_val, double max_val)
     }
 }
 
+/// @brief Perform slider set step operation.
+/// @param slider
+/// @param step
 void rt_slider_set_step(void *slider, double step)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -651,6 +784,9 @@ void *rt_progressbar_new(void *parent)
     return vg_progressbar_create((vg_widget_t *)parent);
 }
 
+/// @brief Perform progressbar set value operation.
+/// @param progress
+/// @param value
 void rt_progressbar_set_value(void *progress, double value)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -660,6 +796,9 @@ void rt_progressbar_set_value(void *progress, double value)
     }
 }
 
+/// @brief Perform progressbar get value operation.
+/// @param progress
+/// @return Result value.
 double rt_progressbar_get_value(void *progress)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -689,6 +828,9 @@ void *rt_listbox_add_item(void *listbox, rt_string text)
     return item;
 }
 
+/// @brief Perform listbox remove item operation.
+/// @param listbox
+/// @param item
 void rt_listbox_remove_item(void *listbox, void *item)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -698,6 +840,8 @@ void rt_listbox_remove_item(void *listbox, void *item)
     }
 }
 
+/// @brief Perform listbox clear operation.
+/// @param listbox
 void rt_listbox_clear(void *listbox)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -707,6 +851,9 @@ void rt_listbox_clear(void *listbox)
     }
 }
 
+/// @brief Perform listbox select operation.
+/// @param listbox
+/// @param item
 void rt_listbox_select(void *listbox, void *item)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -724,6 +871,9 @@ void *rt_listbox_get_selected(void *listbox)
     return vg_listbox_get_selected((vg_listbox_t *)listbox);
 }
 
+/// @brief Perform listbox get count operation.
+/// @param listbox
+/// @return Result value.
 int64_t rt_listbox_get_count(void *listbox)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -733,6 +883,9 @@ int64_t rt_listbox_get_count(void *listbox)
     return (int64_t)lb->item_count;
 }
 
+/// @brief Perform listbox get selected index operation.
+/// @param listbox
+/// @return Result value.
 int64_t rt_listbox_get_selected_index(void *listbox)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -744,6 +897,9 @@ int64_t rt_listbox_get_selected_index(void *listbox)
     return (int64_t)idx;
 }
 
+/// @brief Perform listbox select index operation.
+/// @param listbox
+/// @param index
 void rt_listbox_select_index(void *listbox, int64_t index)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -752,6 +908,9 @@ void rt_listbox_select_index(void *listbox, int64_t index)
     vg_listbox_select_index((vg_listbox_t *)listbox, (size_t)index);
 }
 
+/// @brief Perform listbox was selection changed operation.
+/// @param listbox
+/// @return Result value.
 int64_t rt_listbox_was_selection_changed(void *listbox)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -769,6 +928,9 @@ int64_t rt_listbox_was_selection_changed(void *listbox)
     return 0;
 }
 
+/// @brief Perform listbox item get text operation.
+/// @param item
+/// @return Result value.
 rt_string rt_listbox_item_get_text(void *item)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -780,6 +942,9 @@ rt_string rt_listbox_item_get_text(void *item)
     return rt_str_empty();
 }
 
+/// @brief Perform listbox item set text operation.
+/// @param item
+/// @param text
 void rt_listbox_item_set_text(void *item, rt_string text)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -792,6 +957,9 @@ void rt_listbox_item_set_text(void *item, rt_string text)
     it->text = ctext; // Takes ownership
 }
 
+/// @brief Perform listbox item set data operation.
+/// @param item
+/// @param data
 void rt_listbox_item_set_data(void *item, rt_string data)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -804,6 +972,9 @@ void rt_listbox_item_set_data(void *item, rt_string data)
     it->user_data = cdata; // Takes ownership
 }
 
+/// @brief Perform listbox item get data operation.
+/// @param item
+/// @return Result value.
 rt_string rt_listbox_item_get_data(void *item)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -816,6 +987,10 @@ rt_string rt_listbox_item_get_data(void *item)
     return rt_str_empty();
 }
 
+/// @brief Perform listbox set font operation.
+/// @param listbox
+/// @param font
+/// @param size
 void rt_listbox_set_font(void *listbox, void *font, double size)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -835,6 +1010,8 @@ void *rt_radiogroup_new(void)
     return vg_radiogroup_create();
 }
 
+/// @brief Perform radiogroup destroy operation.
+/// @param group
 void rt_radiogroup_destroy(void *group)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -854,6 +1031,9 @@ void *rt_radiobutton_new(void *parent, rt_string text, void *group)
     return radio;
 }
 
+/// @brief Perform radiobutton is selected operation.
+/// @param radio
+/// @return Result value.
 int64_t rt_radiobutton_is_selected(void *radio)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -862,6 +1042,9 @@ int64_t rt_radiobutton_is_selected(void *radio)
     return vg_radiobutton_is_selected((vg_radiobutton_t *)radio) ? 1 : 0;
 }
 
+/// @brief Perform radiobutton set selected operation.
+/// @param radio
+/// @param selected
 void rt_radiobutton_set_selected(void *radio, int64_t selected)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -881,6 +1064,9 @@ void *rt_spinner_new(void *parent)
     return vg_spinner_create((vg_widget_t *)parent);
 }
 
+/// @brief Perform spinner set value operation.
+/// @param spinner
+/// @param value
 void rt_spinner_set_value(void *spinner, double value)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -890,6 +1076,9 @@ void rt_spinner_set_value(void *spinner, double value)
     }
 }
 
+/// @brief Perform spinner get value operation.
+/// @param spinner
+/// @return Result value.
 double rt_spinner_get_value(void *spinner)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -898,6 +1087,10 @@ double rt_spinner_get_value(void *spinner)
     return vg_spinner_get_value((vg_spinner_t *)spinner);
 }
 
+/// @brief Perform spinner set range operation.
+/// @param spinner
+/// @param min_val
+/// @param max_val
 void rt_spinner_set_range(void *spinner, double min_val, double max_val)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -907,6 +1100,9 @@ void rt_spinner_set_range(void *spinner, double min_val, double max_val)
     }
 }
 
+/// @brief Perform spinner set step operation.
+/// @param spinner
+/// @param step
 void rt_spinner_set_step(void *spinner, double step)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -916,6 +1112,9 @@ void rt_spinner_set_step(void *spinner, double step)
     }
 }
 
+/// @brief Perform spinner set decimals operation.
+/// @param spinner
+/// @param decimals
 void rt_spinner_set_decimals(void *spinner, int64_t decimals)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -935,6 +1134,11 @@ void *rt_image_new(void *parent)
     return vg_image_create((vg_widget_t *)parent);
 }
 
+/// @brief Perform image set pixels operation.
+/// @param image
+/// @param pixels
+/// @param width
+/// @param height
 void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t height)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -944,6 +1148,8 @@ void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t heigh
     }
 }
 
+/// @brief Perform image clear operation.
+/// @param image
 void rt_image_clear(void *image)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -953,6 +1159,9 @@ void rt_image_clear(void *image)
     }
 }
 
+/// @brief Perform image set scale mode operation.
+/// @param image
+/// @param mode
 void rt_image_set_scale_mode(void *image, int64_t mode)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -962,6 +1171,9 @@ void rt_image_set_scale_mode(void *image, int64_t mode)
     }
 }
 
+/// @brief Perform image set opacity operation.
+/// @param image
+/// @param opacity
 void rt_image_set_opacity(void *image, double opacity)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -981,6 +1193,10 @@ void *rt_floatingpanel_new(void *root)
     return vg_floatingpanel_create((vg_widget_t *)root);
 }
 
+/// @brief Perform floatingpanel set position operation.
+/// @param panel
+/// @param x
+/// @param y
 void rt_floatingpanel_set_position(void *panel, double x, double y)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -988,6 +1204,10 @@ void rt_floatingpanel_set_position(void *panel, double x, double y)
         vg_floatingpanel_set_position((vg_floatingpanel_t *)panel, (float)x, (float)y);
 }
 
+/// @brief Perform floatingpanel set size operation.
+/// @param panel
+/// @param w
+/// @param h
 void rt_floatingpanel_set_size(void *panel, double w, double h)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -995,6 +1215,9 @@ void rt_floatingpanel_set_size(void *panel, double w, double h)
         vg_floatingpanel_set_size((vg_floatingpanel_t *)panel, (float)w, (float)h);
 }
 
+/// @brief Perform floatingpanel set visible operation.
+/// @param panel
+/// @param visible
 void rt_floatingpanel_set_visible(void *panel, int64_t visible)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -1002,6 +1225,9 @@ void rt_floatingpanel_set_visible(void *panel, int64_t visible)
         vg_floatingpanel_set_visible((vg_floatingpanel_t *)panel, (int)visible);
 }
 
+/// @brief Perform floatingpanel add child operation.
+/// @param panel
+/// @param child
 void rt_floatingpanel_add_child(void *panel, void *child)
 {
     RT_ASSERT_MAIN_THREAD();
@@ -1025,24 +1251,36 @@ void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable)
     return NULL;
 }
 
+/// @brief Perform tabbar remove tab operation.
+/// @param tabbar
+/// @param tab
 void rt_tabbar_remove_tab(void *tabbar, void *tab)
 {
     (void)tabbar;
     (void)tab;
 }
 
+/// @brief Perform tabbar set active operation.
+/// @param tabbar
+/// @param tab
 void rt_tabbar_set_active(void *tabbar, void *tab)
 {
     (void)tabbar;
     (void)tab;
 }
 
+/// @brief Perform tab set title operation.
+/// @param tab
+/// @param title
 void rt_tab_set_title(void *tab, rt_string title)
 {
     (void)tab;
     (void)title;
 }
 
+/// @brief Perform tab set modified operation.
+/// @param tab
+/// @param modified
 void rt_tab_set_modified(void *tab, int64_t modified)
 {
     (void)tab;
@@ -1055,30 +1293,45 @@ void *rt_tabbar_get_active(void *tabbar)
     return NULL;
 }
 
+/// @brief Perform tabbar get active index operation.
+/// @param tabbar
+/// @return Result value.
 int64_t rt_tabbar_get_active_index(void *tabbar)
 {
     (void)tabbar;
     return -1;
 }
 
+/// @brief Perform tabbar was changed operation.
+/// @param tabbar
+/// @return Result value.
 int64_t rt_tabbar_was_changed(void *tabbar)
 {
     (void)tabbar;
     return 0;
 }
 
+/// @brief Perform tabbar get tab count operation.
+/// @param tabbar
+/// @return Result value.
 int64_t rt_tabbar_get_tab_count(void *tabbar)
 {
     (void)tabbar;
     return 0;
 }
 
+/// @brief Perform tabbar was close clicked operation.
+/// @param tabbar
+/// @return Result value.
 int64_t rt_tabbar_was_close_clicked(void *tabbar)
 {
     (void)tabbar;
     return 0;
 }
 
+/// @brief Perform tabbar get close clicked index operation.
+/// @param tabbar
+/// @return Result value.
 int64_t rt_tabbar_get_close_clicked_index(void *tabbar)
 {
     (void)tabbar;
@@ -1092,6 +1345,9 @@ void *rt_tabbar_get_tab_at(void *tabbar, int64_t index)
     return NULL;
 }
 
+/// @brief Perform tabbar set auto close operation.
+/// @param tabbar
+/// @param auto_close
 void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close)
 {
     (void)tabbar;
@@ -1105,12 +1361,18 @@ void *rt_splitpane_new(void *parent, int64_t horizontal)
     return NULL;
 }
 
+/// @brief Perform splitpane set position operation.
+/// @param split
+/// @param position
 void rt_splitpane_set_position(void *split, double position)
 {
     (void)split;
     (void)position;
 }
 
+/// @brief Perform splitpane get position operation.
+/// @param split
+/// @return Result value.
 double rt_splitpane_get_position(void *split)
 {
     (void)split;
@@ -1135,24 +1397,37 @@ void *rt_codeeditor_new(void *parent)
     return NULL;
 }
 
+/// @brief Perform codeeditor set text operation.
+/// @param editor
+/// @param text
 void rt_codeeditor_set_text(void *editor, rt_string text)
 {
     (void)editor;
     (void)text;
 }
 
+/// @brief Perform codeeditor get text operation.
+/// @param editor
+/// @return Result value.
 rt_string rt_codeeditor_get_text(void *editor)
 {
     (void)editor;
     return rt_str_empty();
 }
 
+/// @brief Perform codeeditor get selected text operation.
+/// @param editor
+/// @return Result value.
 rt_string rt_codeeditor_get_selected_text(void *editor)
 {
     (void)editor;
     return rt_str_empty();
 }
 
+/// @brief Perform codeeditor set cursor operation.
+/// @param editor
+/// @param line
+/// @param col
 void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col)
 {
     (void)editor;
@@ -1160,29 +1435,44 @@ void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col)
     (void)col;
 }
 
+/// @brief Perform codeeditor scroll to line operation.
+/// @param editor
+/// @param line
 void rt_codeeditor_scroll_to_line(void *editor, int64_t line)
 {
     (void)editor;
     (void)line;
 }
 
+/// @brief Perform codeeditor get line count operation.
+/// @param editor
+/// @return Result value.
 int64_t rt_codeeditor_get_line_count(void *editor)
 {
     (void)editor;
     return 0;
 }
 
+/// @brief Perform codeeditor is modified operation.
+/// @param editor
+/// @return Result value.
 int64_t rt_codeeditor_is_modified(void *editor)
 {
     (void)editor;
     return 0;
 }
 
+/// @brief Perform codeeditor clear modified operation.
+/// @param editor
 void rt_codeeditor_clear_modified(void *editor)
 {
     (void)editor;
 }
 
+/// @brief Perform codeeditor set font operation.
+/// @param editor
+/// @param font
+/// @param size
 void rt_codeeditor_set_font(void *editor, void *font, double size)
 {
     (void)editor;
@@ -1190,22 +1480,32 @@ void rt_codeeditor_set_font(void *editor, void *font, double size)
     (void)size;
 }
 
+/// @brief Perform codeeditor get font size operation.
+/// @param editor
+/// @return Result value.
 double rt_codeeditor_get_font_size(void *editor)
 {
     (void)editor;
     return 14.0;
 }
 
+/// @brief Perform codeeditor set font size operation.
+/// @param editor
+/// @param size
 void rt_codeeditor_set_font_size(void *editor, double size)
 {
     (void)editor;
     (void)size;
 }
 
+/// @brief Perform theme set dark operation.
 void rt_theme_set_dark(void) {}
 
+/// @brief Perform theme set light operation.
 void rt_theme_set_light(void) {}
 
+/// @brief Perform theme get name operation.
+/// @return Result value.
 rt_string rt_theme_get_name(void)
 {
     return rt_string_from_bytes("dark", 4);
@@ -1221,47 +1521,71 @@ void *rt_hbox_new(void)
     return NULL;
 }
 
+/// @brief Perform container set spacing operation.
+/// @param container
+/// @param spacing
 void rt_container_set_spacing(void *container, double spacing)
 {
     (void)container;
     (void)spacing;
 }
 
+/// @brief Perform container set padding operation.
+/// @param container
+/// @param padding
 void rt_container_set_padding(void *container, double padding)
 {
     (void)container;
     (void)padding;
 }
 
+/// @brief Perform widget is hovered operation.
+/// @param widget
+/// @return Result value.
 int64_t rt_widget_is_hovered(void *widget)
 {
     (void)widget;
     return 0;
 }
 
+/// @brief Perform widget is pressed operation.
+/// @param widget
+/// @return Result value.
 int64_t rt_widget_is_pressed(void *widget)
 {
     (void)widget;
     return 0;
 }
 
+/// @brief Perform widget is focused operation.
+/// @param widget
+/// @return Result value.
 int64_t rt_widget_is_focused(void *widget)
 {
     (void)widget;
     return 0;
 }
 
+/// @brief Set the last clicked value.
+/// @param widget
 void rt_gui_set_last_clicked(void *widget)
 {
     (void)widget;
 }
 
+/// @brief Perform widget was clicked operation.
+/// @param widget
+/// @return Result value.
 int64_t rt_widget_was_clicked(void *widget)
 {
     (void)widget;
     return 0;
 }
 
+/// @brief Perform widget set position operation.
+/// @param widget
+/// @param x
+/// @param y
 void rt_widget_set_position(void *widget, int64_t x, int64_t y)
 {
     (void)widget;
@@ -1275,6 +1599,10 @@ void *rt_dropdown_new(void *parent)
     return NULL;
 }
 
+/// @brief Perform dropdown add item operation.
+/// @param dropdown
+/// @param text
+/// @return Result value.
 int64_t rt_dropdown_add_item(void *dropdown, rt_string text)
 {
     (void)dropdown;
@@ -1282,35 +1610,52 @@ int64_t rt_dropdown_add_item(void *dropdown, rt_string text)
     return -1;
 }
 
+/// @brief Perform dropdown remove item operation.
+/// @param dropdown
+/// @param index
 void rt_dropdown_remove_item(void *dropdown, int64_t index)
 {
     (void)dropdown;
     (void)index;
 }
 
+/// @brief Perform dropdown clear operation.
+/// @param dropdown
 void rt_dropdown_clear(void *dropdown)
 {
     (void)dropdown;
 }
 
+/// @brief Perform dropdown set selected operation.
+/// @param dropdown
+/// @param index
 void rt_dropdown_set_selected(void *dropdown, int64_t index)
 {
     (void)dropdown;
     (void)index;
 }
 
+/// @brief Perform dropdown get selected operation.
+/// @param dropdown
+/// @return Result value.
 int64_t rt_dropdown_get_selected(void *dropdown)
 {
     (void)dropdown;
     return -1;
 }
 
+/// @brief Perform dropdown get selected text operation.
+/// @param dropdown
+/// @return Result value.
 rt_string rt_dropdown_get_selected_text(void *dropdown)
 {
     (void)dropdown;
     return rt_str_empty();
 }
 
+/// @brief Perform dropdown set placeholder operation.
+/// @param dropdown
+/// @param placeholder
 void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder)
 {
     (void)dropdown;
@@ -1324,18 +1669,28 @@ void *rt_slider_new(void *parent, int64_t horizontal)
     return NULL;
 }
 
+/// @brief Perform slider set value operation.
+/// @param slider
+/// @param value
 void rt_slider_set_value(void *slider, double value)
 {
     (void)slider;
     (void)value;
 }
 
+/// @brief Perform slider get value operation.
+/// @param slider
+/// @return Result value.
 double rt_slider_get_value(void *slider)
 {
     (void)slider;
     return 0.0;
 }
 
+/// @brief Perform slider set range operation.
+/// @param slider
+/// @param min_val
+/// @param max_val
 void rt_slider_set_range(void *slider, double min_val, double max_val)
 {
     (void)slider;
@@ -1343,6 +1698,9 @@ void rt_slider_set_range(void *slider, double min_val, double max_val)
     (void)max_val;
 }
 
+/// @brief Perform slider set step operation.
+/// @param slider
+/// @param step
 void rt_slider_set_step(void *slider, double step)
 {
     (void)slider;
@@ -1355,12 +1713,18 @@ void *rt_progressbar_new(void *parent)
     return NULL;
 }
 
+/// @brief Perform progressbar set value operation.
+/// @param progress
+/// @param value
 void rt_progressbar_set_value(void *progress, double value)
 {
     (void)progress;
     (void)value;
 }
 
+/// @brief Perform progressbar get value operation.
+/// @param progress
+/// @return Result value.
 double rt_progressbar_get_value(void *progress)
 {
     (void)progress;
@@ -1380,17 +1744,25 @@ void *rt_listbox_add_item(void *listbox, rt_string text)
     return NULL;
 }
 
+/// @brief Perform listbox remove item operation.
+/// @param listbox
+/// @param item
 void rt_listbox_remove_item(void *listbox, void *item)
 {
     (void)listbox;
     (void)item;
 }
 
+/// @brief Perform listbox clear operation.
+/// @param listbox
 void rt_listbox_clear(void *listbox)
 {
     (void)listbox;
 }
 
+/// @brief Perform listbox select operation.
+/// @param listbox
+/// @param item
 void rt_listbox_select(void *listbox, void *item)
 {
     (void)listbox;
@@ -1403,54 +1775,82 @@ void *rt_listbox_get_selected(void *listbox)
     return NULL;
 }
 
+/// @brief Perform listbox get count operation.
+/// @param listbox
+/// @return Result value.
 int64_t rt_listbox_get_count(void *listbox)
 {
     (void)listbox;
     return 0;
 }
 
+/// @brief Perform listbox get selected index operation.
+/// @param listbox
+/// @return Result value.
 int64_t rt_listbox_get_selected_index(void *listbox)
 {
     (void)listbox;
     return -1;
 }
 
+/// @brief Perform listbox select index operation.
+/// @param listbox
+/// @param index
 void rt_listbox_select_index(void *listbox, int64_t index)
 {
     (void)listbox;
     (void)index;
 }
 
+/// @brief Perform listbox was selection changed operation.
+/// @param listbox
+/// @return Result value.
 int64_t rt_listbox_was_selection_changed(void *listbox)
 {
     (void)listbox;
     return 0;
 }
 
+/// @brief Perform listbox item get text operation.
+/// @param item
+/// @return Result value.
 rt_string rt_listbox_item_get_text(void *item)
 {
     (void)item;
     return rt_str_empty();
 }
 
+/// @brief Perform listbox item set text operation.
+/// @param item
+/// @param text
 void rt_listbox_item_set_text(void *item, rt_string text)
 {
     (void)item;
     (void)text;
 }
 
+/// @brief Perform listbox item set data operation.
+/// @param item
+/// @param data
 void rt_listbox_item_set_data(void *item, rt_string data)
 {
     (void)item;
     (void)data;
 }
 
+/// @brief Perform listbox item get data operation.
+/// @param item
+/// @return Result value.
 rt_string rt_listbox_item_get_data(void *item)
 {
     (void)item;
     return rt_str_empty();
 }
 
+/// @brief Perform listbox set font operation.
+/// @param listbox
+/// @param font
+/// @param size
 void rt_listbox_set_font(void *listbox, void *font, double size)
 {
     (void)listbox;
@@ -1463,6 +1863,8 @@ void *rt_radiogroup_new(void)
     return NULL;
 }
 
+/// @brief Perform radiogroup destroy operation.
+/// @param group
 void rt_radiogroup_destroy(void *group)
 {
     (void)group;
@@ -1476,12 +1878,18 @@ void *rt_radiobutton_new(void *parent, rt_string text, void *group)
     return NULL;
 }
 
+/// @brief Perform radiobutton is selected operation.
+/// @param radio
+/// @return Result value.
 int64_t rt_radiobutton_is_selected(void *radio)
 {
     (void)radio;
     return 0;
 }
 
+/// @brief Perform radiobutton set selected operation.
+/// @param radio
+/// @param selected
 void rt_radiobutton_set_selected(void *radio, int64_t selected)
 {
     (void)radio;
@@ -1494,18 +1902,28 @@ void *rt_spinner_new(void *parent)
     return NULL;
 }
 
+/// @brief Perform spinner set value operation.
+/// @param spinner
+/// @param value
 void rt_spinner_set_value(void *spinner, double value)
 {
     (void)spinner;
     (void)value;
 }
 
+/// @brief Perform spinner get value operation.
+/// @param spinner
+/// @return Result value.
 double rt_spinner_get_value(void *spinner)
 {
     (void)spinner;
     return 0.0;
 }
 
+/// @brief Perform spinner set range operation.
+/// @param spinner
+/// @param min_val
+/// @param max_val
 void rt_spinner_set_range(void *spinner, double min_val, double max_val)
 {
     (void)spinner;
@@ -1513,12 +1931,18 @@ void rt_spinner_set_range(void *spinner, double min_val, double max_val)
     (void)max_val;
 }
 
+/// @brief Perform spinner set step operation.
+/// @param spinner
+/// @param step
 void rt_spinner_set_step(void *spinner, double step)
 {
     (void)spinner;
     (void)step;
 }
 
+/// @brief Perform spinner set decimals operation.
+/// @param spinner
+/// @param decimals
 void rt_spinner_set_decimals(void *spinner, int64_t decimals)
 {
     (void)spinner;
@@ -1531,6 +1955,11 @@ void *rt_image_new(void *parent)
     return NULL;
 }
 
+/// @brief Perform image set pixels operation.
+/// @param image
+/// @param pixels
+/// @param width
+/// @param height
 void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t height)
 {
     (void)image;
@@ -1539,17 +1968,25 @@ void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t heigh
     (void)height;
 }
 
+/// @brief Perform image clear operation.
+/// @param image
 void rt_image_clear(void *image)
 {
     (void)image;
 }
 
+/// @brief Perform image set scale mode operation.
+/// @param image
+/// @param mode
 void rt_image_set_scale_mode(void *image, int64_t mode)
 {
     (void)image;
     (void)mode;
 }
 
+/// @brief Perform image set opacity operation.
+/// @param image
+/// @param opacity
 void rt_image_set_opacity(void *image, double opacity)
 {
     (void)image;
@@ -1562,6 +1999,10 @@ void *rt_floatingpanel_new(void *root)
     return NULL;
 }
 
+/// @brief Perform floatingpanel set position operation.
+/// @param panel
+/// @param x
+/// @param y
 void rt_floatingpanel_set_position(void *panel, double x, double y)
 {
     (void)panel;
@@ -1569,6 +2010,10 @@ void rt_floatingpanel_set_position(void *panel, double x, double y)
     (void)y;
 }
 
+/// @brief Perform floatingpanel set size operation.
+/// @param panel
+/// @param w
+/// @param h
 void rt_floatingpanel_set_size(void *panel, double w, double h)
 {
     (void)panel;
@@ -1576,12 +2021,18 @@ void rt_floatingpanel_set_size(void *panel, double w, double h)
     (void)h;
 }
 
+/// @brief Perform floatingpanel set visible operation.
+/// @param panel
+/// @param visible
 void rt_floatingpanel_set_visible(void *panel, int64_t visible)
 {
     (void)panel;
     (void)visible;
 }
 
+/// @brief Perform floatingpanel add child operation.
+/// @param panel
+/// @param child
 void rt_floatingpanel_add_child(void *panel, void *child)
 {
     (void)panel;

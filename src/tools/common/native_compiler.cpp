@@ -29,11 +29,13 @@
 namespace viper::tools
 {
 
+/// @brief Is native output path.
 bool isNativeOutputPath(const std::string &path)
 {
     return std::filesystem::path(path).extension() != ".il";
 }
 
+/// @brief Generate temp il path.
 std::string generateTempIlPath()
 {
     auto dir = std::filesystem::temp_directory_path();
@@ -45,6 +47,7 @@ std::string generateTempIlPath()
     return (dir / ("viper_build_" + std::to_string(pid) + ".il")).string();
 }
 
+/// @brief Compile to native.
 int compileToNative(const std::string &ilPath, const std::string &outputPath, TargetArch arch)
 {
     if (arch == TargetArch::ARM64)

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_collision.h
 // Purpose: AABB and circle collision detection helpers for game physics, providing overlap testing,
 // depth queries, and distance calculations for both object handles and stateless free functions.

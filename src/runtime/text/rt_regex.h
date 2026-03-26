@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_regex.h
 // Purpose: Regular expression pattern matching supporting literals, anchors, character classes,
 // shorthand classes, quantifiers (greedy/non-greedy), grouping, and alternation.

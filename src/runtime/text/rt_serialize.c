@@ -117,6 +117,10 @@ void *rt_serialize_parse(rt_string text, int64_t format)
 // Unified Format
 //=============================================================================
 
+/// @brief Perform serialize format operation.
+/// @param obj
+/// @param format
+/// @return Result value.
 rt_string rt_serialize_format(void *obj, int64_t format)
 {
     clear_error();
@@ -144,6 +148,11 @@ rt_string rt_serialize_format(void *obj, int64_t format)
     }
 }
 
+/// @brief Perform serialize format pretty operation.
+/// @param obj
+/// @param format
+/// @param indent
+/// @return Result value.
 rt_string rt_serialize_format_pretty(void *obj, int64_t format, int64_t indent)
 {
     clear_error();
@@ -178,6 +187,10 @@ rt_string rt_serialize_format_pretty(void *obj, int64_t format, int64_t indent)
 // Validation
 //=============================================================================
 
+/// @brief Perform serialize is valid operation.
+/// @param text
+/// @param format
+/// @return Result value.
 int8_t rt_serialize_is_valid(rt_string text, int64_t format)
 {
     if (!text)
@@ -218,6 +231,9 @@ static const char *skip_ws(const char *s)
     return s;
 }
 
+/// @brief Perform serialize detect operation.
+/// @param text
+/// @return Result value.
 int64_t rt_serialize_detect(rt_string text)
 {
     const char *s;
@@ -298,6 +314,11 @@ void *rt_serialize_auto_parse(rt_string text)
 // Round-Trip Conversion
 //=============================================================================
 
+/// @brief Perform serialize convert operation.
+/// @param text
+/// @param from_format
+/// @param to_format
+/// @return Result value.
 rt_string rt_serialize_convert(rt_string text, int64_t from_format, int64_t to_format)
 {
     void *parsed;
@@ -320,6 +341,9 @@ rt_string rt_serialize_convert(rt_string text, int64_t from_format, int64_t to_f
 // Format Metadata
 //=============================================================================
 
+/// @brief Perform serialize format name operation.
+/// @param format
+/// @return Result value.
 rt_string rt_serialize_format_name(int64_t format)
 {
     switch ((rt_format_t)format)
@@ -339,6 +363,9 @@ rt_string rt_serialize_format_name(int64_t format)
     }
 }
 
+/// @brief Perform serialize mime type operation.
+/// @param format
+/// @return Result value.
 rt_string rt_serialize_mime_type(int64_t format)
 {
     switch ((rt_format_t)format)
@@ -358,6 +385,9 @@ rt_string rt_serialize_mime_type(int64_t format)
     }
 }
 
+/// @brief Perform serialize format from name operation.
+/// @param name
+/// @return Result value.
 int64_t rt_serialize_format_from_name(rt_string name)
 {
     const char *s;
@@ -389,6 +419,8 @@ int64_t rt_serialize_format_from_name(rt_string name)
 // Error Handling
 //=============================================================================
 
+/// @brief Perform serialize error operation.
+/// @return Result value.
 rt_string rt_serialize_error(void)
 {
     if (g_last_error)

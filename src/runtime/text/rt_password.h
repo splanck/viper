@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_password.h
 // Purpose: Secure password hashing with automatic salt generation using PBKDF2-SHA256 and
 // constant-time verification to prevent timing attacks.

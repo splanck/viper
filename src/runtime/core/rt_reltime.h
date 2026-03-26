@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_reltime.h
 // Purpose: Human-readable relative time formatting producing strings like '2 hours ago', 'in 3
 // days', and '45s' from Unix timestamps or millisecond durations.

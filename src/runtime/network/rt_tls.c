@@ -240,16 +240,22 @@ static void derive_application_keys(rt_tls_session_t *session)
 
     // Derive application keys (AES-128-GCM uses 16-byte keys; ChaCha20 uses 32-byte keys)
     int app_key_len = (session->cipher_suite == TLS_AES_128_GCM_SHA256) ? 16 : 32;
-    rt_hkdf_expand_label(
-        session->server_application_traffic_secret, "key", NULL, 0, session->read_keys.key,
-        app_key_len);
+    rt_hkdf_expand_label(session->server_application_traffic_secret,
+                         "key",
+                         NULL,
+                         0,
+                         session->read_keys.key,
+                         app_key_len);
     rt_hkdf_expand_label(
         session->server_application_traffic_secret, "iv", NULL, 0, session->read_keys.iv, 12);
     session->read_keys.seq_num = 0;
 
-    rt_hkdf_expand_label(
-        session->client_application_traffic_secret, "key", NULL, 0, session->write_keys.key,
-        app_key_len);
+    rt_hkdf_expand_label(session->client_application_traffic_secret,
+                         "key",
+                         NULL,
+                         0,
+                         session->write_keys.key,
+                         app_key_len);
     rt_hkdf_expand_label(
         session->client_application_traffic_secret, "iv", NULL, 0, session->write_keys.iv, 12);
     session->write_keys.seq_num = 0;
@@ -409,8 +415,8 @@ static int recv_record(rt_tls_session_t *session,
 
         long plaintext_len;
         if (session->cipher_suite == TLS_AES_128_GCM_SHA256)
-            plaintext_len = rt_aes128_gcm_decrypt(
-                session->read_keys.key, nonce, aad, 5, payload, length, data);
+            plaintext_len =
+                rt_aes128_gcm_decrypt(session->read_keys.key, nonce, aad, 5, payload, length, data);
         else
             plaintext_len = rt_chacha20_poly1305_decrypt(
                 session->read_keys.key, nonce, aad, 5, payload, length, data);

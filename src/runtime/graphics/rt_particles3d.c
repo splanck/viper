@@ -78,7 +78,7 @@ typedef struct
     void *texture;
     int32_t emitter_shape; /* 0=point, 1=sphere, 2=box */
     double emitter_size[3];
-    uint32_t prng_state; /* per-instance PRNG seed */
+    uint32_t prng_state;   /* per-instance PRNG seed */
     void *cached_material; /* reused across frames (GFX-052) */
 } rt_particles3d;
 

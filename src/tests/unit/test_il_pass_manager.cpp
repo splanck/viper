@@ -198,13 +198,14 @@ int main()
            statsAfter.find("inline") != std::string::npos);
 
     std::atomic<int> parallelRuns{0};
-    pm.registerFunctionPass("count-fns",
-                            [&parallelRuns](core::Function &, transform::AnalysisManager &)
-                            {
-                                ++parallelRuns;
-                                return transform::PreservedAnalyses::all();
-                            },
-                            true);
+    pm.registerFunctionPass(
+        "count-fns",
+        [&parallelRuns](core::Function &, transform::AnalysisManager &)
+        {
+            ++parallelRuns;
+            return transform::PreservedAnalyses::all();
+        },
+        true);
     pm.registerPipeline("parallel-count", {"count-fns"});
 
     std::string seqIL;
@@ -261,14 +262,13 @@ int main()
                 preserved.preserveFunction("per-fn");
                 return preserved;
             });
-        selectivePm.registerModulePass(
-            "touch-foo-only",
-            [](core::Module &, transform::AnalysisManager &)
-            {
-                transform::PreservedAnalyses preserved;
-                preserved.markChangedFunction("foo");
-                return preserved;
-            });
+        selectivePm.registerModulePass("touch-foo-only",
+                                       [](core::Module &, transform::AnalysisManager &)
+                                       {
+                                           transform::PreservedAnalyses preserved;
+                                           preserved.markChangedFunction("foo");
+                                           return preserved;
+                                       });
         selectivePm.registerFunctionPass(
             "recheck-per-fn",
             [&fooCount, &barCount](core::Function &fn, transform::AnalysisManager &analysis)
@@ -280,8 +280,8 @@ int main()
                     assert(value == 1);
                 return transform::PreservedAnalyses::all();
             });
-        selectivePm.registerPipeline(
-            "selective-module-invalidation", {"seed-per-fn", "touch-foo-only", "recheck-per-fn"});
+        selectivePm.registerPipeline("selective-module-invalidation",
+                                     {"seed-per-fn", "touch-foo-only", "recheck-per-fn"});
 
         core::Module selective = parseParallelModule();
         bool ranSelective = selectivePm.runPipeline(selective, "selective-module-invalidation");

@@ -47,7 +47,8 @@ typedef struct
 
 static void rt_http_client_finalize(void *obj)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_http_client_impl *c = (rt_http_client_impl *)obj;
     if (c->default_headers && rt_obj_release_check0(c->default_headers))
         rt_obj_free(c->default_headers);
@@ -104,7 +105,8 @@ void *rt_http_client_new(void)
 {
     rt_http_client_impl *c =
         (rt_http_client_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_client_impl));
-    if (!c) rt_trap("HttpClient: OOM");
+    if (!c)
+        rt_trap("HttpClient: OOM");
     memset(c, 0, sizeof(*c));
     c->default_headers = rt_map_new();
     c->cookies = rt_map_new();
@@ -117,62 +119,93 @@ void *rt_http_client_new(void)
 
 void *rt_http_client_get(void *obj, rt_string url)
 {
-    if (!obj) rt_trap("HttpClient: NULL");
+    if (!obj)
+        rt_trap("HttpClient: NULL");
     return do_request((rt_http_client_impl *)obj, "GET", url, NULL);
 }
 
 void *rt_http_client_post(void *obj, rt_string url, rt_string body)
 {
-    if (!obj) rt_trap("HttpClient: NULL");
+    if (!obj)
+        rt_trap("HttpClient: NULL");
     return do_request((rt_http_client_impl *)obj, "POST", url, body);
 }
 
 void *rt_http_client_put(void *obj, rt_string url, rt_string body)
 {
-    if (!obj) rt_trap("HttpClient: NULL");
+    if (!obj)
+        rt_trap("HttpClient: NULL");
     return do_request((rt_http_client_impl *)obj, "PUT", url, body);
 }
 
 void *rt_http_client_delete(void *obj, rt_string url)
 {
-    if (!obj) rt_trap("HttpClient: NULL");
+    if (!obj)
+        rt_trap("HttpClient: NULL");
     return do_request((rt_http_client_impl *)obj, "DELETE", url, NULL);
 }
 
+/// @brief Perform client set header operation.
+/// @param obj
+/// @param name
+/// @param value
 void rt_http_client_set_header(void *obj, rt_string name, rt_string value)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_http_client_impl *c = (rt_http_client_impl *)obj;
     rt_map_set(c->default_headers, name, (void *)value);
 }
 
+/// @brief Perform client set timeout operation.
+/// @param obj
+/// @param timeout_ms
 void rt_http_client_set_timeout(void *obj, int64_t timeout_ms)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     ((rt_http_client_impl *)obj)->timeout_ms = timeout_ms;
 }
 
+/// @brief Perform client set max redirects operation.
+/// @param obj
+/// @param max
 void rt_http_client_set_max_redirects(void *obj, int64_t max)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     ((rt_http_client_impl *)obj)->max_redirects = max;
 }
 
+/// @brief Perform client get follow redirects operation.
+/// @param obj
+/// @return Result value.
 int8_t rt_http_client_get_follow_redirects(void *obj)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     return ((rt_http_client_impl *)obj)->follow_redirects;
 }
 
+/// @brief Perform client set follow redirects operation.
+/// @param obj
+/// @param follow
 void rt_http_client_set_follow_redirects(void *obj, int8_t follow)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     ((rt_http_client_impl *)obj)->follow_redirects = follow;
 }
 
+/// @brief Perform client set cookie operation.
+/// @param obj
+/// @param domain
+/// @param name
+/// @param value
 void rt_http_client_set_cookie(void *obj, rt_string domain, rt_string name, rt_string value)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_http_client_impl *c = (rt_http_client_impl *)obj;
 
     void *domain_cookies = rt_map_get(c->cookies, domain);
@@ -186,7 +219,8 @@ void rt_http_client_set_cookie(void *obj, rt_string domain, rt_string name, rt_s
 
 void *rt_http_client_get_cookies(void *obj, rt_string domain)
 {
-    if (!obj) return rt_map_new();
+    if (!obj)
+        return rt_map_new();
     rt_http_client_impl *c = (rt_http_client_impl *)obj;
     void *domain_cookies = rt_map_get(c->cookies, domain);
     return domain_cookies ? domain_cookies : rt_map_new();

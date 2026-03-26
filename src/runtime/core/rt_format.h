@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_format.h
 // Purpose: Deterministic, locale-independent formatting utilities providing f64-to-string
 // conversion and CSV quoting for BASIC PRINT and WRITE# statement output.

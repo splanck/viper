@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/threads/rt_parallel.h
 // Purpose: High-level parallel execution patterns (ForEach, Map, Invoke, Reduce) using the thread
 // pool, preserving output order and supporting custom pool injection.

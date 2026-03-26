@@ -208,6 +208,7 @@ static void test_null_safety()
     rt_string_unref(r);
 }
 
+/// @brief Main.
 int main()
 {
     // Pluralize

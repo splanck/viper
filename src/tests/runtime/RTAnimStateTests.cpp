@@ -15,9 +15,12 @@
 extern "C"
 {
     void *rt_animstate_new(void);
-    void rt_animstate_add_state(void *asm_, int64_t state_id,
-                                int64_t start_frame, int64_t end_frame,
-                                int64_t frame_duration, int8_t loop);
+    void rt_animstate_add_state(void *asm_,
+                                int64_t state_id,
+                                int64_t start_frame,
+                                int64_t end_frame,
+                                int64_t frame_duration,
+                                int8_t loop);
     int8_t rt_animstate_set_initial(void *asm_, int64_t state_id);
     int8_t rt_animstate_transition(void *asm_, int64_t state_id);
     void rt_animstate_update(void *asm_);
@@ -55,8 +58,8 @@ TEST(AnimState, CreateAndInitial)
 TEST(AnimState, TransitionChangesClip)
 {
     void *a = rt_animstate_new();
-    rt_animstate_add_state(a, 0, 0, 3, 6, 1);  // IDLE
-    rt_animstate_add_state(a, 1, 4, 7, 4, 1);  // WALK
+    rt_animstate_add_state(a, 0, 0, 3, 6, 1); // IDLE
+    rt_animstate_add_state(a, 1, 4, 7, 4, 1); // WALK
     rt_animstate_set_initial(a, 0);
     rt_animstate_clear_flags(a);
 
@@ -81,7 +84,7 @@ TEST(AnimState, UpdateAdvancesFrame)
 
     EXPECT_EQ(rt_animstate_current_frame(a), 10);
 
-    rt_animstate_update(a); // frame_counter = 1
+    rt_animstate_update(a);                       // frame_counter = 1
     EXPECT_EQ(rt_animstate_current_frame(a), 10); // not yet
 
     rt_animstate_update(a); // frame_counter = 2 -> advance

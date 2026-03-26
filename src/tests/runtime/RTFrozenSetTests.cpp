@@ -217,6 +217,7 @@ static void test_null_safety()
     assert(rt_frozenset_equals(NULL, NULL) == 1);
 }
 
+/// @brief Main.
 int main()
 {
     test_empty();

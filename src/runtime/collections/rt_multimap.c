@@ -166,6 +166,9 @@ void *rt_multimap_new(void)
     return mm;
 }
 
+/// @brief Perform multimap len operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_multimap_len(void *obj)
 {
     if (!obj)
@@ -173,6 +176,9 @@ int64_t rt_multimap_len(void *obj)
     return (int64_t)((rt_multimap_impl *)obj)->total_count;
 }
 
+/// @brief Perform multimap key count operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_multimap_key_count(void *obj)
 {
     if (!obj)
@@ -180,11 +186,18 @@ int64_t rt_multimap_key_count(void *obj)
     return (int64_t)((rt_multimap_impl *)obj)->key_count;
 }
 
+/// @brief Perform multimap is empty operation.
+/// @param obj
+/// @return Result value.
 int8_t rt_multimap_is_empty(void *obj)
 {
     return rt_multimap_len(obj) == 0;
 }
 
+/// @brief Perform multimap put operation.
+/// @param obj
+/// @param key
+/// @param value
 void rt_multimap_put(void *obj, rt_string key, void *value)
 {
     if (!obj)
@@ -275,6 +288,10 @@ void *rt_multimap_get_first(void *obj, rt_string key)
     return rt_seq_get(entry->values, 0);
 }
 
+/// @brief Perform multimap has operation.
+/// @param obj
+/// @param key
+/// @return Result value.
 int8_t rt_multimap_has(void *obj, rt_string key)
 {
     if (!obj)
@@ -290,6 +307,10 @@ int8_t rt_multimap_has(void *obj, rt_string key)
     return find_entry(mm->buckets[idx], key_data, key_len) ? 1 : 0;
 }
 
+/// @brief Perform multimap count for operation.
+/// @param obj
+/// @param key
+/// @return Result value.
 int64_t rt_multimap_count_for(void *obj, rt_string key)
 {
     if (!obj)
@@ -307,6 +328,10 @@ int64_t rt_multimap_count_for(void *obj, rt_string key)
     return entry ? rt_seq_len(entry->values) : 0;
 }
 
+/// @brief Perform multimap remove all operation.
+/// @param obj
+/// @param key
+/// @return Result value.
 int8_t rt_multimap_remove_all(void *obj, rt_string key)
 {
     if (!obj)
@@ -338,6 +363,8 @@ int8_t rt_multimap_remove_all(void *obj, rt_string key)
     return 0;
 }
 
+/// @brief Perform multimap clear operation.
+/// @param obj
 void rt_multimap_clear(void *obj)
 {
     if (!obj)

@@ -53,6 +53,7 @@
 // Seq Conversions
 //=============================================================================
 
+/// @brief Seq to list.
 void *rt_seq_to_list(void *seq)
 {
     void *list = rt_list_new();
@@ -68,6 +69,7 @@ void *rt_seq_to_list(void *seq)
     return list;
 }
 
+/// @brief Seq to set.
 void *rt_seq_to_set(void *seq)
 {
     void *set = rt_set_new();
@@ -83,6 +85,7 @@ void *rt_seq_to_set(void *seq)
     return set;
 }
 
+/// @brief Seq to stack.
 void *rt_seq_to_stack(void *seq)
 {
     void *stack = rt_stack_new();
@@ -98,6 +101,7 @@ void *rt_seq_to_stack(void *seq)
     return stack;
 }
 
+/// @brief Seq to queue.
 void *rt_seq_to_queue(void *seq)
 {
     void *queue = rt_queue_new();
@@ -113,6 +117,7 @@ void *rt_seq_to_queue(void *seq)
     return queue;
 }
 
+/// @brief Seq to deque.
 void *rt_seq_to_deque(void *seq)
 {
     void *deque = rt_deque_new();
@@ -128,6 +133,7 @@ void *rt_seq_to_deque(void *seq)
     return deque;
 }
 
+/// @brief Seq to bag.
 void *rt_seq_to_bag(void *seq)
 {
     void *bag = rt_bag_new();
@@ -147,6 +153,7 @@ void *rt_seq_to_bag(void *seq)
 // List Conversions
 //=============================================================================
 
+/// @brief List to seq.
 void *rt_list_to_seq(void *list)
 {
     void *seq = rt_seq_new();
@@ -162,6 +169,7 @@ void *rt_list_to_seq(void *list)
     return seq;
 }
 
+/// @brief List to set.
 void *rt_list_to_set(void *list)
 {
     void *set = rt_set_new();
@@ -177,6 +185,7 @@ void *rt_list_to_set(void *list)
     return set;
 }
 
+/// @brief List to stack.
 void *rt_list_to_stack(void *list)
 {
     void *stack = rt_stack_new();
@@ -192,6 +201,7 @@ void *rt_list_to_stack(void *list)
     return stack;
 }
 
+/// @brief List to queue.
 void *rt_list_to_queue(void *list)
 {
     void *queue = rt_queue_new();
@@ -211,6 +221,7 @@ void *rt_list_to_queue(void *list)
 // Set Conversions
 //=============================================================================
 
+/// @brief Set to seq.
 void *rt_set_to_seq(void *set)
 {
     if (!set)
@@ -219,6 +230,7 @@ void *rt_set_to_seq(void *set)
     return rt_set_items(set);
 }
 
+/// @brief Set to list.
 void *rt_set_to_list(void *set)
 {
     void *seq = rt_set_to_seq(set);
@@ -232,6 +244,7 @@ void *rt_set_to_list(void *set)
 // Stack Conversions
 //=============================================================================
 
+/// @brief Stack to seq.
 void *rt_stack_to_seq(void *stack)
 {
     void *seq = rt_seq_new();
@@ -269,6 +282,7 @@ void *rt_stack_to_seq(void *stack)
     return seq;
 }
 
+/// @brief Stack to list.
 void *rt_stack_to_list(void *stack)
 {
     void *seq = rt_stack_to_seq(stack);
@@ -282,6 +296,7 @@ void *rt_stack_to_list(void *stack)
 // Queue Conversions
 //=============================================================================
 
+/// @brief Queue to seq.
 void *rt_queue_to_seq(void *queue)
 {
     void *seq = rt_seq_new();
@@ -316,6 +331,7 @@ void *rt_queue_to_seq(void *queue)
     return seq;
 }
 
+/// @brief Queue to list.
 void *rt_queue_to_list(void *queue)
 {
     void *seq = rt_queue_to_seq(queue);
@@ -329,6 +345,7 @@ void *rt_queue_to_list(void *queue)
 // Deque Conversions
 //=============================================================================
 
+/// @brief Deque to seq.
 void *rt_deque_to_seq(void *deque)
 {
     void *seq = rt_seq_new();
@@ -344,6 +361,7 @@ void *rt_deque_to_seq(void *deque)
     return seq;
 }
 
+/// @brief Deque to list.
 void *rt_deque_to_list(void *deque)
 {
     void *seq = rt_deque_to_seq(deque);
@@ -355,6 +373,7 @@ void *rt_deque_to_list(void *deque)
 // Map Conversions
 //=============================================================================
 
+/// @brief Map keys to seq.
 void *rt_map_keys_to_seq(void *map)
 {
     if (!map)
@@ -363,6 +382,7 @@ void *rt_map_keys_to_seq(void *map)
     return rt_map_keys(map);
 }
 
+/// @brief Map values to seq.
 void *rt_map_values_to_seq(void *map)
 {
     if (!map)
@@ -375,6 +395,7 @@ void *rt_map_values_to_seq(void *map)
 // Bag Conversions
 //=============================================================================
 
+/// @brief Bag to seq.
 void *rt_bag_to_seq(void *bag)
 {
     if (!bag)
@@ -383,6 +404,7 @@ void *rt_bag_to_seq(void *bag)
     return rt_bag_items(bag);
 }
 
+/// @brief Bag to set.
 void *rt_bag_to_set(void *bag)
 {
     void *set = rt_set_new();
@@ -410,6 +432,7 @@ void *rt_bag_to_set(void *bag)
 // Ring Conversions
 //=============================================================================
 
+/// @brief Ring to seq.
 void *rt_ring_to_seq(void *ring)
 {
     void *seq = rt_seq_new();
@@ -429,6 +452,7 @@ void *rt_ring_to_seq(void *ring)
 // Utility Functions
 //=============================================================================
 
+/// @brief Seq of.
 void *rt_seq_of(int64_t count, ...)
 {
     void *seq = rt_seq_new();
@@ -447,6 +471,7 @@ void *rt_seq_of(int64_t count, ...)
     return seq;
 }
 
+/// @brief List of.
 void *rt_list_of(int64_t count, ...)
 {
     void *list = rt_list_new();
@@ -465,6 +490,7 @@ void *rt_list_of(int64_t count, ...)
     return list;
 }
 
+/// @brief Set of.
 void *rt_set_of(int64_t count, ...)
 {
     void *set = rt_set_new();

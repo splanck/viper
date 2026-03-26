@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_breadcrumb.c
+//
+//===----------------------------------------------------------------------===//
 // vg_breadcrumb.c - Breadcrumb widget implementation
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -89,6 +99,7 @@ static void breadcrumb_destroy(vg_widget_t *widget)
     free(bc->separator);
 }
 
+/// @brief Breadcrumb destroy.
 void vg_breadcrumb_destroy(vg_breadcrumb_t *bc)
 {
     if (!bc)
@@ -285,6 +296,7 @@ static bool breadcrumb_handle_event(vg_widget_t *widget, vg_event_t *event)
     return false;
 }
 
+/// @brief Breadcrumb push.
 void vg_breadcrumb_push(vg_breadcrumb_t *bc, const char *label, void *data)
 {
     if (!bc || !label)
@@ -321,6 +333,7 @@ void vg_breadcrumb_push(vg_breadcrumb_t *bc, const char *label, void *data)
     bc->base.needs_paint = true;
 }
 
+/// @brief Breadcrumb pop.
 void vg_breadcrumb_pop(vg_breadcrumb_t *bc)
 {
     if (!bc || bc->item_count == 0)
@@ -333,6 +346,7 @@ void vg_breadcrumb_pop(vg_breadcrumb_t *bc)
     bc->base.needs_paint = true;
 }
 
+/// @brief Breadcrumb clear.
 void vg_breadcrumb_clear(vg_breadcrumb_t *bc)
 {
     if (!bc)
@@ -351,6 +365,7 @@ void vg_breadcrumb_clear(vg_breadcrumb_t *bc)
     bc->base.needs_paint = true;
 }
 
+/// @brief Breadcrumb item add dropdown.
 void vg_breadcrumb_item_add_dropdown(vg_breadcrumb_item_t *item, const char *label, void *data)
 {
     if (!item || !label)
@@ -375,6 +390,7 @@ void vg_breadcrumb_item_add_dropdown(vg_breadcrumb_item_t *item, const char *lab
     dd->data = data;
 }
 
+/// @brief Breadcrumb set separator.
 void vg_breadcrumb_set_separator(vg_breadcrumb_t *bc, const char *sep)
 {
     if (!bc)
@@ -386,6 +402,7 @@ void vg_breadcrumb_set_separator(vg_breadcrumb_t *bc, const char *sep)
     bc->base.needs_paint = true;
 }
 
+/// @brief Breadcrumb set on click.
 void vg_breadcrumb_set_on_click(vg_breadcrumb_t *bc,
                                 void (*callback)(vg_breadcrumb_t *, int, void *),
                                 void *user_data)
@@ -396,6 +413,7 @@ void vg_breadcrumb_set_on_click(vg_breadcrumb_t *bc,
     bc->user_data = user_data;
 }
 
+/// @brief Breadcrumb set font.
 void vg_breadcrumb_set_font(vg_breadcrumb_t *bc, vg_font_t *font, float size)
 {
     if (!bc)
@@ -407,6 +425,7 @@ void vg_breadcrumb_set_font(vg_breadcrumb_t *bc, vg_font_t *font, float size)
     bc->base.needs_paint = true;
 }
 
+/// @brief Breadcrumb set max items.
 void vg_breadcrumb_set_max_items(vg_breadcrumb_t *bc, int max)
 {
     if (!bc)

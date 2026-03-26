@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_crc32.h
 // Purpose: CRC32 checksum computation using the IEEE 802.3 polynomial (0xEDB88320), compatible with
 // Ethernet, ZIP, and PNG checksums.

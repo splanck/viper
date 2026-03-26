@@ -415,6 +415,7 @@ TEST(SiblingRecursion, O2PipelineIntegration)
     EXPECT_EQ(countSelfCalls(module.functions[0]), 1U);
 }
 
+/// @brief Main.
 int main(int argc, char **argv)
 {
     viper_test::init(&argc, argv);

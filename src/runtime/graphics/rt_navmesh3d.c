@@ -48,7 +48,10 @@ extern void *rt_path3d_new(void);
 extern void rt_path3d_add_point(void *path, void *pos);
 extern void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color);
 
-typedef struct { float position[3]; } nav_vertex_t;
+typedef struct
+{
+    float position[3];
+} nav_vertex_t;
 
 typedef struct
 {
@@ -85,13 +88,13 @@ static int count_shared(const int32_t a[3], const int32_t b[3])
     int count = 0;
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 3; j++)
-            if (a[i] == b[j]) count++;
+            if (a[i] == b[j])
+                count++;
     return count;
 }
 
 /// @brief Find which edge of tri_a is shared with tri_b and set neighbor.
-static void set_neighbor(nav_triangle_t *tri_a, int32_t tri_b_idx,
-                          const int32_t b_verts[3])
+static void set_neighbor(nav_triangle_t *tri_a, int32_t tri_b_idx, const int32_t b_verts[3])
 {
     /* Edge i of tri_a connects v[i] and v[(i+1)%3].
      * If both vertices are in tri_b, edge i is shared. */
@@ -101,8 +104,10 @@ static void set_neighbor(nav_triangle_t *tri_a, int32_t tri_b_idx,
         int found0 = 0, found1 = 0;
         for (int j = 0; j < 3; j++)
         {
-            if (b_verts[j] == e0) found0 = 1;
-            if (b_verts[j] == e1) found1 = 1;
+            if (b_verts[j] == e0)
+                found0 = 1;
+            if (b_verts[j] == e1)
+                found1 = 1;
         }
         if (found0 && found1)
         {
@@ -114,12 +119,18 @@ static void set_neighbor(nav_triangle_t *tri_a, int32_t tri_b_idx,
 
 void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_height)
 {
-    if (!mesh_obj) return NULL;
+    if (!mesh_obj)
+        return NULL;
     rt_mesh3d *m = (rt_mesh3d *)mesh_obj;
-    if (m->vertex_count == 0 || m->index_count < 3) return NULL;
+    if (m->vertex_count == 0 || m->index_count < 3)
+        return NULL;
 
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_navmesh3d));
-    if (!nm) { rt_trap("NavMesh3D.Build: allocation failed"); return NULL; }
+    if (!nm)
+    {
+        rt_trap("NavMesh3D.Build: allocation failed");
+        return NULL;
+    }
     nm->vptr = NULL;
     nm->agent_radius = agent_radius;
     nm->agent_height = agent_height;
@@ -170,19 +181,30 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
         float ny = e1z * e2x - e1x * e2z;
         float nz = e1x * e2y - e1y * e2x;
         float nlen = sqrtf(nx * nx + ny * ny + nz * nz);
-        if (nlen < 1e-8f) continue;
-        nx /= nlen; ny /= nlen; nz /= nlen;
+        if (nlen < 1e-8f)
+            continue;
+        nx /= nlen;
+        ny /= nlen;
+        nz /= nlen;
 
         /* Walkable if |normal.y| > cos(max_slope) — either side facing up */
-        if (fabsf(ny) < (float)max_slope_cos) continue;
+        if (fabsf(ny) < (float)max_slope_cos)
+            continue;
         /* Ensure normal points upward for consistent orientation */
-        if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
+        if (ny < 0)
+        {
+            nx = -nx;
+            ny = -ny;
+            nz = -nz;
+        }
 
         nav_triangle_t *tri = &nm->triangles[nm->triangle_count++];
         tri->v[0] = (int32_t)i0;
         tri->v[1] = (int32_t)i1;
         tri->v[2] = (int32_t)i2;
-        tri->normal[0] = nx; tri->normal[1] = ny; tri->normal[2] = nz;
+        tri->normal[0] = nx;
+        tri->normal[1] = ny;
+        tri->normal[2] = nz;
         tri->centroid[0] = (p0[0] + p1[0] + p2[0]) / 3.0f;
         tri->centroid[1] = (p0[1] + p1[1] + p2[1]) / 3.0f;
         tri->centroid[2] = (p0[2] + p1[2] + p2[2]) / 3.0f;
@@ -213,7 +235,8 @@ static int point_in_tri_xz(float px, float pz, const float *v0, const float *v1,
     float dpx = px - v0[0], dpz = pz - v0[2];
 
     float det = d1x * d2z - d2x * d1z;
-    if (fabsf(det) < 1e-8f) return 0;
+    if (fabsf(det) < 1e-8f)
+        return 0;
     float inv = 1.0f / det;
     float u = (dpx * d2z - d2x * dpz) * inv;
     float v = (d1x * dpz - dpx * d1z) * inv;
@@ -234,7 +257,11 @@ static int32_t find_tri(const rt_navmesh3d *nm, float px, float py, float pz)
         if (point_in_tri_xz(px, pz, v0, v1, v2))
         {
             float dy = fabsf(py - t->centroid[1]);
-            if (dy < best_dy) { best_dy = dy; best = i; }
+            if (dy < best_dy)
+            {
+                best_dy = dy;
+                best = i;
+            }
         }
     }
     return best;
@@ -244,7 +271,11 @@ static int32_t find_tri(const rt_navmesh3d *nm, float px, float py, float pz)
  * A* pathfinding
  *=========================================================================*/
 
-typedef struct { int32_t tri; float f; } heap_entry_t;
+typedef struct
+{
+    int32_t tri;
+    float f;
+} heap_entry_t;
 
 static void heap_push(heap_entry_t *heap, int32_t *size, int32_t capacity, int32_t tri, float f)
 {
@@ -257,8 +288,11 @@ static void heap_push(heap_entry_t *heap, int32_t *size, int32_t capacity, int32
     while (i > 0)
     {
         int32_t p = (i - 1) / 2;
-        if (heap[p].f <= heap[i].f) break;
-        heap_entry_t tmp = heap[p]; heap[p] = heap[i]; heap[i] = tmp;
+        if (heap[p].f <= heap[i].f)
+            break;
+        heap_entry_t tmp = heap[p];
+        heap[p] = heap[i];
+        heap[i] = tmp;
         i = p;
     }
 }
@@ -272,10 +306,15 @@ static int32_t heap_pop(heap_entry_t *heap, int32_t *size)
     for (;;)
     {
         int32_t best = i, l = 2 * i + 1, r = 2 * i + 2;
-        if (l < *size && heap[l].f < heap[best].f) best = l;
-        if (r < *size && heap[r].f < heap[best].f) best = r;
-        if (best == i) break;
-        heap_entry_t tmp = heap[i]; heap[i] = heap[best]; heap[best] = tmp;
+        if (l < *size && heap[l].f < heap[best].f)
+            best = l;
+        if (r < *size && heap[r].f < heap[best].f)
+            best = r;
+        if (best == i)
+            break;
+        heap_entry_t tmp = heap[i];
+        heap[i] = heap[best];
+        heap[best] = tmp;
         i = best;
     }
     return result;
@@ -291,16 +330,20 @@ static float centroid_dist(const rt_navmesh3d *nm, int32_t a, int32_t b)
 
 void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v)
 {
-    if (!obj || !from_v || !to_v) return NULL;
+    if (!obj || !from_v || !to_v)
+        return NULL;
     rt_navmesh3d *nm = (rt_navmesh3d *)obj;
-    if (nm->triangle_count == 0) return NULL;
+    if (nm->triangle_count == 0)
+        return NULL;
 
-    float fx = (float)rt_vec3_x(from_v), fy = (float)rt_vec3_y(from_v), fz = (float)rt_vec3_z(from_v);
+    float fx = (float)rt_vec3_x(from_v), fy = (float)rt_vec3_y(from_v),
+          fz = (float)rt_vec3_z(from_v);
     float tx = (float)rt_vec3_x(to_v), ty = (float)rt_vec3_y(to_v), tz = (float)rt_vec3_z(to_v);
 
     int32_t start = find_tri(nm, fx, fy, fz);
     int32_t goal = find_tri(nm, tx, ty, tz);
-    if (start < 0 || goal < 0) return NULL;
+    if (start < 0 || goal < 0)
+        return NULL;
 
     if (start == goal)
     {
@@ -316,7 +359,8 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v)
     int32_t *parent = (int32_t *)malloc((size_t)tc * sizeof(int32_t));
     int8_t *closed = (int8_t *)calloc((size_t)tc, sizeof(int8_t));
     memset(parent, -1, (size_t)tc * sizeof(int32_t));
-    for (int32_t i = 0; i < tc; i++) g_cost[i] = FLT_MAX;
+    for (int32_t i = 0; i < tc; i++)
+        g_cost[i] = FLT_MAX;
 
     int32_t heap_cap = tc * 3;
     heap_entry_t *heap = (heap_entry_t *)malloc((size_t)heap_cap * sizeof(heap_entry_t));
@@ -329,14 +373,20 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v)
     while (heap_size > 0)
     {
         int32_t cur = heap_pop(heap, &heap_size);
-        if (cur == goal) { found = 1; break; }
-        if (closed[cur]) continue;
+        if (cur == goal)
+        {
+            found = 1;
+            break;
+        }
+        if (closed[cur])
+            continue;
         closed[cur] = 1;
 
         for (int e = 0; e < 3; e++)
         {
             int32_t next = nm->triangles[cur].neighbors[e];
-            if (next < 0 || closed[next]) continue;
+            if (next < 0 || closed[next])
+                continue;
 
             float new_g = g_cost[cur] + centroid_dist(nm, cur, next);
             if (new_g < g_cost[next])
@@ -353,11 +403,13 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v)
     {
         /* Reconstruct: collect centroids from goal back to start */
         int32_t count = 0;
-        for (int32_t c = goal; c != -1; c = parent[c]) count++;
+        for (int32_t c = goal; c != -1; c = parent[c])
+            count++;
 
         int32_t *seq = (int32_t *)malloc((size_t)count * sizeof(int32_t));
         int32_t idx = count - 1;
-        for (int32_t c = goal; c != -1; c = parent[c]) seq[idx--] = c;
+        for (int32_t c = goal; c != -1; c = parent[c])
+            seq[idx--] = c;
 
         path = rt_path3d_new();
         rt_path3d_add_point(path, from_v);
@@ -370,13 +422,17 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v)
         free(seq);
     }
 
-    free(g_cost); free(parent); free(closed); free(heap);
+    free(g_cost);
+    free(parent);
+    free(closed);
+    free(heap);
     return path;
 }
 
 void *rt_navmesh3d_sample_position(void *obj, void *point)
 {
-    if (!obj || !point) return rt_vec3_new(0, 0, 0);
+    if (!obj || !point)
+        return rt_vec3_new(0, 0, 0);
     rt_navmesh3d *nm = (rt_navmesh3d *)obj;
     float px = (float)rt_vec3_x(point), py = (float)rt_vec3_y(point), pz = (float)rt_vec3_z(point);
 
@@ -395,7 +451,11 @@ void *rt_navmesh3d_sample_position(void *obj, void *point)
         float *c = nm->triangles[i].centroid;
         float dx = px - c[0], dz = pz - c[2];
         float d = dx * dx + dz * dz;
-        if (d < best_d) { best_d = d; best = i; }
+        if (d < best_d)
+        {
+            best_d = d;
+            best = i;
+        }
     }
     float *c = nm->triangles[best].centroid;
     return rt_vec3_new(c[0], c[1], c[2]);
@@ -403,7 +463,8 @@ void *rt_navmesh3d_sample_position(void *obj, void *point)
 
 int8_t rt_navmesh3d_is_walkable(void *obj, void *point)
 {
-    if (!obj || !point) return 0;
+    if (!obj || !point)
+        return 0;
     rt_navmesh3d *nm = (rt_navmesh3d *)obj;
     float px = (float)rt_vec3_x(point), py = (float)rt_vec3_y(point), pz = (float)rt_vec3_z(point);
     return find_tri(nm, px, py, pz) >= 0 ? 1 : 0;
@@ -416,12 +477,14 @@ int64_t rt_navmesh3d_get_triangle_count(void *obj)
 
 void rt_navmesh3d_set_max_slope(void *obj, double degrees)
 {
-    if (obj) ((rt_navmesh3d *)obj)->max_slope = degrees;
+    if (obj)
+        ((rt_navmesh3d *)obj)->max_slope = degrees;
 }
 
 void rt_navmesh3d_debug_draw(void *obj, void *canvas)
 {
-    if (!obj || !canvas) return;
+    if (!obj || !canvas)
+        return;
     rt_navmesh3d *nm = (rt_navmesh3d *)obj;
     int64_t color = 0x00FF44; /* green */
 

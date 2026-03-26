@@ -155,6 +155,9 @@ void *rt_promise_get_future(void *obj)
     return result;
 }
 
+/// @brief Perform promise set operation.
+/// @param obj
+/// @param value
 void rt_promise_set(void *obj, void *value)
 {
     if (!obj)
@@ -191,6 +194,9 @@ void rt_promise_set(void *obj, void *value)
 #endif
 }
 
+/// @brief Perform promise set error operation.
+/// @param obj
+/// @param error
 void rt_promise_set_error(void *obj, rt_string error)
 {
     if (!obj)
@@ -230,6 +236,9 @@ void rt_promise_set_error(void *obj, rt_string error)
 #endif
 }
 
+/// @brief Perform promise is done operation.
+/// @param obj
+/// @return Result value.
 int8_t rt_promise_is_done(void *obj)
 {
     if (!obj)
@@ -287,6 +296,11 @@ void *rt_future_get(void *obj)
     return p->value;
 }
 
+/// @brief Perform future get for operation.
+/// @param obj
+/// @param ms
+/// @param out
+/// @return Result value.
 int8_t rt_future_get_for(void *obj, int64_t ms, void **out)
 {
     if (!obj)
@@ -334,6 +348,9 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out)
     return success;
 }
 
+/// @brief Perform future is done operation.
+/// @param obj
+/// @return Result value.
 int8_t rt_future_is_done(void *obj)
 {
     if (!obj)
@@ -355,6 +372,9 @@ int8_t rt_future_is_done(void *obj)
     return result;
 }
 
+/// @brief Perform future is error operation.
+/// @param obj
+/// @return Result value.
 int8_t rt_future_is_error(void *obj)
 {
     if (!obj)
@@ -376,6 +396,9 @@ int8_t rt_future_is_error(void *obj)
     return result;
 }
 
+/// @brief Perform future get error operation.
+/// @param obj
+/// @return Result value.
 rt_string rt_future_get_error(void *obj)
 {
     if (!obj)
@@ -397,6 +420,10 @@ rt_string rt_future_get_error(void *obj)
     return result;
 }
 
+/// @brief Perform future try get operation.
+/// @param obj
+/// @param out
+/// @return Result value.
 int8_t rt_future_try_get(void *obj, void **out)
 {
     if (!obj)
@@ -492,6 +519,8 @@ void *rt_future_get_for_val(void *obj, int64_t ms)
     return result;
 }
 
+/// @brief Perform future wait operation.
+/// @param obj
 void rt_future_wait(void *obj)
 {
     if (!obj)
@@ -517,6 +546,10 @@ void rt_future_wait(void *obj)
 #endif
 }
 
+/// @brief Perform future wait for operation.
+/// @param obj
+/// @param ms
+/// @return Result value.
 int8_t rt_future_wait_for(void *obj, int64_t ms)
 {
     if (!obj)

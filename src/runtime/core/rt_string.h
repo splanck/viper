@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_string.h
 // Purpose: Reference-counted UTF-8 string API providing creation, manipulation, comparison, search,
 // and conversion operations for the primary Viper runtime string type.

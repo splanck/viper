@@ -1,3 +1,16 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// Purpose: Tier 3 GUI widget tests — dialog, file dialog, code editor, context menu, command
+// palette.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/tests/test_vg_tier3_fixes.c
+//
+//===----------------------------------------------------------------------===//
 // test_vg_tier3_fixes.c — Unit tests for Tier 3 GUI improvements
 //
 // Tests:

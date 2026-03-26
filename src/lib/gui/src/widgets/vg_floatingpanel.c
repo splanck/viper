@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_floatingpanel.c
+//
+//===----------------------------------------------------------------------===//
 // vg_floatingpanel.c - Floating overlay panel widget
 //
 // A lightweight overlay that draws at an absolute screen position regardless
@@ -75,6 +85,7 @@ static void floatingpanel_destroy(vg_widget_t *widget)
     panel->child_cap = 0;
 }
 
+/// @brief Floatingpanel destroy.
 void vg_floatingpanel_destroy(vg_floatingpanel_t *panel)
 {
     if (!panel)
@@ -145,6 +156,7 @@ static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas)
     }
 }
 
+/// @brief Floatingpanel set position.
 void vg_floatingpanel_set_position(vg_floatingpanel_t *panel, float x, float y)
 {
     if (!panel)
@@ -154,6 +166,7 @@ void vg_floatingpanel_set_position(vg_floatingpanel_t *panel, float x, float y)
     panel->base.needs_paint = true;
 }
 
+/// @brief Floatingpanel set size.
 void vg_floatingpanel_set_size(vg_floatingpanel_t *panel, float w, float h)
 {
     if (!panel)
@@ -163,6 +176,7 @@ void vg_floatingpanel_set_size(vg_floatingpanel_t *panel, float w, float h)
     panel->base.needs_paint = true;
 }
 
+/// @brief Floatingpanel set visible.
 void vg_floatingpanel_set_visible(vg_floatingpanel_t *panel, int visible)
 {
     if (!panel)
@@ -171,6 +185,7 @@ void vg_floatingpanel_set_visible(vg_floatingpanel_t *panel, int visible)
     panel->base.needs_paint = true;
 }
 
+/// @brief Floatingpanel add child.
 void vg_floatingpanel_add_child(vg_floatingpanel_t *panel, vg_widget_t *child)
 {
     if (!panel || !child)

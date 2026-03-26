@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_font.h
 // Purpose: Embedded 8x8 bitmap font providing per-character glyph bitmaps for software text
 // rendering, where each glyph is 8 bytes (one byte per row).

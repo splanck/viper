@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/core/vg_theme.c
+//
+//===----------------------------------------------------------------------===//
 // vg_theme.c - Theme system implementation
 #include "../../include/vg_theme.h"
 #include <stdlib.h>
@@ -202,6 +212,7 @@ vg_theme_t *vg_theme_get_current(void)
     return g_current_theme;
 }
 
+/// @brief Theme set current.
 void vg_theme_set_current(vg_theme_t *theme)
 {
     g_current_theme = theme ? theme : &g_dark_theme;
@@ -244,6 +255,7 @@ vg_theme_t *vg_theme_create(const char *name, vg_theme_t *base)
     return theme;
 }
 
+/// @brief Theme destroy.
 void vg_theme_destroy(vg_theme_t *theme)
 {
     if (!theme)

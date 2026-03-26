@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/font/vg_font.c
+//
+//===----------------------------------------------------------------------===//
 // vg_font.c - Main font API implementation
 #include "vg_ttf_internal.h"
 #include <stdio.h>
@@ -96,6 +106,7 @@ vg_font_t *vg_font_load_file(const char *path)
     return font;
 }
 
+/// @brief Font destroy.
 void vg_font_destroy(vg_font_t *font)
 {
     if (!font)
@@ -305,6 +316,7 @@ uint32_t vg_utf8_decode(const char **str)
     return cp;
 }
 
+/// @brief Utf8 strlen.
 int vg_utf8_strlen(const char *str)
 {
     if (!str)
@@ -319,6 +331,7 @@ int vg_utf8_strlen(const char *str)
     return count;
 }
 
+/// @brief Utf8 offset.
 int vg_utf8_offset(const char *str, int index)
 {
     if (!str)
@@ -426,6 +439,7 @@ int vg_font_hit_test(vg_font_t *font, float size, const char *text, float target
     return index; // Past end
 }
 
+/// @brief Font get cursor x.
 float vg_font_get_cursor_x(vg_font_t *font, float size, const char *text, int target_index)
 {
     if (!font || !text || size <= 0 || target_index < 0)
@@ -471,6 +485,7 @@ float vg_font_get_cursor_x(vg_font_t *font, float size, const char *text, int ta
 extern void vg_canvas_draw_glyph(
     void *canvas, int x, int y, const uint8_t *bitmap, int width, int height, uint32_t color);
 
+/// @brief Font draw text.
 void vg_font_draw_text(
     void *canvas, vg_font_t *font, float size, float x, float y, const char *text, uint32_t color)
 {

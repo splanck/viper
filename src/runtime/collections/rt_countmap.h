@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_countmap.h
 // Purpose: Frequency counting map from string keys to non-negative integer counts, supporting
 // increment, decrement, get, top-N queries, and iteration over counted items.

@@ -154,6 +154,7 @@ static void test_null_safety()
     assert(rt_sparse_remove(NULL, 0) == 0);
 }
 
+/// @brief Main.
 int main()
 {
     test_new();

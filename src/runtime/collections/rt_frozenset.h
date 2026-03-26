@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_frozenset.h
 // Purpose: Immutable string set created from a Seq or Bag, providing O(1) average membership
 // testing with guaranteed read-only semantics after construction.

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_action.h
 // Purpose: Action mapping system abstracting raw input (keyboard, mouse, gamepad) into named
 // actions with button and axis types, providing per-frame state queries.

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_mat4.h
 // Purpose: 4x4 matrix math for 3D transformations (Viper.Mat4), supporting perspective/orthographic
 // projection, translation, rotation, scaling, and composition.

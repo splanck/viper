@@ -257,6 +257,9 @@ void *rt_bimap_new(void)
     return bm;
 }
 
+/// @brief Perform bimap len operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_bimap_len(void *obj)
 {
     if (!obj)
@@ -264,11 +267,18 @@ int64_t rt_bimap_len(void *obj)
     return (int64_t)((rt_bimap_impl *)obj)->count;
 }
 
+/// @brief Perform bimap is empty operation.
+/// @param obj
+/// @return Result value.
 int8_t rt_bimap_is_empty(void *obj)
 {
     return rt_bimap_len(obj) == 0 ? 1 : 0;
 }
 
+/// @brief Perform bimap put operation.
+/// @param obj
+/// @param key
+/// @param value
 void rt_bimap_put(void *obj, rt_string key, rt_string value)
 {
     if (!obj)
@@ -323,6 +333,10 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value)
     bm->count++;
 }
 
+/// @brief Perform bimap get by key operation.
+/// @param obj
+/// @param key
+/// @return Result value.
 rt_string rt_bimap_get_by_key(void *obj, rt_string key)
 {
     if (!obj)
@@ -341,6 +355,10 @@ rt_string rt_bimap_get_by_key(void *obj, rt_string key)
     return rt_string_from_bytes(e->value, e->value_len);
 }
 
+/// @brief Perform bimap get by value operation.
+/// @param obj
+/// @param value
+/// @return Result value.
 rt_string rt_bimap_get_by_value(void *obj, rt_string value)
 {
     if (!obj)
@@ -359,6 +377,10 @@ rt_string rt_bimap_get_by_value(void *obj, rt_string value)
     return rt_string_from_bytes(l->entry->key, l->entry->key_len);
 }
 
+/// @brief Perform bimap has key operation.
+/// @param obj
+/// @param key
+/// @return Result value.
 int8_t rt_bimap_has_key(void *obj, rt_string key)
 {
     if (!obj)
@@ -373,6 +395,10 @@ int8_t rt_bimap_has_key(void *obj, rt_string key)
     return find_fwd(bm->fwd_buckets[idx], kdata, klen) ? 1 : 0;
 }
 
+/// @brief Perform bimap has value operation.
+/// @param obj
+/// @param value
+/// @return Result value.
 int8_t rt_bimap_has_value(void *obj, rt_string value)
 {
     if (!obj)
@@ -387,6 +413,10 @@ int8_t rt_bimap_has_value(void *obj, rt_string value)
     return find_inv(bm->inv_chains[idx], vdata, vlen) ? 1 : 0;
 }
 
+/// @brief Perform bimap remove by key operation.
+/// @param obj
+/// @param key
+/// @return Result value.
 int8_t rt_bimap_remove_by_key(void *obj, rt_string key)
 {
     if (!obj)
@@ -418,6 +448,10 @@ int8_t rt_bimap_remove_by_key(void *obj, rt_string key)
     return 0;
 }
 
+/// @brief Perform bimap remove by value operation.
+/// @param obj
+/// @param value
+/// @return Result value.
 int8_t rt_bimap_remove_by_value(void *obj, rt_string value)
 {
     if (!obj)
@@ -497,6 +531,8 @@ void *rt_bimap_values(void *obj)
     return seq;
 }
 
+/// @brief Perform bimap clear operation.
+/// @param obj
 void rt_bimap_clear(void *obj)
 {
     if (!obj)

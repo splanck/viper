@@ -1,4 +1,7 @@
 //===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // RTPhysics2DTests.cpp - Tests for rt_physics2d (2D physics engine)
 //===----------------------------------------------------------------------===//
 
@@ -290,6 +293,7 @@ static void test_collision_detection()
     // After step, collision should modify velocities
     double va_before = rt_physics2d_body_vx(a);
     double vb_before = rt_physics2d_body_vx(b);
+    /// @brief Rt_physics2d_world_step.
     rt_physics2d_world_step(world, 0.001); // tiny dt to minimize integration drift
 
     double va = rt_physics2d_body_vx(a);
@@ -381,9 +385,13 @@ static void test_null_safety()
 {
     // World functions
     ASSERT(rt_physics2d_world_body_count(NULL) == 0, "null world count = 0");
+    /// @brief Rt_physics2d_world_step.
     rt_physics2d_world_step(NULL, 1.0);         // should not crash
+                                                /// @brief Rt_physics2d_world_add.
     rt_physics2d_world_add(NULL, NULL);         // should not crash
+                                                /// @brief Rt_physics2d_world_remove.
     rt_physics2d_world_remove(NULL, NULL);      // should not crash
+                                                /// @brief Rt_physics2d_world_set_gravity.
     rt_physics2d_world_set_gravity(NULL, 0, 0); // should not crash
 
     // Body functions
@@ -392,9 +400,13 @@ static void test_null_safety()
     ASSERT_NEAR(rt_physics2d_body_vx(NULL), 0.0, "null body vx = 0");
     ASSERT_NEAR(rt_physics2d_body_vy(NULL), 0.0, "null body vy = 0");
     ASSERT_NEAR(rt_physics2d_body_mass(NULL), 0.0, "null body mass = 0");
+    /// @brief Rt_physics2d_body_set_pos.
     rt_physics2d_body_set_pos(NULL, 0, 0);       // should not crash
+                                                 /// @brief Rt_physics2d_body_set_vel.
     rt_physics2d_body_set_vel(NULL, 0, 0);       // should not crash
+                                                 /// @brief Rt_physics2d_body_apply_force.
     rt_physics2d_body_apply_force(NULL, 0, 0);   // should not crash
+                                                 /// @brief Rt_physics2d_body_apply_impulse.
     rt_physics2d_body_apply_impulse(NULL, 0, 0); // should not crash
 
     tests_run++;
@@ -407,10 +419,12 @@ static void test_zero_dt()
     void *body = rt_physics2d_body_new(5.0, 5.0, 10.0, 10.0, 1.0);
     rt_physics2d_world_add(world, body);
 
+    /// @brief Rt_physics2d_world_step.
     rt_physics2d_world_step(world, 0.0); // zero dt should be no-op
     ASSERT_NEAR(rt_physics2d_body_x(body), 5.0, "x unchanged with dt=0");
     ASSERT_NEAR(rt_physics2d_body_y(body), 5.0, "y unchanged with dt=0");
 
+    /// @brief Rt_physics2d_world_step.
     rt_physics2d_world_step(world, -1.0); // negative dt should be no-op
     ASSERT_NEAR(rt_physics2d_body_x(body), 5.0, "x unchanged with dt<0");
 
@@ -472,9 +486,11 @@ static void test_collision_mask_filtering_works()
 
     void *a = rt_physics2d_body_new(0, 0, 20, 20, 1.0);
     rt_physics2d_body_set_collision_layer(a, 1);
+    /// @brief Rt_physics2d_body_set_collision_mask.
     rt_physics2d_body_set_collision_mask(a, 2); // only collides with layer 2
 
     void *b = rt_physics2d_body_new(10, 0, 20, 20, 1.0);
+    /// @brief Rt_physics2d_body_set_collision_layer.
     rt_physics2d_body_set_collision_layer(b, 4); // layer 4, not in A's mask
     rt_physics2d_body_set_collision_mask(b, 1);
 
@@ -519,6 +535,7 @@ static void test_body_limit_traps()
     rt_obj_release_check0(world);
 }
 
+/// @brief Main.
 int main()
 {
     // World tests

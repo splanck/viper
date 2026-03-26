@@ -34,7 +34,10 @@ extern "C" void vm_trap(const char *msg)
 }
 
 /// @brief Helper: create rt_string from C literal.
-static rt_string S(const char *s) { return rt_const_cstr(s); }
+static rt_string S(const char *s)
+{
+    return rt_const_cstr(s);
+}
 
 // ============================================================================
 // Null Safety Tests (always run)

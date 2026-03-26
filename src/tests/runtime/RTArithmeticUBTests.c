@@ -1,4 +1,7 @@
 //===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: tests/runtime/RTArithmeticUBTests.c
 // Purpose: Verify arithmetic UB fixes — INT64_MIN handling, f64 to i64 clamping,
 //          and mat4 NaN/Inf guards.

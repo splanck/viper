@@ -26,8 +26,8 @@
 
 #include "frontends/zia/Sema.hpp"
 #include "frontends/zia/Types.hpp"
-#include <cctype>
 #include <cassert>
+#include <cctype>
 #include <limits>
 #include <sstream>
 
@@ -172,9 +172,9 @@ Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag)
 
 TypeRef Sema::functionTypeForDecl(const FunctionDecl &decl) const
 {
-    TypeRef returnType = decl.isAsync ? types::runtimeClass("Viper.Threads.Future")
-                                      : (decl.returnType ? resolveType(decl.returnType.get())
-                                                         : types::voidType());
+    TypeRef returnType =
+        decl.isAsync ? types::runtimeClass("Viper.Threads.Future")
+                     : (decl.returnType ? resolveType(decl.returnType.get()) : types::voidType());
     std::vector<TypeRef> paramTypes;
     paramTypes.reserve(decl.params.size());
     for (const auto &param : decl.params)
@@ -206,9 +206,9 @@ std::string Sema::methodSignatureKey(const MethodDecl &decl) const
 
 std::string Sema::methodSignatureKey(const MethodDecl &decl, TypeRef methodType) const
 {
-    const auto paramTypes =
-        methodType && methodType->kind == TypeKindSem::Function ? methodType->paramTypes()
-                                                                : std::vector<TypeRef>{};
+    const auto paramTypes = methodType && methodType->kind == TypeKindSem::Function
+                                ? methodType->paramTypes()
+                                : std::vector<TypeRef>{};
     return decl.name + "#" + (decl.isStatic ? "static#" : "inst#") + joinTypeKeys(paramTypes);
 }
 
@@ -249,9 +249,9 @@ bool Sema::registerFunctionOverload(const std::string &name,
     }
     else if (overloaded)
     {
-        loweredFunctionNames_[decl] =
-            name + "__ov__" + std::to_string(funcType->paramTypes().size()) + "__" +
-            joinTypeKeys(funcType->paramTypes());
+        loweredFunctionNames_[decl] = name + "__ov__" +
+                                      std::to_string(funcType->paramTypes().size()) + "__" +
+                                      joinTypeKeys(funcType->paramTypes());
     }
     else
     {
@@ -294,9 +294,9 @@ bool Sema::registerMethodOverload(const std::string &ownerType,
 
     if (family.size() > 1)
     {
-        ownerLoweredMethodNames_[instanceKey] =
-            ownerType + "." + decl->name + "__ov__" +
-            std::to_string(methodType->paramTypes().size()) + "__" + joinTypeKeys(methodType->paramTypes());
+        ownerLoweredMethodNames_[instanceKey] = ownerType + "." + decl->name + "__ov__" +
+                                                std::to_string(methodType->paramTypes().size()) +
+                                                "__" + joinTypeKeys(methodType->paramTypes());
     }
     else
     {
@@ -313,7 +313,8 @@ std::vector<MethodDecl *> Sema::collectMethodOverloads(const std::string &typeNa
     std::vector<MethodDecl *> result;
     std::unordered_set<std::string> seenSignatures;
 
-    auto addFamily = [&](const std::string &owner) {
+    auto addFamily = [&](const std::string &owner)
+    {
         auto it = methodOverloads_.find(owner + "." + methodName);
         if (it == methodOverloads_.end())
             return;
@@ -420,7 +421,8 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
     std::vector<std::string> candidates;
     std::unordered_set<std::string> seenSignatures;
 
-    auto considerOwner = [&](const std::string &candidateOwner) {
+    auto considerOwner = [&](const std::string &candidateOwner)
+    {
         auto it = methodOverloads_.find(candidateOwner + "." + methodName);
         if (it == methodOverloads_.end())
             return;
@@ -485,7 +487,9 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
         return nullptr;
     if (ambiguous)
     {
-        error(loc, "Ambiguous call to method '" + methodName + "': " + formatOverloadCandidates(candidates));
+        error(loc,
+              "Ambiguous call to method '" + methodName +
+                  "': " + formatOverloadCandidates(candidates));
         return nullptr;
     }
     if (resolvedOwnerType)
@@ -493,7 +497,8 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
     return best;
 }
 
-MethodDecl *Sema::findInheritedExactMethod(const std::string &ownerType, const MethodDecl &decl) const
+MethodDecl *Sema::findInheritedExactMethod(const std::string &ownerType,
+                                           const MethodDecl &decl) const
 {
     auto entityIt = lookupEntityDeclForType(ownerType);
     if (!entityIt)
@@ -874,7 +879,8 @@ void Sema::popScope(SourceLoc endLoc)
 /// @param locOverride Optional source location for symbols without decl (locals, params).
 bool Sema::defineSymbol(const std::string &name, Symbol symbol, SourceLoc locOverride)
 {
-    SourceLoc defLoc = locOverride.isValid() ? locOverride : (symbol.decl ? symbol.decl->loc : SourceLoc{});
+    SourceLoc defLoc =
+        locOverride.isValid() ? locOverride : (symbol.decl ? symbol.decl->loc : SourceLoc{});
     if (Symbol *existing = currentScope_->lookupLocal(name))
     {
         if (existing->decl == nullptr && symbol.decl == nullptr)
@@ -944,10 +950,10 @@ const ScopedSymbol *Sema::findSymbolAtPosition(const std::string &name,
         }
 
         const auto bestScopeIt = scopeSnapshots_.find(best->scopeId);
-        const size_t bestDepth = bestScopeIt != scopeSnapshots_.end() ? bestScopeIt->second.depth : 0;
+        const size_t bestDepth =
+            bestScopeIt != scopeSnapshots_.end() ? bestScopeIt->second.depth : 0;
         const size_t thisDepth = scopeIt != scopeSnapshots_.end() ? scopeIt->second.depth : 0;
-        if (thisDepth > bestDepth ||
-            (thisDepth == bestDepth && compareLoc(ss.loc, best->loc) > 0))
+        if (thisDepth > bestDepth || (thisDepth == bestDepth && compareLoc(ss.loc, best->loc) > 0))
         {
             best = &ss;
         }
@@ -1171,9 +1177,9 @@ bool Sema::reportDuplicateDefinition(const std::string &name, SourceLoc loc)
     if (!existing)
         return true;
 
-    SourceLoc existingLoc = existing->loc.isValid() ? existing->loc
-                                                    : (existing->decl ? existing->decl->loc
-                                                                      : SourceLoc{});
+    SourceLoc existingLoc = existing->loc.isValid()
+                                ? existing->loc
+                                : (existing->decl ? existing->decl->loc : SourceLoc{});
     if (!existingLoc.isValid())
     {
         for (auto it = scopedSymbols_.rbegin(); it != scopedSymbols_.rend(); ++it)
@@ -1189,8 +1195,8 @@ bool Sema::reportDuplicateDefinition(const std::string &name, SourceLoc loc)
     std::string message = "Duplicate definition of '" + name + "'";
     if (existingLoc.isValid())
     {
-        message += " (previous definition at line " + std::to_string(existingLoc.line) + ", column " +
-                   std::to_string(existingLoc.column) + ")";
+        message += " (previous definition at line " + std::to_string(existingLoc.line) +
+                   ", column " + std::to_string(existingLoc.column) + ")";
     }
     error(loc, message);
     return false;

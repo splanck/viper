@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_hash_util.h
 // Purpose: SipHash-2-4 hash utility providing a keyed 64-bit hash of arbitrary
 //          byte sequences, used by multiple runtime collection types. Uses a

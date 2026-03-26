@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_intmap.h
 // Purpose: Integer-keyed hash map mapping int64_t keys to object pointer values, providing O(1)
 // average insertion, lookup, and removal.

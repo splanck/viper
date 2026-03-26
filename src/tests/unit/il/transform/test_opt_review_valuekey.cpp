@@ -26,6 +26,7 @@ using namespace il::core;
 namespace
 {
 
+/// @brief Make arith.
 Instr makeArith(Opcode op, Value lhs, Value rhs, unsigned resultId = 0)
 {
     Instr instr;
@@ -36,6 +37,7 @@ Instr makeArith(Opcode op, Value lhs, Value rhs, unsigned resultId = 0)
     return instr;
 }
 
+/// @brief Make float arith.
 Instr makeFloatArith(Opcode op, Value lhs, Value rhs, unsigned resultId = 0)
 {
     Instr instr;

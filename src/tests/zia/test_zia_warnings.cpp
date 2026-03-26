@@ -10,8 +10,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Compiler.hpp"
-#include "frontends/zia/ZiaAnalysis.hpp"
 #include "frontends/zia/Warnings.hpp"
+#include "frontends/zia/ZiaAnalysis.hpp"
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
 #include <algorithm>

@@ -193,6 +193,7 @@ TEST(get_at)
     rt_buttongroup_destroy(bg);
 }
 
+/// @brief Main.
 int main()
 {
     printf("RTButtonGroupTests:\n");

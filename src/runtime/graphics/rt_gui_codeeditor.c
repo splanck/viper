@@ -135,10 +135,9 @@ static int syn_is_keyword_ci(const char *word, size_t wlen, const char *const *t
 // ─── Zia language tokenizer ────────────────────────────────────────────────
 
 static const char *const zia_keywords[] = {
-    "func",  "expose", "hide",  "entity", "value",  "var",      "new",  "if",  "else",
-    "while", "for",    "in",    "return", "break",  "continue", "do",   "and", "or",
-    "not",   "true",   "false", "null",   "module", "bind",     "self",
-    "match", "enum",   NULL};
+    "func",  "expose", "hide",   "entity", "value",    "var",   "new",  "if", "else", "while",
+    "for",   "in",     "return", "break",  "continue", "do",    "and",  "or", "not",  "true",
+    "false", "null",   "module", "bind",   "self",     "match", "enum", NULL};
 
 static const char *const zia_types[] = {"Integer",
                                         "Boolean",
@@ -1307,8 +1306,7 @@ int64_t rt_messagebox_show(void *box)
     // Apply custom buttons if any were added via rt_messagebox_add_button
     if (data->custom_button_count > 0)
     {
-        vg_dialog_set_custom_buttons(
-            data->dialog, data->custom_buttons, data->custom_button_count);
+        vg_dialog_set_custom_buttons(data->dialog, data->custom_buttons, data->custom_button_count);
     }
 
     vg_dialog_show(data->dialog);

@@ -145,7 +145,7 @@ int64_t rt_netutils_get_free_port(void)
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(0x7f000001); // 127.0.0.1
-    addr.sin_port = 0; // OS assigns a free port
+    addr.sin_port = 0;                        // OS assigns a free port
 
     if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) != 0)
     {

@@ -78,6 +78,7 @@ TEST(start_stop)
 TEST(update_lifetime)
 {
     rt_particle_emitter pe = rt_particle_emitter_new(100);
+    /// @brief Rt_particle_emitter_set_lifetime.
     rt_particle_emitter_set_lifetime(pe, 5, 5); // Exact 5 frames
     rt_particle_emitter_set_velocity(pe, 0.0, 0.0, 0.0, 0.0);
 
@@ -109,6 +110,7 @@ TEST(continuous_emission)
 {
     rt_particle_emitter pe = rt_particle_emitter_new(100);
     rt_particle_emitter_set_lifetime(pe, 100, 100);
+    /// @brief Rt_particle_emitter_set_rate.
     rt_particle_emitter_set_rate(pe, 10.0); // 10 per frame
     rt_particle_emitter_start(pe);
 
@@ -123,6 +125,7 @@ TEST(max_particles)
     rt_particle_emitter pe = rt_particle_emitter_new(20); // Max 20
     rt_particle_emitter_set_lifetime(pe, 100, 100);
 
+    /// @brief Rt_particle_emitter_burst.
     rt_particle_emitter_burst(pe, 50);           // Try to emit 50
     ASSERT(rt_particle_emitter_count(pe) == 20); // Capped at 20
     rt_particle_emitter_destroy(pe);
@@ -150,6 +153,7 @@ TEST(draw_to_pixels_null_safety)
     rt_particle_emitter_destroy(pe);
 }
 
+/// @brief Main.
 int main()
 {
     printf("RTParticleTests:\n");

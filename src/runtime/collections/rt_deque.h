@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_deque.h
 // Purpose: Double-ended queue (deque) providing O(1) push/pop at both front and back with O(1)
 // random access by index, implemented as a ring buffer.

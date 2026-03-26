@@ -81,8 +81,8 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
     // Single implementation - direct call
     if (dispatchTable.size() <= 1)
     {
-        std::string target =
-            dispatchTable.empty() ? sema_.loweredMethodName(ownerType, method) : dispatchTable[0].second;
+        std::string target = dispatchTable.empty() ? sema_.loweredMethodName(ownerType, method)
+                                                   : dispatchTable[0].second;
         // Handle void return types correctly
         if (ilReturnType.kind == Type::Kind::Void)
         {
@@ -176,9 +176,9 @@ LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo
                                               CallExpr *expr)
 {
     TypeRef methodType = sema_.getMethodType(ownerType, method);
-    TypeRef returnType =
-        methodType && methodType->kind == TypeKindSem::Function ? methodType->returnType()
-                                                                : types::voidType();
+    TypeRef returnType = methodType && methodType->kind == TypeKindSem::Function
+                             ? methodType->returnType()
+                             : types::voidType();
     Type ilReturnType = mapType(returnType);
 
     // Build argument list: self + call args

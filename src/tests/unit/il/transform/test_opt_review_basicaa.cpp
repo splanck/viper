@@ -32,6 +32,7 @@ using viper::analysis::ModRefResult;
 namespace
 {
 
+/// @brief Make alloca.
 Instr makeAlloca(unsigned id)
 {
     Instr instr;
@@ -42,6 +43,7 @@ Instr makeAlloca(unsigned id)
     return instr;
 }
 
+/// @brief Make call.
 Instr makeCall(std::string callee)
 {
     Instr instr;

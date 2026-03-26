@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/oop/rt_lazyseq.h
 // Purpose: Lazy sequence type for on-demand element generation and transformation, supporting
 // map/filter/take/drop/zip functional operations on potentially infinite sequences.

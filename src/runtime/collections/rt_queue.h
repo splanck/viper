@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_queue.h
 // Purpose: Runtime-backed FIFO queue for Viper.Collections.Queue, providing enqueue/dequeue/peek
 // with automatic growth and O(1) operations.

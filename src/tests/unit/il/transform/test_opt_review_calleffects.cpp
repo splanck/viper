@@ -23,6 +23,7 @@ using namespace il::core;
 namespace
 {
 
+/// @brief Make call.
 Instr makeCall(std::string callee)
 {
     Instr instr;

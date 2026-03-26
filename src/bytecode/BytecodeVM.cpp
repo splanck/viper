@@ -2142,8 +2142,9 @@ extern "C" void bytecode_async_entry_trampoline(void *raw)
     {
         const std::string &message = vm.trapMessage();
         rt_promise_set_error(payload->promise,
-                             message.empty() ? rt_const_cstr("Async.Run: trapped")
-                                             : rt_string_from_bytes(message.data(), message.size()));
+                             message.empty()
+                                 ? rt_const_cstr("Async.Run: trapped")
+                                 : rt_string_from_bytes(message.data(), message.size()));
     }
     else
     {

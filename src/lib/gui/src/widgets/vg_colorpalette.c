@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_colorpalette.c
+//
+//===----------------------------------------------------------------------===//
 // vg_colorpalette.c - Color palette widget implementation
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
@@ -310,6 +320,7 @@ void vg_colorpalette_set_colors(vg_colorpalette_t *palette, const uint32_t *colo
     palette->base.needs_paint = true;
 }
 
+/// @brief Colorpalette add color.
 void vg_colorpalette_add_color(vg_colorpalette_t *palette, uint32_t color)
 {
     if (!palette)
@@ -328,6 +339,7 @@ void vg_colorpalette_add_color(vg_colorpalette_t *palette, uint32_t color)
     palette->base.needs_paint = true;
 }
 
+/// @brief Colorpalette clear.
 void vg_colorpalette_clear(vg_colorpalette_t *palette)
 {
     if (!palette)
@@ -345,6 +357,7 @@ void vg_colorpalette_clear(vg_colorpalette_t *palette)
     palette->base.needs_paint = true;
 }
 
+/// @brief Colorpalette set columns.
 void vg_colorpalette_set_columns(vg_colorpalette_t *palette, int columns)
 {
     if (!palette || columns <= 0)
@@ -355,6 +368,7 @@ void vg_colorpalette_set_columns(vg_colorpalette_t *palette, int columns)
     palette->base.needs_paint = true;
 }
 
+/// @brief Colorpalette set selected.
 void vg_colorpalette_set_selected(vg_colorpalette_t *palette, int index)
 {
     if (!palette)
@@ -369,6 +383,7 @@ void vg_colorpalette_set_selected(vg_colorpalette_t *palette, int index)
     palette->base.needs_paint = true;
 }
 
+/// @brief Colorpalette get selected.
 int vg_colorpalette_get_selected(vg_colorpalette_t *palette)
 {
     if (!palette)
@@ -385,6 +400,7 @@ uint32_t vg_colorpalette_get_selected_color(vg_colorpalette_t *palette)
     return palette->colors[palette->selected_index];
 }
 
+/// @brief Colorpalette set on select.
 void vg_colorpalette_set_on_select(vg_colorpalette_t *palette,
                                    vg_colorpalette_callback_t callback,
                                    void *user_data)
@@ -396,6 +412,7 @@ void vg_colorpalette_set_on_select(vg_colorpalette_t *palette,
     palette->on_select_data = user_data;
 }
 
+/// @brief Colorpalette set swatch size.
 void vg_colorpalette_set_swatch_size(vg_colorpalette_t *palette, float size)
 {
     if (!palette || size <= 0)
@@ -406,6 +423,7 @@ void vg_colorpalette_set_swatch_size(vg_colorpalette_t *palette, float size)
     palette->base.needs_paint = true;
 }
 
+/// @brief Colorpalette load standard 16.
 void vg_colorpalette_load_standard_16(vg_colorpalette_t *palette)
 {
     if (!palette)

@@ -166,6 +166,9 @@ void *rt_orderedmap_new(void)
 // Accessors
 // ---------------------------------------------------------------------------
 
+/// @brief Perform orderedmap len operation.
+/// @param map
+/// @return Result value.
 int64_t rt_orderedmap_len(void *map)
 {
     if (!map)
@@ -173,6 +176,9 @@ int64_t rt_orderedmap_len(void *map)
     return ((rt_orderedmap_impl *)map)->count;
 }
 
+/// @brief Perform orderedmap is empty operation.
+/// @param map
+/// @return Result value.
 int64_t rt_orderedmap_is_empty(void *map)
 {
     if (!map)
@@ -184,6 +190,10 @@ int64_t rt_orderedmap_is_empty(void *map)
 // Set
 // ---------------------------------------------------------------------------
 
+/// @brief Perform orderedmap set operation.
+/// @param map
+/// @param key
+/// @param value
 void rt_orderedmap_set(void *map, rt_string key, void *value)
 {
     if (!map || !key)
@@ -264,6 +274,10 @@ void *rt_orderedmap_get(void *map, rt_string key)
     return e ? e->value : NULL;
 }
 
+/// @brief Perform orderedmap has operation.
+/// @param map
+/// @param key
+/// @return Result value.
 int64_t rt_orderedmap_has(void *map, rt_string key)
 {
     if (!map || !key)
@@ -282,6 +296,10 @@ int64_t rt_orderedmap_has(void *map, rt_string key)
 // Remove
 // ---------------------------------------------------------------------------
 
+/// @brief Perform orderedmap remove operation.
+/// @param map
+/// @param key
+/// @return Result value.
 int8_t rt_orderedmap_remove(void *map, rt_string key)
 {
     if (!map || !key)
@@ -368,6 +386,10 @@ void *rt_orderedmap_values(void *map)
     return seq;
 }
 
+/// @brief Perform orderedmap key at operation.
+/// @param map
+/// @param index
+/// @return Result value.
 rt_string rt_orderedmap_key_at(void *map, int64_t index)
 {
     if (!map)
@@ -388,6 +410,8 @@ rt_string rt_orderedmap_key_at(void *map, int64_t index)
 // Clear
 // ---------------------------------------------------------------------------
 
+/// @brief Perform orderedmap clear operation.
+/// @param map
 void rt_orderedmap_clear(void *map)
 {
     if (!map)

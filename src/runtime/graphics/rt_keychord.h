@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_keychord.h
 // Purpose: Key chord (simultaneous) and combo (sequential) detector that recognizes registered
 // named input patterns and reports which pattern fired each frame.

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_heap.h
 // Purpose: Unified heap allocation system for all runtime reference types (strings, arrays,
 // objects), providing a common header layout, reference counting, and type metadata.

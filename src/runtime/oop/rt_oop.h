@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/oop/rt_oop.h
 // Purpose: Minimal runtime ABI for object-oriented features in BASIC including class metadata,
 // vtable-based virtual dispatch, interface support, and the class registry.

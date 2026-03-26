@@ -152,14 +152,15 @@ PassManager::PassManager()
     // mem2reg, LICM, and IL peephole remain excluded for now because each still
     // has open correctness bugs in real demo workloads.
     registerPipeline(
-        "O2", {"loop-simplify", "loop-rotate",  "indvars",      "loop-unroll", "simplify-cfg",
+        "O2", {"loop-simplify", "loop-rotate",  "indvars",     "loop-unroll",  "simplify-cfg",
                "sccp", // Pre-inline SCCP: simplify callees
-               "check-opt",     "eh-opt",       "dce",          "simplify-cfg", "sibling-recursion",
+               "check-opt",     "eh-opt",       "dce",         "simplify-cfg", "sibling-recursion",
                "inline",        "simplify-cfg",
                "sccp",      // Post-inline SCCP: propagate call-site constants
                "constfold", // Fold runtime math calls exposed by SCCP
                "dce",       // Clean up after second SCCP
-               "simplify-cfg", "gvn", "reassociate", "earlycse", "dse", "dce", "late-cleanup"});
+               "simplify-cfg",  "gvn",          "reassociate", "earlycse",     "dse",
+               "dce",           "late-cleanup"});
 }
 
 /// @brief Register the SimplifyCFG transform in the function pass registry.

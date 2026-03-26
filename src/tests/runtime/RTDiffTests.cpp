@@ -144,6 +144,7 @@ static void test_empty_inputs()
     rt_string_unref(text);
 }
 
+/// @brief Main.
 int main()
 {
     test_identical();

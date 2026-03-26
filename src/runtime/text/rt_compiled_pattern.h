@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_compiled_pattern.h
 // Purpose: Pre-compiled regular expression pattern for efficient repeated matching without per-call
 // recompilation overhead, supporting find, capture, replace, and split.

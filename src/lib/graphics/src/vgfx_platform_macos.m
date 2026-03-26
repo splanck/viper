@@ -299,8 +299,9 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
         return NO;
 
     NSPasteboard *pb = [sender draggingPasteboard];
-    NSArray<NSURL *> *urls = [pb readObjectsForClasses:@[ [NSURL class] ]
-                                               options:@{NSPasteboardURLReadingFileURLsOnlyKey : @YES}];
+    NSArray<NSURL *> *urls =
+        [pb readObjectsForClasses:@[ [NSURL class] ]
+                          options:@{NSPasteboardURLReadingFileURLsOnlyKey : @YES}];
 
     int64_t timestamp = vgfx_platform_now_ms();
     for (NSURL *url in urls)

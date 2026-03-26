@@ -136,6 +136,7 @@ TEST(lerp_i64)
     ASSERT(rt_tween_lerp_i64(-100, 100, 0.5) == 0);
 }
 
+/// @brief Main.
 int main()
 {
     printf("RTTweenTests:\n");

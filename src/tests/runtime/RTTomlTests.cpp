@@ -175,6 +175,7 @@ static void test_depth_limit()
     assert(rt_toml_is_valid(src2) == 1);
 }
 
+/// @brief Main.
 int main()
 {
     test_parse_simple();

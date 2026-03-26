@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/oop/rt_exc.h
 // Purpose: Runtime exception support for structured exception handling, providing exception object
 // creation, message access, and type checking for catch handlers.

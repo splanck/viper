@@ -119,6 +119,9 @@ void *rt_dialogue_new(int64_t x, int64_t y, int64_t width, int64_t height)
 // Configuration
 //=============================================================================
 
+/// @brief Perform dialogue set speed operation.
+/// @param dlg
+/// @param cps
 void rt_dialogue_set_speed(void *dlg, int64_t cps)
 {
     if (!dlg)
@@ -127,6 +130,9 @@ void rt_dialogue_set_speed(void *dlg, int64_t cps)
     d->chars_per_second = cps < 1 ? 1 : (int32_t)cps;
 }
 
+/// @brief Perform dialogue set font operation.
+/// @param dlg
+/// @param font
 void rt_dialogue_set_font(void *dlg, void *font)
 {
     if (!dlg)
@@ -140,6 +146,9 @@ void rt_dialogue_set_font(void *dlg, void *font)
     d->font = font;
 }
 
+/// @brief Perform dialogue set text color operation.
+/// @param dlg
+/// @param color
 void rt_dialogue_set_text_color(void *dlg, int64_t color)
 {
     if (!dlg)
@@ -147,6 +156,9 @@ void rt_dialogue_set_text_color(void *dlg, int64_t color)
     ((rt_dialogue_impl *)dlg)->text_color = (int32_t)color;
 }
 
+/// @brief Perform dialogue set speaker color operation.
+/// @param dlg
+/// @param color
 void rt_dialogue_set_speaker_color(void *dlg, int64_t color)
 {
     if (!dlg)
@@ -154,6 +166,10 @@ void rt_dialogue_set_speaker_color(void *dlg, int64_t color)
     ((rt_dialogue_impl *)dlg)->speaker_color = (int32_t)color;
 }
 
+/// @brief Perform dialogue set bg color operation.
+/// @param dlg
+/// @param color
+/// @param alpha
 void rt_dialogue_set_bg_color(void *dlg, int64_t color, int64_t alpha)
 {
     if (!dlg)
@@ -163,6 +179,9 @@ void rt_dialogue_set_bg_color(void *dlg, int64_t color, int64_t alpha)
     d->bg_alpha = (int32_t)alpha;
 }
 
+/// @brief Perform dialogue set border color operation.
+/// @param dlg
+/// @param color
 void rt_dialogue_set_border_color(void *dlg, int64_t color)
 {
     if (!dlg)
@@ -170,6 +189,9 @@ void rt_dialogue_set_border_color(void *dlg, int64_t color)
     ((rt_dialogue_impl *)dlg)->border_color = (int32_t)color;
 }
 
+/// @brief Perform dialogue set padding operation.
+/// @param dlg
+/// @param padding
 void rt_dialogue_set_padding(void *dlg, int64_t padding)
 {
     if (!dlg)
@@ -177,6 +199,9 @@ void rt_dialogue_set_padding(void *dlg, int64_t padding)
     ((rt_dialogue_impl *)dlg)->padding = (int32_t)padding;
 }
 
+/// @brief Perform dialogue set text scale operation.
+/// @param dlg
+/// @param scale
 void rt_dialogue_set_text_scale(void *dlg, int64_t scale)
 {
     if (!dlg)
@@ -186,6 +211,10 @@ void rt_dialogue_set_text_scale(void *dlg, int64_t scale)
     ((rt_dialogue_impl *)dlg)->text_scale = (int32_t)scale;
 }
 
+/// @brief Perform dialogue set pos operation.
+/// @param dlg
+/// @param x
+/// @param y
 void rt_dialogue_set_pos(void *dlg, int64_t x, int64_t y)
 {
     if (!dlg)
@@ -195,6 +224,10 @@ void rt_dialogue_set_pos(void *dlg, int64_t x, int64_t y)
     d->y = (int32_t)y;
 }
 
+/// @brief Perform dialogue set size operation.
+/// @param dlg
+/// @param w
+/// @param h
 void rt_dialogue_set_size(void *dlg, int64_t w, int64_t h)
 {
     if (!dlg)
@@ -208,6 +241,10 @@ void rt_dialogue_set_size(void *dlg, int64_t w, int64_t h)
 // Dialogue Queue
 //=============================================================================
 
+/// @brief Perform dialogue say operation.
+/// @param dlg
+/// @param speaker
+/// @param text
 void rt_dialogue_say(void *dlg, rt_string speaker, rt_string text)
 {
     if (!dlg)
@@ -265,11 +302,16 @@ void rt_dialogue_say(void *dlg, rt_string speaker, rt_string text)
     }
 }
 
+/// @brief Perform dialogue say text operation.
+/// @param dlg
+/// @param text
 void rt_dialogue_say_text(void *dlg, rt_string text)
 {
     rt_dialogue_say(dlg, NULL, text);
 }
 
+/// @brief Perform dialogue clear operation.
+/// @param dlg
 void rt_dialogue_clear(void *dlg)
 {
     if (!dlg)
@@ -289,6 +331,9 @@ void rt_dialogue_clear(void *dlg)
 // Playback
 //=============================================================================
 
+/// @brief Perform dialogue update operation.
+/// @param dlg
+/// @param dt_ms
 void rt_dialogue_update(void *dlg, int64_t dt_ms)
 {
     if (!dlg)
@@ -328,6 +373,8 @@ void rt_dialogue_update(void *dlg, int64_t dt_ms)
     }
 }
 
+/// @brief Perform dialogue advance operation.
+/// @param dlg
 void rt_dialogue_advance(void *dlg)
 {
     if (!dlg)
@@ -365,6 +412,8 @@ void rt_dialogue_advance(void *dlg)
     }
 }
 
+/// @brief Perform dialogue skip operation.
+/// @param dlg
 void rt_dialogue_skip(void *dlg)
 {
     if (!dlg)
@@ -381,6 +430,9 @@ void rt_dialogue_skip(void *dlg)
 // State Queries
 //=============================================================================
 
+/// @brief Perform dialogue is active operation.
+/// @param dlg
+/// @return Result value.
 int8_t rt_dialogue_is_active(void *dlg)
 {
     if (!dlg)
@@ -388,6 +440,9 @@ int8_t rt_dialogue_is_active(void *dlg)
     return ((rt_dialogue_impl *)dlg)->active;
 }
 
+/// @brief Perform dialogue is line complete operation.
+/// @param dlg
+/// @return Result value.
 int8_t rt_dialogue_is_line_complete(void *dlg)
 {
     if (!dlg)
@@ -395,6 +450,9 @@ int8_t rt_dialogue_is_line_complete(void *dlg)
     return ((rt_dialogue_impl *)dlg)->line_complete;
 }
 
+/// @brief Perform dialogue is finished operation.
+/// @param dlg
+/// @return Result value.
 int8_t rt_dialogue_is_finished(void *dlg)
 {
     if (!dlg)
@@ -402,6 +460,9 @@ int8_t rt_dialogue_is_finished(void *dlg)
     return ((rt_dialogue_impl *)dlg)->finished;
 }
 
+/// @brief Perform dialogue is waiting operation.
+/// @param dlg
+/// @return Result value.
 int8_t rt_dialogue_is_waiting(void *dlg)
 {
     if (!dlg)
@@ -409,6 +470,9 @@ int8_t rt_dialogue_is_waiting(void *dlg)
     return ((rt_dialogue_impl *)dlg)->waiting_for_input;
 }
 
+/// @brief Perform dialogue get line count operation.
+/// @param dlg
+/// @return Result value.
 int64_t rt_dialogue_get_line_count(void *dlg)
 {
     if (!dlg)
@@ -416,6 +480,9 @@ int64_t rt_dialogue_get_line_count(void *dlg)
     return ((rt_dialogue_impl *)dlg)->line_count;
 }
 
+/// @brief Perform dialogue get current line operation.
+/// @param dlg
+/// @return Result value.
 int64_t rt_dialogue_get_current_line(void *dlg)
 {
     if (!dlg)
@@ -423,6 +490,9 @@ int64_t rt_dialogue_get_current_line(void *dlg)
     return ((rt_dialogue_impl *)dlg)->current_line;
 }
 
+/// @brief Perform dialogue get speaker operation.
+/// @param dlg
+/// @return Result value.
 rt_string rt_dialogue_get_speaker(void *dlg)
 {
     if (!dlg)
@@ -437,6 +507,9 @@ rt_string rt_dialogue_get_speaker(void *dlg)
 // Rendering
 //=============================================================================
 
+/// @brief Perform dialogue draw operation.
+/// @param dlg
+/// @param canvas
 void rt_dialogue_draw(void *dlg, void *canvas)
 {
     if (!dlg || !canvas)

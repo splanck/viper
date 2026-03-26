@@ -37,6 +37,7 @@ using namespace il::core;
 namespace
 {
 
+/// @brief Count calls in module.
 unsigned countCallsInModule(const Module &module)
 {
     unsigned count = 0;
@@ -48,6 +49,7 @@ unsigned countCallsInModule(const Module &module)
     return count;
 }
 
+/// @brief Count instructions in function.
 unsigned countInstructionsInFunction(const Function &fn)
 {
     unsigned count = 0;

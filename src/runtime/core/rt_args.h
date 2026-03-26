@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_args.h
 // Purpose: Process-wide command-line argument store and environment variable access, providing
 // push/query semantics for argument strings and get/set/has helpers for environment variables.

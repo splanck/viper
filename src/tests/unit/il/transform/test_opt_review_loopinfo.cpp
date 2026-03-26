@@ -127,6 +127,7 @@ Module buildNormalLoopModule()
     return module;
 }
 
+/// @brief Has duplicates.
 bool hasDuplicates(const std::vector<std::string> &vec)
 {
     std::unordered_set<std::string> seen;

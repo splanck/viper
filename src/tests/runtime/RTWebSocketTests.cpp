@@ -12,10 +12,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_bytes.h"
+#include "rt_netutils.h"
 #include "rt_network.h"
 #include "rt_string.h"
 #include "rt_websocket.h"
-#include "rt_netutils.h"
 
 #include <atomic>
 #include <cassert>

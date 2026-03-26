@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_notification.c
+//
+//===----------------------------------------------------------------------===//
 // vg_notification.c - Notification widget implementation
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -111,6 +121,7 @@ static void notification_manager_destroy(vg_widget_t *widget)
     free(mgr->notifications);
 }
 
+/// @brief Notification manager destroy.
 void vg_notification_manager_destroy(vg_notification_manager_t *mgr)
 {
     if (!mgr)
@@ -281,6 +292,7 @@ static bool notification_manager_handle_event(vg_widget_t *widget, vg_event_t *e
     return false;
 }
 
+/// @brief Notification manager update.
 void vg_notification_manager_update(vg_notification_manager_t *mgr, uint64_t now_ms)
 {
     if (!mgr)
@@ -408,6 +420,7 @@ uint32_t vg_notification_show_with_action(vg_notification_manager_t *mgr,
     return notif->id;
 }
 
+/// @brief Notification dismiss.
 void vg_notification_dismiss(vg_notification_manager_t *mgr, uint32_t id)
 {
     if (!mgr)
@@ -424,6 +437,7 @@ void vg_notification_dismiss(vg_notification_manager_t *mgr, uint32_t id)
     }
 }
 
+/// @brief Notification dismiss all.
 void vg_notification_dismiss_all(vg_notification_manager_t *mgr)
 {
     if (!mgr)
@@ -439,6 +453,7 @@ void vg_notification_dismiss_all(vg_notification_manager_t *mgr)
     mgr->base.needs_paint = true;
 }
 
+/// @brief Notification manager set position.
 void vg_notification_manager_set_position(vg_notification_manager_t *mgr,
                                           vg_notification_position_t position)
 {
@@ -448,6 +463,7 @@ void vg_notification_manager_set_position(vg_notification_manager_t *mgr,
     mgr->base.needs_paint = true;
 }
 
+/// @brief Notification manager set font.
 void vg_notification_manager_set_font(vg_notification_manager_t *mgr, vg_font_t *font, float size)
 {
     if (!mgr)

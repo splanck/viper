@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_lrucache.h
 // Purpose: String-keyed LRU (Least Recently Used) cache evicting the least-recently-accessed entry
 // when capacity is exceeded, providing O(1) average get/put operations.

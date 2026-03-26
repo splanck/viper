@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_toolbar.c
+//
+//===----------------------------------------------------------------------===//
 // vg_toolbar.c - Toolbar widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -857,6 +867,7 @@ vg_toolbar_item_t *vg_toolbar_add_widget(vg_toolbar_t *tb, const char *id, vg_wi
     return item;
 }
 
+/// @brief Toolbar remove item.
 void vg_toolbar_remove_item(vg_toolbar_t *tb, const char *id)
 {
     if (!tb || !id)
@@ -892,6 +903,7 @@ vg_toolbar_item_t *vg_toolbar_get_item(vg_toolbar_t *tb, const char *id)
     return NULL;
 }
 
+/// @brief Toolbar item set enabled.
 void vg_toolbar_item_set_enabled(vg_toolbar_item_t *item, bool enabled)
 {
     if (!item)
@@ -899,6 +911,7 @@ void vg_toolbar_item_set_enabled(vg_toolbar_item_t *item, bool enabled)
     item->enabled = enabled;
 }
 
+/// @brief Toolbar item set checked.
 void vg_toolbar_item_set_checked(vg_toolbar_item_t *item, bool checked)
 {
     if (!item)
@@ -906,6 +919,7 @@ void vg_toolbar_item_set_checked(vg_toolbar_item_t *item, bool checked)
     item->checked = checked;
 }
 
+/// @brief Toolbar item set tooltip.
 void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip)
 {
     if (!item)
@@ -915,6 +929,7 @@ void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip)
     item->tooltip = tooltip ? strdup(tooltip) : NULL;
 }
 
+/// @brief Toolbar item set icon.
 void vg_toolbar_item_set_icon(vg_toolbar_item_t *item, vg_icon_t icon)
 {
     if (!item)
@@ -923,6 +938,7 @@ void vg_toolbar_item_set_icon(vg_toolbar_item_t *item, vg_icon_t icon)
     item->icon = icon;
 }
 
+/// @brief Toolbar set icon size.
 void vg_toolbar_set_icon_size(vg_toolbar_t *tb, vg_toolbar_icon_size_t size)
 {
     if (!tb)
@@ -931,6 +947,7 @@ void vg_toolbar_set_icon_size(vg_toolbar_t *tb, vg_toolbar_icon_size_t size)
     tb->base.needs_layout = true;
 }
 
+/// @brief Toolbar set show labels.
 void vg_toolbar_set_show_labels(vg_toolbar_t *tb, bool show)
 {
     if (!tb)
@@ -943,6 +960,7 @@ void vg_toolbar_set_show_labels(vg_toolbar_t *tb, bool show)
     tb->base.needs_layout = true;
 }
 
+/// @brief Toolbar set font.
 void vg_toolbar_set_font(vg_toolbar_t *tb, vg_font_t *font, float size)
 {
     if (!tb)
@@ -1001,6 +1019,7 @@ vg_icon_t vg_icon_from_file(const char *path)
     return icon;
 }
 
+/// @brief Icon destroy.
 void vg_icon_destroy(vg_icon_t *icon)
 {
     if (!icon)

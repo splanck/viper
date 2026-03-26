@@ -45,9 +45,9 @@ extern "C"
         int anchor_y; ///< Screen Y where menu appears
 
         // State
-        bool is_visible;                       ///< Is menu visible
-        int hovered_index;                     ///< Hovered item index (-1 if none)
-        int clicked_index;                     ///< Last clicked item index (-1 if none, edge-triggered)
+        bool is_visible;   ///< Is menu visible
+        int hovered_index; ///< Hovered item index (-1 if none)
+        int clicked_index; ///< Last clicked item index (-1 if none, edge-triggered)
         struct vg_contextmenu *active_submenu; ///< Open submenu
         struct vg_contextmenu *parent_menu;    ///< Parent menu (for submenus)
 
@@ -211,11 +211,11 @@ extern "C"
     {
         vg_widget_t base;
 
-        vg_tree_node_t *root;     ///< Root node (hidden, children are top-level)
+        vg_tree_node_t *root;          ///< Root node (hidden, children are top-level)
         vg_tree_node_t *selected;      ///< Currently selected node
         vg_tree_node_t *prev_selected; ///< Previous selection (for change detection)
         vg_font_t *font;               ///< Font for rendering
-        float font_size;          ///< Font size
+        float font_size;               ///< Font size
 
         // Appearance
         float row_height;     ///< Height of each row

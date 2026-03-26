@@ -79,7 +79,9 @@ TEST(CallGraphSCC, LinearChainHasOneSCCPerFunction)
     M.functions.push_back(makeRetFn("A"));
     M.functions.push_back(makeRetFn("B"));
     M.functions.push_back(makeRetFn("C"));
+    /// @brief Add Call.
     addCall(M.functions[0], "B"); // A → B
+                                  /// @brief Add Call.
     addCall(M.functions[1], "C"); // B → C
 
     viper::analysis::CallGraph cg = viper::analysis::buildCallGraph(M);
@@ -109,8 +111,11 @@ TEST(CallGraphSCC, MutualRecursionFormsOneSCC)
     M.functions.push_back(makeRetFn("F"));
     M.functions.push_back(makeRetFn("G"));
     M.functions.push_back(makeRetFn("H"));
+    /// @brief Add Call.
     addCall(M.functions[0], "G"); // F → G
+                                  /// @brief Add Call.
     addCall(M.functions[1], "F"); // G → F  (mutual recursion)
+                                  /// @brief Add Call.
     addCall(M.functions[2], "F"); // H → F
 
     viper::analysis::CallGraph cg = viper::analysis::buildCallGraph(M);
@@ -138,6 +143,7 @@ TEST(CallGraphSCC, SelfRecursiveFunction)
 {
     Module M;
     M.functions.push_back(makeRetFn("recur"));
+    /// @brief Add Call.
     addCall(M.functions[0], "recur"); // recur → recur
 
     viper::analysis::CallGraph cg = viper::analysis::buildCallGraph(M);
@@ -155,6 +161,7 @@ TEST(CallGraphSCC, NonRecursiveFunctionIsNotRecursive)
     Module M;
     M.functions.push_back(makeRetFn("leaf"));
     M.functions.push_back(makeRetFn("root"));
+    /// @brief Add Call.
     addCall(M.functions[1], "leaf"); // root → leaf
 
     viper::analysis::CallGraph cg = viper::analysis::buildCallGraph(M);
@@ -163,6 +170,7 @@ TEST(CallGraphSCC, NonRecursiveFunctionIsNotRecursive)
     EXPECT_FALSE(cg.isRecursive("root"));
 }
 
+/// @brief Main.
 int main(int argc, char **argv)
 {
     viper_test::init(&argc, argv);

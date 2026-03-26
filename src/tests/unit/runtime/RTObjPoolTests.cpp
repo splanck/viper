@@ -175,6 +175,7 @@ TEST(capacity_limits)
     rt_objpool_destroy(large);
 }
 
+/// @brief Main.
 int main()
 {
     printf("RTObjPoolTests:\n");

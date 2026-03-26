@@ -77,7 +77,8 @@ static std::atomic<bool> server_done{false};
 
 static bool localhost_bind_available()
 {
-    static const bool available = []() {
+    static const bool available = []()
+    {
 #if defined(_WIN32)
         WSADATA wsa;
         if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_spritesheet.h
 // Purpose: Sprite sheet/atlas for named region extraction from a single Pixels texture, enabling
 // efficient storage of multiple sprites in one image.

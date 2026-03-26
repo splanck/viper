@@ -112,6 +112,7 @@ inline std::optional<unsigned> accessSize(const Instr &I)
 
 } // namespace
 
+/// @brief Run dse.
 bool runDSE(Function &F, AnalysisManager &AM)
 {
     // Acquire BasicAA when available

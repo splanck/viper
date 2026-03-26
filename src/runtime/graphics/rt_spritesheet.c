@@ -266,6 +266,10 @@ void *rt_spritesheet_get_region(void *obj, rt_string name)
     return dst;
 }
 
+/// @brief Perform spritesheet has region operation.
+/// @param obj
+/// @param name
+/// @return Result value.
 int8_t rt_spritesheet_has_region(void *obj, rt_string name)
 {
     rt_spritesheet_impl *ss;
@@ -279,6 +283,9 @@ int8_t rt_spritesheet_has_region(void *obj, rt_string name)
     return find_region(ss, cstr) >= 0 ? 1 : 0;
 }
 
+/// @brief Perform spritesheet region count operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_spritesheet_region_count(void *obj)
 {
     if (!obj)
@@ -286,6 +293,9 @@ int64_t rt_spritesheet_region_count(void *obj)
     return ((rt_spritesheet_impl *)obj)->count;
 }
 
+/// @brief Perform spritesheet width operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_spritesheet_width(void *obj)
 {
     if (!obj)
@@ -293,6 +303,9 @@ int64_t rt_spritesheet_width(void *obj)
     return rt_pixels_width(((rt_spritesheet_impl *)obj)->atlas);
 }
 
+/// @brief Perform spritesheet height operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_spritesheet_height(void *obj)
 {
     if (!obj)
@@ -317,6 +330,10 @@ void *rt_spritesheet_region_names(void *obj)
     return seq;
 }
 
+/// @brief Perform spritesheet remove region operation.
+/// @param obj
+/// @param name
+/// @return Result value.
 int8_t rt_spritesheet_remove_region(void *obj, rt_string name)
 {
     rt_spritesheet_impl *ss;

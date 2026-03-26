@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_fp.h
 // Purpose: Floating-point arithmetic helpers enforcing BASIC domain and overflow semantics via an
 // out-parameter ok flag, wrapping IEEE-754 power operations with input validation for trap-based

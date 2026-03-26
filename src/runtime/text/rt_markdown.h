@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_markdown.h
 // Purpose: Basic Markdown to HTML conversion and text extraction supporting common Markdown syntax:
 // headers, bold, italic, links, code blocks, lists, and paragraphs.

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_json_stream.h
 // Purpose: SAX-style streaming JSON parser for large or incremental JSON data, providing a
 // pull-based token stream over a JSON string without building an in-memory tree.

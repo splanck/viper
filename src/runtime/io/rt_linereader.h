@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/io/rt_linereader.h
 // Purpose: Line-by-line text file reading for Viper.IO.LineReader, stripping newline characters
 // (CR, LF, CRLF) and providing character-level peek/read access.

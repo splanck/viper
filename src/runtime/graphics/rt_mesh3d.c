@@ -120,6 +120,11 @@ void rt_mesh3d_add_vertex(
     vt->color[3] = 1.0f;
 }
 
+/// @brief Perform mesh3d add triangle operation.
+/// @param obj
+/// @param v0
+/// @param v1
+/// @param v2
 void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2)
 {
     if (!obj)
@@ -147,6 +152,9 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2)
     m->indices[m->index_count++] = (uint32_t)v2;
 }
 
+/// @brief Perform mesh3d get vertex count operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_mesh3d_get_vertex_count(void *obj)
 {
     if (!obj)
@@ -154,6 +162,9 @@ int64_t rt_mesh3d_get_vertex_count(void *obj)
     return (int64_t)((rt_mesh3d *)obj)->vertex_count;
 }
 
+/// @brief Perform mesh3d get triangle count operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_mesh3d_get_triangle_count(void *obj)
 {
     if (!obj)
@@ -161,6 +172,8 @@ int64_t rt_mesh3d_get_triangle_count(void *obj)
     return (int64_t)(((rt_mesh3d *)obj)->index_count / 3);
 }
 
+/// @brief Perform mesh3d recalc normals operation.
+/// @param obj
 void rt_mesh3d_recalc_normals(void *obj)
 {
     if (!obj)
@@ -258,6 +271,9 @@ void *rt_mesh3d_clone(void *obj)
     return dst;
 }
 
+/// @brief Perform mesh3d transform operation.
+/// @param obj
+/// @param mat4_obj
 void rt_mesh3d_transform(void *obj, void *mat4_obj)
 {
     if (!obj || !mat4_obj)
@@ -538,6 +554,8 @@ static double obj_parse_double(const char **p)
     return val;
 }
 
+/// @brief Perform mesh3d calc tangents operation.
+/// @param obj
 void rt_mesh3d_calc_tangents(void *obj)
 {
     if (!obj)

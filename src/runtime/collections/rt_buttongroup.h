@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_buttongroup.h
 // Purpose: Button group manager for mutually exclusive selections (radio-button semantics),
 // tracking which button in a group is currently selected and notifying on changes.

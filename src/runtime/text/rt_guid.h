@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_guid.h
 // Purpose: UUID version 4 (random) generation and manipulation per RFC 4122, producing lowercase
 // hex strings in standard 8-4-4-4-12 hyphenated format.

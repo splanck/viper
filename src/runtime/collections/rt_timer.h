@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_timer.h
 // Purpose: Frame-based countdown timer using frame counts rather than wall-clock time, with
 // expiration as a one-shot edge flag and progress as an integer percentage.

@@ -637,9 +637,11 @@ void rt_postfx3d_apply_to_canvas(void *canvas)
 
 void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t samples)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
-    if (fx->effect_count >= 8) return;
+    if (fx->effect_count >= 8)
+        return;
     postfx_entry_t *e = &fx->effects[fx->effect_count++];
     e->type = POSTFX_SSAO;
     e->enabled = 1;
@@ -650,9 +652,11 @@ void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t sa
 
 void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, double max_blur)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
-    if (fx->effect_count >= 8) return;
+    if (fx->effect_count >= 8)
+        return;
     postfx_entry_t *e = &fx->effects[fx->effect_count++];
     e->type = POSTFX_DOF;
     e->enabled = 1;
@@ -663,9 +667,11 @@ void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, doub
 
 void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
-    if (fx->effect_count >= 8) return;
+    if (fx->effect_count >= 8)
+        return;
     postfx_entry_t *e = &fx->effects[fx->effect_count++];
     e->type = POSTFX_MOTION_BLUR;
     e->enabled = 1;

@@ -198,12 +198,13 @@ extern "C"
         int gutter_icon_cap;   ///< Allocated capacity
 
         // Per-editor gutter click state (edge-triggered, cleared after read)
-        bool gutter_clicked;      ///< A gutter click occurred this frame
-        int gutter_clicked_line;  ///< Line that was clicked (-1 if none)
-        int gutter_clicked_slot;  ///< Slot that was clicked (-1 if none)
+        bool gutter_clicked;     ///< A gutter click occurred this frame
+        int gutter_clicked_line; ///< Line that was clicked (-1 if none)
+        int gutter_clicked_slot; ///< Slot that was clicked (-1 if none)
 
         // Fold gutter & regions
         bool show_fold_gutter; ///< Show fold indicators in gutter
+
         struct vg_fold_region
         {
             int start_line; ///< First line of the foldable block

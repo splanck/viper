@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_gui_internal.h
 // Purpose: Shared internal header for the split rt_gui implementation modules, declaring the global
 // application pointer, default font state, and common helper functions.
@@ -115,7 +118,8 @@ void rt_gui_set_last_clicked(void *widget);
 /// @param dlg Dialog handle (vg_dialog_t*), or NULL to clear.
 void rt_gui_set_active_dialog(void *dlg);
 
-/// @brief Free global resources owned by rt_gui_features.c (tooltip, notification manager, file drop).
+/// @brief Free global resources owned by rt_gui_features.c (tooltip, notification manager, file
+/// drop).
 /// @details Called from rt_gui_app_destroy. Defined in rt_gui_features.c.
 void rt_gui_features_cleanup(void);
 

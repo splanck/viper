@@ -49,6 +49,8 @@ struct rt_timer_impl
     int8_t repeating; // 1 if timer auto-restarts
 };
 
+/// @brief Create a new new instance.
+/// @return Result value.
 rt_timer rt_timer_new(void)
 {
     struct rt_timer_impl *timer =
@@ -66,12 +68,17 @@ rt_timer rt_timer_new(void)
     return timer;
 }
 
+/// @brief Destroy and free destroy resources.
+/// @param timer
 void rt_timer_destroy(rt_timer timer)
 {
     if (timer && rt_obj_release_check0(timer))
         rt_obj_free(timer);
 }
 
+/// @brief Start start.
+/// @param timer
+/// @param frames
 void rt_timer_start(rt_timer timer, int64_t frames)
 {
     if (!timer || frames <= 0)
@@ -83,6 +90,9 @@ void rt_timer_start(rt_timer timer, int64_t frames)
     timer->repeating = 0;
 }
 
+/// @brief Start repeating.
+/// @param timer
+/// @param frames
 void rt_timer_start_repeating(rt_timer timer, int64_t frames)
 {
     if (!timer || frames <= 0)
@@ -94,6 +104,8 @@ void rt_timer_start_repeating(rt_timer timer, int64_t frames)
     timer->repeating = 1;
 }
 
+/// @brief Stop stop.
+/// @param timer
 void rt_timer_stop(rt_timer timer)
 {
     if (!timer)
@@ -101,6 +113,8 @@ void rt_timer_stop(rt_timer timer)
     timer->running = 0;
 }
 
+/// @brief Reset reset to initial state.
+/// @param timer
 void rt_timer_reset(rt_timer timer)
 {
     if (!timer)
@@ -108,6 +122,9 @@ void rt_timer_reset(rt_timer timer)
     timer->elapsed = 0;
 }
 
+/// @brief Update update state for current frame.
+/// @param timer
+/// @return Result value.
 int8_t rt_timer_update(rt_timer timer)
 {
     if (!timer || !timer->running)
@@ -134,11 +151,17 @@ int8_t rt_timer_update(rt_timer timer)
     return 0;
 }
 
+/// @brief Check if running.
+/// @param timer
+/// @return Result value.
 int8_t rt_timer_is_running(rt_timer timer)
 {
     return timer ? timer->running : 0;
 }
 
+/// @brief Check if expired.
+/// @param timer
+/// @return Result value.
 int8_t rt_timer_is_expired(rt_timer timer)
 {
     if (!timer)
@@ -146,11 +169,17 @@ int8_t rt_timer_is_expired(rt_timer timer)
     return (!timer->running && timer->elapsed >= timer->duration) ? 1 : 0;
 }
 
+/// @brief Perform elapsed operation.
+/// @param timer
+/// @return Result value.
 int64_t rt_timer_elapsed(rt_timer timer)
 {
     return timer ? timer->elapsed : 0;
 }
 
+/// @brief Perform remaining operation.
+/// @param timer
+/// @return Result value.
 int64_t rt_timer_remaining(rt_timer timer)
 {
     if (!timer || timer->duration == 0)
@@ -160,6 +189,9 @@ int64_t rt_timer_remaining(rt_timer timer)
     return (remaining > 0) ? remaining : 0;
 }
 
+/// @brief Perform progress operation.
+/// @param timer
+/// @return Result value.
 int64_t rt_timer_progress(rt_timer timer)
 {
     if (!timer || timer->duration == 0)
@@ -169,16 +201,25 @@ int64_t rt_timer_progress(rt_timer timer)
     return (progress > 100) ? 100 : progress;
 }
 
+/// @brief Perform duration operation.
+/// @param timer
+/// @return Result value.
 int64_t rt_timer_duration(rt_timer timer)
 {
     return timer ? timer->duration : 0;
 }
 
+/// @brief Check if repeating.
+/// @param timer
+/// @return Result value.
 int8_t rt_timer_is_repeating(rt_timer timer)
 {
     return timer ? timer->repeating : 0;
 }
 
+/// @brief Set the duration value.
+/// @param timer
+/// @param frames
 void rt_timer_set_duration(rt_timer timer, int64_t frames)
 {
     if (!timer || frames <= 0)

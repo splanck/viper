@@ -80,7 +80,9 @@ TEST(movement)
 {
     rt_pathfollow path = rt_pathfollow_new();
     rt_pathfollow_add_point(path, 0, 0);
+    /// @brief Rt_pathfollow_add_point.
     rt_pathfollow_add_point(path, 100000, 0); // 100 units right
+                                              /// @brief Rt_pathfollow_set_speed.
     rt_pathfollow_set_speed(path, 50000);     // 50 units/sec
     rt_pathfollow_start(path);
 
@@ -96,8 +98,10 @@ TEST(once_mode)
 {
     rt_pathfollow path = rt_pathfollow_new();
     rt_pathfollow_add_point(path, 0, 0);
+    /// @brief Rt_pathfollow_add_point.
     rt_pathfollow_add_point(path, 10000, 0); // Short path
     rt_pathfollow_set_mode(path, RT_PATHFOLLOW_ONCE);
+    /// @brief Rt_pathfollow_set_speed.
     rt_pathfollow_set_speed(path, 100000); // Fast
     rt_pathfollow_start(path);
 
@@ -172,6 +176,7 @@ TEST(progress)
 
     ASSERT(rt_pathfollow_get_progress(path) == 0);
 
+    /// @brief Rt_pathfollow_update.
     rt_pathfollow_update(path, 1000); // Move 50 units
     int64_t progress = rt_pathfollow_get_progress(path);
     ASSERT(progress >= 400 && progress <= 600); // ~500 (50%)
@@ -185,6 +190,7 @@ TEST(set_progress)
     rt_pathfollow_add_point(path, 0, 0);
     rt_pathfollow_add_point(path, 100000, 0);
 
+    /// @brief Rt_pathfollow_set_progress.
     rt_pathfollow_set_progress(path, 500); // 50%
     int64_t x = rt_pathfollow_get_x(path);
     ASSERT(x >= 45000 && x <= 55000); // ~50 units
@@ -212,6 +218,7 @@ TEST(segment)
     rt_pathfollow_add_point(path, 0, 0);
     rt_pathfollow_add_point(path, 100000, 0);
     rt_pathfollow_add_point(path, 100000, 100000);
+    /// @brief Rt_pathfollow_set_speed.
     rt_pathfollow_set_speed(path, 150000); // Fast
     rt_pathfollow_start(path);
 
@@ -224,6 +231,7 @@ TEST(segment)
     rt_pathfollow_destroy(path);
 }
 
+/// @brief Main.
 int main()
 {
     printf("RTPathFollowTests:\n");

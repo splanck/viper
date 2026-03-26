@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/system/rt_machine.h
 // Purpose: System information queries for Viper.Machine providing OS name, version, hostname,
 // username, home/temp directories, CPU count, and memory statistics.

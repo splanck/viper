@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_button.c
+//
+//===----------------------------------------------------------------------===//
 // vg_button.c - Button widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -342,6 +352,7 @@ const char *vg_button_get_text(vg_button_t *button)
     return button ? button->text : NULL;
 }
 
+/// @brief Button set on click.
 void vg_button_set_on_click(vg_button_t *button, vg_button_callback_t callback, void *user_data)
 {
     if (!button)
@@ -351,6 +362,7 @@ void vg_button_set_on_click(vg_button_t *button, vg_button_callback_t callback, 
     button->user_data = user_data;
 }
 
+/// @brief Button set style.
 void vg_button_set_style(vg_button_t *button, vg_button_style_t style)
 {
     if (!button)
@@ -387,6 +399,7 @@ void vg_button_set_style(vg_button_t *button, vg_button_style_t style)
     button->base.needs_paint = true;
 }
 
+/// @brief Button set font.
 void vg_button_set_font(vg_button_t *button, vg_font_t *font, float size)
 {
     if (!button)
@@ -398,6 +411,7 @@ void vg_button_set_font(vg_button_t *button, vg_font_t *font, float size)
     button->base.needs_paint = true;
 }
 
+/// @brief Button set icon.
 void vg_button_set_icon(vg_button_t *button, const char *icon)
 {
     if (!button)
@@ -409,6 +423,7 @@ void vg_button_set_icon(vg_button_t *button, const char *icon)
     button->base.needs_paint = true;
 }
 
+/// @brief Button set icon position.
 void vg_button_set_icon_position(vg_button_t *button, int pos)
 {
     if (!button)

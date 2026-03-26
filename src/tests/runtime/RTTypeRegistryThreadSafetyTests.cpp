@@ -20,11 +20,11 @@
 #include "rt_oop.h"
 
 #include <assert.h>
+#include <atomic>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <thread>
-#include <atomic>
 #include <vector>
 
 // Mock vtables for test classes
@@ -34,6 +34,7 @@ static void *vtable_c[1] = {nullptr};
 
 // Mock interface table
 static void mock_method(void) {}
+
 static void *itable_a[1] = {(void *)mock_method};
 
 // Type and interface IDs
@@ -148,6 +149,7 @@ static void test_concurrent_interface_lookup()
     {
         void **vptr;
     };
+
     MockObj obj_a = {vtable_a};
     MockObj obj_b = {vtable_b};
     MockObj obj_c = {vtable_c};

@@ -26,11 +26,11 @@ extern "C"
 {
 #endif
 
-    void   *rt_texatlas3d_new(int64_t width, int64_t height);
+    void *rt_texatlas3d_new(int64_t width, int64_t height);
     int64_t rt_texatlas3d_add(void *atlas, void *pixels);
-    void   *rt_texatlas3d_get_texture(void *atlas);
-    void    rt_texatlas3d_get_uv_rect(void *atlas, int64_t id,
-                                       double *u0, double *v0, double *u1, double *v1);
+    void *rt_texatlas3d_get_texture(void *atlas);
+    void rt_texatlas3d_get_uv_rect(
+        void *atlas, int64_t id, double *u0, double *v0, double *u1, double *v1);
 
 #ifdef __cplusplus
 }

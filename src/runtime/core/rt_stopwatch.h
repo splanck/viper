@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_stopwatch.h
 // Purpose: High-precision stopwatch for benchmarking and performance measurement, supporting
 // start/stop/reset operations and elapsed-time queries in nanoseconds, microseconds, and

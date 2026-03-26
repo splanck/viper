@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_trie.h
 // Purpose: Prefix tree (Trie) for string keys supporting insertion, lookup, prefix search, and
 // auto-complete queries with O(k) operations where k is the key length.

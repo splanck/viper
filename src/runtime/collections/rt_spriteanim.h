@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_spriteanim.h
 // Purpose: Frame-based sprite animation controller tracking frame index, timing, playback mode
 // (loop/ping-pong), and speed for game sprite animations.

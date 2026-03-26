@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_progressbar.c
+//
+//===----------------------------------------------------------------------===//
 // vg_progressbar.c - ProgressBar widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_widgets.h"
@@ -118,6 +128,7 @@ vg_progressbar_t *vg_progressbar_create(vg_widget_t *parent)
     return progress;
 }
 
+/// @brief Progressbar set value.
 void vg_progressbar_set_value(vg_progressbar_t *progress, float value)
 {
     if (!progress)
@@ -129,11 +140,13 @@ void vg_progressbar_set_value(vg_progressbar_t *progress, float value)
     progress->value = value;
 }
 
+/// @brief Progressbar get value.
 float vg_progressbar_get_value(vg_progressbar_t *progress)
 {
     return progress ? progress->value : 0;
 }
 
+/// @brief Progressbar set style.
 void vg_progressbar_set_style(vg_progressbar_t *progress, vg_progress_style_t style)
 {
     if (!progress)
@@ -141,6 +154,7 @@ void vg_progressbar_set_style(vg_progressbar_t *progress, vg_progress_style_t st
     progress->style = style;
 }
 
+/// @brief Progressbar show percentage.
 void vg_progressbar_show_percentage(vg_progressbar_t *progress, bool show)
 {
     if (!progress)
@@ -148,6 +162,7 @@ void vg_progressbar_show_percentage(vg_progressbar_t *progress, bool show)
     progress->show_percentage = show;
 }
 
+/// @brief Progressbar tick.
 void vg_progressbar_tick(vg_progressbar_t *progress, float dt)
 {
     if (!progress)

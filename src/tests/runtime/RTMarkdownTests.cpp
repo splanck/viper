@@ -142,6 +142,7 @@ static void test_null_safety()
     assert(rt_seq_len(headings) == 0);
 }
 
+/// @brief Main.
 int main()
 {
     test_heading();

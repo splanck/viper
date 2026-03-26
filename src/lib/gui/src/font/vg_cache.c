@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/font/vg_cache.c
+//
+//===----------------------------------------------------------------------===//
 // vg_cache.c - Glyph cache implementation
 #include "vg_ttf_internal.h"
 #include <stdlib.h>
@@ -60,6 +70,7 @@ static void free_entry(vg_cache_entry_t *entry)
     free(entry);
 }
 
+/// @brief Cache destroy.
 void vg_cache_destroy(vg_glyph_cache_t *cache)
 {
     if (!cache)

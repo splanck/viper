@@ -226,6 +226,9 @@ void *rt_concmap_new(void)
     return cm;
 }
 
+/// @brief Perform concmap len operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_concmap_len(void *obj)
 {
     if (!obj)
@@ -237,11 +240,18 @@ int64_t rt_concmap_len(void *obj)
     return len;
 }
 
+/// @brief Perform concmap is empty operation.
+/// @param obj
+/// @return Result value.
 int8_t rt_concmap_is_empty(void *obj)
 {
     return rt_concmap_len(obj) == 0 ? 1 : 0;
 }
 
+/// @brief Perform concmap set operation.
+/// @param obj
+/// @param key
+/// @param value
 void rt_concmap_set(void *obj, rt_string key, void *value)
 {
     if (!obj)
@@ -330,6 +340,10 @@ void *rt_concmap_get_or(void *obj, rt_string key, void *default_value)
     return result;
 }
 
+/// @brief Perform concmap has operation.
+/// @param obj
+/// @param key
+/// @return Result value.
 int8_t rt_concmap_has(void *obj, rt_string key)
 {
     if (!obj)
@@ -347,6 +361,11 @@ int8_t rt_concmap_has(void *obj, rt_string key)
     return found;
 }
 
+/// @brief Perform concmap set if missing operation.
+/// @param obj
+/// @param key
+/// @param value
+/// @return Result value.
 int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value)
 {
     if (!obj)
@@ -395,6 +414,10 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value)
     return 1;
 }
 
+/// @brief Perform concmap remove operation.
+/// @param obj
+/// @param key
+/// @return Result value.
 int8_t rt_concmap_remove(void *obj, rt_string key)
 {
     if (!obj)
@@ -427,6 +450,8 @@ int8_t rt_concmap_remove(void *obj, rt_string key)
     return 0;
 }
 
+/// @brief Perform concmap clear operation.
+/// @param obj
 void rt_concmap_clear(void *obj)
 {
     if (!obj)

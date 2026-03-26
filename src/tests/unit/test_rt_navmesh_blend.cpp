@@ -15,41 +15,58 @@
 #include "rt.hpp"
 #include "rt_internal.h"
 #include "rt_navmesh3d.h"
-#include "rt_skeleton3d.h"
 #include "rt_path3d.h"
+#include "rt_skeleton3d.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 
-extern "C" {
-extern void *rt_vec3_new(double x, double y, double z);
-extern double rt_vec3_x(void *v);
-extern double rt_vec3_y(void *v);
-extern double rt_vec3_z(void *v);
-extern void *rt_mesh3d_new_plane(double sx, double sz);
-extern void *rt_mesh3d_new_box(double sx, double sy, double sz);
-extern int64_t rt_path3d_get_point_count(void *path);
-extern void *rt_mat4_identity(void);
-extern void *rt_skeleton3d_new(void);
-extern int64_t rt_skeleton3d_add_bone(void *s, rt_string n, int64_t p, void *m);
-extern void rt_skeleton3d_compute_inverse_bind(void *s);
-extern void *rt_animation3d_new(rt_string name, double duration);
+extern "C"
+{
+    extern void *rt_vec3_new(double x, double y, double z);
+    extern double rt_vec3_x(void *v);
+    extern double rt_vec3_y(void *v);
+    extern double rt_vec3_z(void *v);
+    extern void *rt_mesh3d_new_plane(double sx, double sz);
+    extern void *rt_mesh3d_new_box(double sx, double sy, double sz);
+    extern int64_t rt_path3d_get_point_count(void *path);
+    extern void *rt_mat4_identity(void);
+    extern void *rt_skeleton3d_new(void);
+    extern int64_t rt_skeleton3d_add_bone(void *s, rt_string n, int64_t p, void *m);
+    extern void rt_skeleton3d_compute_inverse_bind(void *s);
+    extern void *rt_animation3d_new(rt_string name, double duration);
 }
 
 static int tests_passed = 0;
 static int tests_run = 0;
 
-#define EXPECT_TRUE(cond, msg) do { \
-    tests_run++; \
-    if (!(cond)) { fprintf(stderr, "FAIL: %s\n", msg); } \
-    else { tests_passed++; } \
-} while(0)
+#define EXPECT_TRUE(cond, msg)                                                                     \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL: %s\n", msg);                                                    \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
-#define EXPECT_NEAR(a, b, eps, msg) do { \
-    tests_run++; \
-    if (fabs((double)(a) - (double)(b)) > (eps)) { fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b)); } \
-    else { tests_passed++; } \
-} while(0)
+#define EXPECT_NEAR(a, b, eps, msg)                                                                \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (fabs((double)(a) - (double)(b)) > (eps))                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b));    \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
 /*==========================================================================
  * NavMesh3D tests

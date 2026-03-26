@@ -25,6 +25,7 @@ using namespace il::core;
 
 namespace
 {
+/// @brief Make registry.
 il::transform::AnalysisRegistry makeRegistry()
 {
     il::transform::AnalysisRegistry registry;

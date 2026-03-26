@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_vec3.h
 // Purpose: 3D vector math utilities for Viper.Vec3 with immutable value semantics, providing
 // arithmetic, dot product, cross product, magnitude, normalization, and lerp.

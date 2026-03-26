@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/oop/rt_sb_bridge.h
 // Purpose: Prototypes for the StringBuilder bridge that creates a heap-managed,
 // reference-counted StringBuilder object for Viper.Text.StringBuilder.

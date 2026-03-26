@@ -14,40 +14,69 @@
 
 #include "rt.hpp"
 #include "rt_internal.h"
-#include "rt_transform3d.h"
 #include "rt_path3d.h"
+#include "rt_transform3d.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 
-extern "C" {
-extern void *rt_vec3_new(double x, double y, double z);
-extern double rt_vec3_x(void *v);
-extern double rt_vec3_y(void *v);
-extern double rt_vec3_z(void *v);
-extern void *rt_quat_new(double x, double y, double z, double w);
-extern double rt_quat_w(void *q);
-extern void *rt_mat4_new(double m0, double m1, double m2, double m3,
-                          double m4, double m5, double m6, double m7,
-                          double m8, double m9, double m10, double m11,
-                          double m12, double m13, double m14, double m15);
-extern double rt_mat4_get(void *m, int64_t r, int64_t c);
+extern "C"
+{
+    extern void *rt_vec3_new(double x, double y, double z);
+    extern double rt_vec3_x(void *v);
+    extern double rt_vec3_y(void *v);
+    extern double rt_vec3_z(void *v);
+    extern void *rt_quat_new(double x, double y, double z, double w);
+    extern double rt_quat_w(void *q);
+    extern void *rt_mat4_new(double m0,
+                             double m1,
+                             double m2,
+                             double m3,
+                             double m4,
+                             double m5,
+                             double m6,
+                             double m7,
+                             double m8,
+                             double m9,
+                             double m10,
+                             double m11,
+                             double m12,
+                             double m13,
+                             double m14,
+                             double m15);
+    extern double rt_mat4_get(void *m, int64_t r, int64_t c);
 }
 
 static int tests_passed = 0;
 static int tests_run = 0;
 
-#define EXPECT_TRUE(cond, msg) do { \
-    tests_run++; \
-    if (!(cond)) { fprintf(stderr, "FAIL: %s\n", msg); } \
-    else { tests_passed++; } \
-} while(0)
+#define EXPECT_TRUE(cond, msg)                                                                     \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL: %s\n", msg);                                                    \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
-#define EXPECT_NEAR(a, b, eps, msg) do { \
-    tests_run++; \
-    if (fabs((double)(a) - (double)(b)) > (eps)) { fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b)); } \
-    else { tests_passed++; } \
-} while(0)
+#define EXPECT_NEAR(a, b, eps, msg)                                                                \
+    do                                                                                             \
+    {                                                                                              \
+        tests_run++;                                                                               \
+        if (fabs((double)(a) - (double)(b)) > (eps))                                               \
+        {                                                                                          \
+            fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b));    \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
 /*==========================================================================
  * Transform3D tests
@@ -120,9 +149,9 @@ static void test_transform_euler()
 static void test_transform_dirty_flag()
 {
     void *xf = rt_transform3d_new();
-    void *mat1 = rt_transform3d_get_matrix(xf); /* triggers compute */
+    void *mat1 = rt_transform3d_get_matrix(xf);     /* triggers compute */
     rt_transform3d_set_position(xf, 5.0, 0.0, 0.0); /* marks dirty */
-    void *mat2 = rt_transform3d_get_matrix(xf); /* triggers recompute */
+    void *mat2 = rt_transform3d_get_matrix(xf);     /* triggers recompute */
     EXPECT_NEAR(rt_mat4_get(mat2, 0, 3), 5.0, 0.01, "Dirty flag: new position reflected");
     (void)mat1;
 }
@@ -201,7 +230,7 @@ static void test_path_looping()
     void *p1 = rt_path3d_get_position_at(path, 1.0);
     double dx = rt_vec3_x(p1) - rt_vec3_x(p0);
     double dy = rt_vec3_y(p1) - rt_vec3_y(p0);
-    EXPECT_NEAR(sqrt(dx*dx + dy*dy), 0.0, 1.0, "Looping path: t=0 ≈ t=1");
+    EXPECT_NEAR(sqrt(dx * dx + dy * dy), 0.0, 1.0, "Looping path: t=0 ≈ t=1");
 }
 
 static void test_path_clear()

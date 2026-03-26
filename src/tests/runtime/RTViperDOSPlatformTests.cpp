@@ -1,4 +1,7 @@
 //===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // RTViperDOSPlatformTests.cpp - Platform abstraction and GC integration tests
 //===----------------------------------------------------------------------===//
 //
@@ -29,6 +32,7 @@ extern "C"
 #include "rt_serialize.h"
 #include "rt_string.h"
 
+    /// @brief Vm_trap.
     void vm_trap(const char *msg)
     {
         fprintf(stderr, "TRAP: %s\n", msg);

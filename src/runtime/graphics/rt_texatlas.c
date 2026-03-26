@@ -57,7 +57,7 @@ typedef struct
 
 typedef struct
 {
-    void *pixels;                              // Retained backing Pixels
+    void *pixels; // Retained backing Pixels
     texatlas_region regions[TEXATLAS_MAX_REGIONS];
     int32_t region_count;
     int32_t region_slots[TEXATLAS_HASH_SIZE]; // index + 1, 0 = empty
@@ -95,8 +95,7 @@ static int find_region(texatlas_impl *impl, const char *name)
         if (entry == 0)
             return -1;
         int idx = entry - 1;
-        if (idx >= 0 && idx < impl->region_count &&
-            strcmp(impl->regions[idx].name, name) == 0)
+        if (idx >= 0 && idx < impl->region_count && strcmp(impl->regions[idx].name, name) == 0)
             return idx;
     }
     return -1;
@@ -141,8 +140,7 @@ void *rt_texatlas_new(void *pixels)
         return NULL;
     }
 
-    texatlas_impl *impl =
-        (texatlas_impl *)rt_obj_new_i64(0, (int64_t)sizeof(texatlas_impl));
+    texatlas_impl *impl = (texatlas_impl *)rt_obj_new_i64(0, (int64_t)sizeof(texatlas_impl));
     if (!impl)
         return NULL;
 
@@ -193,6 +191,13 @@ void *rt_texatlas_load_grid(void *pixels, int64_t frame_w, int64_t frame_h)
 // Region Management
 //=============================================================================
 
+/// @brief Perform texatlas add operation.
+/// @param atlas
+/// @param name
+/// @param x
+/// @param y
+/// @param w
+/// @param h
 void rt_texatlas_add(void *atlas, void *name, int64_t x, int64_t y, int64_t w, int64_t h)
 {
     if (!atlas || !name)
@@ -240,6 +245,10 @@ void rt_texatlas_add(void *atlas, void *name, int64_t x, int64_t y, int64_t w, i
     bind_region_slot(impl, existing >= 0 ? existing : impl->region_count - 1);
 }
 
+/// @brief Perform texatlas has operation.
+/// @param atlas
+/// @param name
+/// @return Result value.
 int8_t rt_texatlas_has(void *atlas, void *name)
 {
     if (!atlas || !name)
@@ -251,6 +260,10 @@ int8_t rt_texatlas_has(void *atlas, void *name)
     return find_region(impl, cname) >= 0 ? 1 : 0;
 }
 
+/// @brief Perform texatlas get x operation.
+/// @param atlas
+/// @param name
+/// @return Result value.
 int64_t rt_texatlas_get_x(void *atlas, void *name)
 {
     if (!atlas || !name)
@@ -263,6 +276,10 @@ int64_t rt_texatlas_get_x(void *atlas, void *name)
     return idx >= 0 ? impl->regions[idx].x : 0;
 }
 
+/// @brief Perform texatlas get y operation.
+/// @param atlas
+/// @param name
+/// @return Result value.
 int64_t rt_texatlas_get_y(void *atlas, void *name)
 {
     if (!atlas || !name)
@@ -275,6 +292,10 @@ int64_t rt_texatlas_get_y(void *atlas, void *name)
     return idx >= 0 ? impl->regions[idx].y : 0;
 }
 
+/// @brief Perform texatlas get w operation.
+/// @param atlas
+/// @param name
+/// @return Result value.
 int64_t rt_texatlas_get_w(void *atlas, void *name)
 {
     if (!atlas || !name)
@@ -287,6 +308,10 @@ int64_t rt_texatlas_get_w(void *atlas, void *name)
     return idx >= 0 ? impl->regions[idx].w : 0;
 }
 
+/// @brief Perform texatlas get h operation.
+/// @param atlas
+/// @param name
+/// @return Result value.
 int64_t rt_texatlas_get_h(void *atlas, void *name)
 {
     if (!atlas || !name)
@@ -306,6 +331,9 @@ void *rt_texatlas_get_pixels(void *atlas)
     return get_impl(atlas)->pixels;
 }
 
+/// @brief Perform texatlas region count operation.
+/// @param atlas
+/// @return Result value.
 int64_t rt_texatlas_region_count(void *atlas)
 {
     if (!atlas)
@@ -320,8 +348,7 @@ int64_t rt_texatlas_region_count(void *atlas)
 // These are thin wrappers that resolve the named region and delegate to
 // the existing rt_spritebatch_draw_region function.
 
-void rt_spritebatch_draw_atlas(void *batch, void *atlas, void *name,
-                               int64_t x, int64_t y)
+void rt_spritebatch_draw_atlas(void *batch, void *atlas, void *name, int64_t x, int64_t y)
 {
     if (!batch || !atlas || !name)
         return;
@@ -338,8 +365,8 @@ void rt_spritebatch_draw_atlas(void *batch, void *atlas, void *name,
     rt_spritebatch_draw_region(batch, impl->pixels, x, y, r->x, r->y, r->w, r->h);
 }
 
-void rt_spritebatch_draw_atlas_scaled(void *batch, void *atlas, void *name,
-                                      int64_t x, int64_t y, int64_t scale)
+void rt_spritebatch_draw_atlas_scaled(
+    void *batch, void *atlas, void *name, int64_t x, int64_t y, int64_t scale)
 {
     if (!batch || !atlas || !name)
         return;
@@ -357,9 +384,14 @@ void rt_spritebatch_draw_atlas_scaled(void *batch, void *atlas, void *name,
         batch, impl->pixels, x, y, r->x, r->y, r->w, r->h, scale, scale, 0, 0);
 }
 
-void rt_spritebatch_draw_atlas_ex(void *batch, void *atlas, void *name,
-                                  int64_t x, int64_t y, int64_t scale,
-                                  int64_t rotation, int64_t depth)
+void rt_spritebatch_draw_atlas_ex(void *batch,
+                                  void *atlas,
+                                  void *name,
+                                  int64_t x,
+                                  int64_t y,
+                                  int64_t scale,
+                                  int64_t rotation,
+                                  int64_t depth)
 {
     if (!batch || !atlas || !name)
         return;
@@ -378,18 +410,159 @@ void rt_spritebatch_draw_atlas_ex(void *batch, void *atlas, void *name,
 #else /* !VIPER_ENABLE_GRAPHICS */
 
 // Stubs when graphics is disabled
-void *rt_texatlas_new(void *pixels) { (void)pixels; return 0; }
-void *rt_texatlas_load_grid(void *p, int64_t w, int64_t h) { (void)p; (void)w; (void)h; return 0; }
-void rt_texatlas_add(void *a, void *n, int64_t x, int64_t y, int64_t w, int64_t h) { (void)a; (void)n; (void)x; (void)y; (void)w; (void)h; }
-int8_t rt_texatlas_has(void *a, void *n) { (void)a; (void)n; return 0; }
-int64_t rt_texatlas_get_x(void *a, void *n) { (void)a; (void)n; return 0; }
-int64_t rt_texatlas_get_y(void *a, void *n) { (void)a; (void)n; return 0; }
-int64_t rt_texatlas_get_w(void *a, void *n) { (void)a; (void)n; return 0; }
-int64_t rt_texatlas_get_h(void *a, void *n) { (void)a; (void)n; return 0; }
-void *rt_texatlas_get_pixels(void *a) { (void)a; return 0; }
-int64_t rt_texatlas_region_count(void *a) { (void)a; return 0; }
-void rt_spritebatch_draw_atlas(void *b, void *a, void *n, int64_t x, int64_t y) { (void)b; (void)a; (void)n; (void)x; (void)y; }
-void rt_spritebatch_draw_atlas_scaled(void *b, void *a, void *n, int64_t x, int64_t y, int64_t s) { (void)b; (void)a; (void)n; (void)x; (void)y; (void)s; }
-void rt_spritebatch_draw_atlas_ex(void *b, void *a, void *n, int64_t x, int64_t y, int64_t s, int64_t r, int64_t d) { (void)b; (void)a; (void)n; (void)x; (void)y; (void)s; (void)r; (void)d; }
+void *rt_texatlas_new(void *pixels)
+{
+    (void)pixels;
+    return 0;
+}
+
+void *rt_texatlas_load_grid(void *p, int64_t w, int64_t h)
+{
+    (void)p;
+    (void)w;
+    (void)h;
+    return 0;
+}
+
+/// @brief Perform texatlas add operation.
+/// @param a
+/// @param n
+/// @param x
+/// @param y
+/// @param w
+/// @param h
+void rt_texatlas_add(void *a, void *n, int64_t x, int64_t y, int64_t w, int64_t h)
+{
+    (void)a;
+    (void)n;
+    (void)x;
+    (void)y;
+    (void)w;
+    (void)h;
+}
+
+/// @brief Perform texatlas has operation.
+/// @param a
+/// @param n
+/// @return Result value.
+int8_t rt_texatlas_has(void *a, void *n)
+{
+    (void)a;
+    (void)n;
+    return 0;
+}
+
+/// @brief Perform texatlas get x operation.
+/// @param a
+/// @param n
+/// @return Result value.
+int64_t rt_texatlas_get_x(void *a, void *n)
+{
+    (void)a;
+    (void)n;
+    return 0;
+}
+
+/// @brief Perform texatlas get y operation.
+/// @param a
+/// @param n
+/// @return Result value.
+int64_t rt_texatlas_get_y(void *a, void *n)
+{
+    (void)a;
+    (void)n;
+    return 0;
+}
+
+/// @brief Perform texatlas get w operation.
+/// @param a
+/// @param n
+/// @return Result value.
+int64_t rt_texatlas_get_w(void *a, void *n)
+{
+    (void)a;
+    (void)n;
+    return 0;
+}
+
+/// @brief Perform texatlas get h operation.
+/// @param a
+/// @param n
+/// @return Result value.
+int64_t rt_texatlas_get_h(void *a, void *n)
+{
+    (void)a;
+    (void)n;
+    return 0;
+}
+
+void *rt_texatlas_get_pixels(void *a)
+{
+    (void)a;
+    return 0;
+}
+
+/// @brief Perform texatlas region count operation.
+/// @param a
+/// @return Result value.
+int64_t rt_texatlas_region_count(void *a)
+{
+    (void)a;
+    return 0;
+}
+
+/// @brief Perform spritebatch draw atlas operation.
+/// @param b
+/// @param a
+/// @param n
+/// @param x
+/// @param y
+void rt_spritebatch_draw_atlas(void *b, void *a, void *n, int64_t x, int64_t y)
+{
+    (void)b;
+    (void)a;
+    (void)n;
+    (void)x;
+    (void)y;
+}
+
+/// @brief Perform spritebatch draw atlas scaled operation.
+/// @param b
+/// @param a
+/// @param n
+/// @param x
+/// @param y
+/// @param s
+void rt_spritebatch_draw_atlas_scaled(void *b, void *a, void *n, int64_t x, int64_t y, int64_t s)
+{
+    (void)b;
+    (void)a;
+    (void)n;
+    (void)x;
+    (void)y;
+    (void)s;
+}
+
+/// @brief Perform spritebatch draw atlas ex operation.
+/// @param b
+/// @param a
+/// @param n
+/// @param x
+/// @param y
+/// @param s
+/// @param r
+/// @param d
+void rt_spritebatch_draw_atlas_ex(
+    void *b, void *a, void *n, int64_t x, int64_t y, int64_t s, int64_t r, int64_t d)
+{
+    (void)b;
+    (void)a;
+    (void)n;
+    (void)x;
+    (void)y;
+    (void)s;
+    (void)r;
+    (void)d;
+}
 
 #endif /* VIPER_ENABLE_GRAPHICS */

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_pathfollow.h
 // Purpose: Path follower for moving objects along waypoint paths with linear interpolation,
 // supporting one-shot, looping, and ping-pong traversal modes.

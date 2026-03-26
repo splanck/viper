@@ -108,7 +108,12 @@ typedef struct rt_scene_node3d
     float bsphere_radius;
 
     /* LOD levels (F1) — sorted by distance ascending */
-    struct { double distance; void *mesh; } *lod_levels;
+    struct
+    {
+        double distance;
+        void *mesh;
+    } *lod_levels;
+
     int32_t lod_count;
     int32_t lod_capacity;
 } rt_scene_node3d;
@@ -734,14 +739,14 @@ int64_t rt_scene3d_get_culled_count(void *obj)
 
 void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh)
 {
-    if (!obj || !mesh) return;
+    if (!obj || !mesh)
+        return;
     rt_scene_node3d *node = (rt_scene_node3d *)obj;
 
     if (node->lod_count >= node->lod_capacity)
     {
         int32_t new_cap = node->lod_capacity < 4 ? 4 : node->lod_capacity * 2;
-        void *tmp = realloc(node->lod_levels,
-                            (size_t)new_cap * sizeof(node->lod_levels[0]));
+        void *tmp = realloc(node->lod_levels, (size_t)new_cap * sizeof(node->lod_levels[0]));
         if (!tmp)
             return;
         node->lod_levels = tmp;
@@ -769,7 +774,8 @@ void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh)
 
 void rt_scene_node3d_clear_lod(void *obj)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_scene_node3d *node = (rt_scene_node3d *)obj;
     node->lod_count = 0;
 }

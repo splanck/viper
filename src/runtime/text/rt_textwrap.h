@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_textwrap.h
 // Purpose: Text wrapping utilities for formatting text to specified column widths, supporting word
 // wrapping, hyphenation hints, and indentation.

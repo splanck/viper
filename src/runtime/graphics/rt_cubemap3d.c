@@ -191,6 +191,9 @@ void rt_cubemap_sample(
 // Canvas3D skybox
 //=============================================================================
 
+/// @brief Perform canvas3d set skybox operation.
+/// @param canvas
+/// @param cubemap
 void rt_canvas3d_set_skybox(void *canvas, void *cubemap)
 {
     if (!canvas)
@@ -198,6 +201,8 @@ void rt_canvas3d_set_skybox(void *canvas, void *cubemap)
     ((rt_canvas3d *)canvas)->skybox = (rt_cubemap3d *)cubemap;
 }
 
+/// @brief Perform canvas3d clear skybox operation.
+/// @param canvas
 void rt_canvas3d_clear_skybox(void *canvas)
 {
     if (!canvas)
@@ -209,6 +214,9 @@ void rt_canvas3d_clear_skybox(void *canvas)
 // Material3D env map + reflectivity
 //=============================================================================
 
+/// @brief Perform material3d set env map operation.
+/// @param obj
+/// @param cubemap
 void rt_material3d_set_env_map(void *obj, void *cubemap)
 {
     if (!obj)
@@ -216,6 +224,9 @@ void rt_material3d_set_env_map(void *obj, void *cubemap)
     ((rt_material3d *)obj)->env_map = cubemap;
 }
 
+/// @brief Perform material3d set reflectivity operation.
+/// @param obj
+/// @param r
 void rt_material3d_set_reflectivity(void *obj, double r)
 {
     if (!obj)
@@ -223,6 +234,9 @@ void rt_material3d_set_reflectivity(void *obj, double r)
     ((rt_material3d *)obj)->reflectivity = r;
 }
 
+/// @brief Perform material3d get reflectivity operation.
+/// @param obj
+/// @return Result value.
 double rt_material3d_get_reflectivity(void *obj)
 {
     if (!obj)

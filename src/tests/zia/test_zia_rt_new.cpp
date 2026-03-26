@@ -46,6 +46,7 @@ TEST(ZiaRtNew, FrozenSetNew)
     EXPECT_TRUE(compileOk(R"(
 module TestFS;
 bind Viper.Collections;
+/// @brief Start.
 func start() {
     var s = new Seq();
     var x = new FrozenSet(s);
@@ -59,6 +60,7 @@ TEST(ZiaRtNew, FrozenMapNew)
     EXPECT_TRUE(compileOk(R"(
 module TestFM;
 bind Viper.Collections;
+/// @brief Start.
 func start() {
     var keys = new Seq();
     var vals = new Seq();
@@ -73,6 +75,7 @@ TEST(ZiaRtNew, VersionNew)
     EXPECT_TRUE(compileOk(R"(
 module TestVer;
 bind Viper.Text;
+/// @brief Start.
 func start() {
     var v = new Version("1.0.0");
 }
@@ -85,6 +88,7 @@ TEST(ZiaRtNew, CompiledPatternNew)
     EXPECT_TRUE(compileOk(R"(
 module TestCP;
 bind Viper.Text;
+/// @brief Start.
 func start() {
     var p = new CompiledPattern("hello.*");
 }
@@ -97,6 +101,7 @@ TEST(ZiaRtNew, ScannerNew)
     EXPECT_TRUE(compileOk(R"(
 module TestScanner;
 bind Viper.Text;
+/// @brief Start.
 func start() {
     var s = new Scanner("hello world");
 }
@@ -109,6 +114,7 @@ TEST(ZiaRtNew, DateOnlyNew)
     EXPECT_TRUE(compileOk(R"(
 module TestDate;
 bind Viper.Time;
+/// @brief Start.
 func start() {
     var d = new DateOnly();
 }
@@ -121,6 +127,7 @@ TEST(ZiaRtNew, BinFileNew)
     EXPECT_TRUE(compileOk(R"(
 module TestBF;
 bind Viper.IO;
+/// @brief Start.
 func start() {
     var f = new BinFile("/tmp/test.dat", "rw");
 }
@@ -133,6 +140,7 @@ TEST(ZiaRtNew, LineReaderNew)
     EXPECT_TRUE(compileOk(R"(
 module TestLR;
 bind Viper.IO;
+/// @brief Start.
 func start() {
     var r = new LineReader("/tmp/test.txt");
 }
@@ -145,6 +153,7 @@ TEST(ZiaRtNew, LineWriterNew)
     EXPECT_TRUE(compileOk(R"(
 module TestLW;
 bind Viper.IO;
+/// @brief Start.
 func start() {
     var w = new LineWriter("/tmp/test_out.txt");
 }

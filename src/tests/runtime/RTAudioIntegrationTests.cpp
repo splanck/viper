@@ -1,4 +1,7 @@
 //===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // RTAudioIntegrationTests.cpp - Integration tests for audio + playlist APIs
 //
 // Tests the audio system and playlist management APIs in a headless
@@ -20,6 +23,7 @@ extern "C"
 #include "rt_playlist.h"
 #include "rt_string.h"
 
+    /// @brief Vm_trap.
     void vm_trap(const char *msg)
     {
         fprintf(stderr, "TRAP: %s\n", msg);
@@ -321,7 +325,9 @@ static void test_playlist_bounds()
         ASSERT(got2 != NULL && rt_str_len(got2) == 0, "out of bounds = empty string");
     }
 
+    /// @brief Rt_playlist_remove.
     rt_playlist_remove(pl, 99); // should not crash
+                                /// @brief Rt_playlist_jump.
     rt_playlist_jump(pl, 99);   // should not crash
     ASSERT(1, "out-of-bounds operations safe");
 }
@@ -397,6 +403,7 @@ static void test_playlist_shuffle_many_reshuffles()
     }
     ASSERT(rt_playlist_get_shuffle(pl) == 1, "shuffle on after toggles");
 
+    /// @brief Rt_playlist_clear.
     rt_playlist_clear(pl); // C-3: final release
     ASSERT(rt_playlist_len(pl) == 0, "cleared");
 
@@ -415,6 +422,7 @@ static void test_playlist_clear_releases_shuffle_order()
     rt_playlist_clear(pl);
     ASSERT(rt_playlist_len(pl) == 0, "cleared once");
 
+    /// @brief Rt_playlist_clear.
     rt_playlist_clear(pl); // Second clear: shuffle_order is NULL — must not double-free
     ASSERT(rt_playlist_len(pl) == 0, "cleared twice (idempotent)");
 
@@ -519,6 +527,7 @@ static void test_wav_valid_sample_rate()
     remove(path);
 }
 
+/// @brief Main.
 int main()
 {
     // Audio system (headless-safe)

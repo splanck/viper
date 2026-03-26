@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/threads/rt_concmap.h
 // Purpose: Thread-safe concurrent hash map with string keys using a mutex and separate chaining,
 // providing safe concurrent get/put/remove from multiple threads.

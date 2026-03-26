@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_bloomfilter.h
 // Purpose: Probabilistic set membership structure using multiple hash functions, guaranteeing no
 // false negatives while allowing configurable false positive rates.

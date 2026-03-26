@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_scene.h
 // Purpose: Scene graph for hierarchical sprite management with local and world transforms computed
 // by composing ancestor transforms.

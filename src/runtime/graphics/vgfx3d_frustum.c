@@ -37,6 +37,7 @@
  * (positive half-space = inside the frustum).
  *=========================================================================*/
 
+/// @brief 3D Frustum Extract operation.
 void vgfx3d_frustum_extract(vgfx3d_frustum_t *f, const float vp[16])
 {
     /* Left: row3 + row0 */
@@ -100,6 +101,7 @@ void vgfx3d_frustum_extract(vgfx3d_frustum_t *f, const float vp[16])
  * corner; if it's behind the plane, the box straddles (intersects).
  *=========================================================================*/
 
+/// @brief 3D Frustum Test Aabb operation.
 int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], const float max[3])
 {
     int result = 2; /* assume fully inside */
@@ -130,6 +132,7 @@ int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], cons
  * Bounding sphere frustum test
  *=========================================================================*/
 
+/// @brief 3D Frustum Test Sphere operation.
 int vgfx3d_frustum_test_sphere(const vgfx3d_frustum_t *f, const float center[3], float radius)
 {
     int result = 2; /* assume fully inside */

@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/vm/test_viper_string_handle.cpp
+//
+//===----------------------------------------------------------------------===//
 // SPDX-License-Identifier: GPL-3.0-only
 // File: tests/vm/test_viper_string_handle.cpp
 // Purpose: Validate ViperStringHandle RAII retains/releases correctly.

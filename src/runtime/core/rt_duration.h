@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_duration.h
 // Purpose: Duration/TimeSpan type for representing time intervals stored as milliseconds, with
 // creation helpers for common units and arithmetic/formatting operations.

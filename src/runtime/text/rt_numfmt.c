@@ -41,6 +41,10 @@
 // rt_numfmt_decimals
 // ---------------------------------------------------------------------------
 
+/// @brief Perform numfmt decimals operation.
+/// @param n
+/// @param decimals
+/// @return Result value.
 rt_string rt_numfmt_decimals(double n, int64_t decimals)
 {
     if (decimals < 0)
@@ -61,6 +65,10 @@ rt_string rt_numfmt_decimals(double n, int64_t decimals)
 // rt_numfmt_thousands
 // ---------------------------------------------------------------------------
 
+/// @brief Perform numfmt thousands operation.
+/// @param n
+/// @param sep
+/// @return Result value.
 rt_string rt_numfmt_thousands(int64_t n, rt_string sep)
 {
     const char *sep_cstr = sep ? rt_string_cstr(sep) : ",";
@@ -114,6 +122,10 @@ rt_string rt_numfmt_thousands(int64_t n, rt_string sep)
 // rt_numfmt_currency
 // ---------------------------------------------------------------------------
 
+/// @brief Perform numfmt currency operation.
+/// @param n
+/// @param symbol
+/// @return Result value.
 rt_string rt_numfmt_currency(double n, rt_string symbol)
 {
     const char *sym = symbol ? rt_string_cstr(symbol) : "$";
@@ -172,6 +184,9 @@ rt_string rt_numfmt_currency(double n, rt_string symbol)
 // rt_numfmt_percent
 // ---------------------------------------------------------------------------
 
+/// @brief Perform numfmt percent operation.
+/// @param n
+/// @return Result value.
 rt_string rt_numfmt_percent(double n)
 {
     double pct = n * 100.0;
@@ -198,6 +213,9 @@ rt_string rt_numfmt_percent(double n)
 // rt_numfmt_ordinal
 // ---------------------------------------------------------------------------
 
+/// @brief Perform numfmt ordinal operation.
+/// @param n
+/// @return Result value.
 rt_string rt_numfmt_ordinal(int64_t n)
 {
     const char *suffix;
@@ -272,6 +290,9 @@ static void append_chunk(rt_string_builder *sb, int64_t n, int *has_prev)
     *has_prev = 1;
 }
 
+/// @brief Perform numfmt to words operation.
+/// @param n
+/// @return Result value.
 rt_string rt_numfmt_to_words(int64_t n)
 {
     if (n == 0)
@@ -325,6 +346,9 @@ rt_string rt_numfmt_to_words(int64_t n)
 // rt_numfmt_bytes
 // ---------------------------------------------------------------------------
 
+/// @brief Perform numfmt bytes operation.
+/// @param bytes
+/// @return Result value.
 rt_string rt_numfmt_bytes(int64_t bytes)
 {
     static const char *const units[] = {"B", "KB", "MB", "GB", "TB", "PB", "EB"};
@@ -371,6 +395,10 @@ rt_string rt_numfmt_bytes(int64_t bytes)
 // rt_numfmt_pad
 // ---------------------------------------------------------------------------
 
+/// @brief Perform numfmt pad operation.
+/// @param n
+/// @param width
+/// @return Result value.
 rt_string rt_numfmt_pad(int64_t n, int64_t width)
 {
     if (width < 1)

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_ring.h
 // Purpose: Fixed-capacity circular buffer (Ring) with FIFO ordering that overwrites the oldest
 // entry when full, useful for rolling logs and event histories.

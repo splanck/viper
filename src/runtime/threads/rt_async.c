@@ -70,6 +70,7 @@ static void async_run_entry(void *ctx_ptr)
     rt_promise_set(promise, result);
 }
 
+/// @brief Async run.
 void *rt_async_run(void *callback, void *arg)
 {
     void *promise;
@@ -145,6 +146,7 @@ static void async_all_entry(void *ctx_ptr)
     rt_promise_set(promise, results);
 }
 
+/// @brief Async all.
 void *rt_async_all(void *futures)
 {
     void *promise;
@@ -235,6 +237,7 @@ static void async_any_entry(void *ctx_ptr)
 #undef ASYNC_ANY_TIMEOUT_MS
 }
 
+/// @brief Async any.
 void *rt_async_any(void *futures)
 {
     void *promise;
@@ -288,6 +291,7 @@ static void async_delay_entry(void *ctx_ptr)
     rt_promise_set(promise, NULL);
 }
 
+/// @brief Async delay.
 void *rt_async_delay(int64_t ms)
 {
     void *promise;
@@ -349,6 +353,7 @@ static void async_map_entry(void *ctx_ptr)
     }
 }
 
+/// @brief Async map.
 void *rt_async_map(void *future, void *mapper, void *arg)
 {
     void *promise;
@@ -414,6 +419,7 @@ static void async_cancel_entry(void *ctx_ptr)
     }
 }
 
+/// @brief Async run cancellable.
 void *rt_async_run_cancellable(void *callback, void *arg, void *token)
 {
     void *promise;

@@ -20,6 +20,7 @@ using namespace il::support;
 namespace
 {
 
+/// @brief Compile ok.
 bool compileOk(const std::string &source)
 {
     SourceManager sm;
@@ -44,6 +45,7 @@ TEST(ZiaBindFns, BoxFunctions)
     EXPECT_TRUE(compileOk(R"(
 module TestBox;
 bind Viper.Core.Box;
+/// @brief Start.
 func start() {
     var b = I64(42);
     var v = ToI64(b);
@@ -57,6 +59,7 @@ TEST(ZiaBindFns, ParseFunctions)
     EXPECT_TRUE(compileOk(R"(
 module TestParse;
 bind Viper.Core.Parse;
+/// @brief Start.
 func start() {
     var x = IntOr("42", 0);
     var y = NumOr("3.14", 0.0);
@@ -70,6 +73,7 @@ TEST(ZiaBindFns, RandomFunctions)
     EXPECT_TRUE(compileOk(R"(
 module TestRandom;
 bind Viper.Math.Random;
+/// @brief Start.
 func start() {
     var r = Range(1, 100);
 }
@@ -82,6 +86,7 @@ TEST(ZiaBindFns, StringFunctions)
     EXPECT_TRUE(compileOk(R"(
 module TestString;
 bind Viper.String;
+/// @brief Start.
 func start() {
     var a = Capitalize("hello");
     var b = Title("hello world");

@@ -26,13 +26,13 @@ extern "C"
 {
 #endif
 
-    void   *rt_terrain3d_new(int64_t width, int64_t depth);
-    void    rt_terrain3d_set_heightmap(void *terrain, void *pixels);
-    void    rt_terrain3d_set_material(void *terrain, void *material);
-    void    rt_terrain3d_set_scale(void *terrain, double sx, double sy, double sz);
-    double  rt_terrain3d_get_height_at(void *terrain, double x, double z);
-    void   *rt_terrain3d_get_normal_at(void *terrain, double x, double z);
-    void    rt_canvas3d_draw_terrain(void *canvas, void *terrain);
+    void *rt_terrain3d_new(int64_t width, int64_t depth);
+    void rt_terrain3d_set_heightmap(void *terrain, void *pixels);
+    void rt_terrain3d_set_material(void *terrain, void *material);
+    void rt_terrain3d_set_scale(void *terrain, double sx, double sy, double sz);
+    double rt_terrain3d_get_height_at(void *terrain, double x, double z);
+    void *rt_terrain3d_get_normal_at(void *terrain, double x, double z);
+    void rt_canvas3d_draw_terrain(void *canvas, void *terrain);
 
 #ifdef __cplusplus
 }

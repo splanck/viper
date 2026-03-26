@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/io/rt_dir.h
 // Purpose: Cross-platform directory operations for Viper.IO.Dir, providing listing, creation,
 // deletion, existence checks, and current/home directory queries.

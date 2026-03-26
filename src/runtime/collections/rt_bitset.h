@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_bitset.h
 // Purpose: Arbitrary-size bit array (BitSet) with 0-based indexing that auto-grows when bits are
 // set beyond the current size, supporting population count, set/clear/toggle, and bitwise

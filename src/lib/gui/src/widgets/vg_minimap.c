@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_minimap.c
+//
+//===----------------------------------------------------------------------===//
 // vg_minimap.c - Minimap widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -62,6 +72,7 @@ static void minimap_destroy(vg_widget_t *widget)
     free(minimap->render_buffer);
 }
 
+/// @brief Minimap destroy.
 void vg_minimap_destroy(vg_minimap_t *minimap)
 {
     if (!minimap)
@@ -261,6 +272,7 @@ static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event)
     return false;
 }
 
+/// @brief Minimap set editor.
 void vg_minimap_set_editor(vg_minimap_t *minimap, vg_codeeditor_t *editor)
 {
     if (!minimap)
@@ -271,6 +283,7 @@ void vg_minimap_set_editor(vg_minimap_t *minimap, vg_codeeditor_t *editor)
     minimap->base.needs_paint = true;
 }
 
+/// @brief Minimap set scale.
 void vg_minimap_set_scale(vg_minimap_t *minimap, float scale)
 {
     if (!minimap)
@@ -286,6 +299,7 @@ void vg_minimap_set_scale(vg_minimap_t *minimap, float scale)
     minimap->base.needs_paint = true;
 }
 
+/// @brief Minimap set show viewport.
 void vg_minimap_set_show_viewport(vg_minimap_t *minimap, bool show)
 {
     if (!minimap)
@@ -295,6 +309,7 @@ void vg_minimap_set_show_viewport(vg_minimap_t *minimap, bool show)
     minimap->base.needs_paint = true;
 }
 
+/// @brief Minimap invalidate.
 void vg_minimap_invalidate(vg_minimap_t *minimap)
 {
     if (!minimap)
@@ -304,6 +319,7 @@ void vg_minimap_invalidate(vg_minimap_t *minimap)
     minimap->base.needs_paint = true;
 }
 
+/// @brief Minimap invalidate lines.
 void vg_minimap_invalidate_lines(vg_minimap_t *minimap, uint32_t start_line, uint32_t end_line)
 {
     if (!minimap)

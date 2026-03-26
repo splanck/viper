@@ -47,6 +47,7 @@ TEST(ZiaStaticCalls, ResultOkI64)
 {
     ASSERT_TRUE(compileOk(R"(
 module Test;
+/// @brief Start.
 func start() {
     var r = Viper.Result.OkI64(42);
     var v = Viper.Result.UnwrapI64(r);
@@ -60,6 +61,7 @@ TEST(ZiaStaticCalls, ResultWithBind)
     ASSERT_TRUE(compileOk(R"(
 module Test;
 bind Viper.Terminal;
+/// @brief Start.
 func start() {
     var r = Viper.Result.OkStr("hello");
     Say(Viper.Result.UnwrapStr(r));
@@ -74,6 +76,7 @@ TEST(ZiaStaticCalls, UuidNew)
 module Test;
 bind Viper.Terminal;
 bind Viper.Text;
+/// @brief Start.
 func start() {
     Say(Uuid.New());
 }
@@ -87,6 +90,7 @@ TEST(ZiaStaticCalls, PasswordHash)
 module Test;
 bind Viper.Terminal;
 bind Viper.Crypto;
+/// @brief Start.
 func start() {
     var hash = Password.Hash("secret");
     Say(hash);
@@ -99,6 +103,7 @@ TEST(ZiaStaticCalls, OptionSomeI64)
 {
     ASSERT_TRUE(compileOk(R"(
 module Test;
+/// @brief Start.
 func start() {
     var opt = Viper.Option.SomeI64(99);
     var v = Viper.Option.UnwrapI64(opt);
@@ -112,6 +117,7 @@ TEST(ZiaStaticCalls, EasingLinear)
     ASSERT_TRUE(compileOk(R"(
 module Test;
 bind Viper.Math;
+/// @brief Start.
 func start() {
     var v = Easing.Linear(0.5);
 }
@@ -123,6 +129,7 @@ TEST(ZiaStaticCalls, LazyOfI64)
 {
     ASSERT_TRUE(compileOk(R"(
 module Test;
+/// @brief Start.
 func start() {
     var lazy = Viper.Lazy.OfI64(42);
     var v = Viper.Lazy.GetI64(lazy);

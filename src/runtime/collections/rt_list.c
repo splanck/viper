@@ -43,8 +43,8 @@
 
 #include <assert.h>
 #include <stdlib.h>
-#include <time.h>
 #include <string.h>
+#include <time.h>
 
 /// @brief Internal List implementation structure.
 ///

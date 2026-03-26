@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_trap.h
 // Purpose: Runtime trap handlers for unrecoverable error conditions in IL programs, providing
 // immediate-termination functions for division by zero, bounds violations, and assertion failures.

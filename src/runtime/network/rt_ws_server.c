@@ -39,12 +39,12 @@
 #define strcasecmp _stricmp
 #define strncasecmp _strnicmp
 #else
-#include <pthread.h>
-#include <strings.h>
-#include <unistd.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <pthread.h>
+#include <strings.h>
 #include <sys/socket.h>
+#include <unistd.h>
 #endif
 
 #ifdef _WIN32
@@ -86,7 +86,7 @@ extern char *rt_ws_compute_accept_key(const char *key_cstr); // from rt_websocke
 
 typedef struct
 {
-    void *tcp;       // TCP connection
+    void *tcp; // TCP connection
     bool active;
 } ws_client_t;
 
@@ -153,7 +153,10 @@ static int ws_server_send_frame(void *tcp, uint8_t opcode, const void *data, siz
     else
     {
         header[1] = 127;
-        header[2] = 0; header[3] = 0; header[4] = 0; header[5] = 0;
+        header[2] = 0;
+        header[3] = 0;
+        header[4] = 0;
+        header[5] = 0;
         header[6] = (uint8_t)(len >> 24);
         header[7] = (uint8_t)(len >> 16);
         header[8] = (uint8_t)(len >> 8);
@@ -172,39 +175,49 @@ static int ws_server_send_frame(void *tcp, uint8_t opcode, const void *data, siz
 }
 
 /// @brief Read a WebSocket frame from a TCP connection (client frames are masked).
-static int ws_server_recv_frame(void *tcp, uint8_t *opcode_out,
-                                 uint8_t **data_out, size_t *len_out)
+static int ws_server_recv_frame(void *tcp, uint8_t *opcode_out, uint8_t **data_out, size_t *len_out)
 {
     *data_out = NULL;
     *len_out = 0;
 
     // Read 2-byte header
     void *hdr = rt_tcp_recv_exact(tcp, 2);
-    if (!hdr) return 0;
-    typedef struct { int64_t l; uint8_t *d; } bi;
+    if (!hdr)
+        return 0;
+
+    typedef struct
+    {
+        int64_t l;
+        uint8_t *d;
+    } bi;
+
     uint8_t *h = ((bi *)hdr)->d;
     *opcode_out = h[0] & 0x0F;
     uint8_t masked = h[1] & WS_MASK;
     size_t payload_len = h[1] & 0x7F;
-    if (rt_obj_release_check0(hdr)) rt_obj_free(hdr);
+    if (rt_obj_release_check0(hdr))
+        rt_obj_free(hdr);
 
     // Extended length
     if (payload_len == 126)
     {
         void *ext = rt_tcp_recv_exact(tcp, 2);
-        if (!ext) return 0;
+        if (!ext)
+            return 0;
         uint8_t *e = ((bi *)ext)->d;
         payload_len = ((size_t)e[0] << 8) | e[1];
-        if (rt_obj_release_check0(ext)) rt_obj_free(ext);
+        if (rt_obj_release_check0(ext))
+            rt_obj_free(ext);
     }
     else if (payload_len == 127)
     {
         void *ext = rt_tcp_recv_exact(tcp, 8);
-        if (!ext) return 0;
+        if (!ext)
+            return 0;
         uint8_t *e = ((bi *)ext)->d;
-        payload_len = ((size_t)e[4] << 24) | ((size_t)e[5] << 16) |
-                      ((size_t)e[6] << 8) | e[7];
-        if (rt_obj_release_check0(ext)) rt_obj_free(ext);
+        payload_len = ((size_t)e[4] << 24) | ((size_t)e[5] << 16) | ((size_t)e[6] << 8) | e[7];
+        if (rt_obj_release_check0(ext))
+            rt_obj_free(ext);
     }
 
     if (payload_len > 64 * 1024 * 1024)
@@ -215,16 +228,19 @@ static int ws_server_recv_frame(void *tcp, uint8_t *opcode_out,
     if (masked)
     {
         void *m = rt_tcp_recv_exact(tcp, 4);
-        if (!m) return 0;
+        if (!m)
+            return 0;
         memcpy(mask, ((bi *)m)->d, 4);
-        if (rt_obj_release_check0(m)) rt_obj_free(m);
+        if (rt_obj_release_check0(m))
+            rt_obj_free(m);
     }
 
     // Read payload
     if (payload_len > 0)
     {
         void *payload = rt_tcp_recv_exact(tcp, (int64_t)payload_len);
-        if (!payload) return 0;
+        if (!payload)
+            return 0;
         uint8_t *p = ((bi *)payload)->d;
 
         // Unmask
@@ -240,7 +256,8 @@ static int ws_server_recv_frame(void *tcp, uint8_t *opcode_out,
             memcpy(*data_out, p, payload_len);
             *len_out = payload_len;
         }
-        if (rt_obj_release_check0(payload)) rt_obj_free(payload);
+        if (rt_obj_release_check0(payload))
+            rt_obj_free(payload);
     }
 
     return 1;
@@ -251,7 +268,8 @@ static int ws_server_handshake(void *tcp)
 {
     // Read HTTP upgrade request
     rt_string line = rt_tcp_recv_line(tcp);
-    if (!line) return 0;
+    if (!line)
+        return 0;
     const char *request_line = rt_string_cstr(line);
     if (!request_line || strncmp(request_line, "GET ", 4) != 0)
     {
@@ -269,7 +287,8 @@ static int ws_server_handshake(void *tcp)
     while (1)
     {
         rt_string hdr = rt_tcp_recv_line(tcp);
-        if (!hdr) return 0;
+        if (!hdr)
+            return 0;
         const char *h = rt_string_cstr(hdr);
         if (!h || *h == '\0')
         {
@@ -280,25 +299,29 @@ static int ws_server_handshake(void *tcp)
         if (strncasecmp(h, "Sec-WebSocket-Key:", 18) == 0)
         {
             const char *val = h + 18;
-            while (*val == ' ') val++;
+            while (*val == ' ')
+                val++;
             strncpy(ws_key, val, sizeof(ws_key) - 1);
         }
         else if (strncasecmp(h, "Upgrade:", 8) == 0)
         {
             const char *val = h + 8;
-            while (*val == ' ') val++;
+            while (*val == ' ')
+                val++;
             saw_upgrade = strcasecmp(val, "websocket") == 0;
         }
         else if (strncasecmp(h, "Connection:", 11) == 0)
         {
             const char *val = h + 11;
-            while (*val == ' ') val++;
+            while (*val == ' ')
+                val++;
             saw_connection = ws_header_has_upgrade_token(val);
         }
         else if (strncasecmp(h, "Sec-WebSocket-Version:", 22) == 0)
         {
             const char *val = h + 22;
-            while (*val == ' ') val++;
+            while (*val == ' ')
+                val++;
             saw_version = strcmp(val, "13") == 0;
         }
         rt_string_unref(hdr);
@@ -314,12 +337,14 @@ static int ws_server_handshake(void *tcp)
 
     // Send upgrade response
     char response[512];
-    int rlen = snprintf(response, sizeof(response),
-        "HTTP/1.1 101 Switching Protocols\r\n"
-        "Upgrade: websocket\r\n"
-        "Connection: Upgrade\r\n"
-        "Sec-WebSocket-Accept: %s\r\n"
-        "\r\n", accept);
+    int rlen = snprintf(response,
+                        sizeof(response),
+                        "HTTP/1.1 101 Switching Protocols\r\n"
+                        "Upgrade: websocket\r\n"
+                        "Connection: Upgrade\r\n"
+                        "Sec-WebSocket-Accept: %s\r\n"
+                        "\r\n",
+                        accept);
     free(accept);
 
     rt_string resp = rt_string_from_bytes(response, (size_t)rlen);
@@ -335,7 +360,8 @@ static int ws_server_handshake(void *tcp)
 
 static void rt_ws_server_finalize(void *obj)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_ws_server_impl *s = (rt_ws_server_impl *)obj;
     s->running = false;
     for (int i = 0; i < s->client_count; i++)
@@ -364,8 +390,13 @@ static void *ws_accept_loop(void *arg)
     while (s->running)
     {
         void *tcp = rt_tcp_server_accept_for(s->tcp_server, 1000);
-        if (!tcp) continue;
-        if (!s->running) { rt_tcp_close(tcp); break; }
+        if (!tcp)
+            continue;
+        if (!s->running)
+        {
+            rt_tcp_close(tcp);
+            break;
+        }
 
         // Perform WebSocket handshake
         if (!ws_server_handshake(tcp))
@@ -407,7 +438,8 @@ void *rt_ws_server_new(int64_t port)
 
     rt_ws_server_impl *s =
         (rt_ws_server_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_ws_server_impl));
-    if (!s) rt_trap("WsServer: memory allocation failed");
+    if (!s)
+        rt_trap("WsServer: memory allocation failed");
     memset(s, 0, sizeof(*s));
     rt_obj_set_finalizer(s, rt_ws_server_finalize);
     s->port = port;
@@ -418,9 +450,11 @@ void *rt_ws_server_new(int64_t port)
 
 void rt_ws_server_start(void *obj)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_ws_server_impl *s = (rt_ws_server_impl *)obj;
-    if (s->running) return;
+    if (s->running)
+        return;
 
     s->tcp_server = rt_tcp_server_listen(s->port);
     s->running = true;
@@ -435,11 +469,16 @@ void rt_ws_server_start(void *obj)
 
 void rt_ws_server_stop(void *obj)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_ws_server_impl *s = (rt_ws_server_impl *)obj;
     s->running = false;
 
-    if (s->tcp_server) { rt_tcp_server_close(s->tcp_server); s->tcp_server = NULL; }
+    if (s->tcp_server)
+    {
+        rt_tcp_server_close(s->tcp_server);
+        s->tcp_server = NULL;
+    }
 
     if (s->thread_started)
     {
@@ -465,7 +504,8 @@ void rt_ws_server_stop(void *obj)
 
 void rt_ws_server_broadcast(void *obj, rt_string message)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_ws_server_impl *s = (rt_ws_server_impl *)obj;
     const char *msg = rt_string_cstr(message);
     size_t len = msg ? strlen(msg) : 0;
@@ -481,9 +521,16 @@ void rt_ws_server_broadcast(void *obj, rt_string message)
 
 void rt_ws_server_broadcast_bytes(void *obj, void *data)
 {
-    if (!obj || !data) return;
+    if (!obj || !data)
+        return;
     rt_ws_server_impl *s = (rt_ws_server_impl *)obj;
-    typedef struct { int64_t l; uint8_t *d; } bi;
+
+    typedef struct
+    {
+        int64_t l;
+        uint8_t *d;
+    } bi;
+
     int64_t len = ((bi *)data)->l;
     uint8_t *ptr = ((bi *)data)->d;
 
@@ -498,36 +545,43 @@ void rt_ws_server_broadcast_bytes(void *obj, void *data)
 
 int64_t rt_ws_server_client_count(void *obj)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     rt_ws_server_impl *s = (rt_ws_server_impl *)obj;
     WS_MUTEX_LOCK(&s->lock);
     int64_t count = 0;
     for (int i = 0; i < s->client_count; i++)
-        if (s->clients[i].active) count++;
+        if (s->clients[i].active)
+            count++;
     WS_MUTEX_UNLOCK(&s->lock);
     return count;
 }
 
 int64_t rt_ws_server_port(void *obj)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     return ((rt_ws_server_impl *)obj)->port;
 }
 
 int8_t rt_ws_server_is_running(void *obj)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     return ((rt_ws_server_impl *)obj)->running ? 1 : 0;
 }
 
 void *rt_ws_server_accept(void *obj)
 {
-    if (!obj) return NULL;
+    if (!obj)
+        return NULL;
     rt_ws_server_impl *s = (rt_ws_server_impl *)obj;
-    if (!s->tcp_server) return NULL;
+    if (!s->tcp_server)
+        return NULL;
 
     void *tcp = rt_tcp_server_accept(s->tcp_server);
-    if (!tcp) return NULL;
+    if (!tcp)
+        return NULL;
 
     if (!ws_server_handshake(tcp))
     {
@@ -540,7 +594,8 @@ void *rt_ws_server_accept(void *obj)
 
 rt_string rt_ws_server_client_recv(void *tcp)
 {
-    if (!tcp) return rt_string_from_bytes("", 0);
+    if (!tcp)
+        return rt_string_from_bytes("", 0);
 
     while (rt_tcp_is_open(tcp))
     {
@@ -573,7 +628,8 @@ rt_string rt_ws_server_client_recv(void *tcp)
 
 void rt_ws_server_client_send(void *tcp, rt_string message)
 {
-    if (!tcp) return;
+    if (!tcp)
+        return;
     const char *msg = rt_string_cstr(message);
     size_t len = msg ? strlen(msg) : 0;
     ws_server_send_frame(tcp, WS_OP_TEXT, msg, len);
@@ -581,7 +637,8 @@ void rt_ws_server_client_send(void *tcp, rt_string message)
 
 void rt_ws_server_client_close(void *tcp)
 {
-    if (!tcp) return;
+    if (!tcp)
+        return;
     ws_server_send_frame(tcp, WS_OP_CLOSE, NULL, 0);
     rt_tcp_close(tcp);
 }

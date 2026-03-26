@@ -56,6 +56,9 @@ void *rt_retry_exponential(int64_t max_retries, int64_t base_delay_ms, int64_t m
     return obj;
 }
 
+/// @brief Perform retry can retry operation.
+/// @param policy
+/// @return Result value.
 int8_t rt_retry_can_retry(void *policy)
 {
     if (!policy)
@@ -64,6 +67,9 @@ int8_t rt_retry_can_retry(void *policy)
     return data->current_attempt < data->max_retries ? 1 : 0;
 }
 
+/// @brief Perform retry next delay operation.
+/// @param policy
+/// @return Result value.
 int64_t rt_retry_next_delay(void *policy)
 {
     if (!policy)
@@ -124,6 +130,9 @@ int64_t rt_retry_next_delay(void *policy)
     return delay;
 }
 
+/// @brief Perform retry get attempt operation.
+/// @param policy
+/// @return Result value.
 int64_t rt_retry_get_attempt(void *policy)
 {
     if (!policy)
@@ -131,6 +140,9 @@ int64_t rt_retry_get_attempt(void *policy)
     return ((rt_retry_data *)policy)->current_attempt;
 }
 
+/// @brief Perform retry get max retries operation.
+/// @param policy
+/// @return Result value.
 int64_t rt_retry_get_max_retries(void *policy)
 {
     if (!policy)
@@ -138,6 +150,8 @@ int64_t rt_retry_get_max_retries(void *policy)
     return ((rt_retry_data *)policy)->max_retries;
 }
 
+/// @brief Perform retry reset operation.
+/// @param policy
 void rt_retry_reset(void *policy)
 {
     if (!policy)
@@ -145,6 +159,9 @@ void rt_retry_reset(void *policy)
     ((rt_retry_data *)policy)->current_attempt = 0;
 }
 
+/// @brief Perform retry get total attempts operation.
+/// @param policy
+/// @return Result value.
 int64_t rt_retry_get_total_attempts(void *policy)
 {
     if (!policy)
@@ -152,6 +169,9 @@ int64_t rt_retry_get_total_attempts(void *policy)
     return ((rt_retry_data *)policy)->current_attempt;
 }
 
+/// @brief Perform retry is exhausted operation.
+/// @param policy
+/// @return Result value.
 int8_t rt_retry_is_exhausted(void *policy)
 {
     if (!policy)

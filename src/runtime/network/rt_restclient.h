@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/network/rt_restclient.h
 // Purpose: REST API client with session management, persistent headers, base URL support, JSON
 // convenience methods, and configurable timeouts.

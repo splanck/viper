@@ -92,17 +92,21 @@ extern "C"
     //=========================================================================
 
     /// @brief Draw a named atlas region through the sprite batch.
-    void rt_spritebatch_draw_atlas(void *batch, void *atlas, void *name,
-                                   int64_t x, int64_t y);
+    void rt_spritebatch_draw_atlas(void *batch, void *atlas, void *name, int64_t x, int64_t y);
 
     /// @brief Draw a named atlas region with uniform scale.
-    void rt_spritebatch_draw_atlas_scaled(void *batch, void *atlas, void *name,
-                                          int64_t x, int64_t y, int64_t scale);
+    void rt_spritebatch_draw_atlas_scaled(
+        void *batch, void *atlas, void *name, int64_t x, int64_t y, int64_t scale);
 
     /// @brief Draw a named atlas region with full transform.
-    void rt_spritebatch_draw_atlas_ex(void *batch, void *atlas, void *name,
-                                      int64_t x, int64_t y, int64_t scale,
-                                      int64_t rotation, int64_t depth);
+    void rt_spritebatch_draw_atlas_ex(void *batch,
+                                      void *atlas,
+                                      void *name,
+                                      int64_t x,
+                                      int64_t y,
+                                      int64_t scale,
+                                      int64_t rotation,
+                                      int64_t depth);
 
 #ifdef __cplusplus
 }

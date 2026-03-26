@@ -1,3 +1,15 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// Purpose: Font loading and rasterization tests — TTF parsing, glyph rendering, cache invalidation.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/tests/test_font.c
+//
+//===----------------------------------------------------------------------===//
 // test_font.c - Font engine unit tests
 #include "vg_font.h"
 #include <assert.h>

@@ -58,10 +58,10 @@ extern void rt_trap(const char *msg);
 
 typedef struct
 {
-    void *tcp;          // TCP connection object
-    char *key;          // "host:port" key
-    time_t last_used;   // When connection was returned to pool
-    bool in_use;        // Currently checked out
+    void *tcp;        // TCP connection object
+    char *key;        // "host:port" key
+    time_t last_used; // When connection was returned to pool
+    bool in_use;      // Currently checked out
 } pooled_entry_t;
 
 typedef struct
@@ -120,7 +120,8 @@ void *rt_connpool_new(int64_t max_size)
     if (!pool)
         rt_trap("ConnectionPool: memory allocation failed");
     memset(pool, 0, sizeof(*pool));
-    pool->max_size = (int)(max_size > 0 && max_size < POOL_MAX_ENTRIES ? max_size : POOL_MAX_ENTRIES);
+    pool->max_size =
+        (int)(max_size > 0 && max_size < POOL_MAX_ENTRIES ? max_size : POOL_MAX_ENTRIES);
     POOL_MUTEX_INIT(&pool->lock);
     pool->lock_initialized = true;
     rt_obj_set_finalizer(pool, rt_connpool_finalize);
@@ -191,6 +192,9 @@ void *rt_connpool_acquire(void *obj, rt_string host, int64_t port)
     return tcp;
 }
 
+/// @brief Perform connpool release operation.
+/// @param obj
+/// @param conn
 void rt_connpool_release(void *obj, void *conn)
 {
     if (!obj || !conn)
@@ -241,6 +245,8 @@ void rt_connpool_release(void *obj, void *conn)
     rt_tcp_close(conn);
 }
 
+/// @brief Perform connpool clear operation.
+/// @param obj
 void rt_connpool_clear(void *obj)
 {
     if (!obj)
@@ -254,6 +260,9 @@ void rt_connpool_clear(void *obj)
     POOL_MUTEX_UNLOCK(&pool->lock);
 }
 
+/// @brief Perform connpool size operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_connpool_size(void *obj)
 {
     if (!obj)
@@ -266,6 +275,9 @@ int64_t rt_connpool_size(void *obj)
     return n;
 }
 
+/// @brief Perform connpool available operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_connpool_available(void *obj)
 {
     if (!obj)

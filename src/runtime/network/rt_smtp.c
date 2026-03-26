@@ -36,7 +36,7 @@ extern void rt_trap(const char *msg);
 
 typedef struct
 {
-    void *tcp;           // TCP connection
+    void *tcp; // TCP connection
     char *host;
     int port;
     char *username;
@@ -47,9 +47,11 @@ typedef struct
 
 static void rt_smtp_finalize(void *obj)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
-    if (s->tcp) rt_tcp_close(s->tcp);
+    if (s->tcp)
+        rt_tcp_close(s->tcp);
     free(s->host);
     free(s->username);
     free(s->password);
@@ -91,7 +93,8 @@ static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code)
     while (l && strlen(l) > 3 && l[3] == '-')
     {
         line = rt_tcp_recv_line(s->tcp);
-        if (!line) break;
+        if (!line)
+            break;
         l = rt_string_cstr(line);
         rt_string_unref(line);
     }
@@ -118,7 +121,8 @@ void *rt_smtp_new(rt_string host, int64_t port)
         rt_trap("SmtpClient: invalid host or port");
 
     rt_smtp_impl *s = (rt_smtp_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_smtp_impl));
-    if (!s) rt_trap("SmtpClient: OOM");
+    if (!s)
+        rt_trap("SmtpClient: OOM");
     memset(s, 0, sizeof(*s));
     s->host = strdup(h);
     s->port = (int)port;
@@ -129,7 +133,8 @@ void *rt_smtp_new(rt_string host, int64_t port)
 
 void rt_smtp_set_auth(void *obj, rt_string username, rt_string password)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
     const char *u = rt_string_cstr(username);
     const char *p = rt_string_cstr(password);
@@ -141,7 +146,8 @@ void rt_smtp_set_auth(void *obj, rt_string username, rt_string password)
 
 void rt_smtp_set_tls(void *obj, int8_t enable)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     ((rt_smtp_impl *)obj)->use_tls = enable;
 }
 
@@ -161,17 +167,20 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s)
     rt_tcp_set_recv_timeout(s->tcp, 30000);
 
     // Read greeting (220)
-    if (smtp_command(s, NULL, 220) < 0) return -1;
+    if (smtp_command(s, NULL, 220) < 0)
+        return -1;
 
     // EHLO
     char ehlo[300];
     snprintf(ehlo, sizeof(ehlo), "EHLO localhost\r\n");
-    if (smtp_command(s, ehlo, 250) < 0) return -1;
+    if (smtp_command(s, ehlo, 250) < 0)
+        return -1;
 
     // AUTH LOGIN if credentials provided
     if (s->username && s->password)
     {
-        if (smtp_command(s, "AUTH LOGIN\r\n", 334) < 0) return -1;
+        if (smtp_command(s, "AUTH LOGIN\r\n", 334) < 0)
+            return -1;
 
         // Send base64-encoded username
         rt_string user_str = rt_string_from_bytes(s->username, strlen(s->username));
@@ -182,7 +191,8 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s)
         char user_cmd[512];
         snprintf(user_cmd, sizeof(user_cmd), "%s\r\n", ub);
         rt_string_unref(user_b64);
-        if (smtp_command(s, user_cmd, 334) < 0) return -1;
+        if (smtp_command(s, user_cmd, 334) < 0)
+            return -1;
 
         // Send base64-encoded password
         rt_string pass_str = rt_string_from_bytes(s->password, strlen(s->password));
@@ -193,68 +203,87 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s)
         char pass_cmd[512];
         snprintf(pass_cmd, sizeof(pass_cmd), "%s\r\n", pb);
         rt_string_unref(pass_b64);
-        if (smtp_command(s, pass_cmd, 235) < 0) return -1;
+        if (smtp_command(s, pass_cmd, 235) < 0)
+            return -1;
     }
 
     return 0;
 }
 
-static int smtp_send_message(rt_smtp_impl *s, const char *from, const char *to,
-                              const char *subject, const char *body, const char *content_type)
+static int smtp_send_message(rt_smtp_impl *s,
+                             const char *from,
+                             const char *to,
+                             const char *subject,
+                             const char *body,
+                             const char *content_type)
 {
     char cmd[1024];
 
     // MAIL FROM
     snprintf(cmd, sizeof(cmd), "MAIL FROM:<%s>\r\n", from);
-    if (smtp_command(s, cmd, 250) < 0) return -1;
+    if (smtp_command(s, cmd, 250) < 0)
+        return -1;
 
     // RCPT TO
     snprintf(cmd, sizeof(cmd), "RCPT TO:<%s>\r\n", to);
-    if (smtp_command(s, cmd, 250) < 0) return -1;
+    if (smtp_command(s, cmd, 250) < 0)
+        return -1;
 
     // DATA
-    if (smtp_command(s, "DATA\r\n", 354) < 0) return -1;
+    if (smtp_command(s, "DATA\r\n", 354) < 0)
+        return -1;
 
     // Build MIME message
     size_t msg_cap = 1024 + strlen(body);
     char *msg = (char *)malloc(msg_cap);
-    if (!msg) { set_error(s, "SMTP: OOM"); return -1; }
+    if (!msg)
+    {
+        set_error(s, "SMTP: OOM");
+        return -1;
+    }
 
-    int mlen = snprintf(msg, msg_cap,
-        "From: %s\r\n"
-        "To: %s\r\n"
-        "Subject: %s\r\n"
-        "MIME-Version: 1.0\r\n"
-        "Content-Type: %s; charset=utf-8\r\n"
-        "\r\n"
-        "%s\r\n"
-        ".\r\n",
-        from, to, subject, content_type, body);
+    int mlen = snprintf(msg,
+                        msg_cap,
+                        "From: %s\r\n"
+                        "To: %s\r\n"
+                        "Subject: %s\r\n"
+                        "MIME-Version: 1.0\r\n"
+                        "Content-Type: %s; charset=utf-8\r\n"
+                        "\r\n"
+                        "%s\r\n"
+                        ".\r\n",
+                        from,
+                        to,
+                        subject,
+                        content_type,
+                        body);
 
     rt_string msg_str = rt_string_from_bytes(msg, (size_t)mlen);
     free(msg);
     rt_tcp_send_str(s->tcp, msg_str);
     rt_string_unref(msg_str);
 
-    if (smtp_command(s, NULL, 250) < 0) return -1;
+    if (smtp_command(s, NULL, 250) < 0)
+        return -1;
     return 0;
 }
 
-int8_t rt_smtp_send(void *obj, rt_string from, rt_string to,
-                     rt_string subject, rt_string body)
+int8_t rt_smtp_send(void *obj, rt_string from, rt_string to, rt_string subject, rt_string body)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
 
-    if (smtp_connect_and_handshake(s) < 0) return 0;
+    if (smtp_connect_and_handshake(s) < 0)
+        return 0;
 
     const char *f = rt_string_cstr(from);
     const char *t = rt_string_cstr(to);
     const char *sub = rt_string_cstr(subject);
     const char *b = rt_string_cstr(body);
 
-    int result = smtp_send_message(s, f ? f : "", t ? t : "", sub ? sub : "", b ? b : "",
-                                    "text/plain");
+    int result =
+        smtp_send_message(s, f ? f : "", t ? t : "", sub ? sub : "", b ? b : "", "text/plain");
 
     // QUIT
     smtp_command(s, "QUIT\r\n", 221);
@@ -264,21 +293,23 @@ int8_t rt_smtp_send(void *obj, rt_string from, rt_string to,
     return result == 0 ? 1 : 0;
 }
 
-int8_t rt_smtp_send_html(void *obj, rt_string from, rt_string to,
-                          rt_string subject, rt_string html_body)
+int8_t rt_smtp_send_html(
+    void *obj, rt_string from, rt_string to, rt_string subject, rt_string html_body)
 {
-    if (!obj) return 0;
+    if (!obj)
+        return 0;
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
 
-    if (smtp_connect_and_handshake(s) < 0) return 0;
+    if (smtp_connect_and_handshake(s) < 0)
+        return 0;
 
     const char *f = rt_string_cstr(from);
     const char *t = rt_string_cstr(to);
     const char *sub = rt_string_cstr(subject);
     const char *b = rt_string_cstr(html_body);
 
-    int result = smtp_send_message(s, f ? f : "", t ? t : "", sub ? sub : "", b ? b : "",
-                                    "text/html");
+    int result =
+        smtp_send_message(s, f ? f : "", t ? t : "", sub ? sub : "", b ? b : "", "text/html");
 
     smtp_command(s, "QUIT\r\n", 221);
     rt_tcp_close(s->tcp);
@@ -289,7 +320,8 @@ int8_t rt_smtp_send_html(void *obj, rt_string from, rt_string to,
 
 rt_string rt_smtp_last_error(void *obj)
 {
-    if (!obj) return rt_string_from_bytes("", 0);
+    if (!obj)
+        return rt_string_from_bytes("", 0);
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
     const char *e = s->last_error ? s->last_error : "";
     return rt_string_from_bytes(e, strlen(e));
@@ -297,7 +329,12 @@ rt_string rt_smtp_last_error(void *obj)
 
 void rt_smtp_close(void *obj)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
-    if (s->tcp) { rt_tcp_close(s->tcp); s->tcp = NULL; }
+    if (s->tcp)
+    {
+        rt_tcp_close(s->tcp);
+        s->tcp = NULL;
+    }
 }

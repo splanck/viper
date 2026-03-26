@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_zia_completion.h
 // Purpose: Runtime bridge declarations for the Zia language completion engine, provided by fe_zia
 // at link time via weak/strong symbol resolution.

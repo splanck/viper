@@ -297,6 +297,11 @@ void rt_canvas_round_frame(
                 col);
 }
 
+/// @brief Perform flood fill operation.
+/// @param canvas_ptr
+/// @param start_x
+/// @param start_y
+/// @param color
 void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, int64_t color)
 {
     if (!canvas_ptr)
@@ -859,6 +864,11 @@ void rt_canvas_bezier(void *canvas_ptr,
     }
 }
 
+/// @brief Perform polyline operation.
+/// @param canvas_ptr
+/// @param points_ptr
+/// @param count
+/// @param color
 void rt_canvas_polyline(void *canvas_ptr, void *points_ptr, int64_t count, int64_t color)
 {
     if (!canvas_ptr || !points_ptr || count < 2)
@@ -881,6 +891,11 @@ void rt_canvas_polyline(void *canvas_ptr, void *points_ptr, int64_t count, int64
     }
 }
 
+/// @brief Perform polygon operation.
+/// @param canvas_ptr
+/// @param points_ptr
+/// @param count
+/// @param color
 void rt_canvas_polygon(void *canvas_ptr, void *points_ptr, int64_t count, int64_t color)
 {
     if (!canvas_ptr || !points_ptr || count < 3)
@@ -953,6 +968,11 @@ void rt_canvas_polygon(void *canvas_ptr, void *points_ptr, int64_t count, int64_
     }
 }
 
+/// @brief Perform polygon frame operation.
+/// @param canvas_ptr
+/// @param points_ptr
+/// @param count
+/// @param color
 void rt_canvas_polygon_frame(void *canvas_ptr, void *points_ptr, int64_t count, int64_t color)
 {
     if (!canvas_ptr || !points_ptr || count < 3)
@@ -1119,6 +1139,11 @@ void rt_canvas_gradient_v(
 // Extended Color Functions
 //=============================================================================
 
+/// @brief Perform from hsl operation.
+/// @param h
+/// @param s
+/// @param l
+/// @return Result value.
 int64_t rt_color_from_hsl(int64_t h, int64_t s, int64_t l)
 {
     // Clamp inputs
@@ -1138,6 +1163,9 @@ int64_t rt_color_from_hsl(int64_t h, int64_t s, int64_t l)
     return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
+/// @brief Get the h value.
+/// @param color
+/// @return Result value.
 int64_t rt_color_get_h(int64_t color)
 {
     int64_t r = (color >> 16) & 0xFF;
@@ -1148,6 +1176,9 @@ int64_t rt_color_get_h(int64_t color)
     return h;
 }
 
+/// @brief Get the s value.
+/// @param color
+/// @return Result value.
 int64_t rt_color_get_s(int64_t color)
 {
     int64_t r = (color >> 16) & 0xFF;
@@ -1158,6 +1189,9 @@ int64_t rt_color_get_s(int64_t color)
     return s;
 }
 
+/// @brief Get the l value.
+/// @param color
+/// @return Result value.
 int64_t rt_color_get_l(int64_t color)
 {
     int64_t r = (color >> 16) & 0xFF;
@@ -1168,6 +1202,11 @@ int64_t rt_color_get_l(int64_t color)
     return l;
 }
 
+/// @brief Perform lerp operation.
+/// @param c1
+/// @param c2
+/// @param t
+/// @return Result value.
 int64_t rt_color_lerp(int64_t c1, int64_t c2, int64_t t)
 {
     if (t < 0)
@@ -1190,26 +1229,42 @@ int64_t rt_color_lerp(int64_t c1, int64_t c2, int64_t t)
     return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
+/// @brief Get the r value.
+/// @param color
+/// @return Result value.
 int64_t rt_color_get_r(int64_t color)
 {
     return (color >> 16) & 0xFF;
 }
 
+/// @brief Get the g value.
+/// @param color
+/// @return Result value.
 int64_t rt_color_get_g(int64_t color)
 {
     return (color >> 8) & 0xFF;
 }
 
+/// @brief Get the b value.
+/// @param color
+/// @return Result value.
 int64_t rt_color_get_b(int64_t color)
 {
     return color & 0xFF;
 }
 
+/// @brief Get the a value.
+/// @param color
+/// @return Result value.
 int64_t rt_color_get_a(int64_t color)
 {
     return (color >> 24) & 0xFF;
 }
 
+/// @brief Perform brighten operation.
+/// @param color
+/// @param amount
+/// @return Result value.
 int64_t rt_color_brighten(int64_t color, int64_t amount)
 {
     if (amount < 0)
@@ -1229,6 +1284,10 @@ int64_t rt_color_brighten(int64_t color, int64_t amount)
     return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
+/// @brief Perform darken operation.
+/// @param color
+/// @param amount
+/// @return Result value.
 int64_t rt_color_darken(int64_t color, int64_t amount)
 {
     if (amount < 0)
@@ -1248,6 +1307,9 @@ int64_t rt_color_darken(int64_t color, int64_t amount)
     return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
+/// @brief Perform from hex operation.
+/// @param hex
+/// @return Result value.
 int64_t rt_color_from_hex(rt_string hex)
 {
     const char *s = rt_string_cstr(hex);
@@ -1279,6 +1341,9 @@ int64_t rt_color_from_hex(rt_string hex)
     return (int64_t)val;
 }
 
+/// @brief Perform to hex operation.
+/// @param color
+/// @return Result value.
 rt_string rt_color_to_hex(int64_t color)
 {
     char buf[10];
@@ -1294,6 +1359,10 @@ rt_string rt_color_to_hex(int64_t color)
     return rt_string_from_bytes(buf, (size_t)len);
 }
 
+/// @brief Perform saturate operation.
+/// @param color
+/// @param amount
+/// @return Result value.
 int64_t rt_color_saturate(int64_t color, int64_t amount)
 {
     if (amount < 0)
@@ -1312,6 +1381,10 @@ int64_t rt_color_saturate(int64_t color, int64_t amount)
     return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
+/// @brief Perform desaturate operation.
+/// @param color
+/// @param amount
+/// @return Result value.
 int64_t rt_color_desaturate(int64_t color, int64_t amount)
 {
     if (amount < 0)
@@ -1330,6 +1403,9 @@ int64_t rt_color_desaturate(int64_t color, int64_t amount)
     return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
+/// @brief Perform complement operation.
+/// @param color
+/// @return Result value.
 int64_t rt_color_complement(int64_t color)
 {
     int64_t r = (color >> 16) & 0xFF;
@@ -1342,6 +1418,9 @@ int64_t rt_color_complement(int64_t color)
     return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
+/// @brief Perform grayscale operation.
+/// @param color
+/// @return Result value.
 int64_t rt_color_grayscale(int64_t color)
 {
     int64_t r = (color >> 16) & 0xFF;
@@ -1352,6 +1431,9 @@ int64_t rt_color_grayscale(int64_t color)
     return ((gray & 0xFF) << 16) | ((gray & 0xFF) << 8) | (gray & 0xFF);
 }
 
+/// @brief Perform invert operation.
+/// @param color
+/// @return Result value.
 int64_t rt_color_invert(int64_t color)
 {
     int64_t r = 255 - ((color >> 16) & 0xFF);

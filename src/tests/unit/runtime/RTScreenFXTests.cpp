@@ -45,6 +45,7 @@ TEST(create_destroy)
 TEST(shake)
 {
     rt_screenfx fx = rt_screenfx_new();
+    /// @brief Rt_screenfx_shake.
     rt_screenfx_shake(fx, 10000, 100, 0); // 10 pixels, 100ms, no decay
 
     ASSERT(rt_screenfx_is_active(fx) == 1);
@@ -65,6 +66,7 @@ TEST(shake)
 TEST(shake_decay)
 {
     rt_screenfx fx = rt_screenfx_new();
+    /// @brief Rt_screenfx_shake.
     rt_screenfx_shake(fx, 10000, 200, 500); // 50% decay
 
     // Run until completion
@@ -83,6 +85,7 @@ TEST(shake_decay)
 TEST(flash)
 {
     rt_screenfx fx = rt_screenfx_new();
+    /// @brief Rt_screenfx_flash.
     rt_screenfx_flash(fx, 0xFF0000FF, 100); // Red with alpha 255
 
     ASSERT(rt_screenfx_is_active(fx) == 1);
@@ -101,6 +104,7 @@ TEST(flash)
 TEST(fade_in)
 {
     rt_screenfx fx = rt_screenfx_new();
+    /// @brief Rt_screenfx_fade_in.
     rt_screenfx_fade_in(fx, 0x000000FF, 100); // Black, alpha 255
 
     rt_screenfx_update(fx, 10);
@@ -118,6 +122,7 @@ TEST(fade_in)
 TEST(fade_out)
 {
     rt_screenfx fx = rt_screenfx_new();
+    /// @brief Rt_screenfx_fade_out.
     rt_screenfx_fade_out(fx, 0x000000FF, 100); // Black, alpha 255
 
     rt_screenfx_update(fx, 10);
@@ -193,6 +198,7 @@ TEST(multiple_effects)
     rt_screenfx_destroy(fx);
 }
 
+/// @brief Main.
 int main()
 {
     printf("RTScreenFXTests:\n");

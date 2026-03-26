@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_gui.h
 // Purpose: Runtime bridge functions for the ViperGUI widget library, providing widget creation,
 // layout, event handling, and rendering for GUI application development.

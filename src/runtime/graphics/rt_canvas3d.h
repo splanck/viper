@@ -43,10 +43,10 @@ extern "C"
     void rt_canvas3d_clear(void *obj, double r, double g, double b);
     void rt_canvas3d_begin(void *obj, void *camera);
     void rt_canvas3d_begin_2d(void *obj);
-    void rt_canvas3d_draw_rect_3d(void *canvas, int64_t x, int64_t y,
-                                   int64_t w, int64_t h, int64_t color);
-    void rt_canvas3d_draw_text_3d(void *canvas, int64_t x, int64_t y,
-                                   rt_string text, int64_t color);
+    void rt_canvas3d_draw_rect_3d(
+        void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color);
+    void rt_canvas3d_draw_text_3d(
+        void *canvas, int64_t x, int64_t y, rt_string text, int64_t color);
     void rt_canvas3d_draw_mesh(void *obj, void *mesh, void *transform, void *material);
     void rt_canvas3d_end(void *obj);
     void rt_canvas3d_flip(void *obj);
@@ -171,13 +171,13 @@ extern "C"
     /* Debug gizmos */
     void rt_canvas3d_draw_aabb_wire(void *canvas, void *min_v, void *max_v, int64_t color);
     void rt_canvas3d_draw_sphere_wire(void *canvas, void *center, double radius, int64_t color);
-    void rt_canvas3d_draw_debug_ray(void *canvas, void *origin, void *dir,
-                                     double length, int64_t color);
+    void rt_canvas3d_draw_debug_ray(
+        void *canvas, void *origin, void *dir, double length, int64_t color);
     void rt_canvas3d_draw_axis(void *canvas, void *origin, double scale);
 
     /* Fog */
-    void rt_canvas3d_set_fog(void *canvas, double near_dist, double far_dist,
-                              double r, double g, double b);
+    void rt_canvas3d_set_fog(
+        void *canvas, double near_dist, double far_dist, double r, double g, double b);
     void rt_canvas3d_clear_fog(void *canvas);
 
     /* Shadows */
@@ -194,8 +194,8 @@ extern "C"
 
     /* Camera shake + smooth follow */
     void rt_camera3d_shake(void *cam, double intensity, double duration, double decay);
-    void rt_camera3d_smooth_follow(void *cam, void *target, double distance,
-                                    double height, double speed, double dt);
+    void rt_camera3d_smooth_follow(
+        void *cam, void *target, double distance, double height, double speed, double dt);
     void rt_camera3d_smooth_look_at(void *cam, void *target, double speed, double dt);
 
     /* FPS camera */

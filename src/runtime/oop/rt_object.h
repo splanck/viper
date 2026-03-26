@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/oop/rt_object.h
 // Purpose: Reference-counted object allocation, retain/release, and System.Object surface providing
 // the foundational object model for all Viper heap objects.

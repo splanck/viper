@@ -443,6 +443,7 @@ PreservedAnalyses SiblingRecursion::run(Function &fn, AnalysisManager &)
     return PreservedAnalyses::none();
 }
 
+/// @brief Register sibling recursion pass.
 void registerSiblingRecursionPass(PassRegistry &registry)
 {
     registry.registerFunctionPass("sibling-recursion",

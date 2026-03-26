@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/audio/rt_playlist.h
 // Purpose: Queue-based music playlist manager providing sequential track playback with shuffle,
 // repeat, and queue manipulation (add, remove, skip) built on top of the audio bridge.

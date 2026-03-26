@@ -1,3 +1,15 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// Purpose: GUI event dispatch system — routes keyboard, mouse, focus, and custom events to widgets.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/core/vg_event.c
+//
+//===----------------------------------------------------------------------===//
 // vg_event.c - Event system implementation
 #include "../../include/vg_event.h"
 #include "../../include/vg_widget.h"

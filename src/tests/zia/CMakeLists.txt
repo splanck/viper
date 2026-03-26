@@ -39,13 +39,13 @@ function(viper_add_zia_tests)
 
     # String instance-method dispatch tests
     viper_add_test(test_zia_string_instance_methods
-        ${_VIPER_ZIA_DIR}/test_zia_string_instance_methods.cpp)
+            ${_VIPER_ZIA_DIR}/test_zia_string_instance_methods.cpp)
     target_link_libraries(test_zia_string_instance_methods PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_string_instance_methods test_zia_string_instance_methods)
 
     # Destructor bind-resolution tests
     viper_add_test(test_zia_destructor_bindings
-        ${_VIPER_ZIA_DIR}/test_zia_destructor_bindings.cpp)
+            ${_VIPER_ZIA_DIR}/test_zia_destructor_bindings.cpp)
     target_link_libraries(test_zia_destructor_bindings PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_destructor_bindings test_zia_destructor_bindings)
 

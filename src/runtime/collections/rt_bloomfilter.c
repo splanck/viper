@@ -135,6 +135,9 @@ void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate)
 // Add / query
 // ---------------------------------------------------------------------------
 
+/// @brief Perform bloomfilter add operation.
+/// @param filter
+/// @param item
 void rt_bloomfilter_add(void *filter, rt_string item)
 {
     if (!filter || !item)
@@ -155,6 +158,10 @@ void rt_bloomfilter_add(void *filter, rt_string item)
     bf->item_count++;
 }
 
+/// @brief Perform bloomfilter might contain operation.
+/// @param filter
+/// @param item
+/// @return Result value.
 int64_t rt_bloomfilter_might_contain(void *filter, rt_string item)
 {
     if (!filter || !item)
@@ -180,6 +187,9 @@ int64_t rt_bloomfilter_might_contain(void *filter, rt_string item)
 // Accessors
 // ---------------------------------------------------------------------------
 
+/// @brief Perform bloomfilter count operation.
+/// @param filter
+/// @return Result value.
 int64_t rt_bloomfilter_count(void *filter)
 {
     if (!filter)
@@ -187,6 +197,9 @@ int64_t rt_bloomfilter_count(void *filter)
     return ((rt_bloomfilter_impl *)filter)->item_count;
 }
 
+/// @brief Perform bloomfilter fpr operation.
+/// @param filter
+/// @return Result value.
 double rt_bloomfilter_fpr(void *filter)
 {
     if (!filter)
@@ -203,6 +216,8 @@ double rt_bloomfilter_fpr(void *filter)
     return pow(1.0 - exp(-k * n / m), k);
 }
 
+/// @brief Perform bloomfilter clear operation.
+/// @param filter
 void rt_bloomfilter_clear(void *filter)
 {
     if (!filter)
@@ -213,6 +228,10 @@ void rt_bloomfilter_clear(void *filter)
     bf->item_count = 0;
 }
 
+/// @brief Perform bloomfilter merge operation.
+/// @param filter
+/// @param other
+/// @return Result value.
 int64_t rt_bloomfilter_merge(void *filter, void *other)
 {
     if (!filter || !other)

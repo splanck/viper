@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_listbox.c
+//
+//===----------------------------------------------------------------------===//
 // vg_listbox.c - ListBox widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -279,8 +289,13 @@ static void listbox_paint(vg_widget_t *widget, void *canvas)
             if (item->text && lb->font)
             {
                 float ty = item_y + ih * 0.7f;
-                vg_font_draw_text(
-                    canvas, lb->font, lb->font_size, widget->x + 4.0f, ty, item->text, lb->text_color);
+                vg_font_draw_text(canvas,
+                                  lb->font,
+                                  lb->font_size,
+                                  widget->x + 4.0f,
+                                  ty,
+                                  item->text,
+                                  lb->text_color);
             }
 
             item_y += ih;
@@ -544,6 +559,7 @@ vg_listbox_item_t *vg_listbox_add_item(vg_listbox_t *listbox, const char *text, 
     return item;
 }
 
+/// @brief Listbox remove item.
 void vg_listbox_remove_item(vg_listbox_t *listbox, vg_listbox_item_t *item)
 {
     if (!listbox || !item)
@@ -569,6 +585,7 @@ void vg_listbox_remove_item(vg_listbox_t *listbox, vg_listbox_item_t *item)
     listbox->item_count--;
 }
 
+/// @brief Listbox clear.
 void vg_listbox_clear(vg_listbox_t *listbox)
 {
     if (!listbox)
@@ -588,6 +605,7 @@ void vg_listbox_clear(vg_listbox_t *listbox)
     listbox->item_count = 0;
 }
 
+/// @brief Listbox select.
 void vg_listbox_select(vg_listbox_t *listbox, vg_listbox_item_t *item)
 {
     if (!listbox)
@@ -615,6 +633,7 @@ vg_listbox_item_t *vg_listbox_get_selected(vg_listbox_t *listbox)
     return listbox ? listbox->selected : NULL;
 }
 
+/// @brief Listbox set font.
 void vg_listbox_set_font(vg_listbox_t *listbox, vg_font_t *font, float size)
 {
     if (!listbox)
@@ -623,6 +642,7 @@ void vg_listbox_set_font(vg_listbox_t *listbox, vg_font_t *font, float size)
     listbox->font_size = size;
 }
 
+/// @brief Listbox set on select.
 void vg_listbox_set_on_select(vg_listbox_t *listbox,
                               vg_listbox_callback_t callback,
                               void *user_data)
@@ -687,6 +707,7 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
     listbox->base.needs_layout = true;
 }
 
+/// @brief Listbox set data provider.
 void vg_listbox_set_data_provider(vg_listbox_t *listbox,
                                   vg_listbox_data_provider_t provider,
                                   void *user_data)
@@ -698,6 +719,7 @@ void vg_listbox_set_data_provider(vg_listbox_t *listbox,
     listbox->data_provider_user_data = user_data;
 }
 
+/// @brief Listbox set total count.
 void vg_listbox_set_total_count(vg_listbox_t *listbox, size_t count)
 {
     if (!listbox || !listbox->virtual_mode)
@@ -738,6 +760,7 @@ void vg_listbox_set_total_count(vg_listbox_t *listbox, size_t count)
     listbox->base.needs_paint = true;
 }
 
+/// @brief Listbox invalidate items.
 void vg_listbox_invalidate_items(vg_listbox_t *listbox)
 {
     if (!listbox)
@@ -759,6 +782,7 @@ void vg_listbox_invalidate_items(vg_listbox_t *listbox)
     listbox->base.needs_paint = true;
 }
 
+/// @brief Listbox invalidate item.
 void vg_listbox_invalidate_item(vg_listbox_t *listbox, size_t index)
 {
     if (!listbox || !listbox->virtual_mode)
@@ -778,6 +802,7 @@ void vg_listbox_invalidate_item(vg_listbox_t *listbox, size_t index)
     listbox->base.needs_paint = true;
 }
 
+/// @brief Listbox select index.
 void vg_listbox_select_index(vg_listbox_t *listbox, size_t index)
 {
     if (!listbox)
@@ -811,6 +836,7 @@ void vg_listbox_select_index(vg_listbox_t *listbox, size_t index)
     listbox->base.needs_paint = true;
 }
 
+/// @brief Listbox get selected index.
 size_t vg_listbox_get_selected_index(vg_listbox_t *listbox)
 {
     if (!listbox)

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_modvar.h
 // Purpose: Runtime support for module-level (global) BASIC variables, providing stable address
 // lookup by name and type for i64, f64, i1, pointer, and string variables.

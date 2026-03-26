@@ -1044,7 +1044,8 @@ TypeRef Sema::analyzeNew(NewExpr *expr)
         else if (!expr->args.empty())
         {
             error(expr->loc,
-                  "Entity '" + type->name + "' has no init overload matching the provided arguments");
+                  "Entity '" + type->name +
+                      "' has no init overload matching the provided arguments");
         }
     }
 

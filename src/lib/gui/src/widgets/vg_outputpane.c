@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_outputpane.c
+//
+//===----------------------------------------------------------------------===//
 // vg_outputpane.c - Output Pane widget implementation
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -254,6 +264,7 @@ static void outputpane_destroy(vg_widget_t *widget)
     free(pane->lines);
 }
 
+/// @brief Outputpane destroy.
 void vg_outputpane_destroy(vg_outputpane_t *pane)
 {
     if (!pane)
@@ -355,6 +366,7 @@ static bool outputpane_handle_event(vg_widget_t *widget, vg_event_t *event)
     return false;
 }
 
+/// @brief Outputpane append.
 void vg_outputpane_append(vg_outputpane_t *pane, const char *text)
 {
     if (!pane || !text)
@@ -485,6 +497,7 @@ void vg_outputpane_append(vg_outputpane_t *pane, const char *text)
     pane->base.needs_paint = true;
 }
 
+/// @brief Outputpane append line.
 void vg_outputpane_append_line(vg_outputpane_t *pane, const char *text)
 {
     if (!pane)
@@ -511,6 +524,7 @@ void vg_outputpane_append_line(vg_outputpane_t *pane, const char *text)
     }
 }
 
+/// @brief Outputpane append styled.
 void vg_outputpane_append_styled(
     vg_outputpane_t *pane, const char *text, uint32_t fg, uint32_t bg, bool bold)
 {
@@ -548,6 +562,7 @@ void vg_outputpane_append_styled(
     pane->base.needs_paint = true;
 }
 
+/// @brief Outputpane clear.
 void vg_outputpane_clear(vg_outputpane_t *pane)
 {
     if (!pane)
@@ -573,6 +588,7 @@ void vg_outputpane_clear(vg_outputpane_t *pane)
     pane->base.needs_paint = true;
 }
 
+/// @brief Outputpane scroll to bottom.
 void vg_outputpane_scroll_to_bottom(vg_outputpane_t *pane)
 {
     if (!pane)
@@ -588,6 +604,7 @@ void vg_outputpane_scroll_to_bottom(vg_outputpane_t *pane)
     pane->base.needs_paint = true;
 }
 
+/// @brief Outputpane scroll to top.
 void vg_outputpane_scroll_to_top(vg_outputpane_t *pane)
 {
     if (!pane)
@@ -598,6 +615,7 @@ void vg_outputpane_scroll_to_top(vg_outputpane_t *pane)
     pane->base.needs_paint = true;
 }
 
+/// @brief Outputpane set auto scroll.
 void vg_outputpane_set_auto_scroll(vg_outputpane_t *pane, bool auto_scroll)
 {
     if (!pane)
@@ -605,6 +623,7 @@ void vg_outputpane_set_auto_scroll(vg_outputpane_t *pane, bool auto_scroll)
     pane->auto_scroll = auto_scroll;
 }
 
+/// @brief Outputpane get selection.
 char *vg_outputpane_get_selection(vg_outputpane_t *pane)
 {
     if (!pane || !pane->has_selection || pane->line_count == 0)
@@ -691,6 +710,7 @@ char *vg_outputpane_get_selection(vg_outputpane_t *pane)
     return buf;
 }
 
+/// @brief Outputpane select all.
 void vg_outputpane_select_all(vg_outputpane_t *pane)
 {
     if (!pane || pane->line_count == 0)
@@ -705,6 +725,7 @@ void vg_outputpane_select_all(vg_outputpane_t *pane)
     pane->base.needs_paint = true;
 }
 
+/// @brief Outputpane set max lines.
 void vg_outputpane_set_max_lines(vg_outputpane_t *pane, size_t max)
 {
     if (!pane)
@@ -712,6 +733,7 @@ void vg_outputpane_set_max_lines(vg_outputpane_t *pane, size_t max)
     pane->max_lines = max;
 }
 
+/// @brief Outputpane set font.
 void vg_outputpane_set_font(vg_outputpane_t *pane, vg_font_t *font, float size)
 {
     if (!pane)

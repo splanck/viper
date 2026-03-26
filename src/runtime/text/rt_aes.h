@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_aes.h
 // Purpose: AES-128 and AES-256 encryption in CBC mode with PKCS7 padding, implemented in pure C
 // with no external dependencies.

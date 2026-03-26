@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_screenfx.h
 // Purpose: Screen effects manager for camera shake, color flash, and screen fades, with up to
 // RT_SCREENFX_MAX_EFFECTS (8) concurrent effects outputting shake offsets and overlay colors per

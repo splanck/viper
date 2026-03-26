@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_findreplacebar.c
+//
+//===----------------------------------------------------------------------===//
 // vg_findreplacebar.c - Find/Replace bar widget implementation
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -695,6 +705,7 @@ void vg_findreplacebar_destroy(vg_findreplacebar_t *bar)
     vg_widget_destroy(&bar->base);
 }
 
+/// @brief Findreplacebar set target.
 void vg_findreplacebar_set_target(vg_findreplacebar_t *bar, struct vg_codeeditor *editor)
 {
     if (!bar)
@@ -705,6 +716,7 @@ void vg_findreplacebar_set_target(vg_findreplacebar_t *bar, struct vg_codeeditor
     perform_search(bar);
 }
 
+/// @brief Findreplacebar set show replace.
 void vg_findreplacebar_set_show_replace(vg_findreplacebar_t *bar, bool show)
 {
     if (!bar)
@@ -713,6 +725,7 @@ void vg_findreplacebar_set_show_replace(vg_findreplacebar_t *bar, bool show)
     vg_widget_invalidate(&bar->base);
 }
 
+/// @brief Findreplacebar set options.
 void vg_findreplacebar_set_options(vg_findreplacebar_t *bar, vg_search_options_t *options)
 {
     if (!bar || !options)
@@ -736,6 +749,7 @@ void vg_findreplacebar_set_options(vg_findreplacebar_t *bar, vg_search_options_t
     perform_search(bar);
 }
 
+/// @brief Findreplacebar find.
 void vg_findreplacebar_find(vg_findreplacebar_t *bar, const char *query)
 {
     if (!bar)
@@ -749,6 +763,7 @@ void vg_findreplacebar_find(vg_findreplacebar_t *bar, const char *query)
     perform_search(bar);
 }
 
+/// @brief Findreplacebar find next.
 void vg_findreplacebar_find_next(vg_findreplacebar_t *bar)
 {
     if (!bar || bar->match_count == 0)
@@ -772,6 +787,7 @@ void vg_findreplacebar_find_next(vg_findreplacebar_t *bar)
     vg_widget_invalidate(&bar->base);
 }
 
+/// @brief Findreplacebar find prev.
 void vg_findreplacebar_find_prev(vg_findreplacebar_t *bar)
 {
     if (!bar || bar->match_count == 0)
@@ -794,6 +810,7 @@ void vg_findreplacebar_find_prev(vg_findreplacebar_t *bar)
     vg_widget_invalidate(&bar->base);
 }
 
+/// @brief Findreplacebar replace current.
 void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar)
 {
     if (!bar || bar->match_count == 0 || !bar->target_editor)
@@ -825,6 +842,7 @@ void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar)
     perform_search(bar);
 }
 
+/// @brief Findreplacebar replace all.
 void vg_findreplacebar_replace_all(vg_findreplacebar_t *bar)
 {
     if (!bar || bar->match_count == 0 || !bar->target_editor)
@@ -866,16 +884,19 @@ void vg_findreplacebar_replace_all(vg_findreplacebar_t *bar)
     perform_search(bar);
 }
 
+/// @brief Findreplacebar get match count.
 size_t vg_findreplacebar_get_match_count(vg_findreplacebar_t *bar)
 {
     return bar ? bar->match_count : 0;
 }
 
+/// @brief Findreplacebar get current match.
 size_t vg_findreplacebar_get_current_match(vg_findreplacebar_t *bar)
 {
     return bar ? bar->current_match : 0;
 }
 
+/// @brief Findreplacebar focus.
 void vg_findreplacebar_focus(vg_findreplacebar_t *bar)
 {
     if (!bar || !bar->find_input)
@@ -883,6 +904,7 @@ void vg_findreplacebar_focus(vg_findreplacebar_t *bar)
     vg_widget_set_focus((vg_widget_t *)bar->find_input);
 }
 
+/// @brief Findreplacebar set find text.
 void vg_findreplacebar_set_find_text(vg_findreplacebar_t *bar, const char *text)
 {
     if (!bar || !bar->find_input)
@@ -891,6 +913,7 @@ void vg_findreplacebar_set_find_text(vg_findreplacebar_t *bar, const char *text)
     perform_search(bar);
 }
 
+/// @brief Findreplacebar set on close.
 void vg_findreplacebar_set_on_close(vg_findreplacebar_t *bar,
                                     void (*callback)(vg_findreplacebar_t *, void *),
                                     void *user_data)
@@ -901,6 +924,7 @@ void vg_findreplacebar_set_on_close(vg_findreplacebar_t *bar,
     bar->user_data = user_data;
 }
 
+/// @brief Findreplacebar set font.
 void vg_findreplacebar_set_font(vg_findreplacebar_t *bar, vg_font_t *font, float size)
 {
     if (!bar)

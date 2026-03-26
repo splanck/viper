@@ -60,6 +60,10 @@ static int64_t i64_abs(int64_t x)
 // rt_reltime_format_from
 // ---------------------------------------------------------------------------
 
+/// @brief Perform reltime format from operation.
+/// @param timestamp
+/// @param reference
+/// @return Result value.
 rt_string rt_reltime_format_from(int64_t timestamp, int64_t reference)
 {
     int64_t diff = timestamp - reference; // positive = future, negative = past
@@ -122,6 +126,9 @@ rt_string rt_reltime_format_from(int64_t timestamp, int64_t reference)
 // rt_reltime_format
 // ---------------------------------------------------------------------------
 
+/// @brief Perform reltime format operation.
+/// @param timestamp
+/// @return Result value.
 rt_string rt_reltime_format(int64_t timestamp)
 {
     return rt_reltime_format_from(timestamp, current_unix_seconds());
@@ -131,6 +138,9 @@ rt_string rt_reltime_format(int64_t timestamp)
 // rt_reltime_format_duration
 // ---------------------------------------------------------------------------
 
+/// @brief Perform reltime format duration operation.
+/// @param duration_ms
+/// @return Result value.
 rt_string rt_reltime_format_duration(int64_t duration_ms)
 {
     int64_t abs_ms = i64_abs(duration_ms);
@@ -186,6 +196,9 @@ rt_string rt_reltime_format_duration(int64_t duration_ms)
 // rt_reltime_format_short
 // ---------------------------------------------------------------------------
 
+/// @brief Perform reltime format short operation.
+/// @param timestamp
+/// @return Result value.
 rt_string rt_reltime_format_short(int64_t timestamp)
 {
     int64_t now = current_unix_seconds();

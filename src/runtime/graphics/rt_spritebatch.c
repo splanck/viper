@@ -197,8 +197,7 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
     if (!item->source)
         return;
 
-    const bool needsTransform =
-        item->scale_x != 100 || item->scale_y != 100 || item->rotation != 0;
+    const bool needsTransform = item->scale_x != 100 || item->scale_y != 100 || item->rotation != 0;
     const bool needsColor = batch->tint_color != 0 || batch->alpha < 255;
     if (!needsTransform && !needsColor)
     {
@@ -292,6 +291,8 @@ void *rt_spritebatch_new(int64_t capacity)
 // SpriteBatch Operations
 //=============================================================================
 
+/// @brief Perform spritebatch begin operation.
+/// @param batch_ptr
 void rt_spritebatch_begin(void *batch_ptr)
 {
     if (!batch_ptr)
@@ -302,6 +303,9 @@ void rt_spritebatch_begin(void *batch_ptr)
     batch->active = 1;
 }
 
+/// @brief Perform spritebatch end operation.
+/// @param batch_ptr
+/// @param canvas
 void rt_spritebatch_end(void *batch_ptr, void *canvas)
 {
     if (!batch_ptr || !canvas)
@@ -356,7 +360,8 @@ void rt_spritebatch_end(void *batch_ptr, void *canvas)
             case BATCH_ITEM_PIXELS:
                 if (item->source)
                 {
-                    void *draw_src = apply_batch_color(item->source, batch->tint_color, batch->alpha);
+                    void *draw_src =
+                        apply_batch_color(item->source, batch->tint_color, batch->alpha);
                     if (batch->alpha < 255 || batch->tint_color != 0)
                     {
                         rt_canvas_blit_alpha(canvas, item->x, item->y, draw_src);
@@ -377,11 +382,22 @@ void rt_spritebatch_end(void *batch_ptr, void *canvas)
     batch->active = 0;
 }
 
+/// @brief Perform spritebatch draw operation.
+/// @param batch_ptr
+/// @param sprite
+/// @param x
+/// @param y
 void rt_spritebatch_draw(void *batch_ptr, void *sprite, int64_t x, int64_t y)
 {
     rt_spritebatch_draw_ex(batch_ptr, sprite, x, y, 100, 100, 0);
 }
 
+/// @brief Perform spritebatch draw scaled operation.
+/// @param batch_ptr
+/// @param sprite
+/// @param x
+/// @param y
+/// @param scale
 void rt_spritebatch_draw_scaled(void *batch_ptr, void *sprite, int64_t x, int64_t y, int64_t scale)
 {
     rt_spritebatch_draw_ex(batch_ptr, sprite, x, y, scale, scale, 0);
@@ -415,6 +431,11 @@ void rt_spritebatch_draw_ex(void *batch_ptr,
     add_item(batch, &item);
 }
 
+/// @brief Perform spritebatch draw pixels operation.
+/// @param batch_ptr
+/// @param pixels
+/// @param x
+/// @param y
 void rt_spritebatch_draw_pixels(void *batch_ptr, void *pixels, int64_t x, int64_t y)
 {
     if (!batch_ptr || !pixels)
@@ -490,6 +511,9 @@ void rt_spritebatch_draw_region_ex(void *batch_ptr,
 // SpriteBatch Properties
 //=============================================================================
 
+/// @brief Perform spritebatch count operation.
+/// @param batch_ptr
+/// @return Result value.
 int64_t rt_spritebatch_count(void *batch_ptr)
 {
     if (!batch_ptr)
@@ -497,6 +521,9 @@ int64_t rt_spritebatch_count(void *batch_ptr)
     return ((spritebatch_impl *)batch_ptr)->count;
 }
 
+/// @brief Perform spritebatch capacity operation.
+/// @param batch_ptr
+/// @return Result value.
 int64_t rt_spritebatch_capacity(void *batch_ptr)
 {
     if (!batch_ptr)
@@ -504,6 +531,9 @@ int64_t rt_spritebatch_capacity(void *batch_ptr)
     return ((spritebatch_impl *)batch_ptr)->capacity;
 }
 
+/// @brief Perform spritebatch is active operation.
+/// @param batch_ptr
+/// @return Result value.
 int8_t rt_spritebatch_is_active(void *batch_ptr)
 {
     if (!batch_ptr)
@@ -515,6 +545,9 @@ int8_t rt_spritebatch_is_active(void *batch_ptr)
 // SpriteBatch Settings
 //=============================================================================
 
+/// @brief Perform spritebatch set sort by depth operation.
+/// @param batch_ptr
+/// @param enabled
 void rt_spritebatch_set_sort_by_depth(void *batch_ptr, int8_t enabled)
 {
     if (!batch_ptr)
@@ -522,6 +555,9 @@ void rt_spritebatch_set_sort_by_depth(void *batch_ptr, int8_t enabled)
     ((spritebatch_impl *)batch_ptr)->sort_by_depth = enabled ? 1 : 0;
 }
 
+/// @brief Perform spritebatch set tint operation.
+/// @param batch_ptr
+/// @param color
 void rt_spritebatch_set_tint(void *batch_ptr, int64_t color)
 {
     if (!batch_ptr)
@@ -529,6 +565,9 @@ void rt_spritebatch_set_tint(void *batch_ptr, int64_t color)
     ((spritebatch_impl *)batch_ptr)->tint_color = color;
 }
 
+/// @brief Perform spritebatch set alpha operation.
+/// @param batch_ptr
+/// @param alpha
 void rt_spritebatch_set_alpha(void *batch_ptr, int64_t alpha)
 {
     if (!batch_ptr)
@@ -540,6 +579,8 @@ void rt_spritebatch_set_alpha(void *batch_ptr, int64_t alpha)
     ((spritebatch_impl *)batch_ptr)->alpha = alpha;
 }
 
+/// @brief Perform spritebatch reset settings operation.
+/// @param batch_ptr
 void rt_spritebatch_reset_settings(void *batch_ptr)
 {
     if (!batch_ptr)

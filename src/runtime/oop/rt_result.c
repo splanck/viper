@@ -158,6 +158,9 @@ void *rt_result_err_str(rt_string message)
 // Result Inspection
 //=============================================================================
 
+/// @brief Perform result is ok operation.
+/// @param obj
+/// @return Result value.
 int8_t rt_result_is_ok(void *obj)
 {
     if (!obj)
@@ -166,6 +169,9 @@ int8_t rt_result_is_ok(void *obj)
     return r->variant == RESULT_OK ? 1 : 0;
 }
 
+/// @brief Perform result is err operation.
+/// @param obj
+/// @return Result value.
 int8_t rt_result_is_err(void *obj)
 {
     if (!obj)
@@ -195,6 +201,9 @@ void *rt_result_unwrap(void *obj)
     return r->value.ptr;
 }
 
+/// @brief Perform result unwrap str operation.
+/// @param obj
+/// @return Result value.
 rt_string rt_result_unwrap_str(void *obj)
 {
     if (!obj)
@@ -207,6 +216,9 @@ rt_string rt_result_unwrap_str(void *obj)
     return r->value.str;
 }
 
+/// @brief Perform result unwrap i64 operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_result_unwrap_i64(void *obj)
 {
     if (!obj)
@@ -219,6 +231,9 @@ int64_t rt_result_unwrap_i64(void *obj)
     return r->value.i64;
 }
 
+/// @brief Perform result unwrap f64 operation.
+/// @param obj
+/// @return Result value.
 double rt_result_unwrap_f64(void *obj)
 {
     if (!obj)
@@ -241,6 +256,10 @@ void *rt_result_unwrap_or(void *obj, void *def)
     return r->value.ptr;
 }
 
+/// @brief Perform result unwrap or str operation.
+/// @param obj
+/// @param def
+/// @return Result value.
 rt_string rt_result_unwrap_or_str(void *obj, rt_string def)
 {
     if (!obj)
@@ -253,6 +272,10 @@ rt_string rt_result_unwrap_or_str(void *obj, rt_string def)
     return r->value.str;
 }
 
+/// @brief Perform result unwrap or i64 operation.
+/// @param obj
+/// @param def
+/// @return Result value.
 int64_t rt_result_unwrap_or_i64(void *obj, int64_t def)
 {
     if (!obj)
@@ -265,6 +288,10 @@ int64_t rt_result_unwrap_or_i64(void *obj, int64_t def)
     return r->value.i64;
 }
 
+/// @brief Perform result unwrap or f64 operation.
+/// @param obj
+/// @param def
+/// @return Result value.
 double rt_result_unwrap_or_f64(void *obj, double def)
 {
     if (!obj)
@@ -287,6 +314,9 @@ void *rt_result_unwrap_err(void *obj)
     return r->value.ptr;
 }
 
+/// @brief Perform result unwrap err str operation.
+/// @param obj
+/// @return Result value.
 rt_string rt_result_unwrap_err_str(void *obj)
 {
     if (!obj)
@@ -429,6 +459,10 @@ void *rt_result_or_else(void *obj, void *(*fn)(void *))
 // Utility
 //=============================================================================
 
+/// @brief Perform result equals operation.
+/// @param a
+/// @param b
+/// @return Result value.
 int8_t rt_result_equals(void *a, void *b)
 {
     if (a == b)

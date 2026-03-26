@@ -148,6 +148,7 @@ static void test_null_safety()
     assert(rt_msgbus_unsubscribe(NULL, 1) == 0);
 }
 
+/// @brief Main.
 int main()
 {
     test_new();

@@ -34,6 +34,7 @@ using il::transform::LateCleanupStats;
 namespace
 {
 
+/// @brief Run cleanup.
 LateCleanupStats runCleanup(il::core::Module &m)
 {
     il::transform::AnalysisRegistry registry;
@@ -45,6 +46,7 @@ LateCleanupStats runCleanup(il::core::Module &m)
     return stats;
 }
 
+/// @brief Verify or die.
 void verifyOrDie(const Module &m)
 {
     auto result = il::verify::Verifier::verify(m);

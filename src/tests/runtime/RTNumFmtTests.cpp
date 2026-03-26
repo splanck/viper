@@ -280,6 +280,7 @@ static void test_pad()
     rt_string_unref(r);
 }
 
+/// @brief Main.
 int main()
 {
     // Decimals

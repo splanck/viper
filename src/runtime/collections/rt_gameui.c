@@ -85,6 +85,9 @@ void *rt_uilabel_new(int64_t x, int64_t y, rt_string text, int64_t color)
     return label;
 }
 
+/// @brief Perform uilabel set text operation.
+/// @param ptr
+/// @param text
 void rt_uilabel_set_text(void *ptr, rt_string text)
 {
     if (!ptr)
@@ -105,6 +108,10 @@ void rt_uilabel_set_text(void *ptr, rt_string text)
     }
 }
 
+/// @brief Perform uilabel set pos operation.
+/// @param ptr
+/// @param x
+/// @param y
 void rt_uilabel_set_pos(void *ptr, int64_t x, int64_t y)
 {
     if (!ptr)
@@ -114,6 +121,9 @@ void rt_uilabel_set_pos(void *ptr, int64_t x, int64_t y)
     label->y = y;
 }
 
+/// @brief Perform uilabel set color operation.
+/// @param ptr
+/// @param color
 void rt_uilabel_set_color(void *ptr, int64_t color)
 {
     if (!ptr)
@@ -121,6 +131,9 @@ void rt_uilabel_set_color(void *ptr, int64_t color)
     ((rt_uilabel_impl *)ptr)->color = color;
 }
 
+/// @brief Perform uilabel set font operation.
+/// @param ptr
+/// @param font
 void rt_uilabel_set_font(void *ptr, void *font)
 {
     if (!ptr)
@@ -128,6 +141,9 @@ void rt_uilabel_set_font(void *ptr, void *font)
     ((rt_uilabel_impl *)ptr)->font = font;
 }
 
+/// @brief Perform uilabel set scale operation.
+/// @param ptr
+/// @param scale
 void rt_uilabel_set_scale(void *ptr, int64_t scale)
 {
     if (!ptr)
@@ -137,6 +153,9 @@ void rt_uilabel_set_scale(void *ptr, int64_t scale)
     ((rt_uilabel_impl *)ptr)->scale = scale;
 }
 
+/// @brief Perform uilabel set visible operation.
+/// @param ptr
+/// @param visible
 void rt_uilabel_set_visible(void *ptr, int8_t visible)
 {
     if (!ptr)
@@ -144,6 +163,9 @@ void rt_uilabel_set_visible(void *ptr, int8_t visible)
     ((rt_uilabel_impl *)ptr)->visible = visible ? 1 : 0;
 }
 
+/// @brief Perform uilabel get x operation.
+/// @param ptr
+/// @return Result value.
 int64_t rt_uilabel_get_x(void *ptr)
 {
     if (!ptr)
@@ -151,6 +173,9 @@ int64_t rt_uilabel_get_x(void *ptr)
     return ((rt_uilabel_impl *)ptr)->x;
 }
 
+/// @brief Perform uilabel get y operation.
+/// @param ptr
+/// @return Result value.
 int64_t rt_uilabel_get_y(void *ptr)
 {
     if (!ptr)
@@ -158,6 +183,9 @@ int64_t rt_uilabel_get_y(void *ptr)
     return ((rt_uilabel_impl *)ptr)->y;
 }
 
+/// @brief Perform uilabel draw operation.
+/// @param ptr
+/// @param canvas
 void rt_uilabel_draw(void *ptr, void *canvas)
 {
     if (!ptr || !canvas)
@@ -226,6 +254,10 @@ void *rt_uibar_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t fg_color,
     return bar;
 }
 
+/// @brief Perform uibar set value operation.
+/// @param ptr
+/// @param value
+/// @param max_value
 void rt_uibar_set_value(void *ptr, int64_t value, int64_t max_value)
 {
     if (!ptr)
@@ -241,6 +273,10 @@ void rt_uibar_set_value(void *ptr, int64_t value, int64_t max_value)
     bar->max_value = max_value;
 }
 
+/// @brief Perform uibar set pos operation.
+/// @param ptr
+/// @param x
+/// @param y
 void rt_uibar_set_pos(void *ptr, int64_t x, int64_t y)
 {
     if (!ptr)
@@ -250,6 +286,10 @@ void rt_uibar_set_pos(void *ptr, int64_t x, int64_t y)
     bar->y = y;
 }
 
+/// @brief Perform uibar set size operation.
+/// @param ptr
+/// @param w
+/// @param h
 void rt_uibar_set_size(void *ptr, int64_t w, int64_t h)
 {
     if (!ptr)
@@ -259,6 +299,10 @@ void rt_uibar_set_size(void *ptr, int64_t w, int64_t h)
     bar->h = h > 0 ? h : 1;
 }
 
+/// @brief Perform uibar set colors operation.
+/// @param ptr
+/// @param fg
+/// @param bg
 void rt_uibar_set_colors(void *ptr, int64_t fg, int64_t bg)
 {
     if (!ptr)
@@ -268,6 +312,9 @@ void rt_uibar_set_colors(void *ptr, int64_t fg, int64_t bg)
     bar->bg_color = bg;
 }
 
+/// @brief Perform uibar set border operation.
+/// @param ptr
+/// @param color
 void rt_uibar_set_border(void *ptr, int64_t color)
 {
     if (!ptr)
@@ -275,6 +322,9 @@ void rt_uibar_set_border(void *ptr, int64_t color)
     ((rt_uibar_impl *)ptr)->border_color = color;
 }
 
+/// @brief Perform uibar set direction operation.
+/// @param ptr
+/// @param dir
 void rt_uibar_set_direction(void *ptr, int64_t dir)
 {
     if (!ptr)
@@ -284,6 +334,9 @@ void rt_uibar_set_direction(void *ptr, int64_t dir)
     ((rt_uibar_impl *)ptr)->direction = dir;
 }
 
+/// @brief Perform uibar set visible operation.
+/// @param ptr
+/// @param visible
 void rt_uibar_set_visible(void *ptr, int8_t visible)
 {
     if (!ptr)
@@ -291,6 +344,9 @@ void rt_uibar_set_visible(void *ptr, int8_t visible)
     ((rt_uibar_impl *)ptr)->visible = visible ? 1 : 0;
 }
 
+/// @brief Perform uibar get value operation.
+/// @param ptr
+/// @return Result value.
 int64_t rt_uibar_get_value(void *ptr)
 {
     if (!ptr)
@@ -298,6 +354,9 @@ int64_t rt_uibar_get_value(void *ptr)
     return ((rt_uibar_impl *)ptr)->value;
 }
 
+/// @brief Perform uibar get max operation.
+/// @param ptr
+/// @return Result value.
 int64_t rt_uibar_get_max(void *ptr)
 {
     if (!ptr)
@@ -305,6 +364,9 @@ int64_t rt_uibar_get_max(void *ptr)
     return ((rt_uibar_impl *)ptr)->max_value;
 }
 
+/// @brief Perform uibar draw operation.
+/// @param ptr
+/// @param canvas
 void rt_uibar_draw(void *ptr, void *canvas)
 {
     if (!ptr || !canvas)
@@ -381,6 +443,10 @@ void *rt_uipanel_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t bg_colo
     return panel;
 }
 
+/// @brief Perform uipanel set pos operation.
+/// @param ptr
+/// @param x
+/// @param y
 void rt_uipanel_set_pos(void *ptr, int64_t x, int64_t y)
 {
     if (!ptr)
@@ -390,6 +456,10 @@ void rt_uipanel_set_pos(void *ptr, int64_t x, int64_t y)
     panel->y = y;
 }
 
+/// @brief Perform uipanel set size operation.
+/// @param ptr
+/// @param w
+/// @param h
 void rt_uipanel_set_size(void *ptr, int64_t w, int64_t h)
 {
     if (!ptr)
@@ -399,6 +469,10 @@ void rt_uipanel_set_size(void *ptr, int64_t w, int64_t h)
     panel->h = h > 0 ? h : 1;
 }
 
+/// @brief Perform uipanel set color operation.
+/// @param ptr
+/// @param bg_color
+/// @param alpha
 void rt_uipanel_set_color(void *ptr, int64_t bg_color, int64_t alpha)
 {
     if (!ptr)
@@ -408,6 +482,10 @@ void rt_uipanel_set_color(void *ptr, int64_t bg_color, int64_t alpha)
     panel->alpha = alpha < 0 ? 0 : (alpha > 255 ? 255 : alpha);
 }
 
+/// @brief Perform uipanel set border operation.
+/// @param ptr
+/// @param color
+/// @param thickness
 void rt_uipanel_set_border(void *ptr, int64_t color, int64_t thickness)
 {
     if (!ptr)
@@ -417,6 +495,9 @@ void rt_uipanel_set_border(void *ptr, int64_t color, int64_t thickness)
     panel->border_thickness = thickness > 0 ? thickness : 1;
 }
 
+/// @brief Perform uipanel set corner radius operation.
+/// @param ptr
+/// @param radius
 void rt_uipanel_set_corner_radius(void *ptr, int64_t radius)
 {
     if (!ptr)
@@ -424,6 +505,9 @@ void rt_uipanel_set_corner_radius(void *ptr, int64_t radius)
     ((rt_uipanel_impl *)ptr)->corner_radius = radius < 0 ? 0 : radius;
 }
 
+/// @brief Perform uipanel set visible operation.
+/// @param ptr
+/// @param visible
 void rt_uipanel_set_visible(void *ptr, int8_t visible)
 {
     if (!ptr)
@@ -431,6 +515,9 @@ void rt_uipanel_set_visible(void *ptr, int8_t visible)
     ((rt_uipanel_impl *)ptr)->visible = visible ? 1 : 0;
 }
 
+/// @brief Perform uipanel draw operation.
+/// @param ptr
+/// @param canvas
 void rt_uipanel_draw(void *ptr, void *canvas)
 {
     if (!ptr || !canvas)
@@ -540,6 +627,9 @@ void *rt_uinineslice_new(void *pixels, int64_t left, int64_t top, int64_t right,
     return ns;
 }
 
+/// @brief Perform uinineslice set tint operation.
+/// @param ptr
+/// @param color
 void rt_uinineslice_set_tint(void *ptr, int64_t color)
 {
     if (!ptr)
@@ -547,6 +637,13 @@ void rt_uinineslice_set_tint(void *ptr, int64_t color)
     ((rt_uinineslice_impl *)ptr)->tint = color;
 }
 
+/// @brief Perform uinineslice draw operation.
+/// @param ptr
+/// @param canvas
+/// @param x
+/// @param y
+/// @param w
+/// @param h
 void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t w, int64_t h)
 {
     if (!ptr || !canvas)
@@ -690,6 +787,9 @@ void *rt_uimenulist_new(int64_t x, int64_t y, int64_t item_height)
     return menu;
 }
 
+/// @brief Perform uimenulist add item operation.
+/// @param ptr
+/// @param text
 void rt_uimenulist_add_item(void *ptr, rt_string text)
 {
     if (!ptr || !text)
@@ -710,6 +810,8 @@ void rt_uimenulist_add_item(void *ptr, rt_string text)
     menu->count++;
 }
 
+/// @brief Perform uimenulist clear operation.
+/// @param ptr
 void rt_uimenulist_clear(void *ptr)
 {
     if (!ptr)
@@ -719,6 +821,9 @@ void rt_uimenulist_clear(void *ptr)
     menu->selected = 0;
 }
 
+/// @brief Perform uimenulist set selected operation.
+/// @param ptr
+/// @param index
 void rt_uimenulist_set_selected(void *ptr, int64_t index)
 {
     if (!ptr)
@@ -736,6 +841,9 @@ void rt_uimenulist_set_selected(void *ptr, int64_t index)
     menu->selected = index;
 }
 
+/// @brief Perform uimenulist get selected operation.
+/// @param ptr
+/// @return Result value.
 int64_t rt_uimenulist_get_selected(void *ptr)
 {
     if (!ptr)
@@ -743,6 +851,8 @@ int64_t rt_uimenulist_get_selected(void *ptr)
     return ((rt_uimenulist_impl *)ptr)->selected;
 }
 
+/// @brief Perform uimenulist move up operation.
+/// @param ptr
 void rt_uimenulist_move_up(void *ptr)
 {
     if (!ptr)
@@ -756,6 +866,8 @@ void rt_uimenulist_move_up(void *ptr)
         menu->selected--;
 }
 
+/// @brief Perform uimenulist move down operation.
+/// @param ptr
 void rt_uimenulist_move_down(void *ptr)
 {
     if (!ptr)
@@ -782,6 +894,9 @@ void rt_uimenulist_set_colors(void *ptr,
     menu->highlight_bg = highlight_bg;
 }
 
+/// @brief Perform uimenulist set font operation.
+/// @param ptr
+/// @param font
 void rt_uimenulist_set_font(void *ptr, void *font)
 {
     if (!ptr)
@@ -789,6 +904,9 @@ void rt_uimenulist_set_font(void *ptr, void *font)
     ((rt_uimenulist_impl *)ptr)->font = font;
 }
 
+/// @brief Perform uimenulist set visible operation.
+/// @param ptr
+/// @param visible
 void rt_uimenulist_set_visible(void *ptr, int8_t visible)
 {
     if (!ptr)
@@ -796,6 +914,9 @@ void rt_uimenulist_set_visible(void *ptr, int8_t visible)
     ((rt_uimenulist_impl *)ptr)->visible = visible ? 1 : 0;
 }
 
+/// @brief Perform uimenulist get count operation.
+/// @param ptr
+/// @return Result value.
 int64_t rt_uimenulist_get_count(void *ptr)
 {
     if (!ptr)
@@ -803,6 +924,9 @@ int64_t rt_uimenulist_get_count(void *ptr)
     return ((rt_uimenulist_impl *)ptr)->count;
 }
 
+/// @brief Perform uimenulist draw operation.
+/// @param ptr
+/// @param canvas
 void rt_uimenulist_draw(void *ptr, void *canvas)
 {
     if (!ptr || !canvas)

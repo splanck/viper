@@ -186,7 +186,9 @@ TEST(parallax_null_safety)
     // NULL camera should not crash, returns safe defaults
     ASSERT(rt_camera_parallax_count(NULL) == 0);
     ASSERT(rt_camera_add_parallax(NULL, (void *)0x1000, 50, 50) == -1);
+    /// @brief Rt_camera_remove_parallax.
     rt_camera_remove_parallax(NULL, 0); // no crash
+                                        /// @brief Rt_camera_clear_parallax.
     rt_camera_clear_parallax(NULL);     // no crash
 
     // NULL pixels should be rejected
@@ -199,6 +201,7 @@ TEST(parallax_null_safety)
     ASSERT(rt_camera_draw_parallax(NULL, (void *)0x1) == 0);
 }
 
+/// @brief Main.
 int main()
 {
     printf("RTCameraTests:\n");

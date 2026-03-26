@@ -130,6 +130,9 @@ static void particle_emitter_finalizer(void *obj)
     }
 }
 
+/// @brief Emit emitter new.
+/// @param max_particles
+/// @return Result value.
 rt_particle_emitter rt_particle_emitter_new(int64_t max_particles)
 {
     if (max_particles < 1)
@@ -177,6 +180,8 @@ rt_particle_emitter rt_particle_emitter_new(int64_t max_particles)
     return e;
 }
 
+/// @brief Emit emitter destroy.
+/// @param emitter
 void rt_particle_emitter_destroy(rt_particle_emitter emitter)
 {
     if (!emitter)
@@ -185,6 +190,10 @@ void rt_particle_emitter_destroy(rt_particle_emitter emitter)
         free(emitter->particles);
 }
 
+/// @brief Emit emitter set position.
+/// @param emitter
+/// @param x
+/// @param y
 void rt_particle_emitter_set_position(rt_particle_emitter emitter, double x, double y)
 {
     if (!emitter)
@@ -193,16 +202,25 @@ void rt_particle_emitter_set_position(rt_particle_emitter emitter, double x, dou
     emitter->y = y;
 }
 
+/// @brief Emit emitter x.
+/// @param emitter
+/// @return Result value.
 double rt_particle_emitter_x(rt_particle_emitter emitter)
 {
     return emitter ? emitter->x : 0.0;
 }
 
+/// @brief Emit emitter y.
+/// @param emitter
+/// @return Result value.
 double rt_particle_emitter_y(rt_particle_emitter emitter)
 {
     return emitter ? emitter->y : 0.0;
 }
 
+/// @brief Emit emitter set rate.
+/// @param emitter
+/// @param rate
 void rt_particle_emitter_set_rate(rt_particle_emitter emitter, double rate)
 {
     if (!emitter)
@@ -212,6 +230,9 @@ void rt_particle_emitter_set_rate(rt_particle_emitter emitter, double rate)
     emitter->rate = rate;
 }
 
+/// @brief Emit emitter rate.
+/// @param emitter
+/// @return Result value.
 double rt_particle_emitter_rate(rt_particle_emitter emitter)
 {
     return emitter ? emitter->rate : 0.0;
@@ -249,6 +270,10 @@ void rt_particle_emitter_set_velocity(rt_particle_emitter emitter,
     emitter->max_angle = max_angle;
 }
 
+/// @brief Emit emitter set gravity.
+/// @param emitter
+/// @param gx
+/// @param gy
 void rt_particle_emitter_set_gravity(rt_particle_emitter emitter, double gx, double gy)
 {
     if (!emitter)
@@ -257,6 +282,9 @@ void rt_particle_emitter_set_gravity(rt_particle_emitter emitter, double gx, dou
     emitter->gy = gy;
 }
 
+/// @brief Emit emitter set color.
+/// @param emitter
+/// @param color
 void rt_particle_emitter_set_color(rt_particle_emitter emitter, int64_t color)
 {
     if (!emitter)
@@ -264,6 +292,10 @@ void rt_particle_emitter_set_color(rt_particle_emitter emitter, int64_t color)
     emitter->color = color;
 }
 
+/// @brief Emit emitter set size.
+/// @param emitter
+/// @param min_size
+/// @param max_size
 void rt_particle_emitter_set_size(rt_particle_emitter emitter, double min_size, double max_size)
 {
     if (!emitter)
@@ -276,6 +308,9 @@ void rt_particle_emitter_set_size(rt_particle_emitter emitter, double min_size, 
     emitter->max_size = max_size;
 }
 
+/// @brief Emit emitter set fade out.
+/// @param emitter
+/// @param fade_out
 void rt_particle_emitter_set_fade_out(rt_particle_emitter emitter, int8_t fade_out)
 {
     if (!emitter)
@@ -283,6 +318,9 @@ void rt_particle_emitter_set_fade_out(rt_particle_emitter emitter, int8_t fade_o
     emitter->fade_out = fade_out ? 1 : 0;
 }
 
+/// @brief Emit emitter set shrink.
+/// @param emitter
+/// @param shrink
 void rt_particle_emitter_set_shrink(rt_particle_emitter emitter, int8_t shrink)
 {
     if (!emitter)
@@ -290,6 +328,8 @@ void rt_particle_emitter_set_shrink(rt_particle_emitter emitter, int8_t shrink)
     emitter->shrink = shrink ? 1 : 0;
 }
 
+/// @brief Emit emitter start.
+/// @param emitter
 void rt_particle_emitter_start(rt_particle_emitter emitter)
 {
     if (!emitter)
@@ -297,6 +337,8 @@ void rt_particle_emitter_start(rt_particle_emitter emitter)
     emitter->emitting = 1;
 }
 
+/// @brief Emit emitter stop.
+/// @param emitter
 void rt_particle_emitter_stop(rt_particle_emitter emitter)
 {
     if (!emitter)
@@ -304,21 +346,33 @@ void rt_particle_emitter_stop(rt_particle_emitter emitter)
     emitter->emitting = 0;
 }
 
+/// @brief Emit emitter is emitting.
+/// @param emitter
+/// @return Result value.
 int8_t rt_particle_emitter_is_emitting(rt_particle_emitter emitter)
 {
     return emitter ? emitter->emitting : 0;
 }
 
+/// @brief Emit emitter fade out.
+/// @param emitter
+/// @return Result value.
 int8_t rt_particle_emitter_fade_out(rt_particle_emitter emitter)
 {
     return emitter ? emitter->fade_out : 0;
 }
 
+/// @brief Emit emitter shrink.
+/// @param emitter
+/// @return Result value.
 int8_t rt_particle_emitter_shrink(rt_particle_emitter emitter)
 {
     return emitter ? emitter->shrink : 0;
 }
 
+/// @brief Emit emitter color.
+/// @param emitter
+/// @return Result value.
 int64_t rt_particle_emitter_color(rt_particle_emitter emitter)
 {
     return emitter ? emitter->color : 0;
@@ -356,6 +410,9 @@ static void emit_one(struct rt_particle_emitter_impl *e)
     }
 }
 
+/// @brief Emit emitter burst.
+/// @param emitter
+/// @param count
 void rt_particle_emitter_burst(rt_particle_emitter emitter, int64_t count)
 {
     if (!emitter || count < 1)
@@ -366,6 +423,8 @@ void rt_particle_emitter_burst(rt_particle_emitter emitter, int64_t count)
     }
 }
 
+/// @brief Emit emitter update.
+/// @param emitter
 void rt_particle_emitter_update(rt_particle_emitter emitter)
 {
     if (!emitter)
@@ -418,11 +477,16 @@ void rt_particle_emitter_update(rt_particle_emitter emitter)
     }
 }
 
+/// @brief Emit emitter count.
+/// @param emitter
+/// @return Result value.
 int64_t rt_particle_emitter_count(rt_particle_emitter emitter)
 {
     return emitter ? emitter->active_count : 0;
 }
 
+/// @brief Emit emitter clear.
+/// @param emitter
 void rt_particle_emitter_clear(rt_particle_emitter emitter)
 {
     if (!emitter)
@@ -530,6 +594,10 @@ int64_t rt_particle_emitter_draw_to_pixels(rt_particle_emitter emitter,
     return drawn;
 }
 
+/// @brief Emit emitter draw.
+/// @param emitter
+/// @param canvas
+/// @return Result value.
 int64_t rt_particle_emitter_draw(rt_particle_emitter emitter, void *canvas)
 {
     return rt_particle_emitter_draw_at(emitter, canvas, 0, 0);

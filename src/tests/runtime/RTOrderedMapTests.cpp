@@ -208,6 +208,7 @@ static void test_null_safety()
     assert(rt_orderedmap_key_at(NULL, 0) == NULL);
 }
 
+/// @brief Main.
 int main()
 {
     test_new_empty();

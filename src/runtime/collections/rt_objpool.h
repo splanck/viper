@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_objpool.h
 // Purpose: Fixed-capacity object pool for efficient reuse of integer slot IDs, eliminating
 // allocation churn for frequently created and destroyed game objects.

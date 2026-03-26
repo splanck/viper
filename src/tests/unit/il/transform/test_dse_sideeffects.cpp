@@ -30,6 +30,7 @@ using namespace il::core;
 namespace
 {
 
+/// @brief Make dseregistry.
 il::transform::AnalysisRegistry makeDSERegistry()
 {
     il::transform::AnalysisRegistry registry;
@@ -38,6 +39,7 @@ il::transform::AnalysisRegistry makeDSERegistry()
     return registry;
 }
 
+/// @brief Make alloca.
 Instr makeAlloca(unsigned id, Type::Kind typeKind = Type::Kind::Ptr)
 {
     Instr instr;
@@ -48,6 +50,7 @@ Instr makeAlloca(unsigned id, Type::Kind typeKind = Type::Kind::Ptr)
     return instr;
 }
 
+/// @brief Make store.
 Instr makeStore(Value ptr, Value val, Type::Kind typeKind = Type::Kind::I64)
 {
     Instr instr;
@@ -57,6 +60,7 @@ Instr makeStore(Value ptr, Value val, Type::Kind typeKind = Type::Kind::I64)
     return instr;
 }
 
+/// @brief Make load.
 Instr makeLoad(unsigned resultId, Value ptr, Type::Kind typeKind = Type::Kind::I64)
 {
     Instr instr;
@@ -67,6 +71,7 @@ Instr makeLoad(unsigned resultId, Value ptr, Type::Kind typeKind = Type::Kind::I
     return instr;
 }
 
+/// @brief Make ret.
 Instr makeRet(Value val)
 {
     Instr instr;
@@ -76,6 +81,7 @@ Instr makeRet(Value val)
     return instr;
 }
 
+/// @brief Make ret void.
 Instr makeRetVoid()
 {
     Instr instr;
@@ -84,6 +90,7 @@ Instr makeRetVoid()
     return instr;
 }
 
+/// @brief Make br.
 Instr makeBr(const std::string &target)
 {
     Instr instr;
@@ -94,6 +101,7 @@ Instr makeBr(const std::string &target)
     return instr;
 }
 
+/// @brief Count stores.
 size_t countStores(const Function &fn)
 {
     size_t count = 0;

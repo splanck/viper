@@ -32,6 +32,7 @@ static void test_schedule_and_pending()
     rt_string t1 = rt_string_from_bytes("task1", 5);
     rt_string t2 = rt_string_from_bytes("task2", 5);
 
+    /// @brief Rt_scheduler_schedule.
     rt_scheduler_schedule(s, t1, 1000); // 1 second from now
     assert(rt_scheduler_pending(s) == 1);
 
@@ -61,6 +62,7 @@ static void test_is_due_not_ready()
     void *s = rt_scheduler_new();
     rt_string t1 = rt_string_from_bytes("task1", 5);
 
+    /// @brief Rt_scheduler_schedule.
     rt_scheduler_schedule(s, t1, 5000);      // 5 seconds from now
     assert(rt_scheduler_is_due(s, t1) == 0); // not due yet
 
@@ -74,6 +76,7 @@ static void test_immediate_due()
     void *s = rt_scheduler_new();
     rt_string t1 = rt_string_from_bytes("now", 3);
 
+    /// @brief Rt_scheduler_schedule.
     rt_scheduler_schedule(s, t1, 0); // due immediately
     // Small sleep to ensure the monotonic clock advances
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -86,7 +89,9 @@ static void test_poll_returns_due()
     rt_string t1 = rt_string_from_bytes("fast", 4);
     rt_string t2 = rt_string_from_bytes("slow", 4);
 
+    /// @brief Rt_scheduler_schedule.
     rt_scheduler_schedule(s, t1, 0);     // due immediately
+                                         /// @brief Rt_scheduler_schedule.
     rt_scheduler_schedule(s, t2, 60000); // due in 60 seconds
 
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -135,9 +140,11 @@ static void test_duplicate_name_replaces()
 static void test_null_safety()
 {
     assert(rt_scheduler_pending(NULL) == 0);
+    /// @brief Rt_scheduler_clear.
     rt_scheduler_clear(NULL); // should not crash
 }
 
+/// @brief Main.
 int main()
 {
     test_new_scheduler();

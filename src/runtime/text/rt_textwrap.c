@@ -39,6 +39,10 @@
 // Basic Text Wrapping
 //=============================================================================
 
+/// @brief Perform textwrap wrap operation.
+/// @param text
+/// @param width
+/// @return Result value.
 rt_string rt_textwrap_wrap(rt_string text, int64_t width)
 {
     if (width < 1)
@@ -138,6 +142,10 @@ void *rt_textwrap_wrap_lines(rt_string text, int64_t width)
     return lines;
 }
 
+/// @brief Perform textwrap fill operation.
+/// @param text
+/// @param width
+/// @return Result value.
 rt_string rt_textwrap_fill(rt_string text, int64_t width)
 {
     return rt_textwrap_wrap(text, width);
@@ -147,6 +155,10 @@ rt_string rt_textwrap_fill(rt_string text, int64_t width)
 // Indentation
 //=============================================================================
 
+/// @brief Perform textwrap indent operation.
+/// @param text
+/// @param prefix
+/// @return Result value.
 rt_string rt_textwrap_indent(rt_string text, rt_string prefix)
 {
     const char *src = rt_string_cstr(text);
@@ -195,6 +207,9 @@ rt_string rt_textwrap_indent(rt_string text, rt_string prefix)
     return ret;
 }
 
+/// @brief Perform textwrap dedent operation.
+/// @param text
+/// @return Result value.
 rt_string rt_textwrap_dedent(rt_string text)
 {
     const char *src = rt_string_cstr(text);
@@ -277,6 +292,10 @@ rt_string rt_textwrap_dedent(rt_string text)
     return ret;
 }
 
+/// @brief Perform textwrap hang operation.
+/// @param text
+/// @param prefix
+/// @return Result value.
 rt_string rt_textwrap_hang(rt_string text, rt_string prefix)
 {
     const char *src = rt_string_cstr(text);
@@ -326,11 +345,20 @@ rt_string rt_textwrap_hang(rt_string text, rt_string prefix)
 // Truncation
 //=============================================================================
 
+/// @brief Perform textwrap truncate operation.
+/// @param text
+/// @param width
+/// @return Result value.
 rt_string rt_textwrap_truncate(rt_string text, int64_t width)
 {
     return rt_textwrap_truncate_with(text, width, rt_const_cstr("..."));
 }
 
+/// @brief Perform textwrap truncate with operation.
+/// @param text
+/// @param width
+/// @param suffix
+/// @return Result value.
 rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suffix)
 {
     int64_t text_len = rt_str_len(text);
@@ -347,6 +375,10 @@ rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suf
     return rt_str_concat(kept, suffix);
 }
 
+/// @brief Perform textwrap shorten operation.
+/// @param text
+/// @param width
+/// @return Result value.
 rt_string rt_textwrap_shorten(rt_string text, int64_t width)
 {
     int64_t text_len = rt_str_len(text);
@@ -371,6 +403,10 @@ rt_string rt_textwrap_shorten(rt_string text, int64_t width)
 // Alignment
 //=============================================================================
 
+/// @brief Perform textwrap left operation.
+/// @param text
+/// @param width
+/// @return Result value.
 rt_string rt_textwrap_left(rt_string text, int64_t width)
 {
     int64_t text_len = rt_str_len(text);
@@ -391,6 +427,10 @@ rt_string rt_textwrap_left(rt_string text, int64_t width)
     return rt_str_concat(text, padding);
 }
 
+/// @brief Perform textwrap right operation.
+/// @param text
+/// @param width
+/// @return Result value.
 rt_string rt_textwrap_right(rt_string text, int64_t width)
 {
     int64_t text_len = rt_str_len(text);
@@ -411,6 +451,10 @@ rt_string rt_textwrap_right(rt_string text, int64_t width)
     return rt_str_concat(padding, text);
 }
 
+/// @brief Perform textwrap center operation.
+/// @param text
+/// @param width
+/// @return Result value.
 rt_string rt_textwrap_center(rt_string text, int64_t width)
 {
     int64_t text_len = rt_str_len(text);
@@ -450,6 +494,9 @@ rt_string rt_textwrap_center(rt_string text, int64_t width)
 // Utility
 //=============================================================================
 
+/// @brief Perform textwrap line count operation.
+/// @param text
+/// @return Result value.
 int64_t rt_textwrap_line_count(rt_string text)
 {
     const char *src = rt_string_cstr(text);
@@ -465,6 +512,9 @@ int64_t rt_textwrap_line_count(rt_string text)
     return count;
 }
 
+/// @brief Perform textwrap max line len operation.
+/// @param text
+/// @return Result value.
 int64_t rt_textwrap_max_line_len(rt_string text)
 {
     const char *src = rt_string_cstr(text);

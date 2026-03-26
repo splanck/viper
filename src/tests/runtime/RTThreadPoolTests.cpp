@@ -1,4 +1,7 @@
 //===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // RTThreadPoolTests.cpp - Tests for rt_threadpool (async task executor)
 //===----------------------------------------------------------------------===//
 
@@ -16,6 +19,7 @@ extern "C"
 #include "rt_threadpool.h"
 #include "rt_threads.h"
 
+    /// @brief Vm_trap.
     void vm_trap(const char *msg)
     {
         fprintf(stderr, "TRAP: %s\n", msg);
@@ -198,8 +202,11 @@ static void test_null_safety()
     assert(rt_threadpool_submit(NULL, (void *)increment_task, NULL) == 0);
     assert(rt_threadpool_wait_for(NULL, 100) == 1);
 
+    /// @brief Rt_threadpool_wait.
     rt_threadpool_wait(NULL);         // Should not crash
+                                      /// @brief Rt_threadpool_shutdown.
     rt_threadpool_shutdown(NULL);     // Should not crash
+                                      /// @brief Rt_threadpool_shutdown_now.
     rt_threadpool_shutdown_now(NULL); // Should not crash
 }
 
@@ -235,6 +242,7 @@ static void test_concurrent_submitters()
     rt_threadpool_shutdown(pool);
 }
 
+/// @brief Main.
 int main()
 {
     test_new();

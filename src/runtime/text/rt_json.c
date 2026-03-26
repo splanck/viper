@@ -285,8 +285,7 @@ static rt_string parse_string(json_parser *p)
                         }
 
                         // Combine surrogates: U+10000 + (hi - D800) * 400 + (lo - DC00)
-                        codepoint =
-                            0x10000 + ((codepoint - 0xD800) << 10) + (low - 0xDC00);
+                        codepoint = 0x10000 + ((codepoint - 0xD800) << 10) + (low - 0xDC00);
                     }
                     else if (codepoint >= 0xDC00 && codepoint <= 0xDFFF)
                     {

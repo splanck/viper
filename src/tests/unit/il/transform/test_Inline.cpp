@@ -161,6 +161,7 @@ static void test_no_inline_recursive()
     assert(hasCall);
 }
 
+/// @brief Main.
 int main()
 {
     test_inline_and_fold();

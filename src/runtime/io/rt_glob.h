@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/io/rt_glob.h
 // Purpose: File glob pattern matching supporting *, **, and ? wildcards, returning matching file
 // paths as a Seq.

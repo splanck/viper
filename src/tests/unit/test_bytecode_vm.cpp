@@ -807,6 +807,7 @@ static void test_debug_api()
     std::cout << "PASSED\n";
 }
 
+/// @brief Main.
 int main()
 {
     VIPER_DISABLE_ABORT_DIALOG();

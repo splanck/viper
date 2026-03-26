@@ -234,6 +234,9 @@ static void *get_element(rt_iter_impl *it, int64_t idx)
     return NULL;
 }
 
+/// @brief Perform iter has next operation.
+/// @param iter
+/// @return Result value.
 int8_t rt_iter_has_next(void *iter)
 {
     rt_iter_impl *it;
@@ -268,6 +271,8 @@ void *rt_iter_peek(void *iter)
     return get_element(it, it->pos);
 }
 
+/// @brief Perform iter reset operation.
+/// @param iter
 void rt_iter_reset(void *iter)
 {
     if (!iter)
@@ -275,6 +280,9 @@ void rt_iter_reset(void *iter)
     ((rt_iter_impl *)iter)->pos = 0;
 }
 
+/// @brief Perform iter index operation.
+/// @param iter
+/// @return Result value.
 int64_t rt_iter_index(void *iter)
 {
     if (!iter)
@@ -282,6 +290,9 @@ int64_t rt_iter_index(void *iter)
     return ((rt_iter_impl *)iter)->pos;
 }
 
+/// @brief Perform iter count operation.
+/// @param iter
+/// @return Result value.
 int64_t rt_iter_count(void *iter)
 {
     if (!iter)
@@ -306,6 +317,10 @@ void *rt_iter_to_seq(void *iter)
     return seq;
 }
 
+/// @brief Perform iter skip operation.
+/// @param iter
+/// @param n
+/// @return Result value.
 int64_t rt_iter_skip(void *iter, int64_t n)
 {
     rt_iter_impl *it;

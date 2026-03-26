@@ -292,7 +292,8 @@ void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string 
 ///          - Regular function and method calls
 TypeRef Sema::analyzeCall(CallExpr *expr)
 {
-    auto analyzeArgTypes = [&]() {
+    auto analyzeArgTypes = [&]()
+    {
         std::vector<TypeRef> argTypes;
         argTypes.reserve(expr->args.size());
         for (auto &arg : expr->args)
@@ -510,15 +511,19 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         auto *identExpr = static_cast<IdentExpr *>(expr->callee.get());
         std::vector<TypeRef> argTypes = analyzeArgTypes();
 
-        if (currentSelfType_ &&
-            (currentSelfType_->kind == TypeKindSem::Entity || currentSelfType_->kind == TypeKindSem::Value))
+        if (currentSelfType_ && (currentSelfType_->kind == TypeKindSem::Entity ||
+                                 currentSelfType_->kind == TypeKindSem::Value))
         {
             Symbol *local = currentScope_->lookupLocal(identExpr->name);
             if (!local || local->kind == Symbol::Kind::Method)
             {
                 std::string resolvedOwner;
-                if (MethodDecl *method = resolveMethodOverload(
-                        currentSelfType_->name, identExpr->name, argTypes, expr->loc, &resolvedOwner, true))
+                if (MethodDecl *method = resolveMethodOverload(currentSelfType_->name,
+                                                               identExpr->name,
+                                                               argTypes,
+                                                               expr->loc,
+                                                               &resolvedOwner,
+                                                               true))
                 {
                     resolvedMethodDecls_[expr] = method;
                     resolvedMethodOwnerTypes_[expr] = resolvedOwner;
@@ -533,7 +538,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         }
 
         std::string loweredName;
-        if (FunctionDecl *func = resolveFunctionOverload(identExpr->name, argTypes, expr->loc, &loweredName))
+        if (FunctionDecl *func =
+                resolveFunctionOverload(identExpr->name, argTypes, expr->loc, &loweredName))
         {
             TypeRef funcType = functionDeclTypes_[func];
             resolvedFunctionCallees_[expr] = loweredName;
@@ -580,7 +586,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         std::vector<TypeRef> argTypes = analyzeArgTypes();
 
         std::string loweredName;
-        if (FunctionDecl *func = resolveFunctionOverload(dottedName, argTypes, expr->loc, &loweredName))
+        if (FunctionDecl *func =
+                resolveFunctionOverload(dottedName, argTypes, expr->loc, &loweredName))
         {
             TypeRef funcType = functionDeclTypes_[func];
             resolvedFunctionCallees_[expr] = loweredName;
@@ -697,17 +704,18 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             }
         };
 
-        if (baseType && (baseType->kind == TypeKindSem::Value || baseType->kind == TypeKindSem::Entity ||
-                         baseType->kind == TypeKindSem::Interface))
+        if (baseType &&
+            (baseType->kind == TypeKindSem::Value || baseType->kind == TypeKindSem::Entity ||
+             baseType->kind == TypeKindSem::Interface))
         {
             std::string resolvedOwner;
-            if (MethodDecl *method = resolveMethodOverload(
-                    baseType->name,
-                    fieldExpr->field,
-                    argTypes,
-                    expr->loc,
-                    &resolvedOwner,
-                    baseType->kind != TypeKindSem::Interface))
+            if (MethodDecl *method =
+                    resolveMethodOverload(baseType->name,
+                                          fieldExpr->field,
+                                          argTypes,
+                                          expr->loc,
+                                          &resolvedOwner,
+                                          baseType->kind != TypeKindSem::Interface))
             {
                 bool isInsideType = currentSelfType_ && currentSelfType_->name == resolvedOwner;
                 if (method->visibility == Visibility::Private && !isInsideType)

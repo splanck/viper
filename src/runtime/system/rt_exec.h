@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/system/rt_exec.h
 // Purpose: External command execution for Viper.Exec, providing Run, Capture, and Shell variants
 // with argument arrays and exit code capture.

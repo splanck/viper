@@ -30,12 +30,19 @@ static int tests_failed = 0;
         }                                                                                          \
     } while (0)
 
-extern int rt_http_server_test_parse_request(
-    const char *raw, size_t raw_len, char **method_out, char **path_out, char **body_out,
-    size_t *body_len_out);
-extern char *rt_http_server_test_build_response(
-    int status_code, const char *body, size_t body_len, const char **header_names,
-    const char **header_values, size_t header_count, size_t *out_len);
+extern int rt_http_server_test_parse_request(const char *raw,
+                                             size_t raw_len,
+                                             char **method_out,
+                                             char **path_out,
+                                             char **body_out,
+                                             size_t *body_len_out);
+extern char *rt_http_server_test_build_response(int status_code,
+                                                const char *body,
+                                                size_t body_len,
+                                                const char **header_names,
+                                                const char **header_values,
+                                                size_t header_count,
+                                                size_t *out_len);
 extern int rt_http_parse_url_for_test(
     const char *url_str, char **host_out, int *port_out, char **path_out, int *use_tls_out);
 extern int rt_ws_parse_url_for_test(
@@ -45,19 +52,18 @@ extern char *rt_ws_compute_accept_key(const char *key_cstr);
 
 static void test_http_server_parses_exact_body(void)
 {
-    const char raw[] =
-        "POST /submit?q=1 HTTP/1.1\r\n"
-        "Host: example.test\r\n"
-        "Content-Length: 5\r\n"
-        "\r\n"
-        "hello";
+    const char raw[] = "POST /submit?q=1 HTTP/1.1\r\n"
+                       "Host: example.test\r\n"
+                       "Content-Length: 5\r\n"
+                       "\r\n"
+                       "hello";
     char *method = NULL;
     char *path = NULL;
     char *body = NULL;
     size_t body_len = 0;
 
-    ASSERT(rt_http_server_test_parse_request(
-               raw, strlen(raw), &method, &path, &body, &body_len) == 1);
+    ASSERT(rt_http_server_test_parse_request(raw, strlen(raw), &method, &path, &body, &body_len) ==
+           1);
     ASSERT(method && strcmp(method, "POST") == 0);
     ASSERT(path && strcmp(path, "/submit") == 0);
     ASSERT(body && strcmp(body, "hello") == 0);
@@ -70,20 +76,18 @@ static void test_http_server_parses_exact_body(void)
 
 static void test_http_server_rejects_invalid_content_length(void)
 {
-    const char raw[] =
-        "POST /x HTTP/1.1\r\n"
-        "Content-Length: -1\r\n"
-        "\r\n";
+    const char raw[] = "POST /x HTTP/1.1\r\n"
+                       "Content-Length: -1\r\n"
+                       "\r\n";
     ASSERT(rt_http_server_test_parse_request(raw, strlen(raw), NULL, NULL, NULL, NULL) == 0);
 }
 
 static void test_http_server_rejects_truncated_body(void)
 {
-    const char raw[] =
-        "POST /x HTTP/1.1\r\n"
-        "Content-Length: 5\r\n"
-        "\r\n"
-        "hi";
+    const char raw[] = "POST /x HTTP/1.1\r\n"
+                       "Content-Length: 5\r\n"
+                       "\r\n"
+                       "hi";
     ASSERT(rt_http_server_test_parse_request(raw, strlen(raw), NULL, NULL, NULL, NULL) == 0);
 }
 
@@ -93,6 +97,7 @@ static void test_http_server_builds_large_header_block(void)
     {
         header_count = 40
     };
+
     const char *body = "{\"ok\":true}";
     const char *header_names[header_count];
     const char *header_values[header_count];

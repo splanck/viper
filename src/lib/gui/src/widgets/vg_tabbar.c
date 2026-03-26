@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_tabbar.c
+//
+//===----------------------------------------------------------------------===//
 // vg_tabbar.c - TabBar widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -453,6 +463,7 @@ vg_tab_t *vg_tabbar_add_tab(vg_tabbar_t *tabbar, const char *title, bool closabl
     return tab;
 }
 
+/// @brief Tabbar remove tab.
 void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab)
 {
     if (!tabbar || !tab)
@@ -511,6 +522,7 @@ void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab)
     tabbar->base.needs_paint = true;
 }
 
+/// @brief Tabbar set active.
 void vg_tabbar_set_active(vg_tabbar_t *tabbar, vg_tab_t *tab)
 {
     if (!tabbar || tabbar->active_tab == tab)
@@ -530,6 +542,7 @@ vg_tab_t *vg_tabbar_get_active(vg_tabbar_t *tabbar)
     return tabbar ? tabbar->active_tab : NULL;
 }
 
+/// @brief Tabbar get tab index.
 int vg_tabbar_get_tab_index(vg_tabbar_t *tabbar, vg_tab_t *tab)
 {
     if (!tabbar || !tab)
@@ -558,6 +571,7 @@ vg_tab_t *vg_tabbar_get_tab_at(vg_tabbar_t *tabbar, int index)
     return NULL;
 }
 
+/// @brief Tab set title.
 void vg_tab_set_title(vg_tab_t *tab, const char *title)
 {
     if (!tab)
@@ -570,6 +584,7 @@ void vg_tab_set_title(vg_tab_t *tab, const char *title)
     tab->title = title ? strdup(title) : strdup("Untitled");
 }
 
+/// @brief Tab set modified.
 void vg_tab_set_modified(vg_tab_t *tab, bool modified)
 {
     if (tab)
@@ -578,6 +593,7 @@ void vg_tab_set_modified(vg_tab_t *tab, bool modified)
     }
 }
 
+/// @brief Tab set data.
 void vg_tab_set_data(vg_tab_t *tab, void *data)
 {
     if (tab)
@@ -586,6 +602,7 @@ void vg_tab_set_data(vg_tab_t *tab, void *data)
     }
 }
 
+/// @brief Tabbar set font.
 void vg_tabbar_set_font(vg_tabbar_t *tabbar, vg_font_t *font, float size)
 {
     if (!tabbar)
@@ -597,6 +614,7 @@ void vg_tabbar_set_font(vg_tabbar_t *tabbar, vg_font_t *font, float size)
     tabbar->base.needs_paint = true;
 }
 
+/// @brief Tabbar set on select.
 void vg_tabbar_set_on_select(vg_tabbar_t *tabbar,
                              vg_tab_select_callback_t callback,
                              void *user_data)
@@ -607,6 +625,7 @@ void vg_tabbar_set_on_select(vg_tabbar_t *tabbar,
     tabbar->on_select_data = user_data;
 }
 
+/// @brief Tabbar set on close.
 void vg_tabbar_set_on_close(vg_tabbar_t *tabbar, vg_tab_close_callback_t callback, void *user_data)
 {
     if (!tabbar)
@@ -615,6 +634,7 @@ void vg_tabbar_set_on_close(vg_tabbar_t *tabbar, vg_tab_close_callback_t callbac
     tabbar->on_close_data = user_data;
 }
 
+/// @brief Tabbar set on reorder.
 void vg_tabbar_set_on_reorder(vg_tabbar_t *tabbar,
                               vg_tab_reorder_callback_t callback,
                               void *user_data)

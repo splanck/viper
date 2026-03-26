@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/network/rt_tls.h
 // Purpose: TLS 1.3 client for secure HTTPS connections using AES-128-GCM-SHA256
 // and ChaCha20-Poly1305-SHA256 AEAD with X25519 key exchange, implemented in

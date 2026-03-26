@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_regex_internal.h
 // Purpose: Internal regex engine types and NFA/DFA state structures shared between rt_regex.c and
 // rt_compiled_pattern.c, not part of the public API.

@@ -504,10 +504,10 @@ static void raster_triangle(uint8_t *pixels,
                         float fdx = wx - fog_ctx->cam_pos[0];
                         float fdy = wy - fog_ctx->cam_pos[1];
                         float fdz = wz - fog_ctx->cam_pos[2];
-                        float dist = sqrtf(fdx*fdx + fdy*fdy + fdz*fdz);
+                        float dist = sqrtf(fdx * fdx + fdy * fdy + fdz * fdz);
                         float fog_range = fog_ctx->fog_far - fog_ctx->fog_near;
-                        float fog_f = (fog_range > 1e-6f) ?
-                            (dist - fog_ctx->fog_near) / fog_range : 0.0f;
+                        float fog_f =
+                            (fog_range > 1e-6f) ? (dist - fog_ctx->fog_near) / fog_range : 0.0f;
                         fog_f = fog_f < 0.0f ? 0.0f : (fog_f > 1.0f ? 1.0f : fog_f);
                         fr = fr * (1.0f - fog_f) + fog_ctx->fog_color[0] * fog_f;
                         fg = fg * (1.0f - fog_f) + fog_ctx->fog_color[1] * fog_f;

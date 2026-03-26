@@ -53,7 +53,8 @@ TEST(Arm64CLI, RA_ManyTemps_ProducesSpills)
     il << "func @many() -> i64 {\n";
     il << "entry:\n";
     for (int i = 0; i < 40; ++i)
-        il << "  %t" << i << " = iadd.ovf " << i << ", 1\n"; // materialize as constants via checked adds
+        il << "  %t" << i << " = iadd.ovf " << i
+           << ", 1\n"; // materialize as constants via checked adds
     // Chain a few adds to make return
     il << "  %a = iadd.ovf %t0, %t1\n";
     il << "  %b = iadd.ovf %a, %t2\n";

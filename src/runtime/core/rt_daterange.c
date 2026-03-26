@@ -73,6 +73,9 @@ void *rt_daterange_new(int64_t start, int64_t end)
 // Accessors
 // ---------------------------------------------------------------------------
 
+/// @brief Perform daterange start operation.
+/// @param range
+/// @return Result value.
 int64_t rt_daterange_start(void *range)
 {
     if (!range)
@@ -80,6 +83,9 @@ int64_t rt_daterange_start(void *range)
     return ((rt_daterange_impl *)range)->start;
 }
 
+/// @brief Perform daterange end operation.
+/// @param range
+/// @return Result value.
 int64_t rt_daterange_end(void *range)
 {
     if (!range)
@@ -91,6 +97,10 @@ int64_t rt_daterange_end(void *range)
 // Containment / overlap
 // ---------------------------------------------------------------------------
 
+/// @brief Perform daterange contains operation.
+/// @param range
+/// @param timestamp
+/// @return Result value.
 int8_t rt_daterange_contains(void *range, int64_t timestamp)
 {
     if (!range)
@@ -99,6 +109,10 @@ int8_t rt_daterange_contains(void *range, int64_t timestamp)
     return (timestamp >= r->start && timestamp <= r->end);
 }
 
+/// @brief Perform daterange overlaps operation.
+/// @param range
+/// @param other
+/// @return Result value.
 int8_t rt_daterange_overlaps(void *range, void *other)
 {
     if (!range || !other)
@@ -147,6 +161,9 @@ void *rt_daterange_union_range(void *range, void *other)
 // Duration queries
 // ---------------------------------------------------------------------------
 
+/// @brief Perform daterange days operation.
+/// @param range
+/// @return Result value.
 int64_t rt_daterange_days(void *range)
 {
     if (!range)
@@ -155,6 +172,9 @@ int64_t rt_daterange_days(void *range)
     return (r->end - r->start) / 86400;
 }
 
+/// @brief Perform daterange hours operation.
+/// @param range
+/// @return Result value.
 int64_t rt_daterange_hours(void *range)
 {
     if (!range)
@@ -163,6 +183,9 @@ int64_t rt_daterange_hours(void *range)
     return (r->end - r->start) / 3600;
 }
 
+/// @brief Perform daterange duration operation.
+/// @param range
+/// @return Result value.
 int64_t rt_daterange_duration(void *range)
 {
     if (!range)
@@ -175,6 +198,9 @@ int64_t rt_daterange_duration(void *range)
 // Formatting
 // ---------------------------------------------------------------------------
 
+/// @brief Perform daterange to string operation.
+/// @param range
+/// @return Result value.
 rt_string rt_daterange_to_string(void *range)
 {
     if (!range)

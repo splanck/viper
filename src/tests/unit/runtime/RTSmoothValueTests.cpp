@@ -132,6 +132,7 @@ TEST(velocity)
     rt_smoothvalue_destroy(sv);
 }
 
+/// @brief Main.
 int main()
 {
     printf("RTSmoothValueTests:\n");

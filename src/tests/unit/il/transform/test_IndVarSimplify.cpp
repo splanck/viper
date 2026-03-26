@@ -51,6 +51,7 @@ static il::transform::AnalysisRegistry makeRegistry()
     return registry;
 }
 
+/// @brief Main.
 int main()
 {
     Module M;

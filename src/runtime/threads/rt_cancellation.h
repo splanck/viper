@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/threads/rt_cancellation.h
 // Purpose: Cooperative cancellation token for async operations using atomic operations for
 // thread-safe state management; once cancelled, the state is permanent.

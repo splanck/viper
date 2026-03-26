@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/io/rt_file.h
 // Purpose: File I/O API with BASIC OPEN/CLOSE/INPUT/PRINT# semantics, channel-based access, RtError
 // integration, and POSIX file descriptor backing.

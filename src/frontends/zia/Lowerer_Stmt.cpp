@@ -951,8 +951,8 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
         {
             Type payloadIlType = mapType(currentReturnType_);
             Value futureValue = returnValue;
-            if (currentReturnType_ &&
-                (currentReturnType_->kind == TypeKindSem::Value || payloadIlType.kind != Type::Kind::Ptr))
+            if (currentReturnType_ && (currentReturnType_->kind == TypeKindSem::Value ||
+                                       payloadIlType.kind != Type::Kind::Ptr))
             {
                 futureValue = emitBoxValue(returnValue, payloadIlType, currentReturnType_);
             }

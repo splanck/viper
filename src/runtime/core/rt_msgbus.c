@@ -178,6 +178,11 @@ void *rt_msgbus_new(void)
     return (void *)mb;
 }
 
+/// @brief Perform msgbus subscribe operation.
+/// @param obj
+/// @param topic
+/// @param callback
+/// @return Result value.
 int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback)
 {
     if (!obj || !topic)
@@ -200,6 +205,10 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback)
     return s->id;
 }
 
+/// @brief Perform msgbus unsubscribe operation.
+/// @param obj
+/// @param sub_id
+/// @return Result value.
 int8_t rt_msgbus_unsubscribe(void *obj, int64_t sub_id)
 {
     if (!obj)
@@ -231,6 +240,11 @@ int8_t rt_msgbus_unsubscribe(void *obj, int64_t sub_id)
     return 0;
 }
 
+/// @brief Perform msgbus publish operation.
+/// @param obj
+/// @param topic
+/// @param data
+/// @return Result value.
 int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data)
 {
     if (!obj || !topic)
@@ -245,6 +259,10 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data)
     return t->count;
 }
 
+/// @brief Perform msgbus subscriber count operation.
+/// @param obj
+/// @param topic
+/// @return Result value.
 int64_t rt_msgbus_subscriber_count(void *obj, rt_string topic)
 {
     if (!obj || !topic)
@@ -254,6 +272,9 @@ int64_t rt_msgbus_subscriber_count(void *obj, rt_string topic)
     return t ? t->count : 0;
 }
 
+/// @brief Perform msgbus total subscriptions operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_msgbus_total_subscriptions(void *obj)
 {
     if (!obj)
@@ -281,6 +302,9 @@ void *rt_msgbus_topics(void *obj)
     return seq;
 }
 
+/// @brief Perform msgbus clear topic operation.
+/// @param obj
+/// @param topic
 void rt_msgbus_clear_topic(void *obj, rt_string topic)
 {
     if (!obj || !topic)
@@ -302,6 +326,8 @@ void rt_msgbus_clear_topic(void *obj, rt_string topic)
     t->count = 0;
 }
 
+/// @brief Perform msgbus clear operation.
+/// @param obj
 void rt_msgbus_clear(void *obj)
 {
     if (!obj)

@@ -185,6 +185,7 @@ TEST(distance_squared)
     ASSERT_NEAR(rt_collision_distance_squared(0, 0, 3, 4), 25.0, 0.001);
 }
 
+/// @brief Main.
 int main()
 {
     printf("RTCollisionTests:\n");

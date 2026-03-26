@@ -154,6 +154,9 @@ void *rt_option_none(void)
 // Option Inspection
 //=============================================================================
 
+/// @brief Perform option is some operation.
+/// @param obj
+/// @return Result value.
 int8_t rt_option_is_some(void *obj)
 {
     if (!obj)
@@ -162,6 +165,9 @@ int8_t rt_option_is_some(void *obj)
     return o->variant == OPTION_SOME ? 1 : 0;
 }
 
+/// @brief Perform option is none operation.
+/// @param obj
+/// @return Result value.
 int8_t rt_option_is_none(void *obj)
 {
     if (!obj)
@@ -191,6 +197,9 @@ void *rt_option_unwrap(void *obj)
     return o->value.ptr;
 }
 
+/// @brief Perform option unwrap str operation.
+/// @param obj
+/// @return Result value.
 rt_string rt_option_unwrap_str(void *obj)
 {
     if (!obj)
@@ -203,6 +212,9 @@ rt_string rt_option_unwrap_str(void *obj)
     return o->value.str;
 }
 
+/// @brief Perform option unwrap i64 operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_option_unwrap_i64(void *obj)
 {
     if (!obj)
@@ -215,6 +227,9 @@ int64_t rt_option_unwrap_i64(void *obj)
     return o->value.i64;
 }
 
+/// @brief Perform option unwrap f64 operation.
+/// @param obj
+/// @return Result value.
 double rt_option_unwrap_f64(void *obj)
 {
     if (!obj)
@@ -237,6 +252,10 @@ void *rt_option_unwrap_or(void *obj, void *def)
     return o->value.ptr;
 }
 
+/// @brief Perform option unwrap or str operation.
+/// @param obj
+/// @param def
+/// @return Result value.
 rt_string rt_option_unwrap_or_str(void *obj, rt_string def)
 {
     if (!obj)
@@ -249,6 +268,10 @@ rt_string rt_option_unwrap_or_str(void *obj, rt_string def)
     return o->value.str;
 }
 
+/// @brief Perform option unwrap or i64 operation.
+/// @param obj
+/// @param def
+/// @return Result value.
 int64_t rt_option_unwrap_or_i64(void *obj, int64_t def)
 {
     if (!obj)
@@ -261,6 +284,10 @@ int64_t rt_option_unwrap_or_i64(void *obj, int64_t def)
     return o->value.i64;
 }
 
+/// @brief Perform option unwrap or f64 operation.
+/// @param obj
+/// @param def
+/// @return Result value.
 double rt_option_unwrap_or_f64(void *obj, double def)
 {
     if (!obj)
@@ -415,6 +442,10 @@ void *rt_option_ok_or_str(void *obj, rt_string err)
 // Utility
 //=============================================================================
 
+/// @brief Perform option equals operation.
+/// @param a
+/// @param b
+/// @return Result value.
 int8_t rt_option_equals(void *a, void *b)
 {
     if (a == b)
@@ -455,6 +486,9 @@ int8_t rt_option_equals(void *a, void *b)
     return 0;
 }
 
+/// @brief Perform option to string operation.
+/// @param obj
+/// @return Result value.
 rt_string rt_option_to_string(void *obj)
 {
     if (!obj)

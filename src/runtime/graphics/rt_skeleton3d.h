@@ -83,13 +83,13 @@ extern "C"
         void *canvas, void *mesh, void *transform, void *material, void *blend);
 
     /* AnimBlend3D — multi-state animation blending */
-    void   *rt_anim_blend3d_new(void *skeleton);
+    void *rt_anim_blend3d_new(void *skeleton);
     int64_t rt_anim_blend3d_add_state(void *blend, rt_string name, void *animation);
-    void    rt_anim_blend3d_set_weight(void *blend, int64_t state, double weight);
-    void    rt_anim_blend3d_set_weight_by_name(void *blend, rt_string name, double weight);
-    double  rt_anim_blend3d_get_weight(void *blend, int64_t state);
-    void    rt_anim_blend3d_set_speed(void *blend, int64_t state, double speed);
-    void    rt_anim_blend3d_update(void *blend, double dt);
+    void rt_anim_blend3d_set_weight(void *blend, int64_t state, double weight);
+    void rt_anim_blend3d_set_weight_by_name(void *blend, rt_string name, double weight);
+    double rt_anim_blend3d_get_weight(void *blend, int64_t state);
+    void rt_anim_blend3d_set_speed(void *blend, int64_t state, double speed);
+    void rt_anim_blend3d_update(void *blend, double dt);
     int64_t rt_anim_blend3d_state_count(void *blend);
 
 #ifdef __cplusplus

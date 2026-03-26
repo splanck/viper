@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_random.h
 // Purpose: Deterministic pseudo-random number generator implementing BASIC's RND and RANDOMIZE
 // functions using a 64-bit LCG algorithm producing identical sequences across all platforms for a

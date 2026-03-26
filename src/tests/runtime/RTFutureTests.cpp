@@ -5,7 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Tests for Viper.Threads.Future/Promise
+// Purpose: Tests for Viper.Threads.Future/Promise — async value delivery,
+//   blocking get, timeout, cancellation, and multi-producer scenarios.
 //
 //===----------------------------------------------------------------------===//
 

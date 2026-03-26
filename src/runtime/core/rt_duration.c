@@ -51,26 +51,41 @@
 // Duration Creation
 //=============================================================================
 
+/// @brief Perform duration from millis operation.
+/// @param ms
+/// @return Result value.
 int64_t rt_duration_from_millis(int64_t ms)
 {
     return ms;
 }
 
+/// @brief Perform duration from seconds operation.
+/// @param seconds
+/// @return Result value.
 int64_t rt_duration_from_seconds(int64_t seconds)
 {
     return seconds * MS_PER_SECOND;
 }
 
+/// @brief Perform duration from minutes operation.
+/// @param minutes
+/// @return Result value.
 int64_t rt_duration_from_minutes(int64_t minutes)
 {
     return minutes * MS_PER_MINUTE;
 }
 
+/// @brief Perform duration from hours operation.
+/// @param hours
+/// @return Result value.
 int64_t rt_duration_from_hours(int64_t hours)
 {
     return hours * MS_PER_HOUR;
 }
 
+/// @brief Perform duration from days operation.
+/// @param days
+/// @return Result value.
 int64_t rt_duration_from_days(int64_t days)
 {
     return days * MS_PER_DAY;
@@ -87,31 +102,49 @@ int64_t rt_duration_create(
 // Duration Total Conversions
 //=============================================================================
 
+/// @brief Perform duration total millis operation.
+/// @param duration
+/// @return Result value.
 int64_t rt_duration_total_millis(int64_t duration)
 {
     return duration;
 }
 
+/// @brief Perform duration total seconds operation.
+/// @param duration
+/// @return Result value.
 int64_t rt_duration_total_seconds(int64_t duration)
 {
     return duration / MS_PER_SECOND;
 }
 
+/// @brief Perform duration total minutes operation.
+/// @param duration
+/// @return Result value.
 int64_t rt_duration_total_minutes(int64_t duration)
 {
     return duration / MS_PER_MINUTE;
 }
 
+/// @brief Perform duration total hours operation.
+/// @param duration
+/// @return Result value.
 int64_t rt_duration_total_hours(int64_t duration)
 {
     return duration / MS_PER_HOUR;
 }
 
+/// @brief Perform duration total days operation.
+/// @param duration
+/// @return Result value.
 int64_t rt_duration_total_days(int64_t duration)
 {
     return duration / MS_PER_DAY;
 }
 
+/// @brief Perform duration total seconds f operation.
+/// @param duration
+/// @return Result value.
 double rt_duration_total_seconds_f(int64_t duration)
 {
     return (double)duration / (double)MS_PER_SECOND;
@@ -121,30 +154,45 @@ double rt_duration_total_seconds_f(int64_t duration)
 // Duration Components
 //=============================================================================
 
+/// @brief Perform duration get days operation.
+/// @param duration
+/// @return Result value.
 int64_t rt_duration_get_days(int64_t duration)
 {
     int64_t abs_dur = duration >= 0 ? duration : -duration;
     return abs_dur / MS_PER_DAY;
 }
 
+/// @brief Perform duration get hours operation.
+/// @param duration
+/// @return Result value.
 int64_t rt_duration_get_hours(int64_t duration)
 {
     int64_t abs_dur = duration >= 0 ? duration : -duration;
     return (abs_dur % MS_PER_DAY) / MS_PER_HOUR;
 }
 
+/// @brief Perform duration get minutes operation.
+/// @param duration
+/// @return Result value.
 int64_t rt_duration_get_minutes(int64_t duration)
 {
     int64_t abs_dur = duration >= 0 ? duration : -duration;
     return (abs_dur % MS_PER_HOUR) / MS_PER_MINUTE;
 }
 
+/// @brief Perform duration get seconds operation.
+/// @param duration
+/// @return Result value.
 int64_t rt_duration_get_seconds(int64_t duration)
 {
     int64_t abs_dur = duration >= 0 ? duration : -duration;
     return (abs_dur % MS_PER_MINUTE) / MS_PER_SECOND;
 }
 
+/// @brief Perform duration get millis operation.
+/// @param duration
+/// @return Result value.
 int64_t rt_duration_get_millis(int64_t duration)
 {
     int64_t abs_dur = duration >= 0 ? duration : -duration;
@@ -155,21 +203,37 @@ int64_t rt_duration_get_millis(int64_t duration)
 // Duration Operations
 //=============================================================================
 
+/// @brief Perform duration add operation.
+/// @param d1
+/// @param d2
+/// @return Result value.
 int64_t rt_duration_add(int64_t d1, int64_t d2)
 {
     return d1 + d2;
 }
 
+/// @brief Perform duration sub operation.
+/// @param d1
+/// @param d2
+/// @return Result value.
 int64_t rt_duration_sub(int64_t d1, int64_t d2)
 {
     return d1 - d2;
 }
 
+/// @brief Perform duration mul operation.
+/// @param duration
+/// @param factor
+/// @return Result value.
 int64_t rt_duration_mul(int64_t duration, int64_t factor)
 {
     return duration * factor;
 }
 
+/// @brief Perform duration div operation.
+/// @param duration
+/// @param divisor
+/// @return Result value.
 int64_t rt_duration_div(int64_t duration, int64_t divisor)
 {
     if (divisor == 0)
@@ -177,11 +241,17 @@ int64_t rt_duration_div(int64_t duration, int64_t divisor)
     return duration / divisor;
 }
 
+/// @brief Perform duration abs operation.
+/// @param duration
+/// @return Result value.
 int64_t rt_duration_abs(int64_t duration)
 {
     return duration >= 0 ? duration : (int64_t)(0 - (uint64_t)duration);
 }
 
+/// @brief Perform duration neg operation.
+/// @param duration
+/// @return Result value.
 int64_t rt_duration_neg(int64_t duration)
 {
     return (int64_t)(0 - (uint64_t)duration);
@@ -191,6 +261,10 @@ int64_t rt_duration_neg(int64_t duration)
 // Duration Comparison
 //=============================================================================
 
+/// @brief Perform duration cmp operation.
+/// @param d1
+/// @param d2
+/// @return Result value.
 int64_t rt_duration_cmp(int64_t d1, int64_t d2)
 {
     if (d1 < d2)
@@ -204,6 +278,9 @@ int64_t rt_duration_cmp(int64_t d1, int64_t d2)
 // Duration Formatting
 //=============================================================================
 
+/// @brief Perform duration to string operation.
+/// @param duration
+/// @return Result value.
 rt_string rt_duration_to_string(int64_t duration)
 {
     char buffer[64];
@@ -273,6 +350,9 @@ rt_string rt_duration_to_string(int64_t duration)
     return rt_string_from_bytes(buffer, strlen(buffer));
 }
 
+/// @brief Perform duration to iso operation.
+/// @param duration
+/// @return Result value.
 rt_string rt_duration_to_iso(int64_t duration)
 {
     char buffer[64];
@@ -338,6 +418,8 @@ rt_string rt_duration_to_iso(int64_t duration)
 // Constants
 //=============================================================================
 
+/// @brief Perform duration zero operation.
+/// @return Result value.
 int64_t rt_duration_zero(void)
 {
     return 0;

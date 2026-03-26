@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_ini.h
 // Purpose: INI/config file parsing and formatting returning a map-of-maps structure (section -> key
 // -> value), with sectionless entries under the empty string key.

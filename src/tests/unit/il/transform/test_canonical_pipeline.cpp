@@ -232,6 +232,7 @@ TEST(CanonicalPipeline, SCCPFoldsConstantAdd)
         EXPECT_EQ(retInstr.operands[0].i64, 8LL);
 }
 
+/// @brief Main.
 int main(int argc, char **argv)
 {
     viper_test::init(&argc, argv);

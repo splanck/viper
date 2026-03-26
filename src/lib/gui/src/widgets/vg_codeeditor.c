@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_codeeditor.c
+//
+//===----------------------------------------------------------------------===//
 // vg_codeeditor.c - Code editor widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -1522,6 +1532,7 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text)
     editor->base.needs_paint = true;
 }
 
+/// @brief Codeeditor get text.
 char *vg_codeeditor_get_text(vg_codeeditor_t *editor)
 {
     if (!editor)
@@ -1553,6 +1564,7 @@ char *vg_codeeditor_get_text(vg_codeeditor_t *editor)
     return result;
 }
 
+/// @brief Codeeditor get selection.
 char *vg_codeeditor_get_selection(vg_codeeditor_t *editor)
 {
     if (!editor || !editor->has_selection)
@@ -1597,6 +1609,7 @@ char *vg_codeeditor_get_selection(vg_codeeditor_t *editor)
     return result;
 }
 
+/// @brief Codeeditor set cursor.
 void vg_codeeditor_set_cursor(vg_codeeditor_t *editor, int line, int col)
 {
     if (!editor)
@@ -1617,6 +1630,7 @@ void vg_codeeditor_set_cursor(vg_codeeditor_t *editor, int line, int col)
     editor->base.needs_paint = true;
 }
 
+/// @brief Codeeditor get cursor.
 void vg_codeeditor_get_cursor(vg_codeeditor_t *editor, int *out_line, int *out_col)
 {
     if (!editor)
@@ -1627,6 +1641,7 @@ void vg_codeeditor_get_cursor(vg_codeeditor_t *editor, int *out_line, int *out_c
         *out_col = editor->cursor_col;
 }
 
+/// @brief Codeeditor set selection.
 void vg_codeeditor_set_selection(
     vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col)
 {
@@ -1643,6 +1658,7 @@ void vg_codeeditor_set_selection(
     editor->base.needs_paint = true;
 }
 
+/// @brief Codeeditor insetext.
 void vg_codeeditor_insert_text(vg_codeeditor_t *editor, const char *text)
 {
     if (!editor || !text)
@@ -1662,6 +1678,7 @@ void vg_codeeditor_insert_text(vg_codeeditor_t *editor, const char *text)
     editor->base.needs_paint = true;
 }
 
+/// @brief Codeeditor delete selection.
 void vg_codeeditor_delete_selection(vg_codeeditor_t *editor)
 {
     if (!editor || !editor->has_selection)
@@ -1754,6 +1771,7 @@ void vg_codeeditor_delete_selection(vg_codeeditor_t *editor)
     editor->base.needs_paint = true;
 }
 
+/// @brief Codeeditor scroll to line.
 void vg_codeeditor_scroll_to_line(vg_codeeditor_t *editor, int line)
 {
     if (!editor)
@@ -1774,6 +1792,7 @@ void vg_codeeditor_scroll_to_line(vg_codeeditor_t *editor, int line)
     editor->base.needs_paint = true;
 }
 
+/// @brief Codeeditor set syntax.
 void vg_codeeditor_set_syntax(vg_codeeditor_t *editor,
                               vg_syntax_callback_t callback,
                               void *user_data)
@@ -1928,6 +1947,7 @@ static void delete_text_range_internal(
     editor->modified = true;
 }
 
+/// @brief Codeeditor undo.
 void vg_codeeditor_undo(vg_codeeditor_t *editor)
 {
     if (!editor || !editor->history)
@@ -1989,6 +2009,7 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor)
     editor->base.needs_paint = true;
 }
 
+/// @brief Codeeditor redo.
 void vg_codeeditor_redo(vg_codeeditor_t *editor)
 {
     if (!editor || !editor->history)
@@ -2104,6 +2125,7 @@ bool vg_codeeditor_paste(vg_codeeditor_t *editor)
     return false;
 }
 
+/// @brief Codeeditor select all.
 void vg_codeeditor_select_all(vg_codeeditor_t *editor)
 {
     if (!editor || editor->line_count == 0)
@@ -2117,6 +2139,7 @@ void vg_codeeditor_select_all(vg_codeeditor_t *editor)
     editor->base.needs_paint = true;
 }
 
+/// @brief Codeeditor set font.
 void vg_codeeditor_set_font(vg_codeeditor_t *editor, vg_font_t *font, float size)
 {
     if (!editor)
@@ -2142,6 +2165,7 @@ void vg_codeeditor_set_font(vg_codeeditor_t *editor, vg_font_t *font, float size
     editor->base.needs_paint = true;
 }
 
+/// @brief Codeeditor get line count.
 int vg_codeeditor_get_line_count(vg_codeeditor_t *editor)
 {
     return editor ? editor->line_count : 0;
@@ -2152,6 +2176,7 @@ bool vg_codeeditor_is_modified(vg_codeeditor_t *editor)
     return editor ? editor->modified : false;
 }
 
+/// @brief Codeeditor clear modified.
 void vg_codeeditor_clear_modified(vg_codeeditor_t *editor)
 {
     if (editor)

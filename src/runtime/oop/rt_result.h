@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/oop/rt_result.h
 // Purpose: Result type for error handling representing either Ok(value) or Err(error), with typed
 // extraction, map, flat_map, and conversion to Option.

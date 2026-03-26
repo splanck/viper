@@ -44,7 +44,9 @@ namespace
 // current function), causing O(F × iterations × verify_cost) overhead that
 // makes O1 compilation prohibitively slow for medium-sized modules.
 void verifyPreconditions(const il::core::Module *) {}
+
 void verifyPostconditions(const il::core::Module *) {}
+
 void verifyIntermediateState(const il::core::Module *) {}
 
 /// @brief Mark cached CFG/dominator analyses as stale once the pass modifies IR.

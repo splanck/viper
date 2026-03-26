@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/io/rt_memstream.h
 // Purpose: In-memory binary stream backed by a growable byte buffer, providing seekable read/write
 // of primitive types in little-endian encoding, strings, and raw byte arrays.

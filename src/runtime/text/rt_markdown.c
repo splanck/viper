@@ -190,6 +190,9 @@ static void process_inline(rt_string_builder *sb, const char *line, int64_t len)
 
 // --- Public API ---
 
+/// @brief Perform markdown to html operation.
+/// @param md
+/// @return Result value.
 rt_string rt_markdown_to_html(rt_string md)
 {
     if (!md)
@@ -335,6 +338,9 @@ rt_string rt_markdown_to_html(rt_string md)
     return result;
 }
 
+/// @brief Perform markdown to text operation.
+/// @param md
+/// @return Result value.
 rt_string rt_markdown_to_text(rt_string md)
 {
     if (!md)

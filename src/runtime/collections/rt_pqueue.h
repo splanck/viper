@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_pqueue.h
 // Purpose: Runtime-backed priority queue (heap) for Viper.Collections.Heap, supporting min-heap and
 // max-heap ordering with push/pop/peek operations.

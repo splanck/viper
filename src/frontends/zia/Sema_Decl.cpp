@@ -515,7 +515,8 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
                     continue;
                 }
 
-                TypeRef propType = prop->type ? resolveTypeNode(prop->type.get()) : types::unknown();
+                TypeRef propType =
+                    prop->type ? resolveTypeNode(prop->type.get()) : types::unknown();
                 std::string getterKey = decl.name + ".get_" + prop->name;
                 TypeRef getterType = types::function({}, propType);
                 methodTypes_[getterKey] = getterType;
@@ -641,7 +642,8 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
                 if (entry.first.rfind(parentPrefix, 0) == 0)
                 {
                     std::string fieldName = entry.first.substr(parentPrefix.size());
-                    if (!declaredFieldNames.contains(fieldName) && !currentScope_->lookupLocal(fieldName))
+                    if (!declaredFieldNames.contains(fieldName) &&
+                        !currentScope_->lookupLocal(fieldName))
                     {
                         inheritedFields.emplace_back(fieldName, entry.second);
                     }
@@ -656,7 +658,6 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
                 defineSymbol(fieldName, sym);
                 fieldTypes_[decl.name + "." + fieldName] = fieldType;
             }
-
         }
     }
 
@@ -672,7 +673,8 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
                 {
                     error(method->loc,
                           "Method '" + method->name +
-                              "' is marked override but no parent method with the same signature exists");
+                              "' is marked override but no parent method with the same signature "
+                              "exists");
                     continue;
                 }
 
@@ -836,12 +838,15 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl)
         return;
 
     currentFunction_ = &decl;
-    TypeRef funcType = functionDeclTypes_.count(&decl) ? functionDeclTypes_[&decl] : functionTypeForDecl(decl);
+    TypeRef funcType =
+        functionDeclTypes_.count(&decl) ? functionDeclTypes_[&decl] : functionTypeForDecl(decl);
     if (decl.isAsync)
-        expectedReturnType_ = decl.returnType ? resolveTypeNode(decl.returnType.get()) : types::voidType();
+        expectedReturnType_ =
+            decl.returnType ? resolveTypeNode(decl.returnType.get()) : types::voidType();
     else
-        expectedReturnType_ = funcType && funcType->kind == TypeKindSem::Function ? funcType->returnType()
-                                                                                   : types::voidType();
+        expectedReturnType_ = funcType && funcType->kind == TypeKindSem::Function
+                                  ? funcType->returnType()
+                                  : types::voidType();
 
     pushScope(decl.loc);
 
@@ -923,7 +928,8 @@ void Sema::analyzePropertyDecl(PropertyDecl &decl, TypeRef ownerType)
 {
     TypeRef propType = decl.type ? resolveTypeNode(decl.type.get()) : types::unknown();
 
-    auto analyzeBody = [&](Stmt *body, TypeRef returnType, bool defineSetterParam) {
+    auto analyzeBody = [&](Stmt *body, TypeRef returnType, bool defineSetterParam)
+    {
         if (!body)
             return;
 
@@ -979,7 +985,8 @@ void Sema::analyzePropertyDecl(PropertyDecl &decl, TypeRef ownerType)
 const PropertyDecl *Sema::findPropertyDecl(const std::string &ownerName,
                                            const std::string &propertyName) const
 {
-    auto scanMembers = [&](const auto *typeDecl) -> const PropertyDecl * {
+    auto scanMembers = [&](const auto *typeDecl) -> const PropertyDecl *
+    {
         if (!typeDecl)
             return nullptr;
         for (const auto &member : typeDecl->members)
@@ -1048,10 +1055,11 @@ void Sema::analyzeDestructorDecl(DestructorDecl &decl, TypeRef ownerType)
 void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
 {
     currentSelfType_ = ownerType;
-    TypeRef methodType = methodDeclTypes_.count(&decl) ? methodDeclTypes_[&decl] : methodTypeForDecl(decl);
-    TypeRef returnType =
-        methodType && methodType->kind == TypeKindSem::Function ? methodType->returnType()
-                                                                : types::voidType();
+    TypeRef methodType =
+        methodDeclTypes_.count(&decl) ? methodDeclTypes_[&decl] : methodTypeForDecl(decl);
+    TypeRef returnType = methodType && methodType->kind == TypeKindSem::Function
+                             ? methodType->returnType()
+                             : types::voidType();
     expectedReturnType_ = returnType;
 
     // Register method type: "TypeName.methodName" -> function type

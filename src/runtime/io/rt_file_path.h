@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/io/rt_file_path.h
 // Purpose: Internal helpers for translating BASIC OPEN mode enumerations to fopen mode strings and
 // POSIX flags, extracting validated UTF-8 paths from runtime strings.

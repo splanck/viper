@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_commandpalette.c
+//
+//===----------------------------------------------------------------------===//
 // vg_commandpalette.c - Command Palette widget implementation
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -192,6 +202,7 @@ static void commandpalette_destroy(vg_widget_t *widget)
     free(palette->current_query);
 }
 
+/// @brief Commandpalette destroy.
 void vg_commandpalette_destroy(vg_commandpalette_t *palette)
 {
     if (!palette)
@@ -370,6 +381,7 @@ vg_command_t *vg_commandpalette_add_command(vg_commandpalette_t *palette,
     return cmd;
 }
 
+/// @brief Commandpalette remove command.
 void vg_commandpalette_remove_command(vg_commandpalette_t *palette, const char *id)
 {
     if (!palette || !id)
@@ -411,6 +423,7 @@ vg_command_t *vg_commandpalette_get_command(vg_commandpalette_t *palette, const 
     return NULL;
 }
 
+/// @brief Commandpalette show.
 void vg_commandpalette_show(vg_commandpalette_t *palette)
 {
     if (!palette)
@@ -428,6 +441,7 @@ void vg_commandpalette_show(vg_commandpalette_t *palette)
     palette->base.needs_layout = true;
 }
 
+/// @brief Commandpalette hide.
 void vg_commandpalette_hide(vg_commandpalette_t *palette)
 {
     if (!palette)
@@ -442,6 +456,7 @@ void vg_commandpalette_hide(vg_commandpalette_t *palette)
     }
 }
 
+/// @brief Commandpalette toggle.
 void vg_commandpalette_toggle(vg_commandpalette_t *palette)
 {
     if (!palette)
@@ -457,6 +472,7 @@ void vg_commandpalette_toggle(vg_commandpalette_t *palette)
     }
 }
 
+/// @brief Commandpalette execute selected.
 void vg_commandpalette_execute_selected(vg_commandpalette_t *palette)
 {
     if (!palette)
@@ -484,6 +500,7 @@ void vg_commandpalette_execute_selected(vg_commandpalette_t *palette)
     vg_commandpalette_hide(palette);
 }
 
+/// @brief Commandpalette set callbacks.
 void vg_commandpalette_set_callbacks(vg_commandpalette_t *palette,
                                      void (*on_execute)(vg_commandpalette_t *,
                                                         vg_command_t *,
@@ -499,6 +516,7 @@ void vg_commandpalette_set_callbacks(vg_commandpalette_t *palette,
     palette->user_data = user_data;
 }
 
+/// @brief Commandpalette set font.
 void vg_commandpalette_set_font(vg_commandpalette_t *palette, vg_font_t *font, float size)
 {
     if (!palette)
@@ -509,6 +527,7 @@ void vg_commandpalette_set_font(vg_commandpalette_t *palette, vg_font_t *font, f
     palette->base.needs_paint = true;
 }
 
+/// @brief Commandpalette clear.
 void vg_commandpalette_clear(vg_commandpalette_t *palette)
 {
     if (!palette)

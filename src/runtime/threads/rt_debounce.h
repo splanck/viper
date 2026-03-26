@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/threads/rt_debounce.h
 // Purpose: Debouncer and Throttler utilities for rate-limiting operations: Debouncer delays
 // execution until a quiet period elapses; Throttler limits to at most once per interval.

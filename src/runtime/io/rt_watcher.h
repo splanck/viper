@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/io/rt_watcher.h
 // Purpose: File system watcher for Viper.IO.Watcher, monitoring files and directories for changes
 // (created, modified, deleted) and delivering events via callbacks.

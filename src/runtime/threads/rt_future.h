@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/threads/rt_future.h
 // Purpose: Future/Promise primitives for asynchronous result passing between threads, with blocking
 // get, timed get, non-blocking try-get, and error propagation.

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_xml.h
 // Purpose: XML parsing and formatting utilities for Viper.Data.Xml, handling elements, attributes,
 // text nodes, comments, and CDATA with a reference-counted tree API.

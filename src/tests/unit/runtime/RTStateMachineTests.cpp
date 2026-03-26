@@ -113,6 +113,7 @@ TEST(is_state)
     rt_statemachine_destroy(sm);
 }
 
+/// @brief Main.
 int main()
 {
     printf("RTStateMachineTests:\n");

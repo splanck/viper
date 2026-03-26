@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_datetime.h
 // Purpose: Runtime date/time functions providing Unix timestamp queries, component extraction
 // (year, month, day, hour, minute, second), formatting, and arithmetic operations for the

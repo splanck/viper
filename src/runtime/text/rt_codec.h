@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_codec.h
 // Purpose: Base64, Hex, and URL encoding/decoding utilities for string-based transformations used
 // in network protocols, configuration, and data serialization.

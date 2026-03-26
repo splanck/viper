@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_radiobutton.c
+//
+//===----------------------------------------------------------------------===//
 // vg_radiobutton.c - RadioButton widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -141,6 +151,7 @@ vg_radiogroup_t *vg_radiogroup_create(void)
     return group;
 }
 
+/// @brief Radiogroup destroy.
 void vg_radiogroup_destroy(vg_radiogroup_t *group)
 {
     if (!group)
@@ -197,6 +208,7 @@ vg_radiobutton_t *vg_radiobutton_create(vg_widget_t *parent,
     return radio;
 }
 
+/// @brief Radiobutton set selected.
 void vg_radiobutton_set_selected(vg_radiobutton_t *radio, bool selected)
 {
     if (!radio)
@@ -237,11 +249,13 @@ bool vg_radiobutton_is_selected(vg_radiobutton_t *radio)
     return radio ? radio->selected : false;
 }
 
+/// @brief Radiogroup get selected.
 int vg_radiogroup_get_selected(vg_radiogroup_t *group)
 {
     return group ? group->selected_index : -1;
 }
 
+/// @brief Radiogroup set selected.
 void vg_radiogroup_set_selected(vg_radiogroup_t *group, int index)
 {
     if (!group || index < 0 || index >= group->button_count)

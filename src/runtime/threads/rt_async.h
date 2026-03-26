@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/threads/rt_async.h
 // Purpose: Async task combinators built on Future/Promise and threads, providing WhenAll, WhenAny,
 // Delay, and Run wrappers for composing concurrent operations.

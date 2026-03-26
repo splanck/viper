@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_inputmgr.h
 // Purpose: High-level input manager with debouncing and action mapping, providing edge detection,
 // held-state queries, analog readings, and unified directional/confirm/cancel abstractions.

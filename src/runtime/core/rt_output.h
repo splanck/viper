@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_output.h
 // Purpose: Centralized output buffering layer for improved terminal rendering performance,
 // accumulating stdout writes and flushing at strategic points to minimize system calls.

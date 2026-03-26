@@ -40,6 +40,7 @@ TEST(ZiaStringInstanceMethods, ResolvesAndLowersRuntimeStringCalls)
     const std::string source = R"(
 module Test;
 
+/// @brief Start.
 func start() {
     var trimmed = "  hello  ".Trim();
     var upper = trimmed.ToUpper();

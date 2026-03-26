@@ -217,11 +217,18 @@ static uint8_t *base64_decode(const char *data, size_t len, size_t *out_len)
 // Public API
 //=============================================================================
 
+/// @brief Perform password hash operation.
+/// @param password
+/// @return Result value.
 rt_string rt_password_hash(rt_string password)
 {
     return rt_password_hash_with_iterations(password, DEFAULT_ITERATIONS);
 }
 
+/// @brief Perform password hash with iterations operation.
+/// @param password
+/// @param iterations
+/// @return Result value.
 rt_string rt_password_hash_with_iterations(rt_string password, int64_t iterations)
 {
     // Clamp iterations to minimum
@@ -258,6 +265,10 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
     return rt_string_from_bytes(buffer, strlen(buffer));
 }
 
+/// @brief Perform password verify operation.
+/// @param password
+/// @param hash
+/// @return Result value.
 int8_t rt_password_verify(rt_string password, rt_string hash)
 {
     const char *hash_str = rt_string_cstr(hash);

@@ -36,8 +36,8 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 extern void *rt_mesh3d_new(void);
-extern void rt_mesh3d_add_vertex(void *m, double x, double y, double z,
-                                  double nx, double ny, double nz, double u, double v);
+extern void rt_mesh3d_add_vertex(
+    void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
 extern void *rt_mat4_identity(void);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
@@ -56,13 +56,21 @@ typedef struct
     void *material; /* built on first draw */
 } rt_decal3d;
 
-static void decal3d_finalizer(void *obj) { (void)obj; }
+static void decal3d_finalizer(void *obj)
+{
+    (void)obj;
+}
 
 void *rt_decal3d_new(void *pos_v, void *normal_v, double size, void *texture)
 {
-    if (!pos_v || !normal_v) return NULL;
+    if (!pos_v || !normal_v)
+        return NULL;
     rt_decal3d *d = (rt_decal3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_decal3d));
-    if (!d) { rt_trap("Decal3D.New: allocation failed"); return NULL; }
+    if (!d)
+    {
+        rt_trap("Decal3D.New: allocation failed");
+        return NULL;
+    }
     d->vptr = NULL;
     d->position[0] = rt_vec3_x(pos_v);
     d->position[1] = rt_vec3_y(pos_v);
@@ -83,7 +91,8 @@ void *rt_decal3d_new(void *pos_v, void *normal_v, double size, void *texture)
 
 void rt_decal3d_set_lifetime(void *obj, double seconds)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_decal3d *d = (rt_decal3d *)obj;
     d->lifetime = seconds;
     d->max_lifetime = seconds;
@@ -91,44 +100,60 @@ void rt_decal3d_set_lifetime(void *obj, double seconds)
 
 void rt_decal3d_update(void *obj, double dt)
 {
-    if (!obj || dt <= 0) return;
+    if (!obj || dt <= 0)
+        return;
     rt_decal3d *d = (rt_decal3d *)obj;
-    if (d->lifetime < 0) return; /* permanent */
+    if (d->lifetime < 0)
+        return; /* permanent */
     d->lifetime -= dt;
     /* Fade alpha over last 20% of lifetime */
     if (d->max_lifetime > 0 && d->lifetime < d->max_lifetime * 0.2)
     {
         d->alpha = d->lifetime / (d->max_lifetime * 0.2);
-        if (d->alpha < 0.0) d->alpha = 0.0;
+        if (d->alpha < 0.0)
+            d->alpha = 0.0;
     }
 }
 
 int8_t rt_decal3d_is_expired(void *obj)
 {
-    if (!obj) return 1;
+    if (!obj)
+        return 1;
     rt_decal3d *d = (rt_decal3d *)obj;
-    if (d->lifetime < 0) return 0; /* permanent */
+    if (d->lifetime < 0)
+        return 0; /* permanent */
     return d->lifetime <= 0 ? 1 : 0;
 }
 
 /// @brief Build the decal quad mesh on first draw.
 static void ensure_decal_mesh(rt_decal3d *d)
 {
-    if (d->mesh) return;
+    if (d->mesh)
+        return;
 
     /* Build tangent frame from normal */
     double nx = d->normal[0], ny = d->normal[1], nz = d->normal[2];
 
     /* Choose arbitrary up vector not parallel to normal */
     double ux = 0.0, uy = 1.0, uz = 0.0;
-    if (fabs(ny) > 0.9) { ux = 1.0; uy = 0.0; uz = 0.0; }
+    if (fabs(ny) > 0.9)
+    {
+        ux = 1.0;
+        uy = 0.0;
+        uz = 0.0;
+    }
 
     /* Right = cross(up, normal) */
     double rx = uy * nz - uz * ny;
     double ry = uz * nx - ux * nz;
     double rz = ux * ny - uy * nx;
-    double rlen = sqrt(rx*rx + ry*ry + rz*rz);
-    if (rlen > 1e-8) { rx /= rlen; ry /= rlen; rz /= rlen; }
+    double rlen = sqrt(rx * rx + ry * ry + rz * rz);
+    if (rlen > 1e-8)
+    {
+        rx /= rlen;
+        ry /= rlen;
+        rz /= rlen;
+    }
 
     /* True up = cross(normal, right) */
     double tux = ny * rz - nz * ry;
@@ -136,20 +161,48 @@ static void ensure_decal_mesh(rt_decal3d *d)
     double tuz = nx * ry - ny * rx;
 
     double hs = d->size * 0.5; /* half-size */
-    double off = 0.01; /* surface offset to prevent z-fighting */
+    double off = 0.01;         /* surface offset to prevent z-fighting */
     double cx = d->position[0] + nx * off;
     double cy = d->position[1] + ny * off;
     double cz = d->position[2] + nz * off;
 
     d->mesh = rt_mesh3d_new();
-    rt_mesh3d_add_vertex(d->mesh, cx - rx*hs - tux*hs, cy - ry*hs - tuy*hs, cz - rz*hs - tuz*hs,
-                          nx, ny, nz, 0.0, 0.0);
-    rt_mesh3d_add_vertex(d->mesh, cx + rx*hs - tux*hs, cy + ry*hs - tuy*hs, cz + rz*hs - tuz*hs,
-                          nx, ny, nz, 1.0, 0.0);
-    rt_mesh3d_add_vertex(d->mesh, cx + rx*hs + tux*hs, cy + ry*hs + tuy*hs, cz + rz*hs + tuz*hs,
-                          nx, ny, nz, 1.0, 1.0);
-    rt_mesh3d_add_vertex(d->mesh, cx - rx*hs + tux*hs, cy - ry*hs + tuy*hs, cz - rz*hs + tuz*hs,
-                          nx, ny, nz, 0.0, 1.0);
+    rt_mesh3d_add_vertex(d->mesh,
+                         cx - rx * hs - tux * hs,
+                         cy - ry * hs - tuy * hs,
+                         cz - rz * hs - tuz * hs,
+                         nx,
+                         ny,
+                         nz,
+                         0.0,
+                         0.0);
+    rt_mesh3d_add_vertex(d->mesh,
+                         cx + rx * hs - tux * hs,
+                         cy + ry * hs - tuy * hs,
+                         cz + rz * hs - tuz * hs,
+                         nx,
+                         ny,
+                         nz,
+                         1.0,
+                         0.0);
+    rt_mesh3d_add_vertex(d->mesh,
+                         cx + rx * hs + tux * hs,
+                         cy + ry * hs + tuy * hs,
+                         cz + rz * hs + tuz * hs,
+                         nx,
+                         ny,
+                         nz,
+                         1.0,
+                         1.0);
+    rt_mesh3d_add_vertex(d->mesh,
+                         cx - rx * hs + tux * hs,
+                         cy - ry * hs + tuy * hs,
+                         cz - rz * hs + tuz * hs,
+                         nx,
+                         ny,
+                         nz,
+                         0.0,
+                         1.0);
     rt_mesh3d_add_triangle(d->mesh, 0, 1, 2);
     rt_mesh3d_add_triangle(d->mesh, 0, 2, 3);
 
@@ -167,12 +220,15 @@ static void ensure_decal_mesh(rt_decal3d *d)
 
 void rt_canvas3d_draw_decal(void *canvas, void *obj)
 {
-    if (!canvas || !obj) return;
+    if (!canvas || !obj)
+        return;
     rt_decal3d *d = (rt_decal3d *)obj;
-    if (d->lifetime >= 0 && d->lifetime <= 0) return; /* expired */
+    if (d->lifetime >= 0 && d->lifetime <= 0)
+        return; /* expired */
 
     ensure_decal_mesh(d);
-    if (!d->mesh || !d->material) return;
+    if (!d->mesh || !d->material)
+        return;
 
     /* Update material alpha for fade */
     extern void rt_material3d_set_alpha(void *m, double a);

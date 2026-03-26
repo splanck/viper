@@ -378,6 +378,7 @@ TEST(PassIsolation, SiblingRecursion)
     testPassIsolation("sibling-recursion");
 }
 
+/// @brief Main.
 int main(int argc, char **argv)
 {
     viper_test::init(&argc, argv);

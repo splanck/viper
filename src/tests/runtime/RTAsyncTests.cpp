@@ -1,4 +1,7 @@
 //===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // RTAsyncTests.cpp - Tests for rt_async (async task combinators)
 //===----------------------------------------------------------------------===//
 
@@ -21,6 +24,7 @@ extern "C"
 #include "rt_string.h"
 #include "rt_threads.h"
 
+    /// @brief Vm_trap.
     void vm_trap(const char *msg)
     {
         fprintf(stderr, "TRAP: %s\n", msg);
@@ -129,6 +133,7 @@ static void test_async_delay()
 
     rt_future_wait(future);
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       /// @brief Now.
                        std::chrono::steady_clock::now() - start)
                        .count();
     assert(elapsed >= 30); // Allow some variance
@@ -319,6 +324,7 @@ static void test_async_runs_concurrently()
         rt_future_wait(futures[i]);
 
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       /// @brief Now.
                        std::chrono::steady_clock::now() - start)
                        .count();
 
@@ -327,6 +333,7 @@ static void test_async_runs_concurrently()
     assert(elapsed < 200);
 }
 
+/// @brief Main.
 int main()
 {
     test_async_run_basic();

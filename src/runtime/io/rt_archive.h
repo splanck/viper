@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/io/rt_archive.h
 // Purpose: ZIP archive support for Viper.IO.Archive, providing reading of existing archives and
 // writing of new archives with per-entry compression.

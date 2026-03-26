@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_csv.h
 // Purpose: CSV parsing and formatting utilities compliant with RFC 4180, handling quoted fields,
 // embedded newlines, escaped double-quotes, and custom delimiters.

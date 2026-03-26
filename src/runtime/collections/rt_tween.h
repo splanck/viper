@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_tween.h
 // Purpose: Frame-based tweening system with configurable easing functions for smooth animations,
 // supporting double and int64 value types, play/pause/stop lifecycle, and static lerp helpers.

@@ -42,6 +42,7 @@ struct TempFile
     }
 };
 
+/// @brief Read file.
 std::string readFile(const std::filesystem::path &p)
 {
     std::ifstream ifs(p);
@@ -50,6 +51,7 @@ std::string readFile(const std::filesystem::path &p)
 
 } // namespace
 
+/// @brief Usage.
 void usage()
 {
     gUsageCalled = true;

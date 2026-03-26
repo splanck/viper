@@ -232,7 +232,7 @@ TypeRef Sema::analyzeExpr(Expr *expr)
             }
             break;
         }
-            break;
+        break;
         default:
             result = types::unknown();
             break;
@@ -301,7 +301,8 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr)
     {
         error(expr->loc,
               "Function '" + expr->name +
-                  "' is overloaded and must be used in a call expression to resolve a specific overload");
+                  "' is overloaded and must be used in a call expression to resolve a specific "
+                  "overload");
         return types::unknown();
     }
     if (!sym)
@@ -310,7 +311,8 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr)
         {
             error(expr->loc,
                   "Function '" + expr->name +
-                      "' is overloaded and must be used in a call expression to resolve a specific overload");
+                      "' is overloaded and must be used in a call expression to resolve a specific "
+                      "overload");
             return types::unknown();
         }
         // Check if this is an imported symbol from a bound namespace

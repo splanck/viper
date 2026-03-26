@@ -1,4 +1,7 @@
 //===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // RTGCTests.cpp - Tests for rt_gc (cycle-detecting GC + zeroing weak refs)
 //===----------------------------------------------------------------------===//
 
@@ -14,6 +17,7 @@ extern "C"
 #include "rt_object.h"
 #include "rt_seq.h"
 
+    /// @brief Vm_trap.
     void vm_trap(const char *msg)
     {
         fprintf(stderr, "TRAP: %s\n", msg);
@@ -125,6 +129,7 @@ static void test_double_track()
     int64_t base = rt_gc_tracked_count();
 
     rt_gc_track(obj, test_node_traverse);
+    /// @brief Rt_gc_track.
     rt_gc_track(obj, test_node_traverse); // should not duplicate
 
     ASSERT(rt_gc_tracked_count() == base + 1, "double track doesn't duplicate");
@@ -165,6 +170,7 @@ static void test_weakref_null_ref()
 {
     ASSERT(rt_weakref_get(NULL) == NULL, "get(null) = null");
     ASSERT(rt_weakref_alive(NULL) == 0, "alive(null) = 0");
+    /// @brief Rt_weakref_free.
     rt_weakref_free(NULL); // should not crash
     ASSERT(1, "free(null) no crash");
 }

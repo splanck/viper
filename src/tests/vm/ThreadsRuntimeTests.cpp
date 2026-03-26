@@ -201,10 +201,8 @@ int main()
                {1, 2, 8});
 
     unsigned awaitedId = b.reserveTempId();
-    b.emitCall("Viper.Threads.Future.Get",
-               {Value::temp(futureId)},
-               Value::temp(awaitedId),
-               {1, 2, 9});
+    b.emitCall(
+        "Viper.Threads.Future.Get", {Value::temp(futureId)}, Value::temp(awaitedId), {1, 2, 9});
 
     Instr loadFinal;
     loadFinal.result = b.reserveTempId();

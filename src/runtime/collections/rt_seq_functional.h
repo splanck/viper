@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_seq_functional.h
 // Purpose: IL-compatible wrapper functions for Seq functional operations (filter, reject, map,
 // reduce, each, find) accepting function pointers as void* for IL calling convention.

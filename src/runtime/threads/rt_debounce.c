@@ -93,6 +93,8 @@ void *rt_debounce_new(int64_t delay_ms)
     return obj;
 }
 
+/// @brief Perform debounce signal operation.
+/// @param debouncer
 void rt_debounce_signal(void *debouncer)
 {
     if (!debouncer)
@@ -102,6 +104,9 @@ void rt_debounce_signal(void *debouncer)
     data->signal_count++;
 }
 
+/// @brief Perform debounce is ready operation.
+/// @param debouncer
+/// @return Result value.
 int8_t rt_debounce_is_ready(void *debouncer)
 {
     if (!debouncer)
@@ -113,6 +118,8 @@ int8_t rt_debounce_is_ready(void *debouncer)
     return elapsed >= data->delay_ms ? 1 : 0;
 }
 
+/// @brief Perform debounce reset operation.
+/// @param debouncer
 void rt_debounce_reset(void *debouncer)
 {
     if (!debouncer)
@@ -122,6 +129,9 @@ void rt_debounce_reset(void *debouncer)
     data->signal_count = 0;
 }
 
+/// @brief Perform debounce get delay operation.
+/// @param debouncer
+/// @return Result value.
 int64_t rt_debounce_get_delay(void *debouncer)
 {
     if (!debouncer)
@@ -129,6 +139,9 @@ int64_t rt_debounce_get_delay(void *debouncer)
     return ((rt_debounce_data *)debouncer)->delay_ms;
 }
 
+/// @brief Perform debounce get signal count operation.
+/// @param debouncer
+/// @return Result value.
 int64_t rt_debounce_get_signal_count(void *debouncer)
 {
     if (!debouncer)
@@ -161,6 +174,9 @@ void *rt_throttle_new(int64_t interval_ms)
     return obj;
 }
 
+/// @brief Perform throttle try operation.
+/// @param throttler
+/// @return Result value.
 int8_t rt_throttle_try(void *throttler)
 {
     if (!throttler)
@@ -177,6 +193,9 @@ int8_t rt_throttle_try(void *throttler)
     return 0;
 }
 
+/// @brief Perform throttle can proceed operation.
+/// @param throttler
+/// @return Result value.
 int8_t rt_throttle_can_proceed(void *throttler)
 {
     if (!throttler)
@@ -188,6 +207,8 @@ int8_t rt_throttle_can_proceed(void *throttler)
     return elapsed >= data->interval_ms ? 1 : 0;
 }
 
+/// @brief Perform throttle reset operation.
+/// @param throttler
 void rt_throttle_reset(void *throttler)
 {
     if (!throttler)
@@ -197,6 +218,9 @@ void rt_throttle_reset(void *throttler)
     data->count = 0;
 }
 
+/// @brief Perform throttle get interval operation.
+/// @param throttler
+/// @return Result value.
 int64_t rt_throttle_get_interval(void *throttler)
 {
     if (!throttler)
@@ -204,6 +228,9 @@ int64_t rt_throttle_get_interval(void *throttler)
     return ((rt_throttle_data *)throttler)->interval_ms;
 }
 
+/// @brief Perform throttle get count operation.
+/// @param throttler
+/// @return Result value.
 int64_t rt_throttle_get_count(void *throttler)
 {
     if (!throttler)
@@ -211,6 +238,9 @@ int64_t rt_throttle_get_count(void *throttler)
     return ((rt_throttle_data *)throttler)->count;
 }
 
+/// @brief Perform throttle remaining ms operation.
+/// @param throttler
+/// @return Result value.
 int64_t rt_throttle_remaining_ms(void *throttler)
 {
     if (!throttler)

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_string_builder.h
 // Purpose: Small-buffer-aware dynamic string builder for the C runtime, avoiding heap allocation
 // for strings up to 128 bytes while growing automatically for longer output.

@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/network/rt_websocket.h
 // Purpose: WebSocket client implementing RFC 6455 for real-time bidirectional text and binary
 // communication over persistent connections.

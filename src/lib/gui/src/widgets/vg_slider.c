@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_slider.c
+//
+//===----------------------------------------------------------------------===//
 // vg_slider.c - Slider widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -270,6 +280,7 @@ vg_slider_t *vg_slider_create(vg_widget_t *parent, vg_slider_orientation_t orien
     return slider;
 }
 
+/// @brief Slider set value.
 void vg_slider_set_value(vg_slider_t *slider, float value)
 {
     if (!slider)
@@ -297,11 +308,13 @@ void vg_slider_set_value(vg_slider_t *slider, float value)
     }
 }
 
+/// @brief Slider get value.
 float vg_slider_get_value(vg_slider_t *slider)
 {
     return slider ? slider->value : 0;
 }
 
+/// @brief Slider set range.
 void vg_slider_set_range(vg_slider_t *slider, float min_val, float max_val)
 {
     if (!slider)
@@ -312,6 +325,7 @@ void vg_slider_set_range(vg_slider_t *slider, float min_val, float max_val)
     vg_slider_set_value(slider, slider->value);
 }
 
+/// @brief Slider set step.
 void vg_slider_set_step(vg_slider_t *slider, float step)
 {
     if (!slider)
@@ -319,6 +333,7 @@ void vg_slider_set_step(vg_slider_t *slider, float step)
     slider->step = step > 0 ? step : 0;
 }
 
+/// @brief Slider set on change.
 void vg_slider_set_on_change(vg_slider_t *slider, vg_slider_callback_t callback, void *user_data)
 {
     if (!slider)

@@ -123,6 +123,7 @@ static void test_null_safety()
     assert(rt_concqueue_dequeue_timeout(NULL, 10) == NULL);
 }
 
+/// @brief Main.
 int main()
 {
     test_new();

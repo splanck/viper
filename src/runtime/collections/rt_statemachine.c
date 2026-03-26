@@ -55,6 +55,8 @@ struct rt_statemachine_impl
     int64_t state_count;         ///< Number of registered states.
 };
 
+/// @brief Perform statemachine new operation.
+/// @return Result value.
 rt_statemachine rt_statemachine_new(void)
 {
     rt_statemachine sm = rt_obj_new_i64(0, sizeof(struct rt_statemachine_impl));
@@ -72,12 +74,18 @@ rt_statemachine rt_statemachine_new(void)
     return sm;
 }
 
+/// @brief Perform statemachine destroy operation.
+/// @param sm
 void rt_statemachine_destroy(rt_statemachine sm)
 {
     // Object is GC-managed via rt_obj_new_i64; no manual free needed.
     (void)sm;
 }
 
+/// @brief Perform statemachine add state operation.
+/// @param sm
+/// @param state_id
+/// @return Result value.
 int8_t rt_statemachine_add_state(rt_statemachine sm, int64_t state_id)
 {
     if (!sm)
@@ -95,6 +103,10 @@ int8_t rt_statemachine_add_state(rt_statemachine sm, int64_t state_id)
     return 1;
 }
 
+/// @brief Perform statemachine set initial operation.
+/// @param sm
+/// @param state_id
+/// @return Result value.
 int8_t rt_statemachine_set_initial(rt_statemachine sm, int64_t state_id)
 {
     if (!sm)
@@ -112,6 +124,9 @@ int8_t rt_statemachine_set_initial(rt_statemachine sm, int64_t state_id)
     return 1;
 }
 
+/// @brief Perform statemachine current operation.
+/// @param sm
+/// @return Result value.
 int64_t rt_statemachine_current(rt_statemachine sm)
 {
     if (!sm)
@@ -119,6 +134,9 @@ int64_t rt_statemachine_current(rt_statemachine sm)
     return sm->current_state;
 }
 
+/// @brief Perform statemachine previous operation.
+/// @param sm
+/// @return Result value.
 int64_t rt_statemachine_previous(rt_statemachine sm)
 {
     if (!sm)
@@ -126,6 +144,10 @@ int64_t rt_statemachine_previous(rt_statemachine sm)
     return sm->previous_state;
 }
 
+/// @brief Perform statemachine is state operation.
+/// @param sm
+/// @param state_id
+/// @return Result value.
 int8_t rt_statemachine_is_state(rt_statemachine sm, int64_t state_id)
 {
     if (!sm)
@@ -133,6 +155,10 @@ int8_t rt_statemachine_is_state(rt_statemachine sm, int64_t state_id)
     return sm->current_state == state_id ? 1 : 0;
 }
 
+/// @brief Perform statemachine transition operation.
+/// @param sm
+/// @param state_id
+/// @return Result value.
 int8_t rt_statemachine_transition(rt_statemachine sm, int64_t state_id)
 {
     if (!sm)
@@ -152,6 +178,9 @@ int8_t rt_statemachine_transition(rt_statemachine sm, int64_t state_id)
     return 1;
 }
 
+/// @brief Perform statemachine just entered operation.
+/// @param sm
+/// @return Result value.
 int8_t rt_statemachine_just_entered(rt_statemachine sm)
 {
     if (!sm)
@@ -159,6 +188,9 @@ int8_t rt_statemachine_just_entered(rt_statemachine sm)
     return sm->just_entered;
 }
 
+/// @brief Perform statemachine just exited operation.
+/// @param sm
+/// @return Result value.
 int8_t rt_statemachine_just_exited(rt_statemachine sm)
 {
     if (!sm)
@@ -166,6 +198,8 @@ int8_t rt_statemachine_just_exited(rt_statemachine sm)
     return sm->just_exited;
 }
 
+/// @brief Perform statemachine clear flags operation.
+/// @param sm
 void rt_statemachine_clear_flags(rt_statemachine sm)
 {
     if (!sm)
@@ -174,6 +208,9 @@ void rt_statemachine_clear_flags(rt_statemachine sm)
     sm->just_exited = 0;
 }
 
+/// @brief Perform statemachine frames in state operation.
+/// @param sm
+/// @return Result value.
 int64_t rt_statemachine_frames_in_state(rt_statemachine sm)
 {
     if (!sm)
@@ -181,6 +218,8 @@ int64_t rt_statemachine_frames_in_state(rt_statemachine sm)
     return sm->frames_in_state;
 }
 
+/// @brief Perform statemachine update operation.
+/// @param sm
 void rt_statemachine_update(rt_statemachine sm)
 {
     if (!sm)
@@ -191,6 +230,10 @@ void rt_statemachine_update(rt_statemachine sm)
     }
 }
 
+/// @brief Perform statemachine has state operation.
+/// @param sm
+/// @param state_id
+/// @return Result value.
 int8_t rt_statemachine_has_state(rt_statemachine sm, int64_t state_id)
 {
     if (!sm)
@@ -200,6 +243,9 @@ int8_t rt_statemachine_has_state(rt_statemachine sm, int64_t state_id)
     return sm->states[state_id];
 }
 
+/// @brief Perform statemachine state count operation.
+/// @param sm
+/// @return Result value.
 int64_t rt_statemachine_state_count(rt_statemachine sm)
 {
     if (!sm)

@@ -74,16 +74,16 @@ typedef struct
     int height;            ///< Cached window height
     int close_requested;   ///< 1 if WM_DELETE_WINDOW received, 0 otherwise
     // XDND (drag-and-drop) atoms
-    Atom xdnd_aware;       ///< XdndAware atom
-    Atom xdnd_enter;       ///< XdndEnter atom
-    Atom xdnd_position;    ///< XdndPosition atom
-    Atom xdnd_status;      ///< XdndStatus atom
-    Atom xdnd_drop;        ///< XdndDrop atom
-    Atom xdnd_finished;    ///< XdndFinished atom
-    Atom xdnd_selection;   ///< XdndSelection atom
-    Atom xdnd_type_list;   ///< XdndTypeList atom
-    Atom text_uri_list;    ///< text/uri-list MIME type atom
-    Window xdnd_source;    ///< Source window for current drag
+    Atom xdnd_aware;     ///< XdndAware atom
+    Atom xdnd_enter;     ///< XdndEnter atom
+    Atom xdnd_position;  ///< XdndPosition atom
+    Atom xdnd_status;    ///< XdndStatus atom
+    Atom xdnd_drop;      ///< XdndDrop atom
+    Atom xdnd_finished;  ///< XdndFinished atom
+    Atom xdnd_selection; ///< XdndSelection atom
+    Atom xdnd_type_list; ///< XdndTypeList atom
+    Atom text_uri_list;  ///< text/uri-list MIME type atom
+    Window xdnd_source;  ///< Source window for current drag
 } vgfx_x11_data;
 
 //===----------------------------------------------------------------------===//
@@ -356,8 +356,14 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     {
         /* Advertise XDND version 5 support */
         Atom xdnd_version = 5;
-        XChangeProperty(x11->display, x11->window, x11->xdnd_aware, XA_ATOM, 32,
-                        PropModeReplace, (unsigned char *)&xdnd_version, 1);
+        XChangeProperty(x11->display,
+                        x11->window,
+                        x11->xdnd_aware,
+                        XA_ATOM,
+                        32,
+                        PropModeReplace,
+                        (unsigned char *)&xdnd_version,
+                        1);
     }
 
     /* Create graphics context */
@@ -715,8 +721,12 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 /* XDND: drop completed — request selection data */
                 else if (event.xclient.message_type == x11->xdnd_drop)
                 {
-                    XConvertSelection(x11->display, x11->xdnd_selection, x11->text_uri_list,
-                                      x11->xdnd_selection, x11->window, CurrentTime);
+                    XConvertSelection(x11->display,
+                                      x11->xdnd_selection,
+                                      x11->text_uri_list,
+                                      x11->xdnd_selection,
+                                      x11->window,
+                                      CurrentTime);
                 }
                 break;
             }
@@ -730,9 +740,18 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                     int actual_format;
                     unsigned long nitems, bytes_after;
                     unsigned char *data = NULL;
-                    XGetWindowProperty(x11->display, x11->window, x11->xdnd_selection, 0, 65536,
-                                       True, AnyPropertyType, &actual_type, &actual_format, &nitems,
-                                       &bytes_after, &data);
+                    XGetWindowProperty(x11->display,
+                                       x11->window,
+                                       x11->xdnd_selection,
+                                       0,
+                                       65536,
+                                       True,
+                                       AnyPropertyType,
+                                       &actual_type,
+                                       &actual_format,
+                                       &nitems,
+                                       &bytes_after,
+                                       &data);
                     if (data && nitems > 0)
                     {
                         /* Parse text/uri-list: one URI per line, skip comments (#) */

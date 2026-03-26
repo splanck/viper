@@ -437,6 +437,12 @@ static void quadtree_finalizer(void *obj)
     tree->root = NULL;
 }
 
+/// @brief Perform quadtree new operation.
+/// @param x
+/// @param y
+/// @param width
+/// @param height
+/// @return Result value.
 rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height)
 {
     struct rt_quadtree_impl *tree = rt_obj_new_i64(0, sizeof(struct rt_quadtree_impl));
@@ -457,12 +463,16 @@ rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height)
     return tree;
 }
 
+/// @brief Perform quadtree destroy operation.
+/// @param tree
 void rt_quadtree_destroy(rt_quadtree tree)
 {
     // Object is GC-managed; finalizer frees internal nodes.
     (void)tree;
 }
 
+/// @brief Perform quadtree clear operation.
+/// @param tree
 void rt_quadtree_clear(rt_quadtree tree)
 {
     if (!tree)
@@ -516,6 +526,10 @@ int8_t rt_quadtree_insert(
     return insert_into_node(tree, tree->root, idx);
 }
 
+/// @brief Perform quadtree remove operation.
+/// @param tree
+/// @param id
+/// @return Result value.
 int8_t rt_quadtree_remove(rt_quadtree tree, int64_t id)
 {
     if (!tree)
@@ -575,11 +589,20 @@ int64_t rt_quadtree_query_rect(
     return tree->result_count;
 }
 
+/// @brief Perform quadtree query was truncated operation.
+/// @param tree
+/// @return Result value.
 int8_t rt_quadtree_query_was_truncated(rt_quadtree tree)
 {
     return tree ? tree->query_truncated : 0;
 }
 
+/// @brief Perform quadtree query point operation.
+/// @param tree
+/// @param x
+/// @param y
+/// @param radius
+/// @return Result value.
 int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t radius)
 {
     if (!tree)
@@ -589,6 +612,10 @@ int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t 
     return rt_quadtree_query_rect(tree, x - radius, y - radius, radius * 2, radius * 2);
 }
 
+/// @brief Perform quadtree get result operation.
+/// @param tree
+/// @param index
+/// @return Result value.
 int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index)
 {
     if (!tree || index < 0 || index >= tree->result_count)
@@ -596,11 +623,17 @@ int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index)
     return tree->results[index];
 }
 
+/// @brief Perform quadtree result count operation.
+/// @param tree
+/// @return Result value.
 int64_t rt_quadtree_result_count(rt_quadtree tree)
 {
     return tree ? tree->result_count : 0;
 }
 
+/// @brief Perform quadtree item count operation.
+/// @param tree
+/// @return Result value.
 int64_t rt_quadtree_item_count(rt_quadtree tree)
 {
     if (!tree)
@@ -615,6 +648,9 @@ int64_t rt_quadtree_item_count(rt_quadtree tree)
     return count;
 }
 
+/// @brief Perform quadtree get pairs operation.
+/// @param tree
+/// @return Result value.
 int64_t rt_quadtree_get_pairs(rt_quadtree tree)
 {
     if (!tree)
@@ -626,6 +662,10 @@ int64_t rt_quadtree_get_pairs(rt_quadtree tree)
     return tree->pair_count;
 }
 
+/// @brief Perform quadtree pair first operation.
+/// @param tree
+/// @param pair_index
+/// @return Result value.
 int64_t rt_quadtree_pair_first(rt_quadtree tree, int64_t pair_index)
 {
     if (!tree || pair_index < 0 || pair_index >= tree->pair_count)
@@ -633,6 +673,10 @@ int64_t rt_quadtree_pair_first(rt_quadtree tree, int64_t pair_index)
     return tree->pairs[pair_index].first;
 }
 
+/// @brief Perform quadtree pair second operation.
+/// @param tree
+/// @param pair_index
+/// @return Result value.
 int64_t rt_quadtree_pair_second(rt_quadtree tree, int64_t pair_index)
 {
     if (!tree || pair_index < 0 || pair_index >= tree->pair_count)

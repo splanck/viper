@@ -837,8 +837,7 @@ Lowerer::Value Lowerer::emitManagedReleaseRet(Value value, bool isString)
         return Value::constInt(0);
     }
 
-    Value nextRefCount =
-        emitCallRet(Type(Type::Kind::I64), "rt_heap_release_deferred", {value});
+    Value nextRefCount = emitCallRet(Type(Type::Kind::I64), "rt_heap_release_deferred", {value});
 
     unsigned slotId = nextTempId();
     il::core::Instr allocaInstr;
@@ -925,8 +924,9 @@ void Lowerer::emitDestructorDispatch()
             destructors.emplace_back(info.classId, dtorName);
     }
 
-    std::sort(destructors.begin(), destructors.end(), [](const auto &lhs, const auto &rhs)
-              { return lhs.first < rhs.first; });
+    std::sort(destructors.begin(),
+              destructors.end(),
+              [](const auto &lhs, const auto &rhs) { return lhs.first < rhs.first; });
 
     Function *savedFunc = currentFunc_;
     auto savedLocals = std::move(locals_);

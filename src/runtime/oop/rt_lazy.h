@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/oop/rt_lazy.h
 // Purpose: Lazy type providing deferred computation until first access, evaluating a factory
 // function once and caching the result for subsequent accesses.

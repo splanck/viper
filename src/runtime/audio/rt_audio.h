@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/audio/rt_audio.h
 // Purpose: Runtime bridge for the ViperAUD audio library, exposing sound effect and music playback
 // controls (play, pause, stop, volume, loop) over opaque audio handles.

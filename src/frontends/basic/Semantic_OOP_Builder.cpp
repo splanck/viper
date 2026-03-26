@@ -51,6 +51,7 @@ std::string OopIndexBuilder::joinNamespace() const
     return prefix;
 }
 
+/// @brief Process Property Decl.
 void OopIndexBuilder::processPropertyDecl(const PropertyDecl &prop, ClassInfo &info)
 {
     auto rank = [](Access a) { return a == Access::Public ? 1 : 0; };
@@ -94,6 +95,7 @@ void OopIndexBuilder::processPropertyDecl(const PropertyDecl &prop, ClassInfo &i
 
         if (prop.isStatic)
         {
+            /// @brief Check Me In Static Context.
             checkMeInStaticContext(
                 prop.get.body, emitter_, "B2103", "'ME' is not allowed in static method");
         }
@@ -114,6 +116,7 @@ void OopIndexBuilder::processPropertyDecl(const PropertyDecl &prop, ClassInfo &i
 
         if (prop.isStatic)
         {
+            /// @brief Check Me In Static Context.
             checkMeInStaticContext(
                 prop.set.body, emitter_, "B2103", "'ME' is not allowed in static method");
         }
@@ -146,6 +149,7 @@ void OopIndexBuilder::processConstructorDecl(const ConstructorDecl &ctor,
                            "static constructor cannot have parameters");
         }
 
+        /// @brief Check Me In Static Context.
         checkMeInStaticContext(
             ctor.body, emitter_, "B2106", "'ME' is not allowed in static constructor");
     }
@@ -210,6 +214,7 @@ void OopIndexBuilder::processMethodDecl(const MethodDecl &method,
 
     if (method.isStatic)
     {
+        /// @brief Check Me In Static Context.
         checkMeInStaticContext(
             method.body, emitter_, "B2103", "'ME' is not allowed in static method");
     }
@@ -245,6 +250,7 @@ void OopIndexBuilder::checkFieldMethodCollisions(ClassInfo &info,
     }
 }
 
+/// @brief Process Class Decl.
 void OopIndexBuilder::processClassDecl(const ClassDecl &classDecl)
 {
     ClassInfo info;
@@ -309,6 +315,7 @@ void OopIndexBuilder::processClassDecl(const ClassDecl &classDecl)
                 break;
             }
             case Stmt::Kind::MethodDecl:
+                /// @brief Process Method Decl.
                 processMethodDecl(
                     static_cast<const MethodDecl &>(*member), info, classDecl, classFieldNames);
                 break;
@@ -334,6 +341,7 @@ void OopIndexBuilder::processClassDecl(const ClassDecl &classDecl)
     index_.classes()[info.qualifiedName] = std::move(info);
 }
 
+/// @brief Scan Declarations.
 void OopIndexBuilder::scanDeclarations(const std::vector<StmtPtr> &stmts)
 {
     for (const auto &stmtPtr : stmts)
@@ -368,6 +376,7 @@ void OopIndexBuilder::scanDeclarations(const std::vector<StmtPtr> &stmts)
     }
 }
 
+/// @brief Process Interface Decl.
 void OopIndexBuilder::processInterfaceDecl(const InterfaceDecl &idecl)
 {
     InterfaceInfo ii;
@@ -437,6 +446,7 @@ void OopIndexBuilder::processInterfaceDecl(const InterfaceDecl &idecl)
     index_.interfacesByQname()[ii.qualifiedName] = std::move(ii);
 }
 
+/// @brief Collect Using Directives.
 void OopIndexBuilder::collectUsingDirectives(const std::vector<StmtPtr> &stmts)
 {
     for (const auto &stmtPtr : stmts)
@@ -456,6 +466,7 @@ void OopIndexBuilder::collectUsingDirectives(const std::vector<StmtPtr> &stmts)
     }
 }
 
+/// @brief Expand Alias.
 std::string OopIndexBuilder::expandAlias(const std::string &q) const
 {
     auto pos = q.find('.');
@@ -474,6 +485,7 @@ std::string OopIndexBuilder::expandAlias(const std::string &q) const
     return itAlias->second + "." + tail;
 }
 
+/// @brief Resolve Base.
 std::string OopIndexBuilder::resolveBase(const std::string &classQ, const std::string &raw) const
 {
     if (raw.empty())
@@ -521,6 +533,7 @@ std::string OopIndexBuilder::resolveInterface(const std::string &classQ,
     return {};
 }
 
+/// @brief Resolve Bases And Implements.
 void OopIndexBuilder::resolveBasesAndImplements()
 {
     for (auto &entry : index_.classes())
@@ -551,6 +564,7 @@ void OopIndexBuilder::resolveBasesAndImplements()
                         resolved = std::move(hits.front());
                     else if (hits.size() > 1 && emitter_)
                     {
+                        /// @brief Emit Ambiguous Type.
                         il::frontends::basic::semutil::emitAmbiguousType(
                             *emitter_, it->second.second, 1, rawMaybeAliased, hits);
                     }
@@ -580,6 +594,7 @@ void OopIndexBuilder::resolveBasesAndImplements()
     }
 }
 
+/// @brief Detect Inheritance Cycles.
 void OopIndexBuilder::detectInheritanceCycles()
 {
     enum State : uint8_t
@@ -626,6 +641,7 @@ void OopIndexBuilder::detectInheritanceCycles()
         detectCycle(entry.first);
 }
 
+/// @brief Build Vtables.
 void OopIndexBuilder::buildVtables()
 {
     std::unordered_map<std::string, bool> processed;
@@ -728,6 +744,7 @@ void OopIndexBuilder::buildVtables()
                                        "B2103",
                                        ci->methodLocs[mname],
                                        static_cast<uint32_t>(mname.size()),
+                                       /// @brief String.
                                        std::string("override signature mismatch for '") + mname +
                                            "'");
                     }
@@ -752,6 +769,7 @@ void OopIndexBuilder::buildVtables()
         build(entry.first);
 }
 
+/// @brief Check Interface Conformance.
 void OopIndexBuilder::checkInterfaceConformance()
 {
     auto findMethodInClassOrBases = [&](const std::string &classQ,
@@ -834,6 +852,7 @@ void OopIndexBuilder::checkInterfaceConformance()
     }
 }
 
+/// @brief Build.
 void OopIndexBuilder::build(const Program &program)
 {
     index_.clear();
@@ -857,6 +876,7 @@ void OopIndexBuilder::build(const Program &program)
     checkInterfaceConformance();
 }
 
+/// @brief Process Enum Decl.
 void OopIndexBuilder::processEnumDecl(const EnumDecl &enumDecl)
 {
     OopIndex::EnumInfo info;

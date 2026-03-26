@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_cipher.h
 // Purpose: High-level encryption/decryption API using ChaCha20-Poly1305 AEAD with automatic nonce
 // generation and PBKDF2 key derivation from passwords.

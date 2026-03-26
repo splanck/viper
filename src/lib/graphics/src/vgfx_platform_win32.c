@@ -426,8 +426,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                 vgfx_event_t event = {0};
                 event.type = VGFX_EVENT_FILE_DROP;
                 event.time_ms = timestamp;
-                DragQueryFileA(hDrop, i, event.data.file_drop.path,
-                               sizeof(event.data.file_drop.path));
+                DragQueryFileA(
+                    hDrop, i, event.data.file_drop.path, sizeof(event.data.file_drop.path));
                 vgfx_internal_enqueue_event(win, &event);
             }
             DragFinish(hDrop);

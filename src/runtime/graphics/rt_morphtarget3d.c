@@ -97,6 +97,10 @@ void *rt_morphtarget3d_new(int64_t vertex_count)
  * Shape management
  *=========================================================================*/
 
+/// @brief Perform morphtarget3d add shape operation.
+/// @param obj
+/// @param name
+/// @return Result value.
 int64_t rt_morphtarget3d_add_shape(void *obj, rt_string name)
 {
     if (!obj)
@@ -182,6 +186,10 @@ void rt_morphtarget3d_set_normal_delta(
  * Weight control
  *=========================================================================*/
 
+/// @brief Perform morphtarget3d set weight operation.
+/// @param obj
+/// @param shape
+/// @param weight
 void rt_morphtarget3d_set_weight(void *obj, int64_t shape, double weight)
 {
     if (!obj)
@@ -192,6 +200,10 @@ void rt_morphtarget3d_set_weight(void *obj, int64_t shape, double weight)
     mt->weights[shape] = (float)weight;
 }
 
+/// @brief Perform morphtarget3d get weight operation.
+/// @param obj
+/// @param shape
+/// @return Result value.
 double rt_morphtarget3d_get_weight(void *obj, int64_t shape)
 {
     if (!obj)
@@ -202,6 +214,10 @@ double rt_morphtarget3d_get_weight(void *obj, int64_t shape)
     return mt->weights[shape];
 }
 
+/// @brief Perform morphtarget3d set weight by name operation.
+/// @param obj
+/// @param name
+/// @param weight
 void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weight)
 {
     if (!obj || !name)
@@ -220,6 +236,9 @@ void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weigh
     }
 }
 
+/// @brief Perform morphtarget3d get shape count operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_morphtarget3d_get_shape_count(void *obj)
 {
     return obj ? ((rt_morphtarget3d *)obj)->shape_count : 0;
@@ -229,6 +248,9 @@ int64_t rt_morphtarget3d_get_shape_count(void *obj)
  * Mesh integration (placeholder — morph targets passed at draw time)
  *=========================================================================*/
 
+/// @brief Perform mesh3d set morph targets operation.
+/// @param mesh
+/// @param morph_targets
 void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets)
 {
     (void)mesh;

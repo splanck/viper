@@ -555,7 +555,8 @@ static void metal_submit_draw(void *ctx_ptr,
 
         /* Retain buffers until frame commit — prevents ARC from releasing
          * them before the GPU executes the draw commands. */
-        if (ctx.frameBuffers) {
+        if (ctx.frameBuffers)
+        {
             [ctx.frameBuffers addObject:vb];
             [ctx.frameBuffers addObject:ib];
         }

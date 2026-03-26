@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/arrays/rt_list_i64.h
 // Purpose: Unboxed dynamic-append list of 64-bit integers (P2-3.7) avoiding the boxing overhead of
 // the generic rt_list for hot integer collections.

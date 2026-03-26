@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_colorswatch.c
+//
+//===----------------------------------------------------------------------===//
 // vg_colorswatch.c - Color swatch widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -223,6 +233,7 @@ uint32_t vg_colorswatch_get_color(vg_colorswatch_t *swatch)
     return swatch->color;
 }
 
+/// @brief Colorswatch set selected.
 void vg_colorswatch_set_selected(vg_colorswatch_t *swatch, bool selected)
 {
     if (!swatch)
@@ -247,6 +258,7 @@ bool vg_colorswatch_is_selected(vg_colorswatch_t *swatch)
     return swatch->selected;
 }
 
+/// @brief Colorswatch set on select.
 void vg_colorswatch_set_on_select(vg_colorswatch_t *swatch,
                                   vg_colorswatch_callback_t callback,
                                   void *user_data)
@@ -258,6 +270,7 @@ void vg_colorswatch_set_on_select(vg_colorswatch_t *swatch,
     swatch->on_select_data = user_data;
 }
 
+/// @brief Colorswatch set size.
 void vg_colorswatch_set_size(vg_colorswatch_t *swatch, float size)
 {
     if (!swatch || size <= 0)

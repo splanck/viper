@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_input.h
 // Purpose: Keyboard, mouse, and gamepad input handling for the Viper.Input runtime namespace,
 // providing per-frame key state, mouse position/button, and gamepad queries.

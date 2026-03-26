@@ -203,6 +203,9 @@ void *rt_frozenset_empty(void)
     return (void *)fs_alloc(0);
 }
 
+/// @brief Perform frozenset len operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_frozenset_len(void *obj)
 {
     if (!obj)
@@ -210,11 +213,18 @@ int64_t rt_frozenset_len(void *obj)
     return ((rt_frozenset_impl *)obj)->count;
 }
 
+/// @brief Perform frozenset is empty operation.
+/// @param obj
+/// @return Result value.
 int8_t rt_frozenset_is_empty(void *obj)
 {
     return rt_frozenset_len(obj) == 0 ? 1 : 0;
 }
 
+/// @brief Perform frozenset has operation.
+/// @param obj
+/// @param elem
+/// @return Result value.
 int8_t rt_frozenset_has(void *obj, rt_string elem)
 {
     if (!obj || !elem)
@@ -321,6 +331,10 @@ void *rt_frozenset_diff(void *obj, void *other)
     return result;
 }
 
+/// @brief Perform frozenset is subset operation.
+/// @param obj
+/// @param other
+/// @return Result value.
 int8_t rt_frozenset_is_subset(void *obj, void *other)
 {
     if (!obj)
@@ -339,6 +353,10 @@ int8_t rt_frozenset_is_subset(void *obj, void *other)
     return 1;
 }
 
+/// @brief Perform frozenset equals operation.
+/// @param obj
+/// @param other
+/// @return Result value.
 int8_t rt_frozenset_equals(void *obj, void *other)
 {
     int64_t la = rt_frozenset_len(obj);

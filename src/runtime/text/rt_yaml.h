@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_yaml.h
 // Purpose: YAML 1.2 subset parser and formatter for Viper.Data.Yaml, supporting scalars, sequences,
 // mappings, and multi-document streams.

@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_tooltip.c
+//
+//===----------------------------------------------------------------------===//
 // vg_tooltip.c - Tooltip widget implementation
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -78,6 +88,7 @@ static void tooltip_destroy(vg_widget_t *widget)
     free(tooltip->text);
 }
 
+/// @brief Tooltip destroy.
 void vg_tooltip_destroy(vg_tooltip_t *tooltip)
 {
     if (!tooltip)
@@ -138,6 +149,7 @@ static void tooltip_paint(vg_widget_t *widget, void *canvas)
     }
 }
 
+/// @brief Tooltip set text.
 void vg_tooltip_set_text(vg_tooltip_t *tooltip, const char *text)
 {
     if (!tooltip)
@@ -148,6 +160,7 @@ void vg_tooltip_set_text(vg_tooltip_t *tooltip, const char *text)
     tooltip->base.needs_layout = true;
 }
 
+/// @brief Tooltip show at.
 void vg_tooltip_show_at(vg_tooltip_t *tooltip, int x, int y)
 {
     if (!tooltip)
@@ -160,6 +173,7 @@ void vg_tooltip_show_at(vg_tooltip_t *tooltip, int x, int y)
     tooltip->base.needs_paint = true;
 }
 
+/// @brief Tooltip hide.
 void vg_tooltip_hide(vg_tooltip_t *tooltip)
 {
     if (!tooltip)
@@ -169,6 +183,7 @@ void vg_tooltip_hide(vg_tooltip_t *tooltip)
     tooltip->base.visible = false;
 }
 
+/// @brief Tooltip set anchor.
 void vg_tooltip_set_anchor(vg_tooltip_t *tooltip, vg_widget_t *anchor)
 {
     if (!tooltip)
@@ -178,6 +193,7 @@ void vg_tooltip_set_anchor(vg_tooltip_t *tooltip, vg_widget_t *anchor)
     tooltip->position_mode = VG_TOOLTIP_ANCHOR_WIDGET;
 }
 
+/// @brief Tooltip set timing.
 void vg_tooltip_set_timing(vg_tooltip_t *tooltip,
                            uint32_t show_delay_ms,
                            uint32_t hide_delay_ms,
@@ -220,6 +236,7 @@ void vg_tooltip_manager_update(vg_tooltip_manager_t *mgr, uint64_t now_ms)
     }
 }
 
+/// @brief Tooltip manager on hover.
 void vg_tooltip_manager_on_hover(vg_tooltip_manager_t *mgr, vg_widget_t *widget, int x, int y)
 {
     if (!mgr)
@@ -242,6 +259,7 @@ void vg_tooltip_manager_on_hover(vg_tooltip_manager_t *mgr, vg_widget_t *widget,
     }
 }
 
+/// @brief Tooltip manager on leave.
 void vg_tooltip_manager_on_leave(vg_tooltip_manager_t *mgr)
 {
     if (!mgr)
@@ -256,6 +274,7 @@ void vg_tooltip_manager_on_leave(vg_tooltip_manager_t *mgr)
     mgr->pending_show = false;
 }
 
+/// @brief Widget set tooltip text.
 void vg_widget_set_tooltip_text(vg_widget_t *widget, const char *text)
 {
     if (!widget)

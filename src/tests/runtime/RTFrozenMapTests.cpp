@@ -222,6 +222,7 @@ static void test_dedup_keys()
     rt_string_unref(k);
 }
 
+/// @brief Main.
 int main()
 {
     test_empty();

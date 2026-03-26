@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_seq.h
 // Purpose: Runtime-backed dynamic sequence for Viper.Collections.Seq, providing O(1) amortized
 // append, O(1) indexed access, and functional operations (map, filter, reduce).

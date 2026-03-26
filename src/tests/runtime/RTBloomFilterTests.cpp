@@ -148,6 +148,7 @@ static void test_null_safety()
     assert(rt_bloomfilter_merge(NULL, NULL) == 0);
 }
 
+/// @brief Main.
 int main()
 {
     test_new();

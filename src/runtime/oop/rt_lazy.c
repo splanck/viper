@@ -163,6 +163,9 @@ void *rt_lazy_get(void *obj)
     return l->value.ptr;
 }
 
+/// @brief Perform lazy get str operation.
+/// @param obj
+/// @return Result value.
 rt_string rt_lazy_get_str(void *obj)
 {
     if (!obj)
@@ -178,6 +181,9 @@ rt_string rt_lazy_get_str(void *obj)
     return rt_const_cstr("");
 }
 
+/// @brief Perform lazy get i64 operation.
+/// @param obj
+/// @return Result value.
 int64_t rt_lazy_get_i64(void *obj)
 {
     if (!obj)
@@ -197,6 +203,9 @@ int64_t rt_lazy_get_i64(void *obj)
 // Lazy State
 //=============================================================================
 
+/// @brief Perform lazy is evaluated operation.
+/// @param obj
+/// @return Result value.
 int8_t rt_lazy_is_evaluated(void *obj)
 {
     if (!obj)
@@ -205,6 +214,8 @@ int8_t rt_lazy_is_evaluated(void *obj)
     return l->evaluated;
 }
 
+/// @brief Perform lazy force operation.
+/// @param obj
 void rt_lazy_force(void *obj)
 {
     if (!obj)

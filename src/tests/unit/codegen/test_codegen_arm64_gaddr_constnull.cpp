@@ -154,10 +154,9 @@ TEST(Arm64GaddrNull, CmpWithNull)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Should have compare (could be cmp with 0 or cbz pattern)
-    bool hasCmp = asmText.find("cmp x") != std::string::npos ||
-                  asmText.find("tst x") != std::string::npos ||
-                  asmText.find("cbz x") != std::string::npos ||
-                  asmText.find("cbnz x") != std::string::npos;
+    bool hasCmp =
+        asmText.find("cmp x") != std::string::npos || asmText.find("tst x") != std::string::npos ||
+        asmText.find("cbz x") != std::string::npos || asmText.find("cbnz x") != std::string::npos;
     EXPECT_TRUE(hasCmp);
 }
 

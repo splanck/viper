@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_serialize.h
 // Purpose: Unified serialization interface providing format-agnostic dispatch (JSON, TOML, YAML,
 // INI, XML) via a format enum or auto-detection from file extension.

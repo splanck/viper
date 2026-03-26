@@ -217,8 +217,7 @@ rt_string rt_tempfile_create_with_prefix(rt_string prefix)
 
     // Create file atomically to prevent TOCTOU race
 #ifdef _WIN32
-    HANDLE h = CreateFileA(
-        cpath, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE h = CreateFileA(cpath, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h != INVALID_HANDLE_VALUE)
         CloseHandle(h);
 #else

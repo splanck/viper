@@ -196,6 +196,7 @@ TEST(IL, test_skip_dynamic_gep)
     ASSERT_TRUE(hasOp(F, Opcode::Store));
 }
 
+/// @brief Main.
 int main(int argc, char **argv)
 {
     viper_test::init(&argc, argv);

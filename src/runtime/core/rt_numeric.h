@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_numeric.h
 // Purpose: Numeric type conversions, formatting, and parsing with BASIC semantics, including
 // float-to-integer rounding (banker's rounding), overflow detection, and checked arithmetic

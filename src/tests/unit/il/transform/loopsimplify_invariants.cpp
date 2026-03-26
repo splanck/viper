@@ -135,6 +135,7 @@ TEST(LoopSimplify, LoopInfoCapturesLatchesAndExits)
     EXPECT_EQ(innerLoop->parentHeader, "outer");
 }
 
+/// @brief Main.
 int main(int argc, char **argv)
 {
     viper_test::init(&argc, argv);

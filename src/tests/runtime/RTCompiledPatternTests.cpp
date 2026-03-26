@@ -5,7 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Tests for Viper.Text.CompiledPattern
+// Purpose: Tests for Viper.Text.CompiledPattern — regex compilation,
+//   matching, find, replace, and split operations.
 //
 //===----------------------------------------------------------------------===//
 

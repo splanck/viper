@@ -1,4 +1,7 @@
 //===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // RTGCHashTableTests.cpp - Tests for GC hash table and auto-trigger
 //===----------------------------------------------------------------------===//
 
@@ -13,6 +16,7 @@ extern "C"
 #include "rt_internal.h"
 #include "rt_object.h"
 
+    /// @brief Vm_trap.
     void vm_trap(const char *msg)
     {
         fprintf(stderr, "TRAP: %s\n", msg);
@@ -224,6 +228,7 @@ static void test_untrack_nonexistent()
     void *obj = make_node();
     int64_t base = rt_gc_tracked_count();
 
+    /// @brief Rt_gc_untrack.
     rt_gc_untrack(obj); // not tracked — should be harmless
 
     ASSERT(rt_gc_tracked_count() == base, "untrack nonexistent doesn't change count");

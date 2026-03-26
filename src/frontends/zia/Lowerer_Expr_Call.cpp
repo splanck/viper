@@ -142,8 +142,12 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             {
                 auto ifaceIt = interfaceTypes_.find(baseType->name);
                 if (ifaceIt != interfaceTypes_.end())
-                    return lowerInterfaceMethodCall(
-                        ifaceIt->second, slotKey, ownerType.empty() ? baseType->name : ownerType, resolvedMethod, baseResult.value, expr);
+                    return lowerInterfaceMethodCall(ifaceIt->second,
+                                                    slotKey,
+                                                    ownerType.empty() ? baseType->name : ownerType,
+                                                    resolvedMethod,
+                                                    baseResult.value,
+                                                    expr);
             }
 
             if (baseType && baseType->kind == TypeKindSem::Entity && !resolvedMethod->isStatic)
@@ -151,26 +155,32 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 const EntityTypeInfo *entityInfoPtr = getOrCreateEntityTypeInfo(baseType->name);
                 if (entityInfoPtr)
                 {
-                    return lowerVirtualMethodCall(
-                        *entityInfoPtr,
-                        slotKey,
-                        ownerType.empty() ? baseType->name : ownerType,
-                        resolvedMethod,
-                        baseResult.value,
-                        expr);
+                    return lowerVirtualMethodCall(*entityInfoPtr,
+                                                  slotKey,
+                                                  ownerType.empty() ? baseType->name : ownerType,
+                                                  resolvedMethod,
+                                                  baseResult.value,
+                                                  expr);
                 }
             }
 
-            return lowerMethodCall(
-                resolvedMethod, ownerType.empty() ? (baseType ? baseType->name : "") : ownerType, baseResult.value, expr);
+            return lowerMethodCall(resolvedMethod,
+                                   ownerType.empty() ? (baseType ? baseType->name : "") : ownerType,
+                                   baseResult.value,
+                                   expr);
         }
 
         Value selfPtr;
         if (getSelfPtr(selfPtr))
         {
             if (currentEntityType_ && !resolvedMethod->isStatic)
-                return lowerVirtualMethodCall(
-                    *currentEntityType_, slotKey, ownerType.empty() ? currentEntityType_->name : ownerType, resolvedMethod, selfPtr, expr);
+                return lowerVirtualMethodCall(*currentEntityType_,
+                                              slotKey,
+                                              ownerType.empty() ? currentEntityType_->name
+                                                                : ownerType,
+                                              resolvedMethod,
+                                              selfPtr,
+                                              expr);
 
             std::string implicitOwner = ownerType;
             if (implicitOwner.empty())

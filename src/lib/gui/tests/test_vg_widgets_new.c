@@ -1,3 +1,15 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// Purpose: Tests for newly added GUI widgets — notification, breadcrumb, minimap, floating panel.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/tests/test_vg_widgets_new.c
+//
+//===----------------------------------------------------------------------===//
 // test_vg_widgets_new.c — Unit tests for new widget features
 // Tests slider vtable, progressbar vtable, listbox vtable,
 // breadcrumb max_items, commandpalette clear, menu management,

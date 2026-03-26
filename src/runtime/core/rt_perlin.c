@@ -121,6 +121,11 @@ void *rt_perlin_new(int64_t seed)
     return p;
 }
 
+/// @brief Perform perlin noise2d operation.
+/// @param obj
+/// @param x
+/// @param y
+/// @return Result value.
 double rt_perlin_noise2d(void *obj, double x, double y)
 {
     if (!obj)
@@ -145,6 +150,12 @@ double rt_perlin_noise2d(void *obj, double x, double y)
     return lerp(v, x1, x2);
 }
 
+/// @brief Perform perlin noise3d operation.
+/// @param obj
+/// @param x
+/// @param y
+/// @param z
+/// @return Result value.
 double rt_perlin_noise3d(void *obj, double x, double y, double z)
 {
     if (!obj)
@@ -183,6 +194,13 @@ double rt_perlin_noise3d(void *obj, double x, double y, double z)
                   grad3(p->perm[bb + 1], xf - 1, yf - 1, zf - 1))));
 }
 
+/// @brief Perform perlin octave2d operation.
+/// @param obj
+/// @param x
+/// @param y
+/// @param octaves
+/// @param persistence
+/// @return Result value.
 double rt_perlin_octave2d(void *obj, double x, double y, int64_t octaves, double persistence)
 {
     if (!obj || octaves <= 0)

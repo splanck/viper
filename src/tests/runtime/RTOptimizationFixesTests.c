@@ -1,4 +1,7 @@
 //===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: tests/runtime/RTOptimizationFixesTests.c
 // Purpose: Verify optimization criticals O-01 through O-04 are correct.
 //          Correctness tests — these don't measure timing, but verify that

@@ -1,4 +1,7 @@
 //===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // RTChannelTests.cpp - Tests for rt_channel (thread-safe bounded channel)
 //===----------------------------------------------------------------------===//
 
@@ -15,6 +18,7 @@ extern "C"
 #include "rt_internal.h"
 #include "rt_object.h"
 
+    /// @brief Vm_trap.
     void vm_trap(const char *msg)
     {
         fprintf(stderr, "TRAP: %s\n", msg);
@@ -172,6 +176,7 @@ static void test_double_close()
 {
     void *ch = rt_channel_new(5);
     rt_channel_close(ch);
+    /// @brief Rt_channel_close.
     rt_channel_close(ch); // Should not crash
     assert(rt_channel_get_is_closed(ch) == 1);
 }
@@ -242,6 +247,7 @@ static void test_null_safety()
     assert(rt_channel_recv_for(NULL, &out, 10) == 0);
     assert(rt_channel_send_for(NULL, make_obj(), 10) == 0);
 
+    /// @brief Rt_channel_close.
     rt_channel_close(NULL); // Should not crash
 }
 
@@ -289,6 +295,7 @@ static void test_close_wakes_receiver()
 {
     void *ch = rt_channel_new(5);
 
+    /// @brief Closer.
     std::thread closer(
         [ch]()
         {
@@ -322,6 +329,7 @@ static void test_synchronous_channel()
     rt_channel_close(ch);
 }
 
+/// @brief Main.
 int main()
 {
     test_new_buffered();

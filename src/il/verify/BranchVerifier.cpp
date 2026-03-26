@@ -79,8 +79,8 @@ Expected<void> verifyBranchArgs(const Function &fn,
         // were removed. TypeInference returns Void for such undefined temps.
         // Allow Void as compatible with any type since the register allocator
         // tracks liveness independently of IL types.
-        bool compatible = (argType.kind == target.params[i].type.kind) ||
-                          (argType.kind == Type::Kind::Void);
+        bool compatible =
+            (argType.kind == target.params[i].type.kind) || (argType.kind == Type::Kind::Void);
         if (!compatible)
         {
             return Expected<void>{

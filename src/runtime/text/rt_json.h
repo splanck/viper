@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_json.h
 // Purpose: JSON parsing and formatting utilities for Viper.Data.Json, handling all JSON types
 // (null, bool, number, string, array, object) and producing pretty-printed or compact output.

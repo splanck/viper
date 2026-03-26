@@ -195,6 +195,7 @@ static void test_get_str_from_parsed_json()
     rt_string_unref(json);
 }
 
+/// @brief Main.
 int main()
 {
     test_simple_key();

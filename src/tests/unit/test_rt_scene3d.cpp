@@ -266,9 +266,12 @@ static void test_prevent_cycle()
     rt_scene_node3d_add_child(b, c);
     rt_scene_node3d_add_child(c, a);
 
-    EXPECT_TRUE(rt_scene_node3d_get_parent(a) == nullptr, "Cycle insertion leaves ancestor parent unchanged");
-    EXPECT_TRUE(rt_scene_node3d_get_parent(b) == a, "Existing parent link is preserved after cycle attempt");
-    EXPECT_TRUE(rt_scene_node3d_get_parent(c) == b, "Descendant parent link is preserved after cycle attempt");
+    EXPECT_TRUE(rt_scene_node3d_get_parent(a) == nullptr,
+                "Cycle insertion leaves ancestor parent unchanged");
+    EXPECT_TRUE(rt_scene_node3d_get_parent(b) == a,
+                "Existing parent link is preserved after cycle attempt");
+    EXPECT_TRUE(rt_scene_node3d_get_parent(c) == b,
+                "Descendant parent link is preserved after cycle attempt");
     EXPECT_TRUE(rt_scene_node3d_child_count(c) == 0, "Cycle insertion does not add a child");
 }
 

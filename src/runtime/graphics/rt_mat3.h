@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_mat3.h
 // Purpose: 3x3 matrix math for 2D transformations (Viper.Mat3), supporting translation, rotation,
 // scaling, and composition in row-major layout.

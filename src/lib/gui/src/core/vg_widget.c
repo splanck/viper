@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/core/vg_widget.c
+//
+//===----------------------------------------------------------------------===//
 // vg_widget.c - Widget base class implementation
 #include "../../include/vg_widget.h"
 #include "../../include/vg_event.h"
@@ -192,6 +202,7 @@ vg_widget_t *vg_widget_create(vg_widget_type_t type)
     return widget;
 }
 
+/// @brief Widget destroy.
 void vg_widget_destroy(vg_widget_t *widget)
 {
     if (!widget)
@@ -286,6 +297,7 @@ void vg_widget_add_child(vg_widget_t *parent, vg_widget_t *child)
     parent->needs_layout = true;
 }
 
+/// @brief Widget insechild.
 void vg_widget_insert_child(vg_widget_t *parent, vg_widget_t *child, int index)
 {
     if (!parent || !child || index < 0)
@@ -354,6 +366,7 @@ void vg_widget_insert_child(vg_widget_t *parent, vg_widget_t *child, int index)
     parent->needs_layout = true;
 }
 
+/// @brief Widget remove child.
 void vg_widget_remove_child(vg_widget_t *parent, vg_widget_t *child)
 {
     if (!parent || !child || child->parent != parent)
@@ -385,6 +398,7 @@ void vg_widget_remove_child(vg_widget_t *parent, vg_widget_t *child)
     parent->needs_layout = true;
 }
 
+/// @brief Widget clear children.
 void vg_widget_clear_children(vg_widget_t *parent)
 {
     if (!parent)
@@ -472,6 +486,7 @@ void vg_widget_set_constraints(vg_widget_t *widget, vg_constraints_t constraints
     widget->needs_layout = true;
 }
 
+/// @brief Widget set min size.
 void vg_widget_set_min_size(vg_widget_t *widget, float width, float height)
 {
     if (!widget)
@@ -481,6 +496,7 @@ void vg_widget_set_min_size(vg_widget_t *widget, float width, float height)
     widget->needs_layout = true;
 }
 
+/// @brief Widget set max size.
 void vg_widget_set_max_size(vg_widget_t *widget, float width, float height)
 {
     if (!widget)
@@ -490,6 +506,7 @@ void vg_widget_set_max_size(vg_widget_t *widget, float width, float height)
     widget->needs_layout = true;
 }
 
+/// @brief Widget set preferred size.
 void vg_widget_set_preferred_size(vg_widget_t *widget, float width, float height)
 {
     if (!widget)
@@ -499,6 +516,7 @@ void vg_widget_set_preferred_size(vg_widget_t *widget, float width, float height
     widget->needs_layout = true;
 }
 
+/// @brief Widget set fixed size.
 void vg_widget_set_fixed_size(vg_widget_t *widget, float width, float height)
 {
     if (!widget)
@@ -512,6 +530,7 @@ void vg_widget_set_fixed_size(vg_widget_t *widget, float width, float height)
     widget->needs_layout = true;
 }
 
+/// @brief Widget get bounds.
 void vg_widget_get_bounds(vg_widget_t *widget, float *x, float *y, float *width, float *height)
 {
     if (!widget)
@@ -526,6 +545,7 @@ void vg_widget_get_bounds(vg_widget_t *widget, float *x, float *y, float *width,
         *height = widget->height;
 }
 
+/// @brief Widget get screen bounds.
 void vg_widget_get_screen_bounds(
     vg_widget_t *widget, float *x, float *y, float *width, float *height)
 {
@@ -577,6 +597,7 @@ void vg_widget_set_flex(vg_widget_t *widget, float flex)
         widget->parent->needs_layout = true;
 }
 
+/// @brief Widget set margin.
 void vg_widget_set_margin(vg_widget_t *widget, float margin)
 {
     if (!widget)
@@ -589,6 +610,7 @@ void vg_widget_set_margin(vg_widget_t *widget, float margin)
         widget->parent->needs_layout = true;
 }
 
+/// @brief Widget set margins.
 void vg_widget_set_margins(vg_widget_t *widget, float left, float top, float right, float bottom)
 {
     if (!widget)
@@ -601,6 +623,7 @@ void vg_widget_set_margins(vg_widget_t *widget, float left, float top, float rig
         widget->parent->needs_layout = true;
 }
 
+/// @brief Widget set padding.
 void vg_widget_set_padding(vg_widget_t *widget, float padding)
 {
     if (!widget)
@@ -612,6 +635,7 @@ void vg_widget_set_padding(vg_widget_t *widget, float padding)
     widget->needs_layout = true;
 }
 
+/// @brief Widget set paddings.
 void vg_widget_set_paddings(vg_widget_t *widget, float left, float top, float right, float bottom)
 {
     if (!widget)
@@ -648,6 +672,7 @@ bool vg_widget_is_enabled(vg_widget_t *widget)
     return widget && widget->enabled;
 }
 
+/// @brief Widget set visible.
 void vg_widget_set_visible(vg_widget_t *widget, bool visible)
 {
     if (!widget)
@@ -668,6 +693,7 @@ bool vg_widget_has_state(vg_widget_t *widget, vg_widget_state_t state)
     return widget && (widget->state & state);
 }
 
+/// @brief Widget set name.
 void vg_widget_set_name(vg_widget_t *widget, const char *name)
 {
     if (!widget)
@@ -716,6 +742,7 @@ void vg_widget_measure(vg_widget_t *root, float available_width, float available
     }
 }
 
+/// @brief Widget arrange.
 void vg_widget_arrange(vg_widget_t *root, float x, float y, float width, float height)
 {
     if (!root || !root->visible)
@@ -740,12 +767,14 @@ void vg_widget_arrange(vg_widget_t *root, float x, float y, float width, float h
     root->needs_layout = false;
 }
 
+/// @brief Widget layout.
 void vg_widget_layout(vg_widget_t *root, float available_width, float available_height)
 {
     vg_widget_measure(root, available_width, available_height);
     vg_widget_arrange(root, 0, 0, available_width, available_height);
 }
 
+/// @brief Widget paint.
 void vg_widget_paint(vg_widget_t *root, void *canvas)
 {
     if (!root || !root->visible || !canvas)
@@ -766,6 +795,7 @@ void vg_widget_paint(vg_widget_t *root, void *canvas)
     root->needs_paint = false;
 }
 
+/// @brief Widget invalidate.
 void vg_widget_invalidate(vg_widget_t *widget)
 {
     if (!widget)
@@ -781,6 +811,7 @@ void vg_widget_invalidate(vg_widget_t *widget)
     }
 }
 
+/// @brief Widget invalidate layout.
 void vg_widget_invalidate_layout(vg_widget_t *widget)
 {
     if (!widget)
@@ -848,6 +879,7 @@ void vg_widget_set_input_capture(vg_widget_t *widget)
     g_input_capture_widget = widget;
 }
 
+/// @brief Widget release input capture.
 void vg_widget_release_input_capture(void)
 {
     g_input_capture_widget = NULL;
@@ -989,6 +1021,7 @@ static int build_tab_order(vg_widget_t *root, vg_widget_t **arr)
     return count;
 }
 
+/// @brief Widget focus next.
 void vg_widget_focus_next(vg_widget_t *root)
 {
     if (!root)
@@ -1015,6 +1048,7 @@ void vg_widget_focus_next(vg_widget_t *root)
     vg_widget_set_focus(arr[next]);
 }
 
+/// @brief Widget focus prev.
 void vg_widget_focus_prev(vg_widget_t *root)
 {
     if (!root)

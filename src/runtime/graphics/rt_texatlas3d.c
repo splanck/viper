@@ -64,7 +64,11 @@ void *rt_texatlas3d_new(int64_t width, int64_t height)
         return NULL;
     }
     rt_texatlas3d *a = (rt_texatlas3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_texatlas3d));
-    if (!a) { rt_trap("TextureAtlas3D.New: allocation failed"); return NULL; }
+    if (!a)
+    {
+        rt_trap("TextureAtlas3D.New: allocation failed");
+        return NULL;
+    }
     a->vptr = NULL;
     a->width = (int32_t)width;
     a->height = (int32_t)height;
@@ -79,15 +83,28 @@ void *rt_texatlas3d_new(int64_t width, int64_t height)
     return a;
 }
 
+/// @brief Perform texatlas3d add operation.
+/// @param obj
+/// @param pixels
+/// @return Result value.
 int64_t rt_texatlas3d_add(void *obj, void *pixels)
 {
-    if (!obj || !pixels) return -1;
+    if (!obj || !pixels)
+        return -1;
     rt_texatlas3d *a = (rt_texatlas3d *)obj;
-    if (a->region_count >= ATLAS_MAX_REGIONS) return -1;
+    if (a->region_count >= ATLAS_MAX_REGIONS)
+        return -1;
 
-    typedef struct { int64_t w; int64_t h; uint32_t *data; } px_view;
+    typedef struct
+    {
+        int64_t w;
+        int64_t h;
+        uint32_t *data;
+    } px_view;
+
     px_view *pv = (px_view *)pixels;
-    if (!pv->data) return -1;
+    if (!pv->data)
+        return -1;
 
     int32_t tw = (int32_t)pv->w + 2; /* +2 for 1px border padding */
     int32_t th = (int32_t)pv->h + 2;
@@ -100,7 +117,8 @@ int64_t rt_texatlas3d_add(void *obj, void *pixels)
         a->shelf_x = 0;
         a->shelf_h = 0;
     }
-    if (a->shelf_y + th > a->height) return -1; /* atlas full */
+    if (a->shelf_y + th > a->height)
+        return -1; /* atlas full */
 
     /* Place texture at (shelf_x + 1, shelf_y + 1) — skip 1px border */
     int32_t dx = a->shelf_x + 1;
@@ -123,7 +141,8 @@ int64_t rt_texatlas3d_add(void *obj, void *pixels)
     r->h = (int32_t)pv->h;
 
     a->shelf_x += tw;
-    if (th > a->shelf_h) a->shelf_h = th;
+    if (th > a->shelf_h)
+        a->shelf_h = th;
     a->dirty = 1;
 
     return a->region_count++;
@@ -131,7 +150,8 @@ int64_t rt_texatlas3d_add(void *obj, void *pixels)
 
 void *rt_texatlas3d_get_texture(void *obj)
 {
-    if (!obj) return NULL;
+    if (!obj)
+        return NULL;
     rt_texatlas3d *a = (rt_texatlas3d *)obj;
 
     if (a->dirty || !a->cached_pixels)
@@ -140,7 +160,13 @@ void *rt_texatlas3d_get_texture(void *obj)
         a->cached_pixels = rt_pixels_new(a->width, a->height);
         if (a->cached_pixels)
         {
-            typedef struct { int64_t w; int64_t h; uint32_t *data; } px_view;
+            typedef struct
+            {
+                int64_t w;
+                int64_t h;
+                uint32_t *data;
+            } px_view;
+
             px_view *pv = (px_view *)a->cached_pixels;
             memcpy(pv->data, a->data, (size_t)(a->width * a->height) * sizeof(uint32_t));
         }
@@ -149,10 +175,11 @@ void *rt_texatlas3d_get_texture(void *obj)
     return a->cached_pixels;
 }
 
-void rt_texatlas3d_get_uv_rect(void *obj, int64_t id,
-                                 double *u0, double *v0, double *u1, double *v1)
+void rt_texatlas3d_get_uv_rect(
+    void *obj, int64_t id, double *u0, double *v0, double *u1, double *v1)
 {
-    if (!obj || !u0 || !v0 || !u1 || !v1) return;
+    if (!obj || !u0 || !v0 || !u1 || !v1)
+        return;
     rt_texatlas3d *a = (rt_texatlas3d *)obj;
     if (id < 0 || id >= a->region_count)
     {

@@ -107,6 +107,9 @@ void *rt_light3d_new_ambient(double r, double g, double b)
     return light;
 }
 
+/// @brief Perform light3d set intensity operation.
+/// @param obj
+/// @param intensity
 void rt_light3d_set_intensity(void *obj, double intensity)
 {
     if (!obj)
@@ -114,6 +117,11 @@ void rt_light3d_set_intensity(void *obj, double intensity)
     ((rt_light3d *)obj)->intensity = intensity;
 }
 
+/// @brief Perform light3d set color operation.
+/// @param obj
+/// @param r
+/// @param g
+/// @param b
 void rt_light3d_set_color(void *obj, double r, double g, double b)
 {
     if (!obj)

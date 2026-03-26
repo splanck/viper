@@ -628,6 +628,7 @@ TEST(IL, testGVNRedundantLoadSameField)
     ASSERT_TRUE(retI.operands[0].kind == Value::Kind::Temp && retI.operands[0].id == load0);
 }
 
+/// @brief Main.
 int main(int argc, char **argv)
 {
     viper_test::init(&argc, argv);

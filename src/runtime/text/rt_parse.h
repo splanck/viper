@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/text/rt_parse.h
 // Purpose: Safe parsing functions for Viper.Parse providing TryXxx, XxxOr, and IsXxx variants that
 // never trap on invalid input and handle all edge cases gracefully.

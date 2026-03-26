@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/network/rt_retry.h
 // Purpose: Retry policy with configurable backoff strategies (fixed, linear, exponential) for
 // transient failure handling in network and I/O operations.

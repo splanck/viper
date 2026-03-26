@@ -204,6 +204,11 @@ void *rt_diff_lines(rt_string a, rt_string b)
 // rt_diff_unified
 // ---------------------------------------------------------------------------
 
+/// @brief Perform diff unified operation.
+/// @param a
+/// @param b
+/// @param context
+/// @return Result value.
 rt_string rt_diff_unified(rt_string a, rt_string b, int64_t context)
 {
     if (context < 0)
@@ -239,6 +244,10 @@ rt_string rt_diff_unified(rt_string a, rt_string b, int64_t context)
 // rt_diff_count_changes
 // ---------------------------------------------------------------------------
 
+/// @brief Perform diff count changes operation.
+/// @param a
+/// @param b
+/// @return Result value.
 int64_t rt_diff_count_changes(rt_string a, rt_string b)
 {
     void *diff = rt_diff_lines(a, b);
@@ -260,6 +269,10 @@ int64_t rt_diff_count_changes(rt_string a, rt_string b)
 // rt_diff_patch
 // ---------------------------------------------------------------------------
 
+/// @brief Perform diff patch operation.
+/// @param original
+/// @param diff
+/// @return Result value.
 rt_string rt_diff_patch(rt_string original, void *diff)
 {
     (void)original;

@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/runtime/test_rt_sprite_consolidated.cpp
+//
+//===----------------------------------------------------------------------===//
 // Consolidated Sprite runtime tests (2 files merged).
 
 #include "rt_object.h"
@@ -5,8 +15,8 @@
 #include "rt_seq.h"
 #include "rt_spritebatch.h"
 #include "rt_spritesheet.h"
-#include "rt_texatlas.h"
 #include "rt_string.h"
+#include "rt_texatlas.h"
 #include "tests/TestHarness.hpp"
 #include "tests/common/PosixCompat.h"
 #include <cmath>
@@ -70,6 +80,7 @@ TEST(RTSprite, SpritebatchBeginClearsCount)
 
     // First batch
     rt_spritebatch_begin(batch);
+    /// @brief Rt_spritebatch_draw_pixels.
     rt_spritebatch_draw_pixels(batch, (void *)1, 0, 0); // Dummy pixels
     rt_spritebatch_draw_pixels(batch, (void *)2, 10, 10);
     ASSERT_TRUE(rt_spritebatch_count(batch) == 2);
@@ -531,6 +542,7 @@ TEST(RTSprite, NullSafety)
     ASSERT(rt_spritesheet_remove_region(NULL, name) == 0, "null remove = 0");
 }
 
+/// @brief Main.
 int main(int argc, char **argv)
 {
     viper_test::init(&argc, argv);

@@ -33,8 +33,8 @@ extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_trap(const char *msg);
 extern void *rt_mesh3d_new(void);
-extern void rt_mesh3d_add_vertex(void *m, double x, double y, double z,
-                                  double nx, double ny, double nz, double u, double v);
+extern void rt_mesh3d_add_vertex(
+    void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
 extern void *rt_mat4_identity(void);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
@@ -57,19 +57,29 @@ typedef struct
     void *material;
 } rt_water3d;
 
-static void water3d_finalizer(void *obj) { (void)obj; }
+static void water3d_finalizer(void *obj)
+{
+    (void)obj;
+}
 
 void *rt_water3d_new(double width, double depth)
 {
     rt_water3d *w = (rt_water3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_water3d));
-    if (!w) { rt_trap("Water3D.New: allocation failed"); return NULL; }
+    if (!w)
+    {
+        rt_trap("Water3D.New: allocation failed");
+        return NULL;
+    }
     w->vptr = NULL;
-    w->width = width; w->depth = depth;
+    w->width = width;
+    w->depth = depth;
     w->height = 0.0;
     w->wave_speed = 2.0;
     w->wave_amplitude = 0.15;
     w->wave_frequency = 1.5;
-    w->color[0] = 0.1; w->color[1] = 0.3; w->color[2] = 0.6;
+    w->color[0] = 0.1;
+    w->color[1] = 0.3;
+    w->color[2] = 0.6;
     w->alpha = 0.5;
     w->time = 0.0;
     w->mesh = NULL;
@@ -78,31 +88,54 @@ void *rt_water3d_new(double width, double depth)
     return w;
 }
 
+/// @brief Perform water3d set height operation.
+/// @param obj
+/// @param y
 void rt_water3d_set_height(void *obj, double y)
 {
-    if (obj) ((rt_water3d *)obj)->height = y;
+    if (obj)
+        ((rt_water3d *)obj)->height = y;
 }
 
+/// @brief Perform water3d set wave params operation.
+/// @param obj
+/// @param speed
+/// @param amplitude
+/// @param frequency
 void rt_water3d_set_wave_params(void *obj, double speed, double amplitude, double frequency)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_water3d *w = (rt_water3d *)obj;
     w->wave_speed = speed;
     w->wave_amplitude = amplitude;
     w->wave_frequency = frequency;
 }
 
+/// @brief Perform water3d set color operation.
+/// @param obj
+/// @param r
+/// @param g
+/// @param b
+/// @param a
 void rt_water3d_set_color(void *obj, double r, double g, double b, double a)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_water3d *w = (rt_water3d *)obj;
-    w->color[0] = r; w->color[1] = g; w->color[2] = b;
+    w->color[0] = r;
+    w->color[1] = g;
+    w->color[2] = b;
     w->alpha = a;
 }
 
+/// @brief Perform water3d update operation.
+/// @param obj
+/// @param dt
 void rt_water3d_update(void *obj, double dt)
 {
-    if (!obj || dt <= 0) return;
+    if (!obj || dt <= 0)
+        return;
     rt_water3d *w = (rt_water3d *)obj;
     w->time += dt;
 
@@ -134,8 +167,13 @@ void rt_water3d_update(void *obj, double dt)
             /* Normal from wave derivative: dy/dx = amp * freq * cos(phase) */
             double dydx = w->wave_amplitude * w->wave_frequency * cos(phase);
             double nx = -dydx, ny = 1.0, nz = -dydx;
-            double nlen = sqrt(nx*nx + ny*ny + nz*nz);
-            if (nlen > 1e-8) { nx /= nlen; ny /= nlen; nz /= nlen; }
+            double nlen = sqrt(nx * nx + ny * ny + nz * nz);
+            if (nlen > 1e-8)
+            {
+                nx /= nlen;
+                ny /= nlen;
+                nz /= nlen;
+            }
 
             double u = (double)gx / WATER_GRID;
             double v = (double)gz / WATER_GRID;
@@ -168,12 +206,18 @@ void rt_water3d_update(void *obj, double dt)
     rt_material3d_set_alpha(w->material, w->alpha);
 }
 
+/// @brief Perform canvas3d draw water operation.
+/// @param canvas
+/// @param obj
+/// @param camera
 void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera)
 {
-    if (!canvas || !obj) return;
+    if (!canvas || !obj)
+        return;
     rt_water3d *w = (rt_water3d *)obj;
     (void)camera;
-    if (!w->mesh || !w->material) return;
+    if (!w->mesh || !w->material)
+        return;
 
     /* Draw with backface culling disabled (water visible from both sides) */
     extern void rt_canvas3d_set_backface_cull(void *canvas, int8_t enabled);

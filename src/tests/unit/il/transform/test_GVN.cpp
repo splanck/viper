@@ -222,6 +222,7 @@ static void test_redundant_load_elim()
     assert(Only.operands.front().kind == Value::Kind::Temp);
 }
 
+/// @brief Main.
 int main()
 {
     test_cse_cross_block();

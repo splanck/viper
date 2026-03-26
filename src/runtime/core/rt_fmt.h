@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_fmt.h
 // Purpose: Value formatting functions for the Viper.Fmt namespace, providing decimal, radix,
 // padded, fixed-precision, scientific, percentage, boolean, and human-readable byte-size string

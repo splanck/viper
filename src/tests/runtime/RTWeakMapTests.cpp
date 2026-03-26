@@ -119,6 +119,7 @@ static void test_compact()
     rt_string k2 = make_str("dead");
 
     rt_weakmap_set(m, k1, make_str("val"));
+    /// @brief Rt_weakmap_set.
     rt_weakmap_set(m, k2, NULL); // Simulate collected value
 
     assert(rt_weakmap_len(m) == 2);
@@ -164,6 +165,7 @@ static void test_null_safety()
     assert(rt_weakmap_compact(NULL) == 0);
 }
 
+/// @brief Main.
 int main()
 {
     test_basic();

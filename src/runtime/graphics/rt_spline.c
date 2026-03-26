@@ -377,6 +377,9 @@ void *rt_spline_tangent(void *spline, double t)
     return rt_vec2_new(ox, oy);
 }
 
+/// @brief Perform spline point count operation.
+/// @param spline
+/// @return Result value.
 int64_t rt_spline_point_count(void *spline)
 {
     if (!spline)
@@ -403,6 +406,12 @@ void *rt_spline_point_at(void *spline, int64_t index)
     return rt_vec2_new(s->xs[index], s->ys[index]);
 }
 
+/// @brief Perform spline arc length operation.
+/// @param spline
+/// @param t0
+/// @param t1
+/// @param steps
+/// @return Result value.
 double rt_spline_arc_length(void *spline, double t0, double t1, int64_t steps)
 {
     if (!spline)

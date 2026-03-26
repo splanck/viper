@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_image.c
+//
+//===----------------------------------------------------------------------===//
 // vg_image.c - Image widget implementation
 #include "../../include/vg_widgets.h"
 #include <stdlib.h>
@@ -26,6 +36,7 @@ vg_image_t *vg_image_create(vg_widget_t *parent)
     return image;
 }
 
+/// @brief Image set pixels.
 void vg_image_set_pixels(vg_image_t *image, const uint8_t *pixels, int width, int height)
 {
     if (!image)
@@ -62,6 +73,7 @@ bool vg_image_load_file(vg_image_t *image, const char *path)
     return false;
 }
 
+/// @brief Image clear.
 void vg_image_clear(vg_image_t *image)
 {
     if (!image)
@@ -72,6 +84,7 @@ void vg_image_clear(vg_image_t *image)
     image->img_height = 0;
 }
 
+/// @brief Image set scale mode.
 void vg_image_set_scale_mode(vg_image_t *image, vg_image_scale_t mode)
 {
     if (!image)
@@ -79,6 +92,7 @@ void vg_image_set_scale_mode(vg_image_t *image, vg_image_scale_t mode)
     image->scale_mode = mode;
 }
 
+/// @brief Image set opacity.
 void vg_image_set_opacity(vg_image_t *image, float opacity)
 {
     if (!image)

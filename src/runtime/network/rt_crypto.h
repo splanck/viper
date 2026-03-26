@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/network/rt_crypto.h
 // Purpose: Cryptographic primitives for TLS support: SHA-256, HMAC-SHA256, HKDF, ChaCha20-Poly1305
 // AEAD, and X25519 key exchange, implemented in pure C with no external dependencies.
@@ -170,12 +173,12 @@ extern "C"
     ///                   authentication tag (must hold plaintext_len + 16 bytes).
     /// @return Ciphertext length (plaintext_len + 16 for tag).
     size_t rt_aes128_gcm_encrypt(const uint8_t key[16],
-                                  const uint8_t nonce[12],
-                                  const void *aad,
-                                  size_t aad_len,
-                                  const void *plaintext,
-                                  size_t plaintext_len,
-                                  uint8_t *ciphertext);
+                                 const uint8_t nonce[12],
+                                 const void *aad,
+                                 size_t aad_len,
+                                 const void *plaintext,
+                                 size_t plaintext_len,
+                                 uint8_t *ciphertext);
 
     /// @brief Decrypt with AES-128-GCM.
     /// @param key The 128-bit decryption key (16 bytes).
@@ -188,12 +191,12 @@ extern "C"
     ///                  ciphertext_len - 16 bytes).
     /// @return Plaintext length on success, -1 on authentication failure.
     long rt_aes128_gcm_decrypt(const uint8_t key[16],
-                                const uint8_t nonce[12],
-                                const void *aad,
-                                size_t aad_len,
-                                const void *ciphertext,
-                                size_t ciphertext_len,
-                                uint8_t *plaintext);
+                               const uint8_t nonce[12],
+                               const void *aad,
+                               size_t aad_len,
+                               const void *ciphertext,
+                               size_t ciphertext_len,
+                               uint8_t *plaintext);
 
     //=========================================================================
     // X25519 Key Exchange

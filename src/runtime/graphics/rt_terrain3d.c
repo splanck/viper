@@ -35,8 +35,8 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_trap(const char *msg);
 extern void *rt_vec3_new(double x, double y, double z);
 extern void *rt_mesh3d_new(void);
-extern void rt_mesh3d_add_vertex(void *m, double x, double y, double z,
-                                  double nx, double ny, double nz, double u, double v);
+extern void rt_mesh3d_add_vertex(
+    void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
 extern void *rt_mat4_identity(void);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
@@ -71,12 +71,18 @@ void *rt_terrain3d_new(int64_t width, int64_t depth)
         return NULL;
     }
     rt_terrain3d *t = (rt_terrain3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_terrain3d));
-    if (!t) { rt_trap("Terrain3D.New: allocation failed"); return NULL; }
+    if (!t)
+    {
+        rt_trap("Terrain3D.New: allocation failed");
+        return NULL;
+    }
     t->vptr = NULL;
     t->width = (int32_t)width;
     t->depth = (int32_t)depth;
     t->heights = (float *)calloc((size_t)(width * depth), sizeof(float));
-    t->scale[0] = 1.0; t->scale[1] = 1.0; t->scale[2] = 1.0;
+    t->scale[0] = 1.0;
+    t->scale[1] = 1.0;
+    t->scale[2] = 1.0;
     t->chunks_x = ((int32_t)width - 1 + TERRAIN_CHUNK_SIZE - 1) / TERRAIN_CHUNK_SIZE;
     t->chunks_z = ((int32_t)depth - 1 + TERRAIN_CHUNK_SIZE - 1) / TERRAIN_CHUNK_SIZE;
     t->chunk_meshes = (void **)calloc((size_t)(t->chunks_x * t->chunks_z), sizeof(void *));
@@ -87,13 +93,21 @@ void *rt_terrain3d_new(int64_t width, int64_t depth)
 
 void rt_terrain3d_set_heightmap(void *obj, void *pixels)
 {
-    if (!obj || !pixels) return;
+    if (!obj || !pixels)
+        return;
     rt_terrain3d *t = (rt_terrain3d *)obj;
 
     /* Access Pixels internal layout */
-    typedef struct { int64_t w; int64_t h; uint32_t *data; } px_view;
+    typedef struct
+    {
+        int64_t w;
+        int64_t h;
+        uint32_t *data;
+    } px_view;
+
     px_view *pv = (px_view *)pixels;
-    if (!pv->data) return;
+    if (!pv->data)
+        return;
 
     int32_t sw = (int32_t)pv->w, sh = (int32_t)pv->h;
     for (int32_t z = 0; z < t->depth; z++)
@@ -102,8 +116,10 @@ void rt_terrain3d_set_heightmap(void *obj, void *pixels)
         {
             int sx = x * sw / t->width;
             int sz = z * sh / t->depth;
-            if (sx >= sw) sx = sw - 1;
-            if (sz >= sh) sz = sh - 1;
+            if (sx >= sw)
+                sx = sw - 1;
+            if (sz >= sh)
+                sz = sh - 1;
             uint32_t pixel = pv->data[sz * sw + sx]; /* 0xRRGGBBAA */
             float r = (float)((pixel >> 24) & 0xFF) / 255.0f;
             t->heights[z * t->width + x] = r;
@@ -117,14 +133,18 @@ void rt_terrain3d_set_heightmap(void *obj, void *pixels)
 
 void rt_terrain3d_set_material(void *obj, void *material)
 {
-    if (obj) ((rt_terrain3d *)obj)->material = material;
+    if (obj)
+        ((rt_terrain3d *)obj)->material = material;
 }
 
 void rt_terrain3d_set_scale(void *obj, double sx, double sy, double sz)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
     rt_terrain3d *t = (rt_terrain3d *)obj;
-    t->scale[0] = sx; t->scale[1] = sy; t->scale[2] = sz;
+    t->scale[0] = sx;
+    t->scale[1] = sy;
+    t->scale[2] = sz;
     /* Invalidate chunks */
     for (int32_t i = 0; i < t->chunks_x * t->chunks_z; i++)
         t->chunk_meshes[i] = NULL;
@@ -133,43 +153,66 @@ void rt_terrain3d_set_scale(void *obj, double sx, double sy, double sz)
 /// @brief Sample height at grid coordinates (clamped).
 static float sample_height(const rt_terrain3d *t, int32_t x, int32_t z)
 {
-    if (x < 0) x = 0;
-    if (z < 0) z = 0;
-    if (x >= t->width) x = t->width - 1;
-    if (z >= t->depth) z = t->depth - 1;
+    if (x < 0)
+        x = 0;
+    if (z < 0)
+        z = 0;
+    if (x >= t->width)
+        x = t->width - 1;
+    if (z >= t->depth)
+        z = t->depth - 1;
     return t->heights[z * t->width + x];
 }
 
 double rt_terrain3d_get_height_at(void *obj, double wx, double wz)
 {
-    if (!obj) return 0.0;
+    if (!obj)
+        return 0.0;
     rt_terrain3d *t = (rt_terrain3d *)obj;
-    if (t->scale[0] < 1e-12 || t->scale[2] < 1e-12) return 0.0;
+    if (t->scale[0] < 1e-12 || t->scale[2] < 1e-12)
+        return 0.0;
 
     double hx = wx / t->scale[0];
     double hz = wz / t->scale[2];
     int ix = (int)floor(hx), iz = (int)floor(hz);
     float fx = (float)(hx - ix), fz = (float)(hz - iz);
 
-    if (ix < 0) { ix = 0; fx = 0; }
-    if (iz < 0) { iz = 0; fz = 0; }
-    if (ix >= t->width - 1) { ix = t->width - 2; fx = 1; }
-    if (iz >= t->depth - 1) { iz = t->depth - 2; fz = 1; }
+    if (ix < 0)
+    {
+        ix = 0;
+        fx = 0;
+    }
+    if (iz < 0)
+    {
+        iz = 0;
+        fz = 0;
+    }
+    if (ix >= t->width - 1)
+    {
+        ix = t->width - 2;
+        fx = 1;
+    }
+    if (iz >= t->depth - 1)
+    {
+        iz = t->depth - 2;
+        fz = 1;
+    }
 
     float h00 = sample_height(t, ix, iz);
     float h10 = sample_height(t, ix + 1, iz);
     float h01 = sample_height(t, ix, iz + 1);
     float h11 = sample_height(t, ix + 1, iz + 1);
-    float h = h00 * (1 - fx) * (1 - fz) + h10 * fx * (1 - fz) +
-              h01 * (1 - fx) * fz + h11 * fx * fz;
+    float h = h00 * (1 - fx) * (1 - fz) + h10 * fx * (1 - fz) + h01 * (1 - fx) * fz + h11 * fx * fz;
     return (double)(h * (float)t->scale[1]);
 }
 
 void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz)
 {
-    if (!obj) return rt_vec3_new(0, 1, 0);
+    if (!obj)
+        return rt_vec3_new(0, 1, 0);
     rt_terrain3d *t = (rt_terrain3d *)obj;
-    if (t->scale[0] < 1e-12 || t->scale[2] < 1e-12) return rt_vec3_new(0, 1, 0);
+    if (t->scale[0] < 1e-12 || t->scale[2] < 1e-12)
+        return rt_vec3_new(0, 1, 0);
 
     double hx = wx / t->scale[0];
     double hz = wz / t->scale[2];
@@ -184,7 +227,12 @@ void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz)
     double nz = (double)(hD - hU) * t->scale[1];
     double ny = 2.0 * t->scale[0];
     double len = sqrt(nx * nx + ny * ny + nz * nz);
-    if (len > 1e-8) { nx /= len; ny /= len; nz /= len; }
+    if (len > 1e-8)
+    {
+        nx /= len;
+        ny /= len;
+        nz /= len;
+    }
 
     return rt_vec3_new(nx, ny, nz);
 }
@@ -199,11 +247,14 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz)
     /* Determine actual chunk extents (may be smaller at edges) */
     int32_t xend = x0 + TERRAIN_CHUNK_SIZE;
     int32_t zend = z0 + TERRAIN_CHUNK_SIZE;
-    if (xend >= t->width) xend = t->width - 1;
-    if (zend >= t->depth) zend = t->depth - 1;
+    if (xend >= t->width)
+        xend = t->width - 1;
+    if (zend >= t->depth)
+        zend = t->depth - 1;
     int32_t cols = xend - x0;
     int32_t rows = zend - z0;
-    if (cols <= 0 || rows <= 0) return mesh;
+    if (cols <= 0 || rows <= 0)
+        return mesh;
 
     /* Vertices */
     for (int32_t dz = 0; dz <= rows; dz++)
@@ -224,7 +275,12 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz)
             double nz_n = (double)(hD - hU) * t->scale[1];
             double ny = 2.0 * t->scale[0];
             double nlen = sqrt(nx * nx + ny * ny + nz_n * nz_n);
-            if (nlen > 1e-8) { nx /= nlen; ny /= nlen; nz_n /= nlen; }
+            if (nlen > 1e-8)
+            {
+                nx /= nlen;
+                ny /= nlen;
+                nz_n /= nlen;
+            }
 
             double u = (double)ix / (double)(t->width - 1);
             double v = (double)iz / (double)(t->depth - 1);
@@ -250,10 +306,12 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz)
 
 void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj)
 {
-    if (!canvas_obj || !terrain_obj) return;
+    if (!canvas_obj || !terrain_obj)
+        return;
     rt_canvas3d *c = (rt_canvas3d *)canvas_obj;
     rt_terrain3d *t = (rt_terrain3d *)terrain_obj;
-    if (!c->in_frame || !c->backend || !t->material) return;
+    if (!c->in_frame || !c->backend || !t->material)
+        return;
 
     void *identity = rt_mat4_identity();
 

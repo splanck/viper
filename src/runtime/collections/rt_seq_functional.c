@@ -60,21 +60,37 @@ void *rt_seq_apply_wrapper(void *seq, void *fn)
     return rt_seq_apply(seq, (transform_fn)fn);
 }
 
+/// @brief Perform seq all wrapper operation.
+/// @param seq
+/// @param pred
+/// @return Result value.
 int8_t rt_seq_all_wrapper(void *seq, void *pred)
 {
     return rt_seq_all(seq, (predicate_fn)pred);
 }
 
+/// @brief Perform seq any wrapper operation.
+/// @param seq
+/// @param pred
+/// @return Result value.
 int8_t rt_seq_any_wrapper(void *seq, void *pred)
 {
     return rt_seq_any(seq, (predicate_fn)pred);
 }
 
+/// @brief Perform seq none wrapper operation.
+/// @param seq
+/// @param pred
+/// @return Result value.
 int8_t rt_seq_none_wrapper(void *seq, void *pred)
 {
     return rt_seq_none(seq, (predicate_fn)pred);
 }
 
+/// @brief Perform seq count where wrapper operation.
+/// @param seq
+/// @param pred
+/// @return Result value.
 int64_t rt_seq_count_where_wrapper(void *seq, void *pred)
 {
     return rt_seq_count_where(seq, (predicate_fn)pred);

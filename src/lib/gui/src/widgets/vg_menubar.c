@@ -1,3 +1,13 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/gui/src/widgets/vg_menubar.c
+//
+//===----------------------------------------------------------------------===//
 // vg_menubar.c - MenuBar widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -786,6 +796,7 @@ vg_menu_t *vg_menu_add_submenu(vg_menu_t *menu, const char *title)
     return item->submenu;
 }
 
+/// @brief Menu item set enabled.
 void vg_menu_item_set_enabled(vg_menu_item_t *item, bool enabled)
 {
     if (item)
@@ -794,6 +805,7 @@ void vg_menu_item_set_enabled(vg_menu_item_t *item, bool enabled)
     }
 }
 
+/// @brief Menu item set checked.
 void vg_menu_item_set_checked(vg_menu_item_t *item, bool checked)
 {
     if (item)
@@ -802,6 +814,7 @@ void vg_menu_item_set_checked(vg_menu_item_t *item, bool checked)
     }
 }
 
+/// @brief Menu remove item.
 void vg_menu_remove_item(vg_menu_t *menu, vg_menu_item_t *item)
 {
     if (!menu || !item)
@@ -821,6 +834,7 @@ void vg_menu_remove_item(vg_menu_t *menu, vg_menu_item_t *item)
     free_menu_item(item);
 }
 
+/// @brief Menu clear.
 void vg_menu_clear(vg_menu_t *menu)
 {
     if (!menu)
@@ -838,6 +852,7 @@ void vg_menu_clear(vg_menu_t *menu)
     menu->item_count = 0;
 }
 
+/// @brief Menubar remove menu.
 void vg_menubar_remove_menu(vg_menubar_t *menubar, vg_menu_t *menu)
 {
     if (!menubar || !menu)
@@ -862,6 +877,7 @@ void vg_menubar_remove_menu(vg_menubar_t *menubar, vg_menu_t *menu)
     menubar->base.needs_paint = true;
 }
 
+/// @brief Menubar set font.
 void vg_menubar_set_font(vg_menubar_t *menubar, vg_font_t *font, float size)
 {
     if (!menubar)
@@ -1039,6 +1055,7 @@ bool vg_parse_accelerator(const char *shortcut, vg_accelerator_t *accel)
     return accel->key != VG_KEY_UNKNOWN;
 }
 
+/// @brief Menubar register accelerator.
 void vg_menubar_register_accelerator(vg_menubar_t *menubar,
                                      vg_menu_item_t *item,
                                      const char *shortcut)
@@ -1079,6 +1096,7 @@ static void rebuild_accels_for_menu(vg_menubar_t *menubar, vg_menu_t *menu)
     }
 }
 
+/// @brief Menubar rebuild accelerators.
 void vg_menubar_rebuild_accelerators(vg_menubar_t *menubar)
 {
     if (!menubar)

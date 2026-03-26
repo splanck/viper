@@ -155,7 +155,9 @@ TEST(get_pairs)
 
     // Insert overlapping items
     rt_quadtree_insert(tree, 1, 100000, 100000, 50000, 50000);
+    /// @brief Rt_quadtree_insert.
     rt_quadtree_insert(tree, 2, 120000, 120000, 50000, 50000); // Overlaps with 1
+                                                               /// @brief Rt_quadtree_insert.
     rt_quadtree_insert(tree, 3, 800000, 800000, 50000, 50000); // Far away
 
     int64_t pair_count = rt_quadtree_get_pairs(tree);
@@ -270,6 +272,7 @@ TEST(query_no_truncation_small_result)
     rt_quadtree_destroy(tree);
 }
 
+/// @brief Main.
 int main()
 {
     printf("RTQuadtreeTests:\n");

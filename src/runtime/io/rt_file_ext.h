@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/io/rt_file_ext.h
 // Purpose: High-level static file operations for Viper.IO.File, providing ReadAllText,
 // WriteAllText, ReadAllLines, AppendText, Copy, Move, Delete, and Exists.

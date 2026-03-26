@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/core/rt_easing.h
 // Purpose: Easing functions for animation and interpolation implementing Robert Penner conventions,
 // providing linear, quadratic, cubic, quartic, quintic, sine, exponential, circular, back, elastic,

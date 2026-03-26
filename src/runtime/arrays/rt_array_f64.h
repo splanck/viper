@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/arrays/rt_array_f64.h
 // Purpose: Dynamic array API for 64-bit floats (double) supporting BASIC SINGLE/DOUBLE typed
 // collections, mirroring the i64 array interface with allocation, refcounting, bounds-checked

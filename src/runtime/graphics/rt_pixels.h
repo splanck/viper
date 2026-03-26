@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/graphics/rt_pixels.h
 // Purpose: Software image buffer manipulation for Viper.Graphics.Pixels, providing pixel-level
 // read/write, drawing primitives, image loading/saving, and blitting operations.

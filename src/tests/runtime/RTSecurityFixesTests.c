@@ -1,4 +1,7 @@
 //===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: tests/runtime/RTSecurityFixesTests.c
 // Purpose: Verify security-critical bug fixes S-11 through S-20 and
 //          S-01, S-13, S-14, S-15, S-16, S-17, S-18, S-20.

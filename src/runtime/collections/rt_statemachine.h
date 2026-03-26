@@ -1,5 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 // File: src/runtime/collections/rt_statemachine.h
 // Purpose: Finite state machine with up to RT_STATE_MAX (32) registered states, tracking current
 // state, frame count, and one-frame enter/exit transition flags.
