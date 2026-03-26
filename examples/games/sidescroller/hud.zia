@@ -31,9 +31,11 @@ bind Viper.Fmt;
 bind Viper.Game;
 bind Viper.Game.UI;
 bind "./config";
+bind "./palette";
 
 entity HUD {
     // --- UI Widget instances ---
+    hide Palette pal;
     hide Panel hudPanel;
     hide Bar healthBar;
     hide Bar bossBarWidget;
@@ -52,43 +54,44 @@ entity HUD {
     hide Integer pulseTimer;
     hide Integer displayCoins;
 
-    expose func init() {
+    expose func init(p: Palette) {
+        pal = p;
         // SmoothValue: smoothing=0.75 means score rolls quickly but visibly
         displayScore = SmoothValue.New(0.0, 0.75);
         displayCoins = 0;
         pulseTimer = 0;
 
         // HUD background panel — full width, semi-transparent
-        hudPanel = Panel.New(0, 0, SCREEN_W, 48, COL_PANEL_BG, 190);
-        hudPanel.SetBorder(COL_PANEL_BORDER, 1);
+        hudPanel = Panel.New(0, 0, SCREEN_W, 48, pal.panelBg, 190);
+        hudPanel.SetBorder(pal.panelBorder, 1);
         hudPanel.set_CornerRadius(0);
 
         // Health bar — left side
-        healthBar = Bar.New(12, 10, 140, 16, COL_HP_BAR_FULL, COL_HP_BAR_EMPTY);
+        healthBar = Bar.New(12, 10, 140, 16, pal.hpBarFull, pal.hpBarEmpty);
         healthBar.set_Border(1);
 
         // Boss health bar — center, wider (hidden until boss fight)
         var bossX = (SCREEN_W - 400) / 2;
-        bossBarWidget = Bar.New(bossX, 56, 400, 18, COL_BOSS_BAR_FILL, COL_BOSS_BAR_EMPTY);
+        bossBarWidget = Bar.New(bossX, 56, 400, 18, pal.bossBarFill, pal.bossBarEmpty);
         bossBarWidget.set_Border(1);
         bossBarTween = Tween.New();
         bossBarDisplay = 0;
         bossBarTarget = 0;
 
         // Score label
-        scoreLabel = Label.New(170, 6, "SCORE 0", COL_UI_TEXT);
+        scoreLabel = Label.New(170, 6, "SCORE 0", pal.uiText);
         scoreLabel.set_Scale(2);
 
         // Coin label
-        coinLabel = Label.New(440, 6, "x0", COL_COIN_GOLD);
+        coinLabel = Label.New(440, 6, "x0", pal.coinGold);
         coinLabel.set_Scale(2);
 
         // Lives label
-        livesLabel = Label.New(SCREEN_W - 200, 6, "LIVES 3", COL_UI_TEXT);
+        livesLabel = Label.New(SCREEN_W - 200, 6, "LIVES 3", pal.uiText);
         livesLabel.set_Scale(2);
 
         // Level name label
-        levelLabel = Label.New(SCREEN_W - 400, 30, "GRASSLANDS", COL_HUD_BLUE);
+        levelLabel = Label.New(SCREEN_W - 400, 30, "GRASSLANDS", pal.hudBlue);
         levelLabel.set_Scale(2);
     }
 
@@ -119,28 +122,28 @@ entity HUD {
         if hp * 3 < maxHp {
             // Critical: pulse red
             if pulseTimer < 300 {
-                healthBar.SetColors(0xFF6666, COL_HP_BAR_EMPTY);
+                healthBar.SetColors(0xFF6666, pal.hpBarEmpty);
             } else {
-                healthBar.SetColors(COL_HP_BAR_LOW, COL_HP_BAR_EMPTY);
+                healthBar.SetColors(pal.hpBarLow, pal.hpBarEmpty);
             }
         } else if hp * 5 < maxHp * 3 {
-            healthBar.SetColors(COL_HP_BAR_WARN, COL_HP_BAR_EMPTY);
+            healthBar.SetColors(pal.hpBarWarn, pal.hpBarEmpty);
         } else {
-            healthBar.SetColors(COL_HP_BAR_FULL, COL_HP_BAR_EMPTY);
+            healthBar.SetColors(pal.hpBarFull, pal.hpBarEmpty);
         }
         healthBar.SetValue(hp, maxHp);
         healthBar.Draw(canvas);
 
         // HP number overlay on bar
-        canvas.TextScaled(16, 12, Int(hp) + "/" + Int(maxHp), 2, COL_WHITE);
+        canvas.TextScaled(16, 12, Int(hp) + "/" + Int(maxHp), 2, pal.white);
 
         // Score (animated via SmoothValue)
         scoreLabel.SetText("SCORE " + Int(displayScore.get_ValueI64()));
         scoreLabel.Draw(canvas);
 
         // Coins with mini icon
-        canvas.Disc(430, 14, 7, COL_COIN_GOLD);
-        canvas.Disc(430, 14, 4, COL_COIN_DARK);
+        canvas.Disc(430, 14, 7, pal.coinGold);
+        canvas.Disc(430, 14, 4, pal.coinDark);
         canvas.Disc(429, 12, 2, 0xFFEE88);
         coinLabel.SetText("x" + Int(coins));
         coinLabel.Draw(canvas);
@@ -160,16 +163,16 @@ entity HUD {
         var pxStart = 12;
         var pyStart = 34;
         if speedTimer > 0 {
-            drawPowerupBar(canvas, pxStart, pyStart, "SPD", COL_SPEED,
+            drawPowerupBar(canvas, pxStart, pyStart, "SPD", pal.speed,
                           speedTimer, SPEED_DURATION_MS);
             pxStart = pxStart + 100;
         }
         if shieldHits > 0 {
-            drawPowerupBar(canvas, pxStart, pyStart, "SHD", COL_SHIELD, 1, 1);
+            drawPowerupBar(canvas, pxStart, pyStart, "SHD", pal.shield, 1, 1);
             pxStart = pxStart + 100;
         }
         if rapidTimer > 0 {
-            drawPowerupBar(canvas, pxStart, pyStart, "RPD", COL_RAPIDFIRE,
+            drawPowerupBar(canvas, pxStart, pyStart, "RPD", pal.rapidfire,
                           rapidTimer, RAPIDFIRE_DURATION_MS);
         }
     }
@@ -180,10 +183,10 @@ entity HUD {
         var barW = 85;
         var filled = remaining * barW / maxDur;
         if filled < 1 { filled = 1; }
-        canvas.BoxAlpha(x, y, barW, 8, COL_BLACK, 120);
+        canvas.BoxAlpha(x, y, barW, 8, pal.black, 120);
         canvas.Box(x, y, filled, 8, col);
-        canvas.Frame(x, y, barW, 8, COL_PANEL_BORDER);
-        canvas.TextScaled(x + 2, y - 1, label, 1, COL_WHITE);
+        canvas.Frame(x, y, barW, 8, pal.panelBorder);
+        canvas.TextScaled(x + 2, y - 1, label, 1, pal.white);
     }
 
     // Draw boss health bar with Tween-animated damage lerp.
@@ -201,22 +204,22 @@ entity HUD {
 
         // Background behind boss bar
         var barX = (SCREEN_W - 400) / 2;
-        canvas.BoxAlpha(barX - 4, 52, 408, 26, COL_BLACK, 200);
-        canvas.TextScaled(barX, 38, "MECH GUARDIAN", 2, COL_BOSS_EYE);
+        canvas.BoxAlpha(barX - 4, 52, 408, 26, pal.black, 200);
+        canvas.TextScaled(barX, 38, "MECH GUARDIAN", 2, pal.bossEye);
 
         // Update bar value (tweened) and color
         bossBarWidget.SetValue(bossBarDisplay, bossMaxHpVal);
         if bossHp * 3 < bossMaxHpVal {
-            bossBarWidget.SetColors(COL_HP_BAR_LOW, COL_BOSS_BAR_EMPTY);
+            bossBarWidget.SetColors(pal.hpBarLow, pal.bossBarEmpty);
         } else if bossHp * 3 < bossMaxHpVal * 2 {
-            bossBarWidget.SetColors(COL_HP_BAR_WARN, COL_BOSS_BAR_EMPTY);
+            bossBarWidget.SetColors(pal.hpBarWarn, pal.bossBarEmpty);
         } else {
-            bossBarWidget.SetColors(COL_BOSS_BAR_FILL, COL_BOSS_BAR_EMPTY);
+            bossBarWidget.SetColors(pal.bossBarFill, pal.bossBarEmpty);
         }
         bossBarWidget.Draw(canvas);
 
         // HP text on bar
-        canvas.TextScaled(barX + 170, 58, Int(bossHp) + "/" + Int(bossMaxHpVal), 2, COL_WHITE);
+        canvas.TextScaled(barX + 170, 58, Int(bossHp) + "/" + Int(bossMaxHpVal), 2, pal.white);
     }
 
     expose func resetBossBar(maxHp: Integer) {

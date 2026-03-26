@@ -20,6 +20,7 @@ module renderer;
 bind Viper.Graphics;
 bind Viper.Game.ScreenFX as FX;
 bind "./config";
+bind "./palette";
 bind "./level";
 bind "./player";
 bind "./enemy";
@@ -32,6 +33,7 @@ bind "./sprites";
 
 entity Renderer {
     // Screen effects manager (replaces manual shake/flash/fade)
+    hide Palette pal;
     hide FX fx;
 
     // Lava animation timer
@@ -42,7 +44,8 @@ entity Renderer {
     hide Integer shimmerTimer;
     hide Integer shimmerIndex;
 
-    expose func init() {
+    expose func init(p: Palette) {
+        pal = p;
         fx = FX.New();
         lavaFrame = 0;
         lavaTimer = 0;
@@ -291,10 +294,10 @@ entity Renderer {
                 if flameH > 18 { flameH = 18; }
                 // Outer flame (orange)
                 canvas.Triangle(flameX, flameY, flameX + 8, flameY,
-                               flameX + 4, flameY + flameH, COL_TITLE_ORANGE);
+                               flameX + 4, flameY + flameH, pal.titleOrange);
                 // Inner flame (yellow, smaller)
                 canvas.Triangle(flameX + 2, flameY, flameX + 6, flameY,
-                               flameX + 4, flameY + flameH - 3, COL_SPARK_YELLOW);
+                               flameX + 4, flameY + flameH - 3, pal.sparkYellow);
             }
         }
 
@@ -303,13 +306,13 @@ entity Renderer {
         // Shield glow effect
         if player.shieldHits > 0 {
             canvas.DiscAlpha(sx + PLAYER_W / 2, sy + PLAYER_H / 2,
-                            PLAYER_H / 2 + 4, COL_SHIELD, 60);
+                            PLAYER_H / 2 + 4, pal.shield, 60);
         }
 
         // Speed aura
         if player.speedTimer > 0 {
             canvas.DiscAlpha(sx + PLAYER_W / 2, sy + PLAYER_H / 2,
-                            PLAYER_H / 2 + 2, COL_SPEED, 30);
+                            PLAYER_H / 2 + 2, pal.speed, 30);
         }
     }
 
@@ -340,13 +343,13 @@ entity Renderer {
                 // Lava glow — orange haze above lava tiles
                 if tile == TILE_LAVA {
                     canvas.DiscAlpha(sx + TILE_SIZE / 2, sy - 8,
-                                    TILE_SIZE / 2 + 6, COL_LAVA_BRIGHT, 18);
+                                    TILE_SIZE / 2 + 6, pal.lavaBright, 18);
                 }
 
                 // Magma glow
                 if tile == TILE_MAGMA {
                     canvas.DiscAlpha(sx + TILE_SIZE / 2, sy + TILE_SIZE / 2,
-                                    TILE_SIZE / 2, COL_MAGMA_GLOW, 12);
+                                    TILE_SIZE / 2, pal.magmaGlow, 12);
                 }
 
                 // Crystal shimmer — occasional sparkle
@@ -355,34 +358,34 @@ entity Renderer {
                     if shimmerHit == 0 {
                         var sparkX = sx + (col * 17) % TILE_SIZE;
                         var sparkY = sy + (row * 23) % TILE_SIZE;
-                        canvas.Disc(sparkX, sparkY, 2, COL_WHITE);
-                        canvas.DiscAlpha(sparkX, sparkY, 5, COL_CRYSTAL_CYAN, 40);
+                        canvas.Disc(sparkX, sparkY, 2, pal.white);
+                        canvas.DiscAlpha(sparkX, sparkY, 5, pal.crystalCyan, 40);
                     }
                 }
 
                 // Jungle ground — bioluminescent root glow
                 if tile == TILE_JUNGLE_GROUND {
                     canvas.DiscAlpha(sx + TILE_SIZE / 2, sy + TILE_SIZE / 4,
-                                    TILE_SIZE / 3, COL_JUNGLE_ROOTS, 12);
+                                    TILE_SIZE / 3, pal.jungleRoots, 12);
                 }
 
                 // Mushroom — pulsing bounce glow
                 if tile == TILE_MUSHROOM {
                     var pulseR = TILE_SIZE / 3 + (shimmerIndex % 4);
                     canvas.DiscAlpha(sx + TILE_SIZE / 2, sy + TILE_SIZE / 3,
-                                    pulseR, COL_MUSHROOM_GLOW, 18);
+                                    pulseR, pal.mushroomGlow, 18);
                 }
 
                 // Magma rock — glowing crack embers
                 if tile == TILE_MAGMA_ROCK {
                     canvas.DiscAlpha(sx + TILE_SIZE / 2, sy + TILE_SIZE / 2,
-                                    TILE_SIZE / 3, COL_THERMAL_CRACK, 10);
+                                    TILE_SIZE / 3, pal.thermalCrack, 10);
                 }
 
                 // Metal grate — subtle heat shimmer
                 if tile == TILE_METAL_GRATE {
                     if (col + shimmerIndex) % 6 == 0 {
-                        canvas.BoxAlpha(sx, sy - 4, TILE_SIZE, 4, COL_THERMAL_LAVA, 8);
+                        canvas.BoxAlpha(sx, sy - 4, TILE_SIZE, 4, pal.thermalLava, 8);
                     }
                 }
 

@@ -8,6 +8,7 @@ bind Viper.Fmt;
 bind Viper.Game;
 bind Viper.Game.DebugOverlay as Debug;
 bind "./config";
+bind "./palette";
 bind "./sprites";
 bind "./player";
 bind "./enemy";
@@ -23,6 +24,7 @@ bind "./renderer";
 bind "./sound";
 
 entity Game {
+    hide Palette pal;
     hide Canvas canvas;
     hide StateMachine sm;
 
@@ -100,18 +102,21 @@ entity Game {
         jetFlameTimer = 0;
         introTimer = 0;
 
-        // Create subsystems
-        sprites = new SpriteFactory();
+        // Create palette first — passed to all subsystems that use colors
+        pal = new Palette();
+
+        // Create subsystems — palette-aware ones receive pal via constructor
+        sprites = new SpriteFactory(pal);
         player = new Player();
         enemies = new EnemyManager();
         level = new Level();
-        camera = new GameCamera();
-        particles = new ParticleSystem();
+        camera = new GameCamera(pal);
+        particles = new ParticleSystem(pal);
         pickups = new PickupManager();
         bullets = new ProjectilePool();
-        hudObj = new HUD();
-        menus = new MenuSystem();
-        renderObj = new Renderer();
+        hudObj = new HUD(pal);
+        menus = new MenuSystem(pal);
+        renderObj = new Renderer(pal);
         phys = new PhysicsHelper();
         sfx = new SoundManager();
         sfx.setup("examples/games/sidescroller/");
@@ -386,12 +391,12 @@ entity Game {
         if alpha < 20 { alpha = 20; }
 
         // Dark banner across center
-        canvas.BoxAlpha(0, 280, SCREEN_W, 120, COL_BLACK, alpha);
+        canvas.BoxAlpha(0, 280, SCREEN_W, 120, pal.black, alpha);
 
         // Level number + name
         var numStr = Int(levelNum);
-        canvas.TextCenteredScaled(300, "LEVEL " + numStr, COL_HUD_GRAY, 3);
-        canvas.TextCenteredScaled(340, levelName, COL_WHITE, 4);
+        canvas.TextCenteredScaled(300, "LEVEL " + numStr, pal.hudGray, 3);
+        canvas.TextCenteredScaled(340, levelName, pal.white, 4);
     }
 
     // =========================================================================
@@ -415,7 +420,7 @@ entity Game {
 
                     particles.burstEnemyDeath(player.pixelX() + PLAYER_W / 2,
                                               player.pixelY() + PLAYER_H,
-                                              COL_SLIME);
+                                              pal.slime);
                     renderObj.shake(6, 3);
                     sfx.playStomp();
                     return;
@@ -424,7 +429,7 @@ entity Game {
 
             player.takeDamage(1);
             renderObj.shake(8, 4);
-            renderObj.flash(COL_HUD_RED, 6);
+            renderObj.flash(pal.hudRed, 6);
             sfx.playHurt();
         }
     }
@@ -445,7 +450,7 @@ entity Game {
             } else {
                 player.collectPowerUp(collected);
                 particles.burstSpark(player.centerX(), player.centerY(),
-                                     COL_SPARK_YELLOW);
+                                     pal.sparkYellow);
                 sfx.playPowerup();
             }
 
@@ -468,7 +473,7 @@ entity Game {
                 if hit >= 0 {
                     bullets.deactivate(i);
                     enemies.damageEnemy(hit, 1);
-                    particles.burstSpark(bx, by, COL_BULLET);
+                    particles.burstSpark(bx, by, pal.bullet);
 
                     if enemies.isActive(hit) == 0 {
                         var etype = enemies.getEnemyType(hit);
@@ -479,7 +484,7 @@ entity Game {
                             sfx.playEnemyDeath();
                         } else {
                             score = score + ENEMY_SCORE;
-                            particles.burstEnemyDeath(bx, by, COL_SPARK_YELLOW);
+                            particles.burstEnemyDeath(bx, by, pal.sparkYellow);
                             renderObj.shake(6, 3);
                             sfx.playEnemyDeath();
                         }
@@ -503,7 +508,7 @@ entity Game {
         if enemies.checkEnemyBulletHit(player.pixelX(), player.pixelY()) {
             player.takeDamage(1);
             renderObj.shake(8, 4);
-            renderObj.flash(COL_HUD_RED, 6);
+            renderObj.flash(pal.hudRed, 6);
             sfx.playHurt();
         }
     }
@@ -519,7 +524,7 @@ entity Game {
         if phys.isOnHazard(player.x, player.y, PLAYER_W, PLAYER_H, level) {
             player.takeDamage(2);
             renderObj.shake(10, 5);
-            renderObj.flash(COL_LAVA_BRIGHT, 8);
+            renderObj.flash(pal.lavaBright, 8);
             sfx.playHurt();
         }
     }
@@ -545,7 +550,7 @@ entity Game {
         if dx < TILE_SIZE * 2 {
             if dy < TILE_SIZE * 2 {
                 reachedCheckpoint = true;
-                particles.burstSpark(cpx + 16, cpy + 16, COL_CHECKPOINT);
+                particles.burstSpark(cpx + 16, cpy + 16, pal.checkpoint);
                 sfx.playCheckpoint();
             }
         }
@@ -595,7 +600,7 @@ entity Game {
         if deathTimer == 0 {
             particles.burstDeath(player.centerX(), player.centerY());
             renderObj.shake(12, 6);
-            renderObj.flash(COL_HUD_RED, 10);
+            renderObj.flash(pal.hudRed, 10);
             sfx.playDeath();
         }
 

@@ -22,11 +22,14 @@ module particles;
 bind Viper.Graphics;
 bind Viper.Game.ParticleEmitter as PE;
 bind "./config";
+bind "./palette";
 
 entity ParticleSystem {
+    hide Palette pal;
     hide PE emitter;
 
-    expose func init() {
+    expose func init(p: Palette) {
+        pal = p;
         emitter = PE.New(256);
         emitter.set_FadeOut(true);
         emitter.set_Shrink(true);
@@ -51,7 +54,7 @@ entity ParticleSystem {
     // Dust puff (landing, running)
     expose func burstDust(x: Integer, y: Integer) {
         emitter.SetPosition(x + 0.0, y + 0.0);
-        emitter.set_Color(COL_DUST);
+        emitter.set_Color(pal.dust);
         emitter.SetLifetime(15, 25);
         emitter.SetVelocity(5.0, 18.0, 45.0, 135.0);
         emitter.SetGravity(0.0, 0.3);
@@ -78,10 +81,10 @@ entity ParticleSystem {
         emitter.SetGravity(0.0, 0.5);
         emitter.SetSize(1.0, 3.0);
         // Gold particles
-        emitter.set_Color(COL_COIN_GOLD);
+        emitter.set_Color(pal.coinGold);
         emitter.Burst(5);
         // Yellow spark particles
-        emitter.set_Color(COL_SPARK_YELLOW);
+        emitter.set_Color(pal.sparkYellow);
         emitter.Burst(5);
     }
 
@@ -93,20 +96,20 @@ entity ParticleSystem {
         emitter.SetGravity(0.0, 0.5);
         emitter.SetSize(2.0, 4.0);
         // Red particles
-        emitter.set_Color(COL_DEATH_RED);
+        emitter.set_Color(pal.deathRed);
         emitter.Burst(8);
         // White sparks
-        emitter.set_Color(COL_SPARK_WHITE);
+        emitter.set_Color(pal.sparkWhite);
         emitter.Burst(4);
         // Yellow sparks
-        emitter.set_Color(COL_SPARK_YELLOW);
+        emitter.set_Color(pal.sparkYellow);
         emitter.Burst(4);
     }
 
     // Jump burst (small downward puff at feet)
     expose func burstJump(x: Integer, y: Integer) {
         emitter.SetPosition(x + 0.0, y + 0.0);
-        emitter.set_Color(COL_DUST);
+        emitter.set_Color(pal.dust);
         emitter.SetLifetime(8, 12);
         emitter.SetVelocity(5.0, 12.0, 230.0, 310.0);
         emitter.SetGravity(0.0, -0.2);
@@ -117,7 +120,7 @@ entity ParticleSystem {
     // Double jump burst (ring effect, all directions)
     expose func burstDoubleJump(x: Integer, y: Integer) {
         emitter.SetPosition(x + 0.0, y + 0.0);
-        emitter.set_Color(COL_PLAYER_VISOR);
+        emitter.set_Color(pal.playerVisor);
         emitter.SetLifetime(10, 15);
         emitter.SetVelocity(10.0, 15.0, 0.0, 360.0);
         emitter.SetGravity(0.0, 0.0);
@@ -150,7 +153,7 @@ entity ParticleSystem {
     // Hard landing — wider dust cloud
     expose func burstLandDust(x: Integer, y: Integer) {
         emitter.SetPosition(x + 0.0, y + 0.0);
-        emitter.set_Color(COL_DUST);
+        emitter.set_Color(pal.dust);
         emitter.SetLifetime(18, 30);
         emitter.SetVelocity(8.0, 25.0, 20.0, 160.0);
         emitter.SetGravity(0.0, 0.2);
@@ -161,7 +164,7 @@ entity ParticleSystem {
     // Wall slide sparks — directional
     expose func burstWallSlideSpark(x: Integer, y: Integer, dir: Integer) {
         emitter.SetPosition(x + 0.0, y + 0.0);
-        emitter.set_Color(COL_SPARK_YELLOW);
+        emitter.set_Color(pal.sparkYellow);
         emitter.SetLifetime(6, 10);
         // Sparks fly away from wall: dir=-1 means wall on left, sparks go right (315-45)
         // dir=1 means wall on right, sparks go left (135-225)
@@ -179,14 +182,14 @@ entity ParticleSystem {
     expose func burstJetpackFlame(x: Integer, y: Integer) {
         emitter.SetPosition(x + 0.0, y + 0.0);
         // Orange flame core
-        emitter.set_Color(COL_TITLE_ORANGE);
+        emitter.set_Color(pal.titleOrange);
         emitter.SetLifetime(5, 8);
         emitter.SetVelocity(4.0, 10.0, 240.0, 300.0);
         emitter.SetGravity(0.0, -0.2);
         emitter.SetSize(1.0, 3.0);
         emitter.Burst(1);
         // Yellow tip
-        emitter.set_Color(COL_SPARK_YELLOW);
+        emitter.set_Color(pal.sparkYellow);
         emitter.SetSize(1.0, 2.0);
         emitter.Burst(1);
     }
@@ -194,27 +197,27 @@ entity ParticleSystem {
     // Boss intro — dramatic entrance burst
     expose func burstBossIntro(x: Integer, y: Integer) {
         emitter.SetPosition(x + 0.0, y + 0.0);
-        emitter.set_Color(COL_BOSS_EYE);
+        emitter.set_Color(pal.bossEye);
         emitter.SetLifetime(20, 35);
         emitter.SetVelocity(15.0, 35.0, 0.0, 360.0);
         emitter.SetGravity(0.0, 0.0);
         emitter.SetSize(2.0, 4.0);
         emitter.Burst(16);
-        emitter.set_Color(COL_SPARK_YELLOW);
+        emitter.set_Color(pal.sparkYellow);
         emitter.Burst(8);
     }
 
     // Checkpoint collected — golden sparkle rising upward
     expose func burstCheckpoint(x: Integer, y: Integer) {
         emitter.SetPosition(x + 0.0, y + 0.0);
-        emitter.set_Color(COL_CHECKPOINT);
+        emitter.set_Color(pal.checkpoint);
         emitter.SetLifetime(25, 40);
         emitter.SetVelocity(8.0, 20.0, 60.0, 120.0);
         emitter.SetGravity(0.0, -0.3);
         emitter.SetSize(1.0, 3.0);
         emitter.Burst(12);
         // Gold sparks
-        emitter.set_Color(COL_SPARK_YELLOW);
+        emitter.set_Color(pal.sparkYellow);
         emitter.SetSize(1.0, 2.0);
         emitter.Burst(6);
     }
@@ -222,7 +225,7 @@ entity ParticleSystem {
     // Running dust — continuous trail at player's feet
     expose func burstRunDust(x: Integer, y: Integer) {
         emitter.SetPosition(x + 0.0, y + 0.0);
-        emitter.set_Color(COL_DUST);
+        emitter.set_Color(pal.dust);
         emitter.SetLifetime(6, 12);
         emitter.SetVelocity(3.0, 8.0, 200.0, 340.0);
         emitter.SetGravity(0.0, 0.1);
@@ -233,14 +236,14 @@ entity ParticleSystem {
     // Spike/hazard impact — blood-red splatter
     expose func burstHazardHit(x: Integer, y: Integer) {
         emitter.SetPosition(x + 0.0, y + 0.0);
-        emitter.set_Color(COL_DEATH_RED);
+        emitter.set_Color(pal.deathRed);
         emitter.SetLifetime(15, 25);
         emitter.SetVelocity(12.0, 30.0, 30.0, 150.0);
         emitter.SetGravity(0.0, 0.5);
         emitter.SetSize(2.0, 4.0);
         emitter.Burst(10);
         // White shock sparks
-        emitter.set_Color(COL_SPARK_WHITE);
+        emitter.set_Color(pal.sparkWhite);
         emitter.SetSize(1.0, 2.0);
         emitter.Burst(4);
     }
@@ -248,7 +251,7 @@ entity ParticleSystem {
     // Wall bullet impact — directional sparks
     expose func burstWallImpact(x: Integer, y: Integer, dir: Integer) {
         emitter.SetPosition(x + 0.0, y + 0.0);
-        emitter.set_Color(COL_SPARK_YELLOW);
+        emitter.set_Color(pal.sparkYellow);
         emitter.SetLifetime(6, 10);
         // Sparks bounce back from the wall
         if dir > 0 {
@@ -269,13 +272,13 @@ entity ParticleSystem {
         emitter.SetVelocity(10.0, 30.0, 30.0, 150.0);
         emitter.SetGravity(0.0, 0.2);
         emitter.SetSize(2.0, 3.0);
-        emitter.set_Color(COL_COIN_GOLD);
+        emitter.set_Color(pal.coinGold);
         emitter.Burst(4);
-        emitter.set_Color(COL_SPEED);
+        emitter.set_Color(pal.speed);
         emitter.Burst(4);
-        emitter.set_Color(COL_HEALTH);
+        emitter.set_Color(pal.health);
         emitter.Burst(4);
-        emitter.set_Color(COL_SPARK_WHITE);
+        emitter.set_Color(pal.sparkWhite);
         emitter.Burst(4);
     }
 }

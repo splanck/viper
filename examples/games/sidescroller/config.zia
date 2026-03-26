@@ -106,6 +106,19 @@ final TILE_CAVE_CRYSTAL = 27;     // crystal floor platform
 final TILE_METAL_GRATE = 28;      // industrial grating over lava
 final TILE_MAGMA_ROCK = 29;       // dark rock with glowing cracks
 
+// Level 2: Crashed Station tiles
+final TILE_HULL_PLATE = 30;      // brushed metal hull plating
+final TILE_GIRDER = 31;          // exposed structural I-beam
+final TILE_ELECTRIC = 32;        // sparking electrical hazard (blue)
+final TILE_AIRLOCK = 33;         // heavy door frame with hazard stripes
+final TILE_PIPE = 34;            // horizontal pipe platform
+final TILE_CATWALK = 35;         // metal grating with red emergency strip
+final TILE_COOLANT = 36;         // toxic green coolant pool (hazard)
+final TILE_CONDUIT = 37;         // cable/wire bundle channel
+final TILE_CONSOLE = 38;         // computer panel with screen glow
+final TILE_HOLO_BRIDGE = 39;     // translucent holographic platform
+final TILE_VIEWPORT = 40;        // transparent panel showing starfield
+
 // =============================================================================
 // Enemy Types
 // =============================================================================
@@ -113,6 +126,7 @@ final ENEMY_SLIME = 0;
 final ENEMY_BAT = 1;
 final ENEMY_TURRET = 2;
 final ENEMY_BOSS = 3;
+final ENEMY_DRONE = 4;            // Level 2: maintenance drone (bat AI variant)
 final MAX_ENEMIES = 64;
 
 // Enemy stats (scaled ~1.5x for visible detail)
@@ -138,6 +152,13 @@ final BOSS_HP = 20;
 final BOSS_W = 112;
 final BOSS_H = 112;
 final BOSS_SPEED = 300;       // x100
+
+// Maintenance drone (Level 2 bat-equivalent)
+final DRONE_HP = 1;
+final DRONE_SPEED = 200;      // x100 (faster than bat)
+final DRONE_W = 40;
+final DRONE_H = 32;
+final DRONE_DETECT_RANGE = 350; // pixels
 
 // =============================================================================
 // Pickup Types
@@ -219,7 +240,7 @@ final MENU_QUIT = 3;
 // =============================================================================
 // Level Config — Xenoscape single-level "Descent"
 // =============================================================================
-final LEVEL_COUNT = 1;
+final LEVEL_COUNT = 2;
 final LEVEL1_WIDTH = 150;     // single level: jungle(0-49) + cave(50-99) + thermal(100-149)
 final LEVEL2_WIDTH = 150;     // unused (kept for compatibility)
 final LEVEL3_WIDTH = 150;
@@ -416,6 +437,49 @@ final COL_REACTOR_GLOW = 0x44AAFF;       // crashed reactor in background
 // Biome boundaries (tile columns for background switching)
 final BIOME_JUNGLE_END = 50;
 final BIOME_CAVE_END = 100;
+
+// Level 2: Crashed Station biome boundaries
+final BIOME_HULL_END = 50;
+final BIOME_REACTOR_END = 100;
+
+// Station colors
+final COL_HULL_TOP = 0x0A0A14;          // near-black space
+final COL_HULL_BOT = 0x1A1A2A;
+final COL_HULL_PLATE = 0x778899;        // brushed metal
+final COL_HULL_PLATE_DK = 0x556677;
+final COL_HULL_PLATE_LT = 0x99AABB;
+final COL_GIRDER = 0x887744;            // orange-brown industrial
+final COL_GIRDER_LT = 0xAA9966;
+final COL_ELECTRIC_BG = 0x112233;       // dark panel
+final COL_ELECTRIC_SPARK = 0x44AAFF;    // blue sparks
+final COL_AIRLOCK = 0x667788;
+final COL_AIRLOCK_STRIPE = 0xDDCC22;    // yellow hazard stripe
+final COL_EMERGENCY_LIGHT = 0xFFFFFF;   // bright white strips
+
+final COL_REACTOR_TOP = 0x1A0808;       // deep red
+final COL_REACTOR_BOT = 0x331111;
+final COL_PIPE = 0x556655;              // greenish metal
+final COL_PIPE_LT = 0x778877;
+final COL_CATWALK = 0x667788;
+final COL_CATWALK_STRIPE = 0xCC3333;    // red emergency strip
+final COL_COOLANT = 0x22CC44;           // toxic green
+final COL_COOLANT_BRIGHT = 0x44FF66;
+final COL_CONDUIT = 0x334444;
+final COL_REACTOR_GLOW_RED = 0xFF4422;  // pulsing reactor
+
+final COL_BRIDGE_TOP = 0x0A0A1A;
+final COL_BRIDGE_BOT = 0x111133;
+final COL_CONSOLE = 0x223344;
+final COL_CONSOLE_SCREEN = 0x3388CC;
+final COL_HOLO = 0x4488FF;             // holographic blue
+final COL_HOLO_LT = 0x88BBFF;
+final COL_VIEWPORT_BG = 0x050510;
+final COL_ARIA_BLUE = 0x4488FF;        // ARIA AI color
+final COL_ARIA_ORANGE = 0xFF8844;
+final COL_ARIA_RED = 0xFF4444;
+
+// Theme IDs
+final THEME_STATION = 5;               // Level 2 station theme
 
 // =============================================================================
 // Tween Easing Types (from rt_tween.h)

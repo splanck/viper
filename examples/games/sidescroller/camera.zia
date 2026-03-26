@@ -23,9 +23,11 @@ bind Viper.Graphics;
 bind Viper.Game.SmoothValue as SV;
 bind Viper.Math;
 bind "./config";
+bind "./palette";
 bind "./sprites";
 
 entity GameCamera {
+    hide Palette pal;
     expose Integer x;        // Camera world position (top-left pixel)
     expose Integer y;
     hide Integer levelPixelW;
@@ -38,7 +40,8 @@ entity GameCamera {
     // Background animation timer (accumulated ms, wraps at 60000)
     hide Integer bgTimer;
 
-    expose func init() {
+    expose func init(p: Palette) {
+        pal = p;
         x = 0;
         y = 0;
         levelPixelW = 0;
@@ -120,7 +123,7 @@ entity GameCamera {
 
     hide func drawJungleBg(canvas: Canvas, sprites: SpriteFactory) {
         // Alien jungle: teal-green sky with bioluminescent atmosphere
-        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, COL_JUNGLE_SKY_TOP, COL_JUNGLE_SKY_BOT);
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.jungleSkyTop, pal.jungleSkyBot);
 
         // Animated stars — twinkle effect using bgTimer to toggle alpha.
         // Each star has a pseudo-random phase offset so they don't all blink
@@ -152,7 +155,7 @@ entity GameCamera {
 
         // Moon
         canvas.Disc(SCREEN_W - 180, 80, 40, 0xEEEECC);
-        canvas.Disc(SCREEN_W - 170, 75, 35, COL_SKY_TOP);
+        canvas.Disc(SCREEN_W - 170, 75, 35, pal.skyTop);
 
         // Clouds (0.08x parallax — slowest layer, farthest back)
         var cloudScroll = x * PARA_CLOUD / 100;
@@ -205,16 +208,16 @@ entity GameCamera {
 
     hide func drawCaveBg(canvas: Canvas) {
         // Dark cave gradient
-        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, COL_CAVE_BG, COL_CAVE_MID);
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.caveBg, pal.caveMid);
 
         // Ambient crystal glow spots (static)
         var i = 0;
         while i < 10 {
             var gx = (i * 137 + 23) % SCREEN_W;
             var gy = (i * 89 + 41) % SCREEN_H;
-            var glowCol = COL_CRYSTAL_BLUE;
+            var glowCol = pal.crystalBlue;
             if i % 3 == 0 {
-                glowCol = COL_CRYSTAL_PINK;
+                glowCol = pal.crystalPink;
             }
             canvas.DiscAlpha(gx, gy, 30 + i * 4, glowCol, 15 + i * 2);
             i = i + 1;
@@ -290,7 +293,7 @@ entity GameCamera {
 
     hide func drawSkyBg(canvas: Canvas) {
         // Bright sky gradient (pale blue to white)
-        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, 0x4488CC, COL_SKY_PALE);
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, 0x4488CC, pal.skyPale);
 
         // Sun
         canvas.Disc(200, 100, 50, 0xFFEE88);

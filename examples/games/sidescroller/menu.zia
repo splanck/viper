@@ -8,19 +8,22 @@ bind Viper.Fmt;
 bind Viper.IO;
 bind Viper.Game;
 bind "./config";
+bind "./palette";
 bind "./sprites";
 
 entity MenuSystem {
     hide ButtonGroup titleBG;
     hide ButtonGroup pauseBG;
     hide ButtonGroup gameOverBG;
+    hide Palette pal;
     hide Integer titleTimer;     // for title animation
     hide Integer bgScroll;       // background scroll
     hide List[Integer] highScores;
     hide List[String] highNames;
     hide SaveData save;          // cross-platform persistent storage
 
-    expose func init() {
+    expose func init(p: Palette) {
+        pal = p;
         // Title menu: Play, High Scores, Controls, Quit
         titleBG = ButtonGroup.New();
         titleBG.Add(MENU_PLAY);
@@ -85,7 +88,7 @@ entity MenuSystem {
 
     expose func drawTitle(canvas: Canvas) {
         // Gradient background (night sky)
-        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, COL_SKY_TOP, COL_MENU_BG);
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.skyTop, pal.menuBg);
         drawStarfield(canvas);
 
         // Scrolling ground silhouette at bottom
@@ -120,26 +123,26 @@ entity MenuSystem {
         }
 
         // Title glow behind text
-        canvas.DiscAlpha(520, titleY + 20, 120, COL_TITLE_ORANGE, 15);
+        canvas.DiscAlpha(520, titleY + 20, 120, pal.titleOrange, 15);
 
-        canvas.TextScaled(280, titleY, "XENO", 6, COL_TITLE_ORANGE);
-        canvas.TextScaled(600, titleY, "SCAPE", 6, COL_TITLE_YELLOW);
+        canvas.TextScaled(280, titleY, "XENO", 6, pal.titleOrange);
+        canvas.TextScaled(600, titleY, "SCAPE", 6, pal.titleYellow);
 
-        canvas.TextCenteredScaled(titleY + 56, "The Descent", COL_HUD_GRAY, 3);
+        canvas.TextCenteredScaled(titleY + 56, "The Descent", pal.hudGray, 3);
 
         // Animated running player silhouette at bottom
         var runX = (bgScroll * 3) % (SCREEN_W + 80) - 40;
         var runFrame = (titleTimer / 8) % 2;
         var runY = SCREEN_H - 55;
         // Simple running figure silhouette
-        canvas.Disc(runX + 15, runY + 6, 8, COL_PLAYER_HELMET);    // head
-        canvas.Box(runX + 8, runY + 14, 14, 16, COL_PLAYER_BODY);  // body
+        canvas.Disc(runX + 15, runY + 6, 8, pal.playerHelmet);    // head
+        canvas.Box(runX + 8, runY + 14, 14, 16, pal.playerBody);  // body
         if runFrame == 0 {
-            canvas.Box(runX + 6, runY + 30, 6, 12, COL_PLAYER_BOOTS);
-            canvas.Box(runX + 18, runY + 26, 6, 8, COL_PLAYER_BOOTS);
+            canvas.Box(runX + 6, runY + 30, 6, 12, pal.playerBoots);
+            canvas.Box(runX + 18, runY + 26, 6, 8, pal.playerBoots);
         } else {
-            canvas.Box(runX + 18, runY + 30, 6, 12, COL_PLAYER_BOOTS);
-            canvas.Box(runX + 6, runY + 26, 6, 8, COL_PLAYER_BOOTS);
+            canvas.Box(runX + 18, runY + 30, 6, 12, pal.playerBoots);
+            canvas.Box(runX + 6, runY + 26, 6, 8, pal.playerBoots);
         }
 
         var menuY = 280;
@@ -149,18 +152,18 @@ entity MenuSystem {
         drawMenuOption(canvas, "QUIT", MENU_QUIT, menuY + 150, titleBG);
 
         // Version + attribution
-        canvas.TextCenteredScaled(SCREEN_H - 30, "Made with Viper + Zia", COL_HUD_GRAY, 2);
+        canvas.TextCenteredScaled(SCREEN_H - 30, "Made with Viper + Zia", pal.hudGray, 2);
     }
 
     hide func drawMenuOption(canvas: Canvas, label: String, index: Integer,
                               y: Integer, bg: ButtonGroup) {
         var x = 520;
-        var col = COL_MENU_TEXT;
+        var col = pal.menuText;
 
         if bg.IsSelected(index) {
-            canvas.BoxAlpha(x - 20, y - 4, 280, 32, COL_MENU_HIGHLIGHT, 150);
-            col = COL_WHITE;
-            canvas.TextScaled(x - 30, y, ">", 3, COL_TITLE_ORANGE);
+            canvas.BoxAlpha(x - 20, y - 4, 280, 32, pal.menuHighlight, 150);
+            col = pal.white;
+            canvas.TextScaled(x - 30, y, ">", 3, pal.titleOrange);
         }
 
         canvas.TextScaled(x, y, label, 3, col);
@@ -203,8 +206,8 @@ entity MenuSystem {
     }
 
     expose func drawPause(canvas: Canvas) {
-        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, 150);
-        canvas.TextCenteredScaled(240, "PAUSED", COL_WHITE, 4);
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, pal.black, 150);
+        canvas.TextCenteredScaled(240, "PAUSED", pal.white, 4);
 
         var y = 340;
         drawMenuOption(canvas, "RESUME", 0, y, pauseBG);
@@ -232,13 +235,13 @@ entity MenuSystem {
     }
 
     expose func drawGameOver(canvas: Canvas, score: Integer) {
-        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, 180);
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, pal.black, 180);
 
-        canvas.TextCenteredScaled(180, "GAME OVER", COL_HUD_RED, 5);
+        canvas.TextCenteredScaled(180, "GAME OVER", pal.hudRed, 5);
 
         var scoreStr = Int(score);
-        canvas.TextCenteredScaled(260, "FINAL SCORE:", COL_HUD_GRAY, 3);
-        canvas.TextScaled(480, 300, scoreStr, 4, COL_COIN_GOLD);
+        canvas.TextCenteredScaled(260, "FINAL SCORE:", pal.hudGray, 3);
+        canvas.TextScaled(480, 300, scoreStr, 4, pal.coinGold);
 
         var y = 380;
         drawMenuOption(canvas, "TRY AGAIN", 0, y, gameOverBG);
@@ -261,40 +264,40 @@ entity MenuSystem {
 
     expose func drawLevelComplete(canvas: Canvas, score: Integer,
                                    timeBonus: Integer, levelNum: Integer) {
-        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, 150);
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, pal.black, 150);
 
-        canvas.TextCenteredScaled(160, "LEVEL COMPLETE!", COL_HUD_GREEN, 3);
+        canvas.TextCenteredScaled(160, "LEVEL COMPLETE!", pal.hudGreen, 3);
 
         var levelName = "GRASSLANDS";
         if levelNum == 2 { levelName = "CRYSTAL CAVE"; }
         if levelNum == 3 { levelName = "VOLCANIC DEPTHS"; }
         if levelNum == 4 { levelName = "SKY FORTRESS"; }
         if levelNum == 5 { levelName = "ANCIENT RUINS"; }
-        canvas.TextCenteredScaled(210, levelName, COL_HUD_BLUE, 2);
+        canvas.TextCenteredScaled(210, levelName, pal.hudBlue, 2);
 
         var revealFrames = titleTimer;
 
         if revealFrames > 30 {
             var scoreStr = Int(score);
-            canvas.TextScaled(460, 270, "SCORE:", 2, COL_HUD_GRAY);
-            canvas.TextScaled(570, 270, scoreStr, 2, COL_WHITE);
+            canvas.TextScaled(460, 270, "SCORE:", 2, pal.hudGray);
+            canvas.TextScaled(570, 270, scoreStr, 2, pal.white);
         }
 
         if revealFrames > 60 {
             var bonusStr = Int(timeBonus);
-            canvas.TextScaled(460, 310, "TIME BONUS:", 2, COL_HUD_GRAY);
-            canvas.TextScaled(640, 310, bonusStr, 2, COL_COIN_GOLD);
+            canvas.TextScaled(460, 310, "TIME BONUS:", 2, pal.hudGray);
+            canvas.TextScaled(640, 310, bonusStr, 2, pal.coinGold);
         }
 
         if revealFrames > 90 {
             var total = score + timeBonus;
             var totalStr = Int(total);
-            canvas.TextScaled(460, 350, "TOTAL:", 2, COL_HUD_GRAY);
-            canvas.TextScaled(570, 350, totalStr, 2, COL_TITLE_ORANGE);
+            canvas.TextScaled(460, 350, "TOTAL:", 2, pal.hudGray);
+            canvas.TextScaled(570, 350, totalStr, 2, pal.titleOrange);
         }
 
         if revealFrames > 120 {
-            canvas.TextCenteredScaled(430, "Press ENTER to continue", COL_HUD_GRAY, 2);
+            canvas.TextCenteredScaled(430, "Press ENTER to continue", pal.hudGray, 2);
         }
     }
 
@@ -313,23 +316,23 @@ entity MenuSystem {
     }
 
     expose func drawVictory(canvas: Canvas, score: Integer) {
-        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, COL_BLACK, 180);
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, pal.black, 180);
 
         var flash = titleTimer % 30;
-        var titleCol = COL_TITLE_ORANGE;
-        if flash < 15 { titleCol = COL_TITLE_YELLOW; }
+        var titleCol = pal.titleOrange;
+        if flash < 15 { titleCol = pal.titleYellow; }
 
         canvas.TextCenteredScaled(120, "VICTORY!", titleCol, 6);
 
-        canvas.TextCenteredScaled(230, "You escaped the alien depths!", COL_WHITE, 2);
-        canvas.TextCenteredScaled(270, "The Mech Guardian is defeated!", COL_CRYSTAL_BLUE, 2);
+        canvas.TextCenteredScaled(230, "You escaped the alien depths!", pal.white, 2);
+        canvas.TextCenteredScaled(270, "The Mech Guardian is defeated!", pal.crystalBlue, 2);
 
         var scoreStr = Int(score);
-        canvas.TextScaled(450, 350, "FINAL SCORE:", 3, COL_HUD_GRAY);
-        canvas.TextScaled(480, 390, scoreStr, 4, COL_COIN_GOLD);
+        canvas.TextScaled(450, 350, "FINAL SCORE:", 3, pal.hudGray);
+        canvas.TextScaled(480, 390, scoreStr, 4, pal.coinGold);
 
         if titleTimer > 60 {
-            canvas.TextCenteredScaled(490, "Press ENTER for menu", COL_HUD_GRAY, 2);
+            canvas.TextCenteredScaled(490, "Press ENTER for menu", pal.hudGray, 2);
         }
     }
 
@@ -348,10 +351,10 @@ entity MenuSystem {
     }
 
     expose func drawHighScores(canvas: Canvas) {
-        canvas.Box(0, 0, SCREEN_W, SCREEN_H, COL_MENU_BG);
+        canvas.Box(0, 0, SCREEN_W, SCREEN_H, pal.menuBg);
         drawStarfield(canvas);
 
-        canvas.TextCenteredScaled(40, "HIGH SCORES", COL_TITLE_YELLOW, 4);
+        canvas.TextCenteredScaled(40, "HIGH SCORES", pal.titleYellow, 4);
 
         var i = 0;
         while i < 10 {
@@ -360,18 +363,18 @@ entity MenuSystem {
             var scoreStr = Int(highScores.get(i));
             var name = highNames.get(i);
 
-            var col = COL_MENU_TEXT;
-            if i == 0 { col = COL_COIN_GOLD; }
-            if i == 1 { col = COL_STONE_LIGHT; }
-            if i == 2 { col = COL_BOSS_ARMOR; }
+            var col = pal.menuText;
+            if i == 0 { col = pal.coinGold; }
+            if i == 1 { col = pal.stoneLight; }
+            if i == 2 { col = pal.bossArmor; }
 
-            canvas.TextScaled(380, y, rankStr, 2, COL_HUD_GRAY);
+            canvas.TextScaled(380, y, rankStr, 2, pal.hudGray);
             canvas.TextScaled(420, y, name, 2, col);
             canvas.TextScaled(600, y, scoreStr, 2, col);
             i = i + 1;
         }
 
-        canvas.TextCenteredScaled(SCREEN_H - 40, "Press ENTER to return", COL_HUD_GRAY, 2);
+        canvas.TextCenteredScaled(SCREEN_H - 40, "Press ENTER to return", pal.hudGray, 2);
     }
 
     expose func addHighScore(score: Integer, name: String) {
@@ -432,9 +435,9 @@ entity MenuSystem {
     }
 
     expose func drawControls(canvas: Canvas) {
-        canvas.Box(0, 0, SCREEN_W, SCREEN_H, COL_MENU_BG);
+        canvas.Box(0, 0, SCREEN_W, SCREEN_H, pal.menuBg);
 
-        canvas.TextCenteredScaled(40, "CONTROLS", COL_TITLE_ORANGE, 4);
+        canvas.TextCenteredScaled(40, "CONTROLS", pal.titleOrange, 4);
 
         var y = 150;
         var gap = 44;
@@ -445,24 +448,24 @@ entity MenuSystem {
         drawControlRow(canvas, y + gap * 4, "PAUSE", "ESCAPE");
 
         // Gamepad controls
-        canvas.TextScaled(430, y + gap * 6, "GAMEPAD:", 3, COL_TITLE_YELLOW);
+        canvas.TextScaled(430, y + gap * 6, "GAMEPAD:", 3, pal.titleYellow);
         drawControlRow(canvas, y + gap * 7, "MOVE", "D-PAD");
         drawControlRow(canvas, y + gap * 8, "JUMP", "A BUTTON");
         drawControlRow(canvas, y + gap * 9, "SHOOT", "X / RB");
         drawControlRow(canvas, y + gap * 10, "PAUSE", "START");
 
-        canvas.TextScaled(430, y + gap * 12, "TIPS:", 3, COL_TITLE_YELLOW);
-        canvas.TextScaled(370, y + gap * 13, "Hold jump for higher jumps", 2, COL_MENU_TEXT);
-        canvas.TextScaled(370, y + gap * 13 + 28, "Slide on walls and wall-jump", 2, COL_MENU_TEXT);
-        canvas.TextScaled(370, y + gap * 13 + 56, "Double-jump in mid-air", 2, COL_MENU_TEXT);
+        canvas.TextScaled(430, y + gap * 12, "TIPS:", 3, pal.titleYellow);
+        canvas.TextScaled(370, y + gap * 13, "Hold jump for higher jumps", 2, pal.menuText);
+        canvas.TextScaled(370, y + gap * 13 + 28, "Slide on walls and wall-jump", 2, pal.menuText);
+        canvas.TextScaled(370, y + gap * 13 + 56, "Double-jump in mid-air", 2, pal.menuText);
 
-        canvas.TextCenteredScaled(SCREEN_H - 40, "Press ENTER to return", COL_HUD_GRAY, 2);
+        canvas.TextCenteredScaled(SCREEN_H - 40, "Press ENTER to return", pal.hudGray, 2);
     }
 
     hide func drawControlRow(canvas: Canvas, y: Integer,
                               action: String, keys: String) {
-        canvas.TextScaled(360, y, action, 2, COL_HUD_GRAY);
-        canvas.TextScaled(620, y, keys, 2, COL_WHITE);
+        canvas.TextScaled(360, y, action, 2, pal.hudGray);
+        canvas.TextScaled(620, y, keys, 2, pal.white);
     }
 
     expose func resetSelection() {

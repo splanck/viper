@@ -26,6 +26,7 @@ module sprites;
 
 bind Viper.Graphics;
 bind "./config";
+bind "./palette";
 
 // Original (pre-scale) sprite sizes. All draw calls use these coordinates,
 // then Pixels.Scale() upsamples to the final display size. This avoids
@@ -45,6 +46,7 @@ final ORIG_POWERUP_SIZE = 30;
 entity SpriteFactory {
     // Cached sprites — created once, reused every frame
     // Player (2 idle, 4 run, jump, fall, djump, wallslide, hurt, dead = 12 frames)
+    hide Palette pal;
     hide List[Pixels] playerRight;
     hide List[Pixels] playerLeft;
 
@@ -85,6 +87,21 @@ entity SpriteFactory {
     hide Pixels tileCaveCrystal;
     hide Pixels tileMetalGrate;
     hide Pixels tileMagmaRock;
+    // Level 2: Station tiles
+    hide Pixels tileHullPlate;
+    hide Pixels tileGirder;
+    hide Pixels tileElectric;
+    hide Pixels tileAirlock;
+    hide Pixels tilePipe;
+    hide Pixels tileCatwalk;
+    hide Pixels tileCoolant1;
+    hide Pixels tileCoolant2;
+    hide Pixels tileConduit;
+    hide Pixels tileConsole;
+    hide Pixels tileHoloBridge;
+    hide Pixels tileViewport;
+    // Level 2: Drone enemy
+    hide List[Pixels] droneFrames;
 
     // Pickups
     hide List[Pixels] coinFrames;
@@ -104,7 +121,8 @@ entity SpriteFactory {
     hide Pixels treeBg;
     hide Pixels mountainBg;
 
-    expose func init() {
+    expose func init(p: Palette) {
+        pal = p;
         playerRight = [];
         playerLeft = [];
         slimeFrames = [];
@@ -170,7 +188,7 @@ entity SpriteFactory {
         // articulated limbs, detailed suit panels, thin outlines, 3-tone shading.
         // Drawn at 36x48, scaled to 56x72 by caller.
         var px = Pixels.New(36, 48);
-        var OL = COL_OUTLINE;
+        var OL = pal.outline;
 
         var SUIT = 0xDDDDEE;
         var SUIT_LT = 0xEEEEFF;
@@ -361,7 +379,7 @@ entity SpriteFactory {
         // REALISTIC ALIEN BLOB: translucent body with visible inner structure,
         // menacing narrow eyes, dripping tendrils. Not cute — hostile.
         var px = Pixels.New(ORIG_SLIME_W, ORIG_SLIME_H);
-        var OL = COL_OUTLINE;
+        var OL = pal.outline;
 
         var sq = 0;
         if frame == 1 { sq = -3; }
@@ -376,10 +394,10 @@ entity SpriteFactory {
         px.DrawEllipse(18, 28, rx - 3, 2, 0x113311);
 
         // Body — outer membrane
-        px.DrawEllipse(18, cy, rx, ry, COL_SLIME);
-        px.DrawDisc(18, cy - 3, rx - 2, COL_SLIME);
+        px.DrawEllipse(18, cy, rx, ry, pal.slime);
+        px.DrawDisc(18, cy - 3, rx - 2, pal.slime);
         // Inner structure (darker veins visible through translucent body)
-        px.DrawEllipse(18, cy + 1, rx - 3, ry - 2, COL_SLIME_DARK);
+        px.DrawEllipse(18, cy + 1, rx - 3, ry - 2, pal.slimeDark);
         px.DrawBezier(10, cy - 2, 18, cy + 3, 26, cy - 1, 0x33AA33);
         px.DrawBezier(12, cy + 2, 18, cy - 1, 24, cy + 3, 0x339933);
         // Nucleus (dark core)
@@ -398,9 +416,9 @@ entity SpriteFactory {
 
         // Dripping tendrils
         if frame == 0 || frame == 1 {
-            px.DrawBezier(8, cy + ry, 7, cy + ry + 5, 9, cy + ry + 3, COL_SLIME);
-            px.DrawBezier(14, cy + ry, 13, cy + ry + 4, 15, cy + ry + 2, COL_SLIME_DARK);
-            px.DrawBezier(26, cy + ry, 27, cy + ry + 4, 25, cy + ry + 2, COL_SLIME);
+            px.DrawBezier(8, cy + ry, 7, cy + ry + 5, 9, cy + ry + 3, pal.slime);
+            px.DrawBezier(14, cy + ry, 13, cy + ry + 4, 15, cy + ry + 2, pal.slimeDark);
+            px.DrawBezier(26, cy + ry, 27, cy + ry + 4, 25, cy + ry + 2, pal.slime);
         }
 
         // Outline
@@ -413,15 +431,15 @@ entity SpriteFactory {
         // REALISTIC ALIEN FLYER: angular wings with membrane veins,
         // compact armored body, compound red eyes, barbed tail. Hostile.
         var px = Pixels.New(ORIG_BAT_W, ORIG_BAT_H);
-        var OL = COL_OUTLINE;
+        var OL = pal.outline;
 
         // Wings — angular membrane with bone struts and veins
         if frame == 0 {
             // Wings UP
-            px.DrawTriangle(14, 12, 0, 2, 8, 4, COL_BAT_WING);
-            px.DrawTriangle(14, 12, 8, 4, 8, 12, COL_BAT_WING);
-            px.DrawTriangle(28, 12, 42, 2, 34, 4, COL_BAT_WING);
-            px.DrawTriangle(28, 12, 34, 4, 34, 12, COL_BAT_WING);
+            px.DrawTriangle(14, 12, 0, 2, 8, 4, pal.batWing);
+            px.DrawTriangle(14, 12, 8, 4, 8, 12, pal.batWing);
+            px.DrawTriangle(28, 12, 42, 2, 34, 4, pal.batWing);
+            px.DrawTriangle(28, 12, 34, 4, 34, 12, pal.batWing);
             px.DrawLine(14, 12, 1, 3, 0x553399);
             px.DrawLine(14, 12, 8, 6, 0x553399);
             px.DrawLine(28, 12, 41, 3, 0x553399);
@@ -431,22 +449,22 @@ entity SpriteFactory {
             px.DrawLine(37, 5, 32, 9, 0x442277);
         }
         if frame == 1 {
-            px.DrawTriangle(14, 13, 0, 10, 10, 17, COL_BAT_WING);
-            px.DrawTriangle(28, 13, 42, 10, 32, 17, COL_BAT_WING);
+            px.DrawTriangle(14, 13, 0, 10, 10, 17, pal.batWing);
+            px.DrawTriangle(28, 13, 42, 10, 32, 17, pal.batWing);
             px.DrawLine(14, 13, 1, 11, 0x553399);
             px.DrawLine(28, 13, 41, 11, 0x553399);
             px.DrawLine(6, 13, 10, 16, 0x442277);
             px.DrawLine(36, 13, 32, 16, 0x442277);
         }
         if frame == 2 {
-            px.DrawTriangle(14, 14, 0, 20, 8, 25, COL_BAT_WING);
-            px.DrawTriangle(28, 14, 42, 20, 34, 25, COL_BAT_WING);
+            px.DrawTriangle(14, 14, 0, 20, 8, 25, pal.batWing);
+            px.DrawTriangle(28, 14, 42, 20, 34, 25, pal.batWing);
             px.DrawLine(14, 14, 2, 21, 0x553399);
             px.DrawLine(28, 14, 40, 21, 0x553399);
         }
 
         // Body — compact armored oval
-        px.DrawEllipse(21, 14, 7, 9, COL_BAT_BODY);
+        px.DrawEllipse(21, 14, 7, 9, pal.batBody);
         px.DrawEllipse(21, 12, 5, 4, 0x9955BB);            // upper highlight
         px.DrawEllipse(21, 17, 5, 4, 0x6622AA);            // lower shadow
         // Armor plates
@@ -455,15 +473,15 @@ entity SpriteFactory {
         px.DrawEllipseFrame(21, 14, 7, 9, OL);
 
         // Head — angular, insectoid
-        px.DrawDisc(21, 7, 6, COL_BAT_BODY);
+        px.DrawDisc(21, 7, 6, pal.batBody);
         px.DrawDisc(19, 5, 3, 0x9955BB);
         px.DrawEllipseFrame(21, 7, 6, 6, OL);
 
         // Compound eyes — multi-faceted red glow
         px.DrawDisc(17, 7, 3, 0x881111);
         px.DrawDisc(25, 7, 3, 0x881111);
-        px.DrawDisc(17, 7, 2, COL_BAT_EYE);
-        px.DrawDisc(25, 7, 2, COL_BAT_EYE);
+        px.DrawDisc(17, 7, 2, pal.batEye);
+        px.DrawDisc(25, 7, 2, pal.batEye);
         px.DrawDisc(17, 6, 1, 0xFF8844);
         px.DrawDisc(25, 6, 1, 0xFF8844);
 
@@ -482,16 +500,16 @@ entity SpriteFactory {
         // MILITARY SENTRY: armored angular housing, sensor dome,
         // warning light, panel detail. Industrial, not cute.
         var px = Pixels.New(ORIG_TURRET_W, ORIG_TURRET_H);
-        var OL = COL_OUTLINE;
+        var OL = pal.outline;
 
         // Base pedestal
         px.DrawEllipse(21, 37, 18, 5, 0x556677);
-        px.DrawEllipse(21, 36, 17, 5, COL_TURRET_BASE);
+        px.DrawEllipse(21, 36, 17, 5, pal.turretBase);
         px.DrawEllipseFrame(21, 36, 17, 5, OL);
 
         // Housing body (angular)
-        px.DrawBox(6, 18, 30, 18, COL_TURRET_BASE);
-        px.DrawBox(9, 16, 24, 4, COL_TURRET_BASE);
+        px.DrawBox(6, 18, 30, 18, pal.turretBase);
+        px.DrawBox(9, 16, 24, 4, pal.turretBase);
         // Shading
         px.DrawLine(6, 18, 36, 18, 0x99AABB);               // top edge highlight
         px.DrawLine(6, 36, 36, 36, 0x556677);                // bottom edge shadow
@@ -517,7 +535,7 @@ entity SpriteFactory {
         px.DrawDisc(21, 4, 1, 0xFF3333);
 
         // Warning light
-        px.DrawDisc(21, 28, 3, COL_TURRET_LIGHT);
+        px.DrawDisc(21, 28, 3, pal.turretLight);
         px.DrawDisc(21, 28, 1, 0xFF6666);
         // Status LEDs
         px.DrawDisc(14, 32, 1, 0x44FF44);
@@ -530,9 +548,9 @@ entity SpriteFactory {
     hide func buildTurretBarrel() -> Pixels {
         // Military barrel with cooling vents and muzzle detail.
         var px = Pixels.New(30, 9);
-        var OL = COL_OUTLINE;
+        var OL = pal.outline;
 
-        px.DrawThickLine(0, 5, 22, 5, 4, COL_TURRET_BARREL);
+        px.DrawThickLine(0, 5, 22, 5, 4, pal.turretBarrel);
         px.DrawLine(2, 2, 20, 2, 0x778899);                 // top highlight
         px.DrawLine(2, 7, 20, 7, 0x444455);                 // bottom shadow
         // Cooling vents
@@ -552,26 +570,26 @@ entity SpriteFactory {
         // bold red armor with thick outlines. Chunky but intimidating.
         // Frame 0=phase 0, 1=phase 1, 2=phase 2, 3=attack wind-up.
         var px = Pixels.New(ORIG_BOSS_W, ORIG_BOSS_H);
-        var OL = COL_OUTLINE;
+        var OL = pal.outline;
 
         // === Shoulder pauldrons ===
-        px.DrawDisc(14, 30, 10, COL_BOSS_METAL);
+        px.DrawDisc(14, 30, 10, pal.bossMetal);
         px.DrawDisc(13, 27, 4, 0x778899);
         px.DrawEllipseFrame(14, 30, 10, 10, OL);
-        px.DrawDisc(70, 30, 10, COL_BOSS_METAL);
+        px.DrawDisc(70, 30, 10, pal.bossMetal);
         px.DrawDisc(69, 27, 4, 0x778899);
         px.DrawEllipseFrame(70, 30, 10, 10, OL);
 
         // === Body armor (layered plates) ===
-        px.DrawEllipse(42, 44, 25, 20, COL_BOSS_ARMOR);
+        px.DrawEllipse(42, 44, 25, 20, pal.bossArmor);
         px.DrawEllipse(42, 42, 20, 14, 0xEE4444);
-        px.DrawEllipse(42, 48, 22, 12, COL_BOSS_DARK);
-        px.DrawBox(24, 24, 36, 8, COL_BOSS_ARMOR);
+        px.DrawEllipse(42, 48, 22, 12, pal.bossDark);
+        px.DrawBox(24, 24, 36, 8, pal.bossArmor);
         // Panel lines
-        px.DrawLine(20, 30, 20, 56, COL_BOSS_METAL);
-        px.DrawLine(64, 30, 64, 56, COL_BOSS_METAL);
+        px.DrawLine(20, 30, 20, 56, pal.bossMetal);
+        px.DrawLine(64, 30, 64, 56, pal.bossMetal);
         px.DrawLine(22, 24, 62, 24, 0xCC5555);
-        px.DrawLine(22, 58, 62, 58, COL_BOSS_DARK);
+        px.DrawLine(22, 58, 62, 58, pal.bossDark);
         px.DrawEllipseFrame(42, 44, 25, 20, OL);
 
         // === Reactor core (phase-colored) ===
@@ -587,12 +605,12 @@ entity SpriteFactory {
         px.DrawEllipseFrame(42, 40, 7, 7, OL);
 
         // === Head dome ===
-        px.DrawDisc(42, 16, 13, COL_BOSS_METAL);
+        px.DrawDisc(42, 16, 13, pal.bossMetal);
         px.DrawDisc(42, 16, 11, 0x667788);
         px.DrawDisc(38, 11, 5, 0x778899);
         px.DrawEllipseFrame(42, 16, 13, 13, OL);
         // Crest
-        px.DrawTriangle(42, 2, 36, 10, 48, 10, COL_BOSS_ARMOR);
+        px.DrawTriangle(42, 2, 36, 10, 48, 10, pal.bossArmor);
         px.DrawLine(42, 2, 36, 10, OL);
         px.DrawLine(42, 2, 48, 10, OL);
         // Eye slit
@@ -600,7 +618,7 @@ entity SpriteFactory {
         if frame == 1 { eyeW = 6; }
         if frame == 2 { eyeW = 10; }
         if frame == 3 { eyeW = 12; }
-        px.DrawEllipse(42, 16, eyeW, 3, COL_BOSS_EYE);
+        px.DrawEllipse(42, 16, eyeW, 3, pal.bossEye);
         px.DrawEllipse(42, 16, eyeW - 2, 2, 0xFFAAAA);
         if frame == 3 { px.DrawDisc(42, 16, 5, 0xFFCCCC); }
         // Vent slits
@@ -611,53 +629,53 @@ entity SpriteFactory {
 
         // === Arms with fists ===
         if frame == 2 {
-            px.DrawThickLine(14, 30, 6, 42, 5, COL_BOSS_METAL);
+            px.DrawThickLine(14, 30, 6, 42, 5, pal.bossMetal);
             px.DrawDisc(12, 36, 3, 0x667788);
-            px.DrawDisc(4, 48, 6, COL_BOSS_ARMOR);
-            px.DrawDisc(4, 48, 3, COL_BOSS_DARK);
+            px.DrawDisc(4, 48, 6, pal.bossArmor);
+            px.DrawDisc(4, 48, 3, pal.bossDark);
             px.DrawEllipseFrame(4, 48, 6, 6, OL);
-            px.DrawThickLine(70, 30, 78, 42, 5, COL_BOSS_METAL);
+            px.DrawThickLine(70, 30, 78, 42, 5, pal.bossMetal);
             px.DrawDisc(72, 36, 3, 0x667788);
-            px.DrawDisc(80, 48, 6, COL_BOSS_ARMOR);
-            px.DrawDisc(80, 48, 3, COL_BOSS_DARK);
+            px.DrawDisc(80, 48, 6, pal.bossArmor);
+            px.DrawDisc(80, 48, 3, pal.bossDark);
             px.DrawEllipseFrame(80, 48, 6, 6, OL);
         } else if frame == 3 {
-            px.DrawThickLine(14, 30, 4, 22, 5, COL_BOSS_METAL);
-            px.DrawDisc(4, 20, 6, COL_BOSS_ARMOR);
+            px.DrawThickLine(14, 30, 4, 22, 5, pal.bossMetal);
+            px.DrawDisc(4, 20, 6, pal.bossArmor);
             px.DrawDisc(4, 20, 2, coreGlow);
-            px.DrawThickLine(70, 30, 80, 22, 5, COL_BOSS_METAL);
-            px.DrawDisc(80, 20, 6, COL_BOSS_ARMOR);
+            px.DrawThickLine(70, 30, 80, 22, 5, pal.bossMetal);
+            px.DrawDisc(80, 20, 6, pal.bossArmor);
             px.DrawDisc(80, 20, 2, coreGlow);
         } else {
-            px.DrawThickLine(14, 30, 10, 48, 5, COL_BOSS_METAL);
+            px.DrawThickLine(14, 30, 10, 48, 5, pal.bossMetal);
             px.DrawLine(14, 29, 10, 47, 0x667788);
             px.DrawDisc(12, 38, 3, 0x667788);
-            px.DrawDisc(10, 52, 6, COL_BOSS_ARMOR);
-            px.DrawDisc(10, 52, 3, COL_BOSS_DARK);
+            px.DrawDisc(10, 52, 6, pal.bossArmor);
+            px.DrawDisc(10, 52, 3, pal.bossDark);
             px.DrawEllipseFrame(10, 52, 6, 6, OL);
-            px.DrawThickLine(70, 30, 74, 48, 5, COL_BOSS_METAL);
+            px.DrawThickLine(70, 30, 74, 48, 5, pal.bossMetal);
             px.DrawLine(70, 29, 74, 47, 0x667788);
             px.DrawDisc(72, 38, 3, 0x667788);
-            px.DrawDisc(74, 52, 6, COL_BOSS_ARMOR);
-            px.DrawDisc(74, 52, 3, COL_BOSS_DARK);
+            px.DrawDisc(74, 52, 6, pal.bossArmor);
+            px.DrawDisc(74, 52, 3, pal.bossDark);
             px.DrawEllipseFrame(74, 52, 6, 6, OL);
         }
 
         // === Legs (hydraulic) ===
-        px.DrawThickLine(34, 58, 30, 68, 5, COL_BOSS_METAL);
+        px.DrawThickLine(34, 58, 30, 68, 5, pal.bossMetal);
         px.DrawLine(34, 57, 30, 67, 0x667788);
         px.DrawDisc(30, 68, 3, 0x667788);
-        px.DrawThickLine(30, 68, 28, 76, 4, COL_BOSS_METAL);
+        px.DrawThickLine(30, 68, 28, 76, 4, pal.bossMetal);
         px.DrawLine(33, 60, 31, 74, 0x778899);
-        px.DrawEllipse(28, 78, 7, 4, COL_BOSS_METAL);
+        px.DrawEllipse(28, 78, 7, 4, pal.bossMetal);
         px.DrawEllipseFrame(28, 78, 7, 4, OL);
 
-        px.DrawThickLine(50, 58, 54, 68, 5, COL_BOSS_METAL);
+        px.DrawThickLine(50, 58, 54, 68, 5, pal.bossMetal);
         px.DrawLine(50, 57, 54, 67, 0x667788);
         px.DrawDisc(54, 68, 3, 0x667788);
-        px.DrawThickLine(54, 68, 56, 76, 4, COL_BOSS_METAL);
+        px.DrawThickLine(54, 68, 56, 76, 4, pal.bossMetal);
         px.DrawLine(51, 60, 53, 74, 0x778899);
-        px.DrawEllipse(56, 78, 7, 4, COL_BOSS_METAL);
+        px.DrawEllipse(56, 78, 7, 4, pal.bossMetal);
         px.DrawEllipseFrame(56, 78, 7, 4, OL);
 
         // === Phase damage ===
@@ -722,79 +740,79 @@ entity SpriteFactory {
     hide func buildGrassTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // Dirt base
-        px.DrawBox(0, 16, 48, 32, COL_DIRT);
+        px.DrawBox(0, 16, 48, 32, pal.dirt);
         // Grass top area
-        px.DrawBox(0, 0, 48, 20, COL_GRASS);
-        px.DrawBox(0, 0, 48, 10, COL_GRASS_DARK);
+        px.DrawBox(0, 0, 48, 20, pal.grass);
+        px.DrawBox(0, 0, 48, 10, pal.grassDark);
 
         // Grass blades — triangles along the top edge for organic look
         var i = 0;
         while i < 46 {
             var h = 4 + (i * 7) % 6;
-            var shade = COL_GRASS;
+            var shade = pal.grass;
             if i % 10 < 5 {
-                shade = COL_GRASS_DARK;
+                shade = pal.grassDark;
             }
             px.DrawTriangle(i, 18, i + 2, 18 - h, i + 4, 18, shade);
             i = i + 5;
         }
 
         // Shadow line below grass
-        px.DrawLine(0, 20, 47, 20, COL_GRASS_DARK);
+        px.DrawLine(0, 20, 47, 20, pal.grassDark);
 
         // Dirt pebbles
-        px.DrawDisc(10, 28, 2, COL_DIRT_DARK);
-        px.DrawDisc(30, 34, 2, COL_DIRT_DARK);
-        px.DrawDisc(22, 42, 1, COL_DIRT_DARK);
-        px.DrawDisc(40, 26, 1, COL_DIRT_DARK);
+        px.DrawDisc(10, 28, 2, pal.dirtDark);
+        px.DrawDisc(30, 34, 2, pal.dirtDark);
+        px.DrawDisc(22, 42, 1, pal.dirtDark);
+        px.DrawDisc(40, 26, 1, pal.dirtDark);
 
         // Root details
-        px.DrawLine(5, 22, 16, 24, COL_DIRT_DARK);
-        px.DrawLine(32, 21, 42, 23, COL_DIRT_DARK);
+        px.DrawLine(5, 22, 16, 24, pal.dirtDark);
+        px.DrawLine(32, 21, 42, 23, pal.dirtDark);
         return px;
     }
 
     hide func buildDirtTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
-        px.DrawBox(0, 0, 48, 48, COL_DIRT);
+        px.DrawBox(0, 0, 48, 48, pal.dirt);
         // Pebble texture using discs
         var i = 0;
         while i < 8 {
             var tx = (i * 13 + 5) % 43 + 2;
             var ty = (i * 17 + 3) % 43 + 2;
-            px.DrawDisc(tx, ty, 2, COL_DIRT_DARK);
+            px.DrawDisc(tx, ty, 2, pal.dirtDark);
             i = i + 1;
         }
         // Root lines
-        px.DrawLine(5, 14, 20, 16, COL_DIRT_DARK);
-        px.DrawLine(28, 32, 44, 30, COL_DIRT_DARK);
+        px.DrawLine(5, 14, 20, 16, pal.dirtDark);
+        px.DrawLine(28, 32, 44, 30, pal.dirtDark);
         return px;
     }
 
     hide func buildStoneTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
-        px.DrawBox(0, 0, 48, 48, COL_STONE);
+        px.DrawBox(0, 0, 48, 48, pal.stone);
 
         // Mortar lines (thin)
-        px.DrawLine(0, 0, 47, 0, COL_STONE_DARK);
-        px.DrawLine(0, 23, 47, 23, COL_STONE_DARK);
-        px.DrawLine(0, 24, 47, 24, COL_STONE_DARK);
-        px.DrawLine(0, 47, 47, 47, COL_STONE_DARK);
+        px.DrawLine(0, 0, 47, 0, pal.stoneDark);
+        px.DrawLine(0, 23, 47, 23, pal.stoneDark);
+        px.DrawLine(0, 24, 47, 24, pal.stoneDark);
+        px.DrawLine(0, 47, 47, 47, pal.stoneDark);
         // Vertical mortar
-        px.DrawLine(23, 0, 23, 23, COL_STONE_DARK);
-        px.DrawLine(0, 24, 0, 47, COL_STONE_DARK);
+        px.DrawLine(23, 0, 23, 23, pal.stoneDark);
+        px.DrawLine(0, 24, 0, 47, pal.stoneDark);
 
         // Bevel highlights (top/left of each brick face)
-        px.DrawLine(1, 2, 22, 2, COL_STONE_LIGHT);
-        px.DrawLine(1, 2, 1, 22, COL_STONE_LIGHT);
-        px.DrawLine(24, 26, 47, 26, COL_STONE_LIGHT);
-        px.DrawLine(24, 26, 24, 46, COL_STONE_LIGHT);
+        px.DrawLine(1, 2, 22, 2, pal.stoneLight);
+        px.DrawLine(1, 2, 1, 22, pal.stoneLight);
+        px.DrawLine(24, 26, 47, 26, pal.stoneLight);
+        px.DrawLine(24, 26, 24, 46, pal.stoneLight);
 
         // Bevel shadows (bottom/right of each brick)
-        px.DrawLine(22, 3, 22, 22, COL_STONE_DARK);
-        px.DrawLine(1, 22, 22, 22, COL_STONE_DARK);
-        px.DrawLine(47, 26, 47, 46, COL_STONE_DARK);
-        px.DrawLine(24, 46, 47, 46, COL_STONE_DARK);
+        px.DrawLine(22, 3, 22, 22, pal.stoneDark);
+        px.DrawLine(1, 22, 22, 22, pal.stoneDark);
+        px.DrawLine(47, 26, 47, 46, pal.stoneDark);
+        px.DrawLine(24, 46, 47, 46, pal.stoneDark);
 
         // Mineral flecks
         px.DrawDisc(10, 12, 1, 0x909090);
@@ -805,22 +823,22 @@ entity SpriteFactory {
 
     hide func buildBrickTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
-        px.DrawBox(0, 0, 48, 48, COL_BRICK);
+        px.DrawBox(0, 0, 48, 48, pal.brick);
 
         // Mortar lines (using DrawLine for cleaner look)
-        px.DrawLine(0, 11, 47, 11, COL_BRICK_DARK);
-        px.DrawLine(0, 12, 47, 12, COL_BRICK_DARK);
-        px.DrawLine(0, 23, 47, 23, COL_BRICK_DARK);
-        px.DrawLine(0, 24, 47, 24, COL_BRICK_DARK);
-        px.DrawLine(0, 35, 47, 35, COL_BRICK_DARK);
-        px.DrawLine(0, 36, 47, 36, COL_BRICK_DARK);
+        px.DrawLine(0, 11, 47, 11, pal.brickDark);
+        px.DrawLine(0, 12, 47, 12, pal.brickDark);
+        px.DrawLine(0, 23, 47, 23, pal.brickDark);
+        px.DrawLine(0, 24, 47, 24, pal.brickDark);
+        px.DrawLine(0, 35, 47, 35, pal.brickDark);
+        px.DrawLine(0, 36, 47, 36, pal.brickDark);
         // Vertical mortar (offset per row)
-        px.DrawLine(23, 0, 23, 11, COL_BRICK_DARK);
-        px.DrawLine(11, 12, 11, 23, COL_BRICK_DARK);
-        px.DrawLine(35, 12, 35, 23, COL_BRICK_DARK);
-        px.DrawLine(23, 24, 23, 35, COL_BRICK_DARK);
-        px.DrawLine(11, 36, 11, 47, COL_BRICK_DARK);
-        px.DrawLine(35, 36, 35, 47, COL_BRICK_DARK);
+        px.DrawLine(23, 0, 23, 11, pal.brickDark);
+        px.DrawLine(11, 12, 11, 23, pal.brickDark);
+        px.DrawLine(35, 12, 35, 23, pal.brickDark);
+        px.DrawLine(23, 24, 23, 35, pal.brickDark);
+        px.DrawLine(11, 36, 11, 47, pal.brickDark);
+        px.DrawLine(35, 36, 35, 47, pal.brickDark);
 
         // Bevel highlights (top edge of each brick)
         px.DrawLine(1, 1, 22, 1, 0xC06040);
@@ -834,17 +852,17 @@ entity SpriteFactory {
 
     hide func buildPlatformTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
-        px.DrawBox(0, 0, 48, 48, COL_PLATFORM);
+        px.DrawBox(0, 0, 48, 48, pal.platform);
         // Top edge (beveled)
         px.DrawBox(0, 0, 48, 5, 0x8B6830);
-        px.DrawLine(0, 5, 47, 5, COL_PLATFORM_DARK);
+        px.DrawLine(0, 5, 47, 5, pal.platformDark);
         // Wood grain lines
-        px.DrawLine(0, 14, 47, 14, COL_PLATFORM_DARK);
-        px.DrawLine(0, 28, 47, 28, COL_PLATFORM_DARK);
-        px.DrawLine(0, 42, 47, 42, COL_PLATFORM_DARK);
+        px.DrawLine(0, 14, 47, 14, pal.platformDark);
+        px.DrawLine(0, 28, 47, 28, pal.platformDark);
+        px.DrawLine(0, 42, 47, 42, pal.platformDark);
         // Wood grain curves (subtle)
-        px.DrawBezier(0, 20, 24, 18, 47, 21, COL_PLATFORM_DARK);
-        px.DrawBezier(0, 35, 24, 37, 47, 34, COL_PLATFORM_DARK);
+        px.DrawBezier(0, 20, 24, 18, 47, 21, pal.platformDark);
+        px.DrawBezier(0, 35, 24, 37, 47, 34, pal.platformDark);
         // Nail dots (round)
         px.DrawDisc(6, 9, 1, 0x555555);
         px.DrawDisc(42, 9, 1, 0x555555);
@@ -854,20 +872,20 @@ entity SpriteFactory {
 
     hide func buildLavaTile(frame: Integer) -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
-        px.DrawBox(0, 0, 48, 48, COL_LAVA);
+        px.DrawBox(0, 0, 48, 48, pal.lava);
 
         // Bubbles (animated disc positions)
         if frame == 0 {
-            px.DrawDisc(12, 14, 6, COL_LAVA_BRIGHT);
-            px.DrawDisc(36, 26, 5, COL_LAVA_BRIGHT);
-            px.DrawDisc(22, 38, 7, COL_LAVA_BRIGHT);
+            px.DrawDisc(12, 14, 6, pal.lavaBright);
+            px.DrawDisc(36, 26, 5, pal.lavaBright);
+            px.DrawDisc(22, 38, 7, pal.lavaBright);
             // Bright centers
             px.DrawDisc(12, 14, 3, 0xFFDD44);
             px.DrawDisc(22, 38, 3, 0xFFDD44);
         } else {
-            px.DrawDisc(26, 10, 5, COL_LAVA_BRIGHT);
-            px.DrawDisc(8, 30, 6, COL_LAVA_BRIGHT);
-            px.DrawDisc(38, 40, 5, COL_LAVA_BRIGHT);
+            px.DrawDisc(26, 10, 5, pal.lavaBright);
+            px.DrawDisc(8, 30, 6, pal.lavaBright);
+            px.DrawDisc(38, 40, 5, pal.lavaBright);
             // Bright centers
             px.DrawDisc(26, 10, 2, 0xFFDD44);
             px.DrawDisc(8, 30, 3, 0xFFDD44);
@@ -883,10 +901,10 @@ entity SpriteFactory {
 
     hide func buildCrystalTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
-        px.DrawBox(0, 0, 48, 48, COL_CAVE_ROCK);
+        px.DrawBox(0, 0, 48, 48, pal.caveRock);
 
         // Blue crystal shard (tall triangle)
-        px.DrawTriangle(6, 36, 12, 6, 18, 36, COL_CRYSTAL_BLUE);
+        px.DrawTriangle(6, 36, 12, 6, 18, 36, pal.crystalBlue);
         // Crystal facet (darker right face)
         px.DrawTriangle(12, 6, 18, 36, 15, 20, 0x40A0CC);
         // Facet line
@@ -895,26 +913,26 @@ entity SpriteFactory {
         px.DrawDisc(11, 18, 2, 0x80E0FF);
 
         // Pink crystal shard
-        px.DrawTriangle(27, 38, 33, 12, 39, 38, COL_CRYSTAL_PINK);
+        px.DrawTriangle(27, 38, 33, 12, 39, 38, pal.crystalPink);
         px.DrawTriangle(33, 12, 39, 38, 36, 24, 0xCC60A0);
         px.DrawLine(33, 12, 36, 24, 0xFFA0E0);
         px.DrawDisc(33, 22, 2, 0xFFA0E0);
 
         // Small crystal fragment
-        px.DrawTriangle(40, 42, 43, 28, 46, 42, COL_CRYSTAL_BLUE);
+        px.DrawTriangle(40, 42, 43, 28, 46, 42, pal.crystalBlue);
         px.DrawDisc(43, 34, 1, 0x80E0FF);
         return px;
     }
 
     hide func buildCaveTopTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
-        px.DrawBox(0, 0, 48, 48, COL_CAVE_ROCK);
-        px.DrawBox(0, 30, 48, 18, COL_CAVE_ROCK_DARK);
+        px.DrawBox(0, 0, 48, 48, pal.caveRock);
+        px.DrawBox(0, 30, 48, 18, pal.caveRockDark);
 
         // Stalactites as triangles (pointing down)
-        px.DrawTriangle(6, 32, 15, 32, 10, 46, COL_CAVE_ROCK);
+        px.DrawTriangle(6, 32, 15, 32, 10, 46, pal.caveRock);
         px.DrawTriangle(8, 34, 13, 34, 10, 44, 0x6A6A8E);
-        px.DrawTriangle(28, 34, 38, 34, 33, 47, COL_CAVE_ROCK);
+        px.DrawTriangle(28, 34, 38, 34, 33, 47, pal.caveRock);
         px.DrawTriangle(30, 36, 36, 36, 33, 45, 0x6A6A8E);
 
         // Drip dots at tips
@@ -925,11 +943,11 @@ entity SpriteFactory {
 
     hide func buildCaveWallTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
-        px.DrawBox(0, 0, 48, 48, COL_CAVE_ROCK);
+        px.DrawBox(0, 0, 48, 48, pal.caveRock);
 
         // Rock face variations using ellipses
-        px.DrawEllipse(14, 14, 10, 8, COL_CAVE_ROCK_DARK);
-        px.DrawEllipse(36, 36, 8, 10, COL_CAVE_ROCK_DARK);
+        px.DrawEllipse(14, 14, 10, 8, pal.caveRockDark);
+        px.DrawEllipse(36, 36, 8, 10, pal.caveRockDark);
 
         // Crack lines
         px.DrawLine(22, 5, 30, 18, 0x4A4A6A);
@@ -944,7 +962,7 @@ entity SpriteFactory {
     hide func buildBridgeTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // Planks (top section)
-        px.DrawBox(0, 0, 48, 12, COL_BRIDGE);
+        px.DrawBox(0, 0, 48, 12, pal.bridge);
         px.DrawBox(0, 0, 48, 3, 0x5A4320);
         // Plank division lines
         px.DrawLine(15, 0, 15, 11, 0x5A4320);
@@ -987,7 +1005,7 @@ entity SpriteFactory {
         // Pole top knob
         px.DrawDisc(23, 3, 3, 0xAAAAAA);
         // Flag as triangle (not rectangle)
-        px.DrawTriangle(25, 6, 42, 12, 25, 18, COL_CHECKPOINT);
+        px.DrawTriangle(25, 6, 42, 12, 25, 18, pal.checkpoint);
         // Flag highlight stripe
         px.DrawTriangle(25, 9, 36, 12, 25, 15, 0x22CC22);
         return px;
@@ -997,15 +1015,15 @@ entity SpriteFactory {
 
     hide func buildMagmaTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
-        px.DrawBox(0, 0, 48, 48, COL_MAGMA);
+        px.DrawBox(0, 0, 48, 48, pal.magma);
         // Embedded ember spots
-        px.DrawDisc(10, 12, 3, COL_MAGMA_GLOW);
-        px.DrawDisc(34, 28, 2, COL_MAGMA_GLOW);
-        px.DrawDisc(22, 40, 3, COL_MAGMA_GLOW);
+        px.DrawDisc(10, 12, 3, pal.magmaGlow);
+        px.DrawDisc(34, 28, 2, pal.magmaGlow);
+        px.DrawDisc(22, 40, 3, pal.magmaGlow);
         // Crack lines
-        px.DrawLine(5, 8, 20, 22, COL_MAGMA_DARK);
-        px.DrawLine(28, 10, 42, 30, COL_MAGMA_DARK);
-        px.DrawLine(12, 35, 36, 42, COL_MAGMA_DARK);
+        px.DrawLine(5, 8, 20, 22, pal.magmaDark);
+        px.DrawLine(28, 10, 42, 30, pal.magmaDark);
+        px.DrawLine(12, 35, 36, 42, pal.magmaDark);
         // Glowing vein
         px.DrawBezier(0, 24, 24, 18, 47, 28, 0xFF6622);
         return px;
@@ -1013,11 +1031,11 @@ entity SpriteFactory {
 
     hide func buildObsidianTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
-        px.DrawBox(0, 0, 48, 48, COL_OBSIDIAN);
+        px.DrawBox(0, 0, 48, 48, pal.obsidian);
         // Angular fracture lines
-        px.DrawLine(8, 0, 20, 24, COL_OBSIDIAN_LIGHT);
-        px.DrawLine(20, 24, 40, 12, COL_OBSIDIAN_LIGHT);
-        px.DrawLine(30, 30, 48, 44, COL_OBSIDIAN_LIGHT);
+        px.DrawLine(8, 0, 20, 24, pal.obsidianLight);
+        px.DrawLine(20, 24, 40, 12, pal.obsidianLight);
+        px.DrawLine(30, 30, 48, 44, pal.obsidianLight);
         // Reflection spots
         px.DrawDisc(15, 10, 2, 0x444466);
         px.DrawDisc(36, 34, 2, 0x444466);
@@ -1027,9 +1045,9 @@ entity SpriteFactory {
     hide func buildCloudTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // Cloud puff shape
-        px.DrawEllipse(24, 24, 22, 18, COL_CLOUD_WHITE);
-        px.DrawDisc(12, 20, 14, COL_CLOUD_WHITE);
-        px.DrawDisc(36, 20, 14, COL_CLOUD_WHITE);
+        px.DrawEllipse(24, 24, 22, 18, pal.cloudWhite);
+        px.DrawDisc(12, 20, 14, pal.cloudWhite);
+        px.DrawDisc(36, 20, 14, pal.cloudWhite);
         px.DrawDisc(24, 14, 16, 0xFFFFFF);
         // Soft shading on bottom
         px.DrawEllipse(24, 32, 20, 8, 0xCCDDEE);
@@ -1038,48 +1056,48 @@ entity SpriteFactory {
 
     hide func buildSkyBrickTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
-        px.DrawBox(0, 0, 48, 48, COL_SKY_STONE);
+        px.DrawBox(0, 0, 48, 48, pal.skyStone);
         // Mortar lines
-        px.DrawLine(0, 23, 47, 23, COL_SKY_STONE_DARK);
-        px.DrawLine(23, 0, 23, 23, COL_SKY_STONE_DARK);
-        px.DrawLine(0, 24, 0, 47, COL_SKY_STONE_DARK);
+        px.DrawLine(0, 23, 47, 23, pal.skyStoneDark);
+        px.DrawLine(23, 0, 23, 23, pal.skyStoneDark);
+        px.DrawLine(0, 24, 0, 47, pal.skyStoneDark);
         // Bevel highlights
         px.DrawLine(1, 1, 22, 1, 0xAABBCC);
         px.DrawLine(24, 25, 47, 25, 0xAABBCC);
         // Crystal inlays
-        px.DrawDisc(12, 12, 2, COL_CRYSTAL_BLUE);
-        px.DrawDisc(36, 36, 2, COL_CRYSTAL_BLUE);
+        px.DrawDisc(12, 12, 2, pal.crystalBlue);
+        px.DrawDisc(36, 36, 2, pal.crystalBlue);
         return px;
     }
 
     hide func buildRuinStoneTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
-        px.DrawBox(0, 0, 48, 48, COL_RUIN);
+        px.DrawBox(0, 0, 48, 48, pal.ruin);
         // Cracks and fissures
-        px.DrawLine(10, 5, 22, 20, COL_RUIN_DARK);
-        px.DrawLine(22, 20, 18, 36, COL_RUIN_DARK);
-        px.DrawLine(30, 12, 42, 30, COL_RUIN_DARK);
+        px.DrawLine(10, 5, 22, 20, pal.ruinDark);
+        px.DrawLine(22, 20, 18, 36, pal.ruinDark);
+        px.DrawLine(30, 12, 42, 30, pal.ruinDark);
         // Moss patches
-        px.DrawDisc(8, 38, 4, COL_RUIN_MOSS);
-        px.DrawDisc(38, 8, 3, COL_RUIN_MOSS);
+        px.DrawDisc(8, 38, 4, pal.ruinMoss);
+        px.DrawDisc(38, 8, 3, pal.ruinMoss);
         // Worn edge
-        px.DrawLine(0, 0, 47, 0, COL_RUIN_DARK);
-        px.DrawLine(0, 47, 47, 47, COL_RUIN_DARK);
+        px.DrawLine(0, 0, 47, 0, pal.ruinDark);
+        px.DrawLine(0, 47, 47, 47, pal.ruinDark);
         return px;
     }
 
     hide func buildVineTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // Vine curves
-        px.DrawBezier(10, 0, 6, 16, 14, 32, COL_VINE_GREEN);
-        px.DrawBezier(14, 32, 20, 40, 12, 47, COL_VINE_GREEN);
-        px.DrawBezier(30, 0, 36, 14, 28, 28, COL_VINE_DARK);
-        px.DrawBezier(28, 28, 22, 36, 32, 47, COL_VINE_DARK);
+        px.DrawBezier(10, 0, 6, 16, 14, 32, pal.vineGreen);
+        px.DrawBezier(14, 32, 20, 40, 12, 47, pal.vineGreen);
+        px.DrawBezier(30, 0, 36, 14, 28, 28, pal.vineDark);
+        px.DrawBezier(28, 28, 22, 36, 32, 47, pal.vineDark);
         // Leaf clusters
-        px.DrawDisc(8, 14, 4, COL_VINE_GREEN);
-        px.DrawDisc(18, 30, 3, COL_VINE_GREEN);
-        px.DrawDisc(34, 10, 3, COL_VINE_DARK);
-        px.DrawDisc(26, 40, 4, COL_VINE_GREEN);
+        px.DrawDisc(8, 14, 4, pal.vineGreen);
+        px.DrawDisc(18, 30, 3, pal.vineGreen);
+        px.DrawDisc(34, 10, 3, pal.vineDark);
+        px.DrawDisc(26, 40, 4, pal.vineGreen);
         // Leaf highlights
         px.DrawDisc(7, 12, 2, 0x44AA44);
         px.DrawDisc(25, 38, 2, 0x44AA44);
@@ -1088,14 +1106,14 @@ entity SpriteFactory {
 
     hide func buildMossStoneTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
-        px.DrawBox(0, 0, 48, 48, COL_RUIN);
+        px.DrawBox(0, 0, 48, 48, pal.ruin);
         // Stone texture
-        px.DrawEllipse(16, 16, 10, 8, COL_RUIN_DARK);
-        px.DrawEllipse(36, 36, 8, 6, COL_RUIN_DARK);
+        px.DrawEllipse(16, 16, 10, 8, pal.ruinDark);
+        px.DrawEllipse(36, 36, 8, 6, pal.ruinDark);
         // Moss coverage (ellipses for organic shapes)
-        px.DrawEllipse(12, 10, 8, 5, COL_RUIN_MOSS);
-        px.DrawEllipse(30, 22, 6, 4, COL_RUIN_MOSS);
-        px.DrawEllipse(20, 40, 10, 5, COL_RUIN_MOSS);
+        px.DrawEllipse(12, 10, 8, 5, pal.ruinMoss);
+        px.DrawEllipse(30, 22, 6, 4, pal.ruinMoss);
+        px.DrawEllipse(20, 40, 10, 5, pal.ruinMoss);
         // Moss highlights
         px.DrawDisc(10, 8, 3, 0x558844);
         px.DrawDisc(22, 38, 3, 0x558844);
@@ -1109,38 +1127,38 @@ entity SpriteFactory {
     hide func buildJungleGroundTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // Rich alien soil
-        px.DrawBox(0, 8, 48, 40, COL_JUNGLE_GROUND);
+        px.DrawBox(0, 8, 48, 40, pal.jungleGround);
         // Moss top layer
-        px.DrawBox(0, 0, 48, 12, COL_JUNGLE_GROUND_TOP);
-        px.DrawEllipse(12, 8, 8, 3, COL_JUNGLE_MOSS);
-        px.DrawEllipse(36, 9, 6, 3, COL_JUNGLE_MOSS);
+        px.DrawBox(0, 0, 48, 12, pal.jungleGroundTop);
+        px.DrawEllipse(12, 8, 8, 3, pal.jungleMoss);
+        px.DrawEllipse(36, 9, 6, 3, pal.jungleMoss);
         // Glowing root veins
-        px.DrawBezier(4, 20, 20, 24, 44, 18, COL_JUNGLE_ROOTS);
-        px.DrawBezier(8, 36, 28, 40, 42, 34, COL_JUNGLE_ROOTS);
+        px.DrawBezier(4, 20, 20, 24, 44, 18, pal.jungleRoots);
+        px.DrawBezier(8, 36, 28, 40, 42, 34, pal.jungleRoots);
         // Soil texture
-        px.DrawDisc(14, 30, 2, COL_DIRT_DARK);
-        px.DrawDisc(34, 26, 1, COL_DIRT_DARK);
+        px.DrawDisc(14, 30, 2, pal.dirtDark);
+        px.DrawDisc(34, 26, 1, pal.dirtDark);
         // Outline
-        px.DrawLine(0, 0, 47, 0, COL_OUTLINE);
+        px.DrawLine(0, 0, 47, 0, pal.outline);
         return px;
     }
 
     hide func buildJunglePlatformTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // Moss-covered stone
-        px.DrawBox(0, 4, 48, 40, COL_CAVERN_STONE);
-        px.DrawBox(0, 0, 48, 8, COL_JUNGLE_MOSS);
+        px.DrawBox(0, 4, 48, 40, pal.cavernStone);
+        px.DrawBox(0, 0, 48, 8, pal.jungleMoss);
         // Glowing sap vein across platform
-        px.DrawBezier(0, 24, 24, 20, 47, 26, COL_JUNGLE_SAP);
+        px.DrawBezier(0, 24, 24, 20, 47, 26, pal.jungleSap);
         // Stone cracks
-        px.DrawLine(16, 12, 24, 28, COL_CAVERN_STONE_DK);
-        px.DrawLine(32, 16, 38, 32, COL_CAVERN_STONE_DK);
+        px.DrawLine(16, 12, 24, 28, pal.cavernStoneDk);
+        px.DrawLine(32, 16, 38, 32, pal.cavernStoneDk);
         // Moss drip
-        px.DrawDisc(8, 44, 2, COL_JUNGLE_MOSS);
-        px.DrawDisc(40, 42, 1, COL_JUNGLE_MOSS);
+        px.DrawDisc(8, 44, 2, pal.jungleMoss);
+        px.DrawDisc(40, 42, 1, pal.jungleMoss);
         // Outline
-        px.DrawLine(0, 0, 47, 0, COL_OUTLINE);
-        px.DrawLine(0, 44, 47, 44, COL_OUTLINE);
+        px.DrawLine(0, 0, 47, 0, pal.outline);
+        px.DrawLine(0, 44, 47, 44, pal.outline);
         return px;
     }
 
@@ -1152,9 +1170,9 @@ entity SpriteFactory {
             var bx = i * 12;
             var tipY = 3 + (i % 2) * 4;
             // Thorn body (organic green-brown)
-            px.DrawTriangle(bx + 1, 47, bx + 6, tipY, bx + 11, 47, COL_JUNGLE_THORN);
+            px.DrawTriangle(bx + 1, 47, bx + 6, tipY, bx + 11, 47, pal.jungleThorn);
             // Purple tip
-            px.DrawTriangle(bx + 4, tipY + 6, bx + 6, tipY, bx + 8, tipY + 6, COL_JUNGLE_THORN_TIP);
+            px.DrawTriangle(bx + 4, tipY + 6, bx + 6, tipY, bx + 8, tipY + 6, pal.jungleThornTip);
             // Highlight edge
             px.DrawLine(bx + 2, 44, bx + 6, tipY + 1, 0xAA7744);
             i = i + 1;
@@ -1166,43 +1184,43 @@ entity SpriteFactory {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // Bouncy alien mushroom platform
         // Stem
-        px.DrawBox(18, 24, 12, 24, COL_MUSHROOM_STEM);
-        px.DrawLine(18, 24, 18, 47, COL_OUTLINE);
-        px.DrawLine(30, 24, 30, 47, COL_OUTLINE);
+        px.DrawBox(18, 24, 12, 24, pal.mushroomStem);
+        px.DrawLine(18, 24, 18, 47, pal.outline);
+        px.DrawLine(30, 24, 30, 47, pal.outline);
         // Cap (big dome)
-        px.DrawEllipse(24, 18, 22, 14, COL_MUSHROOM_CAP);
-        px.DrawEllipse(24, 14, 16, 8, COL_MUSHROOM_GLOW);
+        px.DrawEllipse(24, 18, 22, 14, pal.mushroomCap);
+        px.DrawEllipse(24, 14, 16, 8, pal.mushroomGlow);
         px.DrawDisc(18, 12, 4, 0xFFAADD);                   // highlight
         // Spots on cap
         px.DrawDisc(14, 16, 3, 0xEE55AA);
         px.DrawDisc(30, 14, 2, 0xEE55AA);
         px.DrawDisc(22, 20, 2, 0xEE55AA);
         // Outline
-        px.DrawEllipseFrame(24, 18, 22, 14, COL_OUTLINE);
+        px.DrawEllipseFrame(24, 18, 22, 14, pal.outline);
         return px;
     }
 
     hide func buildCaveCrystalTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // Translucent crystal platform
-        px.DrawBox(0, 8, 48, 36, COL_CAVERN_STONE);
+        px.DrawBox(0, 8, 48, 36, pal.cavernStone);
         // Crystal surface (angular facets)
-        px.DrawTriangle(0, 8, 24, 0, 48, 8, COL_CRYSTAL_CYAN);
+        px.DrawTriangle(0, 8, 24, 0, 48, 8, pal.crystalCyan);
         px.DrawTriangle(24, 0, 48, 8, 36, 4, 0x33BBDD);    // darker facet
         // Inner refraction lines
         px.DrawLine(12, 6, 20, 16, 0x88EEFF);
         px.DrawLine(28, 4, 36, 14, 0x88EEFF);
         // Glow underneath
-        px.DrawEllipse(24, 20, 16, 4, COL_CRYSTAL_GLOW);
+        px.DrawEllipse(24, 20, 16, 4, pal.crystalGlow);
         // Stone base
-        px.DrawLine(0, 44, 47, 44, COL_OUTLINE);
+        px.DrawLine(0, 44, 47, 44, pal.outline);
         return px;
     }
 
     hide func buildMetalGrateTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // Industrial metal grating over lava
-        px.DrawBox(0, 0, 48, 48, COL_THERMAL_GRATE);
+        px.DrawBox(0, 0, 48, 48, pal.thermalGrate);
         // Grid pattern
         var i = 0;
         while i < 48 {
@@ -1211,8 +1229,8 @@ entity SpriteFactory {
             i = i + 8;
         }
         // Rust stains
-        px.DrawEllipse(12, 20, 4, 3, COL_THERMAL_RUST);
-        px.DrawEllipse(36, 36, 3, 2, COL_THERMAL_RUST);
+        px.DrawEllipse(12, 20, 4, 3, pal.thermalRust);
+        px.DrawEllipse(36, 36, 3, 2, pal.thermalRust);
         // Highlight top edge
         px.DrawLine(0, 0, 47, 0, 0x8899AA);
         // Lava visible through grate (warm glow underneath)
@@ -1223,18 +1241,18 @@ entity SpriteFactory {
     hide func buildMagmaRockTile() -> Pixels {
         var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // Dark rock with glowing magma vein cracks
-        px.DrawBox(0, 0, 48, 48, COL_THERMAL_ROCK);
+        px.DrawBox(0, 0, 48, 48, pal.thermalRock);
         // Magma veins (glowing cracks)
-        px.DrawBezier(4, 12, 20, 20, 44, 8, COL_THERMAL_CRACK);
-        px.DrawBezier(8, 36, 28, 42, 40, 32, COL_THERMAL_CRACK);
-        px.DrawLine(24, 0, 20, 24, COL_THERMAL_CRACK);
+        px.DrawBezier(4, 12, 20, 20, 44, 8, pal.thermalCrack);
+        px.DrawBezier(8, 36, 28, 42, 40, 32, pal.thermalCrack);
+        px.DrawLine(24, 0, 20, 24, pal.thermalCrack);
         // Vein glow (wider, dimmer)
         px.DrawBezier(4, 13, 20, 21, 44, 9, 0x882211);
         // Rock texture
         px.DrawEllipse(16, 24, 6, 4, 0x3A2A2A);
         px.DrawEllipse(38, 16, 4, 3, 0x3A2A2A);
         // Outline
-        px.DrawLine(0, 0, 47, 0, COL_OUTLINE);
+        px.DrawLine(0, 0, 47, 0, pal.outline);
         return px;
     }
 
@@ -1250,9 +1268,9 @@ entity SpriteFactory {
 
         // Power-ups: draw at ORIG_POWERUP_SIZE (30), scale to POWERUP_SIZE (42)
         healthOrb = buildHealthOrb().Scale(POWERUP_SIZE, POWERUP_SIZE);
-        speedPickup = buildPowerupIcon(COL_SPEED).Scale(POWERUP_SIZE, POWERUP_SIZE);
-        shieldPickup = buildPowerupIcon(COL_SHIELD).Scale(POWERUP_SIZE, POWERUP_SIZE);
-        rapidPickup = buildPowerupIcon(COL_RAPIDFIRE).Scale(POWERUP_SIZE, POWERUP_SIZE);
+        speedPickup = buildPowerupIcon(pal.speed).Scale(POWERUP_SIZE, POWERUP_SIZE);
+        shieldPickup = buildPowerupIcon(pal.shield).Scale(POWERUP_SIZE, POWERUP_SIZE);
+        rapidPickup = buildPowerupIcon(pal.rapidfire).Scale(POWERUP_SIZE, POWERUP_SIZE);
     }
 
     hide func buildCoinFrame(frame: Integer) -> Pixels {
@@ -1269,10 +1287,10 @@ entity SpriteFactory {
             rx = 6;
         }
         // Outer coin body
-        px.DrawEllipse(12, 12, rx, 9, COL_COIN_GOLD);
+        px.DrawEllipse(12, 12, rx, 9, pal.coinGold);
         // Dark edge ring
         if rx > 3 {
-            px.DrawEllipseFrame(12, 12, rx, 9, COL_COIN_DARK);
+            px.DrawEllipseFrame(12, 12, rx, 9, pal.coinDark);
         }
         // Shine highlight
         if rx > 5 {
@@ -1286,11 +1304,11 @@ entity SpriteFactory {
         // Outer glow
         px.DrawDisc(15, 15, 13, 0xCC2233);
         // Main orb
-        px.DrawDisc(15, 15, 11, COL_HEALTH);
+        px.DrawDisc(15, 15, 11, pal.health);
         px.DrawDisc(15, 15, 8, 0xFF6677);
         // Cross
-        px.DrawBox(12, 8, 6, 14, COL_WHITE);
-        px.DrawBox(8, 12, 14, 6, COL_WHITE);
+        px.DrawBox(12, 8, 6, 14, pal.white);
+        px.DrawBox(8, 12, 14, 6, pal.white);
         // Highlight
         px.DrawDisc(12, 11, 2, 0xFFAAAA);
         return px;
@@ -1315,8 +1333,8 @@ entity SpriteFactory {
     hide func buildBulletSprites() {
         // Player bullet — draw at 12x6 (old size), scale to BULLET_W x BULLET_H
         var bSrc = Pixels.New(12, 6);
-        bSrc.DrawEllipse(6, 3, 6, 3, COL_BULLET);
-        bSrc.DrawEllipse(7, 3, 4, 2, COL_BULLET_GLOW);
+        bSrc.DrawEllipse(6, 3, 6, 3, pal.bullet);
+        bSrc.DrawEllipse(7, 3, 4, 2, pal.bulletGlow);
         bSrc.DrawDisc(10, 3, 2, 0xAAEEFF);
         bulletRight = bSrc.Scale(BULLET_W, BULLET_H);
         bulletLeft = bulletRight.Clone();
@@ -1324,7 +1342,7 @@ entity SpriteFactory {
 
         // Enemy bullet — draw at 9x9, scale to 14x14
         var eSrc = Pixels.New(9, 9);
-        eSrc.DrawDisc(5, 5, 5, COL_ENEMY_BULLET);
+        eSrc.DrawDisc(5, 5, 5, pal.enemyBullet);
         eSrc.DrawRing(5, 5, 4, 0xFF6666);
         eSrc.DrawDisc(5, 5, 2, 0xFF8888);
         enemyBullet = eSrc.Scale(14, 14);
