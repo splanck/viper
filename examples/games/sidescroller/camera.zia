@@ -1,5 +1,22 @@
-// camera.zia — Camera follow + parallax background system
-// Uses Viper.Game.SmoothValue for smooth camera follow instead of manual lerp.
+// =============================================================================
+// Camera — Smooth follow + animated parallax background system
+// =============================================================================
+// Viper APIs demonstrated:
+//   - Viper.Game.SmoothValue: exponential smooth follow (0.875 = ~1/8 per frame)
+//   - Canvas: GradientV (sky backgrounds), Disc/DiscAlpha (stars, moon glow),
+//     BoxAlpha (clouds, fog), BlitAlpha (sprite-based parallax layers),
+//     Triangle (stalactites, mountains), Ellipse (cave formations),
+//     Line (vines, wind streaks)
+//
+// Zia best practices:
+//   - SmoothValue replaces manual lerp for camera follow
+//   - Parallax scroll: each depth layer scrolls at a fraction of camera speed
+//     (PARA_CLOUD=8 = 8% speed for far clouds, PARA_BUSH=70 = 70% for near bush)
+//   - Animated backgrounds: bgTimer drives star twinkle, cloud drift, lava
+//     bubbles, vine sway, and firefly movement via time-based offsets
+//   - Theme-specific renderers: 5 distinct background styles, one per level
+// =============================================================================
+
 module camera;
 
 bind Viper.Graphics;
@@ -18,15 +35,25 @@ entity GameCamera {
     hide SV smoothX;
     hide SV smoothY;
 
+    // Background animation timer (accumulated ms, wraps at 60000)
+    hide Integer bgTimer;
+
     expose func init() {
         x = 0;
         y = 0;
         levelPixelW = 0;
         levelPixelH = 0;
+        bgTimer = 0;
         // 0.875 ≈ x += (target-x)/8 per frame
         smoothX = SV.New(0.0, 0.875);
         // 0.917 ≈ y += (target-y)/12 per frame
         smoothY = SV.New(0.0, 0.917);
+    }
+
+    // Advance background animation timer. Call once per frame.
+    expose func updateBg(dt: Integer) {
+        bgTimer = bgTimer + dt;
+        if bgTimer >= 60000 { bgTimer = 0; }
     }
 
     expose func setLevelSize(w: Integer, h: Integer) {
@@ -80,36 +107,45 @@ entity GameCamera {
     }
 
     expose func drawBackground(canvas: Canvas, theme: Integer, sprites: SpriteFactory) {
-        if theme == THEME_GRASSLANDS {
-            drawGrasslandsBg(canvas, sprites);
-        } else if theme == THEME_CAVE {
+        // Xenoscape: detect biome from camera X position (seamless transition)
+        var camCol = x / TILE_SIZE;
+        if camCol < BIOME_JUNGLE_END {
+            drawJungleBg(canvas, sprites);
+        } else if camCol < BIOME_CAVE_END {
             drawCaveBg(canvas);
-        } else if theme == THEME_VOLCANO {
-            drawVolcanoBg(canvas);
-        } else if theme == THEME_SKY {
-            drawSkyBg(canvas);
         } else {
-            drawRuinsBg(canvas);
+            drawVolcanoBg(canvas);
         }
     }
 
-    hide func drawGrasslandsBg(canvas: Canvas, sprites: SpriteFactory) {
-        // Night sky gradient
-        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, COL_SKY_TOP, COL_SKY_BOT);
+    hide func drawJungleBg(canvas: Canvas, sprites: SpriteFactory) {
+        // Alien jungle: teal-green sky with bioluminescent atmosphere
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, COL_JUNGLE_SKY_TOP, COL_JUNGLE_SKY_BOT);
 
-        // Stars (round discs instead of square boxes)
+        // Animated stars — twinkle effect using bgTimer to toggle alpha.
+        // Each star has a pseudo-random phase offset so they don't all blink
+        // in sync. Bright stars (every 10th) get a pulsing glow halo.
         var si = 0;
         while si < 60 {
             var starX = (si * 137 + 29) % SCREEN_W;
             var starY = (si * 97 + 13) % (SCREEN_H / 2);
             var brightness = 80 + (si * 31) % 176;
             var starCol = brightness * 0x010101;
-            if si % 10 == 0 {
-                // Occasional bright star with glow
-                canvas.Disc(starX, starY, 2, starCol);
-                canvas.DiscAlpha(starX, starY, 4, starCol, 30);
-            } else {
-                canvas.Disc(starX, starY, 1, starCol);
+
+            // Twinkle: each star fades in/out on its own cycle.
+            // Phase offset = si * 211 ensures different timing per star.
+            var twinklePhase = (bgTimer + si * 211) % 2000;
+            var visible = twinklePhase < 1600;  // visible 80% of cycle
+
+            if visible {
+                if si % 10 == 0 {
+                    // Bright star with animated glow radius
+                    var glowR = 3 + (twinklePhase / 400) % 3;
+                    canvas.Disc(starX, starY, 2, starCol);
+                    canvas.DiscAlpha(starX, starY, glowR, starCol, 25);
+                } else {
+                    canvas.Disc(starX, starY, 1, starCol);
+                }
             }
             si = si + 1;
         }

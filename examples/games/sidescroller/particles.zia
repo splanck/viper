@@ -1,5 +1,22 @@
-// particles.zia — Particle effects using the Viper.Game.ParticleEmitter runtime API
-// Replaces the hand-rolled parallel-array system with a single configurable emitter.
+// =============================================================================
+// Particle System — Visual effects via Viper.Game.ParticleEmitter
+// =============================================================================
+// Viper APIs demonstrated:
+//   - Viper.Game.ParticleEmitter: configurable burst-based particle system with
+//     FadeOut, Shrink, positional drawing via DrawAt (camera-relative)
+//
+// Zia best practices:
+//   - Entity composition: ParticleSystem is a standalone subsystem
+//   - Preset pattern: reconfigure emitter settings before each Burst() call
+//   - Multi-color bursts: change Color between Burst() calls for variety
+//   - All particle config uses Viper.Game.ParticleEmitter API (SetPosition,
+//     SetLifetime, SetVelocity, SetGravity, SetSize, set_Color, Burst)
+//
+// Presets: dust, spark, coin collect, death, jump, double-jump, wall-slide,
+//          jetpack flame, boss intro, checkpoint, running dust, hazard hit,
+//          wall bullet impact, confetti
+// =============================================================================
+
 module particles;
 
 bind Viper.Graphics;
@@ -185,5 +202,80 @@ entity ParticleSystem {
         emitter.Burst(16);
         emitter.set_Color(COL_SPARK_YELLOW);
         emitter.Burst(8);
+    }
+
+    // Checkpoint collected — golden sparkle rising upward
+    expose func burstCheckpoint(x: Integer, y: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.set_Color(COL_CHECKPOINT);
+        emitter.SetLifetime(25, 40);
+        emitter.SetVelocity(8.0, 20.0, 60.0, 120.0);
+        emitter.SetGravity(0.0, -0.3);
+        emitter.SetSize(1.0, 3.0);
+        emitter.Burst(12);
+        // Gold sparks
+        emitter.set_Color(COL_SPARK_YELLOW);
+        emitter.SetSize(1.0, 2.0);
+        emitter.Burst(6);
+    }
+
+    // Running dust — continuous trail at player's feet
+    expose func burstRunDust(x: Integer, y: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.set_Color(COL_DUST);
+        emitter.SetLifetime(6, 12);
+        emitter.SetVelocity(3.0, 8.0, 200.0, 340.0);
+        emitter.SetGravity(0.0, 0.1);
+        emitter.SetSize(1.0, 2.0);
+        emitter.Burst(1);
+    }
+
+    // Spike/hazard impact — blood-red splatter
+    expose func burstHazardHit(x: Integer, y: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.set_Color(COL_DEATH_RED);
+        emitter.SetLifetime(15, 25);
+        emitter.SetVelocity(12.0, 30.0, 30.0, 150.0);
+        emitter.SetGravity(0.0, 0.5);
+        emitter.SetSize(2.0, 4.0);
+        emitter.Burst(10);
+        // White shock sparks
+        emitter.set_Color(COL_SPARK_WHITE);
+        emitter.SetSize(1.0, 2.0);
+        emitter.Burst(4);
+    }
+
+    // Wall bullet impact — directional sparks
+    expose func burstWallImpact(x: Integer, y: Integer, dir: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.set_Color(COL_SPARK_YELLOW);
+        emitter.SetLifetime(6, 10);
+        // Sparks bounce back from the wall
+        if dir > 0 {
+            emitter.SetVelocity(8.0, 18.0, 120.0, 240.0);
+        } else {
+            emitter.SetVelocity(8.0, 18.0, 300.0, 60.0);
+        }
+        emitter.SetGravity(0.0, 0.4);
+        emitter.SetSize(1.0, 2.0);
+        emitter.Burst(5);
+    }
+
+    // Level complete — confetti celebration
+    expose func burstConfetti(x: Integer, y: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        // Multi-color confetti in sequence
+        emitter.SetLifetime(40, 60);
+        emitter.SetVelocity(10.0, 30.0, 30.0, 150.0);
+        emitter.SetGravity(0.0, 0.2);
+        emitter.SetSize(2.0, 3.0);
+        emitter.set_Color(COL_COIN_GOLD);
+        emitter.Burst(4);
+        emitter.set_Color(COL_SPEED);
+        emitter.Burst(4);
+        emitter.set_Color(COL_HEALTH);
+        emitter.Burst(4);
+        emitter.set_Color(COL_SPARK_WHITE);
+        emitter.Burst(4);
     }
 }

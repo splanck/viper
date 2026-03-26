@@ -1291,6 +1291,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_buttongroup PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_buttongroup test_rt_buttongroup)
 
+    viper_add_test(test_rt_debugoverlay ${VIPER_TESTS_DIR}/runtime/RTDebugOverlayTests.cpp)
+    target_link_libraries(test_rt_debugoverlay PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_debugoverlay test_rt_debugoverlay)
+
     viper_add_test(test_rt_camera ${VIPER_TESTS_DIR}/unit/runtime/RTCameraTests.cpp)
     target_link_libraries(test_rt_camera PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_camera test_rt_camera)

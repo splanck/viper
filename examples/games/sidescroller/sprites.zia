@@ -1,10 +1,46 @@
-// sprites.zia — Procedural sprite generation for all game entities
-// All art is drawn using the full Pixels API: DrawDisc, DrawEllipse, DrawTriangle,
-// DrawThickLine, DrawBezier, DrawLine, DrawBox, Blur, Tint for polished visuals.
+// =============================================================================
+// Sprite Factory — Procedural sprite generation for all game entities
+// =============================================================================
+// Viper APIs demonstrated:
+//   - Viper.Graphics.Pixels: full procedural drawing API (DrawDisc, DrawEllipse,
+//     DrawTriangle, DrawThickLine, DrawBezier, DrawLine, DrawBox, DrawEllipseFrame,
+//     FlipH, Clone, SetRGB, Blur, Tint)
+//
+// Zia best practices:
+//   - Entity with cached sprite lists (generated once, reused every frame)
+//   - hide all sprite data, expose only accessor methods
+//   - Each build function creates one sprite and returns it
+//   - Multi-layer drawing technique: base fill → shadow → highlight → detail
+//     creates a top-left-lit aesthetic for depth without real lighting
+//
+// Character sprite density targets:
+//   - Player: ~120 draw calls per frame (36x48 px)
+//   - Slime: ~45 calls per frame (36x30 px)
+//   - Bat: ~55 calls per frame (42x30 px)
+//   - Boss: ~90 calls per frame (84x84 px)
+//   - Turret: ~40 calls (42x42 px)
+//   - Tiles: ~15-25 calls each (48x48 px)
+// =============================================================================
+
 module sprites;
 
 bind Viper.Graphics;
 bind "./config";
+
+// Original (pre-scale) sprite sizes. All draw calls use these coordinates,
+// then Pixels.Scale() upsamples to the final display size. This avoids
+// recalculating hundreds of hardcoded pixel coordinates when sizes change.
+final ORIG_TILE = 48;
+final ORIG_SLIME_W = 36;
+final ORIG_SLIME_H = 30;
+final ORIG_BAT_W = 42;
+final ORIG_BAT_H = 30;
+final ORIG_TURRET_W = 42;
+final ORIG_TURRET_H = 42;
+final ORIG_BOSS_W = 84;
+final ORIG_BOSS_H = 84;
+final ORIG_COIN_SIZE = 24;
+final ORIG_POWERUP_SIZE = 30;
 
 entity SpriteFactory {
     // Cached sprites — created once, reused every frame
@@ -41,6 +77,14 @@ entity SpriteFactory {
     hide Pixels tileRuinStone;
     hide Pixels tileVine;
     hide Pixels tileMossStone;
+    // Xenoscape biome tiles
+    hide Pixels tileJungleGround;
+    hide Pixels tileJunglePlatform;
+    hide Pixels tileThorn;
+    hide Pixels tileMushroom;
+    hide Pixels tileCaveCrystal;
+    hide Pixels tileMetalGrate;
+    hide Pixels tileMagmaRock;
 
     // Pickups
     hide List[Pixels] coinFrames;
@@ -77,186 +121,212 @@ entity SpriteFactory {
     }
 
     // =========================================================================
-    // Player Sprites (36x48 each)
+    // Player Sprites — drawn at 36x48, scaled to PLAYER_SPRITE_W x PLAYER_SPRITE_H
     // =========================================================================
+    // Scale strategy: all draw calls use the original 36x48 coordinate space
+    // for readability. After building each frame, Pixels.Scale() upsamples to
+    // the final display size. This avoids recalculating 120+ coordinates.
 
     hide func buildPlayerSprites() {
-        // Build right-facing frames, then flip for left
+        // Build right-facing frames at 36x48, then scale + flip for left
         // Frame 0-1: Idle (visor glow pulse)
-        var idle0 = buildPlayerFrame(0, 0);
-        var idle1 = buildPlayerFrame(0, 1);
-        playerRight.add(idle0);
-        playerRight.add(idle1);
+        playerRight.add(scalePlayer(buildPlayerFrame(0, 0)));
+        playerRight.add(scalePlayer(buildPlayerFrame(0, 1)));
 
         // Frame 2-5: Run (4-frame leg animation cycle)
-        var run0 = buildPlayerFrame(1, 0);
-        var run1 = buildPlayerFrame(1, 1);
-        var run2 = buildPlayerFrame(1, 2);
-        var run3 = buildPlayerFrame(1, 3);
-        playerRight.add(run0);
-        playerRight.add(run1);
-        playerRight.add(run2);
-        playerRight.add(run3);
+        playerRight.add(scalePlayer(buildPlayerFrame(1, 0)));
+        playerRight.add(scalePlayer(buildPlayerFrame(1, 1)));
+        playerRight.add(scalePlayer(buildPlayerFrame(1, 2)));
+        playerRight.add(scalePlayer(buildPlayerFrame(1, 3)));
 
-        // Frame 4: Jump
-        var jump0 = buildPlayerFrame(2, 0);
-        playerRight.add(jump0);
+        // Frame 6: Jump
+        playerRight.add(scalePlayer(buildPlayerFrame(2, 0)));
+        // Frame 7: Fall
+        playerRight.add(scalePlayer(buildPlayerFrame(3, 0)));
+        // Frame 8: Double jump
+        playerRight.add(scalePlayer(buildPlayerFrame(4, 0)));
+        // Frame 9: Wall slide
+        playerRight.add(scalePlayer(buildPlayerFrame(5, 0)));
+        // Frame 10: Hurt
+        playerRight.add(scalePlayer(buildPlayerFrame(6, 0)));
+        // Frame 11: Dead
+        playerRight.add(scalePlayer(buildPlayerFrame(7, 0)));
 
-        // Frame 5: Fall
-        var fall0 = buildPlayerFrame(3, 0);
-        playerRight.add(fall0);
-
-        // Frame 6: Double jump
-        var djump = buildPlayerFrame(4, 0);
-        playerRight.add(djump);
-
-        // Frame 7: Wall slide
-        var wslide = buildPlayerFrame(5, 0);
-        playerRight.add(wslide);
-
-        // Frame 8: Hurt
-        var hurt = buildPlayerFrame(6, 0);
-        playerRight.add(hurt);
-
-        // Frame 9: Dead
-        var dead = buildPlayerFrame(7, 0);
-        playerRight.add(dead);
-
-        // Create left-facing versions by flipping
-        var i = 0;
-        while i < playerRight.length() {
+        // Create left-facing versions by flipping the scaled sprites
+        for i in 0..playerRight.length() {
             var flipped = playerRight.get(i).Clone();
             flipped.FlipH();
             playerLeft.add(flipped);
-            i = i + 1;
         }
     }
 
+    // Scale a 36x48 sprite to the final player display size.
+    hide func scalePlayer(src: Pixels) -> Pixels {
+        return src.Scale(PLAYER_SPRITE_W, PLAYER_SPRITE_H);
+    }
+
     hide func buildPlayerFrame(state: Integer, frame: Integer) -> Pixels {
-        var px = Pixels.New(PLAYER_SPRITE_W, PLAYER_SPRITE_H);
+        // REALISTIC ASTRONAUT: proper human proportions (head 1/5 of height),
+        // articulated limbs, detailed suit panels, thin outlines, 3-tone shading.
+        // Drawn at 36x48, scaled to 56x72 by caller.
+        var px = Pixels.New(36, 48);
+        var OL = COL_OUTLINE;
 
-        // === Layer 1: Jetpack (behind everything, left side) ===
-        px.DrawEllipse(5, 22, 4, 9, COL_PLAYER_JETPACK);
-        px.DrawBox(1, 29, 9, 4, COL_PLAYER_JETPACK);
-        px.DrawEllipseFrame(5, 22, 4, 9, 0x444444);
-        // Exhaust nozzles
-        px.DrawDisc(3, 34, 2, 0x777777);
-        px.DrawDisc(7, 34, 2, 0x777777);
-        // Fuel line detail
-        px.DrawLine(5, 14, 5, 30, 0x666666);
+        var SUIT = 0xDDDDEE;
+        var SUIT_LT = 0xEEEEFF;
+        var SUIT_DK = 0xAAAABB;
+        var SUIT_DD = 0x888899;
+        var VISOR = 0x44CCEE;
+        var VIS_LT = 0x88EEFF;
+        var ACCENT = 0xFF6633;
+        var BLUE = 0x3366FF;
+        var METAL = 0x667788;
 
-        // === Layer 2: Back arm (only visible in certain states) ===
+        // === Leg animation ===
+        var bOff = 0;
+        var lSp = 0;
+        if state == 1 {
+            if frame == 0 { bOff = 3; lSp = 2; }
+            if frame == 1 { bOff = 1; lSp = 0; }
+            if frame == 2 { bOff = -3; lSp = 2; }
+            if frame == 3 { bOff = -1; lSp = 0; }
+        }
+
+        // === Jetpack (behind body, left side) ===
+        px.DrawEllipse(5, 22, 4, 9, METAL);
+        px.DrawEllipse(4, 21, 2, 6, 0x778899);              // highlight
+        px.DrawEllipseFrame(5, 22, 4, 9, OL);
+        px.DrawBox(8, 18, 2, 3, SUIT_DD);                   // mount bracket
+        px.DrawBox(8, 26, 2, 3, SUIT_DD);
+        // Nozzles
+        px.DrawDisc(3, 33, 2, METAL);
+        px.DrawDisc(7, 33, 2, METAL);
+        px.DrawDisc(3, 33, 1, 0x333344);
+        px.DrawDisc(7, 33, 1, 0x333344);
+        // Fuel line
+        px.DrawBezier(5, 14, 9, 14, 11, 17, SUIT_DD);
+        // Status LED
+        px.DrawDisc(5, 27, 1, 0x44FF66);
+
+        // === Back arm (state-specific) ===
         if state == 2 {
-            // Jump: back arm reaches up
-            px.DrawThickLine(11, 16, 6, 7, 3, COL_PLAYER_BODY);
-            px.DrawDisc(6, 7, 2, COL_PLAYER_BODY_DARK);
+            px.DrawThickLine(11, 18, 6, 10, 2, SUIT_DK);
+            px.DrawDisc(6, 10, 2, SUIT);
         }
         if state == 3 {
-            // Fall: back arm spread out
-            px.DrawThickLine(11, 18, 3, 22, 3, COL_PLAYER_BODY);
-            px.DrawDisc(3, 22, 2, COL_PLAYER_BODY_DARK);
-        }
-        if state == 5 {
-            // Wall slide: arm reaching up toward wall
-            px.DrawThickLine(11, 16, 4, 6, 3, COL_PLAYER_BODY);
-            px.DrawDisc(4, 6, 2, COL_PLAYER_BODY_DARK);
+            px.DrawThickLine(11, 20, 4, 24, 2, SUIT_DK);
+            px.DrawDisc(4, 24, 2, SUIT);
         }
 
-        // === Layer 3: Body torso ===
-        px.DrawEllipse(17, 23, 10, 10, COL_PLAYER_BODY);
-        px.DrawEllipse(17, 24, 8, 8, COL_PLAYER_BODY_DARK);
-        // Armor panel lines
-        px.DrawLine(10, 16, 10, 32, 0x555555);
-        px.DrawLine(24, 16, 24, 32, 0x555555);
-        // Belt/waist detail
-        px.DrawLine(9, 31, 25, 31, 0x555555);
-
-        // === Layer 4: Legs ===
-        // 4-frame run cycle: 0=right extended, 1=passing, 2=left extended, 3=passing back
-        var bootOff = 0;
-        var legSpread = 0;
-        if state == 1 {
-            if frame == 0 {
-                bootOff = 4;
-                legSpread = 1;
-            }
-            if frame == 1 {
-                bootOff = 1;
-                legSpread = 0;
-            }
-            if frame == 2 {
-                bootOff = -3;
-                legSpread = 1;
-            }
-            if frame == 3 {
-                bootOff = -1;
-                legSpread = 0;
-            }
-        }
-        // Left leg
-        px.DrawThickLine(14, 32, 13 - legSpread, 39 + bootOff, 3, COL_PLAYER_BODY_DARK);
+        // === Legs (thigh + knee + shin, proper proportions) ===
+        var lkx = 13 - lSp;
+        var lky = 36 + bOff / 2;
+        var rkx = 22 + lSp;
+        var rky = 36 - bOff / 2;
+        // Left leg: thigh
+        px.DrawThickLine(14, 32, lkx, lky, 3, SUIT_DK);
+        px.DrawLine(14, 31, lkx, lky - 1, SUIT);            // highlight edge
+        // Knee pad
+        px.DrawDisc(lkx, lky, 2, SUIT_DD);
+        px.DrawDisc(lkx, lky, 1, METAL);
+        // Shin
+        px.DrawThickLine(lkx, lky, lkx - 1, 40 + bOff, 3, SUIT_DK);
+        px.DrawLine(lkx, lky, lkx - 1, 40 + bOff, SUIT);
         // Right leg
-        px.DrawThickLine(21, 32, 22 + legSpread, 39 - bootOff, 3, COL_PLAYER_BODY_DARK);
+        px.DrawThickLine(21, 32, rkx, rky, 3, SUIT_DK);
+        px.DrawLine(21, 31, rkx, rky - 1, SUIT);
+        px.DrawDisc(rkx, rky, 2, SUIT_DD);
+        px.DrawDisc(rkx, rky, 1, METAL);
+        px.DrawThickLine(rkx, rky, rkx + 1, 40 - bOff, 3, SUIT_DK);
+        px.DrawLine(rkx, rky, rkx + 1, 40 - bOff, SUIT);
 
-        // === Layer 5: Boots ===
-        px.DrawEllipse(12 - legSpread, 42 + bootOff, 5, 4, COL_PLAYER_BOOTS);
-        px.DrawEllipse(23 + legSpread, 42 - bootOff, 5, 4, COL_PLAYER_BOOTS);
-        // Boot soles
-        px.DrawLine(8 - legSpread, 45 + bootOff, 16 - legSpread, 45 + bootOff, 0x993311);
-        px.DrawLine(19 + legSpread, 45 - bootOff, 27 + legSpread, 45 - bootOff, 0x993311);
+        // === Boots (grey/white spacesuit boots, not orange) ===
+        var lbx = lkx - 1;
+        var lby = 43 + bOff;
+        var rbx = rkx + 1;
+        var rby = 43 - bOff;
+        px.DrawEllipse(lbx, lby, 5, 4, SUIT_DK);
+        px.DrawEllipse(lbx, lby - 1, 4, 2, SUIT);
+        px.DrawLine(lbx - 4, lby + 3, lbx + 4, lby + 3, 0x555566);
+        px.DrawEllipseFrame(lbx, lby, 5, 4, OL);
+        px.DrawEllipse(rbx, rby, 5, 4, SUIT_DK);
+        px.DrawEllipse(rbx, rby - 1, 4, 2, SUIT);
+        px.DrawLine(rbx - 4, rby + 3, rbx + 4, rby + 3, 0x555566);
+        px.DrawEllipseFrame(rbx, rby, 5, 4, OL);
 
-        // === Layer 6: Helmet ===
-        px.DrawDisc(18, 8, 9, COL_PLAYER_HELMET);
-        px.DrawEllipse(18, 14, 10, 4, COL_PLAYER_HELMET);
-        // Helmet highlight (top-left reflection)
-        px.DrawDisc(15, 5, 4, 0x3377DD);
-        // Helmet rim
-        px.DrawLine(9, 14, 27, 14, 0x1155AA);
+        // === Torso (armor panels, proper proportions) ===
+        px.DrawEllipse(17, 24, 9, 10, SUIT);
+        px.DrawEllipse(17, 22, 6, 5, SUIT_LT);              // upper chest highlight
+        px.DrawEllipse(17, 28, 7, 5, SUIT_DK);              // lower shadow
+        // Panel seam lines
+        px.DrawLine(10, 17, 10, 32, SUIT_DD);
+        px.DrawLine(24, 17, 24, 32, SUIT_DD);
+        // Chest blue mission patch
+        px.DrawEllipse(17, 22, 3, 2, BLUE);
+        px.DrawDisc(17, 22, 1, 0x5588FF);
+        // Belt / waist
+        px.DrawBox(9, 30, 16, 2, SUIT_DD);
+        px.DrawLine(9, 30, 25, 30, METAL);
+        px.DrawDisc(17, 31, 1, METAL);                       // buckle
+        // Oxygen line (tube from jetpack to suit)
+        px.DrawBezier(10, 18, 8, 20, 10, 22, SUIT_DD);
+        // Body outline
+        px.DrawEllipseFrame(17, 24, 9, 10, OL);
 
-        // === Layer 7: Visor (right side, prominent) ===
-        px.DrawEllipse(23, 7, 7, 4, COL_PLAYER_VISOR);
-        px.DrawEllipse(24, 6, 5, 3, 0x60F0E0);
-        px.DrawDisc(26, 5, 2, 0xAAFFFF);
+        // === Gun arm (articulated: shoulder → elbow → forearm → barrel) ===
+        if state != 7 {
+            px.DrawDisc(25, 19, 3, SUIT);                    // shoulder
+            px.DrawThickLine(25, 19, 29, 18, 2, SUIT);       // upper arm
+            px.DrawDisc(29, 18, 2, METAL);                   // elbow
+            px.DrawThickLine(29, 18, 34, 18, 2, SUIT_DK);   // forearm
+            px.DrawDisc(35, 18, 2, METAL);                   // gun muzzle
+            px.DrawDisc(35, 18, 1, 0x333344);                // bore
+            px.DrawLine(31, 16, 31, 20, SUIT_DD);            // cooling vent
+        }
 
-        // === Layer 8: Gun arm (in front of everything) ===
-        px.DrawDisc(25, 18, 3, COL_PLAYER_BODY);
-        px.DrawThickLine(25, 18, 30, 17, 2, COL_PLAYER_BODY);
-        px.DrawThickLine(30, 17, 35, 17, 2, 0x666666);
-        px.DrawDisc(35, 17, 1, 0x444444);
+        // === Helmet (proper proportions — 1/5 of height) ===
+        px.DrawDisc(18, 7, 8, SUIT);
+        px.DrawDisc(16, 5, 3, SUIT_LT);                     // highlight
+        px.DrawEllipse(18, 13, 8, 3, SUIT);                 // chin
+        px.DrawLine(10, 13, 26, 13, SUIT_DD);               // rim
+        px.DrawEllipseFrame(18, 7, 8, 8, OL);
+        // Vent slits
+        px.DrawLine(8, 6, 8, 9, SUIT_DD);
+        px.DrawLine(9, 6, 9, 9, SUIT_DD);
+        // Antenna
+        px.DrawLine(22, 0, 22, 3, METAL);
+        px.DrawDisc(22, 0, 1, 0xFF4444);
 
-        // === State-specific overlays ===
+        // === Visor (reflective, detailed) ===
+        px.DrawEllipse(21, 7, 6, 4, 0x112233);              // dark backing
+        px.DrawEllipse(21, 7, 5, 3, VISOR);                 // visor glass
+        px.DrawEllipse(22, 6, 3, 2, VIS_LT);                // inner glow
+        px.DrawDisc(24, 5, 1, 0xDDFFFF);                    // specular
+        px.DrawEllipseFrame(21, 7, 6, 4, OL);
+
+        // === State overlays ===
         if state == 0 {
-            // Idle: visor glow pulse between frames
             if frame == 1 {
-                px.DrawDisc(26, 5, 3, 0xBBFFFF);
+                px.DrawEllipse(21, 7, 4, 2, 0x33AACC);      // visor dim
             }
         }
-
         if state == 2 {
-            // Jump: jetpack flame
-            px.DrawTriangle(1, 36, 5, 36, 3, 44, 0xFF8822);
-            px.DrawTriangle(5, 36, 9, 36, 7, 44, 0xFF8822);
-            px.DrawTriangle(2, 37, 4, 37, 3, 42, 0xFFDD44);
-            px.DrawTriangle(6, 37, 8, 37, 7, 42, 0xFFDD44);
+            // Jump flames
+            px.DrawTriangle(1, 34, 5, 34, 3, 44, 0xFF6622);
+            px.DrawTriangle(5, 34, 9, 34, 7, 44, 0xFF6622);
+            px.DrawTriangle(2, 35, 4, 35, 3, 41, 0xFFDD44);
+            px.DrawTriangle(6, 35, 8, 35, 7, 41, 0xFFDD44);
         }
-
         if state == 4 {
-            // Double jump: spin trail across body
-            px.DrawEllipse(18, 18, 14, 2, COL_PLAYER_VISOR);
+            px.DrawEllipse(18, 20, 13, 2, VISOR);
         }
-
         if state == 6 {
-            // Hurt: red flash on helmet and body
-            px.DrawDisc(18, 8, 6, 0xFF4444);
-            px.DrawEllipse(17, 23, 6, 6, 0xFF4444);
+            px.DrawEllipse(21, 7, 5, 3, 0xFF4466);          // visor red flash
         }
-
         if state == 7 {
-            // Dead: X-eyes on visor
-            px.DrawLine(21, 4, 25, 8, 0xFF0000);
-            px.DrawLine(25, 4, 21, 8, 0xFF0000);
-            px.DrawLine(26, 4, 30, 8, 0xFF0000);
-            px.DrawLine(30, 4, 26, 8, 0xFF0000);
+            px.DrawEllipse(21, 7, 5, 3, 0x334455);          // visor dark
+            px.DrawLine(17, 5, 21, 9, 0xFF6666);
+            px.DrawLine(21, 5, 17, 9, 0xFF6666);
         }
 
         return px;
@@ -267,239 +337,344 @@ entity SpriteFactory {
     // =========================================================================
 
     hide func buildEnemySprites() {
-        // Slime (4 frames: normal, stretch up, squished, compress back)
-        slimeFrames.add(buildSlimeFrame(0));
-        slimeFrames.add(buildSlimeFrame(1));
-        slimeFrames.add(buildSlimeFrame(2));
-        slimeFrames.add(buildSlimeFrame(3));
+        // Slime: draw at 36x30, scale to SLIME_W x SLIME_H
+        for i in 0..4 {
+            slimeFrames.add(buildSlimeFrame(i).Scale(SLIME_W, SLIME_H));
+        }
 
-        // Bat (3 frames: wings up, mid, down)
-        batFrames.add(buildBatFrame(0));
-        batFrames.add(buildBatFrame(1));
-        batFrames.add(buildBatFrame(2));
+        // Bat: draw at 42x30, scale to BAT_W x BAT_H
+        for i in 0..3 {
+            batFrames.add(buildBatFrame(i).Scale(BAT_W, BAT_H));
+        }
 
-        // Turret parts
-        turretBase = buildTurretBase();
-        turretBarrel = buildTurretBarrel();
+        // Turret: draw at 42x42, scale to TURRET_W x TURRET_H
+        turretBase = buildTurretBase().Scale(TURRET_W, TURRET_H);
+        turretBarrel = buildTurretBarrel().Scale(30 * TURRET_W / ORIG_TURRET_W, 9 * TURRET_H / ORIG_TURRET_H);
 
-        // Boss (4 frames: 3 phases + attack wind-up)
-        bossFrames.add(buildBossFrame(0));
-        bossFrames.add(buildBossFrame(1));
-        bossFrames.add(buildBossFrame(2));
-        bossFrames.add(buildBossFrame(3)); // attack wind-up
+        // Boss: draw at 84x84, scale to BOSS_W x BOSS_H
+        for i in 0..4 {
+            bossFrames.add(buildBossFrame(i).Scale(BOSS_W, BOSS_H));
+        }
     }
 
     hide func buildSlimeFrame(frame: Integer) -> Pixels {
-        var px = Pixels.New(SLIME_W, SLIME_H);
-        // 4-frame cycle: 0=normal, 1=stretch up, 2=squished, 3=compress back
-        var squish = 0;
-        if frame == 1 { squish = -2; }  // stretch up (taller, narrower)
-        if frame == 2 { squish = 4; }   // squished (shorter, wider)
-        if frame == 3 { squish = 1; }   // partial compress
+        // REALISTIC ALIEN BLOB: translucent body with visible inner structure,
+        // menacing narrow eyes, dripping tendrils. Not cute — hostile.
+        var px = Pixels.New(ORIG_SLIME_W, ORIG_SLIME_H);
+        var OL = COL_OUTLINE;
 
-        var bodyY = 16 + squish;
-        var domeY = 11 + squish;
-        var domeR = 11 - squish;
-        var bodyRX = 14 + squish;
-        var bodyRY = 8 - squish;
+        var sq = 0;
+        if frame == 1 { sq = -3; }
+        if frame == 2 { sq = 4; }
+        if frame == 3 { sq = 1; }
 
-        // Body blob — overlapping ellipse + disc for dome shape
-        px.DrawEllipse(18, bodyY, bodyRX, bodyRY, COL_SLIME);
-        px.DrawDisc(18, domeY, domeR, COL_SLIME);
+        var cy = 16 + sq;
+        var rx = 14 + sq;
+        var ry = 8 - sq;
 
-        // Darker underside shadow
-        px.DrawEllipse(18, bodyY + 3, bodyRX - 2, 4, COL_SLIME_DARK);
+        // Ground shadow
+        px.DrawEllipse(18, 28, rx - 3, 2, 0x113311);
 
-        // Surface sheen highlight
-        px.DrawDisc(22, domeY - 3, 3, 0x88DD88);
+        // Body — outer membrane
+        px.DrawEllipse(18, cy, rx, ry, COL_SLIME);
+        px.DrawDisc(18, cy - 3, rx - 2, COL_SLIME);
+        // Inner structure (darker veins visible through translucent body)
+        px.DrawEllipse(18, cy + 1, rx - 3, ry - 2, COL_SLIME_DARK);
+        px.DrawBezier(10, cy - 2, 18, cy + 3, 26, cy - 1, 0x33AA33);
+        px.DrawBezier(12, cy + 2, 18, cy - 1, 24, cy + 3, 0x339933);
+        // Nucleus (dark core)
+        px.DrawDisc(18, cy, 3, 0x227722);
+        px.DrawDisc(18, cy, 1, 0x115511);
+        // Highlight (top-left reflective membrane)
+        px.DrawDisc(14, cy - 5, 3, 0x88EE66);
+        px.DrawDisc(13, cy - 6, 1, 0xBBFFAA);
 
-        // Eyes — round discs
-        var eyeY = domeY + 2;
-        px.DrawDisc(12, eyeY, 3, COL_SLIME_EYE);
-        px.DrawDisc(24, eyeY, 3, COL_SLIME_EYE);
-        // Pupils
-        px.DrawDisc(13, eyeY + 1, 2, COL_SLIME_PUPIL);
-        px.DrawDisc(25, eyeY + 1, 2, COL_SLIME_PUPIL);
+        // Eyes — narrow, menacing slits
+        var ey = cy - 2;
+        px.DrawEllipse(12, ey, 3, 1, 0xFFFF44);
+        px.DrawEllipse(24, ey, 3, 1, 0xFFFF44);
+        px.DrawEllipse(12, ey, 2, 1, 0xFFFFAA);
+        px.DrawEllipse(24, ey, 2, 1, 0xFFFFAA);
 
-        // Slime drips from bottom edge (visible in non-squished frames)
+        // Dripping tendrils
         if frame == 0 || frame == 1 {
-            px.DrawBezier(8, bodyY + bodyRY, 9, bodyY + bodyRY + 4, 10, bodyY + bodyRY + 2, COL_SLIME);
-            px.DrawBezier(26, bodyY + bodyRY, 27, bodyY + bodyRY + 3, 28, bodyY + bodyRY + 1, COL_SLIME);
+            px.DrawBezier(8, cy + ry, 7, cy + ry + 5, 9, cy + ry + 3, COL_SLIME);
+            px.DrawBezier(14, cy + ry, 13, cy + ry + 4, 15, cy + ry + 2, COL_SLIME_DARK);
+            px.DrawBezier(26, cy + ry, 27, cy + ry + 4, 25, cy + ry + 2, COL_SLIME);
         }
+
+        // Outline
+        px.DrawEllipseFrame(18, cy, rx, ry, OL);
 
         return px;
     }
 
     hide func buildBatFrame(frame: Integer) -> Pixels {
-        var px = Pixels.New(BAT_W, BAT_H);
+        // REALISTIC ALIEN FLYER: angular wings with membrane veins,
+        // compact armored body, compound red eyes, barbed tail. Hostile.
+        var px = Pixels.New(ORIG_BAT_W, ORIG_BAT_H);
+        var OL = COL_OUTLINE;
 
-        // Body — oval
-        px.DrawEllipse(21, 14, 7, 8, COL_BAT_BODY);
-        // Head — round
-        px.DrawDisc(21, 9, 6, COL_BAT_BODY);
-
-        // Ears — pointed triangles
-        px.DrawTriangle(14, 7, 17, 0, 19, 7, COL_BAT_BODY);
-        px.DrawTriangle(23, 7, 25, 0, 28, 7, COL_BAT_BODY);
-
-        // Wings — triangular membranes with bone structure
+        // Wings — angular membrane with bone struts and veins
         if frame == 0 {
-            // Wings up
+            // Wings UP
             px.DrawTriangle(14, 12, 0, 2, 8, 4, COL_BAT_WING);
             px.DrawTriangle(14, 12, 8, 4, 8, 12, COL_BAT_WING);
             px.DrawTriangle(28, 12, 42, 2, 34, 4, COL_BAT_WING);
             px.DrawTriangle(28, 12, 34, 4, 34, 12, COL_BAT_WING);
-            // Wing bones
-            px.DrawLine(14, 12, 2, 3, 0x553399);
+            px.DrawLine(14, 12, 1, 3, 0x553399);
             px.DrawLine(14, 12, 8, 6, 0x553399);
-            px.DrawLine(28, 12, 40, 3, 0x553399);
+            px.DrawLine(28, 12, 41, 3, 0x553399);
             px.DrawLine(28, 12, 34, 6, 0x553399);
+            // Membrane veins
+            px.DrawLine(5, 5, 10, 9, 0x442277);
+            px.DrawLine(37, 5, 32, 9, 0x442277);
         }
         if frame == 1 {
-            // Wings mid (horizontal spread)
-            px.DrawTriangle(14, 13, 0, 10, 0, 16, COL_BAT_WING);
-            px.DrawTriangle(14, 13, 0, 16, 10, 18, COL_BAT_WING);
-            px.DrawTriangle(28, 13, 42, 10, 42, 16, COL_BAT_WING);
-            px.DrawTriangle(28, 13, 42, 16, 32, 18, COL_BAT_WING);
-            // Wing bones
-            px.DrawLine(14, 13, 1, 12, 0x553399);
-            px.DrawLine(28, 13, 41, 12, 0x553399);
+            px.DrawTriangle(14, 13, 0, 10, 10, 17, COL_BAT_WING);
+            px.DrawTriangle(28, 13, 42, 10, 32, 17, COL_BAT_WING);
+            px.DrawLine(14, 13, 1, 11, 0x553399);
+            px.DrawLine(28, 13, 41, 11, 0x553399);
+            px.DrawLine(6, 13, 10, 16, 0x442277);
+            px.DrawLine(36, 13, 32, 16, 0x442277);
         }
         if frame == 2 {
-            // Wings down
-            px.DrawTriangle(14, 14, 0, 20, 6, 26, COL_BAT_WING);
-            px.DrawTriangle(14, 14, 6, 26, 10, 18, COL_BAT_WING);
-            px.DrawTriangle(28, 14, 42, 20, 36, 26, COL_BAT_WING);
-            px.DrawTriangle(28, 14, 36, 26, 32, 18, COL_BAT_WING);
-            // Wing bones
-            px.DrawLine(14, 14, 2, 22, 0x553399);
-            px.DrawLine(28, 14, 40, 22, 0x553399);
+            px.DrawTriangle(14, 14, 0, 20, 8, 25, COL_BAT_WING);
+            px.DrawTriangle(28, 14, 42, 20, 34, 25, COL_BAT_WING);
+            px.DrawLine(14, 14, 2, 21, 0x553399);
+            px.DrawLine(28, 14, 40, 21, 0x553399);
         }
 
-        // Eyes — glowing red discs
-        px.DrawDisc(18, 9, 2, COL_BAT_EYE);
-        px.DrawDisc(24, 9, 2, COL_BAT_EYE);
-        // Bright eye centers
-        px.DrawDisc(18, 9, 1, 0xFF6644);
-        px.DrawDisc(24, 9, 1, 0xFF6644);
+        // Body — compact armored oval
+        px.DrawEllipse(21, 14, 7, 9, COL_BAT_BODY);
+        px.DrawEllipse(21, 12, 5, 4, 0x9955BB);            // upper highlight
+        px.DrawEllipse(21, 17, 5, 4, 0x6622AA);            // lower shadow
+        // Armor plates
+        px.DrawLine(16, 10, 16, 20, 0x553399);
+        px.DrawLine(26, 10, 26, 20, 0x553399);
+        px.DrawEllipseFrame(21, 14, 7, 9, OL);
 
-        // Fangs
-        px.DrawLine(19, 14, 19, 17, 0xCCCCCC);
-        px.DrawLine(23, 14, 23, 17, 0xCCCCCC);
+        // Head — angular, insectoid
+        px.DrawDisc(21, 7, 6, COL_BAT_BODY);
+        px.DrawDisc(19, 5, 3, 0x9955BB);
+        px.DrawEllipseFrame(21, 7, 6, 6, OL);
+
+        // Compound eyes — multi-faceted red glow
+        px.DrawDisc(17, 7, 3, 0x881111);
+        px.DrawDisc(25, 7, 3, 0x881111);
+        px.DrawDisc(17, 7, 2, COL_BAT_EYE);
+        px.DrawDisc(25, 7, 2, COL_BAT_EYE);
+        px.DrawDisc(17, 6, 1, 0xFF8844);
+        px.DrawDisc(25, 6, 1, 0xFF8844);
+
+        // Mandibles
+        px.DrawLine(18, 12, 17, 15, 0x775599);
+        px.DrawLine(24, 12, 25, 15, 0x775599);
+
+        // Barbed tail
+        px.DrawBezier(21, 23, 20, 27, 23, 29, 0x6622AA);
+        px.DrawTriangle(22, 28, 24, 28, 23, 30, 0x553399);
 
         return px;
     }
 
     hide func buildTurretBase() -> Pixels {
-        var px = Pixels.New(TURRET_W, TURRET_H);
+        // MILITARY SENTRY: armored angular housing, sensor dome,
+        // warning light, panel detail. Industrial, not cute.
+        var px = Pixels.New(ORIG_TURRET_W, ORIG_TURRET_H);
+        var OL = COL_OUTLINE;
 
-        // Rounded base pedestal
-        px.DrawEllipse(21, 35, 18, 6, COL_TURRET_BASE);
-        // Main housing body
+        // Base pedestal
+        px.DrawEllipse(21, 37, 18, 5, 0x556677);
+        px.DrawEllipse(21, 36, 17, 5, COL_TURRET_BASE);
+        px.DrawEllipseFrame(21, 36, 17, 5, OL);
+
+        // Housing body (angular)
         px.DrawBox(6, 18, 30, 18, COL_TURRET_BASE);
-        px.DrawBox(9, 15, 24, 6, COL_TURRET_BASE);
+        px.DrawBox(9, 16, 24, 4, COL_TURRET_BASE);
+        // Shading
+        px.DrawLine(6, 18, 36, 18, 0x99AABB);               // top edge highlight
+        px.DrawLine(6, 36, 36, 36, 0x556677);                // bottom edge shadow
+        px.DrawLine(6, 18, 6, 36, 0x99AABB);                 // left highlight
+        px.DrawLine(36, 18, 36, 36, 0x556677);               // right shadow
+        // Panel seams
+        px.DrawLine(6, 24, 36, 24, 0x667788);
+        px.DrawLine(6, 30, 36, 30, 0x667788);
+        px.DrawLine(21, 18, 21, 36, 0x667788);
+        // Corner bolts
+        px.DrawDisc(9, 20, 1, 0xAABBCC);
+        px.DrawDisc(33, 20, 1, 0xAABBCC);
+        px.DrawDisc(9, 33, 1, 0xAABBCC);
+        px.DrawDisc(33, 33, 1, 0xAABBCC);
 
-        // Sensor dome on top
-        px.DrawDisc(21, 14, 9, 0x888888);
-        px.DrawDisc(21, 14, 7, 0x999999);
-        // Dome highlight
-        px.DrawDisc(18, 11, 3, 0xAAAAAA);
+        // Sensor dome
+        px.DrawDisc(21, 14, 9, 0x778899);
+        px.DrawDisc(21, 14, 7, 0x889AAA);
+        px.DrawDisc(18, 11, 3, 0xAABBCC);                   // specular
+        px.DrawEllipseFrame(21, 14, 9, 9, OL);
+        // Antenna
+        px.DrawLine(21, 4, 21, 8, 0x778899);
+        px.DrawDisc(21, 4, 1, 0xFF3333);
 
         // Warning light
-        px.DrawDisc(21, 30, 4, COL_TURRET_LIGHT);
-        px.DrawDisc(21, 30, 2, 0xFF4444);
-
-        // Panel lines
-        px.DrawLine(6, 24, 36, 24, 0x555555);
-        px.DrawLine(6, 28, 36, 28, 0x555555);
-        // Dark accent at bottom
-        px.DrawEllipse(21, 39, 16, 3, 0x555555);
+        px.DrawDisc(21, 28, 3, COL_TURRET_LIGHT);
+        px.DrawDisc(21, 28, 1, 0xFF6666);
+        // Status LEDs
+        px.DrawDisc(14, 32, 1, 0x44FF44);
+        px.DrawDisc(21, 32, 1, 0xFFFF44);
+        px.DrawDisc(28, 32, 1, 0xFF4444);
 
         return px;
     }
 
     hide func buildTurretBarrel() -> Pixels {
+        // Military barrel with cooling vents and muzzle detail.
         var px = Pixels.New(30, 9);
-        // Barrel body using thick line
+        var OL = COL_OUTLINE;
+
         px.DrawThickLine(0, 5, 22, 5, 4, COL_TURRET_BARREL);
-        // Muzzle tip (disc)
-        px.DrawDisc(26, 5, 4, 0x666666);
-        px.DrawDisc(26, 5, 2, 0x444444);
-        // Barrel highlight
-        px.DrawLine(2, 3, 20, 3, 0x777777);
+        px.DrawLine(2, 2, 20, 2, 0x778899);                 // top highlight
+        px.DrawLine(2, 7, 20, 7, 0x444455);                 // bottom shadow
+        // Cooling vents
+        px.DrawLine(8, 2, 8, 7, 0x556666);
+        px.DrawLine(12, 2, 12, 7, 0x556666);
+        px.DrawLine(16, 2, 16, 7, 0x556666);
+        // Muzzle
+        px.DrawDisc(26, 5, 4, 0x667788);
+        px.DrawDisc(26, 5, 2, 0x445566);
+        px.DrawDisc(26, 5, 1, 0x222233);
+
         return px;
     }
 
     hide func buildBossFrame(frame: Integer) -> Pixels {
-        var px = Pixels.New(BOSS_W, BOSS_H);
+        // CUTE CHUNKY boss: big round head, angry eye slit, oversized fists,
+        // bold red armor with thick outlines. Chunky but intimidating.
+        // Frame 0=phase 0, 1=phase 1, 2=phase 2, 3=attack wind-up.
+        var px = Pixels.New(ORIG_BOSS_W, ORIG_BOSS_H);
+        var OL = COL_OUTLINE;
 
-        // === Shoulder pauldrons (behind body) ===
-        px.DrawDisc(14, 28, 10, COL_BOSS_METAL);
-        px.DrawDisc(70, 28, 10, COL_BOSS_METAL);
-        // Pauldron highlights
-        px.DrawDisc(12, 25, 4, 0x555555);
-        px.DrawDisc(68, 25, 4, 0x555555);
+        // === Shoulder pauldrons ===
+        px.DrawDisc(14, 30, 10, COL_BOSS_METAL);
+        px.DrawDisc(13, 27, 4, 0x778899);
+        px.DrawEllipseFrame(14, 30, 10, 10, OL);
+        px.DrawDisc(70, 30, 10, COL_BOSS_METAL);
+        px.DrawDisc(69, 27, 4, 0x778899);
+        px.DrawEllipseFrame(70, 30, 10, 10, OL);
 
-        // === Main body armor ===
-        px.DrawEllipse(42, 40, 25, 20, COL_BOSS_ARMOR);
-        px.DrawEllipse(42, 40, 21, 16, COL_BOSS_DARK);
-        // Upper chest plate
-        px.DrawBox(24, 22, 36, 8, COL_BOSS_ARMOR);
-        // Armor outline
-        px.DrawEllipseFrame(42, 40, 25, 20, COL_BOSS_METAL);
+        // === Body armor (layered plates) ===
+        px.DrawEllipse(42, 44, 25, 20, COL_BOSS_ARMOR);
+        px.DrawEllipse(42, 42, 20, 14, 0xEE4444);
+        px.DrawEllipse(42, 48, 22, 12, COL_BOSS_DARK);
+        px.DrawBox(24, 24, 36, 8, COL_BOSS_ARMOR);
+        // Panel lines
+        px.DrawLine(20, 30, 20, 56, COL_BOSS_METAL);
+        px.DrawLine(64, 30, 64, 56, COL_BOSS_METAL);
+        px.DrawLine(22, 24, 62, 24, 0xCC5555);
+        px.DrawLine(22, 58, 62, 58, COL_BOSS_DARK);
+        px.DrawEllipseFrame(42, 44, 25, 20, OL);
 
-        // === Metal trim bands ===
-        px.DrawLine(22, 22, 62, 22, COL_BOSS_METAL);
-        px.DrawLine(22, 58, 62, 58, COL_BOSS_METAL);
+        // === Reactor core (phase-colored) ===
+        var coreCol = 0x3388CC;
+        var coreGlow = 0x55BBEE;
+        if frame == 1 { coreCol = 0xCC8833; coreGlow = 0xFFBB44; }
+        if frame == 2 { coreCol = 0xCC3333; coreGlow = 0xFF5555; }
+        if frame == 3 { coreCol = 0xFF4444; coreGlow = 0xFFAAAA; }
+        px.DrawDisc(42, 40, 7, 0x222233);
+        px.DrawDisc(42, 40, 6, coreCol);
+        px.DrawDisc(42, 40, 4, coreGlow);
+        px.DrawDisc(42, 40, 2, 0xFFFFFF);
+        px.DrawEllipseFrame(42, 40, 7, 7, OL);
 
         // === Head dome ===
-        px.DrawDisc(42, 16, 12, COL_BOSS_METAL);
-        px.DrawDisc(42, 16, 10, 0x555555);
-        // Head highlight
-        px.DrawDisc(38, 12, 4, 0x666666);
+        px.DrawDisc(42, 16, 13, COL_BOSS_METAL);
+        px.DrawDisc(42, 16, 11, 0x667788);
+        px.DrawDisc(38, 11, 5, 0x778899);
+        px.DrawEllipseFrame(42, 16, 13, 13, OL);
+        // Crest
+        px.DrawTriangle(42, 2, 36, 10, 48, 10, COL_BOSS_ARMOR);
+        px.DrawLine(42, 2, 36, 10, OL);
+        px.DrawLine(42, 2, 48, 10, OL);
+        // Eye slit
+        var eyeW = 8;
+        if frame == 1 { eyeW = 6; }
+        if frame == 2 { eyeW = 10; }
+        if frame == 3 { eyeW = 12; }
+        px.DrawEllipse(42, 16, eyeW, 3, COL_BOSS_EYE);
+        px.DrawEllipse(42, 16, eyeW - 2, 2, 0xFFAAAA);
+        if frame == 3 { px.DrawDisc(42, 16, 5, 0xFFCCCC); }
+        // Vent slits
+        px.DrawLine(30, 14, 32, 14, 0x334455);
+        px.DrawLine(30, 16, 32, 16, 0x334455);
+        px.DrawLine(52, 14, 54, 14, 0x334455);
+        px.DrawLine(52, 16, 54, 16, 0x334455);
 
-        // === Eye slit (width varies by frame/phase) ===
-        var eyeRX = 8;
-        if frame == 1 { eyeRX = 5; }
-        if frame == 2 { eyeRX = 10; }
-        if frame == 3 { eyeRX = 12; } // wind-up: eye wide open + brighter
-        px.DrawEllipse(42, 16, eyeRX, 3, COL_BOSS_EYE);
-        px.DrawEllipse(42, 16, eyeRX - 2, 2, 0xFFAAAA);
-        if frame == 3 {
-            // Extra bright glow during wind-up
-            px.DrawDisc(42, 16, 6, 0xFFCCCC);
-        }
-
-        // === Arms ===
+        // === Arms with fists ===
         if frame == 2 {
-            // Attack pose — arms thrust forward
-            px.DrawThickLine(14, 28, 8, 40, 4, COL_BOSS_METAL);
-            px.DrawThickLine(70, 28, 76, 40, 4, COL_BOSS_METAL);
-            px.DrawDisc(8, 44, 5, COL_BOSS_ARMOR);
-            px.DrawDisc(76, 44, 5, COL_BOSS_ARMOR);
+            px.DrawThickLine(14, 30, 6, 42, 5, COL_BOSS_METAL);
+            px.DrawDisc(12, 36, 3, 0x667788);
+            px.DrawDisc(4, 48, 6, COL_BOSS_ARMOR);
+            px.DrawDisc(4, 48, 3, COL_BOSS_DARK);
+            px.DrawEllipseFrame(4, 48, 6, 6, OL);
+            px.DrawThickLine(70, 30, 78, 42, 5, COL_BOSS_METAL);
+            px.DrawDisc(72, 36, 3, 0x667788);
+            px.DrawDisc(80, 48, 6, COL_BOSS_ARMOR);
+            px.DrawDisc(80, 48, 3, COL_BOSS_DARK);
+            px.DrawEllipseFrame(80, 48, 6, 6, OL);
         } else if frame == 3 {
-            // Wind-up: arms pulled back behind body
-            px.DrawThickLine(14, 28, 4, 22, 4, COL_BOSS_METAL);
-            px.DrawThickLine(70, 28, 80, 22, 4, COL_BOSS_METAL);
-            px.DrawDisc(4, 20, 5, COL_BOSS_ARMOR);
-            px.DrawDisc(80, 20, 5, COL_BOSS_ARMOR);
+            px.DrawThickLine(14, 30, 4, 22, 5, COL_BOSS_METAL);
+            px.DrawDisc(4, 20, 6, COL_BOSS_ARMOR);
+            px.DrawDisc(4, 20, 2, coreGlow);
+            px.DrawThickLine(70, 30, 80, 22, 5, COL_BOSS_METAL);
+            px.DrawDisc(80, 20, 6, COL_BOSS_ARMOR);
+            px.DrawDisc(80, 20, 2, coreGlow);
         } else {
-            // Normal pose — arms hanging
-            px.DrawThickLine(14, 28, 10, 46, 4, COL_BOSS_METAL);
-            px.DrawThickLine(70, 28, 74, 46, 4, COL_BOSS_METAL);
-            px.DrawDisc(10, 50, 5, COL_BOSS_ARMOR);
-            px.DrawDisc(74, 50, 5, COL_BOSS_ARMOR);
+            px.DrawThickLine(14, 30, 10, 48, 5, COL_BOSS_METAL);
+            px.DrawLine(14, 29, 10, 47, 0x667788);
+            px.DrawDisc(12, 38, 3, 0x667788);
+            px.DrawDisc(10, 52, 6, COL_BOSS_ARMOR);
+            px.DrawDisc(10, 52, 3, COL_BOSS_DARK);
+            px.DrawEllipseFrame(10, 52, 6, 6, OL);
+            px.DrawThickLine(70, 30, 74, 48, 5, COL_BOSS_METAL);
+            px.DrawLine(70, 29, 74, 47, 0x667788);
+            px.DrawDisc(72, 38, 3, 0x667788);
+            px.DrawDisc(74, 52, 6, COL_BOSS_ARMOR);
+            px.DrawDisc(74, 52, 3, COL_BOSS_DARK);
+            px.DrawEllipseFrame(74, 52, 6, 6, OL);
         }
 
-        // === Legs ===
-        px.DrawThickLine(33, 56, 28, 72, 4, COL_BOSS_METAL);
-        px.DrawThickLine(51, 56, 56, 72, 4, COL_BOSS_METAL);
-        // Knee joints
-        px.DrawDisc(30, 64, 3, 0x555555);
-        px.DrawDisc(54, 64, 3, 0x555555);
-        // Feet
-        px.DrawEllipse(28, 76, 6, 4, COL_BOSS_METAL);
-        px.DrawEllipse(56, 76, 6, 4, COL_BOSS_METAL);
+        // === Legs (hydraulic) ===
+        px.DrawThickLine(34, 58, 30, 68, 5, COL_BOSS_METAL);
+        px.DrawLine(34, 57, 30, 67, 0x667788);
+        px.DrawDisc(30, 68, 3, 0x667788);
+        px.DrawThickLine(30, 68, 28, 76, 4, COL_BOSS_METAL);
+        px.DrawLine(33, 60, 31, 74, 0x778899);
+        px.DrawEllipse(28, 78, 7, 4, COL_BOSS_METAL);
+        px.DrawEllipseFrame(28, 78, 7, 4, OL);
+
+        px.DrawThickLine(50, 58, 54, 68, 5, COL_BOSS_METAL);
+        px.DrawLine(50, 57, 54, 67, 0x667788);
+        px.DrawDisc(54, 68, 3, 0x667788);
+        px.DrawThickLine(54, 68, 56, 76, 4, COL_BOSS_METAL);
+        px.DrawLine(51, 60, 53, 74, 0x778899);
+        px.DrawEllipse(56, 78, 7, 4, COL_BOSS_METAL);
+        px.DrawEllipseFrame(56, 78, 7, 4, OL);
+
+        // === Phase damage ===
+        if frame == 1 {
+            px.DrawLine(30, 32, 38, 48, 0xFF8888);
+            px.DrawLine(48, 34, 54, 50, 0xFF8888);
+            px.DrawDisc(34, 40, 1, 0xFFDD44);
+        }
+        if frame == 2 {
+            px.DrawLine(28, 30, 38, 50, 0xFF6666);
+            px.DrawLine(46, 28, 56, 50, 0xFF6666);
+            px.DrawLine(34, 46, 50, 46, 0xFF6666);
+            px.DrawLine(30, 38, 34, 44, 0x4444FF);
+            px.DrawLine(50, 36, 54, 44, 0x4444FF);
+            px.DrawDisc(32, 42, 2, 0xFFFF44);
+            px.DrawDisc(52, 40, 2, 0xFFFF44);
+        }
 
         return px;
     }
@@ -508,32 +683,44 @@ entity SpriteFactory {
     // Tile Sprites (48x48 each)
     // =========================================================================
 
+    // Scale helper: draw tile at ORIG_TILE (48), scale to TILE_SIZE (64)
+    hide func scaleTile(src: Pixels) -> Pixels {
+        return src.Scale(TILE_SIZE, TILE_SIZE);
+    }
+
     hide func buildTileSprites() {
-        tileGrassTop = buildGrassTile();
-        tileDirt = buildDirtTile();
-        tileStone = buildStoneTile();
-        tileBrick = buildBrickTile();
-        tilePlatform = buildPlatformTile();
-        tileLava1 = buildLavaTile(0);
-        tileLava2 = buildLavaTile(1);
-        tileCrystal = buildCrystalTile();
-        tileCaveTop = buildCaveTopTile();
-        tileCaveWall = buildCaveWallTile();
-        tileBridge = buildBridgeTile();
-        tileSpike = buildSpikeTile();
-        tileCheckpoint = buildCheckpointTile();
-        // New level tiles
-        tileMagma = buildMagmaTile();
-        tileObsidian = buildObsidianTile();
-        tileCloud = buildCloudTile();
-        tileSkyBrick = buildSkyBrickTile();
-        tileRuinStone = buildRuinStoneTile();
-        tileVine = buildVineTile();
-        tileMossStone = buildMossStoneTile();
+        tileGrassTop = scaleTile(buildGrassTile());
+        tileDirt = scaleTile(buildDirtTile());
+        tileStone = scaleTile(buildStoneTile());
+        tileBrick = scaleTile(buildBrickTile());
+        tilePlatform = scaleTile(buildPlatformTile());
+        tileLava1 = scaleTile(buildLavaTile(0));
+        tileLava2 = scaleTile(buildLavaTile(1));
+        tileCrystal = scaleTile(buildCrystalTile());
+        tileCaveTop = scaleTile(buildCaveTopTile());
+        tileCaveWall = scaleTile(buildCaveWallTile());
+        tileBridge = scaleTile(buildBridgeTile());
+        tileSpike = scaleTile(buildSpikeTile());
+        tileCheckpoint = scaleTile(buildCheckpointTile());
+        tileMagma = scaleTile(buildMagmaTile());
+        tileObsidian = scaleTile(buildObsidianTile());
+        tileCloud = scaleTile(buildCloudTile());
+        tileSkyBrick = scaleTile(buildSkyBrickTile());
+        tileRuinStone = scaleTile(buildRuinStoneTile());
+        tileVine = scaleTile(buildVineTile());
+        tileMossStone = scaleTile(buildMossStoneTile());
+        // Xenoscape biome tiles
+        tileJungleGround = scaleTile(buildJungleGroundTile());
+        tileJunglePlatform = scaleTile(buildJunglePlatformTile());
+        tileThorn = scaleTile(buildThornTile());
+        tileMushroom = scaleTile(buildMushroomTile());
+        tileCaveCrystal = scaleTile(buildCaveCrystalTile());
+        tileMetalGrate = scaleTile(buildMetalGrateTile());
+        tileMagmaRock = scaleTile(buildMagmaRockTile());
     }
 
     hide func buildGrassTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // Dirt base
         px.DrawBox(0, 16, 48, 32, COL_DIRT);
         // Grass top area
@@ -568,7 +755,7 @@ entity SpriteFactory {
     }
 
     hide func buildDirtTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         px.DrawBox(0, 0, 48, 48, COL_DIRT);
         // Pebble texture using discs
         var i = 0;
@@ -585,7 +772,7 @@ entity SpriteFactory {
     }
 
     hide func buildStoneTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         px.DrawBox(0, 0, 48, 48, COL_STONE);
 
         // Mortar lines (thin)
@@ -617,7 +804,7 @@ entity SpriteFactory {
     }
 
     hide func buildBrickTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         px.DrawBox(0, 0, 48, 48, COL_BRICK);
 
         // Mortar lines (using DrawLine for cleaner look)
@@ -646,7 +833,7 @@ entity SpriteFactory {
     }
 
     hide func buildPlatformTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         px.DrawBox(0, 0, 48, 48, COL_PLATFORM);
         // Top edge (beveled)
         px.DrawBox(0, 0, 48, 5, 0x8B6830);
@@ -666,7 +853,7 @@ entity SpriteFactory {
     }
 
     hide func buildLavaTile(frame: Integer) -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         px.DrawBox(0, 0, 48, 48, COL_LAVA);
 
         // Bubbles (animated disc positions)
@@ -695,7 +882,7 @@ entity SpriteFactory {
     }
 
     hide func buildCrystalTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         px.DrawBox(0, 0, 48, 48, COL_CAVE_ROCK);
 
         // Blue crystal shard (tall triangle)
@@ -720,7 +907,7 @@ entity SpriteFactory {
     }
 
     hide func buildCaveTopTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         px.DrawBox(0, 0, 48, 48, COL_CAVE_ROCK);
         px.DrawBox(0, 30, 48, 18, COL_CAVE_ROCK_DARK);
 
@@ -737,7 +924,7 @@ entity SpriteFactory {
     }
 
     hide func buildCaveWallTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         px.DrawBox(0, 0, 48, 48, COL_CAVE_ROCK);
 
         // Rock face variations using ellipses
@@ -755,7 +942,7 @@ entity SpriteFactory {
     }
 
     hide func buildBridgeTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // Planks (top section)
         px.DrawBox(0, 0, 48, 12, COL_BRIDGE);
         px.DrawBox(0, 0, 48, 3, 0x5A4320);
@@ -776,7 +963,7 @@ entity SpriteFactory {
     }
 
     hide func buildSpikeTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // 4 proper triangular spikes
         var i = 0;
         while i < 4 {
@@ -794,7 +981,7 @@ entity SpriteFactory {
     }
 
     hide func buildCheckpointTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // Flag pole (thick line instead of fat rectangle)
         px.DrawThickLine(23, 2, 23, 47, 2, 0x888888);
         // Pole top knob
@@ -809,7 +996,7 @@ entity SpriteFactory {
     // --- New Level Tiles ---
 
     hide func buildMagmaTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         px.DrawBox(0, 0, 48, 48, COL_MAGMA);
         // Embedded ember spots
         px.DrawDisc(10, 12, 3, COL_MAGMA_GLOW);
@@ -825,7 +1012,7 @@ entity SpriteFactory {
     }
 
     hide func buildObsidianTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         px.DrawBox(0, 0, 48, 48, COL_OBSIDIAN);
         // Angular fracture lines
         px.DrawLine(8, 0, 20, 24, COL_OBSIDIAN_LIGHT);
@@ -838,7 +1025,7 @@ entity SpriteFactory {
     }
 
     hide func buildCloudTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // Cloud puff shape
         px.DrawEllipse(24, 24, 22, 18, COL_CLOUD_WHITE);
         px.DrawDisc(12, 20, 14, COL_CLOUD_WHITE);
@@ -850,7 +1037,7 @@ entity SpriteFactory {
     }
 
     hide func buildSkyBrickTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         px.DrawBox(0, 0, 48, 48, COL_SKY_STONE);
         // Mortar lines
         px.DrawLine(0, 23, 47, 23, COL_SKY_STONE_DARK);
@@ -866,7 +1053,7 @@ entity SpriteFactory {
     }
 
     hide func buildRuinStoneTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         px.DrawBox(0, 0, 48, 48, COL_RUIN);
         // Cracks and fissures
         px.DrawLine(10, 5, 22, 20, COL_RUIN_DARK);
@@ -882,7 +1069,7 @@ entity SpriteFactory {
     }
 
     hide func buildVineTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         // Vine curves
         px.DrawBezier(10, 0, 6, 16, 14, 32, COL_VINE_GREEN);
         px.DrawBezier(14, 32, 20, 40, 12, 47, COL_VINE_GREEN);
@@ -900,7 +1087,7 @@ entity SpriteFactory {
     }
 
     hide func buildMossStoneTile() -> Pixels {
-        var px = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
         px.DrawBox(0, 0, 48, 48, COL_RUIN);
         // Stone texture
         px.DrawEllipse(16, 16, 10, 8, COL_RUIN_DARK);
@@ -916,24 +1103,160 @@ entity SpriteFactory {
     }
 
     // =========================================================================
+    // Xenoscape Biome Tiles
+    // =========================================================================
+
+    hide func buildJungleGroundTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        // Rich alien soil
+        px.DrawBox(0, 8, 48, 40, COL_JUNGLE_GROUND);
+        // Moss top layer
+        px.DrawBox(0, 0, 48, 12, COL_JUNGLE_GROUND_TOP);
+        px.DrawEllipse(12, 8, 8, 3, COL_JUNGLE_MOSS);
+        px.DrawEllipse(36, 9, 6, 3, COL_JUNGLE_MOSS);
+        // Glowing root veins
+        px.DrawBezier(4, 20, 20, 24, 44, 18, COL_JUNGLE_ROOTS);
+        px.DrawBezier(8, 36, 28, 40, 42, 34, COL_JUNGLE_ROOTS);
+        // Soil texture
+        px.DrawDisc(14, 30, 2, COL_DIRT_DARK);
+        px.DrawDisc(34, 26, 1, COL_DIRT_DARK);
+        // Outline
+        px.DrawLine(0, 0, 47, 0, COL_OUTLINE);
+        return px;
+    }
+
+    hide func buildJunglePlatformTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        // Moss-covered stone
+        px.DrawBox(0, 4, 48, 40, COL_CAVERN_STONE);
+        px.DrawBox(0, 0, 48, 8, COL_JUNGLE_MOSS);
+        // Glowing sap vein across platform
+        px.DrawBezier(0, 24, 24, 20, 47, 26, COL_JUNGLE_SAP);
+        // Stone cracks
+        px.DrawLine(16, 12, 24, 28, COL_CAVERN_STONE_DK);
+        px.DrawLine(32, 16, 38, 32, COL_CAVERN_STONE_DK);
+        // Moss drip
+        px.DrawDisc(8, 44, 2, COL_JUNGLE_MOSS);
+        px.DrawDisc(40, 42, 1, COL_JUNGLE_MOSS);
+        // Outline
+        px.DrawLine(0, 0, 47, 0, COL_OUTLINE);
+        px.DrawLine(0, 44, 47, 44, COL_OUTLINE);
+        return px;
+    }
+
+    hide func buildThornTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        // Organic thorn clusters — alien, not metallic
+        var i = 0;
+        while i < 4 {
+            var bx = i * 12;
+            var tipY = 3 + (i % 2) * 4;
+            // Thorn body (organic green-brown)
+            px.DrawTriangle(bx + 1, 47, bx + 6, tipY, bx + 11, 47, COL_JUNGLE_THORN);
+            // Purple tip
+            px.DrawTriangle(bx + 4, tipY + 6, bx + 6, tipY, bx + 8, tipY + 6, COL_JUNGLE_THORN_TIP);
+            // Highlight edge
+            px.DrawLine(bx + 2, 44, bx + 6, tipY + 1, 0xAA7744);
+            i = i + 1;
+        }
+        return px;
+    }
+
+    hide func buildMushroomTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        // Bouncy alien mushroom platform
+        // Stem
+        px.DrawBox(18, 24, 12, 24, COL_MUSHROOM_STEM);
+        px.DrawLine(18, 24, 18, 47, COL_OUTLINE);
+        px.DrawLine(30, 24, 30, 47, COL_OUTLINE);
+        // Cap (big dome)
+        px.DrawEllipse(24, 18, 22, 14, COL_MUSHROOM_CAP);
+        px.DrawEllipse(24, 14, 16, 8, COL_MUSHROOM_GLOW);
+        px.DrawDisc(18, 12, 4, 0xFFAADD);                   // highlight
+        // Spots on cap
+        px.DrawDisc(14, 16, 3, 0xEE55AA);
+        px.DrawDisc(30, 14, 2, 0xEE55AA);
+        px.DrawDisc(22, 20, 2, 0xEE55AA);
+        // Outline
+        px.DrawEllipseFrame(24, 18, 22, 14, COL_OUTLINE);
+        return px;
+    }
+
+    hide func buildCaveCrystalTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        // Translucent crystal platform
+        px.DrawBox(0, 8, 48, 36, COL_CAVERN_STONE);
+        // Crystal surface (angular facets)
+        px.DrawTriangle(0, 8, 24, 0, 48, 8, COL_CRYSTAL_CYAN);
+        px.DrawTriangle(24, 0, 48, 8, 36, 4, 0x33BBDD);    // darker facet
+        // Inner refraction lines
+        px.DrawLine(12, 6, 20, 16, 0x88EEFF);
+        px.DrawLine(28, 4, 36, 14, 0x88EEFF);
+        // Glow underneath
+        px.DrawEllipse(24, 20, 16, 4, COL_CRYSTAL_GLOW);
+        // Stone base
+        px.DrawLine(0, 44, 47, 44, COL_OUTLINE);
+        return px;
+    }
+
+    hide func buildMetalGrateTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        // Industrial metal grating over lava
+        px.DrawBox(0, 0, 48, 48, COL_THERMAL_GRATE);
+        // Grid pattern
+        var i = 0;
+        while i < 48 {
+            px.DrawLine(i, 0, i, 47, 0x556677);
+            px.DrawLine(0, i, 47, i, 0x556677);
+            i = i + 8;
+        }
+        // Rust stains
+        px.DrawEllipse(12, 20, 4, 3, COL_THERMAL_RUST);
+        px.DrawEllipse(36, 36, 3, 2, COL_THERMAL_RUST);
+        // Highlight top edge
+        px.DrawLine(0, 0, 47, 0, 0x8899AA);
+        // Lava visible through grate (warm glow underneath)
+        px.DrawEllipse(24, 36, 12, 6, 0x442211);
+        return px;
+    }
+
+    hide func buildMagmaRockTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        // Dark rock with glowing magma vein cracks
+        px.DrawBox(0, 0, 48, 48, COL_THERMAL_ROCK);
+        // Magma veins (glowing cracks)
+        px.DrawBezier(4, 12, 20, 20, 44, 8, COL_THERMAL_CRACK);
+        px.DrawBezier(8, 36, 28, 42, 40, 32, COL_THERMAL_CRACK);
+        px.DrawLine(24, 0, 20, 24, COL_THERMAL_CRACK);
+        // Vein glow (wider, dimmer)
+        px.DrawBezier(4, 13, 20, 21, 44, 9, 0x882211);
+        // Rock texture
+        px.DrawEllipse(16, 24, 6, 4, 0x3A2A2A);
+        px.DrawEllipse(38, 16, 4, 3, 0x3A2A2A);
+        // Outline
+        px.DrawLine(0, 0, 47, 0, COL_OUTLINE);
+        return px;
+    }
+
+    // =========================================================================
     // Pickup Sprites
     // =========================================================================
 
     hide func buildPickupSprites() {
-        // Coins (4 frames for rotation effect)
-        coinFrames.add(buildCoinFrame(0));
-        coinFrames.add(buildCoinFrame(1));
-        coinFrames.add(buildCoinFrame(2));
-        coinFrames.add(buildCoinFrame(3));
+        // Coins: draw at ORIG_COIN_SIZE (24), scale to COIN_SIZE (36)
+        for i in 0..4 {
+            coinFrames.add(buildCoinFrame(i).Scale(COIN_SIZE, COIN_SIZE));
+        }
 
-        healthOrb = buildHealthOrb();
-        speedPickup = buildPowerupIcon(COL_SPEED);
-        shieldPickup = buildPowerupIcon(COL_SHIELD);
-        rapidPickup = buildPowerupIcon(COL_RAPIDFIRE);
+        // Power-ups: draw at ORIG_POWERUP_SIZE (30), scale to POWERUP_SIZE (42)
+        healthOrb = buildHealthOrb().Scale(POWERUP_SIZE, POWERUP_SIZE);
+        speedPickup = buildPowerupIcon(COL_SPEED).Scale(POWERUP_SIZE, POWERUP_SIZE);
+        shieldPickup = buildPowerupIcon(COL_SHIELD).Scale(POWERUP_SIZE, POWERUP_SIZE);
+        rapidPickup = buildPowerupIcon(COL_RAPIDFIRE).Scale(POWERUP_SIZE, POWERUP_SIZE);
     }
 
     hide func buildCoinFrame(frame: Integer) -> Pixels {
-        var px = Pixels.New(COIN_SIZE, COIN_SIZE);
+        var px = Pixels.New(ORIG_COIN_SIZE, ORIG_COIN_SIZE);
         // Coin rotation using ellipse with varying x-radius
         var rx = 9;
         if frame == 1 {
@@ -959,7 +1282,7 @@ entity SpriteFactory {
     }
 
     hide func buildHealthOrb() -> Pixels {
-        var px = Pixels.New(POWERUP_SIZE, POWERUP_SIZE);
+        var px = Pixels.New(ORIG_POWERUP_SIZE, ORIG_POWERUP_SIZE);
         // Outer glow
         px.DrawDisc(15, 15, 13, 0xCC2233);
         // Main orb
@@ -974,7 +1297,7 @@ entity SpriteFactory {
     }
 
     hide func buildPowerupIcon(col: Integer) -> Pixels {
-        var px = Pixels.New(POWERUP_SIZE, POWERUP_SIZE);
+        var px = Pixels.New(ORIG_POWERUP_SIZE, ORIG_POWERUP_SIZE);
         // Background disc
         px.DrawDisc(15, 15, 12, col);
         px.DrawDisc(15, 15, 9, 0xFFFFFF);
@@ -990,20 +1313,21 @@ entity SpriteFactory {
     // =========================================================================
 
     hide func buildBulletSprites() {
-        // Player bullet — elongated energy bolt
-        bulletRight = Pixels.New(BULLET_W, BULLET_H);
-        bulletRight.DrawEllipse(6, 3, 6, 3, COL_BULLET);
-        bulletRight.DrawEllipse(7, 3, 4, 2, COL_BULLET_GLOW);
-        bulletRight.DrawDisc(10, 3, 2, 0xAAEEFF);
-
+        // Player bullet — draw at 12x6 (old size), scale to BULLET_W x BULLET_H
+        var bSrc = Pixels.New(12, 6);
+        bSrc.DrawEllipse(6, 3, 6, 3, COL_BULLET);
+        bSrc.DrawEllipse(7, 3, 4, 2, COL_BULLET_GLOW);
+        bSrc.DrawDisc(10, 3, 2, 0xAAEEFF);
+        bulletRight = bSrc.Scale(BULLET_W, BULLET_H);
         bulletLeft = bulletRight.Clone();
         bulletLeft.FlipH();
 
-        // Enemy bullet — round with halo
-        enemyBullet = Pixels.New(9, 9);
-        enemyBullet.DrawDisc(5, 5, 5, COL_ENEMY_BULLET);
-        enemyBullet.DrawRing(5, 5, 4, 0xFF6666);
-        enemyBullet.DrawDisc(5, 5, 2, 0xFF8888);
+        // Enemy bullet — draw at 9x9, scale to 14x14
+        var eSrc = Pixels.New(9, 9);
+        eSrc.DrawDisc(5, 5, 5, COL_ENEMY_BULLET);
+        eSrc.DrawRing(5, 5, 4, 0xFF6666);
+        eSrc.DrawDisc(5, 5, 2, 0xFF8888);
+        enemyBullet = eSrc.Scale(14, 14);
     }
 
     // =========================================================================
@@ -1138,6 +1462,13 @@ entity SpriteFactory {
         if id == TILE_RUIN_STONE { return tileRuinStone; }
         if id == TILE_VINE { return tileVine; }
         if id == TILE_MOSS_STONE { return tileMossStone; }
+        if id == TILE_JUNGLE_GROUND { return tileJungleGround; }
+        if id == TILE_JUNGLE_PLATFORM { return tileJunglePlatform; }
+        if id == TILE_THORN { return tileThorn; }
+        if id == TILE_MUSHROOM { return tileMushroom; }
+        if id == TILE_CAVE_CRYSTAL { return tileCaveCrystal; }
+        if id == TILE_METAL_GRATE { return tileMetalGrate; }
+        if id == TILE_MAGMA_ROCK { return tileMagmaRock; }
         return tileDirt;
     }
 

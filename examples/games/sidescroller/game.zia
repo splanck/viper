@@ -152,7 +152,7 @@ entity Game {
     // =========================================================================
 
     expose func run() {
-        canvas = Canvas.New("Nova Run", SCREEN_W, SCREEN_H);
+        canvas = Canvas.New("XENOSCAPE: The Descent", SCREEN_W, SCREEN_H);
         canvas.SetFps(60);
         canvas.SetDTMax(DT_MAX);
 
@@ -260,8 +260,9 @@ entity Game {
             sfx.playShoot();
         }
 
-        // Update camera
+        // Update camera + background animation
         camera.follow(player.centerX(), player.centerY());
+        camera.updateBg(dt);
 
         // Update enemies (with particle trails for enemy bullets)
         enemies.updateAll(level, player.pixelX(), player.pixelY(), dt, particles);
@@ -377,11 +378,7 @@ entity Game {
     }
 
     hide func drawLevelIntro(levelNum: Integer) {
-        var levelName = "GRASSLANDS";
-        if levelNum == 2 { levelName = "CRYSTAL CAVE"; }
-        if levelNum == 3 { levelName = "VOLCANIC DEPTHS"; }
-        if levelNum == 4 { levelName = "SKY FORTRESS"; }
-        if levelNum == 5 { levelName = "ANCIENT RUINS"; }
+        var levelName = "THE DESCENT";
 
         // Fade: moderate opacity at start, fading out near end
         var alpha = introTimer * 150 / 1200;

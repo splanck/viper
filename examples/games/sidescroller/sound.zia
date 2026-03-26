@@ -1,8 +1,22 @@
-// sound.zia — Sound effect manager using SoundBank for centralized sound registry
-// Loads WAV files from the sounds/ directory via SoundBank.Register.
+// =============================================================================
+// Sound Manager — Centralized audio via SoundBank + Synth fallback
+// =============================================================================
+// Viper APIs demonstrated:
+//   - Viper.Sound.SoundBank: named sound registry with Play/PlayEx
+//   - Viper.Sound.Synth: procedural sound generation (zero external assets)
+//   - Viper.Sound.Audio: system init/shutdown, master volume
+//
+// Zia best practices:
+//   - Two-step construction: init() then setup(basePath)
+//   - Graceful degradation: if WAV files missing, falls back to Synth
+//   - hide/expose visibility: bank/ready hidden, play*() methods exposed
+//   - Guard pattern: every play method checks `ready` before SoundBank call
+// =============================================================================
+
 module sound;
 
 bind Viper.Sound;
+bind "./config";
 
 entity SoundManager {
     hide Boolean ready;
@@ -12,15 +26,19 @@ entity SoundManager {
         ready = false;
     }
 
+    // Initialize audio system and register all sounds.
+    // Attempts to load WAV files from basePath; if unavailable, generates
+    // procedural sounds via Synth as a zero-dependency fallback.
     expose func setup(basePath: String) {
         var ok = Audio.Init();
         if ok == 0 { return; }
 
         Audio.SetMasterVolume(80);
-
         bank = SoundBank.New();
 
-        // Register all sounds from WAV files via SoundBank
+        // Try WAV files first — they sound better but require assets.
+        // RegisterSound with Synth output serves as fallback when WAVs are
+        // missing (e.g., running from a clean checkout without the sounds/ dir).
         bank.Register("jump", basePath + "sounds/jump.wav");
         bank.Register("shoot", basePath + "sounds/shoot.wav");
         bank.Register("coin", basePath + "sounds/coin.wav");
@@ -34,15 +52,58 @@ entity SoundManager {
         bank.Register("death", basePath + "sounds/death.wav");
         bank.Register("stomp", basePath + "sounds/stomp.wav");
 
+        // Synth fallback: if a WAV wasn't found, SoundBank.Has() returns false.
+        // Register procedural replacements for any missing sounds.
+        if bank.Has("jump") == false {
+            bank.RegisterSound("jump", Synth.Sfx(SFX_JUMP));
+        }
+        if bank.Has("shoot") == false {
+            bank.RegisterSound("shoot", Synth.Sfx(SFX_LASER));
+        }
+        if bank.Has("coin") == false {
+            bank.RegisterSound("coin", Synth.Sfx(SFX_COIN));
+        }
+        if bank.Has("hurt") == false {
+            bank.RegisterSound("hurt", Synth.Sfx(SFX_HIT));
+        }
+        if bank.Has("enemy_death") == false {
+            bank.RegisterSound("enemy_death", Synth.Sfx(SFX_EXPLODE));
+        }
+        if bank.Has("powerup") == false {
+            bank.RegisterSound("powerup", Synth.Sfx(SFX_POWERUP));
+        }
+        if bank.Has("checkpoint") == false {
+            bank.RegisterSound("checkpoint", Synth.Sfx(SFX_POWERUP));
+        }
+        if bank.Has("level_complete") == false {
+            bank.RegisterSound("level_complete", Synth.Tone(880, 200, 1));
+        }
+        if bank.Has("menu_select") == false {
+            bank.RegisterSound("menu_select", Synth.Tone(660, 80, 1));
+        }
+        if bank.Has("menu_move") == false {
+            bank.RegisterSound("menu_move", Synth.Tone(440, 50, 1));
+        }
+        if bank.Has("death") == false {
+            bank.RegisterSound("death", Synth.Sfx(SFX_EXPLODE));
+        }
+        if bank.Has("stomp") == false {
+            bank.RegisterSound("stomp", Synth.Sfx(SFX_HIT));
+        }
+
         ready = true;
     }
 
+    // Shut down audio system cleanly.
     expose func shutdown() {
         if ready == false { return; }
         Audio.StopAllSounds();
         Audio.Shutdown();
         ready = false;
     }
+
+    // --- Play methods: one per sound, with volume/pan tuning ---
+    // Each method guards on `ready` to avoid crashes if audio init failed.
 
     expose func playJump() {
         if ready == false { return; }

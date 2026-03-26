@@ -6,7 +6,7 @@ module config;
 // =============================================================================
 final SCREEN_W = 1280;
 final SCREEN_H = 720;
-final TILE_SIZE = 48;
+final TILE_SIZE = 64;         // 48→64: ~1.33x larger tiles for more visible detail
 final FPS_MS = 16;
 final DT_BASE = 16;          // baseline ms per frame (60fps)
 final DT_MAX = 50;           // clamp max delta to avoid spiral
@@ -40,19 +40,19 @@ final HURT_TIMER_MS = 160;    // 10 frames * 16ms (enemy flash)
 final DEATH_TIMER_MS = 1440;  // 90 frames * 16ms
 
 // =============================================================================
-// Player
+// Player (scaled ~1.5x for visible detail at 1280x720)
 // =============================================================================
-final PLAYER_W = 30;          // collision width (pixels, not x100)
-final PLAYER_H = 44;          // collision height
+final PLAYER_W = 40;          // collision width (pixels, not x100)
+final PLAYER_H = 58;          // collision height
 final PLAYER_MAX_HP = 5;
 final PLAYER_START_LIVES = 3;
-final PLAYER_SPRITE_W = 36;
-final PLAYER_SPRITE_H = 48;
+final PLAYER_SPRITE_W = 56;
+final PLAYER_SPRITE_H = 72;
 
 // Shooting
 final BULLET_SPEED = 1200;    // x100
-final BULLET_W = 12;
-final BULLET_H = 6;
+final BULLET_W = 18;
+final BULLET_H = 9;
 final SHOOT_COOLDOWN = 12;    // frames between shots
 final SHOOT_COOLDOWN_MS = 192; // 12 frames * 16ms
 final MAX_BULLETS = 16;
@@ -88,7 +88,7 @@ final TILE_BRIDGE = 12;
 final TILE_SIGN_START = 13;
 final TILE_SIGN_END = 14;
 final TILE_CHECKPOINT = 15;
-// New tiles for Levels 3-5
+// Legacy tiles (kept for compatibility)
 final TILE_MAGMA = 16;
 final TILE_OBSIDIAN = 17;
 final TILE_CLOUD = 18;
@@ -96,6 +96,15 @@ final TILE_SKY_BRICK = 19;
 final TILE_RUIN_STONE = 20;
 final TILE_VINE = 21;
 final TILE_MOSS_STONE = 22;
+
+// Xenoscape biome-specific tiles
+final TILE_JUNGLE_GROUND = 23;    // rich soil with glowing roots
+final TILE_JUNGLE_PLATFORM = 24;  // moss-covered stone with sap veins
+final TILE_THORN = 25;            // organic spike (green/purple)
+final TILE_MUSHROOM = 26;         // bouncy mushroom platform
+final TILE_CAVE_CRYSTAL = 27;     // crystal floor platform
+final TILE_METAL_GRATE = 28;      // industrial grating over lava
+final TILE_MAGMA_ROCK = 29;       // dark rock with glowing cracks
 
 // =============================================================================
 // Enemy Types
@@ -106,28 +115,28 @@ final ENEMY_TURRET = 2;
 final ENEMY_BOSS = 3;
 final MAX_ENEMIES = 64;
 
-// Enemy stats
+// Enemy stats (scaled ~1.5x for visible detail)
 final SLIME_HP = 1;
 final SLIME_SPEED = 120;       // x100
-final SLIME_W = 36;
-final SLIME_H = 30;
+final SLIME_W = 48;
+final SLIME_H = 40;
 
 final BAT_HP = 2;
 final BAT_SPEED = 180;        // x100
-final BAT_W = 42;
-final BAT_H = 30;
-final BAT_DETECT_RANGE = 300; // pixels
+final BAT_W = 56;
+final BAT_H = 40;
+final BAT_DETECT_RANGE = 400; // pixels (scaled for larger tiles)
 
 final TURRET_HP = 3;
-final TURRET_W = 42;
-final TURRET_H = 42;
+final TURRET_W = 56;
+final TURRET_H = 56;
 final TURRET_FIRE_RATE = 90;  // frames between shots
 final TURRET_FIRE_RATE_MS = 1440; // 90 frames * 16ms
-final TURRET_RANGE = 450;     // pixels
+final TURRET_RANGE = 600;     // pixels (scaled)
 
 final BOSS_HP = 20;
-final BOSS_W = 84;
-final BOSS_H = 84;
+final BOSS_W = 112;
+final BOSS_H = 112;
 final BOSS_SPEED = 300;       // x100
 
 // =============================================================================
@@ -139,8 +148,8 @@ final PICKUP_SPEED = 2;
 final PICKUP_SHIELD = 3;
 final PICKUP_RAPIDFIRE = 4;
 final MAX_PICKUPS = 128;
-final COIN_SIZE = 24;
-final POWERUP_SIZE = 30;
+final COIN_SIZE = 36;         // scaled up for visibility
+final POWERUP_SIZE = 42;
 
 // Scoring
 final COIN_SCORE = 100;
@@ -208,15 +217,15 @@ final MENU_CONTROLS = 2;
 final MENU_QUIT = 3;
 
 // =============================================================================
-// Level Config
+// Level Config — Xenoscape single-level "Descent"
 // =============================================================================
-final LEVEL_COUNT = 5;
-final LEVEL1_WIDTH = 200;     // tiles wide
-final LEVEL2_WIDTH = 220;     // tiles wide
-final LEVEL3_WIDTH = 230;     // Volcanic Depths
-final LEVEL4_WIDTH = 200;     // Sky Fortress
-final LEVEL5_WIDTH = 250;     // Ancient Ruins (longest)
-final LEVEL_HEIGHT = 17;      // tiles tall (17 * 48 = 816 pixels)
+final LEVEL_COUNT = 1;
+final LEVEL1_WIDTH = 150;     // single level: jungle(0-49) + cave(50-99) + thermal(100-149)
+final LEVEL2_WIDTH = 150;     // unused (kept for compatibility)
+final LEVEL3_WIDTH = 150;
+final LEVEL4_WIDTH = 150;
+final LEVEL5_WIDTH = 150;
+final LEVEL_HEIGHT = 17;      // tiles tall (17 * 64 = 1088 pixels)
 final GROUND_ROW = 15;        // default ground tile row
 final FLOOR_ROW = 16;         // bottom row (below ground)
 
@@ -246,117 +255,218 @@ final KEY_ESCAPE = 256;
 final KEY_F3 = 292;
 
 // =============================================================================
-// Colors (0x00RRGGBB for Canvas)
+// Colors — CUTE CHUNKY palette (bright, saturated, bold)
+// Art direction: Celeste/Shovel Knight — cheerful, high contrast, vivid.
 // =============================================================================
 
-// Sky / backgrounds (night theme)
-final COL_SKY_TOP = 0x0A0A2E;
-final COL_SKY_BOT = 0x1A1A4A;
-final COL_CAVE_BG = 0x1A1A3A;
-final COL_CAVE_MID = 0x2A2A4E;
+// Outline color — used on EVERYTHING (sprites + tiles)
+final COL_OUTLINE = 0x222233;
 
-// Ground / tiles
-final COL_GRASS = 0x4CAF50;
-final COL_GRASS_DARK = 0x388E3C;
-final COL_DIRT = 0x8B6914;
-final COL_DIRT_DARK = 0x6B4F12;
-final COL_STONE = 0x808080;
-final COL_STONE_DARK = 0x606060;
-final COL_STONE_LIGHT = 0xA0A0A0;
-final COL_BRICK = 0xB05030;
-final COL_BRICK_DARK = 0x8B3A20;
-final COL_PLATFORM = 0x9E7744;
-final COL_PLATFORM_DARK = 0x7A5B30;
-final COL_CAVE_ROCK = 0x5A5A7E;
-final COL_CAVE_ROCK_DARK = 0x44446A;
-final COL_CRYSTAL_BLUE = 0x60D0FF;
-final COL_CRYSTAL_PINK = 0xFF80D0;
-final COL_LAVA = 0xFF4400;
-final COL_LAVA_BRIGHT = 0xFF8800;
-final COL_BRIDGE = 0x7A5B30;
+// Sky / backgrounds (BRIGHT, not dark)
+final COL_SKY_TOP = 0x4488FF;        // vivid blue
+final COL_SKY_BOT = 0x88CCFF;        // light blue
+final COL_CAVE_BG = 0x332255;        // purple-blue (not black!)
+final COL_CAVE_MID = 0x443366;
 
-// Player
-final COL_PLAYER_HELMET = 0x2266CC;
-final COL_PLAYER_VISOR = 0x40E0D0;
-final COL_PLAYER_BODY = 0x888888;
-final COL_PLAYER_BODY_DARK = 0x666666;
-final COL_PLAYER_BOOTS = 0xDD6622;
-final COL_PLAYER_JETPACK = 0x555555;
+// Ground / tiles (bold, warm)
+final COL_GRASS = 0x55DD33;           // vivid green
+final COL_GRASS_DARK = 0x33AA22;
+final COL_DIRT = 0xCC8833;            // warm orange-brown
+final COL_DIRT_DARK = 0xAA6622;
+final COL_STONE = 0x8899BB;           // blue-grey
+final COL_STONE_DARK = 0x667799;
+final COL_STONE_LIGHT = 0xAABBDD;
+final COL_BRICK = 0xDD6644;           // bright brick red
+final COL_BRICK_DARK = 0xBB4422;
+final COL_PLATFORM = 0xCC9944;        // warm wood
+final COL_PLATFORM_DARK = 0xAA7722;
+final COL_CAVE_ROCK = 0x6655AA;       // purple cave stone
+final COL_CAVE_ROCK_DARK = 0x443388;
+final COL_CRYSTAL_BLUE = 0x44DDFF;    // bright cyan crystal
+final COL_CRYSTAL_PINK = 0xFF66CC;    // bright pink crystal
+final COL_LAVA = 0xFF8822;            // bright orange lava (cheerful danger)
+final COL_LAVA_BRIGHT = 0xFFCC44;     // bright yellow lava highlight
+final COL_BRIDGE = 0xBB8844;
 
-// Enemies
-final COL_SLIME = 0x44BB44;
-final COL_SLIME_DARK = 0x228822;
+// Player — cute orange tabby cat
+final COL_PLAYER_HELMET = 0xFF9944;   // main fur (reused as helmet for compatibility)
+final COL_PLAYER_VISOR = 0x44FFDD;    // energy color (paw shots, boost ring)
+final COL_PLAYER_BODY = 0xFFBB66;     // light fur
+final COL_PLAYER_BODY_DARK = 0xDD7722; // dark fur / shadow
+final COL_PLAYER_BOOTS = 0xFF9944;    // paw color
+final COL_PLAYER_JETPACK = 0x6666AA;  // backpack color
+
+// Enemies — cute, bright
+final COL_SLIME = 0x66FF44;           // bright lime green
+final COL_SLIME_DARK = 0x44CC22;
 final COL_SLIME_EYE = 0xFFFFFF;
-final COL_SLIME_PUPIL = 0x111111;
-final COL_BAT_BODY = 0x8844AA;
-final COL_BAT_WING = 0x6633AA;
-final COL_BAT_EYE = 0xFF2222;
-final COL_TURRET_BASE = 0x777777;
-final COL_TURRET_BARREL = 0x555555;
-final COL_TURRET_LIGHT = 0xFF0000;
-final COL_BOSS_ARMOR = 0xAA2222;
-final COL_BOSS_DARK = 0x661111;
-final COL_BOSS_EYE = 0xFF4444;
-final COL_BOSS_METAL = 0x444444;
+final COL_SLIME_PUPIL = 0x222233;
+final COL_BAT_BODY = 0xBB66EE;        // bright purple
+final COL_BAT_WING = 0x9944DD;
+final COL_BAT_EYE = 0xFF4444;
+final COL_TURRET_BASE = 0x8899AA;     // blue-grey metal
+final COL_TURRET_BARREL = 0x667788;
+final COL_TURRET_LIGHT = 0xFF3333;
+final COL_BOSS_ARMOR = 0xDD3333;      // bold red
+final COL_BOSS_DARK = 0xAA1111;
+final COL_BOSS_EYE = 0xFF6644;
+final COL_BOSS_METAL = 0x556677;
 
-// Pickups
-final COL_COIN_GOLD = 0xFFD700;
-final COL_COIN_DARK = 0xDAA520;
-final COL_HEALTH = 0xFF3344;
-final COL_SPEED = 0x3399FF;
-final COL_SHIELD = 0xFFDD00;
-final COL_RAPIDFIRE = 0xFF8800;
+// Pickups — vivid and eye-catching
+final COL_COIN_GOLD = 0xFFDD22;       // bright gold
+final COL_COIN_DARK = 0xDDAA11;
+final COL_HEALTH = 0xFF4466;          // bright pink-red
+final COL_SPEED = 0x44AAFF;           // bright blue
+final COL_SHIELD = 0xFFEE33;          // bright yellow
+final COL_RAPIDFIRE = 0xFF8833;       // bright orange
 
 // HUD / UI
 final COL_WHITE = 0xFFFFFF;
 final COL_BLACK = 0x000000;
-final COL_HUD_BG = 0x222222;
-final COL_HUD_RED = 0xEE3333;
-final COL_HUD_GREEN = 0x33EE33;
-final COL_HUD_BLUE = 0x3388EE;
-final COL_HUD_GRAY = 0x888888;
-final COL_MENU_BG = 0x111122;
-final COL_MENU_HIGHLIGHT = 0x4466CC;
-final COL_MENU_TEXT = 0xDDDDDD;
+final COL_HUD_BG = 0x222244;
+final COL_HUD_RED = 0xFF4444;
+final COL_HUD_GREEN = 0x44FF44;
+final COL_HUD_BLUE = 0x4488FF;
+final COL_HUD_GRAY = 0x8888AA;
+final COL_MENU_BG = 0x222244;
+final COL_MENU_HIGHLIGHT = 0x5577EE;
+final COL_MENU_TEXT = 0xEEEEFF;
 final COL_TITLE_ORANGE = 0xFF8844;
 final COL_TITLE_YELLOW = 0xFFDD44;
-final COL_SHADOW = 0x333333;
+final COL_SHADOW = 0x333344;
 
-// Particles
-final COL_DUST = 0xC8B898;
+// Particles — bright
+final COL_DUST = 0xDDCC99;
 final COL_SPARK_YELLOW = 0xFFEE44;
 final COL_SPARK_WHITE = 0xFFFFEE;
-final COL_DEATH_RED = 0xFF4444;
+final COL_DEATH_RED = 0xFF4466;
 
-// Bullet
-final COL_BULLET = 0x44DDFF;
-final COL_BULLET_GLOW = 0x88EEFF;
-final COL_ENEMY_BULLET = 0xFF4444;
+// Bullet — bright cyan
+final COL_BULLET = 0x44EEFF;
+final COL_BULLET_GLOW = 0x88FFFF;
+final COL_ENEMY_BULLET = 0xFF5544;
 
 // Misc
-final COL_CHECKPOINT = 0x44FF44;
-final COL_SIGN = 0xBB9955;
+final COL_CHECKPOINT = 0x44FF66;
+final COL_SIGN = 0xDDAA55;
 
-// Volcano theme
-final COL_MAGMA = 0x442222;
-final COL_MAGMA_DARK = 0x331111;
-final COL_MAGMA_GLOW = 0xFF4400;
-final COL_OBSIDIAN = 0x1A1A22;
-final COL_OBSIDIAN_LIGHT = 0x333344;
+// Volcano theme (warm, not grim)
+final COL_MAGMA = 0x663322;
+final COL_MAGMA_DARK = 0x442211;
+final COL_MAGMA_GLOW = 0xFF6622;
+final COL_OBSIDIAN = 0x2A2233;
+final COL_OBSIDIAN_LIGHT = 0x443355;
 
-// Sky theme
-final COL_SKY_BRIGHT = 0x88CCFF;
-final COL_SKY_PALE = 0xCCEEFF;
-final COL_CLOUD_WHITE = 0xEEEEFF;
-final COL_SKY_STONE = 0x99AABB;
-final COL_SKY_STONE_DARK = 0x778899;
+// Sky theme (bright, cheerful)
+final COL_SKY_BRIGHT = 0x66CCFF;
+final COL_SKY_PALE = 0xBBEEFF;
+final COL_CLOUD_WHITE = 0xFFFFFF;
+final COL_SKY_STONE = 0xAABBDD;
+final COL_SKY_STONE_DARK = 0x8899BB;
 
-// Ruins theme
-final COL_RUIN = 0x777766;
-final COL_RUIN_DARK = 0x555544;
-final COL_RUIN_MOSS = 0x446633;
-final COL_VINE_GREEN = 0x338833;
-final COL_VINE_DARK = 0x226622;
+// Ruins theme (warm purple/green, overgrown)
+final COL_RUIN = 0x887766;
+final COL_RUIN_DARK = 0x665544;
+final COL_RUIN_MOSS = 0x55AA33;       // brighter moss
+final COL_VINE_GREEN = 0x44BB44;      // vivid vines
+final COL_VINE_DARK = 0x338833;
+
+// =============================================================================
+// Xenoscape Biome Colors
+// =============================================================================
+
+// Jungle biome — lush alien teal/green
+final COL_JUNGLE_SKY_TOP = 0x115544;
+final COL_JUNGLE_SKY_BOT = 0x228866;
+final COL_JUNGLE_GROUND = 0x664422;      // rich brown soil
+final COL_JUNGLE_GROUND_TOP = 0x44AA55;  // alien moss top
+final COL_JUNGLE_ROOTS = 0x44DDAA;       // glowing root veins (cyan)
+final COL_JUNGLE_MOSS = 0x33BB44;
+final COL_JUNGLE_SAP = 0x44FFCC;         // bioluminescent sap
+final COL_JUNGLE_THORN = 0x885533;
+final COL_JUNGLE_THORN_TIP = 0xAA4488;   // purple thorn tips
+final COL_MUSHROOM_CAP = 0xDD66AA;       // bouncy mushroom
+final COL_MUSHROOM_STEM = 0xCCBB99;
+final COL_MUSHROOM_GLOW = 0xFF88CC;
+final COL_SPORE = 0x88FFAA;              // floating spore particles
+
+// Cave biome — bioluminescent purple-blue
+final COL_CAVERN_TOP = 0x0A0A1A;
+final COL_CAVERN_BOT = 0x221144;
+final COL_CAVERN_STONE = 0x554466;
+final COL_CAVERN_STONE_DK = 0x332244;
+final COL_CRYSTAL_CYAN = 0x44EEFF;
+final COL_CRYSTAL_MAGENTA = 0xFF44CC;
+final COL_CRYSTAL_PURPLE = 0xAA44FF;
+final COL_CRYSTAL_GLOW = 0x6688FF;       // ambient crystal light pools
+final COL_DRIP = 0x4488CC;               // cave water drip
+
+// Thermal biome — volcanic orange-red
+final COL_THERMAL_TOP = 0x1A0A0A;
+final COL_THERMAL_BOT = 0x442211;
+final COL_THERMAL_LAVA = 0xFF6622;
+final COL_THERMAL_LAVA_BRIGHT = 0xFFAA33;
+final COL_THERMAL_ROCK = 0x332222;
+final COL_THERMAL_GRATE = 0x667788;
+final COL_THERMAL_RUST = 0x885544;
+final COL_THERMAL_CRACK = 0xFF4411;       // glowing magma cracks
+final COL_THERMAL_STEAM = 0xDDDDEE;
+final COL_REACTOR_GLOW = 0x44AAFF;       // crashed reactor in background
+
+// Biome boundaries (tile columns for background switching)
+final BIOME_JUNGLE_END = 50;
+final BIOME_CAVE_END = 100;
+
+// =============================================================================
+// Tween Easing Types (from rt_tween.h)
+// Used by: menu.zia (transitions), hud.zia (boss bar), pickups.zia (bob)
+// =============================================================================
+final EASE_LINEAR = 0;
+final EASE_IN_QUAD = 1;
+final EASE_OUT_QUAD = 2;
+final EASE_IN_OUT_QUAD = 3;
+final EASE_OUT_BACK = 14;
+final EASE_OUT_ELASTIC = 16;
+final EASE_OUT_BOUNCE = 18;
+
+// =============================================================================
+// Synth SFX Preset IDs (from rt_synth.h)
+// Used by: sound.zia (fallback when WAV files unavailable)
+// =============================================================================
+final SFX_JUMP = 0;
+final SFX_COIN = 1;
+final SFX_HIT = 2;
+final SFX_EXPLODE = 3;
+final SFX_POWERUP = 4;
+final SFX_LASER = 5;
+
+// =============================================================================
+// Screen Transition Timing (milliseconds)
+// Used by: game.zia, menu.zia (ScreenFX transitions)
+// =============================================================================
+final TRANS_FADE_MS = 300;
+final TRANS_CIRCLE_MS = 500;
+final TRANS_PIXELATE_MS = 400;
+final TRANS_DISSOLVE_MS = 800;
+
+// Level intro display timing
+final LEVEL_INTRO_MS = 2000;
+final LEVEL_INTRO_FADE_MS = 500;
+
+// =============================================================================
+// UI Widget Colors
+// Used by: hud.zia (UI.Bar, UI.Panel, UI.Label)
+// =============================================================================
+final COL_HP_BAR_FULL = 0x33EE33;
+final COL_HP_BAR_WARN = 0xEECC33;
+final COL_HP_BAR_LOW = 0xEE3333;
+final COL_HP_BAR_EMPTY = 0x331111;
+final COL_BOSS_BAR_FILL = 0xCC2222;
+final COL_BOSS_BAR_EMPTY = 0x441111;
+final COL_PANEL_BG = 0x111122;
+final COL_PANEL_BORDER = 0x334466;
+final COL_UI_TEXT = 0xDDDDDD;
+final COL_UI_DIM = 0x666688;
 
 // =============================================================================
 // Action Names (for Viper.Input.Action)

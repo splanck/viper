@@ -99,6 +99,7 @@ entity EnemyManager {
         eactive = [];
         bossIndex = -1;
         bossPhase = 0;
+        bossMaxHp = BOSS_HP;
         ebCount = 0;
         ebx = [];
         eby = [];

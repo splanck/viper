@@ -65,17 +65,8 @@ entity Level {
         hasCheckpoint = false;
         hasBoss = false;
 
-        if num == 1 {
-            buildGrasslands();
-        } else if num == 2 {
-            buildCrystalCave();
-        } else if num == 3 {
-            buildVolcanicDepths();
-        } else if num == 4 {
-            buildSkyFortress();
-        } else {
-            buildAncientRuins();
-        }
+        // Xenoscape: single level "Descent" for all level numbers
+        buildDescent();
     }
 
     expose func isSolid(col: Integer, row: Integer) -> Boolean {
@@ -99,6 +90,12 @@ entity Level {
         if t == TILE_SKY_BRICK { return true; }
         if t == TILE_RUIN_STONE { return true; }
         if t == TILE_MOSS_STONE { return true; }
+        if t == TILE_JUNGLE_GROUND { return true; }
+        if t == TILE_JUNGLE_PLATFORM { return true; }
+        if t == TILE_MUSHROOM { return true; }
+        if t == TILE_CAVE_CRYSTAL { return true; }
+        if t == TILE_METAL_GRATE { return true; }
+        if t == TILE_MAGMA_ROCK { return true; }
         return false;
     }
 
@@ -110,6 +107,7 @@ entity Level {
         var t = tileGrid.Get(col, row);
         if t == TILE_SPIKE { return true; }
         if t == TILE_LAVA { return true; }
+        if t == TILE_THORN { return true; }
         return false;
     }
 
@@ -153,9 +151,214 @@ entity Level {
         }
     }
 
+    // Helper: fill a row with a specific tile type
+    hide func fillRowTile(row: Integer, startCol: Integer, endCol: Integer, tile: Integer) {
+        var c = startCol;
+        while c <= endCol {
+            tileGrid.Set(c, row, tile);
+            c = c + 1;
+        }
+    }
+
+    // Helper: place a platform of a specific tile type
+    hide func addPlatformTile(col: Integer, row: Integer, width: Integer, tile: Integer) {
+        var c = col;
+        while c < col + width {
+            tileGrid.Set(c, row, tile);
+            c = c + 1;
+        }
+    }
+
     // =========================================================================
-    // Level 1: Grasslands
+    // XENOSCAPE LEVEL: "Descent"
+    // Single 150-tile level: Jungle(0-49) → Caves(50-99) → Thermal(100-149)
     // =========================================================================
+
+    hide func buildDescent() {
+        levelWidth = 150;
+        levelHeight = LEVEL_HEIGHT;
+        levelTheme = THEME_GRASSLANDS;     // background switches dynamically by column
+
+        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+
+        // Player starts in the jungle canopy
+        playerStartX = 3 * TILE_SIZE;
+        playerStartY = (GROUND_ROW - 2) * TILE_SIZE;
+
+        // ==== BIOME 1: ALIEN JUNGLE (cols 0-49) ====
+
+        // Ground: jungle soil across the full jungle section
+        fillRowTile(GROUND_ROW, 0, 49, TILE_JUNGLE_GROUND);
+        fillRowTile(FLOOR_ROW, 0, 49, TILE_DIRT);
+
+        // --- Jungle Section 1: Landing zone (cols 0-12) ---
+        // Gentle intro, scattered coins
+        addPlatformTile(6, 12, 4, TILE_JUNGLE_PLATFORM);
+        addPlatformTile(11, 10, 3, TILE_JUNGLE_PLATFORM);
+        addPickup(PICKUP_COIN, 7, 11);
+        addPickup(PICKUP_COIN, 8, 11);
+        addPickup(PICKUP_COIN, 12, 9);
+        addPickup(PICKUP_COIN, 5, 14);
+        addPickup(PICKUP_COIN, 9, 14);
+
+        // --- Jungle Section 2: Canopy climb (cols 13-25) ---
+        addPlatformTile(14, 12, 3, TILE_JUNGLE_PLATFORM);
+        addPlatformTile(18, 10, 4, TILE_JUNGLE_PLATFORM);
+        addPlatformTile(23, 8, 3, TILE_JUNGLE_PLATFORM);
+        addPlatformTile(16, 14, 2, TILE_MUSHROOM);            // bouncy!
+        // Vine bridge (narrow platform)
+        addPlatformTile(20, 13, 5, TILE_BRIDGE);
+        // First enemy
+        addEnemy(ENEMY_SLIME, 22, 14);
+        addPickup(PICKUP_COIN, 19, 9);
+        addPickup(PICKUP_COIN, 20, 9);
+        addPickup(PICKUP_COIN, 24, 7);
+        addPickup(PICKUP_HEALTH, 24, 12);
+
+        // --- Jungle Section 3: Gap crossing (cols 26-38) ---
+        // Gap in the ground
+        clearGround(28, 31);
+        // Thorns in the gap
+        fillRowTile(FLOOR_ROW, 28, 31, TILE_THORN);
+        // Platforms over the gap
+        addPlatformTile(28, 12, 2, TILE_JUNGLE_PLATFORM);
+        addPlatformTile(31, 10, 2, TILE_JUNGLE_PLATFORM);
+        addPlatformTile(27, 14, 1, TILE_MUSHROOM);
+        // Bat patrolling the canopy
+        addEnemy(ENEMY_BAT, 30, 8);
+        addEnemy(ENEMY_SLIME, 35, 14);
+        addPickup(PICKUP_COIN, 29, 11);
+        addPickup(PICKUP_COIN, 32, 9);
+        addPickup(PICKUP_SPEED, 34, 14);
+
+        // --- Jungle Section 4: Descent entry (cols 39-49) ---
+        // Ground slopes down (step platforms at lower rows)
+        addPlatformTile(40, 13, 3, TILE_JUNGLE_GROUND);
+        addPlatformTile(43, 12, 3, TILE_JUNGLE_GROUND);
+        fillArea(44, 13, 49, FLOOR_ROW, TILE_DIRT);
+        // Checkpoint before cave entrance
+        tileGrid.Set(46, 11, TILE_CHECKPOINT);
+        checkpointX = 46 * TILE_SIZE;
+        checkpointY = 10 * TILE_SIZE;
+        hasCheckpoint = true;
+        addPickup(PICKUP_COIN, 41, 12);
+        addPickup(PICKUP_COIN, 44, 11);
+        addEnemy(ENEMY_SLIME, 48, 11);
+
+        // ==== BIOME 2: CRYSTAL CAVERNS (cols 50-99) ====
+
+        // Cave ceiling and floor
+        fillRowTile(0, 50, 99, TILE_CAVE_TOP);
+        fillRowTile(1, 50, 99, TILE_CAVE_WALL);
+        fillRowTile(GROUND_ROW, 50, 99, TILE_CAVE_WALL);
+        fillRowTile(FLOOR_ROW, 50, 99, TILE_CAVE_WALL);
+
+        // --- Cave Section 1: Crystal entrance (cols 50-62) ---
+        addPlatformTile(52, 12, 4, TILE_CAVE_CRYSTAL);
+        addPlatformTile(57, 10, 3, TILE_CAVE_CRYSTAL);
+        addPlatformTile(61, 12, 3, TILE_STONE);
+        // Crystal decorations
+        tileGrid.Set(54, 13, TILE_CRYSTAL);
+        tileGrid.Set(59, 11, TILE_CRYSTAL);
+        addPickup(PICKUP_COIN, 53, 11);
+        addPickup(PICKUP_COIN, 58, 9);
+        addPickup(PICKUP_COIN, 62, 11);
+        addEnemy(ENEMY_BAT, 56, 8);
+
+        // --- Cave Section 2: Turret gauntlet (cols 63-75) ---
+        addPlatformTile(64, 12, 5, TILE_STONE);
+        addPlatformTile(70, 10, 4, TILE_STONE);
+        addPlatformTile(66, 8, 3, TILE_CAVE_CRYSTAL);
+        // Turrets on walls
+        addEnemy(ENEMY_TURRET, 68, 11);
+        addEnemy(ENEMY_TURRET, 73, 9);
+        addPickup(PICKUP_COIN, 65, 11);
+        addPickup(PICKUP_COIN, 67, 7);
+        addPickup(PICKUP_COIN, 71, 9);
+        addPickup(PICKUP_SHIELD, 72, 11);
+
+        // --- Cave Section 3: Underground river (cols 76-88) ---
+        // Gap with lava below
+        clearGround(78, 83);
+        fillRowTile(FLOOR_ROW, 78, 83, TILE_LAVA);
+        // Narrow platforms over lava
+        addPlatformTile(78, 12, 2, TILE_STONE);
+        addPlatformTile(81, 10, 2, TILE_CAVE_CRYSTAL);
+        addPlatformTile(84, 12, 2, TILE_STONE);
+        addEnemy(ENEMY_BAT, 80, 7);
+        addEnemy(ENEMY_BAT, 83, 9);
+        addPickup(PICKUP_COIN, 79, 11);
+        addPickup(PICKUP_COIN, 82, 9);
+
+        // --- Cave Section 4: Cave exit (cols 89-99) ---
+        addPlatformTile(90, 11, 4, TILE_STONE);
+        addPlatformTile(95, 13, 3, TILE_STONE);
+        addEnemy(ENEMY_SLIME, 92, 10);
+        addEnemy(ENEMY_TURRET, 97, 12);
+        addPickup(PICKUP_COIN, 91, 10);
+        addPickup(PICKUP_COIN, 96, 12);
+        addPickup(PICKUP_RAPIDFIRE, 93, 14);
+        // Checkpoint before thermal zone
+        tileGrid.Set(98, 12, TILE_CHECKPOINT);
+
+        // ==== BIOME 3: THERMAL VENTS (cols 100-149) ====
+
+        // Magma rock ground
+        fillRowTile(GROUND_ROW, 100, 149, TILE_MAGMA_ROCK);
+        fillRowTile(FLOOR_ROW, 100, 149, TILE_MAGMA_ROCK);
+
+        // --- Thermal Section 1: Grate walkways (cols 100-112) ---
+        addPlatformTile(101, 12, 5, TILE_METAL_GRATE);
+        addPlatformTile(107, 10, 4, TILE_METAL_GRATE);
+        addPlatformTile(112, 12, 3, TILE_METAL_GRATE);
+        // Lava pit
+        clearGround(104, 106);
+        fillRowTile(FLOOR_ROW, 104, 106, TILE_LAVA);
+        addEnemy(ENEMY_SLIME, 103, 11);
+        addEnemy(ENEMY_SLIME, 110, 9);
+        addPickup(PICKUP_COIN, 102, 11);
+        addPickup(PICKUP_COIN, 108, 9);
+        addPickup(PICKUP_COIN, 113, 11);
+        addPickup(PICKUP_HEALTH, 105, 8);
+
+        // --- Thermal Section 2: Lava river (cols 113-125) ---
+        clearGround(115, 122);
+        fillRowTile(FLOOR_ROW, 115, 122, TILE_LAVA);
+        // Platforms above lava
+        addPlatformTile(115, 11, 2, TILE_METAL_GRATE);
+        addPlatformTile(118, 9, 2, TILE_METAL_GRATE);
+        addPlatformTile(121, 11, 2, TILE_METAL_GRATE);
+        addPlatformTile(124, 13, 2, TILE_MAGMA_ROCK);
+        addEnemy(ENEMY_TURRET, 117, 10);
+        addEnemy(ENEMY_BAT, 120, 6);
+        addPickup(PICKUP_COIN, 116, 10);
+        addPickup(PICKUP_COIN, 119, 8);
+        addPickup(PICKUP_COIN, 122, 10);
+
+        // --- Thermal Section 3: Boss approach (cols 126-135) ---
+        addPlatformTile(127, 12, 4, TILE_METAL_GRATE);
+        addPlatformTile(132, 10, 3, TILE_METAL_GRATE);
+        addEnemy(ENEMY_SLIME, 130, 11);
+        addEnemy(ENEMY_TURRET, 134, 9);
+        addPickup(PICKUP_HEALTH, 128, 11);
+        addPickup(PICKUP_SHIELD, 133, 9);
+
+        // --- Thermal Section 4: Boss arena (cols 130-149) ---
+        // Wide flat arena with solid ground and containment walls
+        fillRowTile(GROUND_ROW, 130, 149, TILE_METAL_GRATE);
+        // Left wall to contain boss (prevents falling into lava river)
+        fillArea(130, 8, 130, FLOOR_ROW, TILE_MAGMA_ROCK);
+        // Right wall at level edge
+        fillArea(149, 8, 149, FLOOR_ROW, TILE_MAGMA_ROCK);
+        // Boss spawn — centered in arena
+        bossX = 140 * TILE_SIZE;
+        bossY = (GROUND_ROW - 3) * TILE_SIZE;
+        hasBoss = true;
+        // End sign (after boss area)
+        tileGrid.Set(148, GROUND_ROW - 1, TILE_SIGN_END);
+    }
+
+    // Legacy level builders below — kept but unreachable (loadLevel calls buildDescent).
 
     hide func buildGrasslands() {
         levelWidth = LEVEL1_WIDTH;

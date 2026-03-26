@@ -1,5 +1,21 @@
-// physics.zia — Tile collision resolution, gravity, AABB helpers
-// All coordinates are in x100 scale (sub-pixel precision)
+// =============================================================================
+// Physics Helper — Tile collision resolution, gravity, AABB overlap
+// =============================================================================
+// Viper APIs demonstrated:
+//   - Viper.Math (abs, min, max)
+//
+// Zia best practices:
+//   - Pure utility entity (no state, only functions)
+//   - hide for internal helpers (toTileCoord), expose for public API
+//   - x100 sub-pixel coordinate system for smooth movement
+//   - Out-parameters via single-element List (Zia workaround for multiple returns)
+//
+// Coordinate system:
+//   All positions/velocities are in x100 units (centipixels) unless noted.
+//   Example: PLAYER_SPEED=525 means 5.25 pixels per frame at 60fps.
+//   Collision resolves against TILE_SIZE-aligned grid boundaries.
+// =============================================================================
+
 module physics;
 
 bind Viper.Math;
@@ -184,6 +200,25 @@ entity PhysicsHelper {
                               bx: Integer, by: Integer, bw: Integer, bh: Integer) -> Boolean {
         return rectOverlap(ax * 100, ay * 100, aw * 100, ah * 100,
                           bx * 100, by * 100, bw * 100, bh * 100);
+    }
+
+    // Apply gravity with jump-apex hang time.
+    // Near the peak of a jump (|vy| < threshold), gravity is reduced to 60%
+    // for a floatier feel. This is a common platformer polish technique.
+    expose func applyGravity(vy: Integer, dt: Integer) -> Integer {
+        var g = GRAVITY * dt / DT_BASE;
+
+        // Apex hang: reduce gravity when near the top of the arc.
+        // The threshold 200 (x100 = 2px/frame) covers ~3 frames around the peak.
+        var absVy = vy;
+        if absVy < 0 { absVy = 0 - absVy; }
+        if absVy < 200 {
+            g = g * 3 / 5;  // 60% gravity at apex
+        }
+
+        var newVy = vy + g;
+        if newVy > MAX_FALL { newVy = MAX_FALL; }
+        return newVy;
     }
 
     // Convert x100 coordinate to tile coordinate

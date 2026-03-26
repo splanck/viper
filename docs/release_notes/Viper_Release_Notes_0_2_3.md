@@ -35,7 +35,7 @@ Version 0.2.3 is a major hardening, tooling, and infrastructure release. Highlig
 | Lines added | ~279K |
 | Lines removed | ~323K |
 | Source files | 2,671 |
-| Test count | 1,354 |
+| Test count | 1,351 |
 | Codebase | ~348K SLOC (production C/C++/ObjC) |
 
 ---
@@ -1040,9 +1040,6 @@ issue tracker.
 | Zia runtime programs | 6 | End-to-end runtime tests (enums, async, properties, deinit, etc.) |
 | AArch64 Linux ABI | 1 | Linux calling convention validation |
 | Pipeline equivalence | 1 | x86-64 pipeline output consistency |
-| Canvas frame helpers | 1 | SetDTMax clamping, BeginFrame logic, null safety (14 assertions) |
-| SaveData persistence | 1 | Key-value ops, save/load round-trip, JSON escaping, null safety (17 tests) |
-| Canvas text layout | 1 | TextCentered/Right/CenteredScaled null safety, TextScaledWidth math (14 tests) |
 
 #### Determinism Stress Test
 
@@ -1173,7 +1170,7 @@ table of contents to cover all 80+ sections.
 |---------------------|-----------|----------------|------------|
 | Codebase (SLOC)     | ~310,000  | ~348,000       | +38K       |
 | Source Files         | 2,288     | 2,671          | +383       |
-| Test Count          | 1,261     | 1,354          | +93        |
+| Test Count          | 1,261     | 1,351          | +90        |
 | Commits             | —         | 100            | —          |
 | Files Changed       | —         | 3,557          | —          |
 | Lines Added         | —         | ~279K          | —          |
@@ -1270,7 +1267,7 @@ table of contents to cover all 80+ sections.
 | **Game Engine Framework** | No | GameBase/IScene + 7 runtime APIs |
 | **Runtime Classes** | 226 | 272 (+46) |
 | **IL Optimizer Passes** | 35 | 38 (+EH-Opt, LoopRotate, Reassoc) |
-| **Test Count** | 1,261 | 1,354 (+93 net) |
+| **Test Count** | 1,261 | 1,351 (+90 net) |
 | **Full O2 Pipeline** | O1-level only | All 10 missing passes restored |
 | **Benchmark Results** | — | 24-87% improvement (Apple M4 Max) |
 | **AArch64 Peephole** | Monolithic (2750 LOC) | 6 sub-passes + shared templates |
