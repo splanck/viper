@@ -65,6 +65,10 @@ struct PEBuildParams
     /// Raw data to append after all PE sections (e.g. ZIP payload).
     std::vector<uint8_t> overlay;
 
+    /// Target architecture: "x64" (default) or "arm64".
+    /// Selects PE machine type: 0x8664 (AMD64) or 0xAA64 (ARM64).
+    std::string arch{"x64"};
+
     /// Address of entry point relative to start of .text section.
     uint32_t entryPointOffset{0};
 

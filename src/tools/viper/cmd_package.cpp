@@ -26,6 +26,7 @@
 #include "tools/common/native_compiler.hpp"
 #include "tools/common/packaging/LinuxPackageBuilder.hpp"
 #include "tools/common/packaging/MacOSPackageBuilder.hpp"
+#include "tools/common/packaging/PkgVerify.hpp"
 #include "tools/common/packaging/WindowsPackageBuilder.hpp"
 #include "tools/common/project_loader.hpp"
 
@@ -34,7 +35,9 @@
 
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 
 // Forward declarations of compile functions (defined in cmd_run.cpp)
@@ -57,51 +60,56 @@ enum class PackageTarget
 /// @brief Print usage information for `viper package`.
 void packageUsage()
 {
-    std::cerr << "Usage: viper package [project] [options]\n"
-              << "\n"
-              << "  Compiles a Viper project to a native binary and packages it into a\n"
-              << "  platform-specific installer. Cross-packaging is fully supported.\n"
-              << "\n"
-              << "  [project]  Path to a directory or viper.project file (default: .)\n"
-              << "\n"
-              << "Options:\n"
-              << "  --target <platform>   Target platform (default: host)\n"
-              << "                        macos    .app bundle in .zip\n"
-              << "                        linux    .deb package\n"
-              << "                        windows  Self-extracting .exe installer\n"
-              << "                        tarball  Portable .tar.gz archive\n"
-              << "  --arch <arch>         Target architecture: x64 or arm64 (default: host)\n"
-              << "  -o <path>             Output file path\n"
-              << "  --help, -h            Show this help\n"
-              << "\n"
-              << "Package manifest directives (in viper.project):\n"
-              << "  package-name <name>                 Display name\n"
-              << "  package-author <name>               Author / maintainer\n"
-              << "  package-description <text>          Short description\n"
-              << "  package-homepage <url>              Project homepage URL\n"
-              << "  package-license <spdx>              License identifier (SPDX)\n"
-              << "  package-identifier <id>             Reverse-DNS identifier\n"
-              << "  package-icon <path>                 Source PNG for icons (512x512+)\n"
-              << "  asset <source> <target>             Include asset files\n"
-              << "  file-assoc <ext> <desc> <mime>      Register file type association\n"
-              << "  shortcut-desktop on|off             Create desktop shortcut (Windows/Linux)\n"
-              << "  shortcut-menu on|off                Create menu entry (default: on)\n"
-              << "  min-os-macos <ver>                  Minimum macOS version (default: 10.13)\n"
-              << "  min-os-windows <ver>                Minimum Windows version\n"
-              << "  target-arch x64|arm64               Target architecture\n"
-              << "  post-install <script>               Post-install hook (Linux .deb)\n"
-              << "  pre-uninstall <script>              Pre-uninstall hook (Linux .deb)\n"
-              << "\n"
-              << "Examples:\n"
-              << "  viper package                       Package current dir for host platform\n"
-              << "  viper package myapp/ --target linux  Build .deb for Linux\n"
-              << "  viper package . --target windows -o myapp-setup.exe\n"
-              << "\n"
-              << "Output formats:\n"
-              << "  macOS:    .app bundle in .zip (Finder-native, drag to /Applications)\n"
-              << "  Linux:    .deb package (dpkg -i), includes .desktop + MIME types\n"
-              << "  Windows:  PE32+ .exe with embedded ZIP (assets, shortcuts, uninstaller)\n"
-              << "  Tarball:  .tar.gz portable archive\n";
+    std::cerr
+        << "Usage: viper package [project] [options]\n"
+        << "\n"
+        << "  Compiles a Viper project to a native binary and packages it into a\n"
+        << "  platform-specific installer. Cross-packaging is fully supported.\n"
+        << "\n"
+        << "  [project]  Path to a directory or viper.project file (default: .)\n"
+        << "\n"
+        << "Options:\n"
+        << "  --target <platform>   Target platform (default: host)\n"
+        << "                        macos    .app bundle in .zip\n"
+        << "                        linux    .deb package\n"
+        << "                        windows  Self-extracting .exe installer\n"
+        << "                        tarball  Portable .tar.gz archive\n"
+        << "  --arch <arch>         Target architecture: x64 or arm64 (default: host)\n"
+        << "  -o <path>             Output file path\n"
+        << "  --dry-run             List package contents without building\n"
+        << "  --verbose, -v         Show detailed packaging output\n"
+        << "  --help, -h            Show this help\n"
+        << "\n"
+        << "Package manifest directives (in viper.project):\n"
+        << "  package-name <name>                 Display name\n"
+        << "  package-author <name>               Author / maintainer\n"
+        << "  package-description <text>          Short description\n"
+        << "  package-homepage <url>              Project homepage URL\n"
+        << "  package-license <spdx>              License identifier (SPDX)\n"
+        << "  package-identifier <id>             Reverse-DNS identifier\n"
+        << "  package-icon <path>                 Source PNG for icons (512x512+)\n"
+        << "  asset <source> <target>             Include asset files\n"
+        << "  file-assoc <ext> <desc> <mime>      Register file type association\n"
+        << "  shortcut-desktop on|off             Create desktop shortcut (Windows/Linux)\n"
+        << "  shortcut-menu on|off                Create menu entry (default: on)\n"
+        << "  min-os-macos <ver>                  Minimum macOS version (default: 10.13)\n"
+        << "  min-os-windows <ver>                Minimum Windows version\n"
+        << "  package-category <category>          Application category (e.g. Game, Utility)\n"
+        << "  package-depends <pkg1>, <pkg2>      Package dependencies (Linux .deb)\n"
+        << "  target-arch x64|arm64               Target architecture\n"
+        << "  post-install <script>               Post-install hook (Linux .deb)\n"
+        << "  pre-uninstall <script>              Pre-uninstall hook (Linux .deb)\n"
+        << "\n"
+        << "Examples:\n"
+        << "  viper package                       Package current dir for host platform\n"
+        << "  viper package myapp/ --target linux  Build .deb for Linux\n"
+        << "  viper package . --target windows -o myapp-setup.exe\n"
+        << "\n"
+        << "Output formats:\n"
+        << "  macOS:    .app bundle in .zip (Finder-native, drag to /Applications)\n"
+        << "  Linux:    .deb package (dpkg -i), includes .desktop + MIME types\n"
+        << "  Windows:  PE32+ .exe with embedded ZIP (assets, shortcuts, uninstaller)\n"
+        << "  Tarball:  .tar.gz portable archive\n";
 }
 
 struct PackageArgs
@@ -110,6 +118,8 @@ struct PackageArgs
     PackageTarget platformTarget{PackageTarget::Auto};
     std::string outputPath;
     std::string archOverride; // "x64" or "arm64"
+    bool dryRun{false};
+    bool verbose{false};
 };
 
 PackageTarget detectHostPlatform()
@@ -196,6 +206,14 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args)
         {
             args.outputPath = argv[++i];
         }
+        else if (arg == "--dry-run")
+        {
+            args.dryRun = true;
+        }
+        else if (arg == "--verbose" || arg == "-v")
+        {
+            args.verbose = true;
+        }
         else if (arg == "--help" || arg == "-h")
         {
             packageUsage();
@@ -264,6 +282,28 @@ int cmdPackage(int argc, char **argv)
     std::string displayName =
         proj.packageConfig.displayName.empty() ? proj.name : proj.packageConfig.displayName;
 
+    // Validate version string (warn on clearly invalid formats)
+    {
+        bool validVersion = !proj.version.empty();
+        if (validVersion)
+        {
+            for (char c : proj.version)
+            {
+                if (!std::isdigit(static_cast<unsigned char>(c)) && c != '.' && c != '-' &&
+                    c != '+' && !std::isalpha(static_cast<unsigned char>(c)))
+                {
+                    validVersion = false;
+                    break;
+                }
+            }
+        }
+        if (!validVersion)
+        {
+            std::cerr << "warning: version '" << proj.version
+                      << "' may be invalid; expected format like '1.0.0' or '1.0.0-beta'\n";
+        }
+    }
+
     // Determine architecture
     viper::tools::TargetArch arch = viper::tools::detectHostArch();
     std::string archStr;
@@ -276,6 +316,51 @@ int cmdPackage(int argc, char **argv)
     else
     {
         archStr = (arch == viper::tools::TargetArch::ARM64) ? "arm64" : "x64";
+    }
+
+    // Dry-run mode: list what would be packaged, then exit
+    if (args.dryRun)
+    {
+        std::cerr << "Dry run: " << displayName << " for " << platformName(args.platformTarget)
+                  << " (" << archStr << ")\n";
+        std::cerr << "  Output: " << args.outputPath << "\n";
+        std::cerr << "  Executable: " << proj.name << "\n";
+        if (!proj.packageConfig.iconPath.empty())
+        {
+            fs::path iconPath = fs::path(proj.rootDir) / proj.packageConfig.iconPath;
+            std::cerr << "  Icon: " << proj.packageConfig.iconPath;
+            if (!fs::exists(iconPath))
+                std::cerr << " [NOT FOUND]";
+            std::cerr << "\n";
+        }
+        for (const auto &asset : proj.packageConfig.assets)
+        {
+            fs::path assetPath = fs::path(proj.rootDir) / asset.sourcePath;
+            std::cerr << "  Asset: " << asset.sourcePath << " -> " << asset.targetPath;
+            if (!fs::exists(assetPath))
+                std::cerr << " [NOT FOUND]";
+            else if (fs::is_directory(assetPath))
+            {
+                size_t count = 0;
+                for (auto &e : fs::recursive_directory_iterator(assetPath))
+                    if (e.is_regular_file())
+                        count++;
+                std::cerr << " (" << count << " files)";
+            }
+            std::cerr << "\n";
+        }
+        for (const auto &assoc : proj.packageConfig.fileAssociations)
+            std::cerr << "  File assoc: " << assoc.extension << " (" << assoc.description << ")\n";
+        if (!proj.packageConfig.category.empty())
+            std::cerr << "  Category: " << proj.packageConfig.category << "\n";
+        if (!proj.packageConfig.depends.empty())
+        {
+            std::cerr << "  Depends:";
+            for (const auto &d : proj.packageConfig.depends)
+                std::cerr << " " << d;
+            std::cerr << "\n";
+        }
+        return 0;
     }
 
     // Step 1: Compile to native binary (using build pipeline)
@@ -337,6 +422,17 @@ int cmdPackage(int argc, char **argv)
     // Step 3: Package
     std::cerr << "Packaging " << displayName << " for " << platformName(args.platformTarget) << " ("
               << archStr << ")...\n";
+
+    if (args.verbose)
+    {
+        auto binSize = fs::file_size(tempBinaryPath);
+        std::cerr << "  Binary: " << tempBinaryPath << " (" << binSize << " bytes)\n";
+        std::cerr << "  Output: " << args.outputPath << "\n";
+        if (!proj.packageConfig.iconPath.empty())
+            std::cerr << "  Icon: " << proj.packageConfig.iconPath << "\n";
+        for (const auto &asset : proj.packageConfig.assets)
+            std::cerr << "  Asset: " << asset.sourcePath << " -> " << asset.targetPath << "\n";
+    }
 
     try
     {
@@ -406,10 +502,56 @@ int cmdPackage(int argc, char **argv)
         return 1;
     }
 
-    // Cleanup temp binary
+    // Step 4: Verify the generated package
     std::error_code ec;
+    if (fs::exists(args.outputPath))
+    {
+        std::ifstream pkgFile(args.outputPath, std::ios::binary | std::ios::ate);
+        if (pkgFile)
+        {
+            auto pkgSize = pkgFile.tellg();
+            pkgFile.seekg(0);
+            std::vector<uint8_t> pkgData(static_cast<size_t>(pkgSize));
+            pkgFile.read(reinterpret_cast<char *>(pkgData.data()), pkgSize);
+            pkgFile.close();
+
+            std::ostringstream verifyErr;
+            bool valid = true;
+            switch (args.platformTarget)
+            {
+                case PackageTarget::MacOS:
+                    valid = viper::pkg::verifyZip(pkgData, verifyErr);
+                    break;
+                case PackageTarget::Linux:
+                    valid = viper::pkg::verifyDeb(pkgData, verifyErr);
+                    break;
+                case PackageTarget::Windows:
+                    valid = viper::pkg::verifyPE(pkgData, verifyErr);
+                    break;
+                default:
+                    break; // Tarball: no structural verification needed
+            }
+            if (!valid)
+            {
+                std::cerr << "error: package verification failed:\n" << verifyErr.str();
+                fs::remove(args.outputPath, ec);
+                fs::remove(tempBinaryPath, ec);
+                return 1;
+            }
+            if (args.verbose)
+                std::cerr << "  Verification: passed\n";
+        }
+    }
+
+    // Cleanup temp binary
     fs::remove(tempBinaryPath, ec);
 
-    std::cerr << "Package created: " << args.outputPath << "\n";
+    std::cerr << "Package created: " << args.outputPath;
+    if (args.verbose && fs::exists(args.outputPath))
+    {
+        auto pkgSize = fs::file_size(args.outputPath);
+        std::cerr << " (" << pkgSize << " bytes)";
+    }
+    std::cerr << "\n";
     return 0;
 }

@@ -91,6 +91,7 @@ std::vector<uint8_t> generateLnk(const LnkParams &params)
 
     // LinkFlags (4 bytes)
     uint32_t linkFlags = 0;
+    linkFlags |= 0x00000002; // HasLinkInfo
     linkFlags |= 0x00000004; // HasName (NAME_STRING = description)
     linkFlags |= 0x00000008; // HasRelativePath
     linkFlags |= 0x00000080; // IsUnicode
@@ -142,6 +143,72 @@ std::vector<uint8_t> generateLnk(const LnkParams &params)
     appendLE32(buf, 0);
 
     // Header should be exactly 76 bytes at this point
+
+    // ─── LinkInfo (§2.3) ──────────────────────────────────────────────
+    // Provides VolumeID + LocalBasePath for reliable shortcut resolution.
+    // Structure: LinkInfoSize(4) + LinkInfoHeaderSize(4) + LinkInfoFlags(4)
+    //          + VolumeIDOffset(4) + LocalBasePathOffset(4)
+    //          + CommonNetworkRelativeLinkOffset(4) + CommonPathSuffixOffset(4)
+    //          + VolumeID + LocalBasePath(NUL) + CommonPathSuffix(NUL)
+    {
+        // Build LinkInfo in a temporary buffer, then append
+        std::vector<uint8_t> li;
+
+        // LinkInfoHeaderSize = 0x1C (28 bytes, minimum for §2.3)
+        uint32_t liHeaderSize = 0x1C;
+
+        // VolumeID structure: VolumeIDSize(4) + DriveType(4) + DriveSerialNumber(4)
+        //                   + VolumeLabelOffset(4) + VolumeLabel("C:\0")
+        // DriveType = DRIVE_FIXED (3)
+        std::vector<uint8_t> volumeId;
+        appendLE32(volumeId, 0);  // VolumeIDSize placeholder
+        appendLE32(volumeId, 3);  // DriveType = DRIVE_FIXED
+        appendLE32(volumeId, 0);  // DriveSerialNumber = 0
+        appendLE32(volumeId, 16); // VolumeLabelOffset = 16 (after this header)
+        volumeId.push_back(0);    // Volume label = "" (NUL terminated)
+        // Fill in VolumeIDSize
+        uint32_t volIdSize = static_cast<uint32_t>(volumeId.size());
+        volumeId[0] = static_cast<uint8_t>(volIdSize & 0xFF);
+        volumeId[1] = static_cast<uint8_t>((volIdSize >> 8) & 0xFF);
+        volumeId[2] = static_cast<uint8_t>((volIdSize >> 16) & 0xFF);
+        volumeId[3] = static_cast<uint8_t>((volIdSize >> 24) & 0xFF);
+
+        // LocalBasePath: the target path as ANSI (NUL terminated)
+        std::string localBasePath = params.targetPath;
+        // Ensure NUL terminator
+        std::vector<uint8_t> lbp(localBasePath.begin(), localBasePath.end());
+        lbp.push_back(0);
+
+        // CommonPathSuffix: empty (NUL terminated)
+        std::vector<uint8_t> cps = {0};
+
+        // Calculate offsets
+        uint32_t volumeIdOffset = liHeaderSize;
+        uint32_t localBasePathOffset = volumeIdOffset + volIdSize;
+        uint32_t commonNetworkOffset = 0; // Not present
+        uint32_t commonPathSuffixOffset = localBasePathOffset + static_cast<uint32_t>(lbp.size());
+        uint32_t linkInfoSize = commonPathSuffixOffset + static_cast<uint32_t>(cps.size());
+
+        // Write LinkInfo header
+        appendLE32(li, linkInfoSize);
+        appendLE32(li, liHeaderSize);
+        appendLE32(li, 0x00000001); // LinkInfoFlags: VolumeIDAndLocalBasePath
+        appendLE32(li, volumeIdOffset);
+        appendLE32(li, localBasePathOffset);
+        appendLE32(li, commonNetworkOffset);
+        appendLE32(li, commonPathSuffixOffset);
+
+        // VolumeID
+        li.insert(li.end(), volumeId.begin(), volumeId.end());
+
+        // LocalBasePath
+        li.insert(li.end(), lbp.begin(), lbp.end());
+
+        // CommonPathSuffix
+        li.insert(li.end(), cps.begin(), cps.end());
+
+        buf.insert(buf.end(), li.begin(), li.end());
+    }
 
     // ─── StringData ────────────────────────────────────────────────────
     // Order (when present): NAME_STRING, RELATIVE_PATH, WORKING_DIR, ICON_LOCATION

@@ -557,6 +557,36 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
                                            "'; expected 'x64' or 'arm64'");
             config.packageConfig.targetArchitectures.push_back(value);
         }
+        else if (directive == "package-category")
+        {
+            config.packageConfig.category = value;
+        }
+        else if (directive == "package-depends")
+        {
+            // Comma-separated list: "libc6, libx11-6, libssl3"
+            std::string depToken;
+            for (char c : value)
+            {
+                if (c == ',')
+                {
+                    // Trim whitespace
+                    size_t ds = depToken.find_first_not_of(' ');
+                    size_t de = depToken.find_last_not_of(' ');
+                    if (ds != std::string::npos)
+                        config.packageConfig.depends.push_back(depToken.substr(ds, de - ds + 1));
+                    depToken.clear();
+                }
+                else
+                {
+                    depToken.push_back(c);
+                }
+            }
+            // Last element
+            size_t ds = depToken.find_first_not_of(' ');
+            size_t de = depToken.find_last_not_of(' ');
+            if (ds != std::string::npos)
+                config.packageConfig.depends.push_back(depToken.substr(ds, de - ds + 1));
+        }
         else if (directive == "post-install")
         {
             config.packageConfig.postInstallScript = value;

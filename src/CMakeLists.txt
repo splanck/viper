@@ -274,6 +274,10 @@ add_library(viper_packaging STATIC
         tools/common/packaging/PEBuilder.cpp
         tools/common/packaging/LnkWriter.cpp
         tools/common/packaging/WindowsPackageBuilder.cpp
+        tools/common/packaging/PkgVerify.cpp
+        tools/common/packaging/ZipReader.cpp
+        tools/common/packaging/InstallerStubGen.cpp
+        tools/common/packaging/InstallerStub.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/runtime/core/rt_crc32.c
 )
 target_link_libraries(viper_packaging PRIVATE viper_common_opts)

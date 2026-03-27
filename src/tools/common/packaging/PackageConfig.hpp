@@ -65,6 +65,9 @@ struct PackageConfig
 
     std::vector<std::string> targetArchitectures; ///< "x64", "arm64"
 
+    std::string category;             ///< package-category (e.g. "Game", "Development", "Utility")
+    std::vector<std::string> depends; ///< package-depends (e.g. "libc6", "libx11-6")
+
     std::string postInstallScript;  ///< Custom post-install script content
     std::string preUninstallScript; ///< Custom pre-uninstall script content
 

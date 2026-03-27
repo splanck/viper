@@ -31,13 +31,14 @@
 #include "IconGenerator.hpp"
 #include "PkgGzip.hpp"
 #include "PkgMD5.hpp"
+#include "PkgUtils.hpp"
 #include "TarWriter.hpp"
 
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <sstream>
-#include <stdexcept>
 
 namespace fs = std::filesystem;
 
@@ -45,51 +46,6 @@ namespace viper::pkg
 {
 namespace
 {
-
-/// @brief Read a file into a byte vector.
-std::vector<uint8_t> readFile(const std::string &path)
-{
-    std::ifstream f(path, std::ios::binary | std::ios::ate);
-    if (!f)
-        throw std::runtime_error("cannot read file: " + path);
-    auto size = f.tellg();
-    f.seekg(0);
-    std::vector<uint8_t> data(static_cast<size_t>(size));
-    f.read(reinterpret_cast<char *>(data.data()), size);
-    if (!f || f.gcount() != size)
-        throw std::runtime_error("incomplete read of: " + path);
-    return data;
-}
-
-/// @brief Normalize a project name to a lowercase, hyphenated Debian package name.
-std::string debName(const std::string &name)
-{
-    std::string result;
-    result.reserve(name.size());
-    for (char c : name)
-    {
-        if (c == ' ' || c == '_')
-            result.push_back('-');
-        else
-            result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-    }
-    return result;
-}
-
-/// @brief Normalize a project name to a lowercase, no-space executable name.
-std::string execName(const std::string &name)
-{
-    std::string result;
-    result.reserve(name.size());
-    for (char c : name)
-    {
-        if (c == ' ')
-            result.push_back('_');
-        else
-            result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-    }
-    return result;
-}
 
 /// @brief Track a data file for md5sums generation.
 struct DataFile
@@ -103,8 +59,8 @@ struct DataFile
 void buildDebPackage(const LinuxBuildParams &params)
 {
     const auto &pkg = params.pkgConfig;
-    std::string pkgName = debName(params.projectName);
-    std::string exeName = execName(params.projectName);
+    std::string pkgName = normalizeDebName(params.projectName);
+    std::string exeName = normalizeExecName(params.projectName);
     std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
 
     // Collect all data files (for md5sums and data.tar)
@@ -126,17 +82,26 @@ void buildDebPackage(const LinuxBuildParams &params)
         if (!targetDir.empty())
             sharePrefix += targetDir + "/";
 
+        if (!fs::exists(srcPath))
+        {
+            std::cerr << "warning: asset '" << asset.sourcePath << "' not found, skipping\n";
+            continue;
+        }
+
         if (fs::is_directory(srcPath))
         {
-            for (auto &entry : fs::recursive_directory_iterator(srcPath))
-            {
-                if (entry.is_regular_file())
-                {
-                    auto relPath = fs::relative(entry.path(), srcPath).string();
-                    auto fileData = readFile(entry.path().string());
-                    dataFiles.push_back({sharePrefix + relPath, fileData});
-                }
-            }
+            safeDirectoryIterate(srcPath,
+                                 params.projectRoot,
+                                 [&](const fs::directory_entry &entry)
+                                 {
+                                     if (entry.is_regular_file())
+                                     {
+                                         auto relPath =
+                                             fs::relative(entry.path(), srcPath).string();
+                                         auto fileData = readFile(entry.path().string());
+                                         dataFiles.push_back({sharePrefix + relPath, fileData});
+                                     }
+                                 });
         }
         else if (fs::is_regular_file(srcPath))
         {
@@ -153,6 +118,7 @@ void buildDebPackage(const LinuxBuildParams &params)
         dep.comment = pkg.description;
         dep.execPath = "/usr/bin/" + exeName;
         dep.iconName = exeName;
+        dep.categories = pkg.category;
         dep.terminal = false;
         dep.fileAssociations = pkg.fileAssociations;
         auto desktop = generateDesktopEntry(dep);
@@ -174,6 +140,11 @@ void buildDebPackage(const LinuxBuildParams &params)
                                        std::to_string(sz) + "/apps/" + exeName + ".png";
                 dataFiles.push_back({iconPath, pngData});
             }
+        }
+        else
+        {
+            std::cerr << "warning: package-icon '" << pkg.iconPath
+                      << "' not found, skipping icon generation\n";
         }
     }
 
@@ -247,7 +218,10 @@ void buildDebPackage(const LinuxBuildParams &params)
         std::ostringstream ctl;
         ctl << "Package: " << pkgName << "\n";
         ctl << "Version: " << params.version << "\n";
-        ctl << "Section: utils\n";
+        if (!pkg.category.empty())
+            ctl << "Section: " << pkg.category << "\n";
+        else
+            ctl << "Section: utils\n";
         ctl << "Priority: optional\n";
         ctl << "Architecture: " << params.archStr << "\n";
         if (!pkg.author.empty())
@@ -260,6 +234,19 @@ void buildDebPackage(const LinuxBuildParams &params)
         for (const auto &df : dataFiles)
             totalBytes += df.data.size();
         ctl << "Installed-Size: " << ((totalBytes + 1023) / 1024) << "\n";
+
+        // Dependencies
+        if (!pkg.depends.empty())
+        {
+            ctl << "Depends: ";
+            for (size_t i = 0; i < pkg.depends.size(); ++i)
+            {
+                if (i > 0)
+                    ctl << ", ";
+                ctl << pkg.depends[i];
+            }
+            ctl << "\n";
+        }
 
         ctl << "Description: ";
         if (!pkg.description.empty())
@@ -346,8 +333,8 @@ void buildDebPackage(const LinuxBuildParams &params)
 void buildTarball(const LinuxBuildParams &params)
 {
     const auto &pkg = params.pkgConfig;
-    std::string pkgName = debName(params.projectName);
-    std::string exeName = execName(params.projectName);
+    std::string pkgName = normalizeDebName(params.projectName);
+    std::string exeName = normalizeExecName(params.projectName);
     std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
 
     // Top-level directory in the tarball
@@ -372,22 +359,31 @@ void buildTarball(const LinuxBuildParams &params)
         if (!targetDir.empty())
             prefix += targetDir + "/";
 
+        if (!fs::exists(srcPath))
+        {
+            std::cerr << "warning: asset '" << asset.sourcePath << "' not found, skipping\n";
+            continue;
+        }
+
         if (fs::is_directory(srcPath))
         {
-            for (auto &entry : fs::recursive_directory_iterator(srcPath))
-            {
-                if (entry.is_directory())
+            safeDirectoryIterate(
+                srcPath,
+                params.projectRoot,
+                [&](const fs::directory_entry &entry)
                 {
-                    auto relPath = fs::relative(entry.path(), srcPath).string();
-                    tar.addDirectory(prefix + relPath, 0755);
-                }
-                else if (entry.is_regular_file())
-                {
-                    auto relPath = fs::relative(entry.path(), srcPath).string();
-                    auto fileData = readFile(entry.path().string());
-                    tar.addFile(prefix + relPath, fileData.data(), fileData.size(), 0644);
-                }
-            }
+                    if (entry.is_directory())
+                    {
+                        auto relPath = fs::relative(entry.path(), srcPath).string();
+                        tar.addDirectory(prefix + relPath, 0755);
+                    }
+                    else if (entry.is_regular_file())
+                    {
+                        auto relPath = fs::relative(entry.path(), srcPath).string();
+                        auto fileData = readFile(entry.path().string());
+                        tar.addFile(prefix + relPath, fileData.data(), fileData.size(), 0644);
+                    }
+                });
         }
         else if (fs::is_regular_file(srcPath))
         {

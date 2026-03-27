@@ -870,7 +870,8 @@ static void deflateFixed(BitWriter &bw, const uint8_t *data, size_t len, int lev
     // End of block (code 256, 7 bits)
     writeCode(bw, 0, 7);
 
-    lz.free();
+    // LZ77State destructor handles cleanup — do NOT call lz.free() here
+    // (that causes a double-free since the destructor also frees head/prev).
 }
 
 static std::vector<uint8_t> deflateData(const uint8_t *data, size_t len, int level)

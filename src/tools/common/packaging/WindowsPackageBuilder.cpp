@@ -25,14 +25,16 @@
 
 #include "WindowsPackageBuilder.hpp"
 #include "IconGenerator.hpp"
+#include "InstallerStub.hpp"
+#include "InstallerStubGen.hpp"
 #include "LnkWriter.hpp"
 #include "PEBuilder.hpp"
+#include "PkgUtils.hpp"
 #include "ZipWriter.hpp"
 
 #include <filesystem>
-#include <fstream>
+#include <iostream>
 #include <sstream>
-#include <stdexcept>
 
 namespace fs = std::filesystem;
 
@@ -41,36 +43,6 @@ namespace viper::pkg
 
 namespace
 {
-
-/// @brief Read a file into a byte vector.
-std::vector<uint8_t> readFile(const std::string &path)
-{
-    std::ifstream f(path, std::ios::binary | std::ios::ate);
-    if (!f)
-        throw std::runtime_error("cannot read file: " + path);
-    auto size = f.tellg();
-    f.seekg(0);
-    std::vector<uint8_t> data(static_cast<size_t>(size));
-    f.read(reinterpret_cast<char *>(data.data()), size);
-    if (!f || f.gcount() != size)
-        throw std::runtime_error("incomplete read of: " + path);
-    return data;
-}
-
-/// @brief Normalize a project name to a lowercase executable name.
-std::string exeName(const std::string &name)
-{
-    std::string result;
-    result.reserve(name.size());
-    for (char c : name)
-    {
-        if (c == ' ')
-            result.push_back('_');
-        else
-            result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-    }
-    return result;
-}
 
 /// @brief Generate the install.ini metadata file.
 ///
@@ -137,7 +109,7 @@ void buildWindowsPackage(const WindowsBuildParams &params)
 {
     const auto &pkg = params.pkgConfig;
     std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
-    std::string exec = exeName(params.projectName);
+    std::string exec = normalizeExecName(params.projectName);
 
     // ─── Build ZIP payload ─────────────────────────────────────────────
 
@@ -163,21 +135,29 @@ void buildWindowsPackage(const WindowsBuildParams &params)
         if (!targetDir.empty())
             prefix += targetDir + "/";
 
+        if (!fs::exists(srcPath))
+        {
+            std::cerr << "warning: asset '" << asset.sourcePath << "' not found, skipping\n";
+            continue;
+        }
+
         if (fs::is_directory(srcPath))
         {
-            for (auto &entry : fs::recursive_directory_iterator(srcPath))
-            {
-                auto relPath = fs::relative(entry.path(), srcPath).string();
-                if (entry.is_directory())
-                {
-                    zip.addDirectory(prefix + relPath);
-                }
-                else if (entry.is_regular_file())
-                {
-                    auto data = readFile(entry.path().string());
-                    zip.addFile(prefix + relPath, data.data(), data.size());
-                }
-            }
+            safeDirectoryIterate(srcPath,
+                                 params.projectRoot,
+                                 [&](const fs::directory_entry &entry)
+                                 {
+                                     auto relPath = fs::relative(entry.path(), srcPath).string();
+                                     if (entry.is_directory())
+                                     {
+                                         zip.addDirectory(prefix + relPath);
+                                     }
+                                     else if (entry.is_regular_file())
+                                     {
+                                         auto data = readFile(entry.path().string());
+                                         zip.addFile(prefix + relPath, data.data(), data.size());
+                                     }
+                                 });
         }
         else if (fs::is_regular_file(srcPath))
         {
@@ -196,6 +176,11 @@ void buildWindowsPackage(const WindowsBuildParams &params)
             auto srcImage = pngRead(iconSrc.string());
             icoData = generateIco(srcImage);
             zip.addFile("meta/icon.ico", icoData.data(), icoData.size());
+        }
+        else
+        {
+            std::cerr << "warning: package-icon '" << pkg.iconPath
+                      << "' not found, skipping icon generation\n";
         }
     }
 
@@ -230,79 +215,37 @@ void buildWindowsPackage(const WindowsBuildParams &params)
     auto installIni = generateInstallIni(displayName, params.version, exec, pkg);
     zip.addFileString("meta/install.ini", installIni);
 
-    // Uninstaller PE — a minimal executable that reads install.ini and
-    // reverses the installation (delete files, remove registry entries,
-    // clean up shortcuts). The stub code is a placeholder; the actual
-    // uninstall logic reads meta/install.ini from the install directory.
+    // ─── Build uninstaller PE using generated stub ──────────────────────
+
     {
+        auto uninstStub = buildUninstallerStub(displayName, params.archStr);
+
+        // For x64 stubs: finalize with proper RVAs using the IAT fixup system.
+        // The uninstaller is a simple PE so we let PEBuilder handle everything.
         PEBuildParams uninstPe;
-        // Minimal stub: sub rsp,40; xor ecx,ecx; ret
-        // In a full implementation this would:
-        //   1. Read install.ini from own directory
-        //   2. Remove installed files listed in [files] section
-        //   3. Remove registry entries (HKLM\...\Uninstall\<name>)
-        //   4. Delete Start Menu / Desktop shortcuts
-        //   5. Remove the install directory
-        //   6. Schedule self-deletion via MoveFileEx(MOVEFILE_DELAY_UNTIL_REBOOT)
-        uninstPe.textSection = {
-            0x48,
-            0x83,
-            0xEC,
-            0x28, // sub rsp, 40
-            0x48,
-            0x31,
-            0xC9, // xor rcx, rcx
-            0xC3  // ret
-        };
-        uninstPe.imports.push_back(
-            {"kernel32.dll",
-             {"ExitProcess", "DeleteFileW", "RemoveDirectoryW", "GetModuleFileNameW"}});
-        // asInvoker — uninstaller launched from Add/Remove Programs which
-        // already has appropriate privileges if installed per-machine.
-        uninstPe.manifest = generateUacManifest();
-        uninstPe.iconData = icoData; // Same icon as installer
+        uninstPe.arch = params.archStr;
+        uninstPe.textSection = uninstStub.textSection;
+        uninstPe.imports = uninstStub.imports;
+        uninstPe.manifest = generateAsInvokerManifest();
+        uninstPe.iconData = icoData;
         auto uninstBytes = buildPE(uninstPe);
         zip.addFile("app/uninstall.exe", uninstBytes.data(), uninstBytes.size(), 0100755);
     }
 
     auto zipPayload = zip.finishToVector();
 
-    // ─── Build PE ──────────────────────────────────────────────────────
+    // ─── Build installer PE using generated stub ─────────────────────
+
+    auto instStub = buildInstallerStub(displayName, displayName, params.archStr);
 
     PEBuildParams pe;
-
-    // Minimal .text section: just a RET instruction (0xC3)
-    // In a full implementation, this would be the installer stub that:
-    //   1. Reads ZIP from own overlay (after PE sections)
-    //   2. Extracts files to Program Files
-    //   3. Creates registry entries
-    //   4. Creates shortcuts
-    // For now, it's a placeholder — the ZIP payload can be extracted
-    // with any ZIP tool or a companion installer script.
-    pe.textSection = {
-        0x48,
-        0x83,
-        0xEC,
-        0x28, // sub rsp, 40   (align stack + shadow space)
-        0x48,
-        0x31,
-        0xC9, // xor rcx, rcx   (uType = MB_OK)
-        0xC3  // ret
-    };
-
-    // Import kernel32.dll (minimal)
-    pe.imports.push_back({"kernel32.dll", {"ExitProcess", "GetModuleFileNameW"}});
-
-    // UAC manifest for admin elevation
+    pe.arch = params.archStr;
+    pe.textSection = instStub.textSection;
+    pe.imports = instStub.imports;
     pe.manifest = generateUacManifest();
-
-    // Embed ICO as RT_ICON + RT_GROUP_ICON resource (Explorer icon)
     pe.iconData = icoData;
-
-    // ZIP payload as overlay
     pe.overlay = std::move(zipPayload);
 
-    // Build and write
     auto peBytes = buildPE(pe);
     writePEToFile(peBytes, params.outputPath);
 }

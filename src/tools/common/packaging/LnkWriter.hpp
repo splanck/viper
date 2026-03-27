@@ -12,9 +12,10 @@
 // Key invariants:
 //   - ShellLinkHeader is always 76 bytes.
 //   - LinkCLSID = {00021401-0000-0000-C000-000000000046}.
-//   - HasRelativePath + IsUnicode flags set for simple file shortcuts.
+//   - HasLinkInfo + HasRelativePath + IsUnicode flags set.
+//   - LinkInfo provides VolumeID + LocalBasePath for reliable resolution.
 //   - String data uses UTF-16LE with 2-byte length prefix (character count).
-//   - No LinkTargetIDList or LinkInfo for simplicity — just string paths.
+//   - No LinkTargetIDList — LinkInfo + StringData provide reliable resolution.
 //
 // Ownership/Lifetime:
 //   - Pure function returning byte vector.

@@ -23,6 +23,13 @@ if (NOT TARGET test_basic_terminal_scan)
     viper_add_ctest(test_basic_terminal_scan test_basic_terminal_scan)
 endif ()
 
+# Packaging subsystem unit tests (VAPS)
+if (NOT TARGET test_packaging)
+    viper_add_test(test_packaging ${VIPER_TESTS_DIR}/unit/test_packaging.cpp)
+    target_link_libraries(test_packaging PRIVATE viper_packaging)
+    viper_add_ctest(test_packaging test_packaging)
+endif ()
+
 # NOTE: Tests for verifier relaxations (partial CBr branch-args, str-to-ptr) removed
 # because the verifier does not currently support these relaxations.
 

@@ -634,7 +634,9 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params)
     // ─── COFF Header (20 bytes at 0x84) ────────────────────────────────
 
     uint32_t coffOff = kPESignatureOffset + 4;
-    putLE16(pe, coffOff + 0, 0x8664); // Machine = AMD64
+    uint16_t machineType =
+        (params.arch == "arm64") ? static_cast<uint16_t>(0xAA64) : static_cast<uint16_t>(0x8664);
+    putLE16(pe, coffOff + 0, machineType); // Machine = AMD64 or ARM64
     putLE16(pe, coffOff + 2, static_cast<uint16_t>(numSections));
     putLE32(pe, coffOff + 4, 0);                    // TimeDateStamp
     putLE32(pe, coffOff + 8, 0);                    // PointerToSymbolTable

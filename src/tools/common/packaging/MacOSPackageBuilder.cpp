@@ -25,35 +25,17 @@
 
 #include "MacOSPackageBuilder.hpp"
 #include "IconGenerator.hpp"
+#include "PkgUtils.hpp"
 #include "PlistGenerator.hpp"
 #include "ZipWriter.hpp"
 
 #include <filesystem>
-#include <fstream>
-#include <stdexcept>
+#include <iostream>
 
 namespace fs = std::filesystem;
 
 namespace viper::pkg
 {
-
-//=============================================================================
-// File Reading Helper
-//=============================================================================
-
-static std::vector<uint8_t> readFile(const std::string &path)
-{
-    std::ifstream f(path, std::ios::binary | std::ios::ate);
-    if (!f)
-        throw std::runtime_error("cannot read file: " + path);
-    auto size = f.tellg();
-    f.seekg(0);
-    std::vector<uint8_t> data(static_cast<size_t>(size));
-    f.read(reinterpret_cast<char *>(data.data()), size);
-    if (!f || f.gcount() != size)
-        throw std::runtime_error("incomplete read of: " + path);
-    return data;
-}
 
 //=============================================================================
 // MacOS Package Builder
@@ -65,13 +47,7 @@ void buildMacOSPackage(const MacOSBuildParams &params)
     std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
 
     // Determine executable name (lowercase, no spaces)
-    std::string execName = params.projectName;
-    for (auto &c : execName)
-    {
-        if (c == ' ')
-            c = '_';
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    }
+    std::string execName = normalizeExecName(params.projectName);
 
     std::string appName = displayName + ".app";
     std::string contentsPrefix = appName + "/Contents/";
@@ -105,6 +81,11 @@ void buildMacOSPackage(const MacOSBuildParams &params)
             iconFileName = execName;
             zip.addFile(resourcesPrefix + execName + ".icns", icnsData.data(), icnsData.size());
         }
+        else
+        {
+            std::cerr << "warning: package-icon '" << pkg.iconPath
+                      << "' not found, skipping icon generation\n";
+        }
     }
 
     // Info.plist
@@ -126,27 +107,35 @@ void buildMacOSPackage(const MacOSBuildParams &params)
         if (targetDir == ".")
             targetDir = "";
 
+        if (!fs::exists(srcPath))
+        {
+            std::cerr << "warning: asset '" << asset.sourcePath << "' not found, skipping\n";
+            continue;
+        }
+
         if (fs::is_directory(srcPath))
         {
-            // Recurse directory
-            for (auto &entry : fs::recursive_directory_iterator(srcPath))
-            {
-                auto relPath = fs::relative(entry.path(), srcPath).string();
-                std::string zipPath = resourcesPrefix;
-                if (!targetDir.empty())
-                    zipPath += targetDir + "/";
-                zipPath += relPath;
+            // Recurse directory (symlink-safe)
+            safeDirectoryIterate(srcPath,
+                                 params.projectRoot,
+                                 [&](const fs::directory_entry &entry)
+                                 {
+                                     auto relPath = fs::relative(entry.path(), srcPath).string();
+                                     std::string zipPath = resourcesPrefix;
+                                     if (!targetDir.empty())
+                                         zipPath += targetDir + "/";
+                                     zipPath += relPath;
 
-                if (entry.is_directory())
-                {
-                    zip.addDirectory(zipPath);
-                }
-                else if (entry.is_regular_file())
-                {
-                    auto data = readFile(entry.path().string());
-                    zip.addFile(zipPath, data.data(), data.size());
-                }
-            }
+                                     if (entry.is_directory())
+                                     {
+                                         zip.addDirectory(zipPath);
+                                     }
+                                     else if (entry.is_regular_file())
+                                     {
+                                         auto data = readFile(entry.path().string());
+                                         zip.addFile(zipPath, data.data(), data.size());
+                                     }
+                                 });
         }
         else if (fs::is_regular_file(srcPath))
         {
