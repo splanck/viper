@@ -13,7 +13,7 @@ The Viper Runtime Library documentation has been reorganized into separate files
 | Module                                   | Description                                                               |
 |------------------------------------------|---------------------------------------------------------------------------|
 | [Architecture](viperlib/architecture.md) | Runtime internals, type reference                                         |
-| [Audio](viperlib/audio.md)               | `Audio`, `Music`, `Sound`, `Voice` — audio playback for games and applications |
+| [Audio](viperlib/audio.md)               | `Audio`, `Music`, `MusicGen`, `Sound`, `Synth`, `Voice` — audio playback and procedural generation |
 | [Collections](viperlib/collections/README.md) | `Bag`, `Bytes`, `Deque`, `Heap`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `TreeMap`, `WeakMap` |
 | [Core Types](viperlib/core.md)           | `Box`, `MessageBus`, `Object`, `String` — foundational types              |
 | [Cryptography](viperlib/crypto.md)       | `Aes`, `Cipher`, `Hash`, `KeyDerive`, `Password`, `Rand`, `Tls`           |

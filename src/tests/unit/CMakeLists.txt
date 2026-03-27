@@ -1306,6 +1306,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_soundbank PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_soundbank test_rt_soundbank)
 
+    viper_add_test(test_rt_musicgen ${VIPER_TESTS_DIR}/runtime/RTMusicGenTests.cpp)
+    target_link_libraries(test_rt_musicgen PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_musicgen test_rt_musicgen)
+
     viper_add_test(test_rt_camera ${VIPER_TESTS_DIR}/unit/runtime/RTCameraTests.cpp)
     target_link_libraries(test_rt_camera PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_camera test_rt_camera)

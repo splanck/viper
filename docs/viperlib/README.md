@@ -20,7 +20,7 @@ implemented in C and exposed through the IL runtime system.
 | Module                          | Description                                                               |
 |---------------------------------|---------------------------------------------------------------------------|
 | [Architecture](architecture.md) | Runtime internals, type reference                                         |
-| [Audio](audio.md)               | `Audio`, `Music`, `Sound`, `Voice` — audio playback for games and applications |
+| [Audio](audio.md)               | `Audio`, `Music`, `MusicGen`, `Sound`, `Synth`, `Voice` — audio playback and procedural generation |
 | [Collections](collections/README.md)   | `Bag`, `Bytes`, `Deque`, `Heap`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `TreeMap`, `Trie`, `WeakMap` |
 | [Core Types](core.md)           | `Box`, `Diagnostics`, `MessageBus`, `Object`, `Parse`, `String` — foundational types (`Viper.Core`) |
 | [Cryptography](crypto.md)       | `Aes`, `Cipher`, `Hash`, `KeyDerive`, `Password`, `Rand`, `Tls`           |
@@ -162,7 +162,11 @@ implemented in C and exposed through the IL runtime system.
 |-----------------------------------------------|----------|----------------------------------|
 | [`Audio`](audio.md#vipersoundaudio)            | Static   | Global audio control             |
 | [`Music`](audio.md#vipersoundmusic)            | Instance | Streaming music playback         |
+| [`MusicGen`](audio.md#vipersoundmusicgen)      | Instance | Procedural music composition     |
+| [`Playlist`](audio.md#vipersoundplaylist)      | Instance | Sequential/shuffle track queue   |
 | [`Sound`](audio.md#vipersoundsound)            | Instance | Sound effects for short clips    |
+| [`SoundBank`](audio.md#vipersoundsoundbank)    | Instance | Named sound registry             |
+| [`Synth`](audio.md#vipersoundsynth)            | Static   | Procedural sound synthesis       |
 | [`Voice`](audio.md#vipersoundvoice)            | Static   | Voice control for playing sounds |
 
 ### Viper.Graphics

@@ -33,7 +33,10 @@ entity GameCamera {
     hide Integer levelPixelW;
     hide Integer levelPixelH;
 
-    // Smooth follow via exponential smoothing
+    // Runtime Camera for bounds clamping and coordinate transforms
+    hide Camera cam;
+
+    // Smooth follow via exponential smoothing (Camera lacks built-in smoothing)
     hide SV smoothX;
     hide SV smoothY;
 
@@ -47,6 +50,7 @@ entity GameCamera {
         levelPixelW = 0;
         levelPixelH = 0;
         bgTimer = 0;
+        cam = Camera.New(SCREEN_W, SCREEN_H);
         // 0.875 ≈ x += (target-x)/8 per frame
         smoothX = SV.New(0.0, 0.875);
         // 0.917 ≈ y += (target-y)/12 per frame
@@ -62,6 +66,12 @@ entity GameCamera {
     expose func setLevelSize(w: Integer, h: Integer) {
         levelPixelW = w * TILE_SIZE;
         levelPixelH = h * TILE_SIZE;
+        // Camera bounds: top-left (0,0) to bottom-right (maxScrollX, maxScrollY)
+        var maxX = levelPixelW - SCREEN_W;
+        var maxY = levelPixelH - SCREEN_H;
+        if maxX < 0 { maxX = 0; }
+        if maxY < 0 { maxY = 0; }
+        cam.SetBounds(0, 0, maxX, maxY);
     }
 
     // Snap camera to target instantly (no smooth interpolation).
@@ -70,14 +80,11 @@ entity GameCamera {
     expose func snapTo(playerCX: Integer, playerCY: Integer) {
         var targetX = playerCX - HALF_W;
         var targetY = playerCY - HALF_H + 80;
-        var maxX = levelPixelW - SCREEN_W;
-        var maxY = levelPixelH - SCREEN_H;
-        if maxX < 0 { maxX = 0; }
-        if maxY < 0 { maxY = 0; }
-        if targetX < 0 { targetX = 0; }
-        if targetY < 0 { targetY = 0; }
-        if targetX > maxX { targetX = maxX; }
-        if targetY > maxY { targetY = maxY; }
+        // Use Camera for bounds clamping
+        cam.set_X(targetX);
+        cam.set_Y(targetY);
+        targetX = cam.get_X();
+        targetY = cam.get_Y();
         smoothX.SetImmediate(targetX + 0.0);
         smoothY.SetImmediate(targetY + 0.0);
         x = targetX;
@@ -85,21 +92,17 @@ entity GameCamera {
     }
 
     expose func follow(playerCX: Integer, playerCY: Integer) {
-        // Compute desired camera position
+        // Compute desired camera position with downward bias
         var targetX = playerCX - HALF_W;
-        var targetY = playerCY - HALF_H + 80; // Slight downward bias
+        var targetY = playerCY - HALF_H + 80;
 
-        // Clamp target to level bounds
-        var maxX = levelPixelW - SCREEN_W;
-        var maxY = levelPixelH - SCREEN_H;
-        if maxX < 0 { maxX = 0; }
-        if maxY < 0 { maxY = 0; }
-        if targetX < 0 { targetX = 0; }
-        if targetY < 0 { targetY = 0; }
-        if targetX > maxX { targetX = maxX; }
-        if targetY > maxY { targetY = maxY; }
+        // Use Camera.Follow() for bounds clamping, then read clamped position
+        cam.set_X(targetX);
+        cam.set_Y(targetY);
+        targetX = cam.get_X();
+        targetY = cam.get_Y();
 
-        // Smooth follow
+        // Smooth follow via SmoothValue (Camera lacks built-in interpolation)
         smoothX.set_Target(targetX + 0.0);
         smoothY.set_Target(targetY + 0.0);
         smoothX.Update();
@@ -107,31 +110,21 @@ entity GameCamera {
 
         x = smoothX.get_ValueI64();
         y = smoothY.get_ValueI64();
+        // Sync back so cam.ToScreenX/Y work correctly
+        cam.set_X(x);
+        cam.set_Y(y);
     }
 
     expose func drawBackground(canvas: Canvas, theme: Integer, sprites: SpriteFactory) {
-        // Theme-based background: Level 1 uses biome detection by column,
-        // other themes use the level's theme directly.
+        // Theme-based background with smooth biome crossfade transitions.
+        // Within BIOME_BLEND_TILES of a boundary, both biomes are drawn
+        // and blended using Color.Lerp for sky gradients + BoxAlpha overlays.
         if theme == THEME_GRASSLANDS {
-            // Level 1 "Descent": biome transitions by camera position
             var camCol = x / TILE_SIZE;
-            if camCol < BIOME_JUNGLE_END {
-                drawJungleBg(canvas, sprites);
-            } else if camCol < BIOME_CAVE_END {
-                drawCaveBg(canvas);
-            } else {
-                drawVolcanoBg(canvas);
-            }
+            drawGrasslandsBiome(canvas, sprites, camCol);
         } else if theme == THEME_STATION {
-            // Level 2 "Salvage": station biome detection by column
             var camCol = x / TILE_SIZE;
-            if camCol < BIOME_HULL_END {
-                drawStationHullBg(canvas);
-            } else if camCol < BIOME_REACTOR_END {
-                drawStationReactorBg(canvas);
-            } else {
-                drawStationBridgeBg(canvas);
-            }
+            drawStationBiome(canvas, camCol);
         } else if theme == THEME_CAVE {
             drawCaveBg(canvas);
         } else if theme == THEME_VOLCANO {
@@ -141,6 +134,80 @@ entity GameCamera {
         } else {
             drawJungleBg(canvas, sprites);
         }
+    }
+
+    // Returns blend progress: <0 = before zone, 0-100 = in zone, >100 = past zone
+    hide func getBiomeBlend(camCol: Integer, boundary: Integer) -> Integer {
+        var zoneStart = boundary - BIOME_BLEND_TILES;
+        if camCol < zoneStart { return -1; }
+        if camCol >= boundary { return 101; }
+        return (camCol - zoneStart) * 100 / BIOME_BLEND_TILES;
+    }
+
+    // Level 1: Grasslands — jungle / cave / volcano with crossfade
+    hide func drawGrasslandsBiome(canvas: Canvas, sprites: SpriteFactory, camCol: Integer) {
+        var t1 = getBiomeBlend(camCol, BIOME_JUNGLE_END);
+        if t1 < 0 {
+            drawJungleBg(canvas, sprites);
+            return;
+        }
+        if t1 <= 100 {
+            // Crossfade jungle → cave
+            var skyTop = Color.Lerp(pal.jungleSkyTop, pal.caveBg, t1);
+            var skyBot = Color.Lerp(pal.jungleSkyBot, pal.caveMid, t1);
+            canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, skyTop, skyBot);
+            drawJungleElements(canvas, sprites, 255 - t1 * 255 / 100);
+            drawCaveElements(canvas, t1 * 255 / 100);
+            return;
+        }
+
+        var t2 = getBiomeBlend(camCol, BIOME_CAVE_END);
+        if t2 < 0 {
+            drawCaveBg(canvas);
+            return;
+        }
+        if t2 <= 100 {
+            // Crossfade cave → volcano
+            var skyTop = Color.Lerp(pal.caveBg, 0x1A0808, t2);
+            var skyBot = Color.Lerp(pal.caveMid, 0x331111, t2);
+            canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, skyTop, skyBot);
+            drawCaveElements(canvas, 255 - t2 * 255 / 100);
+            drawVolcanoElements(canvas, t2 * 255 / 100);
+            return;
+        }
+        drawVolcanoBg(canvas);
+    }
+
+    // Level 2: Station — hull / reactor / bridge with crossfade
+    hide func drawStationBiome(canvas: Canvas, camCol: Integer) {
+        var t1 = getBiomeBlend(camCol, BIOME_HULL_END);
+        if t1 < 0 {
+            drawStationHullBg(canvas);
+            return;
+        }
+        if t1 <= 100 {
+            var skyTop = Color.Lerp(pal.hullTop, pal.reactorTop, t1);
+            var skyBot = Color.Lerp(pal.hullBot, pal.reactorBot, t1);
+            canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, skyTop, skyBot);
+            drawHullElements(canvas, 255 - t1 * 255 / 100);
+            drawReactorElements(canvas, t1 * 255 / 100);
+            return;
+        }
+
+        var t2 = getBiomeBlend(camCol, BIOME_REACTOR_END);
+        if t2 < 0 {
+            drawStationReactorBg(canvas);
+            return;
+        }
+        if t2 <= 100 {
+            var skyTop = Color.Lerp(pal.reactorTop, pal.bridgeTop, t2);
+            var skyBot = Color.Lerp(pal.reactorBot, pal.bridgeBot, t2);
+            canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, skyTop, skyBot);
+            drawReactorElements(canvas, 255 - t2 * 255 / 100);
+            drawBridgeElements(canvas, t2 * 255 / 100);
+            return;
+        }
+        drawStationBridgeBg(canvas);
     }
 
     hide func drawJungleBg(canvas: Canvas, sprites: SpriteFactory) {
@@ -227,6 +294,212 @@ entity GameCamera {
             bi = bi + 1;
         }
     }
+
+    // =========================================================================
+    // Alpha-aware element draw functions for crossfade transitions.
+    // Draw parallax elements (no sky gradient) at a given alpha level.
+    // =========================================================================
+
+    hide func drawJungleElements(canvas: Canvas, sprites: SpriteFactory, alpha: Integer) {
+        if alpha <= 0 { return; }
+        // Stars
+        var si = 0;
+        while si < 60 {
+            var starX = (si * 137 + 29) % SCREEN_W;
+            var starY = (si * 89 + 41) % (SCREEN_H / 2);
+            var twinklePhase = (bgTimer + si * 211) % 2000;
+            if twinklePhase < 1600 {
+                canvas.DiscAlpha(starX, starY, 1, pal.white, alpha * 60 / 255);
+            }
+            si = si + 1;
+        }
+        // Moon
+        canvas.DiscAlpha(SCREEN_W - 160, 80, 30, pal.white, alpha * 40 / 255);
+        canvas.DiscAlpha(SCREEN_W - 155, 75, 26, pal.jungleSkyTop, alpha * 50 / 255);
+        // Clouds (8% parallax)
+        var cloudScroll = x * PARA_CLOUD / 100;
+        var ci = 0;
+        while ci < 8 {
+            var cx2 = ((ci * 173 + 47) % (SCREEN_W + 200)) - (cloudScroll % (SCREEN_W + 200));
+            if cx2 < 0 - 120 { cx2 = cx2 + SCREEN_W + 200; }
+            var cy2 = 60 + (ci * 53) % 120;
+            var cw = 80 + (ci * 37) % 60;
+            canvas.BoxAlpha(cx2, cy2, cw, 12, pal.white, alpha * (20 + ci * 3) / 255);
+            ci = ci + 1;
+        }
+        // Mountains (15% parallax)
+        var mtn = sprites.getMountainBg();
+        var mtnScroll = x * 15 / 100;
+        var mx = 0 - (mtnScroll % 180);
+        while mx < SCREEN_W {
+            canvas.BlitAlpha(mx, SCREEN_H - 150, mtn);
+            mx = mx + 180;
+        }
+        // Trees (40% parallax)
+        var treeScroll = x * 40 / 100;
+        var ti = 0;
+        while ti < 12 {
+            var tx = (ti * 119 + 23) - (treeScroll % 1500);
+            if tx < 0 - 40 { tx = tx + 1500; }
+            if tx < SCREEN_W + 40 {
+                var th = 80 + (ti * 37) % 50;
+                var tw2 = 20 + (ti * 17) % 12;
+                canvas.BoxAlpha(tx, SCREEN_H - th - 80, tw2, th, 0x1A4A1A, alpha * 120 / 255);
+                canvas.DiscAlpha(tx + tw2 / 2, SCREEN_H - th - 80, tw2 / 2 + 8, 0x2D6D2D, alpha * 100 / 255);
+            }
+            ti = ti + 1;
+        }
+    }
+
+    hide func drawCaveElements(canvas: Canvas, alpha: Integer) {
+        if alpha <= 0 { return; }
+        // Crystal glow spots
+        var i = 0;
+        while i < 10 {
+            var gx = (i * 137 + 23) % SCREEN_W;
+            var gy = (i * 89 + 41) % SCREEN_H;
+            var glowCol = pal.crystalBlue;
+            if i % 3 == 0 { glowCol = pal.crystalPink; }
+            canvas.DiscAlpha(gx, gy, 30 + i * 4, glowCol, alpha * (15 + i * 2) / 255);
+            i = i + 1;
+        }
+        // Stone pillars (20% parallax)
+        var pillarScroll = x * PARA_CAVE_PILLAR / 100;
+        var pi = 0;
+        while pi < 6 {
+            var ppx = (pi * 227 + 31) - (pillarScroll % 1400);
+            if ppx < 0 - 40 { ppx = ppx + 1400; }
+            if ppx < SCREEN_W + 40 {
+                var ph = 200 + (pi * 67) % 120;
+                canvas.BoxAlpha(ppx, SCREEN_H - ph, 28, ph, 0x3A3A5E, alpha * 80 / 255);
+                canvas.DiscAlpha(ppx + 14, SCREEN_H - ph - 4, 14, 0x4A4A6E, alpha * 60 / 255);
+            }
+            pi = pi + 1;
+        }
+    }
+
+    hide func drawVolcanoElements(canvas: Canvas, alpha: Integer) {
+        if alpha <= 0 { return; }
+        // Lava glow from below
+        canvas.BoxAlpha(0, SCREEN_H - 60, SCREEN_W, 60, 0xFF4400, alpha * 15 / 255);
+        // Embers
+        var ei = 0;
+        while ei < 20 {
+            var emx = (ei * 131 + 17) % SCREEN_W;
+            var emy = (bgTimer / 3 + ei * 97) % SCREEN_H;
+            emy = SCREEN_H - emy; // Rise upward
+            canvas.DiscAlpha(emx, emy, 2, 0xFF6633, alpha * 80 / 255);
+            canvas.DiscAlpha(emx, emy, 4, 0xFF4400, alpha * 20 / 255);
+            ei = ei + 1;
+        }
+        // Volcanic pillars (15% parallax)
+        var pillarScroll = x * 15 / 100;
+        var vpi = 0;
+        while vpi < 5 {
+            var vpx = (vpi * 263 + 41) - (pillarScroll % 1400);
+            if vpx < 0 - 30 { vpx = vpx + 1400; }
+            if vpx < SCREEN_W + 30 {
+                var vph = 250 + (vpi * 73) % 100;
+                canvas.BoxAlpha(vpx, SCREEN_H - vph, 22, vph, 0x2A0A0A, alpha * 100 / 255);
+            }
+            vpi = vpi + 1;
+        }
+    }
+
+    hide func drawHullElements(canvas: Canvas, alpha: Integer) {
+        if alpha <= 0 { return; }
+        // Stars
+        var si = 0;
+        while si < 80 {
+            var sx = (si * 131 + 17) % SCREEN_W;
+            var sy = (si * 89 + 31) % SCREEN_H;
+            var twPhase = (bgTimer + si * 193) % 2000;
+            if twPhase < 1700 {
+                canvas.DiscAlpha(sx, sy, 1, pal.white, alpha * 200 / 255);
+            }
+            si = si + 1;
+        }
+        // Floating debris
+        var debrisScroll = x * 5 / 100;
+        var di = 0;
+        while di < 5 {
+            var dx = (di * 263 + 47) - (debrisScroll % 1400);
+            if dx < 0 - 40 { dx = dx + 1400; }
+            var dy = 100 + (di * 97) % 300;
+            canvas.BoxAlpha(dx, dy, 20 + di * 8, 10 + di * 4, pal.hullPlateDk, alpha * 40 / 255);
+            di = di + 1;
+        }
+        // Emergency lights
+        var li = 0;
+        while li < 6 {
+            var lx = (li * 221 + 11) % SCREEN_W;
+            canvas.BoxAlpha(lx, SCREEN_H - 20, 40, 2, pal.emergencyLight, alpha * 60 / 255);
+            li = li + 1;
+        }
+    }
+
+    hide func drawReactorElements(canvas: Canvas, alpha: Integer) {
+        if alpha <= 0 { return; }
+        // Pipes
+        var pipeScroll = x * 10 / 100;
+        var pi = 0;
+        while pi < 6 {
+            var ppx = (pi * 227 + 33) - (pipeScroll % 1400);
+            if ppx < 0 - 30 { ppx = ppx + 1400; }
+            canvas.BoxAlpha(ppx, 0, 20, SCREEN_H, pal.pipe, alpha * 30 / 255);
+            canvas.BoxAlpha(ppx + 5, 0, 10, SCREEN_H, pal.pipeLt, alpha * 20 / 255);
+            pi = pi + 1;
+        }
+        // Reactor glow
+        var pulseR = 80 + (bgTimer / 50) % 20;
+        canvas.DiscAlpha(SCREEN_W / 2, SCREEN_H / 2, pulseR, pal.reactorGlowRed, alpha * 12 / 255);
+        // Steam
+        var sti = 0;
+        while sti < 4 {
+            var stx = (sti * 311 + 77) % SCREEN_W;
+            var stOff = (bgTimer / 3 + sti * 100) % 200;
+            canvas.BoxAlpha(stx, SCREEN_H - 100 - stOff, 8, 60, pal.thermalSteam, alpha * 15 / 255);
+            sti = sti + 1;
+        }
+    }
+
+    hide func drawBridgeElements(canvas: Canvas, alpha: Integer) {
+        if alpha <= 0 { return; }
+        // Star viewport
+        canvas.BoxAlpha(SCREEN_W / 4, 60, SCREEN_W / 2, 300, pal.viewportBg, alpha * 100 / 255);
+        var vi = 0;
+        while vi < 30 {
+            var vsx = SCREEN_W / 4 + 20 + (vi * 73 + 11) % (SCREEN_W / 2 - 40);
+            var vsy = 80 + (vi * 59 + 17) % 260;
+            canvas.DiscAlpha(vsx, vsy, 1, pal.white, alpha * 200 / 255);
+            vi = vi + 1;
+        }
+        // Holo panels
+        var hi = 0;
+        while hi < 5 {
+            var hx = (hi * 257 + 41) % SCREEN_W;
+            var hy = 40 + (hi * 79) % 200;
+            canvas.BoxAlpha(hx, hy, 30, 20, pal.holo, alpha * 18 / 255);
+            var scanY = hy + (bgTimer / 20 + hi * 30) % 20;
+            canvas.BoxAlpha(hx, scanY, 30, 1, pal.holoLt, alpha * 30 / 255);
+            hi = hi + 1;
+        }
+        // Data stream
+        var dsi = 0;
+        while dsi < 15 {
+            var dsx = (dsi * 83 + 29) % SCREEN_W;
+            var dsy = (bgTimer / 2 + dsi * 137) % SCREEN_H;
+            var dcol = pal.holo;
+            if dsi % 3 == 0 { dcol = pal.coolant; }
+            if dsi % 5 == 0 { dcol = pal.ariaBlue; }
+            canvas.DiscAlpha(dsx, dsy, 1, dcol, alpha * 200 / 255);
+            dsi = dsi + 1;
+        }
+    }
+
+    // =========================================================================
+    // Full biome draw functions (sky gradient + elements at full alpha)
+    // =========================================================================
 
     hide func drawCaveBg(canvas: Canvas) {
         // Dark cave gradient

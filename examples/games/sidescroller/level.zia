@@ -2,12 +2,13 @@
 // All levels are built procedurally in code (no external data files)
 module level;
 
+bind Viper.Graphics;
 bind Viper.Game;
 bind Viper.Math;
 bind "./config";
 
 entity Level {
-    hide Grid2D tileGrid;
+    hide Tilemap tilemap;
     expose Integer levelWidth;
     expose Integer levelHeight;
     expose Integer levelTheme;
@@ -83,38 +84,8 @@ entity Level {
         if row < 0 { return false; }
         if col >= levelWidth { return true; }
         if row >= levelHeight { return true; }
-        var t = tileGrid.Get(col, row);
-        if t == TILE_GROUND { return true; }
-        if t == TILE_GRASS_TOP { return true; }
-        if t == TILE_STONE { return true; }
-        if t == TILE_DIRT { return true; }
-        if t == TILE_BRICK { return true; }
-        if t == TILE_PLATFORM { return true; }
-        if t == TILE_CAVE_TOP { return true; }
-        if t == TILE_CAVE_WALL { return true; }
-        if t == TILE_BRIDGE { return true; }
-        if t == TILE_MAGMA { return true; }
-        if t == TILE_OBSIDIAN { return true; }
-        if t == TILE_CLOUD { return true; }
-        if t == TILE_SKY_BRICK { return true; }
-        if t == TILE_RUIN_STONE { return true; }
-        if t == TILE_MOSS_STONE { return true; }
-        if t == TILE_JUNGLE_GROUND { return true; }
-        if t == TILE_JUNGLE_PLATFORM { return true; }
-        if t == TILE_MUSHROOM { return true; }
-        if t == TILE_CAVE_CRYSTAL { return true; }
-        if t == TILE_METAL_GRATE { return true; }
-        if t == TILE_MAGMA_ROCK { return true; }
-        // Level 2: Station solids
-        if t == TILE_HULL_PLATE { return true; }
-        if t == TILE_GIRDER { return true; }
-        if t == TILE_AIRLOCK { return true; }
-        if t == TILE_PIPE { return true; }
-        if t == TILE_CATWALK { return true; }
-        if t == TILE_CONDUIT { return true; }
-        if t == TILE_CONSOLE { return true; }
-        if t == TILE_HOLO_BRIDGE { return true; }
-        return false;
+        // Tilemap.IsSolidAt takes PIXEL coordinates (divides by tile size internally)
+        return tilemap.IsSolidAt(col * TILE_SIZE, row * TILE_SIZE);
     }
 
     expose func isHazard(col: Integer, row: Integer) -> Boolean {
@@ -122,7 +93,7 @@ entity Level {
         if row < 0 { return false; }
         if col >= levelWidth { return false; }
         if row >= levelHeight { return false; }
-        var t = tileGrid.Get(col, row);
+        var t = tilemap.GetTile(col, row);
         if t == TILE_SPIKE { return true; }
         if t == TILE_LAVA { return true; }
         if t == TILE_THORN { return true; }
@@ -136,7 +107,41 @@ entity Level {
         if row < 0 { return TILE_EMPTY; }
         if col >= levelWidth { return TILE_EMPTY; }
         if row >= levelHeight { return TILE_EMPTY; }
-        return tileGrid.Get(col, row);
+        return tilemap.GetTile(col, row);
+    }
+
+    // Register all solid tile types with the Tilemap collision system.
+    // Called once after each tilemap creation so IsSolidAt() works.
+    hide func registerSolidTiles() {
+        tilemap.SetCollision(TILE_GROUND, 1);
+        tilemap.SetCollision(TILE_GRASS_TOP, 1);
+        tilemap.SetCollision(TILE_STONE, 1);
+        tilemap.SetCollision(TILE_DIRT, 1);
+        tilemap.SetCollision(TILE_BRICK, 1);
+        tilemap.SetCollision(TILE_PLATFORM, 1);
+        tilemap.SetCollision(TILE_CAVE_TOP, 1);
+        tilemap.SetCollision(TILE_CAVE_WALL, 1);
+        tilemap.SetCollision(TILE_BRIDGE, 1);
+        tilemap.SetCollision(TILE_MAGMA, 1);
+        tilemap.SetCollision(TILE_OBSIDIAN, 1);
+        tilemap.SetCollision(TILE_CLOUD, 1);
+        tilemap.SetCollision(TILE_SKY_BRICK, 1);
+        tilemap.SetCollision(TILE_RUIN_STONE, 1);
+        tilemap.SetCollision(TILE_MOSS_STONE, 1);
+        tilemap.SetCollision(TILE_JUNGLE_GROUND, 1);
+        tilemap.SetCollision(TILE_JUNGLE_PLATFORM, 1);
+        tilemap.SetCollision(TILE_MUSHROOM, 1);
+        tilemap.SetCollision(TILE_CAVE_CRYSTAL, 1);
+        tilemap.SetCollision(TILE_METAL_GRATE, 1);
+        tilemap.SetCollision(TILE_MAGMA_ROCK, 1);
+        tilemap.SetCollision(TILE_HULL_PLATE, 1);
+        tilemap.SetCollision(TILE_GIRDER, 1);
+        tilemap.SetCollision(TILE_AIRLOCK, 1);
+        tilemap.SetCollision(TILE_PIPE, 1);
+        tilemap.SetCollision(TILE_CATWALK, 1);
+        tilemap.SetCollision(TILE_CONDUIT, 1);
+        tilemap.SetCollision(TILE_CONSOLE, 1);
+        tilemap.SetCollision(TILE_HOLO_BRIDGE, 1);
     }
 
     // Add enemy spawn
@@ -157,7 +162,7 @@ entity Level {
     hide func fillRow(row: Integer, startCol: Integer, endCol: Integer, tile: Integer) {
         var c = startCol;
         while c <= endCol {
-            tileGrid.Set(c, row, tile);
+            tilemap.SetTile(c, row, tile);
             c = c + 1;
         }
     }
@@ -175,7 +180,7 @@ entity Level {
     hide func fillRowTile(row: Integer, startCol: Integer, endCol: Integer, tile: Integer) {
         var c = startCol;
         while c <= endCol {
-            tileGrid.Set(c, row, tile);
+            tilemap.SetTile(c, row, tile);
             c = c + 1;
         }
     }
@@ -184,7 +189,7 @@ entity Level {
     hide func addPlatformTile(col: Integer, row: Integer, width: Integer, tile: Integer) {
         var c = col;
         while c < col + width {
-            tileGrid.Set(c, row, tile);
+            tilemap.SetTile(c, row, tile);
             c = c + 1;
         }
     }
@@ -199,7 +204,8 @@ entity Level {
         levelHeight = LEVEL_HEIGHT;
         levelTheme = THEME_GRASSLANDS;     // background switches dynamically by column
 
-        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+        tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
+        registerSolidTiles();
 
         // Player starts in the jungle canopy
         playerStartX = 3 * TILE_SIZE;
@@ -257,7 +263,7 @@ entity Level {
         addPlatformTile(43, 12, 3, TILE_JUNGLE_GROUND);
         fillArea(44, 13, 49, FLOOR_ROW, TILE_DIRT);
         // Checkpoint before cave entrance
-        tileGrid.Set(46, 11, TILE_CHECKPOINT);
+        tilemap.SetTile(46, 11, TILE_CHECKPOINT);
         checkpointX = 46 * TILE_SIZE;
         checkpointY = 10 * TILE_SIZE;
         hasCheckpoint = true;
@@ -278,8 +284,8 @@ entity Level {
         addPlatformTile(57, 10, 3, TILE_CAVE_CRYSTAL);
         addPlatformTile(61, 12, 3, TILE_STONE);
         // Crystal decorations
-        tileGrid.Set(54, 13, TILE_CRYSTAL);
-        tileGrid.Set(59, 11, TILE_CRYSTAL);
+        tilemap.SetTile(54, 13, TILE_CRYSTAL);
+        tilemap.SetTile(59, 11, TILE_CRYSTAL);
         addPickup(PICKUP_COIN, 53, 11);
         addPickup(PICKUP_COIN, 58, 9);
         addPickup(PICKUP_COIN, 62, 11);
@@ -319,7 +325,7 @@ entity Level {
         addPickup(PICKUP_COIN, 96, 12);
         addPickup(PICKUP_RAPIDFIRE, 93, 14);
         // Checkpoint before thermal zone
-        tileGrid.Set(98, 12, TILE_CHECKPOINT);
+        tilemap.SetTile(98, 12, TILE_CHECKPOINT);
 
         // ==== BIOME 3: THERMAL VENTS (cols 100-149) ====
 
@@ -375,7 +381,7 @@ entity Level {
         bossY = (GROUND_ROW - 3) * TILE_SIZE;
         hasBoss = true;
         // End sign (after boss area)
-        tileGrid.Set(148, GROUND_ROW - 1, TILE_SIGN_END);
+        tilemap.SetTile(148, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
     // =========================================================================
@@ -423,7 +429,8 @@ entity Level {
         levelHeight = LEVEL_HEIGHT;
         levelTheme = THEME_STATION;
 
-        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+        tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
+        registerSolidTiles();
 
         playerStartX = 3 * TILE_SIZE;
         playerStartY = (GROUND_ROW - 2) * TILE_SIZE;
@@ -471,7 +478,7 @@ entity Level {
         addPickup(PICKUP_COIN, 41, 12);
         addPickup(PICKUP_COIN, 45, 10);
         // Checkpoint
-        tileGrid.Set(48, GROUND_ROW - 1, TILE_CHECKPOINT);
+        tilemap.SetTile(48, GROUND_ROW - 1, TILE_CHECKPOINT);
         checkpointX = 48 * TILE_SIZE;
         checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
         hasCheckpoint = true;
@@ -523,7 +530,7 @@ entity Level {
         addPickup(PICKUP_HEALTH, 93, 10);
         addPickup(PICKUP_COIN, 97, 14);
         // Checkpoint
-        tileGrid.Set(98, GROUND_ROW - 1, TILE_CHECKPOINT);
+        tilemap.SetTile(98, GROUND_ROW - 1, TILE_CHECKPOINT);
 
         // ==== BIOME 3: COMMAND BRIDGE (cols 100-149) ====
 
@@ -559,7 +566,7 @@ entity Level {
         bossX = 140 * TILE_SIZE;
         bossY = (GROUND_ROW - 3) * TILE_SIZE;
         hasBoss = true;
-        tileGrid.Set(148, GROUND_ROW - 1, TILE_SIGN_END);
+        tilemap.SetTile(148, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
     // =========================================================================
@@ -573,7 +580,8 @@ entity Level {
         levelHeight = LEVEL_HEIGHT;
         levelTheme = THEME_CAVE;  // reuse cave background (blue-purple works for ice)
 
-        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+        tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
+        registerSolidTiles();
 
         playerStartX = 3 * TILE_SIZE;
         playerStartY = (GROUND_ROW - 2) * TILE_SIZE;
@@ -613,7 +621,7 @@ entity Level {
         addPickup(PICKUP_COIN, 43, 9);
         addPickup(PICKUP_SPEED, 40, 14);
 
-        tileGrid.Set(48, GROUND_ROW - 1, TILE_CHECKPOINT);
+        tilemap.SetTile(48, GROUND_ROW - 1, TILE_CHECKPOINT);
         checkpointX = 48 * TILE_SIZE;
         checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
         hasCheckpoint = true;
@@ -628,8 +636,8 @@ entity Level {
         buildPlatformRun(52, 12, 4, TILE_CAVE_CRYSTAL, 11);
         buildPlatformRun(58, 10, 3, TILE_STONE, 9);
         buildPlatformRun(63, 12, 3, TILE_CAVE_CRYSTAL, 11);
-        tileGrid.Set(55, 13, TILE_CRYSTAL);
-        tileGrid.Set(60, 11, TILE_CRYSTAL);
+        tilemap.SetTile(55, 13, TILE_CRYSTAL);
+        tilemap.SetTile(60, 11, TILE_CRYSTAL);
         addEnemy(ENEMY_BAT, 56, 8);
         addEnemy(ENEMY_TURRET, 61, 9);
         addPickup(PICKUP_COIN, 53, 11);
@@ -659,7 +667,7 @@ entity Level {
         addPickup(PICKUP_COIN, 90, 11);
         addPickup(PICKUP_RAPIDFIRE, 83, 14);
 
-        tileGrid.Set(96, GROUND_ROW - 1, TILE_CHECKPOINT);
+        tilemap.SetTile(96, GROUND_ROW - 1, TILE_CHECKPOINT);
 
         // ==== BIOME 3: Frozen Core + Boss (cols 100-149) ====
         fillRowTile(0, 100, 149, TILE_CAVE_TOP);
@@ -692,7 +700,7 @@ entity Level {
         bossX = 140 * TILE_SIZE;
         bossY = (GROUND_ROW - 3) * TILE_SIZE;
         hasBoss = true;
-        tileGrid.Set(148, GROUND_ROW - 1, TILE_SIGN_END);
+        tilemap.SetTile(148, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
     // =========================================================================
@@ -706,7 +714,8 @@ entity Level {
         levelHeight = LEVEL_HEIGHT;
         levelTheme = THEME_RUINS;
 
-        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+        tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
+        registerSolidTiles();
 
         playerStartX = 3 * TILE_SIZE;
         playerStartY = (GROUND_ROW - 2) * TILE_SIZE;
@@ -721,10 +730,10 @@ entity Level {
         buildPlatformRun(17, 12, 5, TILE_MOSS_STONE, 11);
         buildPlatformRun(24, 8, 3, TILE_JUNGLE_PLATFORM, 7);
         // Decorative vines
-        tileGrid.Set(8, 8, TILE_VINE);
-        tileGrid.Set(9, 9, TILE_VINE);
-        tileGrid.Set(14, 7, TILE_VINE);
-        tileGrid.Set(19, 9, TILE_VINE);
+        tilemap.SetTile(8, 8, TILE_VINE);
+        tilemap.SetTile(9, 9, TILE_VINE);
+        tilemap.SetTile(14, 7, TILE_VINE);
+        tilemap.SetTile(19, 9, TILE_VINE);
         addEnemy(ENEMY_SLIME, 10, 14);
         addEnemy(ENEMY_SLIME, 20, 14);
         addEnemy(ENEMY_BAT, 16, 6);
@@ -750,7 +759,7 @@ entity Level {
         addPickup(PICKUP_COIN, 43, 9);
         addPickup(PICKUP_SPEED, 47, 14);
 
-        tileGrid.Set(48, GROUND_ROW - 1, TILE_CHECKPOINT);
+        tilemap.SetTile(48, GROUND_ROW - 1, TILE_CHECKPOINT);
         checkpointX = 48 * TILE_SIZE;
         checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
         hasCheckpoint = true;
@@ -762,9 +771,9 @@ entity Level {
         buildPlatformRun(52, 12, 4, TILE_RUIN_STONE, 11);
         buildPlatformRun(58, 10, 3, TILE_MOSS_STONE, 9);
         buildPlatformRun(63, 12, 4, TILE_RUIN_STONE, 11);
-        tileGrid.Set(55, 10, TILE_VINE);
-        tileGrid.Set(56, 11, TILE_VINE);
-        tileGrid.Set(61, 8, TILE_VINE);
+        tilemap.SetTile(55, 10, TILE_VINE);
+        tilemap.SetTile(56, 11, TILE_VINE);
+        tilemap.SetTile(61, 8, TILE_VINE);
         addEnemy(ENEMY_BAT, 56, 7);
         addEnemy(ENEMY_TURRET, 60, 9);
         addEnemy(ENEMY_SLIME, 65, 11);
@@ -794,7 +803,7 @@ entity Level {
         addPickup(PICKUP_COIN, 91, 11);
         addPickup(PICKUP_RAPIDFIRE, 84, 14);
 
-        tileGrid.Set(97, GROUND_ROW - 1, TILE_CHECKPOINT);
+        tilemap.SetTile(97, GROUND_ROW - 1, TILE_CHECKPOINT);
 
         // ==== BIOME 3: Heart of Ruins + Boss (cols 100-149) ====
         fillRowTile(GROUND_ROW, 100, 149, TILE_MOSS_STONE);
@@ -803,8 +812,8 @@ entity Level {
         buildPlatformRun(102, 12, 4, TILE_MOSS_STONE, 11);
         buildPlatformRun(108, 10, 3, TILE_RUIN_STONE, 9);
         buildPlatformRun(114, 12, 4, TILE_MOSS_STONE, 11);
-        tileGrid.Set(105, 9, TILE_VINE);
-        tileGrid.Set(111, 8, TILE_VINE);
+        tilemap.SetTile(105, 9, TILE_VINE);
+        tilemap.SetTile(111, 8, TILE_VINE);
         addEnemy(ENEMY_BAT, 106, 7);
         addEnemy(ENEMY_TURRET, 112, 9);
         addEnemy(ENEMY_SLIME, 116, 11);
@@ -827,7 +836,7 @@ entity Level {
         bossX = 140 * TILE_SIZE;
         bossY = (GROUND_ROW - 3) * TILE_SIZE;
         hasBoss = true;
-        tileGrid.Set(148, GROUND_ROW - 1, TILE_SIGN_END);
+        tilemap.SetTile(148, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
     // Legacy level builders below — kept but unreachable.
@@ -837,7 +846,8 @@ entity Level {
         levelHeight = LEVEL_HEIGHT;
         levelTheme = THEME_GRASSLANDS;
 
-        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+        tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
+        registerSolidTiles();
 
         // Ground: grass top at row 15, dirt at row 16
         fillRow(GROUND_ROW, 0, levelWidth - 1, TILE_GRASS_TOP);
@@ -936,7 +946,7 @@ entity Level {
 
         // --- Section 5: Checkpoint + turret gauntlet (cols 120-155) ---
         // Checkpoint
-        tileGrid.Set(122, GROUND_ROW - 1, TILE_CHECKPOINT);
+        tilemap.SetTile(122, GROUND_ROW - 1, TILE_CHECKPOINT);
         checkpointX = 122 * TILE_SIZE;
         checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
         hasCheckpoint = true;
@@ -987,7 +997,7 @@ entity Level {
         addEnemy(ENEMY_TURRET, 182, 14);
 
         // End sign
-        tileGrid.Set(195, GROUND_ROW - 1, TILE_SIGN_END);
+        tilemap.SetTile(195, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
     // =========================================================================
@@ -999,7 +1009,8 @@ entity Level {
         levelHeight = LEVEL_HEIGHT;
         levelTheme = THEME_CAVE;
 
-        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+        tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
+        registerSolidTiles();
 
         // Cave floor and ceiling
         fillRow(0, 0, levelWidth - 1, TILE_CAVE_TOP);
@@ -1012,9 +1023,9 @@ entity Level {
 
         // --- Section 1: Cave entrance (cols 0-35) ---
         // Crystal decorations
-        tileGrid.Set(5, 2, TILE_CRYSTAL);
-        tileGrid.Set(12, 2, TILE_CRYSTAL);
-        tileGrid.Set(20, 2, TILE_CRYSTAL);
+        tilemap.SetTile(5, 2, TILE_CRYSTAL);
+        tilemap.SetTile(12, 2, TILE_CRYSTAL);
+        tilemap.SetTile(20, 2, TILE_CRYSTAL);
 
         addPlatform(8, 12, 4);
         addPlatform(14, 10, 3);
@@ -1076,7 +1087,7 @@ entity Level {
 
         // --- Section 4: Vertical challenge (cols 105-140) ---
         // Checkpoint
-        tileGrid.Set(107, GROUND_ROW - 1, TILE_CHECKPOINT);
+        tilemap.SetTile(107, GROUND_ROW - 1, TILE_CHECKPOINT);
         checkpointX = 107 * TILE_SIZE;
         checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
         hasCheckpoint = true;
@@ -1145,7 +1156,7 @@ entity Level {
         hasBoss = true;
 
         // End sign (after boss)
-        tileGrid.Set(215, GROUND_ROW - 1, TILE_SIGN_END);
+        tilemap.SetTile(215, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
     // =========================================================================
@@ -1157,7 +1168,8 @@ entity Level {
         levelHeight = LEVEL_HEIGHT;
         levelTheme = THEME_VOLCANO;
 
-        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+        tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
+        registerSolidTiles();
 
         // Magma rock floor and ceiling
         fillRow(0, 0, levelWidth - 1, TILE_MAGMA);
@@ -1223,7 +1235,7 @@ entity Level {
         addEnemy(ENEMY_TURRET, 85, 11);
 
         // --- Section 3: Checkpoint + narrow bridges (cols 90-140) ---
-        tileGrid.Set(92, GROUND_ROW - 1, TILE_CHECKPOINT);
+        tilemap.SetTile(92, GROUND_ROW - 1, TILE_CHECKPOINT);
         checkpointX = 92 * TILE_SIZE;
         checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
         hasCheckpoint = true;
@@ -1294,7 +1306,7 @@ entity Level {
         addEnemy(ENEMY_SLIME, 212, 14);
 
         // End sign
-        tileGrid.Set(225, GROUND_ROW - 1, TILE_SIGN_END);
+        tilemap.SetTile(225, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
     // =========================================================================
@@ -1306,7 +1318,8 @@ entity Level {
         levelHeight = LEVEL_HEIGHT;
         levelTheme = THEME_SKY;
 
-        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+        tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
+        registerSolidTiles();
 
         // Cloud ground (no bottom row — sky below)
         fillRow(GROUND_ROW, 0, 30, TILE_CLOUD);
@@ -1379,7 +1392,7 @@ entity Level {
         addEnemy(ENEMY_TURRET, 76, 14);
 
         // --- Section 3: Checkpoint + cloud hop (cols 85-130) ---
-        tileGrid.Set(87, GROUND_ROW - 1, TILE_CHECKPOINT);
+        tilemap.SetTile(87, GROUND_ROW - 1, TILE_CHECKPOINT);
         checkpointX = 87 * TILE_SIZE;
         checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
         hasCheckpoint = true;
@@ -1435,7 +1448,7 @@ entity Level {
         addEnemy(ENEMY_SLIME, 165, 14);
 
         // End sign
-        tileGrid.Set(190, GROUND_ROW - 1, TILE_SIGN_END);
+        tilemap.SetTile(190, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
     // =========================================================================
@@ -1447,7 +1460,8 @@ entity Level {
         levelHeight = LEVEL_HEIGHT;
         levelTheme = THEME_RUINS;
 
-        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+        tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
+        registerSolidTiles();
 
         // Ruin stone floor and vine ceiling
         fillRow(0, 0, levelWidth - 1, TILE_VINE);
@@ -1485,8 +1499,8 @@ entity Level {
         // --- Section 2: Interior temple (cols 50-100) ---
         // Temple walls with vine decorations
         fillArea(50, 2, 51, 14, TILE_RUIN_STONE);
-        tileGrid.Set(50, 3, TILE_VINE);
-        tileGrid.Set(51, 5, TILE_VINE);
+        tilemap.SetTile(50, 3, TILE_VINE);
+        tilemap.SetTile(51, 5, TILE_VINE);
 
         fillRow(GROUND_ROW, 52, 95, TILE_RUIN_STONE);
         fillRow(FLOOR_ROW, 52, 95, TILE_RUIN_STONE);
@@ -1516,7 +1530,7 @@ entity Level {
         addEnemy(ENEMY_BAT, 78, 3);
 
         // Checkpoint
-        tileGrid.Set(90, GROUND_ROW - 1, TILE_CHECKPOINT);
+        tilemap.SetTile(90, GROUND_ROW - 1, TILE_CHECKPOINT);
         checkpointX = 90 * TILE_SIZE;
         checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
         hasCheckpoint = true;
@@ -1609,7 +1623,7 @@ entity Level {
         hasBoss = true;
 
         // End sign
-        tileGrid.Set(245, GROUND_ROW - 1, TILE_SIGN_END);
+        tilemap.SetTile(245, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
     // =========================================================================
@@ -1619,7 +1633,7 @@ entity Level {
     hide func addPlatform(col: Integer, row: Integer, width: Integer) {
         var c = col;
         while c < col + width {
-            tileGrid.Set(c, row, TILE_PLATFORM);
+            tilemap.SetTile(c, row, TILE_PLATFORM);
             c = c + 1;
         }
     }
@@ -1627,8 +1641,8 @@ entity Level {
     hide func clearGround(startCol: Integer, endCol: Integer) {
         var c = startCol;
         while c <= endCol {
-            tileGrid.Set(c, GROUND_ROW, TILE_EMPTY);
-            tileGrid.Set(c, FLOOR_ROW, TILE_EMPTY);
+            tilemap.SetTile(c, GROUND_ROW, TILE_EMPTY);
+            tilemap.SetTile(c, FLOOR_ROW, TILE_EMPTY);
             c = c + 1;
         }
     }
@@ -1816,21 +1830,22 @@ entity Level {
         levelWidth = 200;
         levelHeight = 22;
         levelTheme = 10; // Corrupted core
-        tileGrid = Grid2D.New(levelWidth, levelHeight, 0);
+        tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
+        registerSolidTiles();
 
         // Ground floor
         var c = 0;
         while c < levelWidth {
-            tileGrid.Set(c, levelHeight - 1, TILE_OBSIDIAN);
-            tileGrid.Set(c, levelHeight - 2, TILE_OBSIDIAN);
+            tilemap.SetTile(c, levelHeight - 1, TILE_OBSIDIAN);
+            tilemap.SetTile(c, levelHeight - 2, TILE_OBSIDIAN);
             c = c + 1;
         }
 
         // Ceiling
         c = 0;
         while c < levelWidth {
-            tileGrid.Set(c, 0, TILE_OBSIDIAN);
-            tileGrid.Set(c, 1, TILE_OBSIDIAN);
+            tilemap.SetTile(c, 0, TILE_OBSIDIAN);
+            tilemap.SetTile(c, 1, TILE_OBSIDIAN);
             c = c + 1;
         }
 
@@ -1839,9 +1854,9 @@ entity Level {
         c = 0;
         while c < 40 {
             // Corridor walls (leaving 8-tile-high passage)
-            tileGrid.Set(c, 2, TILE_OBSIDIAN);
-            tileGrid.Set(c, 3, TILE_OBSIDIAN);
-            tileGrid.Set(c, levelHeight - 3, TILE_OBSIDIAN);
+            tilemap.SetTile(c, 2, TILE_OBSIDIAN);
+            tilemap.SetTile(c, 3, TILE_OBSIDIAN);
+            tilemap.SetTile(c, levelHeight - 3, TILE_OBSIDIAN);
             c = c + 1;
         }
 
@@ -1871,16 +1886,16 @@ entity Level {
         // Dash challenge: narrow passage with timed hazard
         c = 41;
         while c < 50 {
-            tileGrid.Set(c, 8, TILE_OBSIDIAN);
+            tilemap.SetTile(c, 8, TILE_OBSIDIAN);
             c = c + 1;
         }
         // Gap requiring dash to cross
         clearGround(45, 49);
 
         // Charge shot wall
-        tileGrid.Set(55, 12, TILE_DESTRUCTIBLE);
-        tileGrid.Set(55, 13, TILE_DESTRUCTIBLE);
-        tileGrid.Set(55, 14, TILE_DESTRUCTIBLE);
+        tilemap.SetTile(55, 12, TILE_DESTRUCTIBLE);
+        tilemap.SetTile(55, 13, TILE_DESTRUCTIBLE);
+        tilemap.SetTile(55, 14, TILE_DESTRUCTIBLE);
 
         // High platforms requiring double jump
         buildPlatformRun(60, 8, 3, TILE_OBSIDIAN, 8 - 2);
@@ -1907,7 +1922,7 @@ entity Level {
         // Arena floor and walls
         c = 81;
         while c < 120 {
-            tileGrid.Set(c, levelHeight - 3, TILE_OBSIDIAN);
+            tilemap.SetTile(c, levelHeight - 3, TILE_OBSIDIAN);
             c = c + 1;
         }
 
@@ -1955,8 +1970,8 @@ entity Level {
         c = 121;
         while c < 160 {
             if c < 130 or c > 150 {
-                tileGrid.Set(c, 4, TILE_OBSIDIAN);
-                tileGrid.Set(c, 5, TILE_OBSIDIAN);
+                tilemap.SetTile(c, 4, TILE_OBSIDIAN);
+                tilemap.SetTile(c, 5, TILE_OBSIDIAN);
             }
             c = c + 1;
         }
@@ -1970,16 +1985,16 @@ entity Level {
         buildPlatformRun(155, 14, 4, TILE_OBSIDIAN, 14 - 2);
 
         // Steam vents for vertical traversal
-        tileGrid.Set(130, levelHeight - 3, TILE_STEAM_VENT);
-        tileGrid.Set(140, levelHeight - 3, TILE_STEAM_VENT);
+        tilemap.SetTile(130, levelHeight - 3, TILE_STEAM_VENT);
+        tilemap.SetTile(140, levelHeight - 3, TILE_STEAM_VENT);
 
         // Hazards
-        tileGrid.Set(135, 16, TILE_SPIKE);
-        tileGrid.Set(136, 16, TILE_SPIKE);
-        tileGrid.Set(145, 12, TILE_SPIKE);
+        tilemap.SetTile(135, 16, TILE_SPIKE);
+        tilemap.SetTile(136, 16, TILE_SPIKE);
+        tilemap.SetTile(145, 12, TILE_SPIKE);
 
         // Save station before boss
-        tileGrid.Set(158, levelHeight - 3, TILE_SAVE_STATION);
+        tilemap.SetTile(158, levelHeight - 3, TILE_SAVE_STATION);
         hasCheckpoint = true;
         checkpointX = 158 * TILE_SIZE;
         checkpointY = (levelHeight - 4) * TILE_SIZE;
@@ -1990,7 +2005,7 @@ entity Level {
         // Arena walls
         c = 161;
         while c < 200 {
-            tileGrid.Set(c, 2, TILE_OBSIDIAN);
+            tilemap.SetTile(c, 2, TILE_OBSIDIAN);
             c = c + 1;
         }
 
@@ -1998,9 +2013,9 @@ entity Level {
         var pillar = 0;
         while pillar < 4 {
             var px2 = 168 + pillar * 8;
-            tileGrid.Set(px2, levelHeight - 3, TILE_OBSIDIAN);
-            tileGrid.Set(px2, levelHeight - 4, TILE_OBSIDIAN);
-            tileGrid.Set(px2, levelHeight - 5, TILE_OBSIDIAN);
+            tilemap.SetTile(px2, levelHeight - 3, TILE_OBSIDIAN);
+            tilemap.SetTile(px2, levelHeight - 4, TILE_OBSIDIAN);
+            tilemap.SetTile(px2, levelHeight - 5, TILE_OBSIDIAN);
             pillar = pillar + 1;
         }
 
@@ -2017,7 +2032,7 @@ entity Level {
         bossY = 14 * TILE_SIZE;
 
         // Lore terminal near boss
-        tileGrid.Set(162, levelHeight - 3, TILE_LORE_TERMINAL);
+        tilemap.SetTile(162, levelHeight - 3, TILE_LORE_TERMINAL);
 
         // Pickups in arena
         pickupTypes.add(PICKUP_HEALTH);

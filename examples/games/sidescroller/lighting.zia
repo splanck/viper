@@ -16,6 +16,7 @@
 module lighting;
 
 bind Viper.Graphics;
+bind Viper.Game;
 bind "./config";
 bind "./palette";
 
@@ -61,7 +62,8 @@ entity LightingSystem {
     hide Integer playerLightRadius;
     hide Integer playerLightPulse; // Animation timer
 
-    // Dynamic light pool (parallel arrays)
+    // Dynamic light pool via ObjectPool with parallel arrays
+    hide ObjectPool lightPool;
     hide List[Integer] dynX;
     hide List[Integer] dynY;
     hide List[Integer] dynRadius;
@@ -76,12 +78,17 @@ entity LightingSystem {
         playerLightRadius = 180;
         playerLightPulse = 0;
 
+        lightPool = ObjectPool.New(MAX_DYN_LIGHTS);
         dynX = [];
         dynY = [];
         dynRadius = [];
         dynColor = [];
         dynLife = [];
         dynMaxLife = [];
+        for i in 0..MAX_DYN_LIGHTS {
+            dynX.add(0); dynY.add(0); dynRadius.add(0);
+            dynColor.add(0); dynLife.add(0); dynMaxLife.add(0);
+        }
     }
 
     // Set the darkness level for the current biome.
@@ -97,22 +104,14 @@ entity LightingSystem {
     // Add a brief dynamic light (explosion, bullet impact, etc.).
     expose func addLight(x: Integer, y: Integer, radius: Integer,
                          color: Integer, lifetimeFrames: Integer) {
-        if dynX.length() >= MAX_DYN_LIGHTS {
-            // Overwrite oldest
-            dynX.set(0, x);
-            dynY.set(0, y);
-            dynRadius.set(0, radius);
-            dynColor.set(0, color);
-            dynLife.set(0, lifetimeFrames);
-            dynMaxLife.set(0, lifetimeFrames);
-            return;
-        }
-        dynX.add(x);
-        dynY.add(y);
-        dynRadius.add(radius);
-        dynColor.add(color);
-        dynLife.add(lifetimeFrames);
-        dynMaxLife.add(lifetimeFrames);
+        var handle = lightPool.Acquire();
+        if handle < 0 { return; } // Pool full — light is dropped
+        dynX.set(handle, x);
+        dynY.set(handle, y);
+        dynRadius.set(handle, radius);
+        dynColor.set(handle, color);
+        dynLife.set(handle, lifetimeFrames);
+        dynMaxLife.set(handle, lifetimeFrames);
     }
 
     // Update dynamic light lifetimes.
@@ -120,29 +119,15 @@ entity LightingSystem {
         playerLightPulse = playerLightPulse + 1;
         if playerLightPulse > 120 { playerLightPulse = 0; }
 
-        // Tick down dynamic lights, remove expired
-        var i = 0;
-        while i < dynLife.length() {
+        // Tick down dynamic lights, release expired
+        var i = lightPool.FirstActive();
+        while i >= 0 {
+            var next = lightPool.NextActive(i);
             dynLife.set(i, dynLife.get(i) - 1);
             if dynLife.get(i) <= 0 {
-                // Remove by swapping with last
-                var last = dynLife.length() - 1;
-                if i < last {
-                    dynX.set(i, dynX.get(last));
-                    dynY.set(i, dynY.get(last));
-                    dynRadius.set(i, dynRadius.get(last));
-                    dynColor.set(i, dynColor.get(last));
-                    dynLife.set(i, dynLife.get(last));
-                    dynMaxLife.set(i, dynMaxLife.get(last));
-                }
-                // Shrink lists (remove last element)
-                // Note: Zia lists don't have removeLast, so we rebuild
-                // Actually we just track with a counter approach
-                // For simplicity, just skip drawing expired lights
-                i = i + 1;
-            } else {
-                i = i + 1;
+                lightPool.Release(i);
             }
+            i = next;
         }
     }
 
@@ -184,25 +169,24 @@ entity LightingSystem {
         canvas.DiscAlpha(playerScreenX, playerScreenY, radius / 4,
                          Color.RGB(60, 70, 80), darknessLevel / 2);
 
-        // Step 3: Dynamic lights
-        var i = 0;
-        while i < dynLife.length() {
-            if dynLife.get(i) > 0 {
-                var lx = dynX.get(i) - camX;
-                var ly = dynY.get(i) - camY;
-                var lr = dynRadius.get(i);
-                var lc = dynColor.get(i);
-                // Fade based on remaining life
-                var fadeAlpha = darknessLevel;
-                if dynMaxLife.get(i) > 0 {
-                    fadeAlpha = darknessLevel * dynLife.get(i) / dynMaxLife.get(i);
-                }
-                if fadeAlpha > 0 {
-                    canvas.DiscAlpha(lx, ly, lr, lc, fadeAlpha / 2);
-                    canvas.DiscAlpha(lx, ly, lr / 2, lc, fadeAlpha);
-                }
+        // Step 3: Dynamic lights via ObjectPool iteration
+        var i = lightPool.FirstActive();
+        while i >= 0 {
+            var next = lightPool.NextActive(i);
+            var lx = dynX.get(i) - camX;
+            var ly = dynY.get(i) - camY;
+            var lr = dynRadius.get(i);
+            var lc = dynColor.get(i);
+            // Fade based on remaining life
+            var fadeAlpha = darknessLevel;
+            if dynMaxLife.get(i) > 0 {
+                fadeAlpha = darknessLevel * dynLife.get(i) / dynMaxLife.get(i);
             }
-            i = i + 1;
+            if fadeAlpha > 0 {
+                canvas.DiscAlpha(lx, ly, lr, lc, fadeAlpha / 2);
+                canvas.DiscAlpha(lx, ly, lr / 2, lc, fadeAlpha);
+            }
+            i = next;
         }
     }
 

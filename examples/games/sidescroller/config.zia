@@ -641,6 +641,7 @@ final COL_REACTOR_GLOW = 0x44AAFF;       // crashed reactor in background
 // Biome boundaries (tile columns for background switching)
 final BIOME_JUNGLE_END = 50;
 final BIOME_CAVE_END = 100;
+final BIOME_BLEND_TILES = 5;
 
 // Level 2: Crashed Station biome boundaries
 final BIOME_HULL_END = 50;

@@ -235,10 +235,21 @@ Last updated: 2026-02-17
 
 ## Audio
 
-| File         | Purpose                             |
-|--------------|-------------------------------------|
-| `rt_audio.c` | Audio playback and sound management |
-| `rt_audio.h` | Audio declarations                  |
+| File                | Purpose                                                |
+|---------------------|--------------------------------------------------------|
+| `rt_audio.c`        | Audio playback, sound/music management, voice control  |
+| `rt_audio.h`        | Audio declarations                                     |
+| `rt_audio_codec.c`  | IMA ADPCM encoder/decoder (.vaf compressed audio)      |
+| `rt_audio_codec.h`  | Audio codec declarations                               |
+| `rt_mixgroup.h`     | Mix groups (MUSIC/SFX) with independent volume control |
+| `rt_musicgen.c`     | Procedural music composition (tracker-style sequencer) |
+| `rt_musicgen.h`     | MusicGen declarations                                  |
+| `rt_playlist.c`     | Audio playlist (sequential/shuffle track queue)        |
+| `rt_playlist.h`     | Playlist declarations                                  |
+| `rt_soundbank.c`    | Named sound registry for organized sound management    |
+| `rt_soundbank.h`    | SoundBank declarations                                 |
+| `rt_synth.c`        | Procedural sound synthesis (tones, sweeps, noise, SFX) |
+| `rt_synth.h`        | Synth declarations                                     |
 
 ## GUI
 

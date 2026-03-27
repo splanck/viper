@@ -262,6 +262,7 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_Playlist,
     RTCLS_SoundBank,
     RTCLS_Synth,
+    RTCLS_MusicGen,
     // Graphics classes (extended)
     RTCLS_Sprite,
     RTCLS_Tilemap,

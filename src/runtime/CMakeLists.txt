@@ -263,6 +263,7 @@ set(RT_AUDIO_SOURCES
         audio/rt_soundbank.c
         audio/rt_synth.c
         audio/rt_audio_codec.c
+        audio/rt_musicgen.c
 )
 
 set(RT_THREADS_SOURCES

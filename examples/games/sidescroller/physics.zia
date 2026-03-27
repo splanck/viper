@@ -3,9 +3,10 @@
 // =============================================================================
 // Viper APIs demonstrated:
 //   - Viper.Math (abs, min, max)
+//   - Viper.Game.CollisionRect: AABB overlap detection via Overlaps()
 //
 // Zia best practices:
-//   - Pure utility entity (no state, only functions)
+//   - Reusable CollisionRect instances (avoid per-check allocation)
 //   - hide for internal helpers (toTileCoord), expose for public API
 //   - x100 sub-pixel coordinate system for smooth movement
 //   - Out-parameters via single-element List (Zia workaround for multiple returns)
@@ -19,13 +20,19 @@
 module physics;
 
 bind Viper.Math;
+bind Viper.Game;
 bind "./config";
 bind "./level";
 
 entity PhysicsHelper {
 
+    // CollisionRect instances reused each frame (avoid allocation per check).
+    hide CollisionRect rectA;
+    hide CollisionRect rectB;
+
     expose func init() {
-        // No state needed — pure utility
+        rectA = CollisionRect.New(0.0, 0.0, 1.0, 1.0);
+        rectB = CollisionRect.New(0.0, 0.0, 1.0, 1.0);
     }
 
     // Move an entity by (vx, vy) and resolve collisions against the tile grid.
@@ -185,21 +192,22 @@ entity PhysicsHelper {
         return false;
     }
 
-    // AABB overlap test (all in x100 coordinates)
-    expose func rectOverlap(ax: Integer, ay: Integer, aw: Integer, ah: Integer,
-                            bx: Integer, by: Integer, bw: Integer, bh: Integer) -> Boolean {
-        if ax + aw <= bx { return false; }
-        if bx + bw <= ax { return false; }
-        if ay + ah <= by { return false; }
-        if by + bh <= ay { return false; }
-        return true;
-    }
-
-    // AABB overlap test with pixel coordinates (not x100)
+    // AABB overlap test with pixel coordinates using CollisionRect.Overlaps().
+    // CollisionRect is reused per call to avoid per-frame allocation.
     expose func rectOverlapPx(ax: Integer, ay: Integer, aw: Integer, ah: Integer,
                               bx: Integer, by: Integer, bw: Integer, bh: Integer) -> Boolean {
-        return rectOverlap(ax * 100, ay * 100, aw * 100, ah * 100,
-                          bx * 100, by * 100, bw * 100, bh * 100);
+        rectA.SetPosition(ax + 0.0, ay + 0.0);
+        rectA.SetSize(aw + 0.0, ah + 0.0);
+        rectB.SetPosition(bx + 0.0, by + 0.0);
+        rectB.SetSize(bw + 0.0, bh + 0.0);
+        return rectA.Overlaps(rectB);
+    }
+
+    // AABB overlap test (all in x100 coordinates) — delegates to pixel version.
+    expose func rectOverlap(ax: Integer, ay: Integer, aw: Integer, ah: Integer,
+                            bx: Integer, by: Integer, bw: Integer, bh: Integer) -> Boolean {
+        return rectOverlapPx(ax / 100, ay / 100, aw / 100, ah / 100,
+                            bx / 100, by / 100, bw / 100, bh / 100);
     }
 
     // Apply gravity with jump-apex hang time.

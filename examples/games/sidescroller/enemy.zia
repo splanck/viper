@@ -1,9 +1,10 @@
 // enemy.zia — Enemy types: slime (walker), bat (flyer), turret (shooter), boss
-// Uses parallel arrays for pooled enemy management
+// Uses ObjectPool for slot management with parallel arrays for per-enemy data
 module enemy;
 
 bind Viper.Graphics;
 bind Viper.Math;
+bind Viper.Game;
 bind "./config";
 bind "./level";
 bind "./physics";
@@ -11,7 +12,10 @@ bind "./sprites";
 bind "./particles";
 
 entity EnemyManager {
-    // Parallel arrays for enemy pool
+    // ObjectPool manages active/inactive slots; parallel arrays hold per-enemy data
+    hide ObjectPool pool;
+    // Quadtree for spatial collision queries (O(log n) instead of O(n) linear scan)
+    hide Quadtree qtree;
     hide List[Integer] etype;
     hide List[Integer] ex;       // position x100
     hide List[Integer] ey;       // position x100
@@ -23,8 +27,6 @@ entity EnemyManager {
     hide List[Integer] eframe;   // animation frame
     hide List[Integer] etimer;   // generic timer (AI, animation, cooldown)
     hide List[Integer] etimer2;  // secondary timer (shoot cooldown, etc.)
-    hide List[Integer] eactive;
-    hide Integer enemyCount;
 
     // Physics helper
     hide PhysicsHelper phys;
@@ -50,6 +52,9 @@ entity EnemyManager {
     hide Integer ebTrailTimer;  // ms accumulator for enemy bullet trails
 
     expose func init() {
+        pool = ObjectPool.New(MAX_ENEMIES);
+        // Quadtree covers max possible level (150 tiles * 64px = 9600px, 17 * 64 = 1088px)
+        qtree = Quadtree.New(0, 0, 9600, 1088);
         etype = [];
         ex = [];
         ey = [];
@@ -61,8 +66,14 @@ entity EnemyManager {
         eframe = [];
         etimer = [];
         etimer2 = [];
-        eactive = [];
-        enemyCount = 0;
+
+        // Pre-fill parallel arrays to pool capacity (indexed by handle)
+        for i in 0..MAX_ENEMIES {
+            etype.add(0); ex.add(0); ey.add(0);
+            evx.add(0); evy.add(0); ehp.add(0);
+            estate.add(0); edir.add(1); eframe.add(0);
+            etimer.add(0); etimer2.add(0);
+        }
 
         phys = new PhysicsHelper();
         outX = [0];
@@ -84,19 +95,7 @@ entity EnemyManager {
     }
 
     expose func reset() {
-        enemyCount = 0;
-        etype = [];
-        ex = [];
-        ey = [];
-        evx = [];
-        evy = [];
-        ehp = [];
-        estate = [];
-        edir = [];
-        eframe = [];
-        etimer = [];
-        etimer2 = [];
-        eactive = [];
+        pool.Clear();
         bossIndex = -1;
         bossPhase = 0;
         bossMaxHp = BOSS_HP;
@@ -110,52 +109,52 @@ entity EnemyManager {
     }
 
     expose func spawnEnemy(t: Integer, wx: Integer, wy: Integer) {
-        etype.add(t);
-        ex.add(wx * 100);
-        ey.add(wy * 100);
-        evx.add(0);
-        evy.add(0);
-        edir.add(1);
-        eframe.add(0);
-        etimer.add(0);
-        etimer2.add(0);
-        eactive.add(1);
-        estate.add(0);
+        var handle = pool.Acquire();
+        if handle < 0 { return; }
+
+        etype.set(handle, t);
+        ex.set(handle, wx * 100);
+        ey.set(handle, wy * 100);
+        evx.set(handle, 0);
+        evy.set(handle, 0);
+        edir.set(handle, 1);
+        eframe.set(handle, 0);
+        etimer.set(handle, 0);
+        etimer2.set(handle, 0);
+        estate.set(handle, 0);
 
         // Initialize HP and speed per type
-        if t == ENEMY_SLIME { ehp.add(SLIME_HP); evx.set(enemyCount, SLIME_SPEED); }
-        else if t == ENEMY_BAT { ehp.add(BAT_HP); }
-        else if t == ENEMY_TURRET { ehp.add(TURRET_HP); }
-        else if t == ENEMY_BOSS { ehp.add(BOSS_HP); bossIndex = enemyCount; bossPhase = 0; }
-        else if t == ENEMY_SPOREWALKER { ehp.add(SPOREWALKER_HP); evx.set(enemyCount, SPOREWALKER_SPEED); }
-        else if t == ENEMY_GLOWMOTH { ehp.add(GLOWMOTH_HP); }
-        else if t == ENEMY_FUNGAL_TURRET { ehp.add(FUNGAL_TURRET_HP); }
-        else if t == ENEMY_MYCELIUM { ehp.add(MYCELIUM_HP); }
-        else if t == ENEMY_SPORE_MOTHER { ehp.add(SPORE_MOTHER_HP); bossIndex = enemyCount; bossPhase = 0; bossMaxHp = SPORE_MOTHER_HP; }
-        else if t == ENEMY_CRYSTAL_GOLEM { ehp.add(CRYSTAL_GOLEM_HP); }
-        else if t == ENEMY_SHARD_BAT { ehp.add(SHARD_BAT_HP); }
-        else if t == ENEMY_RESONANCE_ORB { ehp.add(RESONANCE_ORB_HP); }
-        else if t == ENEMY_MIRROR_SLIME { ehp.add(MIRROR_SLIME_HP); evx.set(enemyCount, MIRROR_SLIME_SPEED); }
-        else if t == ENEMY_CRYSTAL_WYRM { ehp.add(CRYSTAL_WYRM_HP); bossIndex = enemyCount; bossPhase = 0; bossMaxHp = CRYSTAL_WYRM_HP; }
-        else if t == ENEMY_MAGMA_SLUG { ehp.add(MAGMA_SLUG_HP); evx.set(enemyCount, MAGMA_SLUG_SPEED); }
-        else if t == ENEMY_EMBER_WASP { ehp.add(EMBER_WASP_HP); }
-        else if t == ENEMY_FORGE_SENTINEL { ehp.add(FORGE_SENTINEL_HP); evx.set(enemyCount, FORGE_SENTINEL_SPEED); }
-        else if t == ENEMY_PISTON_TRAP { ehp.add(9999); } // Indestructible
-        else if t == ENEMY_MAGMA_CORE { ehp.add(MAGMA_CORE_HP); bossIndex = enemyCount; bossPhase = 0; bossMaxHp = MAGMA_CORE_HP; }
-        else if t == ENEMY_ICE_WRAITH { ehp.add(ICE_WRAITH_HP); }
-        else if t == ENEMY_FROST_BEETLE { ehp.add(FROST_BEETLE_HP); evx.set(enemyCount, FROST_BEETLE_SPEED); }
-        else if t == ENEMY_STALACTITE_BAT { ehp.add(STALACTITE_BAT_HP); }
-        else if t == ENEMY_VINE_WHIP { ehp.add(VINE_WHIP_HP); }
-        else if t == ENEMY_MOSS_GOLEM { ehp.add(MOSS_GOLEM_HP); }
-        else if t == ENEMY_RUIN_GUARDIAN { ehp.add(RUIN_GUARDIAN_HP); }
-        else if t == ENEMY_SHADOW_CLONE { ehp.add(SHADOW_CLONE_HP); }
-        else if t == ENEMY_CORRUPTION { ehp.add(CORRUPTION_HP); }
-        else if t == ENEMY_ARCHITECT { ehp.add(ARCHITECT_HP); bossIndex = enemyCount; bossPhase = 0; bossMaxHp = ARCHITECT_HP; }
-        else if t == ENEMY_PATROL_DRONE { ehp.add(PATROL_DRONE_HP); }
-        else if t == ENEMY_BOMB_CARRIER { ehp.add(BOMB_CARRIER_HP); evx.set(enemyCount, BOMB_CARRIER_SPEED); }
-        else { ehp.add(1); } // Fallback
-
-        enemyCount = enemyCount + 1;
+        if t == ENEMY_SLIME { ehp.set(handle, SLIME_HP); evx.set(handle, SLIME_SPEED); }
+        else if t == ENEMY_BAT { ehp.set(handle, BAT_HP); }
+        else if t == ENEMY_TURRET { ehp.set(handle, TURRET_HP); }
+        else if t == ENEMY_BOSS { ehp.set(handle, BOSS_HP); bossIndex = handle; bossPhase = 0; }
+        else if t == ENEMY_SPOREWALKER { ehp.set(handle, SPOREWALKER_HP); evx.set(handle, SPOREWALKER_SPEED); }
+        else if t == ENEMY_GLOWMOTH { ehp.set(handle, GLOWMOTH_HP); }
+        else if t == ENEMY_FUNGAL_TURRET { ehp.set(handle, FUNGAL_TURRET_HP); }
+        else if t == ENEMY_MYCELIUM { ehp.set(handle, MYCELIUM_HP); }
+        else if t == ENEMY_SPORE_MOTHER { ehp.set(handle, SPORE_MOTHER_HP); bossIndex = handle; bossPhase = 0; bossMaxHp = SPORE_MOTHER_HP; }
+        else if t == ENEMY_CRYSTAL_GOLEM { ehp.set(handle, CRYSTAL_GOLEM_HP); }
+        else if t == ENEMY_SHARD_BAT { ehp.set(handle, SHARD_BAT_HP); }
+        else if t == ENEMY_RESONANCE_ORB { ehp.set(handle, RESONANCE_ORB_HP); }
+        else if t == ENEMY_MIRROR_SLIME { ehp.set(handle, MIRROR_SLIME_HP); evx.set(handle, MIRROR_SLIME_SPEED); }
+        else if t == ENEMY_CRYSTAL_WYRM { ehp.set(handle, CRYSTAL_WYRM_HP); bossIndex = handle; bossPhase = 0; bossMaxHp = CRYSTAL_WYRM_HP; }
+        else if t == ENEMY_MAGMA_SLUG { ehp.set(handle, MAGMA_SLUG_HP); evx.set(handle, MAGMA_SLUG_SPEED); }
+        else if t == ENEMY_EMBER_WASP { ehp.set(handle, EMBER_WASP_HP); }
+        else if t == ENEMY_FORGE_SENTINEL { ehp.set(handle, FORGE_SENTINEL_HP); evx.set(handle, FORGE_SENTINEL_SPEED); }
+        else if t == ENEMY_PISTON_TRAP { ehp.set(handle, 9999); } // Indestructible
+        else if t == ENEMY_MAGMA_CORE { ehp.set(handle, MAGMA_CORE_HP); bossIndex = handle; bossPhase = 0; bossMaxHp = MAGMA_CORE_HP; }
+        else if t == ENEMY_ICE_WRAITH { ehp.set(handle, ICE_WRAITH_HP); }
+        else if t == ENEMY_FROST_BEETLE { ehp.set(handle, FROST_BEETLE_HP); evx.set(handle, FROST_BEETLE_SPEED); }
+        else if t == ENEMY_STALACTITE_BAT { ehp.set(handle, STALACTITE_BAT_HP); }
+        else if t == ENEMY_VINE_WHIP { ehp.set(handle, VINE_WHIP_HP); }
+        else if t == ENEMY_MOSS_GOLEM { ehp.set(handle, MOSS_GOLEM_HP); }
+        else if t == ENEMY_RUIN_GUARDIAN { ehp.set(handle, RUIN_GUARDIAN_HP); }
+        else if t == ENEMY_SHADOW_CLONE { ehp.set(handle, SHADOW_CLONE_HP); }
+        else if t == ENEMY_CORRUPTION { ehp.set(handle, CORRUPTION_HP); }
+        else if t == ENEMY_ARCHITECT { ehp.set(handle, ARCHITECT_HP); bossIndex = handle; bossPhase = 0; bossMaxHp = ARCHITECT_HP; }
+        else if t == ENEMY_PATROL_DRONE { ehp.set(handle, PATROL_DRONE_HP); }
+        else if t == ENEMY_BOMB_CARRIER { ehp.set(handle, BOMB_CARRIER_HP); evx.set(handle, BOMB_CARRIER_SPEED); }
+        else { ehp.set(handle, 1); } // Fallback
     }
 
     expose func spawnFromLevel(level: Level) {
@@ -173,10 +172,10 @@ entity EnemyManager {
     }
 
     expose func updateAll(level: Level, playerPx: Integer, playerPy: Integer, dt: Integer, particles: ParticleSystem) {
-        var i = 0;
-        while i < enemyCount {
-            if eactive.get(i) == 1 {
-                var t = etype.get(i);
+        var i = pool.FirstActive();
+        while i >= 0 {
+            var nextHandle = pool.NextActive(i);
+            var t = etype.get(i);
 
                 // Handle hurt timer (ms-based)
                 if estate.get(i) == 1 {
@@ -217,8 +216,22 @@ entity EnemyManager {
                 if t == ENEMY_ARCHITECT { updateArchitect(i, level, playerPx, playerPy, dt); }
                 if t == ENEMY_PATROL_DRONE { updatePatrolDrone(i, playerPx, playerPy, dt); }
                 if t == ENEMY_BOMB_CARRIER { updateBombCarrier(i, level, playerPx, playerPy, dt); }
-            }
-            i = i + 1;
+
+            i = nextHandle;
+        }
+
+        // Rebuild Quadtree with updated positions for spatial queries.
+        // Quadtree uses center-based coordinates: Insert(id, cx, cy, w, h).
+        qtree.Clear();
+        var qi = pool.FirstActive();
+        while qi >= 0 {
+            var qn = pool.NextActive(qi);
+            var epx = ex.get(qi) / 100;
+            var epy = ey.get(qi) / 100;
+            var ew = getEnemyW(etype.get(qi));
+            var eh = getEnemyH(etype.get(qi));
+            qtree.Insert(qi, epx + ew / 2, epy + eh / 2, ew, eh);
+            qi = qn;
         }
 
         // Update enemy bullets (with particle trails)
@@ -701,7 +714,7 @@ entity EnemyManager {
             var tm = etimer.get(i) + dt;
             etimer.set(i, tm);
             if tm > 1200 { // Dash for 1.2 seconds then deactivate
-                eactive.set(i, 0); estate.set(i, 2);
+                pool.Release(i); estate.set(i, 2);
             }
         }
     }
@@ -1607,8 +1620,7 @@ entity EnemyManager {
 
     expose func damageEnemy(i: Integer, amount: Integer) {
         if i < 0 { return; }
-        if i >= enemyCount { return; }
-        if eactive.get(i) == 0 { return; }
+        if pool.IsActive(i) == false { return; }
 
         var t = etype.get(i);
 
@@ -1630,7 +1642,7 @@ entity EnemyManager {
         etimer.set(i, HURT_TIMER_MS);
 
         if hp <= 0 {
-            eactive.set(i, 0);
+            pool.Release(i);
             estate.set(i, 2);
             clearBulletsNear(ex.get(i) / 100, ey.get(i) / 100);
         }
@@ -1638,7 +1650,7 @@ entity EnemyManager {
 
     // Get the death effect type for a killed enemy (for particle dispatching)
     expose func getDeathEffectType(i: Integer) -> Integer {
-        if i < 0 or i >= enemyCount { return 0; }
+        if i < 0 or pool.IsActive(i) == false { return 0; }
         var t = etype.get(i);
         if t == ENEMY_SPOREWALKER { return 1; } // Poison cloud
         if t == ENEMY_CRYSTAL_GOLEM { return 2; } // Crystal shatter
@@ -1662,7 +1674,7 @@ entity EnemyManager {
 
     // Get the score value for killing an enemy
     expose func getEnemyScore(i: Integer) -> Integer {
-        if i < 0 or i >= enemyCount { return ENEMY_SCORE; }
+        if i < 0 or pool.IsActive(i) == false { return ENEMY_SCORE; }
         var t = etype.get(i);
         // Regular enemies
         if t == ENEMY_SLIME { return 100; }
@@ -1700,7 +1712,7 @@ entity EnemyManager {
 
     // Check if this enemy type is a boss
     expose func isEnemyBoss(i: Integer) -> Boolean {
-        if i < 0 or i >= enemyCount { return false; }
+        if i < 0 or pool.IsActive(i) == false { return false; }
         var t = etype.get(i);
         if t == ENEMY_BOSS { return true; }
         if t == ENEMY_SPORE_MOTHER { return true; }
@@ -1712,7 +1724,7 @@ entity EnemyManager {
 
     // Get enemy contact damage amount
     expose func getContactDamage(i: Integer) -> Integer {
-        if i < 0 or i >= enemyCount { return 1; }
+        if i < 0 or pool.IsActive(i) == false { return 1; }
         var t = etype.get(i);
         if t == ENEMY_SPORE_MOTHER { return 2; }
         if t == ENEMY_CRYSTAL_WYRM { return 2; }
@@ -1727,7 +1739,7 @@ entity EnemyManager {
 
     // Is this enemy immune to projectiles? (must stomp or use environment)
     expose func isProjectileImmune(i: Integer) -> Boolean {
-        if i < 0 or i >= enemyCount { return false; }
+        if i < 0 or pool.IsActive(i) == false { return false; }
         var t = etype.get(i);
         if t == ENEMY_MIRROR_SLIME { return true; }
         if t == ENEMY_PISTON_TRAP { return true; }
@@ -1736,11 +1748,11 @@ entity EnemyManager {
 
     // Get position of enemy (for particle effects, death handling)
     expose func getEnemyPixelX(i: Integer) -> Integer {
-        if i < 0 or i >= enemyCount { return 0; }
+        if i < 0 or pool.IsActive(i) == false { return 0; }
         return ex.get(i) / 100;
     }
     expose func getEnemyPixelY(i: Integer) -> Integer {
-        if i < 0 or i >= enemyCount { return 0; }
+        if i < 0 or pool.IsActive(i) == false { return 0; }
         return ey.get(i) / 100;
     }
 
@@ -1762,22 +1774,18 @@ entity EnemyManager {
         }
     }
 
-    // Check if player overlaps any active enemy. Returns enemy index or -1.
+    // Check if player overlaps any active enemy. Returns enemy handle or -1.
+    // Uses Quadtree.QueryRect for O(log n) spatial lookup.
+    // Quadtree uses center-based coordinates: QueryRect(cx, cy, w, h).
     expose func checkPlayerHit(px: Integer, py: Integer) -> Integer {
-        var i = 0;
-        while i < enemyCount {
-            if eactive.get(i) == 1 {
-                var epx = ex.get(i) / 100;
-                var epy = ey.get(i) / 100;
-                var ew = getEnemyW(etype.get(i));
-                var eh = getEnemyH(etype.get(i));
-
-                if phys.rectOverlapPx(px, py, PLAYER_W, PLAYER_H,
-                                      epx, epy, ew, eh) {
-                    return i;
-                }
+        var found = qtree.QueryRect(px + PLAYER_W / 2, py + PLAYER_H / 2, PLAYER_W, PLAYER_H);
+        var qi = 0;
+        while qi < found {
+            var handle = qtree.GetResult(qi);
+            if pool.IsActive(handle) {
+                return handle;
             }
-            i = i + 1;
+            qi = qi + 1;
         }
         return -1;
     }
@@ -1798,21 +1806,18 @@ entity EnemyManager {
         return false;
     }
 
-    // Check if player bullet overlaps any enemy. Returns enemy index or -1.
+    // Check if player bullet overlaps any enemy. Returns enemy handle or -1.
+    // Uses Quadtree.QueryRect for O(log n) spatial lookup.
+    // Quadtree uses center-based coordinates: QueryRect(cx, cy, w, h).
     expose func checkBulletHit(bx2: Integer, by2: Integer, bw: Integer, bh: Integer) -> Integer {
-        var i = 0;
-        while i < enemyCount {
-            if eactive.get(i) == 1 {
-                var epx = ex.get(i) / 100;
-                var epy = ey.get(i) / 100;
-                var ew = getEnemyW(etype.get(i));
-                var eh = getEnemyH(etype.get(i));
-
-                if phys.rectOverlapPx(bx2, by2, bw, bh, epx, epy, ew, eh) {
-                    return i;
-                }
+        var found = qtree.QueryRect(bx2 + bw / 2, by2 + bh / 2, bw, bh);
+        var qi = 0;
+        while qi < found {
+            var handle = qtree.GetResult(qi);
+            if pool.IsActive(handle) {
+                return handle;
             }
-            i = i + 1;
+            qi = qi + 1;
         }
         return -1;
     }
@@ -1890,36 +1895,35 @@ entity EnemyManager {
     // =========================================================================
 
     expose func drawAll(canvas: Canvas, camX: Integer, camY: Integer, sprites: SpriteFactory) {
-        var i = 0;
-        while i < enemyCount {
-            if eactive.get(i) == 1 {
-                var sx = ex.get(i) / 100 - camX;
-                var sy = ey.get(i) / 100 - camY;
+        var i = pool.FirstActive();
+        while i >= 0 {
+            var next = pool.NextActive(i);
+            var sx = ex.get(i) / 100 - camX;
+            var sy = ey.get(i) / 100 - camY;
 
-                // Skip if off screen
-                if sx > -96 {
-                    if sx < SCREEN_W + 96 {
-                        if sy > -96 {
-                            if sy < SCREEN_H + 96 {
-                                var t = etype.get(i);
-                                var f = eframe.get(i);
+            // Skip if off screen
+            if sx > -96 {
+                if sx < SCREEN_W + 96 {
+                    if sy > -96 {
+                        if sy < SCREEN_H + 96 {
+                            var t = etype.get(i);
+                            var f = eframe.get(i);
 
-                                // Flash when hurt (skip draw every other 2-frame pair)
-                                var skipDraw = false;
-                                if estate.get(i) == 1 {
-                                    if etimer.get(i) % 4 < 2 {
-                                        skipDraw = true;
-                                    }
+                            // Flash when hurt (skip draw every other 2-frame pair)
+                            var skipDraw = false;
+                            if estate.get(i) == 1 {
+                                if etimer.get(i) % 4 < 2 {
+                                    skipDraw = true;
                                 }
-                                if skipDraw == false {
-                                    drawEnemy(canvas, t, f, sx, sy, sprites);
-                                }
+                            }
+                            if skipDraw == false {
+                                drawEnemy(canvas, t, f, sx, sy, sprites);
                             }
                         }
                     }
                 }
             }
-            i = i + 1;
+            i = next;
         }
 
         // Draw enemy bullets
@@ -1983,12 +1987,11 @@ entity EnemyManager {
 
     // Accessors
     expose func getEnemyType(i: Integer) -> Integer { return etype.get(i); }
-    expose func isActive(i: Integer) -> Integer { return eactive.get(i); }
+    expose func isActive(i: Integer) -> Integer { if pool.IsActive(i) { return 1; } return 0; }
     expose func getEnemyHp(i: Integer) -> Integer { return ehp.get(i); }
     expose func isBossAlive() -> Boolean {
         if bossIndex < 0 { return false; }
-        if eactive.get(bossIndex) == 1 { return true; }
-        return false;
+        return pool.IsActive(bossIndex);
     }
     expose func getBossHp() -> Integer {
         if bossIndex < 0 { return 0; }
