@@ -230,4 +230,117 @@ entity PhysicsHelper {
         }
         return px / TILE_SIZE;
     }
+
+    // =========================================================================
+    // Environmental tile interactions
+    // =========================================================================
+
+    // Check what type of hazard tile the player is standing on/in.
+    // Returns the tile ID of the hazard, or 0 if none.
+    expose func checkHazardTile(x100: Integer, y100: Integer,
+                                 w: Integer, h: Integer,
+                                 level: Level) -> Integer {
+        var px = x100 / 100;
+        var py = y100 / 100;
+        // Check feet position (center-bottom of player)
+        var tileX = (px + w / 2) / TILE_SIZE;
+        var tileY = (py + h) / TILE_SIZE;
+        if tileX >= 0 and tileX < level.levelWidth and tileY >= 0 and tileY < level.levelHeight {
+            var t = level.getTile(tileX, tileY);
+            if t == TILE_SPIKE { return t; }
+            if t == TILE_LAVA { return t; }
+            if t == TILE_THORN { return t; }
+            if t == TILE_ELECTRIC { return t; }
+            if t == TILE_COOLANT { return t; }
+            if t == TILE_POISON_POOL { return t; }
+        }
+        // Also check row above feet
+        var tileY2 = (py + h - TILE_SIZE / 2) / TILE_SIZE;
+        if tileY2 >= 0 and tileY2 < level.levelHeight {
+            var t2 = level.getTile(tileX, tileY2);
+            if t2 == TILE_SPIKE { return t2; }
+            if t2 == TILE_LAVA { return t2; }
+            if t2 == TILE_THORN { return t2; }
+            if t2 == TILE_ELECTRIC { return t2; }
+        }
+        return 0;
+    }
+
+    // Check if player is on ice (returns true for reduced friction).
+    expose func isOnIce(x100: Integer, y100: Integer,
+                         w: Integer, h: Integer, level: Level) -> Boolean {
+        var px = x100 / 100;
+        var py = y100 / 100;
+        var tileX = (px + w / 2) / TILE_SIZE;
+        var tileY = (py + h + 2) / TILE_SIZE;
+        if tileX >= 0 and tileX < level.levelWidth and tileY >= 0 and tileY < level.levelHeight {
+            return level.getTile(tileX, tileY) == TILE_ICE_FLOOR;
+        }
+        return false;
+    }
+
+    // Check if player is on conveyor belt. Returns -1 (left), 0 (none), 1 (right).
+    expose func getConveyorDir(x100: Integer, y100: Integer,
+                                w: Integer, h: Integer, level: Level) -> Integer {
+        var px = x100 / 100;
+        var py = y100 / 100;
+        var tileX = (px + w / 2) / TILE_SIZE;
+        var tileY = (py + h + 2) / TILE_SIZE;
+        if tileX >= 0 and tileX < level.levelWidth and tileY >= 0 and tileY < level.levelHeight {
+            var t = level.getTile(tileX, tileY);
+            if t == TILE_CONVEYOR_L { return -1; }
+            if t == TILE_CONVEYOR_R { return 1; }
+        }
+        return 0;
+    }
+
+    // Check if player is on a steam vent (launches upward).
+    expose func isOnSteamVent(x100: Integer, y100: Integer,
+                               w: Integer, h: Integer, level: Level) -> Boolean {
+        var px = x100 / 100;
+        var py = y100 / 100;
+        var tileX = (px + w / 2) / TILE_SIZE;
+        var tileY = (py + h + 2) / TILE_SIZE;
+        if tileX >= 0 and tileX < level.levelWidth and tileY >= 0 and tileY < level.levelHeight {
+            return level.getTile(tileX, tileY) == TILE_STEAM_VENT;
+        }
+        return false;
+    }
+
+    // Check if player is near a save station.
+    expose func isNearSaveStation(x100: Integer, y100: Integer,
+                                   w: Integer, h: Integer, level: Level) -> Boolean {
+        var px = x100 / 100;
+        var py = y100 / 100;
+        var tileX = (px + w / 2) / TILE_SIZE;
+        var tileY = (py + h / 2) / TILE_SIZE;
+        if tileX >= 0 and tileX < level.levelWidth and tileY >= 0 and tileY < level.levelHeight {
+            return level.getTile(tileX, tileY) == TILE_SAVE_STATION;
+        }
+        return false;
+    }
+
+    // Check if player is near a lore terminal.
+    expose func isNearLoreTerminal(x100: Integer, y100: Integer,
+                                    w: Integer, h: Integer, level: Level) -> Integer {
+        var px = x100 / 100;
+        var py = y100 / 100;
+        var tileX = (px + w / 2) / TILE_SIZE;
+        var tileY = (py + h / 2) / TILE_SIZE;
+        if tileX >= 0 and tileX < level.levelWidth and tileY >= 0 and tileY < level.levelHeight {
+            if level.getTile(tileX, tileY) == TILE_LORE_TERMINAL {
+                // Return a lore index based on tile position (deterministic)
+                return tileX + tileY * level.levelWidth;
+            }
+        }
+        return -1;
+    }
+
+    // Check if a tile is a crumbling platform.
+    expose func isCrumblingTile(tileX: Integer, tileY: Integer, level: Level) -> Boolean {
+        if tileX >= 0 and tileX < level.levelWidth and tileY >= 0 and tileY < level.levelHeight {
+            return level.getTile(tileX, tileY) == TILE_CRUMBLE;
+        }
+        return false;
+    }
 }

@@ -449,4 +449,295 @@ entity Renderer {
         canvas.BlitAlpha(sx - 3 - trailOff, sy - 2, spr);
         canvas.BlitAlpha(sx - 3 - trailOff * 2, sy - 2, spr);
     }
+
+    // =========================================================================
+    // Dash trail — bright horizontal streak during dash
+    // =========================================================================
+    expose func drawDashTrail(canvas: Canvas, camX: Integer, camY: Integer,
+                               player: Player) {
+        if not player.isDashing { return; }
+        var sx = player.pixelX() - camX;
+        var sy = player.pixelY() - camY;
+        var trailLen = 40;
+        var trailDir = player.facing;
+        // Multiple translucent streaks
+        var i = 0;
+        while i < 5 {
+            var alpha = 120 - i * 20;
+            var off = (i + 1) * 8 * (0 - trailDir);
+            canvas.BoxAlpha(sx + PLAYER_W / 2 + off, sy + 10, 12, PLAYER_H - 20,
+                           Color.RGB(100, 200, 255), alpha);
+            i = i + 1;
+        }
+    }
+
+    // =========================================================================
+    // Charge indicator — glowing aura around player when charging
+    // =========================================================================
+    expose func drawChargeAura(canvas: Canvas, camX: Integer, camY: Integer,
+                                player: Player) {
+        if not player.isCharging { return; }
+        var sx = player.pixelX() - camX + PLAYER_W / 2;
+        var sy = player.pixelY() - camY + PLAYER_H / 2;
+        var level = player.chargeLevel;
+        if level == 0 {
+            // Building charge — small pulse
+            canvas.DiscAlpha(sx, sy, 20 + shimmerIndex % 4, Color.RGB(255, 200, 50), 40);
+        } else if level == 1 {
+            // Partial charge — medium glow
+            canvas.DiscAlpha(sx, sy, 28, Color.RGB(255, 180, 50), 60);
+            canvas.DiscAlpha(sx, sy, 18, Color.RGB(255, 220, 100), 80);
+        } else {
+            // Full charge — bright pulsing
+            canvas.DiscAlpha(sx, sy, 36 + shimmerIndex % 6, Color.RGB(255, 100, 50), 80);
+            canvas.DiscAlpha(sx, sy, 24, Color.RGB(255, 200, 100), 100);
+            canvas.DiscAlpha(sx, sy, 12, Color.RGB(255, 255, 200), 120);
+        }
+    }
+
+    // =========================================================================
+    // Ground pound impact — shockwave ring when landing
+    // =========================================================================
+    expose func drawPoundImpact(canvas: Canvas, px: Integer, py: Integer,
+                                 camX: Integer, camY: Integer, timer: Integer) {
+        if timer <= 0 { return; }
+        var sx = px - camX + PLAYER_W / 2;
+        var sy = py - camY + PLAYER_H;
+        var radius = (12 - timer) * 15;
+        var alpha = timer * 20;
+        if alpha > 255 { alpha = 255; }
+        canvas.Ring(sx, sy, radius, Color.RGB(255, 200, 100));
+        canvas.DiscAlpha(sx, sy, radius / 2, Color.RGB(255, 150, 50), alpha / 2);
+    }
+
+    // =========================================================================
+    // Freeze effect — ice crystals overlay when frozen
+    // =========================================================================
+    expose func drawFreezeOverlay(canvas: Canvas, camX: Integer, camY: Integer,
+                                   player: Player) {
+        if not player.isFrozen() { return; }
+        var sx = player.pixelX() - camX;
+        var sy = player.pixelY() - camY;
+        // Ice crystal pattern over player
+        canvas.BoxAlpha(sx - 4, sy - 4, PLAYER_W + 8, PLAYER_H + 8,
+                       Color.RGB(150, 200, 255), 100);
+        // Ice shards
+        canvas.Triangle(sx, sy - 8, sx - 6, sy, sx + 6, sy, Color.RGB(200, 230, 255));
+        canvas.Triangle(sx + PLAYER_W, sy - 6, sx + PLAYER_W - 5, sy + 4,
+                        sx + PLAYER_W + 5, sy + 4, Color.RGB(200, 230, 255));
+        canvas.Triangle(sx + PLAYER_W / 2, sy + PLAYER_H,
+                        sx + PLAYER_W / 2 - 5, sy + PLAYER_H + 8,
+                        sx + PLAYER_W / 2 + 5, sy + PLAYER_H + 8,
+                        Color.RGB(180, 220, 255));
+    }
+
+    // =========================================================================
+    // Environmental hazard indicators
+    // =========================================================================
+    expose func drawPoisonOverlay(canvas: Canvas, active: Boolean) {
+        if not active { return; }
+        // Green vignette when in poison zone
+        canvas.BoxAlpha(0, 0, SCREEN_W, 30, Color.RGB(30, 100, 20), 60);
+        canvas.BoxAlpha(0, SCREEN_H - 30, SCREEN_W, 30, Color.RGB(30, 100, 20), 60);
+        canvas.BoxAlpha(0, 0, 30, SCREEN_H, Color.RGB(30, 100, 20), 40);
+        canvas.BoxAlpha(SCREEN_W - 30, 0, 30, SCREEN_H, Color.RGB(30, 100, 20), 40);
+    }
+
+    expose func drawIceOverlay(canvas: Canvas, active: Boolean) {
+        if not active { return; }
+        // Blue vignette when on ice
+        canvas.BoxAlpha(0, 0, SCREEN_W, 15, Color.RGB(100, 180, 255), 30);
+        canvas.BoxAlpha(0, SCREEN_H - 15, SCREEN_W, 15, Color.RGB(100, 180, 255), 30);
+    }
+
+    // =========================================================================
+    // Commercial-quality vignette effect (darkened screen edges)
+    // =========================================================================
+    expose func drawVignette(canvas: Canvas, intensity: Integer) {
+        if intensity <= 0 { return; }
+        // Graduated darkness at screen edges
+        var edgeW = 120;
+        var edgeH = 80;
+        // Top edge
+        var y = 0;
+        while y < edgeH {
+            var alpha = intensity * (edgeH - y) / edgeH;
+            canvas.BoxAlpha(0, y, SCREEN_W, 1, Color.RGB(0, 0, 0), alpha);
+            y = y + 2;
+        }
+        // Bottom edge
+        y = 0;
+        while y < edgeH {
+            var alpha2 = intensity * (edgeH - y) / edgeH;
+            canvas.BoxAlpha(0, SCREEN_H - y - 1, SCREEN_W, 1, Color.RGB(0, 0, 0), alpha2);
+            y = y + 2;
+        }
+        // Left edge
+        var x = 0;
+        while x < edgeW {
+            var alpha3 = intensity * (edgeW - x) / edgeW;
+            canvas.BoxAlpha(x, 0, 1, SCREEN_H, Color.RGB(0, 0, 0), alpha3);
+            x = x + 2;
+        }
+        // Right edge
+        x = 0;
+        while x < edgeW {
+            var alpha4 = intensity * (edgeW - x) / edgeW;
+            canvas.BoxAlpha(SCREEN_W - x - 1, 0, 1, SCREEN_H, Color.RGB(0, 0, 0), alpha4);
+            x = x + 2;
+        }
+    }
+
+    // =========================================================================
+    // Depth fog — horizontal gradient overlay creating distance illusion
+    // =========================================================================
+    expose func drawDepthFog(canvas: Canvas, fogColor: Integer, density: Integer) {
+        if density <= 0 { return; }
+        // Bottom-up fog gradient
+        var fogH = SCREEN_H / 3;
+        var y = 0;
+        while y < fogH {
+            var alpha = density * y / fogH;
+            canvas.BoxAlpha(0, SCREEN_H - y - 1, SCREEN_W, 1, fogColor, alpha);
+            y = y + 3;
+        }
+    }
+
+    // =========================================================================
+    // CRT scanline effect (retro aesthetic option)
+    // =========================================================================
+    expose func drawScanlines(canvas: Canvas, intensity: Integer) {
+        if intensity <= 0 { return; }
+        var y = 0;
+        while y < SCREEN_H {
+            canvas.BoxAlpha(0, y, SCREEN_W, 1, Color.RGB(0, 0, 0), intensity);
+            y = y + 3;
+        }
+    }
+
+    // =========================================================================
+    // Tile ambient shimmer — animated glow on special tiles
+    // =========================================================================
+    expose func drawTileShimmer(canvas: Canvas, tileType: Integer,
+                                 sx: Integer, sy: Integer, timer: Integer) {
+        // Only shimmer special tiles
+        if tileType == TILE_CRYSTAL or tileType == TILE_CAVE_CRYSTAL {
+            var pulse = (timer / 20 + sx * 7) % 30;
+            if pulse < 15 {
+                var alpha = pulse * 4;
+                canvas.BoxAlpha(sx + 2, sy + 2, TILE_SIZE - 4, TILE_SIZE - 4,
+                               Color.RGB(100, 180, 255), alpha);
+            }
+        }
+        if tileType == TILE_LAVA or tileType == TILE_MAGMA_ROCK {
+            var glow = (timer / 30 + sx * 3) % 20;
+            if glow < 10 {
+                canvas.BoxAlpha(sx, sy, TILE_SIZE, TILE_SIZE,
+                               Color.RGB(255, 120, 30), glow * 3);
+            }
+        }
+        if tileType == TILE_MUSHROOM {
+            var pulse = (timer / 40 + sy * 5) % 25;
+            if pulse < 12 {
+                canvas.BoxAlpha(sx + 4, sy + 2, TILE_SIZE - 8, TILE_SIZE / 2,
+                               Color.RGB(200, 100, 255), pulse * 2);
+            }
+        }
+        if tileType == TILE_SAVE_STATION {
+            var pulse = (timer / 15) % 30;
+            var r = 20 + pulse;
+            canvas.DiscAlpha(sx + TILE_SIZE / 2, sy + TILE_SIZE / 3, r,
+                            Color.RGB(50, 255, 180), 20);
+        }
+        if tileType == TILE_LORE_TERMINAL {
+            var blink = (timer / 25) % 40;
+            if blink < 20 {
+                canvas.BoxAlpha(sx + 12, sy + 10, 24, 16,
+                               Color.RGB(40, 120, 180), 30 + blink * 2);
+            }
+        }
+        if tileType == TILE_ELECTRIC {
+            // Random spark flashes
+            if (timer / 5 + sx * 13) % 30 < 3 {
+                canvas.BoxAlpha(sx + 8, sy + 4, TILE_SIZE - 16, TILE_SIZE - 8,
+                               Color.RGB(100, 180, 255), 60);
+            }
+        }
+        if tileType == TILE_POISON_POOL {
+            var bubble = (timer / 30 + sx * 11) % 40;
+            if bubble < 10 {
+                canvas.DiscAlpha(sx + 20 + bubble * 2, sy + 10 - bubble,
+                                3, Color.RGB(120, 255, 80), 40);
+            }
+        }
+    }
+
+    // =========================================================================
+    // HUD notification popup (for save, pickup, etc.)
+    // =========================================================================
+    expose func drawNotification(canvas: Canvas, text: String,
+                                  timer: Integer, maxTimer: Integer) {
+        if timer <= 0 { return; }
+        // Slide in from top
+        var slideY = -40;
+        if timer > maxTimer - 300 {
+            slideY = -40 + (maxTimer - timer) * 50 / 300;
+        } else if timer < 300 {
+            slideY = 10 - (300 - timer) * 50 / 300;
+        } else {
+            slideY = 10;
+        }
+        var nw = 300;
+        var nx = SCREEN_W / 2 - nw / 2;
+        canvas.BoxAlpha(nx, slideY, nw, 30, Color.RGB(20, 25, 40), 200);
+        canvas.Frame(nx, slideY, nw, 30, Color.RGB(80, 120, 200));
+        canvas.TextCenteredScaled(slideY + 6, text, Color.RGB(200, 220, 255), 1);
+    }
+
+    // =========================================================================
+    // Biome ambient particles (drawn over tiles, under entities)
+    // =========================================================================
+    expose func drawBiomeAmbient(canvas: Canvas, camX: Integer, camY: Integer,
+                                  theme: Integer, timer: Integer) {
+        // Floating particles based on biome theme
+        var i = 0;
+        while i < 12 {
+            // Deterministic position based on index and timer
+            var px2 = ((i * 137 + timer / 50) * 97) % SCREEN_W;
+            var py2 = ((i * 251 + timer / 80) * 73) % SCREEN_H;
+            var alpha = 40 + (i * 17) % 40;
+
+            if theme == 1 { // Crash site — dust motes
+                canvas.DiscAlpha(px2, py2, 1, Color.RGB(180, 160, 140), alpha);
+            }
+            if theme == 2 { // Fungal — floating spores
+                canvas.DiscAlpha(px2, py2, 2, Color.RGB(180, 255, 100), alpha);
+            }
+            if theme == 3 { // Crystal — sparkles
+                canvas.DiscAlpha(px2, py2, 1, Color.RGB(200, 220, 255), alpha + 20);
+            }
+            if theme == 4 { // Surface — pollen
+                canvas.DiscAlpha(px2, py2, 1, Color.RGB(255, 240, 150), alpha);
+            }
+            if theme == 5 { // Underground — water droplets
+                canvas.DiscAlpha(px2, py2, 1, Color.RGB(100, 200, 255), alpha);
+            }
+            if theme == 6 { // Thermal — embers
+                canvas.DiscAlpha(px2, py2, 2, Color.RGB(255, 150, 30), alpha + 30);
+            }
+            if theme == 7 { // Overgrowth — fireflies
+                var flicker = (timer / 100 + i * 7) % 20;
+                if flicker < 10 {
+                    canvas.DiscAlpha(px2, py2, 2, Color.RGB(200, 255, 100), alpha + 40);
+                }
+            }
+            if theme == 8 { // Frozen — snowflakes
+                canvas.DiscAlpha(px2, py2, 2, Color.RGB(220, 240, 255), alpha);
+            }
+            if theme == 9 { // Corrupted — corruption wisps
+                canvas.DiscAlpha(px2, py2, 2, Color.RGB(150, 50, 200), alpha + 20);
+            }
+            i = i + 1;
+        }
+    }
 }

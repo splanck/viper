@@ -48,6 +48,18 @@ entity Player {
     // Shooting
     expose Integer shootCooldown;
 
+    // Ability states
+    expose Boolean isDashing;
+    expose Integer dashTimer;
+    expose Integer dashVx;
+    expose Boolean isPounding;
+    expose Integer poundVy;
+    expose Integer chargeLevel;
+    expose Integer chargeTimer;
+    expose Boolean isCharging;
+    expose Integer dashCooldown;
+    expose Integer freezeTimer;     // Frozen by ice wraith
+
     // Physics helper (shared)
     hide PhysicsHelper phys;
 
@@ -90,6 +102,16 @@ entity Player {
         shieldHits = 0;
         rapidFireTimer = 0;
         shootCooldown = 0;
+        isDashing = false;
+        dashTimer = 0;
+        dashVx = 0;
+        isPounding = false;
+        poundVy = 0;
+        chargeLevel = 0;
+        chargeTimer = 0;
+        isCharging = false;
+        dashCooldown = 0;
+        freezeTimer = 0;
     }
 
     expose func spawn(sx: Integer, sy: Integer) {
@@ -427,4 +449,94 @@ entity Player {
     // Center position for camera/collision
     expose func centerX() -> Integer { return x / 100 + PLAYER_W / 2; }
     expose func centerY() -> Integer { return y / 100 + PLAYER_H / 2; }
+
+    // =========================================================================
+    // Ability: Dash — quick horizontal burst with invincibility
+    // =========================================================================
+    expose func startDash() {
+        if isDashing { return; }
+        if dashCooldown > 0 { return; }
+        isDashing = true;
+        dashTimer = 160; // ~10 frames at 60fps
+        dashCooldown = 480; // ~30 frames cooldown
+        dashVx = facing * 2000; // Very fast (x100)
+        iframes = 160; // Invincible during dash
+    }
+
+    expose func updateDash(dt: Integer) {
+        if dashCooldown > 0 { dashCooldown = dashCooldown - dt; }
+        if not isDashing { return; }
+        dashTimer = dashTimer - dt;
+        if dashTimer <= 0 {
+            isDashing = false;
+            dashVx = 0;
+        } else {
+            // Override velocity during dash
+            vx = dashVx;
+            vy = 0; // No vertical movement during dash
+        }
+    }
+
+    // =========================================================================
+    // Ability: Charge Shot — hold to charge, release for power
+    // =========================================================================
+    expose func startCharge() {
+        isCharging = true;
+        chargeTimer = 0;
+        chargeLevel = 0;
+    }
+
+    expose func updateCharge(dt: Integer) {
+        if not isCharging { return; }
+        chargeTimer = chargeTimer + dt;
+        if chargeTimer >= 640 { chargeLevel = 2; }      // Full charge
+        else if chargeTimer >= 320 { chargeLevel = 1; }  // Partial charge
+    }
+
+    expose func releaseCharge(): Integer {
+        if not isCharging { return 0; }
+        isCharging = false;
+        var level = chargeLevel;
+        chargeTimer = 0;
+        chargeLevel = 0;
+        return level; // 0=normal, 1=double damage, 2=triple + wall break
+    }
+
+    // =========================================================================
+    // Ability: Ground Pound — slam down from air
+    // =========================================================================
+    expose func startPound() {
+        if onGround { return; }
+        isPounding = true;
+        poundVy = 2500; // Very fast downward (x100)
+        vx = 0; // Stop horizontal movement
+    }
+
+    expose func updatePound(dt: Integer) {
+        if not isPounding { return; }
+        vy = poundVy;
+        if onGround {
+            // Landed — create shockwave effect
+            isPounding = false;
+            poundVy = 0;
+        }
+    }
+
+    // =========================================================================
+    // Frozen state (from ice wraith)
+    // =========================================================================
+    expose func freeze(durationMs: Integer) {
+        freezeTimer = durationMs;
+        vx = 0;
+        vy = 0;
+    }
+
+    expose func updateFreeze(dt: Integer): Boolean {
+        if freezeTimer <= 0 { return false; }
+        freezeTimer = freezeTimer - dt;
+        vx = 0; // Can't move while frozen
+        return true;
+    }
+
+    expose func isFrozen(): Boolean { return freezeTimer > 0; }
 }

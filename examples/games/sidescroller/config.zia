@@ -119,6 +119,25 @@ final TILE_CONSOLE = 38;         // computer panel with screen glow
 final TILE_HOLO_BRIDGE = 39;     // translucent holographic platform
 final TILE_VIEWPORT = 40;        // transparent panel showing starfield
 
+// New environmental hazard tiles
+final TILE_POISON_POOL = 41;     // green acid pool (damage over time)
+final TILE_QUICKSAND = 42;       // slows player movement
+final TILE_CRUMBLE = 43;         // breaks after standing on it
+final TILE_ICE_FLOOR = 44;       // slippery, reduced friction
+final TILE_CONVEYOR_L = 45;      // pushes player left
+final TILE_CONVEYOR_R = 46;      // pushes player right
+final TILE_STEAM_VENT = 47;      // launches player upward
+final TILE_DESTRUCTIBLE = 48;    // breaks after N hits (charge shot)
+final TILE_ONE_WAY = 49;         // pass through from below, solid from above
+
+// Interactive tiles
+final TILE_SWITCH = 50;          // toggles linked objects
+final TILE_LOCKED_DOOR = 51;     // requires key item
+final TILE_SAVE_STATION = 52;    // heal + checkpoint
+final TILE_ABILITY_SHRINE = 53;  // grants new ability
+final TILE_TELEPORTER = 54;      // links to other area
+final TILE_LORE_TERMINAL = 55;   // scannable lore entry
+
 // =============================================================================
 // Enemy Types
 // =============================================================================
@@ -160,6 +179,186 @@ final DRONE_W = 40;
 final DRONE_H = 32;
 final DRONE_DETECT_RANGE = 350; // pixels
 
+// ─── Biome 1: Fungal Caverns ──────────────────────────────────────────
+final ENEMY_SPOREWALKER = 5;
+final SPOREWALKER_HP = 2;
+final SPOREWALKER_SPEED = 80;    // x100 (slow, methodical)
+final SPOREWALKER_W = 32;
+final SPOREWALKER_H = 40;
+final SPORE_CLOUD_RADIUS = 192;  // poison cloud radius (pixels)
+final SPORE_CLOUD_DURATION = 180; // frames cloud lingers
+
+final ENEMY_GLOWMOTH = 6;
+final GLOWMOTH_HP = 1;
+final GLOWMOTH_SPEED = 200;     // x100
+final GLOWMOTH_W = 36;
+final GLOWMOTH_H = 28;
+final GLOWMOTH_DIVE_SPEED = 400; // x100 (dive attack)
+final GLOWMOTH_DETECT = 300;     // pixels
+
+final ENEMY_FUNGAL_TURRET = 7;
+final FUNGAL_TURRET_HP = 4;
+final FUNGAL_TURRET_W = 48;
+final FUNGAL_TURRET_H = 56;
+final FUNGAL_TURRET_RANGE = 500;
+final FUNGAL_TURRET_FIRE_MS = 2000; // slower than metal turret
+
+final ENEMY_MYCELIUM = 8;
+final MYCELIUM_HP = 3;
+final MYCELIUM_SPEED = 350;     // x100 (fast dash after drop)
+final MYCELIUM_W = 40;
+final MYCELIUM_H = 24;
+
+final ENEMY_SPORE_MOTHER = 9;   // Mini-boss
+final SPORE_MOTHER_HP = 30;
+final SPORE_MOTHER_SPEED = 60;  // x100
+final SPORE_MOTHER_W = 96;
+final SPORE_MOTHER_H = 96;
+
+// ─── Biome 2: Crystal Depths ──────────────────────────────────────────
+final ENEMY_CRYSTAL_GOLEM = 10;
+final CRYSTAL_GOLEM_HP = 5;
+final CRYSTAL_GOLEM_SPEED = 70;  // x100 (very slow)
+final CRYSTAL_GOLEM_W = 56;
+final CRYSTAL_GOLEM_H = 64;
+
+final ENEMY_SHARD_BAT = 11;
+final SHARD_BAT_HP = 2;
+final SHARD_BAT_SPEED = 220;    // x100
+final SHARD_BAT_W = 48;
+final SHARD_BAT_H = 36;
+
+final ENEMY_RESONANCE_ORB = 12;
+final RESONANCE_ORB_HP = 3;
+final RESONANCE_ORB_W = 40;
+final RESONANCE_ORB_H = 40;
+final RESONANCE_PULSE_MS = 2400; // pulse cycle (ms)
+final RESONANCE_PUSH = 800;     // push force x100
+
+final ENEMY_MIRROR_SLIME = 13;
+final MIRROR_SLIME_HP = 2;
+final MIRROR_SLIME_SPEED = 100;  // x100
+final MIRROR_SLIME_W = 44;
+final MIRROR_SLIME_H = 36;
+
+final ENEMY_CRYSTAL_WYRM = 14;  // Mini-boss
+final CRYSTAL_WYRM_HP = 40;
+final CRYSTAL_WYRM_SPEED = 250; // x100
+final CRYSTAL_WYRM_W = 80;
+final CRYSTAL_WYRM_H = 80;
+
+// ─── Biome 3: Thermal Vents ──────────────────────────────────────────
+final ENEMY_MAGMA_SLUG = 15;
+final MAGMA_SLUG_HP = 3;
+final MAGMA_SLUG_SPEED = 60;    // x100 (very slow)
+final MAGMA_SLUG_W = 48;
+final MAGMA_SLUG_H = 32;
+final MAGMA_TRAIL_INTERVAL = 480; // ms between lava trail drops
+
+final ENEMY_EMBER_WASP = 16;
+final EMBER_WASP_HP = 1;
+final EMBER_WASP_SPEED = 300;   // x100 (very fast)
+final EMBER_WASP_W = 28;
+final EMBER_WASP_H = 24;
+final EMBER_WASP_DETECT = 350;
+
+final ENEMY_FORGE_SENTINEL = 17;
+final FORGE_SENTINEL_HP = 6;
+final FORGE_SENTINEL_SPEED = 100;  // x100 patrol
+final FORGE_SENTINEL_CHARGE = 600; // x100 charge speed
+final FORGE_SENTINEL_W = 56;
+final FORGE_SENTINEL_H = 64;
+final FORGE_SENTINEL_DETECT = 450;
+final FORGE_SENTINEL_STAGGER_MS = 800; // stagger when hitting wall
+
+final ENEMY_PISTON_TRAP = 18;   // Indestructible environmental hazard
+final PISTON_TRAP_W = 32;
+final PISTON_TRAP_H = 64;
+final PISTON_FIRE_INTERVAL_MS = 1600;
+
+final ENEMY_MAGMA_CORE = 19;    // Major boss
+final MAGMA_CORE_HP = 50;
+final MAGMA_CORE_W = 112;
+final MAGMA_CORE_H = 112;
+
+// ─── Biome 4: Frozen Abyss ───────────────────────────────────────────
+final ENEMY_ICE_WRAITH = 20;
+final ICE_WRAITH_HP = 3;
+final ICE_WRAITH_SPEED = 150;   // x100
+final ICE_WRAITH_W = 40;
+final ICE_WRAITH_H = 48;
+final ICE_FREEZE_DURATION_MS = 960; // player stun duration
+
+final ENEMY_FROST_BEETLE = 21;
+final FROST_BEETLE_HP = 4;
+final FROST_BEETLE_SPEED = 180;  // x100 normal
+final FROST_BEETLE_ROLL_SPEED = 500; // x100 roll attack
+final FROST_BEETLE_W = 48;
+final FROST_BEETLE_H = 40;
+final FROST_BEETLE_DETECT = 350;
+
+final ENEMY_STALACTITE_BAT = 22;
+final STALACTITE_BAT_HP = 1;
+final STALACTITE_BAT_DROP_SPEED = 400; // x100 (fast drop)
+final STALACTITE_BAT_W = 24;
+final STALACTITE_BAT_H = 48;
+
+// ─── Biome 5: Overgrowth Ruins ───────────────────────────────────────
+final ENEMY_VINE_WHIP = 23;
+final VINE_WHIP_HP = 2;         // Root HP only
+final VINE_WHIP_W = 24;
+final VINE_WHIP_H = 64;
+final VINE_SWEEP_MS = 1200;     // sweep cycle (ms)
+
+final ENEMY_MOSS_GOLEM = 24;
+final MOSS_GOLEM_HP = 8;
+final MOSS_GOLEM_SPEED = 50;    // x100 (very slow)
+final MOSS_GOLEM_W = 64;
+final MOSS_GOLEM_H = 72;
+final MOSS_GOLEM_REGEN_MS = 960; // ms between HP regen ticks
+
+final ENEMY_RUIN_GUARDIAN = 25;
+final RUIN_GUARDIAN_HP = 6;
+final RUIN_GUARDIAN_SPEED = 80;  // x100
+final RUIN_GUARDIAN_W = 56;
+final RUIN_GUARDIAN_H = 72;
+final RUIN_GUARDIAN_POUND_MS = 2400; // ground pound cooldown
+
+// ─── Biome 6: Corrupted Core ─────────────────────────────────────────
+final ENEMY_SHADOW_CLONE = 26;
+final SHADOW_CLONE_HP = 1;
+final SHADOW_CLONE_W = 40;
+final SHADOW_CLONE_H = 58;
+final SHADOW_DELAY_MS = 2000;   // 2-second movement delay
+
+final ENEMY_CORRUPTION = 27;
+final CORRUPTION_HP = 4;
+final CORRUPTION_W = 32;
+final CORRUPTION_H = 80;
+final CORRUPTION_GRAB_MS = 1600; // grab escape window
+
+final ENEMY_ARCHITECT = 28;     // Final boss
+final ARCHITECT_HP = 80;
+final ARCHITECT_SPEED = 200;    // x100
+final ARCHITECT_W = 96;
+final ARCHITECT_H = 112;
+
+// ─── Universal Enemies ───────────────────────────────────────────────
+final ENEMY_PATROL_DRONE = 29;
+final PATROL_DRONE_HP = 2;
+final PATROL_DRONE_SPEED = 150; // x100
+final PATROL_DRONE_W = 36;
+final PATROL_DRONE_H = 32;
+final PATROL_DRONE_RANGE = 400;
+final PATROL_DRONE_FIRE_MS = 1200;
+
+final ENEMY_BOMB_CARRIER = 30;
+final BOMB_CARRIER_HP = 1;
+final BOMB_CARRIER_SPEED = 120; // x100
+final BOMB_CARRIER_W = 36;
+final BOMB_CARRIER_H = 36;
+final BOMB_EXPLOSION_RADIUS = 128; // pixels
+
 // =============================================================================
 // Pickup Types
 // =============================================================================
@@ -168,6 +367,9 @@ final PICKUP_HEALTH = 1;
 final PICKUP_SPEED = 2;
 final PICKUP_SHIELD = 3;
 final PICKUP_RAPIDFIRE = 4;
+final PICKUP_GEM = 5;          // Currency for upgrades
+final PICKUP_HP_UP = 6;        // Permanent max HP increase
+final PICKUP_KEY = 7;          // Keycard for locked doors
 final MAX_PICKUPS = 128;
 final COIN_SIZE = 36;         // scaled up for visibility
 final POWERUP_SIZE = 42;

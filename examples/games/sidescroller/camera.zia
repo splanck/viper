@@ -508,4 +508,214 @@ entity GameCamera {
     expose func toScreenY(wy: Integer) -> Integer {
         return wy - y;
     }
+
+    // =========================================================================
+    // Biome-specific background renderers (new levels)
+    // =========================================================================
+
+    expose func drawBiomeBackground(canvas: Canvas, theme: Integer, timer: Integer) {
+        if theme == 1 { drawCrashSiteBg(canvas, timer); return; }
+        if theme == 2 { drawFungalBg(canvas, timer); return; }
+        if theme == 3 { drawCrystalBg(canvas, timer); return; }
+        if theme == 4 { drawSurfaceRuinsBg(canvas, timer); return; }
+        if theme == 5 { drawUndergroundLakeBg(canvas, timer); return; }
+        if theme == 6 { drawThermalBg(canvas, timer); return; }
+        if theme == 7 { drawOvergrowthBg(canvas, timer); return; }
+        if theme == 8 { drawFrozenBg(canvas, timer); return; }
+        if theme == 9 { drawCorruptedBg(canvas, timer); return; }
+        if theme == 10 { drawCoreBg(canvas, timer); return; }
+    }
+
+    hide func drawCrashSiteBg(canvas: Canvas, timer: Integer) {
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
+                         Color.RGB(10, 30, 50), Color.RGB(20, 60, 80));
+        drawStarField(canvas, timer, 20, Color.RGB(200, 200, 220));
+        // Alien planet in sky
+        canvas.DiscAlpha(900, 100, 60, Color.RGB(150, 80, 60), 80);
+        canvas.DiscAlpha(890, 90, 55, Color.RGB(170, 100, 70), 60);
+        // Crashed ship silhouette
+        var shipX = SCREEN_W / 2 - x * 5 / 100;
+        canvas.Box(shipX, 500, 200, 40, Color.RGB(15, 20, 30));
+        canvas.Triangle(shipX + 200, 500, shipX + 250, 480, shipX + 200, 540,
+                        Color.RGB(15, 20, 30));
+        // Smoke
+        canvas.DiscAlpha(shipX + 100, 480, 30 + timer % 20, Color.RGB(60, 60, 70), 40);
+    }
+
+    hide func drawFungalBg(canvas: Canvas, timer: Integer) {
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
+                         Color.RGB(5, 10, 20), Color.RGB(10, 25, 15));
+        var i = 0;
+        while i < 6 {
+            var mx = 100 + i * 200 - x * 8 / 100;
+            var my = 400 + (i * 37) % 100;
+            var r = 30 + (i * 13) % 20;
+            canvas.DiscAlpha(mx, my, r, Color.RGB(80, 160, 60), 30);
+            canvas.DiscAlpha(mx, my - r / 2, r * 3 / 4, Color.RGB(120, 200, 80), 20);
+            canvas.BoxAlpha(mx - 3, my, 6, 80, Color.RGB(40, 80, 30), 40);
+            i = i + 1;
+        }
+        drawBiomeParticles(canvas, timer, 15, Color.RGB(150, 255, 80), 40);
+    }
+
+    hide func drawCrystalBg(canvas: Canvas, timer: Integer) {
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
+                         Color.RGB(8, 8, 25), Color.RGB(15, 20, 50));
+        var i = 0;
+        while i < 8 {
+            var cx2 = 80 + i * 170 - x * 10 / 100;
+            var cy2 = 300 + (i * 47) % 200;
+            var h = 60 + (i * 29) % 80;
+            canvas.Triangle(cx2, cy2 - h, cx2 - 15, cy2, cx2 + 15, cy2,
+                           Color.RGB(60 + i * 8, 80 + i * 10, 180));
+            canvas.DiscAlpha(cx2, cy2, 20, Color.RGB(100, 140, 220), 30);
+            i = i + 1;
+        }
+        drawBiomeParticles(canvas, timer, 12, Color.RGB(180, 200, 255), 50);
+    }
+
+    hide func drawSurfaceRuinsBg(canvas: Canvas, timer: Integer) {
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
+                         Color.RGB(20, 35, 20), Color.RGB(40, 60, 35));
+        var i = 0;
+        while i < 5 {
+            var px2 = 150 + i * 250 - x * 12 / 100;
+            var ph = 200 + (i * 31) % 100;
+            canvas.BoxAlpha(px2, SCREEN_H - ph, 30, ph, Color.RGB(80, 75, 60), 60);
+            canvas.Triangle(px2, SCREEN_H - ph, px2 - 10, SCREEN_H - ph + 20,
+                           px2 + 15, SCREEN_H - ph + 15, Color.RGB(70, 65, 50));
+            canvas.BoxAlpha(px2 + 5, SCREEN_H - ph + 40, 4, 60,
+                           Color.RGB(40, 100, 30), 50);
+            i = i + 1;
+        }
+        drawBiomeParticles(canvas, timer, 10, Color.RGB(200, 255, 100), 35);
+    }
+
+    hide func drawUndergroundLakeBg(canvas: Canvas, timer: Integer) {
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
+                         Color.RGB(5, 15, 30), Color.RGB(10, 40, 60));
+        var y2 = 0;
+        while y2 < SCREEN_H {
+            var shimmer = (y2 + timer / 30) % 40;
+            if shimmer < 3 {
+                canvas.BoxAlpha(0, y2, SCREEN_W, 1, Color.RGB(40, 100, 160), 20);
+            }
+            y2 = y2 + 8;
+        }
+        canvas.DiscAlpha(SCREEN_W / 2, SCREEN_H, 300, Color.RGB(20, 80, 120), 30);
+        drawBiomeParticles(canvas, timer, 8, Color.RGB(100, 180, 255), 40);
+    }
+
+    hide func drawThermalBg(canvas: Canvas, timer: Integer) {
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
+                         Color.RGB(30, 10, 5), Color.RGB(60, 20, 10));
+        canvas.BoxAlpha(0, SCREEN_H - 100, SCREEN_W, 100, Color.RGB(200, 80, 20), 40);
+        canvas.BoxAlpha(0, SCREEN_H - 60, SCREEN_W, 60, Color.RGB(255, 120, 30), 30);
+        drawBiomeParticles(canvas, timer, 20, Color.RGB(255, 160, 40), 60);
+        var i = 0;
+        while i < 4 {
+            var sx2 = 200 + i * 300 - x * 6 / 100;
+            canvas.BoxAlpha(sx2, 100, 20, SCREEN_H - 200, Color.RGB(80, 40, 20), 30);
+            canvas.DiscAlpha(sx2 + 10, 100, 40 + timer % 20, Color.RGB(60, 30, 15), 25);
+            i = i + 1;
+        }
+    }
+
+    hide func drawOvergrowthBg(canvas: Canvas, timer: Integer) {
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
+                         Color.RGB(15, 30, 15), Color.RGB(25, 50, 25));
+        var i = 0;
+        while i < 10 {
+            var tx = 60 + i * 140 - x * 15 / 100;
+            var ty = 200 + (i * 23) % 150;
+            canvas.DiscAlpha(tx, ty, 50 + (i * 17) % 30, Color.RGB(20, 50, 15), 50);
+            canvas.BoxAlpha(tx - 4, ty, 8, 300, Color.RGB(30, 25, 15), 40);
+            i = i + 1;
+        }
+        // Fireflies
+        var j = 0;
+        while j < 8 {
+            var fx = (j * 173 + timer / 80) % SCREEN_W;
+            var fy = (j * 251 + timer / 120) % SCREEN_H;
+            if (timer / 100 + j * 5) % 10 < 5 {
+                canvas.DiscAlpha(fx, fy, 3, Color.RGB(200, 255, 100), 60);
+            }
+            j = j + 1;
+        }
+    }
+
+    hide func drawFrozenBg(canvas: Canvas, timer: Integer) {
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
+                         Color.RGB(15, 20, 35), Color.RGB(30, 40, 60));
+        var i = 0;
+        while i < 12 {
+            var ix = 50 + i * 110 - x * 8 / 100;
+            var ih = 40 + (i * 19) % 60;
+            canvas.Triangle(ix, 0, ix - 8, ih, ix + 8, ih, Color.RGB(140, 180, 220));
+            canvas.Triangle(ix, 0, ix - 5, ih - 10, ix + 5, ih - 10, Color.RGB(160, 200, 240));
+            i = i + 1;
+        }
+        drawBiomeParticles(canvas, timer, 15, Color.RGB(220, 240, 255), 45);
+        var auroraY = 80 + (timer / 50) % 40;
+        canvas.BoxAlpha(0, auroraY, SCREEN_W, 3, Color.RGB(50, 200, 150), 20);
+        canvas.BoxAlpha(0, auroraY + 20, SCREEN_W, 2, Color.RGB(100, 150, 255), 15);
+    }
+
+    hide func drawCorruptedBg(canvas: Canvas, timer: Integer) {
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
+                         Color.RGB(10, 0, 15), Color.RGB(20, 5, 30));
+        var i = 0;
+        while i < 6 {
+            var tx = 100 + i * 220 - x * 10 / 100;
+            var wave = (timer / 40 + i * 30) % 60;
+            canvas.BoxAlpha(tx, 0, 4, SCREEN_H, Color.RGB(80, 20, 100), 30);
+            var ny = wave * SCREEN_H / 60;
+            canvas.DiscAlpha(tx + 2, ny, 8, Color.RGB(150, 50, 200), 50);
+            i = i + 1;
+        }
+        var gl = (timer / 30) % SCREEN_H;
+        canvas.BoxAlpha(0, gl, SCREEN_W, 2, Color.RGB(200, 50, 255), 40);
+        drawBiomeParticles(canvas, timer, 10, Color.RGB(150, 50, 200), 40);
+    }
+
+    hide func drawCoreBg(canvas: Canvas, timer: Integer) {
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
+                         Color.RGB(5, 0, 10), Color.RGB(15, 5, 25));
+        var pulse = (timer / 20) % 40;
+        var coreR = 100 + pulse;
+        canvas.DiscAlpha(SCREEN_W / 2, SCREEN_H / 2, coreR, Color.RGB(100, 30, 150), 20);
+        canvas.DiscAlpha(SCREEN_W / 2, SCREEN_H / 2, coreR / 2, Color.RGB(150, 60, 200), 30);
+        canvas.DiscAlpha(SCREEN_W / 2, SCREEN_H / 2, coreR / 4, Color.RGB(200, 100, 255), 40);
+        drawBiomeParticles(canvas, timer, 12, Color.RGB(200, 80, 255), 50);
+        if (timer / 16) % 200 < 5 {
+            canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(200, 30, 30), 20);
+        }
+    }
+
+    hide func drawBiomeParticles(canvas: Canvas, timer: Integer,
+                                  count: Integer, color: Integer, alpha: Integer) {
+        var i = 0;
+        while i < count {
+            var px2 = ((i * 173 + timer / 60) * 97) % SCREEN_W;
+            var py2 = ((i * 251 + timer / 90) * 73) % SCREEN_H;
+            var a = alpha + (i * 13) % 20 - 10;
+            if a < 0 { a = 0; }
+            if a > 255 { a = 255; }
+            canvas.DiscAlpha(px2, py2, 2, color, a);
+            i = i + 1;
+        }
+    }
+
+    hide func drawStarField(canvas: Canvas, timer: Integer,
+                             count: Integer, color: Integer) {
+        var i = 0;
+        while i < count {
+            var sx2 = (i * 137 + 50) % SCREEN_W;
+            var sy2 = (i * 251 + 30) % (SCREEN_H / 2);
+            if (timer / 100 + i * 7) % 10 < 7 {
+                canvas.Disc(sx2, sy2, 1, color);
+            }
+            i = i + 1;
+        }
+    }
 }

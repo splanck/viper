@@ -142,12 +142,27 @@ entity ParticleSystem {
     // Enemy death
     expose func burstEnemyDeath(x: Integer, y: Integer, col: Integer) {
         emitter.SetPosition(x + 0.0, y + 0.0);
+        // Main colored burst — large and visible
         emitter.set_Color(col);
-        emitter.SetLifetime(15, 20);
-        emitter.SetVelocity(12.0, 28.0, 30.0, 150.0);
-        emitter.SetGravity(0.0, 0.4);
-        emitter.SetSize(2.0, 3.0);
-        emitter.Burst(12);
+        emitter.SetLifetime(25, 40);
+        emitter.SetVelocity(15.0, 40.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.5);
+        emitter.SetSize(4.0, 8.0);
+        emitter.Burst(20);
+        // White flash particles — bright core burst
+        emitter.set_Color(Color.RGB(255, 255, 255));
+        emitter.SetLifetime(5, 10);
+        emitter.SetVelocity(20.0, 50.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.0);
+        emitter.SetSize(3.0, 6.0);
+        emitter.Burst(10);
+        // Smaller debris
+        emitter.set_Color(col);
+        emitter.SetLifetime(15, 25);
+        emitter.SetVelocity(5.0, 15.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.6);
+        emitter.SetSize(2.0, 4.0);
+        emitter.Burst(8);
     }
 
     // Hard landing — wider dust cloud
@@ -328,5 +343,139 @@ entity ParticleSystem {
         emitter.SetGravity(0.0, -0.2);
         emitter.SetSize(2.0, 4.0);
         emitter.Burst(4);
+    }
+
+    // =========================================================================
+    // New enemy death effects
+    // =========================================================================
+
+    expose func burstPoisonCloud(x: Integer, y: Integer) {
+        emitter.set_Position(x, y);
+        emitter.SetLifetime(25, 40);
+        emitter.SetVelocity(3.0, 12.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, -0.1);
+        emitter.set_Color(Color.RGB(80, 200, 50));
+        emitter.SetSize(3.0, 6.0);
+        emitter.Burst(14);
+        emitter.set_Color(Color.RGB(120, 255, 80));
+        emitter.SetSize(2.0, 4.0);
+        emitter.Burst(8);
+    }
+
+    expose func burstCrystalShatter(x: Integer, y: Integer) {
+        emitter.set_Position(x, y);
+        emitter.SetLifetime(15, 25);
+        emitter.SetVelocity(10.0, 30.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.5);
+        emitter.set_Color(Color.RGB(100, 150, 240));
+        emitter.SetSize(2.0, 5.0);
+        emitter.Burst(16);
+        emitter.set_Color(Color.RGB(200, 220, 255));
+        emitter.SetSize(1.0, 3.0);
+        emitter.Burst(10);
+    }
+
+    expose func burstLavaSplash(x: Integer, y: Integer) {
+        emitter.set_Position(x, y);
+        emitter.SetLifetime(15, 30);
+        emitter.SetVelocity(8.0, 25.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.6);
+        emitter.set_Color(Color.RGB(255, 150, 30));
+        emitter.SetSize(3.0, 6.0);
+        emitter.Burst(12);
+        emitter.set_Color(Color.RGB(255, 80, 20));
+        emitter.Burst(8);
+    }
+
+    expose func burstFrostShatter(x: Integer, y: Integer) {
+        emitter.set_Position(x, y);
+        emitter.SetLifetime(20, 35);
+        emitter.SetVelocity(6.0, 20.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.3);
+        emitter.set_Color(Color.RGB(180, 220, 255));
+        emitter.SetSize(2.0, 5.0);
+        emitter.Burst(14);
+        emitter.set_Color(Color.RGB(255, 255, 255));
+        emitter.SetSize(1.0, 3.0);
+        emitter.Burst(8);
+    }
+
+    expose func burstCorruptionDeath(x: Integer, y: Integer) {
+        emitter.set_Position(x, y);
+        emitter.SetLifetime(20, 35);
+        emitter.SetVelocity(5.0, 18.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, -0.15);
+        emitter.set_Color(Color.RGB(100, 30, 150));
+        emitter.SetSize(3.0, 6.0);
+        emitter.Burst(12);
+        emitter.set_Color(Color.RGB(200, 50, 255));
+        emitter.SetSize(1.0, 3.0);
+        emitter.Burst(6);
+    }
+
+    expose func burstExplosion(x: Integer, y: Integer) {
+        emitter.set_Position(x, y);
+        emitter.SetLifetime(15, 30);
+        emitter.SetVelocity(12.0, 40.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.4);
+        emitter.set_Color(Color.RGB(255, 200, 50));
+        emitter.SetSize(4.0, 8.0);
+        emitter.Burst(16);
+        emitter.set_Color(Color.RGB(80, 80, 80));
+        emitter.SetLifetime(25, 45);
+        emitter.SetVelocity(3.0, 10.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, -0.2);
+        emitter.SetSize(3.0, 7.0);
+        emitter.Burst(10);
+    }
+
+    expose func burstBossPhaseTransition(x: Integer, y: Integer, phaseColor: Integer) {
+        emitter.set_Position(x, y);
+        emitter.SetLifetime(25, 45);
+        emitter.SetVelocity(15.0, 50.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.0);
+        emitter.set_Color(phaseColor);
+        emitter.SetSize(4.0, 10.0);
+        emitter.Burst(24);
+        emitter.set_Color(Color.RGB(255, 255, 255));
+        emitter.SetSize(2.0, 5.0);
+        emitter.Burst(12);
+    }
+
+    expose func burstAbilityAcquired(x: Integer, y: Integer) {
+        emitter.set_Position(x, y);
+        emitter.SetLifetime(30, 50);
+        emitter.SetVelocity(8.0, 30.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, -0.1);
+        emitter.set_Color(Color.RGB(255, 221, 34));
+        emitter.SetSize(3.0, 7.0);
+        emitter.Burst(20);
+        emitter.set_Color(Color.RGB(255, 255, 200));
+        emitter.SetSize(2.0, 4.0);
+        emitter.Burst(12);
+    }
+
+    expose func burstDashTrail(x: Integer, y: Integer, facing: Integer) {
+        emitter.set_Position(x, y);
+        emitter.SetLifetime(5, 10);
+        if facing > 0 {
+            emitter.SetVelocity(8.0, 15.0, 150.0, 210.0);
+        } else {
+            emitter.SetVelocity(8.0, 15.0, 330.0, 390.0);
+        }
+        emitter.SetGravity(0.0, 0.0);
+        emitter.set_Color(Color.RGB(100, 200, 255));
+        emitter.SetSize(2.0, 3.0);
+        emitter.Burst(3);
+    }
+
+    expose func burstPoundImpact(x: Integer, y: Integer) {
+        emitter.set_Position(x, y);
+        emitter.SetLifetime(10, 20);
+        emitter.SetVelocity(10.0, 30.0, 160.0, 200.0);
+        emitter.SetGravity(0.0, 0.3);
+        emitter.set_Color(Color.RGB(200, 180, 100));
+        emitter.SetSize(3.0, 6.0);
+        emitter.Burst(12);
     }
 }

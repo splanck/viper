@@ -21,9 +21,13 @@ bind "./config";
 entity SoundManager {
     hide Boolean ready;
     hide SoundBank bank;
+    hide Integer musicVoice;
+    hide Integer currentTrack;
 
     expose func init() {
         ready = false;
+        musicVoice = -1;
+        currentTrack = -1;
     }
 
     // Initialize audio system and register all sounds.
@@ -89,6 +93,125 @@ entity SoundManager {
         }
         if bank.Has("stomp") == false {
             bank.RegisterSound("stomp", Synth.Sfx(SFX_HIT));
+        }
+
+        // =====================================================================
+        // Procedural music via MusicGen — zero external assets needed
+        // =====================================================================
+
+        // Menu theme: dreamy, atmospheric (sine pad + triangle arpeggio)
+        var menuSong = MusicGen.New(90);
+        var menuPad = menuSong.AddChannel(0);     // sine pad
+        var menuArp = menuSong.AddChannel(3);     // triangle arpeggio
+        var menuBass = menuSong.AddChannel(2);    // saw bass
+
+        menuSong.SetEnvelope(menuPad, 300, 200, 60, 400);
+        menuSong.SetPan(menuPad, -20);
+        menuSong.SetDetune(menuPad, 6);
+        menuSong.SetEnvelope(menuArp, 5, 60, 40, 80);
+        menuSong.SetArpeggio(menuArp, 4, 7, 1200);
+        menuSong.SetPan(menuArp, 30);
+        menuSong.SetEnvelope(menuBass, 10, 80, 70, 100);
+
+        // Cm chord progression: Cm - Ab - Eb - Bb (8 bars, 32 beats)
+        // Pad: whole notes per chord
+        menuSong.AddNote(menuPad, 0, 60, 800);       // C4, 8 beats
+        menuSong.AddNote(menuPad, 800, 56, 800);     // Ab3
+        menuSong.AddNote(menuPad, 1600, 63, 800);    // Eb4
+        menuSong.AddNote(menuPad, 2400, 58, 800);    // Bb3
+        // Arpeggio: eighth notes cycling chord tones
+        var pos = 0;
+        // Cm: C4 E4 G4
+        while pos < 800 { menuSong.AddNote(menuArp, pos, 72, 50); pos = pos + 50; }
+        // Ab: Ab3 C4 Eb4
+        while pos < 1600 { menuSong.AddNote(menuArp, pos, 68, 50); pos = pos + 50; }
+        // Eb: Eb4 G4 Bb4
+        while pos < 2400 { menuSong.AddNote(menuArp, pos, 75, 50); pos = pos + 50; }
+        // Bb: Bb3 D4 F4
+        while pos < 3200 { menuSong.AddNote(menuArp, pos, 70, 50); pos = pos + 50; }
+        // Bass: root notes, half notes
+        menuSong.AddNote(menuBass, 0, 36, 400);      // C2
+        menuSong.AddNote(menuBass, 400, 36, 400);
+        menuSong.AddNote(menuBass, 800, 44, 400);    // Ab2
+        menuSong.AddNote(menuBass, 1200, 44, 400);
+        menuSong.AddNote(menuBass, 1600, 39, 400);   // Eb2
+        menuSong.AddNote(menuBass, 2000, 39, 400);
+        menuSong.AddNote(menuBass, 2400, 46, 400);   // Bb2
+        menuSong.AddNote(menuBass, 2800, 46, 400);
+
+        menuSong.SetLength(3200);
+        menuSong.SetLoopable(1);
+        var menuSound = menuSong.Build();
+        if menuSound != null {
+            bank.RegisterSound("music_menu", menuSound);
+        }
+
+        // Gameplay theme: upbeat chiptune (square lead + saw bass + noise drums)
+        var gameSong = MusicGen.New(140);
+        var lead = gameSong.AddChannel(1);     // square lead
+        var gbass = gameSong.AddChannel(2);    // saw bass
+        var drums = gameSong.AddChannel(4);    // noise drums
+
+        gameSong.SetEnvelope(lead, 10, 60, 50, 80);
+        gameSong.SetDuty(lead, 25);
+        gameSong.SetVibrato(lead, 12, 500);
+        gameSong.SetPan(lead, -15);
+        gameSong.SetEnvelope(gbass, 5, 40, 80, 50);
+        gameSong.SetEnvelope(drums, 1, 20, 0, 30);
+
+        // Lead melody — 4 bars of catchy chiptune in C major
+        // Bar 1: C E G E
+        gameSong.AddNote(lead, 0, 72, 100);       // C5
+        gameSong.AddNote(lead, 100, 76, 100);     // E5
+        gameSong.AddNote(lead, 200, 79, 100);     // G5
+        gameSong.AddNote(lead, 300, 76, 100);     // E5
+        // Bar 2: A G F E
+        gameSong.AddNote(lead, 400, 81, 100);     // A5
+        gameSong.AddNote(lead, 500, 79, 100);     // G5
+        gameSong.AddNote(lead, 600, 77, 100);     // F5
+        gameSong.AddNote(lead, 700, 76, 100);     // E5
+        // Bar 3: D F A F
+        gameSong.AddNote(lead, 800, 74, 100);     // D5
+        gameSong.AddNote(lead, 900, 77, 100);     // F5
+        gameSong.AddNote(lead, 1000, 81, 100);    // A5
+        gameSong.AddNote(lead, 1100, 77, 100);    // F5
+        // Bar 4: G high, rest, G resolve to C
+        gameSong.AddNote(lead, 1200, 84, 100);    // C6
+        gameSong.AddNote(lead, 1300, 83, 100);    // B5
+        gameSong.AddNote(lead, 1400, 81, 100);    // A5
+        gameSong.AddNote(lead, 1500, 79, 100);    // G5
+
+        // Bass: root notes, quarter notes
+        // Bar 1-2: C C F F
+        gameSong.AddNote(gbass, 0, 48, 200);      // C3
+        gameSong.AddNote(gbass, 200, 48, 200);    // C3
+        gameSong.AddNote(gbass, 400, 53, 200);    // F3
+        gameSong.AddNote(gbass, 600, 53, 200);    // F3
+        // Bar 3-4: D D G G
+        gameSong.AddNote(gbass, 800, 50, 200);    // D3
+        gameSong.AddNote(gbass, 1000, 50, 200);   // D3
+        gameSong.AddNote(gbass, 1200, 55, 200);   // G3
+        gameSong.AddNote(gbass, 1400, 55, 200);   // G3
+
+        // Drums: kick on 1&3, snare on 2&4 (4 bars)
+        var d = 0;
+        while d < 1600 {
+            gameSong.AddNote(drums, d, 2, 25);           // kick (low noise)
+            gameSong.AddNote(drums, d + 50, 12, 15);     // hi-hat
+            gameSong.AddNote(drums, d + 100, 8, 30);     // snare (mid noise)
+            gameSong.AddNote(drums, d + 150, 12, 15);    // hi-hat
+            gameSong.AddNote(drums, d + 200, 2, 25);     // kick
+            gameSong.AddNote(drums, d + 250, 12, 15);    // hi-hat
+            gameSong.AddNote(drums, d + 300, 8, 30);     // snare
+            gameSong.AddNote(drums, d + 350, 12, 15);    // hi-hat
+            d = d + 400;
+        }
+
+        gameSong.SetLength(1600);
+        gameSong.SetLoopable(1);
+        var gameSound = gameSong.Build();
+        if gameSound != null {
+            bank.RegisterSound("music_game", gameSound);
         }
 
         ready = true;
@@ -163,5 +286,117 @@ entity SoundManager {
     expose func playStomp() {
         if ready == false { return; }
         bank.PlayEx("stomp", 65, 0);
+    }
+
+    // =========================================================================
+    // New ability/enemy sound effects
+    // =========================================================================
+
+    expose func playDash() {
+        if ready == false { return; }
+        // Use synth — whoosh sound
+        Synth.Tone(200, 100, 2);
+    }
+
+    expose func playChargeStart() {
+        if ready == false { return; }
+        Synth.Tone(220, 50, 1);
+    }
+
+    expose func playChargeRelease() {
+        if ready == false { return; }
+        Synth.Tone(880, 150, 3);
+    }
+
+    expose func playGroundPound() {
+        if ready == false { return; }
+        Synth.Tone(80, 200, 2);
+    }
+
+    expose func playFreeze() {
+        if ready == false { return; }
+        Synth.Tone(1200, 120, 1);
+    }
+
+    expose func playBossPhase() {
+        if ready == false { return; }
+        Synth.Tone(150, 300, 2);
+    }
+
+    expose func playAbilityGet() {
+        if ready == false { return; }
+        Synth.Tone(440, 100, 1);
+        Synth.Tone(660, 100, 1);
+        Synth.Tone(880, 200, 1);
+    }
+
+    expose func playSave() {
+        if ready == false { return; }
+        Synth.Tone(523, 80, 1);
+        Synth.Tone(659, 80, 1);
+    }
+
+    expose func playLoreFound() {
+        if ready == false { return; }
+        Synth.Tone(330, 100, 1);
+        Synth.Tone(440, 150, 1);
+    }
+
+    expose func playBossIntro() {
+        if ready == false { return; }
+        Synth.Tone(110, 400, 2);
+    }
+
+    expose func playVictory() {
+        if ready == false { return; }
+        Synth.Tone(523, 150, 1);
+        Synth.Tone(659, 150, 1);
+        Synth.Tone(784, 150, 1);
+        Synth.Tone(1047, 400, 1);
+    }
+
+    expose func playExplosion() {
+        if ready == false { return; }
+        Synth.Tone(60, 300, 2);
+    }
+
+    expose func playCrystalBreak() {
+        if ready == false { return; }
+        Synth.Tone(2000, 60, 3);
+        Synth.Tone(1500, 80, 3);
+    }
+
+    // =========================================================================
+    // Music playback — procedurally generated background tracks
+    // =========================================================================
+
+    expose func playMenuMusic() {
+        if ready == false { return; }
+        if currentTrack == 0 { return; }
+        stopMusic();
+        if bank.Has("music_menu") {
+            var snd = bank.Get("music_menu");
+            musicVoice = snd.PlayLoop(45, 0);
+            currentTrack = 0;
+        }
+    }
+
+    expose func playGameMusic() {
+        if ready == false { return; }
+        if currentTrack == 1 { return; }
+        stopMusic();
+        if bank.Has("music_game") {
+            var snd = bank.Get("music_game");
+            musicVoice = snd.PlayLoop(40, 0);
+            currentTrack = 1;
+        }
+    }
+
+    expose func stopMusic() {
+        if musicVoice >= 0 {
+            Voice.Stop(musicVoice);
+            musicVoice = -1;
+            currentTrack = -1;
+        }
     }
 }

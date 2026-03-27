@@ -118,4 +118,71 @@ entity ProjectilePool {
     expose func isActive(i: Integer) -> Integer { return bactive.get(i); }
     expose func deactivate(i: Integer) { bactive.set(i, 0); }
     expose func getCount() -> Integer { return bulletCount; }
+
+    // =========================================================================
+    // Charge Shot — larger, more powerful bullet
+    // =========================================================================
+    expose func fireCharged(wx: Integer, wy: Integer, dir: Integer, chargeLevel: Integer) {
+        // Charge shot: bigger, faster, more damage
+        var speed = BULLET_SPEED / 100;
+        if chargeLevel == 1 { speed = speed * 3 / 2; }
+        if chargeLevel == 2 { speed = speed * 2; }
+
+        var i = 0;
+        while i < bulletCount {
+            if bactive.get(i) == 0 {
+                bx.set(i, wx);
+                by.set(i, wy);
+                bvx.set(i, dir * speed);
+                bactive.set(i, 1 + chargeLevel); // 2=partial, 3=full (used for damage calc)
+                return;
+            }
+            i = i + 1;
+        }
+        if bulletCount < MAX_BULLETS {
+            bx.add(wx);
+            by.add(wy);
+            bvx.add(dir * speed);
+            bactive.add(1 + chargeLevel);
+            bulletCount = bulletCount + 1;
+        }
+    }
+
+    // Get charge level of a bullet (for damage calculation)
+    expose func getChargeLevel(i: Integer) -> Integer {
+        var active = bactive.get(i);
+        if active <= 1 { return 0; }
+        return active - 1; // 1=partial, 2=full
+    }
+
+    // Draw charged bullets with visual distinction
+    expose func drawCharged(canvas: Canvas, i: Integer, sx: Integer, sy: Integer) {
+        var level = getChargeLevel(i);
+        if level == 0 { return; } // Normal bullet drawn elsewhere
+        if level == 1 {
+            // Partial charge: larger cyan glow
+            canvas.DiscAlpha(sx + BULLET_W / 2, sy + BULLET_H / 2, 8,
+                            Color.RGB(68, 238, 255), 180);
+            canvas.Disc(sx + BULLET_W / 2, sy + BULLET_H / 2, 4,
+                       Color.RGB(200, 255, 255));
+        }
+        if level == 2 {
+            // Full charge: large bright projectile with ring
+            canvas.DiscAlpha(sx + BULLET_W / 2, sy + BULLET_H / 2, 14,
+                            Color.RGB(255, 200, 50), 120);
+            canvas.DiscAlpha(sx + BULLET_W / 2, sy + BULLET_H / 2, 8,
+                            Color.RGB(255, 255, 200), 200);
+            canvas.Ring(sx + BULLET_W / 2, sy + BULLET_H / 2, 12,
+                       Color.RGB(255, 220, 100));
+        }
+    }
+
+    // =========================================================================
+    // Reflected bullet (from mirror slime)
+    // =========================================================================
+    expose func reflectBullet(i: Integer) {
+        if i >= 0 and i < bulletCount {
+            bvx.set(i, 0 - bvx.get(i)); // Reverse direction
+        }
+    }
 }

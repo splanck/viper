@@ -137,6 +137,16 @@ entity PickupManager {
                                 if t == PICKUP_RAPIDFIRE {
                                     canvas.BlitAlpha(sx, sy, sprites.getRapidPickup());
                                 }
+                                // New pickup types
+                                if t == PICKUP_GEM {
+                                    drawGem(canvas, sx, sy, animTimer);
+                                }
+                                if t == PICKUP_HP_UP {
+                                    drawHpUp(canvas, sx, sy, animTimer);
+                                }
+                                if t == PICKUP_KEY {
+                                    drawKey(canvas, sx, sy, animTimer);
+                                }
                             }
                         }
                     }
@@ -144,5 +154,82 @@ entity PickupManager {
             }
             i = i + 1;
         }
+    }
+
+    // =========================================================================
+    // New pickup types
+    // =========================================================================
+
+    // Draw a gem pickup (blue diamond shape)
+    hide func drawGem(canvas: Canvas, sx: Integer, sy: Integer, timer: Integer) {
+        var cx = sx + 18;
+        var cy = sy + 18;
+        // Diamond shape
+        canvas.Triangle(cx, cy - 12, cx - 8, cy, cx + 8, cy, Color.RGB(100, 180, 255));
+        canvas.Triangle(cx, cy + 12, cx - 8, cy, cx + 8, cy, Color.RGB(60, 130, 220));
+        // Highlight
+        canvas.Line(cx - 3, cy - 4, cx + 3, cy - 4, Color.RGB(200, 230, 255));
+        // Sparkle (animated)
+        if timer % 8 < 4 {
+            canvas.Disc(cx + 4, cy - 6, 1, Color.RGB(255, 255, 255));
+        }
+    }
+
+    // Draw a max HP upgrade pickup (golden heart)
+    hide func drawHpUp(canvas: Canvas, sx: Integer, sy: Integer, timer: Integer) {
+        var cx = sx + 21;
+        var cy = sy + 21;
+        // Heart shape (two circles + triangle)
+        canvas.Disc(cx - 5, cy - 3, 6, Color.RGB(255, 200, 50));
+        canvas.Disc(cx + 5, cy - 3, 6, Color.RGB(255, 200, 50));
+        canvas.Triangle(cx, cy + 10, cx - 11, cy, cx + 11, cy, Color.RGB(255, 180, 30));
+        // Bright center
+        canvas.Disc(cx, cy - 2, 3, Color.RGB(255, 255, 200));
+        // Plus symbol
+        canvas.Box(cx - 1, cy - 5, 3, 7, Color.RGB(255, 255, 255));
+        canvas.Box(cx - 3, cy - 3, 7, 3, Color.RGB(255, 255, 255));
+        // Pulse glow
+        if timer % 12 < 6 {
+            canvas.DiscAlpha(cx, cy, 14, Color.RGB(255, 220, 100), 40);
+        }
+    }
+
+    // Draw a key pickup (golden key shape)
+    hide func drawKey(canvas: Canvas, sx: Integer, sy: Integer, timer: Integer) {
+        var cx = sx + 18;
+        var cy = sy + 18;
+        // Key ring (circle at top)
+        canvas.Ring(cx, cy - 6, 6, Color.RGB(255, 200, 50));
+        canvas.Disc(cx, cy - 6, 4, Color.RGB(255, 220, 80));
+        // Key shaft
+        canvas.Box(cx - 1, cy, 3, 14, Color.RGB(200, 160, 40));
+        // Key teeth
+        canvas.Box(cx + 2, cy + 8, 4, 2, Color.RGB(200, 160, 40));
+        canvas.Box(cx + 2, cy + 12, 4, 2, Color.RGB(200, 160, 40));
+        // Shine
+        canvas.Disc(cx - 2, cy - 8, 1, Color.RGB(255, 255, 255));
+    }
+
+    // Pickup type counts for HUD display
+    expose func countActive() -> Integer {
+        var count = 0;
+        var i = 0;
+        while i < pickupCount {
+            if pactive.get(i) == 1 { count = count + 1; }
+            i = i + 1;
+        }
+        return count;
+    }
+
+    expose func countCollected(ofType: Integer) -> Integer {
+        var count = 0;
+        var i = 0;
+        while i < pickupCount {
+            if pactive.get(i) == 0 and ptype.get(i) == ofType {
+                count = count + 1;
+            }
+            i = i + 1;
+        }
+        return count;
     }
 }

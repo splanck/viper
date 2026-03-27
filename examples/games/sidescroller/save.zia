@@ -1,0 +1,126 @@
+// =============================================================================
+// Save System — Multi-slot persistent save at save stations
+// =============================================================================
+// Stores player progress using Viper.IO.SaveData for persistence.
+// Format: Each slot stores level, abilities, maxhp, gems as separate keys.
+// =============================================================================
+
+module save;
+
+bind Viper.IO;
+bind "./config";
+
+final MAX_SAVE_SLOTS = 3;
+
+entity SaveManager {
+    expose func init() {}
+    hide SaveData store;
+    hide List[Integer] slotLevel;
+    hide List[Integer] slotAbilities;
+    hide List[Integer] slotMaxHp;
+    hide List[Integer] slotGems;
+    hide List[Integer] slotTime;
+    hide List[Integer] slotUsed; // 0=empty, 1=used
+
+    expose func initSave() {
+        store = SaveData.New("xenoscape_saves");
+        slotLevel = [0, 0, 0];
+        slotAbilities = [1, 1, 1]; // Start with wall jump
+        slotMaxHp = [5, 5, 5];
+        slotGems = [0, 0, 0];
+        slotTime = [0, 0, 0];
+        slotUsed = [0, 0, 0];
+        loadAll();
+    }
+
+    hide func loadAll() {
+        store.Load();
+        var i = 0;
+        while i < MAX_SAVE_SLOTS {
+            var lv = store.GetInt("s" + Int(i) + "lv", 0);
+            var ab = store.GetInt("s" + Int(i) + "ab", 0);
+            var hp = store.GetInt("s" + Int(i) + "hp", 5);
+            var gm = store.GetInt("s" + Int(i) + "gm", 0);
+            var tm = store.GetInt("s" + Int(i) + "tm", 0);
+            if ab > 0 or lv > 0 {
+                slotLevel.set(i, lv);
+                slotAbilities.set(i, ab);
+                slotMaxHp.set(i, hp);
+                slotGems.set(i, gm);
+                slotTime.set(i, tm);
+                slotUsed.set(i, 1);
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func saveSlot(slot: Integer, level: Integer, abilities: Integer,
+                         maxHp: Integer, gems: Integer, time: Integer) {
+        if slot < 0 or slot >= MAX_SAVE_SLOTS { return; }
+        slotLevel.set(slot, level);
+        slotAbilities.set(slot, abilities);
+        slotMaxHp.set(slot, maxHp);
+        slotGems.set(slot, gems);
+        slotTime.set(slot, time);
+        slotUsed.set(slot, 1);
+
+        store.SetInt("s" + Int(slot) + "lv", level);
+        store.SetInt("s" + Int(slot) + "ab", abilities);
+        store.SetInt("s" + Int(slot) + "hp", maxHp);
+        store.SetInt("s" + Int(slot) + "gm", gems);
+        store.SetInt("s" + Int(slot) + "tm", time);
+        store.Save();
+    }
+
+    expose func isSlotUsed(slot: Integer): Boolean {
+        if slot < 0 or slot >= MAX_SAVE_SLOTS { return false; }
+        return slotUsed.get(slot) == 1;
+    }
+
+    expose func getSlotLevel(slot: Integer): Integer {
+        if slot < 0 or slot >= MAX_SAVE_SLOTS { return 0; }
+        return slotLevel.get(slot);
+    }
+
+    expose func getSlotAbilities(slot: Integer): Integer {
+        if slot < 0 or slot >= MAX_SAVE_SLOTS { return 1; }
+        return slotAbilities.get(slot);
+    }
+
+    expose func getSlotMaxHp(slot: Integer): Integer {
+        if slot < 0 or slot >= MAX_SAVE_SLOTS { return 5; }
+        return slotMaxHp.get(slot);
+    }
+
+    expose func getSlotGems(slot: Integer): Integer {
+        if slot < 0 or slot >= MAX_SAVE_SLOTS { return 0; }
+        return slotGems.get(slot);
+    }
+
+    expose func getSlotTime(slot: Integer): Integer {
+        if slot < 0 or slot >= MAX_SAVE_SLOTS { return 0; }
+        return slotTime.get(slot);
+    }
+
+    expose func deleteSlot(slot: Integer) {
+        if slot < 0 or slot >= MAX_SAVE_SLOTS { return; }
+        slotLevel.set(slot, 0);
+        slotAbilities.set(slot, 1);
+        slotMaxHp.set(slot, 5);
+        slotGems.set(slot, 0);
+        slotTime.set(slot, 0);
+        slotUsed.set(slot, 0);
+        store.SetInt("s" + Int(slot) + "lv", 0);
+        store.SetInt("s" + Int(slot) + "ab", 0);
+        store.Save();
+    }
+
+    expose func getSlotSummary(slot: Integer): String {
+        if not isSlotUsed(slot) { return "Empty"; }
+        var lv = slotLevel.get(slot) + 1;
+        var tm = slotTime.get(slot);
+        var mins = tm / 60;
+        var secs = tm % 60;
+        return "Level " + Int(lv) + " - " + Int(mins) + "m " + Int(secs) + "s";
+    }
+}

@@ -226,4 +226,104 @@ entity HUD {
         bossBarDisplay = maxHp;
         bossBarTarget = maxHp;
     }
+
+    // =========================================================================
+    // Extended HUD: gems, lore, ability icons, biome name
+    // =========================================================================
+
+    expose func drawExtendedHud(canvas: Canvas, pal: Palette,
+                                 gems: Integer, loreCollected: Integer, loreTotal: Integer,
+                                 currentLevel: Integer, biomeName: String) {
+        // Gem counter (top-right area)
+        var gemX = SCREEN_W - 180;
+        var gemY = 32;
+        // Gem icon (small diamond shape)
+        canvas.Triangle(gemX, gemY + 6, gemX - 6, gemY, gemX + 6, gemY,
+                        Color.RGB(100, 200, 255));
+        canvas.Triangle(gemX, gemY + 6, gemX - 6, gemY + 12, gemX + 6, gemY + 12,
+                        Color.RGB(60, 150, 220));
+        canvas.Text(gemX + 10, gemY, "x" + Int(gems), Color.RGB(200, 220, 255));
+
+        // Lore progress (small text below gems)
+        canvas.Text(gemX, gemY + 18, "Lore: " + Int(loreCollected) + "/" + Int(loreTotal),
+                    Color.RGB(120, 130, 160));
+
+        // Biome name (bottom-left, faded)
+        canvas.TextScaled(12, SCREEN_H - 24, biomeName, Color.RGB(80, 90, 110), 1);
+
+        // Level number indicator (bottom-left, above biome name)
+        canvas.Text(12, SCREEN_H - 40, "Area " + Int(currentLevel), Color.RGB(100, 110, 130));
+    }
+
+    // Mini-map dot (shows player position in level)
+    expose func drawMiniMap(canvas: Canvas, pal: Palette,
+                             playerCol: Integer, playerRow: Integer,
+                             levelW: Integer, levelH: Integer) {
+        // Small rectangle in top-right corner showing level overview
+        var mapX = SCREEN_W - 120;
+        var mapY = 52;
+        var mapW = 110;
+        var mapH = 30;
+
+        // Background
+        canvas.BoxAlpha(mapX, mapY, mapW, mapH, Color.RGB(0, 0, 20), 140);
+        canvas.Frame(mapX, mapY, mapW, mapH, Color.RGB(60, 70, 90));
+
+        // Player dot (scaled to mini-map)
+        if levelW > 0 and levelH > 0 {
+            var dotX = mapX + playerCol * mapW / levelW;
+            var dotY = mapY + playerRow * mapH / levelH;
+            // Blink the dot
+            canvas.Disc(dotX, dotY, 2, Color.RGB(50, 255, 100));
+        }
+    }
+
+    // Damage number popup (floating text showing damage dealt)
+    expose func drawDamageNumber(canvas: Canvas, wx: Integer, wy: Integer,
+                                  camX: Integer, camY: Integer,
+                                  amount: Integer, timer: Integer) {
+        if timer <= 0 { return; }
+        var sx = wx - camX;
+        var sy = wy - camY - (20 - timer) * 2; // Float upward
+        var alpha = timer * 25;
+        if alpha > 255 { alpha = 255; }
+        var text = Int(amount);
+        if amount >= 5 {
+            // Critical hit — larger, gold text
+            canvas.TextScaled(sx, sy, text, Color.RGB(255, 220, 50), 2);
+        } else {
+            canvas.Text(sx, sy, text, Color.RGB(255, 255, 255));
+        }
+    }
+
+    // Power-up timer bars (below health bar)
+    expose func drawPowerupTimers(canvas: Canvas, pal: Palette,
+                                   speedTimer: Integer, rapidTimer: Integer,
+                                   shieldActive: Boolean) {
+        var barY = 42;
+        var barW = 80;
+        var barH = 4;
+
+        if speedTimer > 0 {
+            var fill = speedTimer * barW / SPEED_DURATION;
+            canvas.Box(10, barY, fill, barH, Color.RGB(50, 200, 255));
+            canvas.Frame(10, barY, barW, barH, Color.RGB(30, 100, 140));
+            canvas.Text(barW + 14, barY - 2, "SPD", Color.RGB(50, 200, 255));
+            barY = barY + 8;
+        }
+
+        if rapidTimer > 0 {
+            var fill = rapidTimer * barW / RAPIDFIRE_DURATION;
+            canvas.Box(10, barY, fill, barH, Color.RGB(255, 150, 50));
+            canvas.Frame(10, barY, barW, barH, Color.RGB(140, 80, 30));
+            canvas.Text(barW + 14, barY - 2, "RPD", Color.RGB(255, 150, 50));
+            barY = barY + 8;
+        }
+
+        if shieldActive {
+            canvas.Disc(10 + barW / 2, barY + barH / 2, 6, Color.RGB(100, 200, 255));
+            canvas.Ring(10 + barW / 2, barY + barH / 2, 6, Color.RGB(200, 240, 255));
+            canvas.Text(barW + 14, barY - 2, "SHD", Color.RGB(100, 200, 255));
+        }
+    }
 }

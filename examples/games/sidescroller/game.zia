@@ -22,6 +22,15 @@ bind "./hud";
 bind "./menu";
 bind "./renderer";
 bind "./sound";
+bind "./abilities";
+bind "./save";
+bind "./worldmap";
+bind "./lore";
+bind "./transitions";
+bind "./lighting";
+bind "./texture";
+bind "./ai";
+bind "./achievements";
 
 entity Game {
     hide Palette pal;
@@ -43,6 +52,31 @@ entity Game {
     hide PhysicsHelper phys;
     hide SoundManager sfx;
     hide Debug debugOverlay;
+
+    // New subsystems (XENOSCAPE expansion)
+    hide AbilityManager abilities;
+    hide SaveManager saveManager;
+    hide WorldMap worldMap;
+    hide LoreSystem loreSystem;
+    // hide TransitionManager transitions;
+    hide LightingSystem lighting;
+    hide TextureFactory textures;
+    hide TransitionManager transitions;
+    hide AchievementSystem achievements2;
+
+    // Expansion state
+    hide Integer gems;
+    hide Integer bossesDefeated;    // bitmask
+    hide Integer totalPlaytime;     // seconds
+    hide Integer saveSlot;          // active save slot (0-2)
+    hide Boolean showWorldMap;
+    hide Boolean showLore;
+    hide Integer poundImpactTimer;  // ground pound visual timer
+
+    // Death flash tracking (draw bright circle at kill position)
+    hide Integer killFlashX;       // world pixel X of last kill
+    hide Integer killFlashY;       // world pixel Y of last kill
+    hide Integer killFlashTimer;   // frames remaining (0 = inactive)
 
     // Game state
     hide Integer score;
@@ -128,6 +162,20 @@ entity Game {
 
         // Load saved high scores from disk
         menus.loadHighScores();
+
+        // Initialize expansion systems (abilities, save, lighting, etc.)
+        initNewSystems();
+
+        // Define dash action binding (X key = 120 ASCII, LB pad button = 4)
+        Action.Define("dash");
+        Action.BindKey("dash", 120);  // 'x' key
+        Action.BindPadButton("dash", PAD_IDX, 4);
+
+        // Down action already bound by platformer preset as move_down
+        // We reuse it for ground pound detection
+
+        // Start menu music
+        sfx.playMenuMusic();
     }
 
     // =========================================================================
@@ -258,10 +306,12 @@ entity Game {
             loadLevel(currentLevel);
             introTimer = 1200;
             sm.Transition(STATE_PLAYING);
+            sfx.playGameMusic();
         }
         if result == STATE_MENU {
             sfx.playMenuMove();
             sm.Transition(STATE_MENU);
+            sfx.playMenuMusic();
             menus.resetSelection();
         }
     }
@@ -407,6 +457,23 @@ entity Game {
                                 bullets, pickups, particles, hudObj, sprites,
                                 score, coins, currentLevel);
 
+        // Kill flash — bright expanding circle at enemy death position
+        if killFlashTimer > 0 {
+            var fx = killFlashX - camera.x;
+            var fy = killFlashY - camera.y;
+            var flashR = (15 - killFlashTimer) * 6;
+            var flashAlpha = killFlashTimer * 16;
+            if flashAlpha > 255 { flashAlpha = 255; }
+            // Bright white expanding ring
+            canvas.DiscAlpha(fx, fy, flashR, Color.RGB(255, 255, 200), flashAlpha);
+            canvas.Ring(fx, fy, flashR, Color.RGB(255, 200, 50));
+            // Inner bright core
+            if killFlashTimer > 8 {
+                canvas.Disc(fx, fy, 12, Color.RGB(255, 255, 255));
+            }
+            killFlashTimer = killFlashTimer - 1;
+        }
+
         // Level intro splash overlay
         if introTimer > 0 {
             introTimer = introTimer - dt;
@@ -452,12 +519,24 @@ entity Game {
                     enemies.damageEnemy(hit, 10);
                     player.vy = PLAYER_JUMP / 2;
                     player.iframes = IFRAMES_STOMP_MS;
-                    score = score + ENEMY_SCORE;
 
-                    particles.burstEnemyDeath(player.pixelX() + PLAYER_W / 2,
-                                              player.pixelY() + PLAYER_H,
-                                              pal.slime);
-                    renderObj.shake(6, 3);
+                    var ex = enemies.getEnemyPixelX(hit);
+                    var ey = enemies.getEnemyPixelY(hit);
+
+                    // Check if enemy actually died
+                    if enemies.isActive(hit) == 0 {
+                        score = score + ENEMY_SCORE;
+                        particles.burstDeath(ex, ey);
+                        renderObj.shake(8, 4);
+                        sfx.playEnemyDeath();
+                        // Trigger visible kill flash
+                        killFlashX = ex;
+                        killFlashY = ey;
+                        killFlashTimer = 15;
+                    } else {
+                        particles.burstSpark(ex, ey, pal.sparkYellow);
+                        renderObj.shake(4, 2);
+                    }
                     sfx.playStomp();
                     return;
                 }
@@ -512,20 +591,21 @@ entity Game {
                     particles.burstSpark(bx, by, pal.bullet);
 
                     if enemies.isActive(hit) == 0 {
-                        var etype = enemies.getEnemyType(hit);
-                        if etype == ENEMY_BOSS {
+                        var etype2 = enemies.getEnemyType(hit);
+                        if etype2 == ENEMY_BOSS {
                             score = score + BOSS_SCORE;
                             renderObj.shake(15, 8);
                             particles.burstDeath(bx, by);
-                            sfx.playEnemyDeath();
                         } else {
                             score = score + ENEMY_SCORE;
-                            particles.burstEnemyDeath(bx, by, pal.sparkYellow);
                             renderObj.shake(6, 3);
-                            sfx.playEnemyDeath();
+                            particles.burstEnemyDeath(bx, by, pal.sparkYellow);
                         }
-                    } else {
-                        renderObj.shake(3, 2);
+                        sfx.playEnemyDeath();
+                        // Trigger visible kill flash
+                        killFlashX = bx;
+                        killFlashY = by;
+                        killFlashTimer = 15;
                     }
                 }
             }
@@ -659,6 +739,7 @@ entity Game {
                     menus.saveHighScores();
                 }
                 menus.resetSelection();
+                sfx.stopMusic();
                 sm.Transition(STATE_GAMEOVER);
                 return;
             }
@@ -697,6 +778,7 @@ entity Game {
         if result == STATE_MENU {
             sfx.playMenuSelect();
             sm.Transition(STATE_MENU);
+            sfx.playMenuMusic();
             menus.resetSelection();
         }
     }
@@ -712,10 +794,12 @@ entity Game {
         if result == STATE_PLAYING {
             sfx.playMenuSelect();
             startNewGame();
+            sfx.playGameMusic();
         }
         if result == STATE_MENU {
             sfx.playMenuSelect();
             sm.Transition(STATE_MENU);
+            sfx.playMenuMusic();
             menus.resetSelection();
         }
     }
@@ -758,6 +842,7 @@ entity Game {
         if result == STATE_MENU {
             sfx.playMenuSelect();
             sm.Transition(STATE_MENU);
+            sfx.playMenuMusic();
             menus.resetSelection();
         }
     }
@@ -811,7 +896,9 @@ entity Game {
     }
 
     hide func loadLevel(num: Integer) {
+        currentLevel = num;
         level.loadLevel(num);
+        level.enrichEnemies(num); // Add new enemy types
         camera.setLevelSize(level.levelWidth, level.levelHeight);
 
         player.spawn(level.playerStartX, level.playerStartY);
@@ -826,9 +913,290 @@ entity Game {
         bullets.reset();
         particles.reset();
 
+        // Set biome-specific lighting
+        if num == 2 { lighting.setDarkness(160); lighting.setDarkColor(Color.RGB(0, 10, 5)); }
+        else if num == 3 { lighting.setDarkness(120); lighting.setDarkColor(Color.RGB(5, 5, 20)); }
+        else if num == 5 { lighting.setDarkness(140); lighting.setDarkColor(Color.RGB(5, 15, 30)); }
+        else if num == 6 { lighting.setDarkness(80); lighting.setDarkColor(Color.RGB(20, 5, 0)); }
+        else if num == 8 { lighting.setDarkness(60); lighting.setDarkColor(Color.RGB(10, 15, 25)); }
+        else if num == 9 { lighting.setDarkness(180); lighting.setDarkColor(Color.RGB(10, 0, 15)); }
+        else if num == 10 { lighting.setDarkness(200); lighting.setDarkColor(Color.RGB(5, 0, 10)); }
+        else { lighting.setDarkness(0); }
+
         levelTimer = 0;
         reachedCheckpoint = false;
         deathTimer = 0;
-        introTimer = 1200; // 1.2 second level intro splash
+        introTimer = 1200;
+    }
+
+    // =========================================================================
+    // New subsystem integration
+    // =========================================================================
+
+    hide func initNewSystems() {
+        abilities = new AbilityManager();
+        abilities.initAbilities(pal);
+
+        lighting = new LightingSystem();
+        lighting.initLighting(pal);
+
+        transitions = new TransitionManager();
+        transitions.initTransitions(pal);
+
+        textures = new TextureFactory();
+        textures.initFactory(pal);
+
+        loreSystem = new LoreSystem();
+        loreSystem.initLore(pal);
+
+        saveManager = new SaveManager();
+        saveManager.initSave();
+
+        worldMap = new WorldMap();
+        worldMap.initMap(pal);
+
+        gems = 0;
+        bossesDefeated = 0;
+        totalPlaytime = 0;
+        saveSlot = 0;
+        showWorldMap = false;
+        showLore = false;
+        poundImpactTimer = 0;
+        killFlashX = 0;
+        killFlashY = 0;
+        killFlashTimer = 0;
+    }
+
+    // Update all expansion systems each frame
+    hide func updateNewSystems() {
+        abilities.updateUI();
+        lighting.update();
+
+        // Lore display
+        if loreSystem.isDisplayActive() {
+            loreSystem.update(dt);
+            if Action.Pressed("jump") {
+                loreSystem.dismiss();
+            }
+            return; // Pause game while reading lore
+        }
+
+        // Transitions
+        if transitions.isActive() {
+            var done = transitions.update(dt);
+            if done {
+                var trans = transitions.getTransition();
+                if trans == 1 { // TRANS_LEVEL_OUT complete
+                    loadLevel(transitions.getTargetLevel());
+                }
+            }
+            return; // Pause game during transitions
+        }
+
+        // Player ability updates
+        if player.isDashing {
+            player.updateDash(dt);
+            particles.burstDashTrail(player.pixelX(), player.pixelY() + PLAYER_H / 2, player.facing);
+        }
+        if player.isCharging {
+            player.updateCharge(dt);
+        }
+        if player.isPounding {
+            player.updatePound(dt);
+            if player.onGround {
+                // Pound landed!
+                poundImpactTimer = 12;
+                particles.burstPoundImpact(player.pixelX(), player.pixelY() + PLAYER_H);
+                sfx.playGroundPound();
+                // Stun nearby enemies (TODO: implement enemy stun)
+            }
+        }
+        if poundImpactTimer > 0 {
+            poundImpactTimer = poundImpactTimer - 1;
+        }
+        if player.isFrozen() {
+            player.updateFreeze(dt);
+        }
+
+        // Check for lore terminals
+        var loreIdx = phys.isNearLoreTerminal(player.x, player.y,
+                                                PLAYER_W, PLAYER_H, level);
+        if loreIdx >= 0 and Action.Pressed("jump") {
+            var mappedIdx = loreIdx % loreSystem.getTotalCount();
+            loreSystem.showEntry(mappedIdx);
+            sfx.playLoreFound();
+        }
+
+        // Check for save stations
+        if phys.isNearSaveStation(player.x, player.y, PLAYER_W, PLAYER_H, level) {
+            if Action.Pressed("jump") {
+                // Save progress
+                saveManager.saveSlot(saveSlot, currentLevel, abilities.getMask(),
+                                     player.maxHp, gems, levelTimer / 1000);
+                sfx.playSave();
+                // Heal player
+                player.hp = player.maxHp;
+                reachedCheckpoint = true;
+                level.checkpointX = player.pixelX();
+                level.checkpointY = player.pixelY();
+            }
+        }
+
+        // Environmental tile effects
+        var hazard = phys.checkHazardTile(player.x, player.y,
+                                           PLAYER_W, PLAYER_H, level);
+        if hazard == TILE_POISON_POOL {
+            // Poison damage over time (every 500ms)
+            if levelTimer % 500 < dt {
+                if player.iframes <= 0 {
+                    player.hp = player.hp - 1;
+                    player.iframes = 200;
+                }
+            }
+        }
+
+        // Ice physics
+        if phys.isOnIce(player.x, player.y, PLAYER_W, PLAYER_H, level) {
+            // Reduced friction — vx decays slower
+            // This is handled by the player physics module
+        }
+
+        // Conveyor belt
+        var convDir = phys.getConveyorDir(player.x, player.y,
+                                            PLAYER_W, PLAYER_H, level);
+        if convDir != 0 {
+            player.vx = player.vx + convDir * 200; // Push player
+        }
+
+        // Steam vent
+        if phys.isOnSteamVent(player.x, player.y, PLAYER_W, PLAYER_H, level) {
+            player.vy = -1800; // Launch upward
+            sfx.playJump();
+        }
+
+        // Ability input handling
+        if Action.Pressed("dash") and abilities.has(4) { // ABILITY_DASH
+            player.startDash();
+            sfx.playDash();
+        }
+        if Action.Pressed("shoot") and abilities.has(8) { // ABILITY_CHARGE_SHOT
+            player.startCharge();
+            sfx.playChargeStart();
+        }
+        if Action.Released("shoot") and player.isCharging {
+            var chargeLevel = player.releaseCharge();
+            if chargeLevel > 0 {
+                bullets.fireCharged(player.pixelX() + PLAYER_W / 2,
+                                    player.pixelY() + PLAYER_H / 3,
+                                    player.facing, chargeLevel);
+                sfx.playChargeRelease();
+            }
+        }
+        if Action.Pressed("move_down") and abilities.has(16) { // ABILITY_GROUND_POUND
+            if not player.onGround {
+                player.startPound();
+            }
+        }
+
+        // Track playtime
+        totalPlaytime = totalPlaytime + dt;
+
+        // Boss defeat tracking
+        if level.hasBoss and not enemies.isBossAlive() {
+            // Boss just died
+            var bossBit = 1;
+            var b = 0;
+            while b < currentLevel {
+                bossBit = bossBit * 2;
+                b = b + 1;
+            }
+            if (bossesDefeated / bossBit) % 2 == 0 {
+                bossesDefeated = bossesDefeated + bossBit;
+                // Grant ability based on which boss
+                if currentLevel == 2 { abilities.grant(2); sfx.playAbilityGet(); } // Double Jump
+                if currentLevel == 3 { abilities.grant(4); sfx.playAbilityGet(); } // Dash
+                if currentLevel == 6 { abilities.grant(16); sfx.playAbilityGet(); } // Ground Pound
+            }
+        }
+    }
+
+    // =========================================================================
+    // Death effect dispatcher — spawns biome-appropriate particles + effects
+    // =========================================================================
+    hide func spawnDeathEffect(enemyIdx: Integer, ex: Integer, ey: Integer) {
+        // Simple, reliable death effect — screen flash + default particles
+        renderObj.shake(6, 3);
+        renderObj.flash(pal.sparkYellow, 3);
+        particles.burstEnemyDeath(ex, ey, pal.sparkYellow);
+    }
+
+    // Draw all expansion system overlays
+    hide func drawNewSystems(canvas: Canvas, camX: Integer, camY: Integer) {
+        // Biome ambient particles
+        renderObj.drawBiomeAmbient(canvas, camX, camY, level.levelTheme, levelTimer);
+
+        // Dash trail
+        renderObj.drawDashTrail(canvas, camX, camY, player);
+
+        // Charge aura
+        renderObj.drawChargeAura(canvas, camX, camY, player);
+
+        // Ground pound impact
+        renderObj.drawPoundImpact(canvas, player.pixelX(), player.pixelY(),
+                                   camX, camY, poundImpactTimer);
+
+        // Freeze overlay
+        renderObj.drawFreezeOverlay(canvas, camX, camY, player);
+
+        // Environmental overlays
+        var hazard = phys.checkHazardTile(player.x, player.y,
+                                           PLAYER_W, PLAYER_H, level);
+        renderObj.drawPoisonOverlay(canvas, hazard == TILE_POISON_POOL);
+        renderObj.drawIceOverlay(canvas, phys.isOnIce(player.x, player.y,
+                                                       PLAYER_W, PLAYER_H, level));
+
+        // Lighting overlay (drawn after everything)
+        lighting.draw(canvas, camX, camY,
+                      player.pixelX() - camX + PLAYER_W / 2,
+                      player.pixelY() - camY + PLAYER_H / 2);
+
+        // Ability icons on HUD
+        abilities.drawHUD(canvas);
+
+        // Extended HUD
+        var biomeName = menus.getBiomeName(currentLevel);
+        hudObj.drawExtendedHud(canvas, pal, gems,
+                                loreSystem.getCollectedCount(), loreSystem.getTotalCount(),
+                                currentLevel, biomeName);
+
+        // Mini-map
+        var playerCol = player.pixelX() / TILE_SIZE;
+        var playerRow = player.pixelY() / TILE_SIZE;
+        hudObj.drawMiniMap(canvas, pal, playerCol, playerRow,
+                           level.levelWidth, level.levelHeight);
+
+        // Power-up timers
+        hudObj.drawPowerupTimers(canvas, pal, player.speedTimer, player.rapidFireTimer,
+                                 player.shieldHits > 0);
+
+        // Transition overlay (on top of everything)
+        if transitions.isActive() {
+            transitions.draw(canvas,
+                              player.pixelX() - camX + PLAYER_W / 2,
+                              player.pixelY() - camY + PLAYER_H / 2);
+        }
+
+        // Ability acquisition UI
+        abilities.drawAcquisitionUI(canvas);
+
+        // Lore display (on top of everything)
+        if loreSystem.isDisplayActive() {
+            loreSystem.draw(canvas);
+        }
+
+        // World map (if open)
+        if showWorldMap {
+            worldMap.draw(canvas, currentLevel, bossesDefeated, abilities);
+        }
     }
 }

@@ -1,0 +1,156 @@
+// =============================================================================
+// World Map — Interconnected level map for pause menu navigation
+// =============================================================================
+// Displays a Metroid/Hollow Knight style world map showing:
+//   - All 10 levels as nodes with connections
+//   - Current level highlighted
+//   - Completed levels checkmarked
+//   - Locked gates with ability requirements
+//   - Total completion percentage
+//
+// Viper APIs: Canvas drawing primitives, Color.RGB
+// =============================================================================
+
+module worldmap;
+
+bind Viper.Graphics;
+bind "./config";
+bind "./palette";
+bind "./abilities";
+
+final MAP_NODES = 10;
+
+// Node positions on the map (screen coordinates for 1280x720)
+// Layout matches the interconnected world structure:
+//   [1]--[2]--[3]
+//    |    |    |
+//   [4]--[5]--[6]
+//    |         |
+//   [7]--[8]--[9]
+//              |
+//             [10]
+
+entity WorldMap {
+    expose func init() {}
+    hide Palette pal;
+    hide List[Integer] nodeX;
+    hide List[Integer] nodeY;
+    hide List[String] nodeNames;
+    // Connections: pairs of (fromIndex, toIndex)
+    hide List[Integer] connFrom;
+    hide List[Integer] connTo;
+    // Gate requirements per connection (ability flag, or 0 for none)
+    hide List[Integer] connGate;
+
+    expose func initMap(p: Palette) {
+        pal = p;
+        // Node positions (centered on 1280x720)
+        nodeX = [240, 480, 720,   240, 480, 720,   240, 480, 720,   720];
+        nodeY = [180, 180, 180,   360, 360, 360,   540, 540, 540,   660];
+        nodeNames = [
+            "Crash Site",
+            "Fungal Caverns",
+            "Crystal Depths",
+            "Surface Ruins",
+            "Underground Lake",
+            "Thermal Vents",
+            "Overgrowth",
+            "Frozen Abyss",
+            "Corrupted Ruins",
+            "The Core"
+        ];
+
+        // Connections
+        connFrom = [0, 1, 0, 1, 2, 3, 4, 5, 3, 6, 7, 8];
+        connTo =   [1, 2, 3, 4, 5, 4, 5, 5, 6, 7, 8, 9];
+        // Gate requirements per connection
+        connGate = [
+            GATE_NONE,         // Crash Site → Fungal Caverns
+            GATE_DOUBLE_JUMP,  // Fungal → Crystal (need double jump)
+            GATE_NONE,         // Crash Site → Surface Ruins
+            GATE_NONE,         // Fungal → Underground Lake
+            GATE_DASH,         // Crystal → Thermal (need dash)
+            GATE_NONE,         // Surface Ruins → Underground Lake
+            GATE_NONE,         // Underground Lake → Thermal
+            GATE_NONE,         // Thermal → Thermal (self, placeholder)
+            GATE_NONE,         // Surface Ruins → Overgrowth
+            GATE_CHARGE_SHOT,  // Overgrowth → Frozen (need charge shot)
+            GATE_GROUND_POUND, // Frozen → Corrupted (need ground pound)
+            GATE_GRAPPLE       // Corrupted → Core (need grapple)
+        ];
+    }
+
+    expose func draw(canvas: Canvas, currentLevel: Integer, bossesDefeated: Integer,
+                     abilities: AbilityManager) {
+        // Dark overlay
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10), 200);
+
+        // Title
+        canvas.TextCenteredScaled(30, "XENOSCAPE — WORLD MAP", Color.RGB(200, 200, 220), 2);
+
+        // Draw connections first (behind nodes)
+        var c = 0;
+        while c < connFrom.length() {
+            var fx = nodeX.get(connFrom.get(c)) + 30;
+            var fy = nodeY.get(connFrom.get(c)) + 15;
+            var tx = nodeX.get(connTo.get(c)) + 30;
+            var ty = nodeY.get(connTo.get(c)) + 15;
+            var gate = connGate.get(c);
+            if gate == GATE_NONE or abilities.canPassGate(gate) {
+                canvas.Line(fx, fy, tx, ty, Color.RGB(100, 100, 120));
+            } else {
+                // Locked connection — dashed red
+                canvas.Line(fx, fy, tx, ty, Color.RGB(80, 30, 30));
+                // Lock icon at midpoint
+                var mx = (fx + tx) / 2;
+                var my = (fy + ty) / 2;
+                canvas.Box(mx - 6, my - 6, 12, 12, Color.RGB(200, 50, 50));
+                canvas.Text(mx - 3, my - 4, "X", Color.RGB(255, 255, 255));
+            }
+            c = c + 1;
+        }
+
+        // Draw nodes
+        var i = 0;
+        while i < MAP_NODES {
+            var nx = nodeX.get(i);
+            var ny = nodeY.get(i);
+            var nodeW = 60;
+            var nodeH = 30;
+
+            // Node background
+            var bgColor = Color.RGB(40, 40, 60);
+            var borderColor = Color.RGB(80, 80, 100);
+            var textColor = Color.RGB(160, 160, 180);
+
+            // Boss defeated = green tint
+            if (bossesDefeated / (1 + i)) % 2 == 1 {
+                bgColor = Color.RGB(30, 60, 40);
+                borderColor = Color.RGB(60, 120, 80);
+                textColor = Color.RGB(180, 255, 200);
+            }
+
+            // Current level = bright highlight
+            if i == currentLevel {
+                bgColor = Color.RGB(50, 50, 90);
+                borderColor = Color.RGB(100, 150, 255);
+                textColor = Color.RGB(255, 255, 255);
+            }
+
+            canvas.Box(nx, ny, nodeW, nodeH, bgColor);
+            canvas.Frame(nx, ny, nodeW, nodeH, borderColor);
+            canvas.Text(nx + 4, ny + 4, nodeNames.get(i), textColor);
+
+            // Checkmark for completed
+            if (bossesDefeated / (1 + i)) % 2 == 1 {
+                canvas.Text(nx + nodeW - 14, ny + 2, "OK", Color.RGB(100, 255, 100));
+            }
+
+            i = i + 1;
+        }
+
+        // Legend
+        canvas.Text(40, SCREEN_H - 60, "Current: [highlighted]   Completed: [OK]", Color.RGB(120, 120, 140));
+        canvas.Text(40, SCREEN_H - 40, "Red X = Locked (need ability)", Color.RGB(120, 120, 140));
+    }
+}
