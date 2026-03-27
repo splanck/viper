@@ -564,12 +564,18 @@ int64_t rt_particle_emitter_draw_to_pixels(rt_particle_emitter emitter,
 
         // Compute color with optional fade-out
         int64_t color = p->color;
+        int64_t base_alpha = (color >> 24) & 0xFF;
+        if (base_alpha == 0)
+            base_alpha = 255; /* Color.RGB() returns 0x00RRGGBB — treat 0 alpha as opaque */
         if (emitter->fade_out && p->max_life > 0)
         {
             double life_ratio = (double)p->life / (double)p->max_life;
-            int64_t base_alpha = (color >> 24) & 0xFF;
             int64_t new_alpha = (int64_t)(base_alpha * life_ratio);
             color = (color & 0x00FFFFFF) | (new_alpha << 24);
+        }
+        else
+        {
+            color = (color & 0x00FFFFFF) | (base_alpha << 24);
         }
 
         // Convert ARGB (0xAARRGGBB) to Canvas RGB (0x00RRGGBB)
@@ -622,6 +628,8 @@ int64_t rt_particle_emitter_draw_at(rt_particle_emitter emitter,
         /* Compute color with optional fade-out alpha */
         int64_t color = p->color;
         int64_t alpha = (color >> 24) & 0xFF;
+        if (alpha == 0)
+            alpha = 255; /* Color.RGB() returns 0x00RRGGBB — treat 0 alpha as opaque */
         if (emitter->fade_out && p->max_life > 0)
         {
             double life_ratio = (double)p->life / (double)p->max_life;
